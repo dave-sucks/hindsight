@@ -106,12 +106,14 @@ describe("SMMT's 1D chart, 2026-09-29", () => {
  * DOCU, 2026-09-30 — the quiet morning that drew nothing.
  *
  * Eleven trades before the open, 110 shares in all, every one under 100
- * shares; Alpaca's one-minute bars skip such minutes, so the first bar was
- * 9:30 and the chart's left band was empty. Any line is better than no line:
- * where the day has no bars, the tape's trades of any size stand in, one
- * point per minute, and the line runs from the window's left edge to now.
- * The bars, the trades and the last trade before 7:00 are the vendor's own
- * replies, captured that noon.
+ * shares; the consolidated tape leaves such odd lots out of the last sale and
+ * the day's high and low, so no minute before 9:30 became a bar and the
+ * chart's left band was empty. Any line is better than no line, but not a
+ * line the market doesn't count: where the day has no bars, the tape's
+ * round-lot trades stand in, and a stretch with none holds flat at the last
+ * round-lot price before the window — here yesterday's close, 18,999 shares
+ * at $66.98 at 4:50 PM, fifteen odd lots back. The bars, the trades and the
+ * newest trades before 7:00 are the vendor's own replies.
  */
 import docu from "@/lib/market-data/__fixtures__/alpaca-docu-day-2026-09-30.json";
 
@@ -146,65 +148,47 @@ describe("DOCU's 1D chart, 2026-09-30 — a quiet pre-market", () => {
     }) as unknown as typeof fetch;
   };
 
-  it("at noon: seven pre-market points from the small trades, then the 148 bars from 9:30 — the line starts at 7:00", async () => {
+  it("every pre-market trade was an odd lot, so none is drawn: at noon the line holds flat at yesterday's close from 7:00, then the 148 bars from 9:30", async () => {
     jest.setSystemTime(new Date("2026-09-30T16:00:00Z"));
     vendor();
     const { getIntradayCandles } = await import("./finnhub.actions");
     const points = await getIntradayCandles("DOCU");
     const pre = points.filter((b) => etMinutes(b.date) < 570);
-    expect(pre.map((b) => [b.date.slice(11, 16), b.close, b.volume])).toEqual([
-      ["11:00", 66.54, 7],
-      ["11:01", 66.98, 1],
-      ["11:30", 66.99, 26],
-      ["12:14", 67, 25],
-      ["12:49", 65.48, 5],
-      ["12:53", 66.92, 3],
-      ["13:05", 67.55, 1],
-    ]);
-    // Two trades in the 7:30 minute fold into one point: first, high, low, last.
-    expect(pre[2]).toMatchObject({ open: 67.8225, high: 67.8225, low: 66.99, close: 66.99 });
+    expect(pre.map((b) => [b.date.slice(11, 16), b.close, b.volume])).toEqual([["11:00", 66.98, 0]]);
+    // The 5-share $65.48 print at 8:49 is not on the chart, and nothing before the open sits under the close.
+    expect(points.some((b) => b.low === 65.48)).toBe(false);
+    expect(Math.min(...pre.map((b) => b.low))).toBe(66.98);
     expect(points.filter((b) => etMinutes(b.date) >= 570)).toHaveLength(148);
-    expect(points[0].date).toBe("2026-09-30T11:00:00Z");
-    // Only the bar-less stretch was read for trades: one call, 7:00 to 9:30.
+    expect(Date.parse(points[0].date)).toBe(Date.parse("2026-09-30T11:00:00Z"));
+    // Two trade reads: the bar-less stretch 7:00–9:30, then one page back from 7:00 for the anchor.
     const tradeCalls = asked.filter((u) => u.pathname.endsWith("/trades"));
-    expect(tradeCalls).toHaveLength(1);
-    expect(tradeCalls[0].searchParams.get("start")).toBe("2026-09-30T11:00:00.000Z");
-    expect(tradeCalls[0].searchParams.get("end")).toBe("2026-09-30T13:30:00.000Z");
-  });
-
-  it("at 8:00 AM, before any bar: the line runs from 7:00 to now on the trades so far, carrying the last price to the right edge", async () => {
-    jest.setSystemTime(new Date("2026-09-30T12:00:00Z"));
-    vendor();
-    const { getIntradayCandles } = await import("./finnhub.actions");
-    const points = await getIntradayCandles("DOCU");
-    expect(points.map((b) => [b.date.slice(11, 16), b.close])).toEqual([
-      ["11:00", 66.54],
-      ["11:01", 66.98],
-      ["11:30", 66.99],
-      ["12:00", 66.99],
+    expect(tradeCalls.map((u) => [u.searchParams.get("start"), u.searchParams.get("end"), u.searchParams.get("sort")])).toEqual([
+      ["2026-09-30T11:00:00.000Z", "2026-09-30T13:30:00.000Z", "asc"],
+      ["2026-09-23T11:00:00.000Z", "2026-09-30T11:00:00.000Z", "desc"],
     ]);
-    expect(points[points.length - 1].volume).toBe(0);
   });
 
-  it("with nothing traded in the window yet, the left edge starts from the last trade before 7:00", async () => {
+  it("at 8:00 AM, before any bar: a flat line from 7:00 to now at yesterday's close", async () => {
     jest.setSystemTime(new Date("2026-09-30T12:00:00Z"));
     vendor();
-    const sevenAm = Date.parse("2026-09-30T11:00:00Z");
-    const inWindow = new Set((docu.preMarketTrades as TradeTuple[]).filter(([t]) => Date.parse(t) >= sevenAm).map(([t]) => t));
-    const base = global.fetch as jest.Mock;
-    global.fetch = jest.fn(async (url: string | URL, init?: RequestInit) => {
-      const res = await base(url, init);
-      const u = new URL(String(url));
-      if (!u.pathname.endsWith("/trades") || u.searchParams.get("sort") === "desc") return res;
-      const body = (await res.json()) as { trades: { t: string }[] };
-      return new Response(JSON.stringify({ trades: body.trades.filter((t) => !inWindow.has(t.t)), next_page_token: null }), { status: 200 });
-    }) as unknown as typeof fetch;
     const { getIntradayCandles } = await import("./finnhub.actions");
     const points = await getIntradayCandles("DOCU");
-    // 5:26 AM, 20 shares at $66.62 — the last print before the window.
     expect(points.map((b) => [b.date.slice(11, 16), b.close, b.volume])).toEqual([
-      ["11:00", 66.62, 0],
-      ["12:00", 66.62, 0],
+      ["11:00", 66.98, 0],
+      ["12:00", 66.98, 0],
     ]);
+  });
+
+  it("the anchor skips the fifteen overnight odd lots (the newest a 20-share $66.62 at 5:26 AM) for the 18,999-share close print", async () => {
+    jest.setSystemTime(new Date("2026-09-30T12:00:00Z"));
+    vendor();
+    const before = (docu.lastBeforeWindow as TradeTuple[]);
+    expect(before.slice(0, 15).every(([, , s]) => s < 100)).toBe(true);
+    expect(before[0].slice(1, 3)).toEqual([66.62, 20]);
+    expect(before[15].slice(1, 3)).toEqual([66.98, 18999]);
+    const { getIntradayCandles } = await import("./finnhub.actions");
+    const points = await getIntradayCandles("DOCU");
+    expect(points[0].close).toBe(66.98);
+    expect(points[0].close).not.toBe(66.62);
   });
 });

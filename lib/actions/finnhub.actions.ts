@@ -510,8 +510,8 @@ export async function getStockCandlesBatch(
  * high of $19.07 against the tape's $19.09) and no off-hours prints at all.
  *
  * The line always runs from the window's left edge to now: where the day has
- * no minute bars, the tape's trades of any size stand in (see below), and the
- * left edge starts from the last price before the window opened.
+ * no minute bars, the tape's round-lot trades stand in (see below), and the
+ * left edge starts from the last round-lot price before the window opened.
  *
  * 2026-08-19 (DAV-191) — this used to try FMP `/api/v3/historical-chart/1min`
  * first. FMP retired the whole /api/v3 namespace on 2025-08-31; the call
@@ -523,6 +523,16 @@ export async function getIntradayCandles(symbol: string, now: Date = new Date())
 }
 
 type AlpacaTrade = { t: string; p: number; s: number };
+
+/**
+ * A trade under 100 shares is an odd lot. The consolidated tape leaves odd
+ * lots out of the last sale and the day's high and low, which is why a
+ * minute holding only odd lots never becomes a bar — so the chart leaves
+ * them out too. DOCU 2026-09-30, 8:49 AM: five shares at $65.48 drew a 2%
+ * pre-market drop the market never counted.
+ */
+const ROUND_LOT = 100;
+const roundLots = (trades: AlpacaTrade[]) => trades.filter((t) => t.s >= ROUND_LOT);
 
 /** Every trade on the tape between two instants, any size, oldest first. A few pages at most. */
 async function getTradesBetween(
@@ -626,10 +636,11 @@ async function getIntradayCandlesAlpaca(symbol: string, now: Date): Promise<Stoc
     // Any line is better than no line. A minute bar needs a trade of 100
     // shares or more, so a quiet pre-market — DOCU on 2026-09-30: eleven
     // trades, 110 shares, no bar until 9:30 — drew nothing. Where the day
-    // has no bars yet (before the first, after the last), the tape's trades
-    // of any size stand in, one point per minute, so the line always runs
-    // from the window's left edge. Only those stretches are read: by
-    // construction they hold few trades.
+    // has no bars yet (before the first, after the last), the tape's
+    // round-lot trades stand in, one point per minute, so the line always
+    // runs from the window's left edge; a stretch with only odd lots (DOCU
+    // that morning) adds nothing and the line holds flat. Only those
+    // stretches are read: by construction they hold few trades.
     const firstBar = points.length ? new Date(points[0].date) : null;
     const lastBar = points.length ? new Date(points[points.length - 1].date) : null;
     const stretches: [Date, Date][] = [];
@@ -642,22 +653,25 @@ async function getIntradayCandlesAlpaca(symbol: string, now: Date): Promise<Stoc
     for (const [from, to] of stretches) {
       if (to <= from) continue;
       const trades = await getTradesBetween(S, headers, from.toISOString(), to.toISOString());
-      points.push(...minutePoints(trades));
+      points.push(...minutePoints(roundLots(trades)));
     }
     points.sort((a, b) => a.date.localeCompare(b.date));
 
-    // Where the line starts: the last price before the window opened — last
-    // night's last trade, or yesterday's close — so the left edge is never
-    // blank. Skipped when the first minute already has a point.
+    // Where the line starts: the last round-lot price before the window
+    // opened — last night's last real trade, or yesterday's close — so the
+    // left edge is never blank. One page of the newest trades, newest first,
+    // reaches back past the overnight odd lots to the session's closing
+    // prints (DOCU 09-30: fifteen odd lots, then 18,999 shares at the close).
+    // Skipped when the first minute already has a point.
     if (!points.length || new Date(points[0].date) > windowStart) {
       const prior = await getTradesBetween(
         S,
         headers,
         new Date(windowStart.getTime() - 7 * 86_400_000).toISOString(),
         windowStart.toISOString(),
-        { sort: 'desc', limit: 1, pages: 1 },
+        { sort: 'desc', limit: 1000, pages: 1 },
       );
-      const p = prior[0]?.p;
+      const p = roundLots(prior)[0]?.p;
       if (typeof p === 'number' && p > 0) {
         points.unshift({ date: windowStart.toISOString(), open: p, high: p, low: p, close: p, volume: 0 });
       }
