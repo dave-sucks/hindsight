@@ -1,9 +1,12 @@
 # What every agent is given about a stock, and how every agent knows how to trade
 
-> **Status: design, not decided.** Written 2026-09-30 for the QB to review.
-> Dave decides. This PR changes no code and no prompt: every prompt change
-> below is a proposal, shown as the exact paragraph removed and the exact
-> paragraph added (LANES law 7).
+> **Status: decided 2026-09-30.** The QB approved it with two edits (both
+> made: core rule 2 uses the wording for after #742, and build step 4
+> leaves the "### Stage N" headers and the tool-call discipline text
+> alone). Dave said yes to all six decisions in §4, and set how a note gets
+> started (§3.1). This PR changes no code and no prompt: every prompt change
+> below is shown as the exact paragraph removed and the exact paragraph
+> added (LANES law 7), and is built in the order of §5.
 >
 > It answers three open design tickets as one framework: notes on a thesis
 > and what each agent reads before it decides (DAV-342), one shared trading
@@ -51,9 +54,12 @@
 
 **The proposal, in five parts.**
 
-1. **Notes.** A new Activity line, *Note*, written by your chat (in your
-   words, after you say yes) or by any agent. A note stands until a newer
-   note replaces it or someone marks it resolved.
+1. **Notes.** A new Activity line, *Note*, written by your chat or by any
+   agent. When the chat finishes research on a stock, it asks you "add this
+   note?" on the question card you already have. When you ask for one by
+   name ("research XYZ and add a note to the thesis"), your ask is the yes.
+   A note stands until a newer note replaces it or someone marks it
+   resolved.
 2. **One "what's been said" block, the same for every agent.** Every agent
    deciding on a stock reads, in this order: your standing notes and your
    decisions of the last 30 days, word for word and dated; then the
@@ -81,7 +87,7 @@ prompt. The morning run comes out cheaper than today on the days it asks
 for history, because the block replaces the raw history, which is 10,000
 to 18,000 tokens per read (§3.8).
 
-**What you decide** is in §4: six questions, each with a recommendation.
+**What you decided** is in §4: yes to all six recommendations.
 
 ---
 
@@ -97,8 +103,8 @@ characters.
 
 | Agent | Model | Built by | Prompt size | What it gets about a stock | Your decisions | Its own earlier reasoning |
 |---|---|---|---|---|---|---|
-| **Morning run** | gpt-5.4 | `buildDailyRunSystemPromptV2`, `lib/agent/system-prompt.ts:69`; the stock itself comes through `get_theses`, `lib/agent/tools/get-theses.ts:213` | ~11,800 tokens | A full row (4,000–5,500 tokens) for stocks with work to do, a one-line index row for quiet ones | `principalDirective`: only your **newest** decision, and only while it is still the newest line on the stock (`classifyPrincipalDirective`, `get-theses.ts:166`) | Only when the model asks for `include_history` (5 raw lines by default). 3 of the 6 runs that reviewed CEG didn't ask |
-| **Trigger run** | gpt-5.4 | `buildTacticalSystemPrompt`, `lib/agent/system-prompts/intraday-tactical.ts:96`; data loaded in `lib/inngest/functions/tactical-run.ts:139` | ~7,100 tokens | Thesis fields, the setup's confirmation, a bull and bear excerpt, the full trigger list with ids, position and tracked peak | Only if it is one of the last 5 Activity lines, and cut at 120 characters (`intraday-tactical.ts:141–149`) | The same 5 lines, same cut |
+| **Morning run** | gpt-5.4 | `buildDailyRunSystemPromptV2`, `lib/agent/system-prompt.ts:69`; the stock itself comes through `get_theses`, `lib/agent/tools/get-theses.ts:215` | ~11,800 tokens | A full row (4,000–5,500 tokens) for stocks with work to do, a one-line index row for quiet ones | `principalDirective`: only your **newest** decision, and only while it is still the newest line on the stock (`classifyPrincipalDirective`, `get-theses.ts:168`) | Only when the model asks for `include_history` (5 raw lines by default). 3 of the 6 runs that reviewed CEG didn't ask |
+| **Trigger run** | gpt-5.4 | `buildTacticalSystemPrompt`, `lib/agent/system-prompts/intraday-tactical.ts:96`; data loaded in `lib/inngest/functions/tactical-run.ts:140` | ~7,100 tokens | Thesis fields, the setup's confirmation, a bull and bear excerpt, the full trigger list with ids, position and tracked peak | Only if it is one of the last 5 Activity lines, and cut at 120 characters (`intraday-tactical.ts:141–149`) | The same 5 lines, same cut |
 | **Writer** (mint and refresh) | claude-sonnet-4-6 | `buildWriterResearchPrompt`, `lib/agent/run-thesis-writer.ts:328`; data block `formatDataBlock`, `lib/agent/thesis-research/format-data-block.ts:693` | ~4,900 tokens, plus a ~1,400-token data block | On refresh: status, direction, horizon, core belief, target, stop, score, 300 characters of snapshot, the stock's **own** triggers (`loadExistingThesis`, `run-thesis-writer.ts:202`) | **None** | **None.** The dispatcher's one-line `reason` is the only channel |
 | **Discovery** | gpt-5.4 | `buildDiscoverySystemPrompt`, `lib/agent/system-prompts/discovery.ts:84` | ~6,300 tokens | A new name: its screen row and `get_stock_data`, whose prior-coverage paragraph gives the last thesis, the core belief and our trades on it (`formatTickerHistory`, `lib/agent/context-bundle.ts:665`) | None | The last thesis's core belief only |
 | **/chat** | claude-sonnet-4-6 | `buildPrincipalSystemPrompt`, `lib/agent/modes.ts:572`; route `app/api/agent/[mode]/route.ts:538` | ~10,700 tokens scoped, ~8,700 unscoped | Whatever it calls: `get_theses` (full row), `get_stock_data`, `list_proposals` | Only through `get_theses`, with the same newest-line-only rule | Only if it asks for `include_history` |
@@ -117,13 +123,13 @@ settings, not stocks. It is left out here because DAV-334 folds it into
 - **About a stock:** `get_theses` returns **full rows** for stocks with
   `needsAction`, a plan-sanity flag, a setup to name, a buy blocked by a
   full analyst, a buy level reached, or an unanswered decline that has a
-  message (`isFullDetail`, `get-theses.ts:1189`). Everything else is a one-line
-  index row (`get-theses.ts:1210`). A full row carries the thesis, the
+  message (`isFullDetail`, `get-theses.ts:1226`). Everything else is a one-line
+  index row (`get-theses.ts:1250`). A full row carries the thesis, the
   trigger list with the analyst's and account's rules resolved in, the
   `resolved` envelope (live price, ladder health, plan sanity), the setup
   checklist, research age, `heldThroughFloor`, and `principalDirective`.
 - **What's been said:** `principalDirective` looks only at the newest
-  Activity line (`get-theses.ts:799–817, 885–888`). If that line is a
+  Activity line (`get-theses.ts:830–848, 916–919`). If that line is a
   decline, an approval that changed the order, or a direct edit, it is
   shown. Otherwise nothing is. `history` is present only when the model
   passes `include_history: true`; the prompt never tells it to.
@@ -147,9 +153,9 @@ settings, not stocks. It is left out here because DAV-334 folds it into
   the decision framework.
 - **What's been said:** "RECENT THESIS ACTIVITY (last 5 updates)"
   (`:266–267`), built from `thesis.updates` with `take: 5`
-  (`tactical-run.ts:144–153`), rationale cut at 120 characters
+  (`tactical-run.ts:145–154`), rationale cut at 120 characters
   (`intraday-tactical.ts:146`). The five are loaded before the run writes
-  its own fire line (`tactical-run.ts:139` runs before `:469`).
+  its own fire line (`tactical-run.ts:140` runs before `:472`).
   Trigger fires are Activity lines too, so a trigger firing three times in
   an afternoon pushes everything else out of the window.
 
@@ -203,14 +209,14 @@ These cut across the agents. Each one is shown happening in §2.
 
 | # | Mechanic | Where | Seen in |
 |---|---|---|---|
-| A | Your decision reaches an agent only while it is the **newest line** on the stock. | `classifyPrincipalDirective`, `get-theses.ts:166–211` | CEG 09-14 decline: newest line for 4 hours, never seen by a morning run |
-| B | A fired trigger counts as **answered by any newer line**, including your edits, approvals and the app's bookkeeping. | `computeNeedsAction`: `latestUpdate?.type === "TRIGGER_FIRED"`, `lib/agent/needs-action.ts:463` | CEG 09-28: the 15%-off-high review, answered by your copied-rule cleanup 36 minutes later |
+| A | Your decision reaches an agent only while it is the **newest line** on the stock. | `classifyPrincipalDirective`, `get-theses.ts:168–213` | CEG 09-14 decline: newest line for 4 hours, never seen by a morning run |
+| B | A fired trigger counts as **answered by any newer line**, including your edits, approvals and the app's bookkeeping. | `computeNeedsAction`: `latestUpdate?.type === "TRIGGER_FIRED"`, `lib/agent/needs-action.ts:531` | CEG 09-28: the 15%-off-high review, answered by your copied-rule cleanup 36 minutes later |
 | C | Only the **newest** fire is shown. Earlier fires since the last answer disappear. | same | CEG 09-18: three fires since 09-16, the run was shown one |
-| D | The morning run's history is **the model's choice**. | `get_theses` `include_history`, `get-theses.ts:114, 400` | 3 of 6 CEG reviews read no history |
+| D | The morning run's history is **the model's choice**. | `get_theses` `include_history`, `get-theses.ts:116, 402` | 3 of 6 CEG reviews read no history |
 | E | The trigger run sees **5 lines, 120 characters each**. | `intraday-tactical.ts:141–149` | CEG 09-14 15:30: your decline cut off at "…isn't "AI slowdo" |
 | F | The writer sees **no Activity at all**. | `loadExistingThesis`, `run-thesis-writer.ts:202` | EME 09-25: score cut 8 → 3 with the prior plan unseen |
 | G | An **unscoped chat can't write** to any stock. | `UNSCOPED_BLOCKED_WRITES`, `route.ts:800` | DOCU 09-30 |
-| H | A **smaller** approved size is read out as **"principal raised the size"**, and the prompt tells the run that an edit means "they upsized you". | `get-theses.ts:193`; `system-prompt.ts:253` | DOCU 09-30: 162 → 120 shares |
+| H | A **smaller** approved size is read out as **"principal raised the size"**, and the prompt tells the run that an edit means "they upsized you". | `get-theses.ts:195`; `system-prompt.ts:253` | DOCU 09-30: 162 → 120 shares |
 
 ### 1.8 Trading knowledge, prompt by prompt
 
@@ -223,8 +229,8 @@ absent.
 | **A buy fires once, on the crossing; buying now is a level at the price; full plan at 2:1** | Yes (`:257, 298–302`) | 2:1 only, in the ladder duty (`:462–465`) | 2:1 and buying now, yes; "once" is not said (`:551–565`) | 2:1 only (`:160`) | 2:1 only, inside the `record_thesis` bullet (`:748`) |
 | **A sale or review fires every day its condition holds** | Yes (`:257`) | — | — | — | — |
 | **Size by risk; judge a position by dollars at risk, not dollars in** | Yes (`:282`) | "place_trade sizes the buy itself" only (`:468`) | "A tight, honest stop is what earns size" (`:606–609`) | "sizes every buy inside this band by risk" (`:161`) | **—.** "largest trade $10000" and "Omit notional" (`:632`). DOCU 09-30: "the stop distance is tight enough that the math inflates share count" |
-| **The floor in dollars** | — ("price being down is not on the list", `:304`) | — | — | — | — |
-| **Each setup's own confirmation** | Points at "the row's `setup` block says what to confirm" (`:299`), **but the block has no confirmation field** (`SetupChecklist`, `lib/agent/knowledge/setup-checklist.ts:10–21`) | Yes, for the one setup (`:218–220, 352–363`); gate (a) "ALWAYS applies" misfires on a compounder (DAV-343) | Entry, stop, target and time per setup; no confirmation (`:457–467`) | — (screens by setup, no confirmation) | **—.** Judged DOCU's pullback by breakout rules ("$74.07 on volume", "0.13× … no conviction") |
+| **The floor in dollars** | Yes since #743 (merged 09-30): the `FLOOR_TOO_FAR` flag and its answer (`:323`). Before it: — ("price being down is not on the list", `:304`) | — | — | — | — |
+| **Each setup's own confirmation** | Points at "the row's `setup` block says what to confirm" (`:299`), **but the block has no confirmation field** (`SetupChecklist`, `lib/agent/knowledge/setup-checklist.ts:10–21`) | Yes, for the one setup (`:218–220, 352–363`); gate (a) "ALWAYS applies" misfired on a compounder (AAPL 09-30); #742, merged 09-30, now re-arms a buy passed on that wobble | Entry, stop, target and time per setup; no confirmation (`:457–467`) | — (screens by setup, no confirmation) | **—.** Judged DOCU's pullback by breakout rules ("$74.07 on volume", "0.13× … no conviction") |
 | **Selling: thesis level beats the analyst rule, which beats the account rule; floors only rise; did the story break or the price?** | Ratchet and belief question, yes (`:256–258, 303`); glossary says a COMPOUNDER "exits only on invalidation" (`:229`), which the 25% sale contradicts | Belief question and ladder duty, yes; the analyst's rules appear as triggers, unlabelled | Ratchet on a held refresh (`:379–384`); the analyst's sell rules are **not shown** | — | **—** |
 | **The market regime** | Yes (`:202`) | — | — | — | — |
 | **What's been said comes first** | `principalDirective` only (`:247–254`) | — | — | — | — |
@@ -236,7 +242,7 @@ that touches its file, not as its own PR):
   "a routed signal confirmed". The router was deleted 2026-09-15.
 - `system-prompt.ts:304`: "Cite signal_ids that informed the update."
   Same.
-- `system-prompt.ts:374` and `modes.ts:661`: discovery "(Sundays)".
+- `system-prompt.ts:375` and `modes.ts:661`: discovery "(Sundays)".
   Discovery is manual.
 - `modes.ts:662`: "**Briefing agent** … writes the per-analyst standup
   that gets injected into the next run's prompt — that's how the analyst
@@ -338,10 +344,11 @@ your cleanup is not an agent's answer.
   note instead of each writing "hold, no invalidation" from scratch.
 - **Context alone wouldn't have raised the floor.** The morning prompt
   tells a run that "price being down is not on the list unless you wrote
-  it there" (`system-prompt.ts:304`). Nothing puts the floor's cost in
-  dollars in front of it. That is the core's rule 5 and DAV-344's flag:
-  39 shares × ($276.90 − $227.55) = $1,925, 1.7% of the account, over the
-  1.5% line from the first 09-16 review on. The message to you when a
+  it there" (`system-prompt.ts:304`), and until 09-30 nothing put the
+  floor's cost in dollars in front of it. That is now the `FLOOR_TOO_FAR`
+  flag (#743, merged 09-30) and the core's rule 5: 39 shares × ($276.90 −
+  $227.55) = $1,925, 1.7% of the account, over the 1.5% line from the
+  first 09-16 review on. The message to you when a
   holding under cost gets a review is DAV-345.
 
 ### 2.2 DOCU, 09-30 (PEAD Specialist, bought that day)
@@ -516,12 +523,12 @@ each write is one Activity line.
 
 | Writer | How | Rules |
 |---|---|---|
-| **Your chat** (/chat, scoped or unscoped) | New tool `write_note(thesis_id, text, replaces_note_id?)`. A thesis names its own analyst, so it works **unscoped**, after checking the thesis is on your account. It trades nothing, so it isn't on the unscoped block list. | At the end of research on a stock (a conclusion, a size, a level, what would change the mind), the chat drafts **one** note in your words and writes it **after you say yes** (decision 1, §4). Author `PRINCIPAL`. |
+| **Your chat** (/chat, scoped or unscoped) | New tool `write_note(thesis_id, text, replaces_note_id?)`. A thesis names its own analyst, so it works **unscoped**, after checking the thesis is on your account. It trades nothing, so it isn't on the unscoped block list. | Two ways in (decision 1, §4). **Asked:** at the end of research on a stock or a set of stocks, the chat drafts one note per stock and asks with the question card you already have (`ask_question`, added to /chat's tools; the chat's turn stops on it and waits for your click, `route.ts:919`). One stock: "Add this note to $DOCU?" with the draft in the card and *Add it* / *Change it* / *No note*. Several stocks: one multi-select card, one option per stock with its one-line note, plus *None*. **By name:** "research XYZ and add a note to the thesis". Your ask is the yes, so the chat writes the note once the research is done and the thesis exists (after `wait_for_thesis_refresh` if it dispatched the writer), then shows you the text. Author `PRINCIPAL` either way; `via` records `chat (confirmed)` or `chat (asked for)`. |
 | **The thesis sheet** (optional) | A "Write a note" field on the Activity tab, through the same core. | Author `PRINCIPAL`, via `sheet`. ShadCN `Textarea` and `Button` as-is. |
 | **Morning run, trigger run, a scoped chat acting for the analyst** | Two optional fields on `update_thesis`: `note` (text) and `resolve_note_id`. No new tool. | Author `ANALYST`. **One standing analyst note per stock**: a new one replaces the previous one automatically, so the next reader carries one analyst voice, not a pile. |
 | **Writer** | A refresh already saves through `update_thesis` (`buildWriterSaveCall`, `run-thesis-writer.ts:1244`), so the field comes free. | Not prompted to write one in the first version. |
 
-**Resolving your notes.** Recommended: you can resolve any note, and an
+**Resolving your notes** (decided). You can resolve any note, and an
 agent can resolve one of yours **only in the same call that carries it
 out** (for DOCU: the call that adds the $74.07 add trigger), citing what
 it did. That resolution is an Activity line you see, and writing the note
@@ -537,7 +544,7 @@ one write path for triggers.
 **One builder.** `buildStockContext(rows, { reader, now })` in
 `lib/agent/stock-context.ts`. It is pure: it takes the stock's recent
 `ThesisUpdate` rows (the 20-row scan `get_theses` already runs for the
-repeat-fire count, `get-theses.ts:826–845`, extended to 30 days for
+repeat-fire count, `get-theses.ts:857–876`, extended to 30 days for
 decisions) and returns dated plain-text lines. It returns text, not raw
 rows: a raw history line costs about 1,100 characters, because it carries
 the full rationale, the `fieldChanges` JSON and every id.
@@ -571,7 +578,7 @@ characters when it is written.
 
 | Agent | When it gets the block | Parts | Budget per stock |
 |---|---|---|---|
-| **Morning run** | On every **full row**, as `context`, before the thesis fields. A **quiet row** gets one line when a standing note of yours exists ("Principal's note 09-30: Bought a starter…", 120 characters). **A note or decision of yours that no run has answered yet makes the row full**, once. That widens today's rule (only a decline with a message does, `get-theses.ts:1200`). | 1–7 | typical 400–700 tokens, cap 1,000; quiet line ~30 |
+| **Morning run** | On every **full row**, as `context`, before the thesis fields. A **quiet row** gets one line when a standing note of yours exists ("Principal's note 09-30: Bought a starter…", 120 characters). **A note or decision of yours that no run has answered yet makes the row full**, once. That widens today's rule (only a decline with a message does, `get-theses.ts:1240`). | 1–7 | typical 400–700 tokens, cap 1,000; quiet line ~30 |
 | **Trigger run** | In the prompt, **replacing** "RECENT THESIS ACTIVITY (last 5 updates)". | 1–7 | typical 500, cap 1,000 (today ~250) |
 | **Writer: refresh** | In the prompt, after EXISTING THESIS. On a held refresh it also gets the **resolved** trigger list, marked by level ("the analyst's rule", "the account's rule"), so it knows what sits under the stock's own levels. | 1–4 | typical 500, cap 800 |
 | **Writer: mint** | Standing notes of yours from an **earlier** thesis on the same stock for this analyst (a stock sold and minted again), plus the dispatcher's reason. | 1 | typical 0–150 |
@@ -587,7 +594,7 @@ them.
 ### 3.3 A fired trigger stays open until an agent answers it
 
 **Today** a fire is open while its line is the newest on the stock
-(`needs-action.ts:463`), so anything written after it closes it.
+(`needs-action.ts:531`), so anything written after it closes it.
 
 **Proposed.** A fire is answered by the first **agent** line after it: a
 review or update written by a run (`REVIEWED`, `UPDATED`, `ACTED`,
@@ -638,10 +645,13 @@ HOW WE TRADE — the same rules for every analyst and every chat
    fit a plan.
 
 2. How a buy fires. Once, when the price crosses its level (true now, not true at
-   the prior close). A buy that is passed on or refused is used up until the price
-   crosses back and again. Buying now is a buy level at or a few cents past the
-   current price; there is no other way to buy. Every buy needs the full plan — buy,
-   floor and target — paying at least 2:1: (target − buy) ÷ (buy − floor).
+   the prior close). If the trigger run passes only because the price has slipped
+   back under the level at the moment it checks, the buy is not used up: the next
+   check that finds the price back past the level fires it again, up to three
+   times that day. Passed for any other reason, or refused, it is used up until
+   the price crosses again. Buying now is a buy level at or a few cents past the
+   current price; there is no other way to buy. Every buy needs the full plan —
+   buy, floor and target — paying at least 2:1: (target − buy) ÷ (buy − floor).
 
 3. How a sale or a review fires. Every day its condition is true. A declined sale
    means "not today", not "stop asking".
@@ -698,12 +708,12 @@ HOW WE TRADE — the same rules for every analyst and every chat
    reasoning forward.
 ```
 
-Rule 2's second sentence depends on #742 (DAV-343, open): if it merges,
-the sentence becomes "a buy passed because the price slipped back under
-its level fires again when the price crosses back, up to three times that
-day; passed for any other reason, or refused, it is used up until the
-price crosses again." Rule 5 is the rule #743 (DAV-344, open) flags; the
-core states it either way, so the flag and the prompt say the same thing.
+Rule 2 states the buy rule as it stands since #742 merged on 09-30 (a
+pass on a wobble re-arms the buy, at most three times a day). Rule 5 is
+the rule the `FLOOR_TOO_FAR` flag checks since #743 merged the same day,
+so the flag and the core say the same thing. #743 also added its own
+paragraph to the morning prompt (`system-prompt.ts:323`), which stays: it
+is the answer to a flag, and the core is the rule behind it.
 
 ### 3.5 Each analyst is a distinct trader
 
@@ -739,7 +749,7 @@ prompt's "the row's `setup` block says what to confirm"
 
 ### 3.6 The reply a save gives (where DAV-341 fits)
 
-**Recommendation: option B, the reply.** The save lands, and its reply
+**Decided: option B, the reply.** The save lands, and its reply
 says what the change means in words the agent reasons with. The check
 when the buy fires stays exactly as it is today. No check is added and
 none is removed (LANES law 3).
@@ -859,8 +869,15 @@ Added:
 **M8, line 304.** Removed:
 > Cite signal_ids that informed the update.
 
+Added: nothing. The floor-in-dollars check this line once proposed is
+already in the prompt since #743 (`FLOOR_TOO_FAR`, `system-prompt.ts:323`).
+
+**M2b, line 334**, the REVIEW_DUE bullet, which points at the paragraph
+M2 replaces. Removed:
+> first check `principalDirective`: if it's set, this review likely fired because the principal left a comment on a proposal — handle that comment per the "Read the principal's directives" rule above (execute an instruction, do the work a question asks for, or honor a soft no) before the routine review.
+
 Added:
-> Then look at what the floor costs in dollars (How we trade, 5); a floor that would lose more than 1.5% of the account is part of this review's answer.
+> first read the row's `context`: if a note or decision of the principal's is not yet answered, this review is where you answer it, per "Read what's been said" above, before the routine review.
 
 **M9, line 229.** Removed:
 > - **COMPOUNDER** — long-term hold. Months to years. Exit only on invalidation triggers.
@@ -868,7 +885,7 @@ Added:
 Added:
 > - **COMPOUNDER** — long-term hold. Months to years. Sells on a named invalidation or the analyst's catastrophe line; price alarms are reviews.
 
-**M10, line 374.** Removed:
+**M10, line 375.** Removed:
 > that's the Discovery Run's job (Sundays)
 
 Added:
@@ -963,7 +980,12 @@ Added:
 > ## NOTES — how this conversation reaches the analyst
 > ══════════════════════════════════════════════════════════════════════
 >
-> The analyst never sees this chat. When the principal reaches a conclusion on a stock — a size, a level, what they're waiting for, what would change their mind — draft ONE short note in their words: what was decided, what would change the mind, any size or level. Show it, and write it with `write_note(thesis_id, text)` when they say yes. It works unscoped: the thesis names its analyst (find the id with `list_theses_all`). A note replaces nothing unless you pass `replaces_note_id`. Never write a note the principal didn't agree to, and never a second note for the same conclusion.
+> The analyst never sees this chat. A note on the stock's thesis is the only way what was concluded here reaches it. A note says what was decided, what would change the mind, and any size or level, in the principal's words. Keep what the principal decided apart from what you suggested and they agreed to.
+>
+> - **When the principal asks for one** ("research XYZ and add a note to the thesis"), the ask is the yes. Do the research. If you dispatched the writer, wait for it (`wait_for_thesis_refresh`) so the thesis exists. Then write the note with `write_note(thesis_id, text)` and show its text in your reply.
+> - **Otherwise, when research on a stock or a set of stocks reaches a conclusion** (a size, a level, what they're waiting for, what would change their mind), end your turn by asking with `ask_question`. One stock: "Add this note to $X?", with the draft in the question's description and the options *Add it* / *Change it* / *No note*. Several stocks: one multi-select question with one option per stock (its one-line note) plus *None*. On *Add it*, write it. On *Change it*, take their edit and ask again. On *No note*, write nothing.
+>
+> `write_note` works unscoped: the thesis names its analyst (find the id with `list_theses_all`). A note replaces nothing unless you pass `replaces_note_id`. Never write a note the principal didn't ask for or agree to, and never a second note for the same conclusion.
 
 **C5, line 827.** Removed: nothing.
 
@@ -990,62 +1012,76 @@ worth doing either way.
 
 ---
 
-## 4. What Dave decides
+## 4. What Dave decided (2026-09-30)
 
-1. **Your chat's notes: written after your yes, or automatically?**
-   *Recommended: after your yes.* A note of yours is the first thing every
-   agent reads on that stock, for as long as it stands, so it should be
-   words you agreed to. One word ("yes") is the whole cost.
-2. **Who can resolve your notes?** *Recommended: you, and an agent only in
-   the call that carries the note out* (for DOCU, the call that adds the
+Yes to all six recommendations, after the QB's review.
+
+1. **Your chat's notes are written after your yes.** The chat asks on the
+   question card you already have (§3.1), or you ask for the note by name
+   ("research XYZ and add a note to the thesis"), and then your ask is the
+   yes. A note of yours is the first thing every agent reads on that stock
+   while it stands, so it is always words you asked for or agreed to.
+2. **You can resolve any note. An agent can resolve one of yours only in
+   the same call that carries it out** (for DOCU, the call that adds the
    $74.07 add trigger), shown as an Activity line. Writing the note again
    reopens it.
-3. **The reading order** (§3.2): the QB's order plus "fired since the last
-   answer". *Recommended as written.* The alternative ("the last 5 lines")
-   is today's trigger run, and it's what lost CEG.
-4. **A fired trigger stays open until an agent answers it** (§3.3).
-   *Recommended.* More held stocks will show up in the morning list on
-   days you've edited them; that's the point.
-5. **The save's reply: B (say what it means) or A (refuse at the save)?**
-   *Recommended: B* (§3.6).
-6. **One trading core in every prompt, with the morning run's duplicate
-   paragraphs taken out** (M3, M5). *Recommended.* The risk: the morning
-   prompt is the most tuned text in the app, and moving a rule can change
-   behavior. The replay tests below pin each rule's words before and
-   after.
+3. **The reading order is as written in §3.2**: your notes, your decisions,
+   the analyst's latest note and last two answers, what has fired since,
+   then the rest.
+4. **A fired trigger stays open until an agent answers it** (§3.3). Your
+   edits no longer count as the answer. More held stocks will show up in
+   the morning list on days you've edited them; that's the point.
+5. **The save replies in words (option B)** (§3.6). Nothing is refused at
+   the save; the check when a buy fires is unchanged.
+6. **One trading core in every prompt**, with the morning run's duplicate
+   paragraphs (M3, M5) taken out. The risk is named: the morning prompt is
+   the most tuned text in the app. The replay tests in §5 pin each rule's
+   words before and after.
 
 ---
 
-## 5. If agreed: the build order
+## 5. The build order
 
 One PR each, no stacking, each with a test replayed from the production
-rows above and shown failing on main (LANES laws 6–8). The QB checks the
-set merges in order on a scratch branch. Steps 2 and 4 touch
-`lib/agent/modes.ts`, a file both lanes touch (LANES §4), so each of those
-PRs says whether the Signals lane has an open PR on it. All of this is the
-Agents lane's.
+rows above and shown failing on main, and the five-line message (LANES
+laws 6–8). The QB reviews each; Dave clicks. The QB checks the set merges
+in order on a scratch branch. Steps 2 and 4 touch `lib/agent/modes.ts`, a
+file both lanes touch (LANES §4), so each of those PRs says whether the
+Signals lane has an open PR on it. All of this is the Agents lane's.
 
 1. **What's been said + fires stay open.** `stock-context.ts`; `context`
    on `get_theses` rows (full and quiet); `needsAction` lists every open
    fire and counts only agent answers; the trigger run's block (T1);
-   delete `principalDirective` and replace M2 **in the same PR**; the
-   resize wording (mechanic H). *Replays:* CEG through `get_theses` on
+   delete `principalDirective` and replace M2 and M2b **in the same PR**;
+   the resize wording (mechanic H). Notes don't exist until step 2, so
+   this PR's M2 leaves out the two sentences about writing and resolving a
+   note, and step 2 adds them. *Replays:* CEG through `get_theses` on
    09-18 (three open fires, your 09-14 decline shown) and on 09-30 (a full
    row, not quiet); the 09-14 15:55 trigger run's prompt carries the whole
-   decline (today it isn't among the five lines at all).
+   decline (today it isn't among the five lines at all). **Before it
+   merges:** run the "fires stay open" rule over the live book and report
+   how many rows go from quiet to full, and why.
 2. **Notes.** `notes.ts`; `update_thesis` `note` and `resolve_note_id`;
-   /chat `write_note` (allowed unscoped); the Activity line. *Replay:*
-   DOCU. A note written from the unscoped 09-30 chat is on DOCU, and a
-   10-02 `get_theses` read returns DOCU as a full row with the note first.
+   /chat `write_note` (allowed unscoped) and `ask_question` on /chat's
+   tool list; the C4 notes section; M2's two note sentences; the Activity
+   line. *Replay:* DOCU. A note written from the unscoped 09-30 chat is on
+   DOCU, and a 10-02 `get_theses` read returns DOCU as a full row with the
+   note first.
 3. **The save's reply.** `what_this_means` on `update_thesis`,
    `record_thesis` and the writer's check step, from `plan-sanity.ts`.
    *Replays:* the EME 09-29 21:33 save replies with the refusal line;
    BWXT 09-30's writer check says the same before saving.
 4. **The trading core, the analyst block, and the prompt changes** M1,
-   M3–M10, T2, T3, W2, D1–D3, C1–C5, plus the setup block's confirmation
-   field. *Tests:* each prompt contains the core, rendered from the
-   constants; each removed paragraph is gone; the Compounder's sell rules
-   reach the trigger run, the writer and a scoped chat.
+   M3–M10, T2, T3, W2, D1–D3, C1–C3, C5, plus the setup block's
+   confirmation field. **It does not touch any "### Stage N" header or the
+   tool-call discipline text** in any prompt: the morning run's "You are
+   running UNATTENDED … Every assistant turn must include at least one tool
+   call" paragraph, and the "TOOL-CALL DISCIPLINE" blocks in the trigger
+   run and discovery prompts. Replacing those broke every morning run once
+   (CLAUDE.md, recurring bug). A test pins them unchanged. *Tests:* each
+   prompt contains the core, rendered from the constants; each removed
+   paragraph is gone; the Compounder's sell rules reach the trigger run,
+   the writer and a scoped chat.
 5. **Writer, discovery and /chat read the block** (W1, the
    `get_stock_data` and `list_proposals` lines). *Replay:* the EME 09-25
    writer refresh gets the block and the score-cut reply.
@@ -1065,6 +1101,8 @@ Optional, anytime: the model's copy of `get_theses` without `cards`.
   write about a stock. The deleted signal machinery stays deleted.
 - **Nothing is hidden.** The full history is always one call away, and
   the block says where.
-- **It doesn't replace DAV-343, DAV-344 or DAV-345.** Those fix a spent
-  buy, the floor's cost, and the message to you. This design makes sure
-  each agent is handed what those fixes produce, and what you said.
+- **It doesn't replace the fixes around it.** #742 (a pass on a wobble
+  re-arms the buy) and #743 (the floor's cost) merged on 09-30; DAV-345
+  (the message to you when a losing holding gets a review) is separate.
+  This design makes sure each agent is handed what those fixes produce,
+  and what you said.
