@@ -698,9 +698,12 @@ HOW WE TRADE — the same rules for every analyst and every chat
    reasoning forward.
 ```
 
-Rule 2's second sentence changes in the same PR as DAV-343, if Dave takes
-that fix: a pass because the price was back under the level wouldn't spend
-the buy.
+Rule 2's second sentence depends on #742 (DAV-343, open): if it merges,
+the sentence becomes "a buy passed because the price slipped back under
+its level fires again when the price crosses back, up to three times that
+day; passed for any other reason, or refused, it is used up until the
+price crosses again." Rule 5 is the rule #743 (DAV-344, open) flags; the
+core states it either way, so the flag and the prompt say the same thing.
 
 ### 3.5 Each analyst is a distinct trader
 
