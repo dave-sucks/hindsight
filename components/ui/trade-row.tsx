@@ -108,9 +108,13 @@ export function TradeRowShell({
     </>
   );
 
+  // prefetch={false}: rows come in lists, and Next fetches every link as it
+  // scrolls into view — the dashboard's pinned and movers rows asked for their
+  // pages on every load (2026-09-29). The pages a row opens have no loading
+  // file, so the early fetch saved nothing on the click.
   if (href) {
     return (
-      <Link href={href} className={rowClasses}>
+      <Link href={href} prefetch={false} className={rowClasses}>
         {content}
       </Link>
     );

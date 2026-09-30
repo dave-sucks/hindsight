@@ -230,6 +230,10 @@ const THESIS_STATUS_ORDER: ThesisStatus[] = [
 ];
 const THESIS_PAGE_SIZE = 10;
 type ActivityTabFilter = 'all' | 'opens' | 'closes' | 'updates';
+// The server sends the newest 80 lines — the blocked / passed / failed
+// attempts need the room (getDashboardData). The first 40 show until
+// "Show more".
+const ACTIVITY_FIRST_ROWS = 40;
 
 function relTime(iso: string): string {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -420,11 +424,16 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
     middle = getActivitySentence(item);
   }
 
+  // prefetch={false}: Next fetches every link as it scrolls into view, so the
+  // feed asked the server for each row's page before anything was clicked
+  // (2026-09-29). Those pages have no loading file, so the early fetch saved
+  // nothing on the click.
   return (
     <HoverCard>
       <HoverCardTrigger
         render={
           <Link
+            prefetch={false}
             href={
               isAttempt(item)
                 ? item.runId
@@ -480,6 +489,7 @@ function HomeBottomSection({ activity, loading, coverage }: {
   coverage?: CoverageData;
 }) {
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
+  const [showAllActivity, setShowAllActivity] = useState(false);
 
   const filteredActivity = activity.filter((a) => {
     if (activityFilter === 'opens') return a.type === 'OPENED' || (isAttempt(a) && a.side !== 'SELL');
@@ -487,6 +497,9 @@ function HomeBottomSection({ activity, loading, coverage }: {
     if (activityFilter === 'updates') return a.type === 'MODIFIED';
     return true;
   });
+  const shownActivity = showAllActivity
+    ? filteredActivity
+    : filteredActivity.slice(0, ACTIVITY_FIRST_ROWS);
 
   if (loading) {
     return (
@@ -542,7 +555,7 @@ function HomeBottomSection({ activity, loading, coverage }: {
           </Card>
         ) : (
           <div className="space-y-4">
-            {groupActivityByDay(filteredActivity).map((group) => (
+            {groupActivityByDay(shownActivity).map((group) => (
               <div key={group.label}>
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60 px-1 pb-1.5">{group.label}</p>
                 <Card className="p-1 gap-1">
@@ -550,6 +563,13 @@ function HomeBottomSection({ activity, loading, coverage }: {
                 </Card>
               </div>
             ))}
+            {shownActivity.length < filteredActivity.length && (
+              <div className="flex justify-center">
+                <Button variant="ghost" size="sm" onClick={() => setShowAllActivity(true)}>
+                  Show more
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
