@@ -17,12 +17,14 @@
  *                         thesis change_status: WATCHING) / kill (when
  *                         tool gates allow). Highest precedence — fires
  *                         regardless of other trigger state.
- *   TRIGGER_FIRED       — there is a TRIGGER_FIRED ThesisUpdate row on
- *                         this thesis with no UPDATED/REVIEWED/CLOSED/
- *                         INVALIDATED follow-up newer than it. The
- *                         trigger evaluator already determined the
- *                         predicate matched; tactical-run either hasn't
- *                         spawned yet or didn't close out.
+ *   TRIGGER_FIRED       — a trigger fired after the newest line an AGENT
+ *                         wrote on this thesis (stock-context.ts
+ *                         `openFires`). The principal's edits, proposal
+ *                         decisions and the app's bookkeeping do not
+ *                         answer a fire; only a run's own line does. When
+ *                         several fired, the lead is the one that moves
+ *                         money (not a REVIEW) and the rest ride along in
+ *                         `alsoFired`.
  *   TRIGGER_MATCHING_NOW — server-side `shouldFire` evaluation against
  *                         the fresh quote says one of the thesis's
  *                         price/time-side predicates is currently true.
@@ -87,6 +89,7 @@ import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
 import { fireStreak, type FireStreakUpdate } from "@/lib/agent/fire-streak";
+import { openFires, type ActivityRow } from "@/lib/agent/stock-context";
 import type { Horizon as StalenessHorizon } from "@/lib/agent/horizon-policy";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -151,6 +154,18 @@ export type NeedsAction =
       repeatCount?: number;
       unchangedSince?: string | null;
       repeatLine?: string;
+      /**
+       * Every other trigger that fired since the last agent answer. CEG on
+       * 2026-09-18 had three open (the 200-day, 15% off the high, 8% under
+       * what we paid) and the run was shown one; the other two are these.
+       */
+      alsoFired?: Array<{
+        triggerId: string;
+        action: NeedsActionVerb;
+        summary: string;
+        count: number;
+        lastAt: string;
+      }>;
     }
   | {
       kind: "TRIGGER_MATCHING_NOW";
@@ -397,12 +412,12 @@ export interface NeedsActionInput {
     paperReviewCount?: number | null;
     promotedAt?: Date | null;
   };
-  /** Most recent ThesisUpdate row for this thesis, if any. */
-  latestUpdate?: {
-    type: string;
-    triggerId?: string | null;
-    timestamp: Date;
-  } | null;
+  /**
+   * This thesis's recent Activity lines, any order — at least back to the
+   * newest line an agent wrote. The fires after that line are the open ones
+   * (stock-context.ts `openFires`). Omit or pass [] and no fire is open.
+   */
+  activity?: ActivityRow[];
   /** Fresh quote — null when we couldn't fetch one for the ticker. */
   latestQuote?: { price: number; changePct: number } | null;
   /** Caller-supplied `now` keeps the function pure and testable. */
@@ -438,8 +453,7 @@ export interface NeedsActionInput {
 export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction | null {
-  const { thesis, latestUpdate, latestQuote, now, hasPendingEntryProposal } =
-    input;
+  const { thesis, latestQuote, now, hasPendingEntryProposal } = input;
 
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
   //    thesis ALWAYS needs resolution this run regardless of trigger
@@ -524,29 +538,42 @@ export function computeNeedsAction(
       }
     : null;
 
-  // 1) TRIGGER_FIRED — most recent update is a fire that hasn't been
-  //    answered by the agent. Tactical-run writes its UPDATED/REVIEWED/
-  //    CLOSED/INVALIDATED row at completion, so seeing TRIGGER_FIRED at
-  //    the top of the stack means the fire is still open work.
-  if (latestUpdate?.type === "TRIGGER_FIRED" && latestUpdate.triggerId) {
-    const t = thesis.triggers.find((x) => x.id === latestUpdate.triggerId);
-    const action = (t?.action as NeedsActionVerb) ?? "REVIEW";
-    // P1-25 Change 4: a pending buy proposal already expresses the ENTER —
-    // don't re-flag it (the agent would re-attempt place_trade and hit the
-    // PENDING_APPROVAL dedup guard). Fall through; non-ENTER work still surfaces.
-    if (floorWork && action === "REVIEW") return floorWork;
-    if (!(hasPendingEntryProposal && action === "ENTER")) {
+  // 1) TRIGGER_FIRED — a trigger fired after the newest line an agent wrote.
+  //    Tactical-run writes its UPDATED/REVIEWED/CLOSED/INVALIDATED row at
+  //    completion, so an open fire is still open work. Before 2026-09-30 a
+  //    fire counted as answered by ANY newer line; CEG's "15% off the high"
+  //    review was closed by the principal's unrelated cleanup edit and no run
+  //    was ever handed it.
+  {
+    const fired = openFires(input.activity ?? [])
+      .map((f) => {
+        const t = thesis.triggers.find((x) => x.id === f.triggerId);
+        return {
+          f,
+          action: (t?.action as NeedsActionVerb) ?? "REVIEW",
+          summary: t ? describePredicate(t.predicate) : "(predicate removed)",
+        };
+      })
+      // P1-25 Change 4: a pending buy proposal already expresses the ENTER —
+      // don't re-flag it (the agent would re-attempt place_trade and hit the
+      // PENDING_APPROVAL dedup guard). Non-ENTER work still surfaces.
+      .filter((x) => !(hasPendingEntryProposal && x.action === "ENTER"));
+    // The fire that moves money leads; among equals, the newest.
+    const lead = fired.find((x) => x.action !== "REVIEW") ?? fired[0];
+    if (lead) {
+      if (floorWork && lead.action === "REVIEW") return floorWork;
       // DAV-323: how long this same rung has been asking. Absent when the
       // caller passed no history, or on a first ask.
       const streak = input.recentUpdates
-        ? fireStreak(input.recentUpdates, latestUpdate.triggerId, now)
+        ? fireStreak(input.recentUpdates, lead.f.triggerId, now)
         : null;
+      const others = fired.filter((x) => x !== lead);
       return {
         kind: "TRIGGER_FIRED",
-        triggerId: latestUpdate.triggerId,
-        action,
-        summary: t ? describePredicate(t.predicate) : "(predicate removed)",
-        firedAt: latestUpdate.timestamp.toISOString(),
+        triggerId: lead.f.triggerId,
+        action: lead.action,
+        summary: lead.summary,
+        firedAt: lead.f.lastAt.toISOString(),
         ...(streak && streak.line
           ? {
               repeatCount: streak.fireCount,
@@ -554,6 +581,17 @@ export function computeNeedsAction(
                 ? streak.lastChangedAt.toISOString()
                 : null,
               repeatLine: streak.line,
+            }
+          : {}),
+        ...(others.length
+          ? {
+              alsoFired: others.map((x) => ({
+                triggerId: x.f.triggerId,
+                action: x.action,
+                summary: x.summary,
+                count: x.f.count,
+                lastAt: x.f.lastAt.toISOString(),
+              })),
             }
           : {}),
       };

@@ -30,7 +30,10 @@ export function needsActionLine(na: NeedsAction): string {
       // (DAV-323) — on a first ask there is no history worth a sentence.
       return (
         `A trigger fired and nothing has answered it: ${na.summary}` +
-        (na.repeatLine ? ` ${na.repeatLine}` : "")
+        (na.repeatLine ? ` ${na.repeatLine}` : "") +
+        (na.alsoFired?.length
+          ? ` Also fired since the last answer: ${na.alsoFired.map((x) => `${x.summary}${x.count > 1 ? ` (${x.count}×)` : ""}`).join("; ")}.`
+          : "")
       );
     case "TRIGGER_MATCHING_NOW":
       return `A trigger is true right now: ${na.predicateSummary}${na.livePrice != null ? ` (price $${na.livePrice.toFixed(2)})` : ""}`;

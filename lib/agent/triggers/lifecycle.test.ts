@@ -396,7 +396,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
     expect(
       computeNeedsAction({
         thesis: seed,
-        latestUpdate: null,
+        activity: [],
         latestQuote: null,
         now: daysLater(3),
       }),
@@ -406,7 +406,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
   it("comes due as REVIEW_DUE + pendingFirstReview once the week is up", () => {
     const result = computeNeedsAction({
       thesis: seed,
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: daysLater(7),
     });
@@ -431,7 +431,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
     };
     const result = computeNeedsAction({
       thesis: recycled,
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: daysLater(10.5), // the next daily run
     });

@@ -106,7 +106,7 @@ export async function GET(
     identity,
     terminalSiblings,
     openPosition,
-    latestUpdate,
+    activity,
     pendingEntryCount,
     atr14,
   ] = await Promise.all([
@@ -139,16 +139,25 @@ export async function GET(
             })
             .catch(() => null)
         : Promise.resolve(null),
-      // needsAction inputs that need their own read (DAV-304): the top-of-log
-      // row (TRIGGER_FIRED keys off it), whether a buy is already queued for
+      // needsAction inputs that need their own read (DAV-304): the recent
+      // Activity lines (a fire after the newest line an agent wrote is still
+      // open — stock-context.ts), whether a buy is already queued for
       // approval, and the stock's ATR for a range-widened trail.
       prisma.thesisUpdate
-        .findFirst({
+        .findMany({
           where: { thesisId: thesis.id },
           orderBy: { timestamp: "desc" },
-          select: { type: true, triggerId: true, timestamp: true },
+          take: 40,
+          select: {
+            type: true,
+            triggerId: true,
+            timestamp: true,
+            runId: true,
+            rationale: true,
+            fieldChanges: true,
+          },
         })
-        .catch(() => null),
+        .catch(() => []),
       ownAnalystId
         ? prisma.position
             .count({
@@ -289,7 +298,7 @@ export async function GET(
       promotedAt: thesis.promotedAt,
     },
     declinedSale,
-    latestUpdate,
+    activity,
     latestQuote:
       currentPrice != null ? { price: currentPrice, changePct: dayChangePct ?? 0 } : null,
     now: new Date(),

@@ -64,13 +64,13 @@ interface TacticalPromptArgs {
      */
     peakPrice?: number | null;
   } | null;
-  recentUpdates: Array<{
-    type: string;
-    summary: string | null;
-    rationale: string | null;
-    /** ISO 8601 string. Pre-computed in tactical-run.ts to avoid step.run JSON roundtrip parsing. */
-    timestamp: string;
-  }>;
+  /**
+   * What's been said on the stock (stock-context.ts): the principal's
+   * decisions of the last 30 days word for word, the last two answers, the
+   * fires no agent has answered. Rendered in tactical-run.ts; null when
+   * nothing has been said.
+   */
+  context: string | null;
   /**
    * Latest account-level PortfolioDigest narrative (Feature A,
    * docs/plans/PORTFOLIO_DIGEST.md). Account-scoped book context for
@@ -94,7 +94,7 @@ interface TacticalPromptArgs {
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
-  const { analyst, thesis, trigger, position, recentUpdates, latestDigest, fired } = args;
+  const { analyst, thesis, trigger, position, context, latestDigest, fired } = args;
   const setup = thesis.setupId ? getSetup(thesis.setupId, args.setupOverrides ?? undefined) : undefined;
   const coFiredIds = new Set((fired?.coFired ?? []).map((c) => c.triggerId));
 
@@ -137,16 +137,6 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
           : ""
       } — current price + unrealized P&L are NOT in this prompt; pull them via get_stock_data`
     : "no position (thesis is WATCHING — promotion is on the table)";
-
-  const recentLines = recentUpdates.length
-    ? recentUpdates
-        .slice(0, 5)
-        .map(
-          (u) =>
-            `  • ${u.timestamp.slice(0, 10)} ${u.type}${u.summary ? ` — ${u.summary}` : ""}${u.rationale ? ` (${u.rationale.slice(0, 120)})` : ""}`,
-        )
-        .join("\n")
-    : "  (no prior updates)";
 
   const pathSection = `
 PATH: the predicate fired on the 5-minute check.${
@@ -263,8 +253,8 @@ ${
 POSITION:
   ${positionLine}
 
-RECENT THESIS ACTIVITY (last 5 updates):
-${recentLines}
+${context ?? `WHAT'S BEEN SAID ON $${thesis.ticker}\n  (nothing written on this stock in the lines on record)`}
+The principal's decisions outrank the trigger's own rationale. If they declined this same action and nothing they named has changed, say so and pass.
 ${digestSection}
 ═══════════════════════════════════════════════════════════════════
 CURRENT TRIGGER LADDER (your standing game plan on $${thesis.ticker})

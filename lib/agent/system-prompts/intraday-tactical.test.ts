@@ -43,7 +43,7 @@ function makeArgs(overrides: Record<string, any> = {}): any {
     trigger: trailTrigger,
     signal: null,
     position: { quantity: 60, avgCost: 53.1, daysHeld: 10, peakPrice: 62.7 },
-    recentUpdates: [],
+    context: null,
     latestDigest: null,
     ...overrides,
   };

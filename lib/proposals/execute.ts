@@ -611,13 +611,12 @@ export async function rejectProposal(
       order.position.symbol,
     );
     // P1-29: a reject WITH a written comment reaches the agent through the
-    // PROPOSAL_REJECTED audit row written below — while it sits unanswered
-    // at top-of-log, get_theses forces the row into the full work list and
-    // surfaces the note verbatim as principalDirective. (This used to also
-    // stamp a due-review date; that cached column is gone — DAV-221.) The
-    // agent responds with judgment — no forcing needsAction kind. A
-    // no-comment reject doesn't flag a review; the cross-day cooldown
-    // already suppresses re-proposal.
+    // PROPOSAL_REJECTED audit row written below. Until a run answers it,
+    // get_theses puts the row on the full work list, and for 30 days the
+    // note travels verbatim in the row's `context` block (stock-context.ts),
+    // whatever lands after it. The agent responds with judgment — no forcing
+    // needsAction kind. A no-comment reject doesn't flag a review; the
+    // cross-day cooldown already suppresses re-proposal.
     await writeThesisUpdate({
       thesisId,
       type: "PROPOSAL_REJECTED",
