@@ -1,0 +1,1182 @@
+{
+ "_about": "CEG, Secular Compounder, held. `updates` is every Activity line on CEG from 2026-08-25 to 16:06:59Z on 09-30 (the minute before the principal moved the floor to $248), with each line's run mode joined in, as stored. `thesis0918` is the stored row exactly as the 09-18 morning run's get_theses call returned it (run cmu6wxadp000x04l49iqh16hh, created 12:06:18Z); its live price then was $262.73. The 09-30 morning run (cmuo24ye7002d04l7qecgwy84, created 12:04:18Z) saw CEG at $261.25 and filed it as quiet. The 09-14 trigger runs loaded their lines at 19:30:26Z (cmu1n11rg000004l1x7fjzi8t, the 'down 7%' add, fired at $264.60) and 19:55:13Z (cmu1nwxh1000c04l5txifij95). Built read-only on 2026-09-30.",
+ "runs": {
+  "morning0918": {
+   "id": "cmu6wxadp000x04l49iqh16hh",
+   "readAt": "2026-09-18T12:06:25Z",
+   "price": 262.73
+  },
+  "morning0930": {
+   "id": "cmuo24ye7002d04l7qecgwy84",
+   "readAt": "2026-09-30T12:04:25Z",
+   "price": 261.25
+  },
+  "trigger0914_1555": {
+   "id": "cmu1nwxh1000c04l5txifij95",
+   "loadedAt": "2026-09-14T19:55:13Z"
+  },
+  "trigger0914_1530": {
+   "id": "cmu1n11rg000004l1x7fjzi8t",
+   "loadedAt": "2026-09-14T19:30:26Z"
+  }
+ },
+ "thesis0918": {
+  "id": "cmqb2ku1a000q04l6jtquuqr6",
+  "status": "HOLDING",
+  "horizon": "COMPOUNDER",
+  "setupId": null,
+  "stopLoss": 220,
+  "triggers": [
+   {
+    "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
+    "action": "EXIT",
+    "fireMode": "TACTICAL",
+    "predicate": {
+     "kind": "PRICE_BELOW",
+     "level": 220
+    },
+    "rationale": "Hard stop at $220. If we hit it the thesis is broken; close and write up the lessons.",
+    "cooldownDays": 0
+   },
+   {
+    "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+    "action": "REVIEW",
+    "fireMode": "TACTICAL",
+    "predicate": {
+     "kind": "PRICE_BELOW",
+     "level": 256.42
+    },
+    "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+    "lastFiredAt": "2026-09-16T14:30:10.580Z",
+    "cooldownDays": 1
+   },
+   {
+    "id": "03d0e450-76cb-4a47-978a-f9e0cfc786ca",
+    "action": "REVIEW",
+    "fireMode": "TACTICAL",
+    "predicate": {
+     "kind": "EARNINGS_BEAT"
+    },
+    "rationale": "Earnings beat — re-score target. Beats often expand the multiple; consider scaling into the next rung.",
+    "cooldownDays": 7
+   },
+   {
+    "id": "2646f2d6-9432-4496-8056-fa1139af3b81",
+    "action": "REVIEW",
+    "fireMode": "TACTICAL",
+    "predicate": {
+     "kind": "EARNINGS_MISS",
+     "minSurprisePct": 3
+    },
+    "rationale": "Earnings miss ≥ 3% — downside surprise tests the core belief. Validate or step back.",
+    "cooldownDays": 7
+   },
+   {
+    "id": "9dde5606-86b2-46c3-bed6-57cfd57ac942",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "predicate": {
+     "kind": "PRICE_ABOVE",
+     "level": 360
+    },
+    "rationale": "Target $360.00 — decide here: take it, trim it, or raise the target.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "TACTICAL",
+    "predicate": {
+     "days": 30,
+     "kind": "REVIEW_CADENCE"
+    },
+    "rationale": "Look at this every 30 days, counting from the last real review.",
+    "cooldownDays": 30
+   }
+  ],
+  "createdAt": "2026-06-12T15:16:50.062Z",
+  "direction": "LONG",
+  "entryPrice": 276.898461538462,
+  "targetPrice": 360,
+  "triggerState": {
+   "06506e39-522f-4ad1-aa62-d7fe10bf7003": {
+    "firedAt": "2026-09-16T14:15:16.430Z"
+   },
+   "cacf717e-af57-42e5-a9af-28835e20508d": {
+    "firedAt": "2026-09-14T19:30:15.215Z"
+   },
+   "cf39ff35-5a15-43d4-a0f1-911cb5fd519b": {
+    "firedAt": "2026-09-17T13:35:14.083Z"
+   }
+  },
+  "lastReviewedAt": "2026-09-16T12:07:12.042Z",
+  "researchUpdatedAt": "2026-09-09T03:41:18.634Z"
+ },
+ "updates": [
+  {
+   "id": "cmt91bysr000ju5y7aephh74j",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-08-25T19:05:31.371Z",
+   "summary": "CEG levels armed — review above $360",
+   "rationale": "[BACKFILL] These prices were already on the thesis but nothing fired on them. They are real triggers now: review above $360. A floor sells; a target wakes a decision on the next daily run. On a watchlist name a breached floor sets the plan down rather than selling anything.",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": null,
+   "runMode": null
+  },
+  {
+   "id": "cmta1qe67001l04jx0qoq66b5",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-08-26T12:04:30.655Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "Routine compounder review on a live holding. The business case still points the right way: no guidance cut, no filing-led break, and the AI-power/nuclear setup remains intact. Price is modestly below entry but well above the real risk line, so I am keeping the thesis active and unchanged rather than churning a 12-day-old position before any named invalidation condition has tripped.\n\n[Belief unchanged: The core belief is unchanged because none of the named invalidation conditions has occurred: no regulatory break, no structural demand erosion, no consecutive guidance cuts, no CFO departure, and no capital-allocation failure. This is a cadence review only.]",
+   "fieldChanges": {},
+   "runId": "cmta1q6zz001k04jxxek0pj7m",
+   "priceAtTime": 278.42,
+   "runMode": "MORNING_PLAN"
+  },
+  {
+   "id": "cmtcwlhgh002k04lbw26uuyrv",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-08-28T12:04:02.081Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "CEG remains a live holding because the business thesis is intact: no guidance cut, no regulatory break, no management disruption, and the nuclear/AI-power setup is still early. Price is only modestly above entry, the protective trail is live, and nothing in the ladder has been overtaken enough to force a patch today. This review reaffirms the hold rather than reacting to noise inside the 30-day hold window.",
+   "fieldChanges": {
+    "nextReviewAt": {
+     "to": "2026-09-27T12:04:01.581Z",
+     "from": "2026-09-25T12:04:30.426Z"
+    }
+   },
+   "runId": "cmtcwkctt002f04lb2u6dxsk9",
+   "priceAtTime": 282.39,
+   "runMode": "MORNING_PLAN"
+  },
+  {
+   "id": "cmttjx7f2000h04l1ibvw8nq7",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-09T03:41:18.926Z",
+   "summary": "Updated CEG: scoring updated, triggers updated, rationale updated, research refreshed",
+   "rationale": "The Q2 2026 earnings beat (EPS $2.55 vs. $2.30 est.), 920 MW of new PPAs, the $8.4B two-year FCF commitment, and the Aug. 26 guidance raise all confirm the thesis is working. The stock is -27% from its high, but the business is demonstrably stronger than at the high: Calpine is consolidated, contracts are signed, and FCF has turned positive. The 1,121 MW largest-ever AI deal starting June 2027 is the next major earnings inflection. Stop held at $220; the setup warrants staying at full conviction size through the Crane restart and the June 2027 PPA commencement.\n\n[Belief unchanged: The Q2 2026 earnings beat (EPS $2.55 vs. $2.30 est.), 920 MW of new PPAs, the $8.4B two-year FCF commitment, and the Aug. 26 guidance raise all confirm the thesis is working. The stock is -27% from its high, but the business is demonstrably stronger than at the high: Calpine is consolidated, contracts are signed, and FCF has turned positive. The 1,121 MW largest-ever AI deal starting June 2027 is the next major earnings inflection. Stop held at $220; the setup warrants staying at full conviction size through the Crane restart and the June 2027 PPA commencement.]",
+   "fieldChanges": {
+    "scoring": {
+     "to": {
+      "composite": 8,
+      "entryQuality": {
+       "note": "COMPOUNDER already held at $255 entry. Stock is at $299, 12% above the 50-day ($267) — confirmed uptrend but extended from the clean add level. Not a 0 — thesis is working, trend is up — but the ideal add tranche is a pullback to $267–$275. No new entry chasing $299.",
+       "score": 1
+      },
+      "trendStrength": {
+       "note": "SMA20 > SMA50, price 12% above 50-day, RSI 67.4, bullish trend confirmed on recovery from 52w low. All three moving average signals constructive.",
+       "score": 3
+      },
+      "relativeStrength": {
+       "note": "CEG ranks 1/4 in revenue growth at +26% YTD but 4/4 in YTD price performance (-19.9% vs. NEE +16.9%). Leading on fundamentals, lagging on price — a re-rating candidate, not a deteriorating name. Composite peer score 2/4.",
+       "score": 2
+      },
+      "catalystFreshness": {
+       "note": "Q2 beat filed Aug. 6, guidance raised Aug. 26, Sept. 8 reporting on 1,121 MW AI deal details — all within last 30 days. Crane restart and June 2027 PPA commencement are 6–15 months out, keeping the catalyst ladder well-stocked.",
+       "score": 2
+      }
+     },
+     "from": {
+      "composite": 8,
+      "entryQuality": {
+       "note": "Price is above the original $255 trigger and no longer at the washed-out lows, so entry is less ideal than before but still reasonable for a compounder with a 24+ month horizon.",
+       "score": 1.5
+      },
+      "trendStrength": {
+       "note": "Shares are now above both the 20-day and 50-day averages with the short moving average back above the long one, marking a meaningful repair from the earlier downtrend.",
+       "score": 2.5
+      },
+      "relativeStrength": {
+       "note": "CEG is still well below prior highs, but recent earnings and power-contract news support improving relative performance versus utility peers.",
+       "score": 2
+      },
+      "catalystFreshness": {
+       "note": "Fresh earnings beat, recent 10-Q and 8-K filings, and ongoing hyperscaler/nuclear contract momentum keep the catalyst set active.",
+       "score": 2
+      }
+     }
+    },
+    "bearCase": {
+     "to": "5 bullets — **Revenue lag is real — June 2027 start.** The largest AI deal doesn't pay until June 2027 [WEB:http…",
+     "from": "5 bullets — Calpine integration risk — leverage spike: the $16.4B acquisition added substantial debt. If integra…"
+    },
+    "bullCase": {
+     "to": "5 bullets — **Contracted revenue visibility is exceptional.** The customers are signed and the start dates are o…",
+     "from": "5 bullets — Irreplaceable zero-carbon baseload fleet: CEG's ~21 GW nuclear platform cannot be replicated at any …"
+    },
+    "snapshot": {
+     "to": "$CEG is trading at $299.05 [STRUCTURED:Snapshot], a meaningful recovery from the 52-week low of $228.63 but still well below the 52-week high of $412.70 [STRUCT…",
+     "from": "Live validation still supports the secular nuclear-power thesis: $CEG is holding above the $255 entry level at $265.29, remains above its 20-day and 50-day movi…"
+    },
+    "triggers": {
+     "to": [
+      {
+       "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
+       "action": "EXIT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "PRICE_BELOW",
+        "level": 220
+       },
+       "rationale": "Hard stop at $220. If we hit it the thesis is broken; close and write up the lessons.",
+       "cooldownDays": 0
+      },
+      {
+       "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "PRICE_BELOW",
+        "level": 256.42
+       },
+       "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+       "cooldownDays": 1
+      },
+      {
+       "id": "03d0e450-76cb-4a47-978a-f9e0cfc786ca",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "EARNINGS_BEAT"
+       },
+       "rationale": "Earnings beat — re-score target. Beats often expand the multiple; consider scaling into the next rung.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "2646f2d6-9432-4496-8056-fa1139af3b81",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "EARNINGS_MISS",
+        "minSurprisePct": 3
+       },
+       "rationale": "Earnings miss ≥ 3% — downside surprise tests the core belief. Validate or step back.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "79f33454-4e1d-4bd3-84f8-06b7d9997c9b",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "GUIDANCE_CHANGE",
+        "direction": "DOWN"
+       },
+       "rationale": "Guidance cut compresses the multiple. For a long-horizon hold this is the single biggest non-price signal.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "681d1099-d06e-49cf-904b-95e02c828dfa",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "FILING",
+        "formType": "8-K"
+       },
+       "rationale": "8-K filed — material event. Read the filing and update the thesis if anything changed.",
+       "cooldownDays": 1
+      },
+      {
+       "id": "d0af547a-78b9-4a2f-aefe-e610166a057d",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "days": 90,
+        "kind": "TIME_ELAPSED"
+       },
+       "rationale": "Quarterly hygiene check. Even with no fires, walk the thesis once a quarter.",
+       "cooldownDays": 80
+      },
+      {
+       "id": "692b4486-30a7-46dc-a3b2-de48e68c8cb6",
+       "action": "ADD",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 7,
+        "kind": "PRICE_MOVE_PCT",
+        "window": "1D",
+        "direction": "UP"
+       },
+       "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+       "cooldownDays": 3
+      },
+      {
+       "id": "840822fe-2b69-4b71-a846-52c92d03982c",
+       "action": "ADD",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 7,
+        "kind": "PRICE_MOVE_PCT",
+        "window": "1D",
+        "direction": "DOWN"
+       },
+       "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
+       "cooldownDays": 3
+      },
+      {
+       "id": "1cf58fc3-87eb-42c9-b99c-80dd7ea695a4",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 10,
+        "kind": "GAIN_FROM_ENTRY",
+        "direction": "UP"
+       },
+       "rationale": "Up 10% from entry — gain milestone checkpoint. Re-underwrite at the new price: raise the floor to lock the gain in, and arm the next milestone.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+       "action": "EXIT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 8,
+        "kind": "TRAILING_FROM_HIGH"
+       },
+       "rationale": "Gave back 8% from the high — mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).",
+       "cooldownDays": 0
+      },
+      {
+       "id": "08acf2db-a701-41b0-9d74-6e71b8a37292",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 12,
+        "kind": "GAIN_FROM_ENTRY",
+        "direction": "DOWN"
+       },
+       "rationale": "Down 12% from entry — loser attention. Decide hold-vs-cut deliberately, before the hard stop decides for us.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "9dde5606-86b2-46c3-bed6-57cfd57ac942",
+       "action": "REVIEW",
+       "source": "DEFAULT",
+       "predicate": {
+        "kind": "PRICE_ABOVE",
+        "level": 360
+       },
+       "rationale": "Target $360.00 — decide here: take it, trim it, or raise the target.",
+       "cooldownDays": 1
+      },
+      {
+       "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
+       "action": "REVIEW",
+       "source": "DEFAULT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "days": 30,
+        "kind": "REVIEW_CADENCE"
+       },
+       "rationale": "Look at this every 30 days, counting from the last real review.",
+       "cooldownDays": 30
+      }
+     ],
+     "from": [
+      {
+       "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
+       "action": "EXIT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "PRICE_BELOW",
+        "level": 220
+       },
+       "rationale": "Hard stop at $220. If we hit it the thesis is broken; close and write up the lessons.",
+       "cooldownDays": 0
+      },
+      {
+       "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "PRICE_BELOW",
+        "level": 256.42
+       },
+       "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+       "cooldownDays": 1
+      },
+      {
+       "id": "03d0e450-76cb-4a47-978a-f9e0cfc786ca",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "EARNINGS_BEAT"
+       },
+       "rationale": "Earnings beat — re-score target. Beats often expand the multiple; consider scaling into the next rung.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "2646f2d6-9432-4496-8056-fa1139af3b81",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "EARNINGS_MISS",
+        "minSurprisePct": 3
+       },
+       "rationale": "Earnings miss ≥ 3% — downside surprise tests the core belief. Validate or step back.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "79f33454-4e1d-4bd3-84f8-06b7d9997c9b",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "GUIDANCE_CHANGE",
+        "direction": "DOWN"
+       },
+       "rationale": "Guidance cut compresses the multiple. For a long-horizon hold this is the single biggest non-price signal.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "681d1099-d06e-49cf-904b-95e02c828dfa",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "FILING",
+        "formType": "8-K"
+       },
+       "rationale": "8-K filed — material event. Read the filing and update the thesis if anything changed.",
+       "cooldownDays": 1
+      },
+      {
+       "id": "d0af547a-78b9-4a2f-aefe-e610166a057d",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "days": 90,
+        "kind": "TIME_ELAPSED"
+       },
+       "rationale": "Quarterly hygiene check. Even with no fires, walk the thesis once a quarter.",
+       "cooldownDays": 80
+      },
+      {
+       "id": "692b4486-30a7-46dc-a3b2-de48e68c8cb6",
+       "action": "ADD",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 7,
+        "kind": "PRICE_MOVE_PCT",
+        "window": "1D",
+        "direction": "UP"
+       },
+       "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+       "cooldownDays": 3
+      },
+      {
+       "id": "840822fe-2b69-4b71-a846-52c92d03982c",
+       "action": "ADD",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 7,
+        "kind": "PRICE_MOVE_PCT",
+        "window": "1D",
+        "direction": "DOWN"
+       },
+       "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
+       "cooldownDays": 3
+      },
+      {
+       "id": "1cf58fc3-87eb-42c9-b99c-80dd7ea695a4",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 10,
+        "kind": "GAIN_FROM_ENTRY",
+        "direction": "UP"
+       },
+       "rationale": "Up 10% from entry — gain milestone checkpoint. Re-underwrite at the new price: raise the floor to lock the gain in, and arm the next milestone.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+       "action": "EXIT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 8,
+        "kind": "TRAILING_FROM_HIGH"
+       },
+       "rationale": "Gave back 8% from the high — mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).",
+       "cooldownDays": 0
+      },
+      {
+       "id": "08acf2db-a701-41b0-9d74-6e71b8a37292",
+       "action": "REVIEW",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "pct": 12,
+        "kind": "GAIN_FROM_ENTRY",
+        "direction": "DOWN"
+       },
+       "rationale": "Down 12% from entry — loser attention. Decide hold-vs-cut deliberately, before the hard stop decides for us.",
+       "cooldownDays": 7
+      },
+      {
+       "id": "9dde5606-86b2-46c3-bed6-57cfd57ac942",
+       "action": "REVIEW",
+       "source": "DEFAULT",
+       "predicate": {
+        "kind": "PRICE_ABOVE",
+        "level": 360
+       },
+       "rationale": "Target $360.00 — decide here: take it, trim it, or raise the target."
+      },
+      {
+       "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
+       "action": "REVIEW",
+       "source": "DEFAULT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "days": 30,
+        "kind": "REVIEW_CADENCE"
+       },
+       "rationale": "Look at this every 30 days, counting from the last real review.",
+       "cooldownDays": 30
+      }
+     ]
+    },
+    "coreBelief": {
+     "to": "CEG compounds to $360+ over 24 months as the 1,121 MW AI nuclear PPA begins revenue in June 2027, the Crane Clean Energy Center restarts, and $8.4B of 2026–27 FCF funds buybacks and dividend growth — repricing the stock from a utility multiple to a contracted infrastructure multiple.",
+     "from": "CEG compounds to $350+ over 24 months as Three Mile Island restarts, Calpine integration delivers $8.4B free cash flow, and AI-datacenter PPAs rerate the stock to a premium utility multiple."
+    },
+    "variantView": {
+     "to": "Consensus treats CEG as a premium utility; I think the 18.5-year AI PPA duration, nuclear PTC floor, and Calpine FCF engine make it a contracted infrastructure compounder — a re-rating that pushes the fair multiple 30–40% above current levels as 2027 revenue kicks in.",
+     "from": "Consensus still treats CEG as a utility digesting Calpine; I think contracted nuclear power for datacenters plus TMI restart creates a multi-year earnings ramp the market is still underpricing."
+    },
+    "fundamentals": {
+     "to": "Revenue reached $25.53B in 2025 (+8.3% YoY), with the Calpine consolidation creating a step-change: Q1 2026 alone printed $11.12B [STRUCTURED:Earnings History].…",
+     "from": "Constellation Energy is the largest producer of carbon-free electricity in the United States, operating a ~21 GW nuclear fleet across Illinois, Pennsylvania, Ma…"
+    },
+    "researchData": {
+     "to": "═══════════════════════════════════════════════════════════════════\nSTRUCTURED DATA: $CEG (Constellation Energy Corp)\nPulled 2026-09-09 03:37 UTC — use these nu…",
+     "from": "═══════════════════════════════════════════════════════════════════\nSTRUCTURED DATA: $CEG (Constellation Energy Corp)\nPulled 2026-06-12 15:16 UTC — use these nu…"
+    },
+    "keyAssumptions": {
+     "to": [
+      "The 1,121 MW largest AI nuclear PPA commences revenue as contracted in June 2027, with no material counterparty default or contract restructuring by the hyperscaler buyer.",
+      "The Crane Clean Energy Center (Three Mile Island Unit 1) restarts in 2027 on schedule, adding ~835 MW of nuclear generation under the Microsoft PPA without a multi-quarter delay driven by grid interconnection or federal waiver failure.",
+      "CEG delivers $8.4B of cumulative FCF in 2026–27, confirming that the Calpine integration has not structurally impaired the company's cash generation capacity.",
+      "Nuclear IRA production tax credits remain in force, providing the per-MWh floor that underpins PPA economics and protects downside in a merchant-price downturn."
+     ],
+     "from": [
+      "Three Mile Island (Crane Clean Energy Center) receives full NRC licensing and restarts on schedule by 2027, adding ~835 MW of contracted baseload",
+      "AI/datacenter hyperscaler power demand continues to drive long-duration, premium-priced PPAs (Microsoft and comparable deals) re-anchoring revenue mix toward contracted cash flows",
+      "Calpine acquisition integration proceeds without material balance sheet deterioration — leverage stays manageable and 2026 adjusted EPS lands within the $11.00-$12.00 guided range",
+      "Nuclear Production Tax Credits (PTC) under the IRA remain intact and provide floor-level earnings support through the decade"
+     ]
+    },
+    "latestEarnings": {
+     "to": "5 bullets — **EPS beat:** Adjusted operating earnings came in at $2.55 per share vs. $1.91 per share in the prio…",
+     "from": "5 bullets — Q1 2026: Adjusted EPS $2.74 vs $2.59–$2.61 consensus — beat of ~5.7%, revenue ~$11.12B. First full q…"
+    },
+    "recentCatalysts": {
+     "to": "The dominant story this week is the Motley Fool/Yahoo Finance reporting (Sept. 8) that CEG's biggest AI power deal covers 1,121 megawatts of nuclear generation …",
+     "from": "Shares sold off sharply to fresh lows on July 2 alongside a Citi price-target reduction and broader risk-off pressure around ambitious power-expansion stories. …"
+    },
+    "analystConsensus": {
+     "to": "The analyst community is firmly constructive: 23 of 28 tracked analysts carry a Bullish rating, with 5 Neutral and 0 Bearish, as of September 1, 2026 [STRUCTURE…",
+     "from": "Analyst sentiment on CEG is overwhelmingly constructive: 19 Buy ratings, 4 Strong Buy, and 4 Hold — 85% buy rate with zero sell ratings as of June 2026. Price t…"
+    },
+    "insiderTechnical": {
+     "to": "No Form 4 transactions were filed by insiders in the last 90 days [STRUCTURED:Insider Activity] — notable for a stock that has pulled back ~27% from its highs. …",
+     "from": "Insider activity has been minimal in the trailing 90 days — four Form 4 filings on April 30, 2026 (routine compensation-related grants), with no open-market pur…"
+    },
+    "invalidationConds": {
+     "to": [
+      "A hyperscaler counterparty restructures, cancels, or materially delays the 1,121 MW AI PPA beyond H2 2027, removing the single largest forward revenue inflection from the model.",
+      "The Crane Clean Energy Center restart slips beyond Q1 2028, signaling systemic grid interconnection or regulatory failure that calls the entire nuclear restart pipeline into question.",
+      "CEG reports two consecutive quarters of guidance cuts driven by Calpine integration cost overruns or margin compression — defined as EPS actuals more than 10% below the $11–$12 2026 guidance range in back-to-back quarters.",
+      "The nuclear IRA production tax credits are materially repealed or curtailed via legislation, removing the economic floor that makes long-duration nuclear PPAs viable at premium pricing."
+     ],
+     "from": [
+      "NRC denies or materially delays TMI/Crane restart license — removes key near-term capacity growth catalyst and undermines the PPA pipeline",
+      "Congress or Treasury rescinds/materially curtails nuclear PTC support, collapsing the earnings floor and forcing a guidance cut",
+      "Two consecutive quarters of adjusted EPS guidance cuts post-Calpine integration, signaling the deal added leverage without commensurate earnings power",
+      "CFO departure or material change in capital allocation discipline (halt to $5B buyback, leverage ratio sustained above 4x net debt/EBITDA)",
+      "Hyperscaler customers materially pull back or renegotiate long-term nuclear PPA commitments"
+     ]
+    },
+    "catalystsAndEvents": {
+     "to": "5 bullets — **June 2027 (starting date):** The 1,121 MW largest-ever AI nuclear PPA begins generating revenue — …",
+     "from": "5 bullets — FERC interconnection waiver (June 2026, just cleared): transfers 760 MW of capacity rights for Three…"
+    },
+    "convictionRationale": {
+     "to": "Signed 18.5-year PPAs with investment-grade counterparties at AI-premium pricing are not a thesis hope — they are on paper. The FCF turn from -$5B to +$1.3B to an $8.4B two-year target is the compounding engine. The stock is 27% off its high on valuation noise, not business deterioration. I want size here.",
+     "from": "This is one of the clearest ways to own the AI power and nuclear buildout with real cash flow behind it. The latest earnings and filings improved the evidence enough that I’m comfortable committing a full compounder-sized position rather than just admiring the theme."
+    }
+   },
+   "runId": "cverify0909cegwriter001",
+   "priceAtTime": 299.05,
+   "runMode": "THESIS_WRITER"
+  },
+  {
+   "id": "cmu1acehl000004jna1u93a9h",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+   "timestamp": "2026-09-14T13:35:21.169Z",
+   "summary": "Trailing 8% from high — exit position",
+   "rationale": "Gave back 8% from the high — mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).",
+   "fieldChanges": {},
+   "runId": "cmu1acdxm000f04l81mzm0vi0",
+   "priceAtTime": 273.98,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1acw81001604l8krno4m65",
+   "type": "UPDATED",
+   "triggerId": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+   "timestamp": "2026-09-14T13:35:44.161Z",
+   "summary": "Updated CEG: Removed: Price up 7% today → add, Removed: Price down 7% today → add, Removed: Up 10% from entry → review, Removed: Down 12% from entry → review",
+   "rationale": "Closeout correction after the protective exit proposal. The trigger validated: $CEG at $273.98 is below the authoritative 8% give-back line at $279.13 from the $303.40 tracked peak, so the exit proposal was warranted. The business thesis still looks intact — no fresh evidence of AI PPA delay/restructure, no Crane restart slip beyond Q1 2028, no two consecutive guidance cuts, and no nuclear-IRA policy break — so this remains a price-based stop with the core belief surviving. Ladder closeout: because the position is still technically held until the sell is approved, I am only removing stale non-protective held-position rungs and leaving protective review/exit structure intact; I am not adding a new ENTER rung on an active holding.\n\n[Belief unchanged: The multi-year thesis is unchanged; this update only documents a protective stop action and cleans up stale triggers without altering the belief.]",
+   "fieldChanges": {
+    "triggerOps": {
+     "to": [
+      {
+       "id": "692b4486-30a7-46dc-a3b2-de48e68c8cb6",
+       "op": "remove",
+       "text": "Removed: Price up 7% today → add"
+      },
+      {
+       "id": "840822fe-2b69-4b71-a846-52c92d03982c",
+       "op": "remove",
+       "text": "Removed: Price down 7% today → add"
+      },
+      {
+       "id": "1cf58fc3-87eb-42c9-b99c-80dd7ea695a4",
+       "op": "remove",
+       "text": "Removed: Up 10% from entry → review"
+      },
+      {
+       "id": "08acf2db-a701-41b0-9d74-6e71b8a37292",
+       "op": "remove",
+       "text": "Removed: Down 12% from entry → review"
+      }
+     ],
+     "from": null
+    }
+   },
+   "runId": "cmu1acdxm000f04l81mzm0vi0",
+   "priceAtTime": 273.98,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1ex281000104jq0w42txms",
+   "type": "PROPOSAL_REJECTED",
+   "triggerId": null,
+   "timestamp": "2026-09-14T15:43:23.521Z",
+   "summary": "Rejected CLOSE proposal on CEG — \"now the strongest hold of the five This is the biggest delta from the sentiment.\"",
+   "rationale": "now the strongest hold of the five This is the biggest delta from the sentiment. The X narrative on CEG isn't \"AI slowdown hurts nuclear\" — it's the exact opposite: rotation FROM chips INTO power/energy as the AI bottleneck thesis reasserts itself. Posts are using \"loading up\" language and framing CEG as the beneficiary of the same sentiment event that's killing semis. The AI slowdown narrative, if anything, reinforces the \"power is the binding constraint, not compute\" thesis that underpins CEG's long-term PPA book. The stock is down on guilt-by-association with the AI complex, not because its thesis deteriorated. Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.",
+   "fieldChanges": {
+    "proposal": {
+     "to": {
+      "intent": "CLOSE",
+      "status": "REJECTED",
+      "orderId": "cmu1aclt4000o04l8b82mgtgl",
+      "quantity": 30,
+      "rejectedAt": "2026-09-14T15:43:23.098Z",
+      "rejectedBy": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+      "userMessage": "now the strongest hold of the five This is the biggest delta from the sentiment. The X narrative on CEG isn't \"AI slowdown hurts nuclear\" — it's the exact opposite: rotation FROM chips INTO power/energy as the AI bottleneck thesis reasserts itself. Posts are using \"loading up\" language and framing CEG as the beneficiary of the same sentiment event that's killing semis. The AI slowdown narrative, if anything, reinforces the \"power is the binding constraint, not compute\" thesis that underpins CEG's long-term PPA book. The stock is down on guilt-by-association with the AI complex, not because its thesis deteriorated. Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit."
+     },
+     "from": {
+      "status": "AWAITING_APPROVAL",
+      "orderId": "cmu1aclt4000o04l8b82mgtgl"
+     }
+    }
+   },
+   "runId": null,
+   "priceAtTime": null,
+   "runMode": null
+  },
+  {
+   "id": "cmu1n11x4000004jxwpiglvgy",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cacf717e-af57-42e5-a9af-28835e20508d",
+   "timestamp": "2026-09-14T19:30:26.680Z",
+   "summary": "Price down 7% today — scale in",
+   "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
+   "fieldChanges": {},
+   "runId": "cmu1n11rg000004l1x7fjzi8t",
+   "priceAtTime": 264.6,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1n1k17000304jxue3gh22q",
+   "type": "UPDATED",
+   "triggerId": "cacf717e-af57-42e5-a9af-28835e20508d",
+   "timestamp": "2026-09-14T19:30:50.155Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "The -7% 1-day add trigger validated and I acted on it. $CEG is at $284.75, which keeps the stock above the 20-day average at $281.54 and well above the 50-day at $269.53, while today's weakness appears broad sector pressure rather than company-specific damage: $XLU is down 1.25%, the market is risk-off, and there is no fresh headline indicating a guidance cut, PPA delay, Calpine integration problem, or IRA risk. That means the core belief remains operative, so I proposed an add rather than treating this as thesis damage. Re-ladder duty: the fired -7% add rung is now stale after use, so I am removing it; the rest of the ladder stays intact because the $220 hard floor still sits below the thesis invalidation zone, the $256.42 review rung still maps to a deeper break of support, and the $360 target review remains the right upside checkpoint for a compounding hold.\n\n[Belief unchanged: The core belief is unchanged. Today's move looks like sector and market pressure, not new evidence against the AI nuclear PPA, Crane restart timeline, FCF outlook, or IRA support.]",
+   "fieldChanges": {},
+   "runId": "cmu1n11rg000004l1x7fjzi8t",
+   "priceAtTime": 284.75,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1nke3w000904jxn15ncmzq",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+   "timestamp": "2026-09-14T19:45:28.940Z",
+   "summary": "Trailing 8% from high — exit position",
+   "rationale": "Gave back 8% from the high — mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).",
+   "fieldChanges": {},
+   "runId": "cmu1nkdq2000804jxxiu0etx6",
+   "priceAtTime": 264.91,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1nkmis000a04jxfut79t7n",
+   "type": "UPDATED",
+   "triggerId": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+   "timestamp": "2026-09-14T19:45:39.844Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "Reviewed the fired trailing-8%-from-high exit on $CEG and did not sell. The predicate no longer validates at execution time: the fire line is $279.13 based on the authoritative $303.40 peak, and the current price is $284.75, so this is a false fire on the live quote. More importantly, there is no new fundamental damage in the fresh news flow that maps to our invalidation conditions: no AI PPA delay/restructure, no Crane restart slip beyond Q1 2028, no back-to-back guidance cuts from Calpine integration, and no change to nuclear IRA credits. Under my mandate, a price-only give-back is a question, not an exit, unless a named business invalidation condition has tripped. Ladder intact: the hard floor at $220 and review rungs at $256.42, earnings, 30-day cadence, and 15% give-back still cover the thesis; I am leaving the stale fired 8% mechanical exit rung in place only as historical evidence of the false fire and not relying on it for action.",
+   "fieldChanges": {},
+   "runId": "cmu1nkdq2000804jxxiu0etx6",
+   "priceAtTime": 284.75,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1nqorf000404l5h7gnsedj",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+   "timestamp": "2026-09-14T19:50:22.683Z",
+   "summary": "Trailing 8% from high — exit position",
+   "rationale": "Gave back 8% from the high — mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).",
+   "fieldChanges": {},
+   "runId": "cmu1nqmyt000204l14nzi19bw",
+   "priceAtTime": 265.67,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1nqy4b000504l5jixf47a2",
+   "type": "UPDATED",
+   "triggerId": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+   "timestamp": "2026-09-14T19:50:34.811Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "Reviewed the fired trailing-8%-from-high exit on $CEG and did not sell. The predicate does not validate at execution time: the system fire line is $279.13 based on the authoritative $303.40 peak, and the current price is $284.75, so price is above the exit line. No new contradicting company-specific headline appears in the news feed; today's items are a bullish article on $CEG, a generic gapper note, and a peer article on $VST. Core belief remains operative: nothing here indicates PPA delay, Crane restart slippage, Calpine-driven guidance deterioration, or IRA credit impairment. Ladder intact: hard stop at $220 still sits below structure and this false fire does not make any rung stale.\n\n[Belief unchanged: This was a trigger-validation check, not a change in the underlying business thesis. The long-duration AI nuclear PPA, Crane restart path, FCF outlook, and IRA support assumptions are unchanged by this false fire.]",
+   "fieldChanges": {},
+   "runId": "cmu1nqmyt000204l14nzi19bw",
+   "priceAtTime": 284.75,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1nt5ub000104ku5uvrlzzd",
+   "type": "PROPOSAL_APPROVED",
+   "triggerId": null,
+   "timestamp": "2026-09-14T19:52:18.130Z",
+   "summary": "Approved ADD on CEG — submitted to Alpaca (idem=aa2aad9e)",
+   "rationale": "User approved the ADD proposal. Alpaca order id f4b5f50f-1fed-4643-b616-b2ebf92ab96f.",
+   "fieldChanges": {
+    "proposal": {
+     "to": {
+      "intent": "ADD",
+      "status": "APPROVED",
+      "orderId": "cmu1n1f83000104jx5qe3wmvt",
+      "quantity": 9,
+      "approvedAt": "2026-09-14T19:52:17.479Z",
+      "approvedBy": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+      "alpacaOrderId": "f4b5f50f-1fed-4643-b616-b2ebf92ab96f"
+     },
+     "from": {
+      "status": "AWAITING_APPROVAL",
+      "orderId": "cmu1n1f83000104jx5qe3wmvt",
+      "quantity": 9
+     }
+    }
+   },
+   "runId": null,
+   "priceAtTime": null,
+   "runMode": null
+  },
+  {
+   "id": "cmu1nwuuj000b04l508wpj29l",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-14T19:55:10.507Z",
+   "summary": "CEG buy price set to what was paid — $276.90",
+   "rationale": "The buy filled at $276.90; the thesis carried the planned $280.33. Once the stock is owned the buy price is what was paid, not the plan.",
+   "fieldChanges": {
+    "entryPrice": {
+     "to": 276.8984615384615,
+     "from": 280.33
+    }
+   },
+   "runId": null,
+   "priceAtTime": 276.898461538462,
+   "runMode": null
+  },
+  {
+   "id": "cmu1nwxlv000004icq4raatwd",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+   "timestamp": "2026-09-14T19:55:14.083Z",
+   "summary": "Trailing 8% from high — exit position",
+   "rationale": "Gave back 8% from the high — mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).",
+   "fieldChanges": {},
+   "runId": "cmu1nwxh1000c04l5txifij95",
+   "priceAtTime": 264.99,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu1nx9gj000104icgcwc1rwv",
+   "type": "UPDATED",
+   "triggerId": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+   "timestamp": "2026-09-14T19:55:29.443Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "Reviewed the fired trailing-8%-from-high exit on $CEG and did not sell. The predicate still validates at execution time because the fresh price is $284.75, which is above the mechanical fire line of $279.13? No — that means the trigger no longer validates now, so this is a false fire at execution, not a valid exit. More importantly, there is no new fundamental evidence against the core belief: recent news is supportive rather than thesis-breaking, and none of the named invalidation conditions has tripped. Per my mandate, a price give-back alone is a prompt to re-check the business, not an automatic sale. Ladder intact: the $220 hard floor still sits well below the current structure and matches the long-horizon compounding thesis.\n\n[Belief unchanged: The underlying business case is unchanged. No evidence suggests PPA delay, Crane restart slippage beyond the thesis window, two consecutive guidance cuts, or IRA PTC impairment.]",
+   "fieldChanges": {},
+   "runId": "cmu1nwxh1000c04l5txifij95",
+   "priceAtTime": 284.75,
+   "runMode": "INTRADAY_TACTICAL"
+  },
+  {
+   "id": "cmu220lgg0007fmy7bgf5t000",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-15T02:29:59.584Z",
+   "summary": "Principal removed CEG trigger — Trailing 8% from high → exit",
+   "rationale": "[USER] Removed the \"EXIT\" trigger (Trailing 8% from high). Don't re-create it unless the thesis materially changes.",
+   "fieldChanges": {
+    "source": {
+     "to": "USER",
+     "from": null
+    },
+    "triggerOps": {
+     "to": [
+      {
+       "id": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
+       "op": "remove",
+       "text": "Removed: Trailing 8% from high → exit"
+      }
+     ],
+     "from": null
+    }
+   },
+   "runId": null,
+   "priceAtTime": null,
+   "runMode": null
+  },
+  {
+   "id": "cmu2plvg8000204joxz3vu3lt",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-15T13:30:23.480Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $294.83; price $264.61 (−10.2% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 264.61,
+   "runMode": null
+  },
+  {
+   "id": "cmu422qut001i04l2u99ngpk9",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-16T12:07:12.245Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "CEG is under pressure technically, but none of my named invalidations has tripped: no hyperscaler contract change, no Crane restart delay beyond the thesis window, no double guidance cut, and no policy break on the nuclear credit floor. I am holding through the drawdown and explicitly re-attesting that this is valuation compression in a still-live contracted-power thesis, not business damage.",
+   "fieldChanges": {},
+   "runId": "cmu421tjs001a04l29cbwriot",
+   "priceAtTime": 259.89,
+   "runMode": "MORNING_PLAN"
+  },
+  {
+   "id": "cmu457sy7000b04l8ljeh400x",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-16T13:35:07.086Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $294.37; price $261.24 (−11.3% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 261.24,
+   "runMode": null
+  },
+  {
+   "id": "cmu46nhbk000104l5aek9nmtr",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "06506e39-522f-4ad1-aa62-d7fe10bf7003",
+   "timestamp": "2026-09-16T14:15:18.128Z",
+   "summary": "Trailing 15% from high — review — deferred to the next daily review",
+   "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 257.59,
+   "runMode": null
+  },
+  {
+   "id": "cmu476nar000404l5mof3m1az",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+   "timestamp": "2026-09-16T14:30:12.339Z",
+   "summary": "Price below $256.42 — review — deferred to the next daily review",
+   "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 256.37,
+   "runMode": null
+  },
+  {
+   "id": "cmu5knv1r000304jweq7u766j",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-17T13:35:16.719Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $293.87; price $267.02 (−9.1% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 267.02,
+   "runMode": null
+  },
+  {
+   "id": "cmu6wy0gy001504l4naxr2ipd",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-18T12:06:51.874Z",
+   "summary": "Updated CEG: Added: review every 60 days",
+   "rationale": "CEG is below the 200-day, but none of my business invalidations has tripped: no PPA delay, no Calpine-guidance breakdown, no Crane restart slip, and no tax-credit impairment. I am using this review to formally name the setup as COMPOUNDER_ACCUMULATION and reaffirm that this is a business-led hold through valuation volatility, not a price-led decision.\n\n[Belief unchanged: The core belief and invalidation conditions are unchanged; this review only names the setup on a held compounder so the plan matches how the position is actually managed.]",
+   "fieldChanges": {
+    "triggerOps": {
+     "to": [
+      {
+       "id": "5cf4c100-2af5-48ab-89fb-8df012063c53",
+       "op": "add",
+       "text": "Added: review every 60 days"
+      }
+     ],
+     "from": null
+    }
+   },
+   "runId": "cmu6wxadp000x04l49iqh16hh",
+   "priceAtTime": 262.8,
+   "runMode": "MORNING_PLAN"
+  },
+  {
+   "id": "cmu70a4ai001v04l4ao5gz224",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-18T13:40:15.546Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $293.36; price $260.72 (−11.1% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 260.72,
+   "runMode": null
+  },
+  {
+   "id": "cmu74dvm3000304l6x8mvs73q",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+   "timestamp": "2026-09-18T15:35:09.387Z",
+   "summary": "Price below $256.42 — review — deferred to the next daily review",
+   "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 256.27,
+   "runMode": null
+  },
+  {
+   "id": "cmub7cjjf002g04l8h0g0s5gw",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-21T12:09:10.635Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "CEG is below the 50-day and 200-day again, and the tape is ugly, but I still cannot name a business invalidation. Fresh price data show a 38% drawdown from the 52-week high and a break below the recent swing low, yet the review trigger here is doing its job: forcing me to ask whether the reason I bought remains true. It does. There is still no evidence of a PPA restructuring, no Crane restart slip beyond the thesis window, no repeal of nuclear production tax credits, and no two-quarter guidance-cut pattern from Calpine integration stress. I hold.\n\n[Belief unchanged: The core belief and named invalidations are unchanged; this is a trigger review documenting that the business, not the chart, still governs the position.]",
+   "fieldChanges": {},
+   "runId": "cmub7bryx002a04l8z67yek7e",
+   "priceAtTime": 254.71,
+   "runMode": "MORNING_PLAN"
+  },
+  {
+   "id": "cmuba94fc000404kuz99pr0wu",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+   "timestamp": "2026-09-21T13:30:29.928Z",
+   "summary": "Price below $256.42 — review — deferred to the next daily review",
+   "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 256.38,
+   "runMode": null
+  },
+  {
+   "id": "cmuba94kt000504ku17rh05ws",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-21T13:30:30.125Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $292.84; price $256.38 (−12.5% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 256.38,
+   "runMode": null
+  },
+  {
+   "id": "cmucpv03g000604l0sg0bnl2k",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-22T13:35:11.164Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $292.33; price $262.04 (−10.4% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 262.04,
+   "runMode": null
+  },
+  {
+   "id": "cmue21qs2001r04js6cp0s9ya",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-23T12:04:07.250Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "CEG is still below the 200-day, but the business invalidation list remains untripped. Fresh price data show the stock at $263.46, below the 50-day and 200-day, yet there is still no evidence of a hyperscaler PPA restructure, no Crane restart slip beyond the thesis window, no repeal of nuclear production tax credits, and no two-quarter guidance-cut pattern from Calpine integration stress. This remains a price-damage review, not a business break. I hold.\n\n[Belief unchanged: The core belief and named invalidations are unchanged; this update records that the business still governs the position, not the chart.]",
+   "fieldChanges": {},
+   "runId": "cmue20swo001k04js3qerbmhh",
+   "priceAtTime": 263.46,
+   "runMode": "MORNING_PLAN"
+  },
+  {
+   "id": "cmue5h81t000d04l85qu047st",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-23T13:40:08.321Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $291.85; price $258.55 (−11.4% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 258.55,
+   "runMode": null
+  },
+  {
+   "id": "cmufkx98j000705l8q36c83y5",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-24T13:40:16.771Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $291.32; price $260.59 (−10.5% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 260.59,
+   "runMode": null
+  },
+  {
+   "id": "cmugwvlno001504l8ibuzvhgl",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-25T12:02:41.124Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "CEG remains a hold. The stock is below the 200-day, but no invalidation condition has tripped: no AI PPA delay, no Crane restart slip beyond the thesis window, no guidance-cut sequence, and no adverse policy break. This is valuation/rate noise inside a live power-infrastructure compounding case.",
+   "fieldChanges": {},
+   "runId": "cmugwutp4000v04l85624q4ml",
+   "priceAtTime": 261.62,
+   "runMode": "MORNING_PLAN"
+  },
+  {
+   "id": "cmuh0jjpu000b04l2icd46eud",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-25T13:45:17.202Z",
+   "summary": "Price below the 200-day — review — deferred to the next daily review",
+   "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart. 200-day $290.83; price $265.01 (−8.9% from it)",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 265.01,
+   "runMode": null
+  },
+  {
+   "id": "cmul79ow1001204l3nrf3ruo2",
+   "type": "UPDATED",
+   "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+   "timestamp": "2026-09-28T12:04:39.361Z",
+   "summary": "Updated CEG thesis",
+   "rationale": "CEG's repeated 200-day review is now a different fact pattern from a week ago: the stock is still below the 200-day, but it has stabilized near $261 rather than cascading lower and the nearest forward review rung at roughly $257.9 is now close enough that the next move will be informative. On the business invalidation list: (1) no hyperscaler counterparty has restructured, cancelled, or delayed the large AI nuclear PPA; (2) no evidence that the Crane restart has slipped beyond Q1 2028; (3) no two-quarter sequence of guidance cuts tied to Calpine integration; (4) no repeal or curtailment of nuclear IRA production tax credits. None of the named invalidations has happened, so this remains a hold. What is different from prior reviews is not the business; it is that the stock has stopped accelerating down while the invalidation list still reads clean.\n\n[Belief unchanged: The thesis is still governed by contracted nuclear demand, Crane timing, FCF delivery, and policy support — none has broken.]",
+   "fieldChanges": {},
+   "runId": "cmul77k35000w04l360b56gyo",
+   "priceAtTime": 261.23,
+   "runMode": "MORNING_PLAN"
+  },
+  {
+   "id": "cmule97cz000004jzj66w096e",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "06506e39-522f-4ad1-aa62-d7fe10bf7003",
+   "timestamp": "2026-09-28T15:20:13.955Z",
+   "summary": "Trailing 15% from high — review — deferred to the next daily review",
+   "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 257.63,
+   "runMode": null
+  },
+  {
+   "id": "cmulfjjw4000pcyy7thitwc5z",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-28T15:56:16.372Z",
+   "summary": "Removed a copied rule from CEG — Any earnings beat → review",
+   "rationale": "[USER] Removed the \"REVIEW\" trigger (Any earnings beat) in the cleanup of copied rules: the same sentence sits on other stocks — a template wrote it; the account's rule governs from here. Don't re-create it on the stock.",
+   "fieldChanges": {
+    "source": {
+     "to": "USER",
+     "from": null
+    },
+    "triggerOps": {
+     "to": [
+      {
+       "id": "03d0e450-76cb-4a47-978a-f9e0cfc786ca",
+       "op": "remove",
+       "text": "Removed: Any earnings beat → review"
+      }
+     ],
+     "from": null
+    }
+   },
+   "runId": null,
+   "priceAtTime": null,
+   "runMode": null
+  },
+  {
+   "id": "cmulfjkm7000rcyy7yzofsvlt",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-28T15:56:17.311Z",
+   "summary": "Removed a copied rule from CEG — Earnings miss ≥3% → review",
+   "rationale": "[USER] Removed the \"REVIEW\" trigger (Earnings miss ≥3%) in the cleanup of copied rules: the same sentence sits on other stocks — a template wrote it; the account's rule governs from here. Don't re-create it on the stock.",
+   "fieldChanges": {
+    "source": {
+     "to": "USER",
+     "from": null
+    },
+    "triggerOps": {
+     "to": [
+      {
+       "id": "2646f2d6-9432-4496-8056-fa1139af3b81",
+       "op": "remove",
+       "text": "Removed: Earnings miss ≥3% → review"
+      }
+     ],
+     "from": null
+    }
+   },
+   "runId": null,
+   "priceAtTime": null,
+   "runMode": null
+  },
+  {
+   "id": "cmuo5dsj8000004la74ba3grx",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+   "timestamp": "2026-09-30T13:35:10.004Z",
+   "summary": "Price below $256.42 — review — deferred to the next daily review",
+   "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+   "fieldChanges": {},
+   "runId": null,
+   "priceAtTime": 254.1,
+   "runMode": null
+  }
+ ]
+}

@@ -32,7 +32,8 @@ Merge semantics: **thesis → analyst → account → code default, most-specifi
 wins per (predicate, action) bucket** (`resolveLadder`, `lib/agent/triggers/levels`).
 Within the thesis level, an agent-authored rung still beats the horizon
 template (`mergeTriggers`); principal edits beat everything and are fed back
-to the agent as `principalDirective`.
+to the agent in the row's `context` block (the principal's decisions of the
+last 30 days, word for word — `lib/agent/stock-context.ts`).
 
 **The one-way rule is enforced in code (DAV-185, shipped 2026-08-19).** On a
 held stock, layer 4 (the agent) may only move protective sell levels toward
@@ -98,7 +99,7 @@ or (b) summons judgment. Which one is declared per-rung by `action` +
 rows with exact `fieldChanges`; fires → `TRIGGER_FIRED` rows carrying
 `triggerId`; tactical decisions → run transcript + close-out `update_thesis`
 carrying the same `triggerId`; proposals → approve/reject/expire rows +
-`principalDirective` feedback loop; ladder re-edits → more `UPDATED` rows.
+the `context` block that carries them back to the agent; ladder re-edits → more `UPDATED` rows.
 **The chain is complete in the database.**
 
 **Surfaces: fragmented.** What exists vs missing:

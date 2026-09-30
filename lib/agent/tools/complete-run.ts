@@ -514,7 +514,14 @@ async function runCompleteRunPreflight(
     paperRealizedPnl: unknown;
     paperReviewCount: number | null;
     promotedAt: Date | null;
-    updates: Array<{ type: string; triggerId: string | null; timestamp: Date }>;
+    updates: Array<{
+      type: string;
+      triggerId: string | null;
+      timestamp: Date;
+      runId: string | null;
+      rationale: string | null;
+      fieldChanges: unknown;
+    }>;
   };
   // Determine the in-scope thesis set based on mode. PROMOTED is included
   // alongside ACTIVE+WATCHING because PROMOTED rows ALWAYS need resolution
@@ -580,10 +587,20 @@ async function runCompleteRunPreflight(
       paperRealizedPnl: true,
       paperReviewCount: true,
       promotedAt: true,
+      // Back to the newest line an agent wrote: a fire after it is still
+      // open work, whatever else landed on top (stock-context.ts). 40 lines
+      // reach well past the last run on every stock on the book.
       updates: {
         orderBy: { timestamp: "desc" },
-        take: 1,
-        select: { type: true, triggerId: true, timestamp: true },
+        take: 40,
+        select: {
+          type: true,
+          triggerId: true,
+          timestamp: true,
+          runId: true,
+          rationale: true,
+          fieldChanges: true,
+        },
       },
     },
   })) as ThesisRow[];
@@ -740,13 +757,13 @@ async function runCompleteRunPreflight(
         paperReviewCount: t.paperReviewCount ?? null,
         promotedAt: t.promotedAt ?? null,
       },
-      latestUpdate: t.updates[0]
-        ? {
-            type: t.updates[0].type as string,
-            triggerId: t.updates[0].triggerId ?? null,
-            timestamp: t.updates[0].timestamp,
-          }
-        : null,
+      // A missing audit relation is a failed read, not "nothing fired" —
+      // read as empty it would clear every open fire in silence (DAV-332).
+      activity: Array.isArray(t.updates)
+        ? t.updates
+        : (() => {
+            throw new Error(`complete_run preflight: no audit lines loaded for thesis ${t.id}`);
+          })(),
       latestQuote: quotes.get(t.ticker) ?? null,
       now,
       hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),

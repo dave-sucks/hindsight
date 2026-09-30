@@ -84,11 +84,11 @@ describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)",
       },
       // Even with a TRIGGER_FIRED on top of the stack, PROMOTED status
       // takes precedence — the run must address the promotion decision.
-      latestUpdate: {
+      activity: [{
         type: "TRIGGER_FIRED",
         triggerId: "trig-exit",
         timestamp: new Date("2026-05-10T09:00:00Z"),
-      },
+      }],
       latestQuote: { price: 80, changePct: 0 },
       now,
     });
@@ -108,7 +108,7 @@ describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)",
         status: "PROMOTED",
         triggers: [],
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -128,7 +128,7 @@ describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)",
         status: "WATCHING",
         triggers: [],
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -140,11 +140,11 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   it("suppresses a fired ENTER trigger when a buy proposal is pending", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
-      latestUpdate: {
+      activity: [{
         type: "TRIGGER_FIRED",
         triggerId: "trig-enter",
         timestamp: new Date("2026-05-10T09:00:00Z"),
-      },
+      }],
       latestQuote: { price: 120, changePct: 0 },
       now,
       hasPendingEntryProposal: true,
@@ -155,7 +155,7 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   it("suppresses a matching-now ENTER predicate when a buy proposal is pending", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 120, changePct: 0 }, // above 100 → ENTER matches
       now,
       hasPendingEntryProposal: true,
@@ -166,11 +166,11 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   it("still surfaces a fired EXIT trigger when a buy proposal is pending (only ENTER suppressed)", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [EXIT_LONG] },
-      latestUpdate: {
+      activity: [{
         type: "TRIGGER_FIRED",
         triggerId: "trig-exit",
         timestamp: new Date("2026-05-10T09:00:00Z"),
-      },
+      }],
       latestQuote: { price: 80, changePct: 0 },
       now,
       hasPendingEntryProposal: true,
@@ -181,11 +181,11 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   it("surfaces the ENTER normally when no proposal is pending", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
-      latestUpdate: {
+      activity: [{
         type: "TRIGGER_FIRED",
         triggerId: "trig-enter",
         timestamp: new Date("2026-05-10T09:00:00Z"),
-      },
+      }],
       latestQuote: { price: 120, changePct: 0 },
       now,
     });
@@ -200,11 +200,11 @@ describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   it("returns TRIGGER_FIRED when latest ThesisUpdate is an unanswered fire", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
-      latestUpdate: {
+      activity: [{
         type: "TRIGGER_FIRED",
         triggerId: "trig-exit",
         timestamp: new Date("2026-05-10T09:00:00Z"),
-      },
+      }],
       latestQuote: { price: 80, changePct: 0 },
       now,
     });
@@ -220,11 +220,11 @@ describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   it("includes a graceful fallback when the firing triggerId was deleted", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
-      latestUpdate: {
+      activity: [{
         type: "TRIGGER_FIRED",
         triggerId: "ghost-trigger",
         timestamp: new Date("2026-05-10T09:00:00Z"),
-      },
+      }],
       latestQuote: null,
       now,
     });
@@ -240,11 +240,11 @@ describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   it("falls through to MATCHING_NOW when latest update is a UPDATED row (answered)", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
-      latestUpdate: {
+      activity: [{
         type: "UPDATED",
         triggerId: null,
         timestamp: new Date("2026-05-10T09:00:00Z"),
-      },
+      }],
       latestQuote: { price: 80, changePct: 0 }, // below stop
       now,
     });
@@ -256,7 +256,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
   it("returns TRIGGER_MATCHING_NOW when a price predicate is currently true", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [ENTER_LONG] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 105, changePct: 1 },
       now,
     });
@@ -272,7 +272,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
   it("returns null when no predicate matches", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [ENTER_LONG, EXIT_LONG] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 95, changePct: 0 }, // between stop and entry-trigger
       now,
     });
@@ -282,7 +282,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
   it("skips signal-side predicates (no signal payload available at run-start)", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [SIGNAL_EARNINGS] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 100, changePct: 0 },
       now,
     });
@@ -292,7 +292,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
   it("does not fire when the quote is missing (price-side eval needs a quote)", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -308,7 +308,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
         triggers: [CADENCE_7D],
         lastReviewedAt: lookedAt(11),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -328,7 +328,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
         triggers: [CADENCE_7D],
         lastReviewedAt: lookedAt(11),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -347,7 +347,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
         triggers: [CADENCE_7D],
         lastReviewedAt: lookedAt(11),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -366,7 +366,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
         triggers: [CADENCE_7D],
         lastReviewedAt: lookedAt(11),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -381,7 +381,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
         triggers: [CADENCE_7D],
         lastReviewedAt: lookedAt(1),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -391,7 +391,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   it("returns null when no cadence is set and no triggers fire", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -412,7 +412,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
         triggers: [CADENCE_7D],
         lastReviewedAt: lookedAt(6.94),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -427,7 +427,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
         triggers: [CADENCE_7D],
         lastReviewedAt: new Date(now.getTime() - 6 * 86_400_000 - 3_600_000),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -441,7 +441,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
         triggers: [CADENCE_7D],
         lastReviewedAt: new Date(now.getTime() - 5 * 86_400_000 - 23 * 3_600_000),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -457,11 +457,11 @@ describe("computeNeedsAction — precedence (FIRED > MATCHING_NOW > REVIEW_DUE)"
         triggers: [CADENCE_7D],
         lastReviewedAt: lookedAt(11),
       },
-      latestUpdate: {
+      activity: [{
         type: "TRIGGER_FIRED",
         triggerId: "trig-exit",
         timestamp: new Date("2026-05-10T08:00:00Z"),
-      },
+      }],
       latestQuote: { price: 80, changePct: 0 },
       now,
     });
@@ -477,7 +477,7 @@ describe("computeNeedsAction — precedence (FIRED > MATCHING_NOW > REVIEW_DUE)"
         triggers: [ENTER_LONG, CADENCE_7D],
         lastReviewedAt: lookedAt(11),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 105, changePct: 0 },
       now,
     });
@@ -493,7 +493,7 @@ describe("computeNeedsAction — anti-regression (no hardcoded thresholds)", () 
     // Fix #0 removes from price-monitor.
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 119, changePct: 0 },
       now,
     });
@@ -508,7 +508,7 @@ describe("computeNeedsAction — anti-regression (no hardcoded thresholds)", () 
     // match.
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 97, changePct: 0 }, // -3% from entry, well above stop $90
       now,
     });
@@ -537,7 +537,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   it("flags a +17% holding whose floor locks −12% (the IONS shape)", () => {
     const result = computeNeedsAction({
       thesis: ionsThesis,
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 86.24, changePct: 0 },
       now,
     });
@@ -554,7 +554,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   it("flags a qualifying gain with NO protective EXIT rung at all", () => {
     const result = computeNeedsAction({
       thesis: { ...ionsThesis, triggers: [] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 82, changePct: 0 }, // +11.1%
       now,
     });
@@ -573,7 +573,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     };
     const result = computeNeedsAction({
       thesis: { ...ionsThesis, triggers: [raisedFloor] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 86.24, changePct: 0 },
       now,
     });
@@ -583,11 +583,11 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   it("a fired EXIT trigger outranks UNPROTECTED_GAIN", () => {
     const result = computeNeedsAction({
       thesis: ionsThesis,
-      latestUpdate: {
+      activity: [{
         type: "TRIGGER_FIRED",
         triggerId: "trig-ions-floor",
         timestamp: new Date("2026-05-10T09:00:00Z"),
-      },
+      }],
       latestQuote: { price: 86.24, changePct: 0 },
       now,
     });
@@ -604,7 +604,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     };
     const result = computeNeedsAction({
       thesis: { ...ionsThesis, triggers: [ionsExit, addRung] },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 86.24, changePct: 0 }, // above 85 → ADD matches
       now,
     });
@@ -622,7 +622,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         avgCost: 100,
         targetPrice: 120,
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 118, changePct: 0 },
       now,
     });
@@ -647,7 +647,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         avgCost: 100,
         targetPrice: 120,
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 118, changePct: 0 },
       now,
     });
@@ -666,7 +666,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         triggers: [ionsExit, CADENCE_7D],
         lastReviewedAt: lookedAt(11), // review overdue by 4 days
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 86.24, changePct: 0 },
       now,
     });
@@ -676,7 +676,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   it("does NOT flag a non-held (WATCHING) row", () => {
     const result = computeNeedsAction({
       thesis: { ...ionsThesis, status: "WATCHING" },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 86.24, changePct: 0 },
       now,
     });
@@ -687,7 +687,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     expect(
       computeNeedsAction({
         thesis: { ...ionsThesis, avgCost: null },
-        latestUpdate: null,
+        activity: [],
         latestQuote: { price: 86.24, changePct: 0 },
         now,
       }),
@@ -695,7 +695,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     expect(
       computeNeedsAction({
         thesis: ionsThesis,
-        latestUpdate: null,
+        activity: [],
         latestQuote: null,
         now,
       }),
@@ -721,7 +721,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         peakPrice: 120,
         targetPrice: 130,
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: { price: 118, changePct: 0 },
       now,
     });
@@ -764,7 +764,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         lastReviewedAt: daysAgo(0), // reviewed today — no review is due
         researchUpdatedAt: daysAgo(80),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: new Date(),
     });
@@ -786,7 +786,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         lastReviewedAt: daysAgo(0),
         researchUpdatedAt: daysAgo(80),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: new Date(),
     });
@@ -805,7 +805,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         lastReviewedAt: daysAgo(40), // overdue
         researchUpdatedAt: daysAgo(80),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: new Date(),
     });
@@ -824,7 +824,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         lastReviewedAt: daysAgo(0),
         researchUpdatedAt: daysAgo(10),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: new Date(),
     });
@@ -843,7 +843,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         lastReviewedAt: daysAgo(0),
         researchUpdatedAt: null,
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: new Date(),
     });
@@ -875,7 +875,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         lastReviewedAt: null,
         researchUpdatedAt: null,
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: new Date(),
     });
@@ -894,7 +894,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         lastReviewedAt: null,
         researchUpdatedAt: null,
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: new Date(),
     });
@@ -914,7 +914,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         createdAt: daysAgo(200),
         lastReviewedAt: daysAgo(0),
       },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now: new Date(),
     });
@@ -936,7 +936,7 @@ describe("computeNeedsAction — a day count from the buy is not the review cloc
   it("a watch with only a buy-count review and no clock is quiet", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [SIXTY_AFTER_BUY], lastReviewedAt: lookedAt(90) },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });
@@ -945,7 +945,7 @@ describe("computeNeedsAction — a day count from the buy is not the review cloc
   it("the review clock next to it still decides REVIEW_DUE", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, status: "HOLDING", triggers: [SIXTY_AFTER_BUY, CADENCE_7D], lastReviewedAt: lookedAt(8) },
-      latestUpdate: null,
+      activity: [],
       latestQuote: null,
       now,
     });

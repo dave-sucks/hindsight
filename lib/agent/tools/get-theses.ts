@@ -40,6 +40,8 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
+import type { ActivityRow, StockContext } from "@/lib/agent/stock-context";
+import { stockContextFor } from "@/lib/agent/stock-context-for";
 import {
   buildResolvedEnvelope,
   buildSupersessionMap,
@@ -146,71 +148,6 @@ const schema = z.object({
       "Row weight. \"actionable\" returns FULL rows (narrative excerpts, triggers, resolved envelope) only for theses with a non-null needsAction or status=PROMOTED; every quiet row comes back as a one-line index entry in `quiet_theses` (ticker, status, the plan levels WITH the live price beside them, next review, core belief). \"book\" returns full rows for everything. Default: \"actionable\" on the Daily Run's unfiltered read (the trigger system already decided what needs work today — 2026-08-13 cost fix: full-book reads were ~4k tokens/thesis × every step), \"book\" everywhere else and whenever you filter by ticker/id (drill-down is always full).",
     ),
 });
-
-/** A principal review decision surfaced to the agent (P1-29 — the learning loop). */
-export interface PrincipalDirective {
-  decision: "REJECTED" | "APPROVED" | "EDITED";
-  /** The principal's verbatim message (null on a no-message reject). */
-  message: string | null;
-  /** ISO timestamp of the decision. */
-  at: string;
-}
-
-/**
- * Classify a thesis's MOST-RECENT ThesisUpdate row as an unaddressed principal
- * decision, or null when the top-of-log row is an agent action. "Unaddressed"
- * is implicit in being the top row: any agent follow-up would have replaced it
- * (same latest-on-top contract TRIGGER_FIRED uses), so this self-clears once
- * the agent acts. A reject WITH a message also forces the row into the full
- * work list (see isFullDetail), so the agent reads this note on its next run
- * — there's no separate forcing needsAction.
- */
-function classifyPrincipalDirective(
-  u:
-    | { type: string; rationale: string | null; fieldChanges: unknown; timestamp: Date }
-    | null
-    | undefined,
-): PrincipalDirective | null {
-  if (!u) return null;
-  const at = u.timestamp.toISOString();
-
-  if (u.type === "PROPOSAL_REJECTED") {
-    const msg = typeof u.rationale === "string" ? u.rationale : null;
-    // A no-message reject stores a "[REJECTED:USER] …" sentinel rationale —
-    // surface it as a bare reject (null message); a real written message rides through.
-    const hasMessage = msg != null && !msg.startsWith("[REJECTED:USER]");
-    return { decision: "REJECTED", message: hasMessage ? msg : null, at };
-  }
-
-  if (u.type === "PROPOSAL_APPROVED") {
-    // Only surface approvals that CHANGED the order (e.g. upsized 6→12); a plain
-    // approve carries no instruction worth surfacing.
-    const fc = u.fieldChanges as
-      | { proposal?: { to?: { edited?: boolean; quantity?: number; proposedQuantity?: number } } }
-      | null;
-    const to = fc?.proposal?.to;
-    if (!to?.edited) return null;
-    const msg =
-      to.proposedQuantity != null && to.quantity != null
-        ? `Approved, resized ${to.proposedQuantity}→${to.quantity} shares (principal raised the size).`
-        : "Approved with edits.";
-    return { decision: "APPROVED", message: msg, at };
-  }
-
-  if (
-    u.type === "UPDATED" &&
-    typeof u.rationale === "string" &&
-    u.rationale.startsWith("[USER]")
-  ) {
-    return {
-      decision: "EDITED",
-      message: u.rationale.replace(/^\[USER\]\s*/, ""),
-      at,
-    };
-  }
-
-  return null;
-}
 
 export const getTheses = defineTool({
   description:
@@ -481,7 +418,10 @@ export const getTheses = defineTool({
     // P1-29 (L2): the most-recent unaddressed PRINCIPAL decision per thesis
     // (reject / approve-with-edit / direct edit), surfaced verbatim so the
     // agent reads the instruction directly instead of inferring it from a count.
-    const principalDirectiveByThesisId = new Map<string, PrincipalDirective | null>();
+    // What's been said on each live stock (stock-context.ts): the block a
+    // full row carries, its open fires, and any decision of the principal's
+    // no run has answered yet.
+    const contextByThesisId = new Map<string, StockContext>();
 
     // ── Position openedAt per ACTIVE thesis (P1-14) ─────────────────────
     // A HELD thesis measures elapsed time from when the
@@ -836,43 +776,57 @@ export const getTheses = defineTool({
           type: true,
           triggerId: true,
           timestamp: true,
-          // P1-29 (L2): rationale + fieldChanges let us classify whether the
-          // top-of-log row is an unaddressed PRINCIPAL decision (reject /
-          // approve-with-edit / direct edit) and extract the verbatim message.
+          // The fallback line for a stock the activity scan below truncated
+          // away: enough to tell a fire from an answer.
+          runId: true,
+          summary: true,
           rationale: true,
           fieldChanges: true,
+          priceAtTime: true,
         },
       });
       const latestByThesisId = new Map(
         latestUpdates.map((u) => [u.thesisId, u]),
       );
 
-      // DAV-323: a slice of each thesis's log, so a fired trigger can say
-      // how many times it has already asked. One batched scan, capped the
-      // same way the ladder-edit scan above is; when it truncates, the
-      // oldest rows are simply missing and the count reads low, which is
-      // the safe direction — it never invents repetition.
+      // A slice of each thesis's log, read once for three things: which
+      // fires no agent has answered (needsAction), what has been said on
+      // the stock (the `context` block), and how many times a fired trigger
+      // has already asked (DAV-323). One batched scan; the Compounder's 22
+      // stocks wrote 334 lines in the 30 days to 2026-09-30, so 40 a stock
+      // covers a month. When it truncates, the oldest rows are missing: the
+      // repeat count reads low and the block shows less, never more.
       const streakRowsByThesisId = new Map<string, FireStreakUpdate[]>();
+      const activityByThesisId = new Map<string, ActivityRow[]>();
       try {
-        const streakScan = await prisma.thesisUpdate.findMany({
+        const activityScan = await prisma.thesisUpdate.findMany({
           where: { thesisId: { in: liveTheses.map((t) => t.id) } },
           orderBy: { timestamp: "desc" },
-          take: Math.min(20 * liveTheses.length, 600),
+          take: Math.min(40 * liveTheses.length, 1200),
           select: {
             thesisId: true,
             type: true,
             triggerId: true,
             timestamp: true,
             fieldChanges: true,
+            summary: true,
+            rationale: true,
+            runId: true,
+            priceAtTime: true,
+            run: { select: { mode: true } },
           },
         });
-        for (const row of streakScan) {
+        for (const row of activityScan) {
           const bucket = streakRowsByThesisId.get(row.thesisId);
           if (bucket) bucket.push(row);
           else streakRowsByThesisId.set(row.thesisId, [row]);
+          const line: ActivityRow = { ...row, runMode: row.run?.mode ?? null };
+          const lines = activityByThesisId.get(row.thesisId);
+          if (lines) lines.push(line);
+          else activityByThesisId.set(row.thesisId, [line]);
         }
       } catch (err) {
-        console.warn("[get_theses] repeat-fire scan failed; count omitted:", err);
+        console.warn("[get_theses] activity scan failed; open fires read from the newest line only:", err);
       }
 
       // Live quotes — one Alpaca call per unique ticker.
@@ -909,13 +863,17 @@ export const getTheses = defineTool({
           typeof price === "number" && price > 0
             ? { price, changePct: 0 }
             : null;
-        // P1-29: surface the most-recent unaddressed principal decision on the
-        // row (verbatim). A reject-with-comment forces the row into the full
-        // work list (see isFullDetail below), so the agent reads this note on
-        // its next run — no separate forcing needsAction kind.
-        principalDirectiveByThesisId.set(
+        // What's been said on this stock: the principal's decisions of the
+        // last 30 days, the last two answers, the fires no agent has
+        // answered. A decision that wants an answer and has none puts the row
+        // on the full list (isFullDetail). The scan's lines, or the newest
+        // line alone when the scan didn't reach this stock.
+        const latest = latestByThesisId.get(t.id);
+        const activity: ActivityRow[] =
+          activityByThesisId.get(t.id) ?? (latest ? [latest] : []);
+        contextByThesisId.set(
           t.id,
-          classifyPrincipalDirective(latestByThesisId.get(t.id)),
+          stockContextFor({ ticker: t.ticker, rows: activity, triggers, now, currentPrice: latestQuote?.price ?? null }),
         );
         needsActionByThesisId.set(
           t.id,
@@ -944,7 +902,7 @@ export const getTheses = defineTool({
               paperReviewCount: t.paperReviewCount ?? null,
               promotedAt: t.promotedAt ?? null,
             },
-            latestUpdate: latestByThesisId.get(t.id) ?? null,
+            activity,
             recentUpdates: streakRowsByThesisId.get(t.id),
             latestQuote,
             now,
@@ -1183,11 +1141,10 @@ export const getTheses = defineTool({
     //     tape (DAV-188: buy level far from price / target passed / stop
     //     breached). A flagged-but-quiet row is the exact "wrong through 5
     //     runs" failure this exists to end; the flag forces the full row.
-    //   • an unanswered principal reject WITH a written message — the note
-    //     must reach the agent's work list on its next run (P1-29). This
-    //     used to ride on a due-review date stamped at reject time; the
-    //     date column is gone (DAV-221), so the directive itself forces
-    //     the full row until the agent's answer replaces it at top-of-log.
+    //   • a decision of the principal's that wants an answer and has none
+    //     — a decline with a written reason, a resized approval, a direct
+    //     edit (stock-context.ts). It must reach the agent's work list on
+    //     its next run; the first line an agent writes after it answers it.
     // ACTIVE_HOLD deliberately stays quiet: it's the healthy-holding
     // default, and its work signals (UNPROTECTED_GAIN / RUNNING_WINNER /
     // trigger fires) all arrive via needsAction.
@@ -1224,7 +1181,6 @@ export const getTheses = defineTool({
       nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null);
 
     const isFullDetail = (t: (typeof theses)[number]): boolean => {
-      const directive = principalDirectiveByThesisId.get(t.id);
       return (
         setupAskFor(t) !== null ||
         blockedByThesisId.has(t.id) ||
@@ -1237,7 +1193,7 @@ export const getTheses = defineTool({
         // A floor that would lose too much of the account is work even when
         // a fired sale holds the needsAction slot (DAV-344).
         resolvedByThesisId.get(t.id)?.floorRisk != null ||
-        (directive?.decision === "REJECTED" && directive.message != null)
+        contextByThesisId.get(t.id)?.unansweredDecision != null
       );
     };
 
@@ -1292,6 +1248,11 @@ export const getTheses = defineTool({
       // Resolved ladder, not the stored column — see quietRows above.
       const triggerCount = (ladderByThesisId.get(t.id) ?? []).length;
       return {
+        // What's been said on the stock, first — the principal's decisions,
+        // the last two answers, the fires no agent has answered. Read before
+        // the numbers (docs/plans/AGENT_CONTEXT.md §3.2). Null when nothing
+        // has been said in the lines this read reached.
+        context: contextByThesisId.get(t.id)?.text ?? null,
         ...t,
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
@@ -1359,13 +1320,6 @@ export const getTheses = defineTool({
             recentLow: recentLowByThesisId.get(t.id) ?? null,
           };
         })(),
-        // P1-29 (L2): the most-recent unaddressed principal review decision on
-        // this thesis — reject (verbatim message), approve-with-edit, or a
-        // direct edit — surfaced so the agent reads + honors it. A reject with a
-        // message also flags the thesis for review (REVIEW_DUE) at reject time,
-        // so the agent reads this during that review. null when the latest
-        // activity is an agent action.
-        principalDirective: principalDirectiveByThesisId.get(t.id) ?? null,
       };
     });
 
