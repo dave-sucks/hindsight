@@ -38,6 +38,7 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import {
   getThesisBearCaseBullets,
@@ -277,6 +278,9 @@ export const tacticalRun = inngest.createFunction(
           direction: thesis.direction,
           horizon: thesis.horizon,
           setupId: thesis.setupId ?? null,
+          // The event date, for the buying-window line (DAV-338). ISO here:
+          // the step boundary would turn a Date into a string anyway.
+          catalystDate: thesis.catalystDate ? thesis.catalystDate.toISOString() : null,
           coreBelief: thesis.coreBelief,
           keyAssumptions: thesis.keyAssumptions,
           invalidationConds: thesis.invalidationConds,
@@ -734,6 +738,11 @@ export const tacticalRun = inngest.createFunction(
       const coFiredSuffix = fired.coFired?.length
         ? ` Also fired on the same pass: ${fired.coFired.map((c) => c.sentence).join("; ")} — one decision covers both.`
         : "";
+      // A pre-catalyst buy is told where the event date sits against the
+      // setup's buying window (DAV-338). Information for the decision,
+      // never a gate; the proposal carries the same line.
+      const windowLine = triggerTyped.action === "ENTER" ? preCatalystWindowLine(thesis) : null;
+      const windowSuffix = windowLine ? ` ${windowLine}` : "";
       // A refused call on this stock from a recent run that was never redone
       // rides the kickoff, so the wake that fires today also settles it.
       const openOnStock = refusalLinesFor(
@@ -742,7 +751,7 @@ export const tacticalRun = inngest.createFunction(
         (thesis as { ticker: string }).ticker,
       );
       const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${coFiredSuffix}${openOnStock} ` +
+        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock} ` +
         `Validate, decide, act if warranted, then close out via update_thesis. ` +
         `You are running unattended — no human will respond. Every turn must call a tool; ` +
         `text-only turns terminate the run as FAILED.`;

@@ -1,0 +1,243 @@
+{
+  "_about": "CORT, 2026-09-29 10:30 ET: the Catalyst Event PM's buy trigger fired 79 days before the Dec 17 FDA date and the trigger run (cmumrwuc9000004kzdx50i05j) proposed a buy. The thesis row, the trigger that fired, the run's kickoff message and its place_trade call verbatim, the proposal it made, and the analyst's limits. Built read-only by a script.",
+  "run": {
+    "id": "cmumrwuc9000004kzdx50i05j",
+    "startedAt": "2026-09-29T14:30:18.009Z",
+    "parameters": {
+      "action": "ENTER",
+      "ticker": "CORT",
+      "thesisId": "cmuhp4n4e000e04kx3vkxm5lr",
+      "agentMode": true,
+      "triggerId": "ae95e1bd-45a0-4d55-89a3-f22a00a2f2c9",
+      "analystName": "Catalyst Event PM",
+      "triggeredBy": "trigger-fired",
+      "predicateKind": "NEAR_SMA"
+    }
+  },
+  "kickoff": [
+    {
+      "type": "text",
+      "text": "Tactical run on $CORT. Within 3% of the 50-day — consider entry. 50-day $111.29; price $113.71 (+2.2% from it) Validate, decide, act if warranted, then close out via update_thesis. You are running unattended — no human will respond. Every turn must call a tool; text-only turns terminate the run as FAILED."
+    }
+  ],
+  "thesis": {
+    "id": "cmuhp4n4e000e04kx3vkxm5lr",
+    "ticker": "CORT",
+    "status": "WATCHING",
+    "direction": "LONG",
+    "horizon": "CATALYST",
+    "setupId": "PRE_CATALYST",
+    "conviction": "MEDIUM",
+    "entryPrice": 110.79,
+    "targetPrice": 152,
+    "stopLoss": 103.9,
+    "catalystDate": "2026-12-17T00:00:00.000Z",
+    "createdAt": "2026-09-26T01:13:32.174Z",
+    "triggers": [
+      {
+        "id": "aa96d933-7d21-49c3-b202-3310e01bd386",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "AND",
+          "predicates": [
+            {
+              "kind": "PRICE_ABOVE",
+              "basis": "close",
+              "level": 126.5
+            },
+            {
+              "min": 1.5,
+              "kind": "VOLUME_RATIO"
+            }
+          ]
+        },
+        "rationale": "Close above the base pivot $126.38 on 1.5× volume confirms the breakout has started — re-price the entry using the tighter stop that the new base low provides at that point.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "8d4c8654-7c75-4969-85da-6e536b028418",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "basis": "close",
+          "level": 108.1
+        },
+        "rationale": "Close below the base low $108.08 invalidates the basing structure; reassess whether any thesis remains before the December PDUFA.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "cc036f1a-22cf-4330-a37a-715de9ee8afa",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "days": 21,
+          "from": "LAST_REVIEW",
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "Routine 3-week check: confirm PDUFA date unchanged, base structure intact, insider picture and stop/R/R math before pricing the entry.",
+        "cooldownDays": 21
+      },
+      {
+        "id": "d515ba10-f5f6-4f48-9543-c7b735ee8f0a",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "days": 14,
+          "from": "EVENT",
+          "kind": "REVIEW_CADENCE",
+          "side": "BEFORE"
+        },
+        "rationale": "Two weeks before the Dec 17 PDUFA: final decision on whether to price and enter, hold an existing position through the event, or stand aside on the coin flip.",
+        "cooldownDays": 14
+      },
+      {
+        "id": "ae95e1bd-45a0-4d55-89a3-f22a00a2f2c9",
+        "action": "ENTER",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "NEAR_SMA",
+          "period": 50,
+          "withinPct": 3
+        },
+        "rationale": "Price pulls back within 3% of the rising 50-day (~$110.79 today) — the structural entry for a pre-PDUFA accumulation in a basing stock with Trend Template 8/8. Entry here gives $108.08 stop (2.71 risk) against $152 target (41pt gain), a 15:1 R/R. Fire when this condition is true.",
+        "lastFiredAt": "2026-09-29T14:30:10.144Z",
+        "cooldownDays": 1
+      },
+      {
+        "id": "de208236-947b-4b11-9c4b-07050e42d6e3",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "days": 7,
+          "kind": "EARNINGS_WITHIN"
+        },
+        "rationale": "Q3 2026 earnings expected late October — review Korlym + Lifyorli revenue trajectory and Cushing's PDUFA preparation commentary before the print, and again after.",
+        "cooldownDays": 30
+      },
+      {
+        "id": "9b330b49-b839-4302-9691-c8be2c42f0b2",
+        "action": "ENTER",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 110.79
+        },
+        "rationale": "Buy level — start the position when the price comes back down to $110.79.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "6a51d02a-5d14-4610-948d-9df76697bdb4",
+        "action": "EXIT",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 103.9
+        },
+        "rationale": "Below the 35-session base floor and roughly 1 ATR under the recent 20-day low near $108.25; a break there would mean the base failed, not just that the stock had a normal daily swing.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "86a09dc3-b576-43ce-baae-709bf3f3fbd9",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 152
+        },
+        "rationale": "1.272 Fib extension of the March-August up-leg ($31.81→$126.38), measured move to $152. Confirmed as the first major overhead extension level.",
+        "cooldownDays": 1
+      }
+    ],
+    "triggerState": {}
+  },
+  "firedTrigger": {
+    "id": "ae95e1bd-45a0-4d55-89a3-f22a00a2f2c9",
+    "action": "ENTER",
+    "source": "AGENT",
+    "predicate": {
+      "kind": "NEAR_SMA",
+      "period": 50,
+      "withinPct": 3
+    },
+    "rationale": "Price pulls back within 3% of the rising 50-day (~$110.79 today) — the structural entry for a pre-PDUFA accumulation in a basing stock with Trend Template 8/8. Entry here gives $108.08 stop (2.71 risk) against $152 target (41pt gain), a 15:1 R/R. Fire when this condition is true.",
+    "lastFiredAt": "2026-09-29T14:30:10.144Z",
+    "cooldownDays": 1
+  },
+  "placeTrade": {
+    "ticker": "CORT",
+    "company_name": "Corcept Therapeutics Inc",
+    "exchange": "NASDAQ NMS - GLOBAL MARKET",
+    "direction": "LONG",
+    "entry_price": 113.71,
+    "target_price": 152,
+    "stop_loss": 103.9,
+    "thesis_id": "cmuhp4n4e000e04kx3vkxm5lr",
+    "entry_rationale": "I am buying $CORT here because the pre-FDA setup is still intact and the pullback into the rising 50-day moving average (its average price over the last 50 trading days) has held. The trigger fired at $113.71, and the live quote still confirms that price is within 3% of the 50-day at $111.29, which matches the planned accumulation zone for the December 17 PDUFA run-up. The stock is still above the base low at $108.08 and well above the hard stop at $103.90, so the chart has bent but not broken. There is no contradicting company-specific headline in the news feed today, and we are still well outside the last 21 days before the event, so this setup remains valid for a pre-catalyst entry. Entry is $113.71, target $152 where I would take profit into a successful run-up, and stop $103.90 where I would sell to cap the loss if the structure fails, about 8.6% below entry.",
+    "analyst_id": "catalyst-event-pm"
+  },
+  "proposal": {
+    "id": "cmumrx47h000304kz1jzsdgly",
+    "quantity": 43,
+    "createdAt": "2026-09-29T14:30:30.651Z",
+    "rationale": "I am buying $CORT here because the pre-FDA setup is still intact and the pullback into the rising 50-day moving average (its average price over the last 50 trading days) has held. The trigger fired at $113.71, and the live quote still confirms that price is within 3% of the 50-day at $111.29, which matches the planned accumulation zone for the December 17 PDUFA run-up. The stock is still above the base low at $108.08 and well above the hard stop at $103.90, so the chart has bent but not broken. There is no contradicting company-specific headline in the news feed today, and we are still well outside the last 21 days before the event, so this setup remains valid for a pre-catalyst entry. Entry is $113.71, target $152 where I would take profit into a successful run-up, and stop $103.90 where I would sell to cap the loss if the structure fails, about 8.6% below entry.\n\nSized by risk: 1% of $113,022 × 0.75 (MEDIUM) × 0.5 (binary catalyst) = $424 at risk over a $9.81 stop distance → 43 shares ($4,890).\nOpen risk after this buy: 5.5% of equity (cap 6%); largest: CEG $1,824, ASML $1,267, NVDA $1,004.\nRegime RISK_ON: SPY $765.61, above its 50-day ($762.01), above its 200-day ($718.86) — full size. 67% of the book is above its 50-day."
+  },
+  "analyst": {
+    "id": "cmmmh0wxu000004js7yoyzvlf",
+    "name": "Catalyst Event PM",
+    "setupIds": [
+      "PRE_CATALYST",
+      "BASE_BREAKOUT",
+      "MA_PULLBACK"
+    ],
+    "minConfidence": 50,
+    "minPositionSize": 3000,
+    "maxPositionSize": 8000,
+    "maxPositionTotal": 16000,
+    "maxOpenPositions": 5,
+    "riskPct": 1,
+    "triggers": [
+      {
+        "id": "859afdef-8a57-4a03-8098-6af366dc238c",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "days": 10,
+          "from": "EVENT",
+          "kind": "REVIEW_CADENCE",
+          "side": "BEFORE"
+        },
+        "rationale": "10 days before the event date on the thesis: decide the size into the event — hold, trim, or step aside (DAV-279 ruling).",
+        "cooldownDays": 10
+      },
+      {
+        "id": "18d100c3-6e90-4f23-a876-94c0196a9eaa",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "days": 30,
+          "from": "EVENT",
+          "kind": "REVIEW_CADENCE",
+          "side": "AFTER"
+        },
+        "rationale": "30 days after the event date on the thesis: the catalyst has played; is there a reason to still own it? (DAV-279 ruling)",
+        "cooldownDays": 30
+      },
+      {
+        "id": "b5b2a019-ca09-4595-990c-33f34e4b4657",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "kind": "SEC_EVENT",
+          "items": [
+            "8.01",
+            "7.01"
+          ]
+        },
+        "rationale": "An 'other events' or press-release filing — where FDA outcomes and trial readouts land. Read it before the market finishes pricing it.",
+        "cooldownDays": 1
+      }
+    ]
+  }
+}

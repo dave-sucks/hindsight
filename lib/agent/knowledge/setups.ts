@@ -18,6 +18,7 @@
  */
 
 import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+import { etTradingDayDate } from "@/lib/market-hours";
 import { applySetupOverride, type SetupOverrides } from "./setup-overrides";
 
 // ── The numbers (DAV-245 ruling 1: playbook defaults accepted) ───────────
@@ -82,9 +83,6 @@ export const PEAD_REACTION_VOLUME_RATIO = 2;
 export const PEAD_MAX_RUN_PAST_GAP_PCT = 10;
 /** Pullback: price within this % of the 20/50-day arms the entry. */
 export const PULLBACK_NEAR_SMA_PCT = 2;
-/** Pre-catalyst: the entry window before a dated event, in days. */
-export const CATALYST_WINDOW_DAYS: [number, number] = [14, 70];
-
 /**
  * How close to the event a pre-catalyst entry stops being one (QB ruling
  * 2026-09-26). The run-up trade sells 1–2 weeks before the date, so a buy
@@ -92,6 +90,12 @@ export const CATALYST_WINDOW_DAYS: [number, number] = [14, 70];
  * there is holding the coin flip by accident.
  */
 export const PRE_CATALYST_ENTRY_CUTOFF_DAYS = 21;
+/**
+ * Pre-catalyst: the entry window before a dated event, in days — opens 70
+ * out, closes at the cutoff above. One window (QB ruling on DAV-338,
+ * 2026-09-29): this said 14 while the cutoff stopped every buy at 21.
+ */
+export const CATALYST_WINDOW_DAYS: [number, number] = [PRE_CATALYST_ENTRY_CUTOFF_DAYS, 70];
 /** Insider cluster: buyers within the window. */
 export const INSIDER_MIN_BUYERS = 3;
 export const INSIDER_WINDOW_DAYS = 30;
@@ -299,6 +303,46 @@ export function isBinaryBet(row: BinaryRow, asOf: Date = new Date()): boolean {
   if (!row.catalystDate) return true;
   const eventDayEnds = new Date(row.catalystDate).getTime() + 86_400_000;
   return asOf.getTime() < eventDayEnds;
+}
+
+/**
+ * Where a pre-catalyst stock's event date sits against this setup's buying
+ * window, in one plain line (DAV-338). The trigger run deciding a buy is
+ * told it, and the proposal Dave approves carries it. It is information,
+ * never a gate: a buy that fires outside the window still goes to the run,
+ * which decides.
+ *
+ * The window is the setup's own two numbers, the ones plan-sanity and the
+ * setup's confirmation already use: it opens CATALYST_WINDOW_DAYS[1] days
+ * before the event, and a buy stops being one inside the last
+ * PRE_CATALYST_ENTRY_CUTOFF_DAYS. CORT, 2026-09-29, the FDA date Dec 17:
+ * "79 days to the event date (Dec 17), 9 days before this setup's window
+ * opens (Oct 8)." Its trigger run was told nothing of the kind and proposed
+ * a buy.
+ *
+ * Null for a stock that doesn't live by the window, or has no date.
+ */
+export function preCatalystWindowLine(row: BinaryRow, asOf: Date = new Date()): string | null {
+  if (!isPreCatalystPlay(row) || !row.catalystDate) return null;
+  const DAY = 86_400_000;
+  const event = new Date(row.catalystDate);
+  // Both are 00:00 UTC of a calendar date (the ET trading day for today).
+  const daysOut = Math.round((event.getTime() - etTradingDayDate(asOf).getTime()) / DAY);
+  const opens = CATALYST_WINDOW_DAYS[1];
+  const closes = PRE_CATALYST_ENTRY_CUTOFF_DAYS;
+  const on = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const before = (n: number) => new Date(event.getTime() - n * DAY);
+  const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
+  const rule = `This setup buys ${opens} to ${closes} days before the event.`;
+  const where =
+    daysOut < 0
+      ? `the event date on file (${on(event)}) has passed`
+      : daysOut > opens
+        ? `${days(daysOut)} to the event date (${on(event)}), ${days(daysOut - opens)} before this setup's window opens (${on(before(opens))})`
+        : daysOut <= closes
+          ? `${days(daysOut)} to the event date (${on(event)}), past this setup's window, which closed ${on(before(closes))}`
+          : `${days(daysOut)} to the event date (${on(event)}), inside this setup's window`;
+  return `Buying window: ${where}. ${rule}`;
 }
 
 const trendTemplate =

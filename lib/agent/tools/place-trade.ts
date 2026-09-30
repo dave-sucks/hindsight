@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { isBinaryBet } from "@/lib/agent/knowledge/setups";
+import { isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -528,6 +528,10 @@ export const placeTrade = defineTool({
         if (ind) sizingNotes.push(ind);
       }
       if (accountRisk?.regime) sizingNotes.push(accountRisk.regime.line);
+      // Where the event date sits against a pre-catalyst setup's buying
+      // window (DAV-338): a line the principal reads, never a refusal.
+      const windowLine = sizingThesis ? preCatalystWindowLine(sizingThesis) : null;
+      if (windowLine) sizingNotes.push(windowLine);
 
       // ── Workstream B: DB-first write path ────────────────────────────────
       // Old flow: Alpaca first, then DB. A crash between the two left an
