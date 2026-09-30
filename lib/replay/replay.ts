@@ -234,6 +234,19 @@ export async function replayTool(
         ),
       ),
     }));
+    // Finnhub, the one vendor call every helper shares. Without this a
+    // replay reached finnhub.io for real (load-account-risk's profile2 on
+    // every buy): a live call, a spent slot of the shared key's minute, and
+    // an answer the test never chose. A quote answers from `quotes`; every
+    // other path answers empty, the way a refused vendor does.
+    jest.doMock("@/lib/agent/research-helpers", () => ({
+      ...jest.requireActual("@/lib/agent/research-helpers"),
+      finnhub: jest.fn(async (path: string) => {
+        const symbol = path.startsWith("/quote") ? decodeURIComponent(path.match(/symbol=([^&]+)/)?.[1] ?? "") : null;
+        const quote = symbol ? quoteStub(quotes)(symbol) : null;
+        return quote ? { data: quote } : { data: null, error: "replay: no vendor" };
+      }),
+    }));
     jest.doMock("@/lib/inngest/client", () => ({
       inngest: { createFunction: jest.fn(() => ({})), send: jest.fn(async () => undefined) },
     }));
