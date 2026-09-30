@@ -161,6 +161,14 @@ const INTENT_WORDS: Record<string, string> = {
 const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+/** A hand edit whose only change was taking triggers off the stock. */
+function onlyRemovedTriggers(r: ActivityRow): boolean {
+  const fc = changesOf(r) as Record<string, unknown>;
+  const ops = (fc.triggerOps as { to?: Array<{ op?: string }> } | undefined)?.to;
+  if (!Array.isArray(ops) || ops.length === 0 || !ops.every((o) => o?.op === "remove")) return false;
+  return Object.keys(fc).every((k) => k === "triggerOps" || k === "source");
+}
+
 /** The principal's decision on one line, or null when the line isn't one. */
 export function principalDecision(r: ActivityRow): PrincipalDecision | null {
   if (!isPrincipalRow(r)) return null;
@@ -195,13 +203,18 @@ export function principalDecision(r: ActivityRow): PrincipalDecision | null {
     return { at: r.timestamp, line: `Approved ${what}${qty}`, wantsAnswer: false };
   }
 
-  // A direct edit made by hand.
+  // A direct edit made by hand. One that only removed triggers asks nothing
+  // of the analyst — it is shown, so the rule isn't re-created, but it does
+  // not put the stock on the full list. On 2026-09-30 the 09-28 cleanup of
+  // copied rules would otherwise have pulled ASML, WST and ABT out of the
+  // quiet list with nothing to decide. A level set by hand does want an
+  // answer (CEG's floor $220 → $248: the plan under it has to fit).
   const said = typeof r.rationale === "string" ? oneLine(r.rationale.replace(/^\[USER\]\s*/, "")) : "";
   const summary = oneLine(r.summary ?? "Edited the stock");
   return {
     at: r.timestamp,
     line: said ? `${summary}: "${clip(said, DECISION_CHARS)}"` : summary,
-    wantsAnswer: true,
+    wantsAnswer: !onlyRemovedTriggers(r),
   };
 }
 

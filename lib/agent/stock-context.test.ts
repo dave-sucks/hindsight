@@ -98,6 +98,24 @@ describe("the principal's decisions, as read", () => {
     expect(d.line).toMatch(/^Approved the add/);
   });
 
+  it("a hand edit that only removed a trigger is shown but asks nothing; a level set by hand asks for an answer", () => {
+    const removal = principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!)!;
+    expect(removal.wantsAnswer).toBe(false);
+    for (const r of rows.filter((x) => x.summary?.startsWith("Removed a copied rule from CEG"))) {
+      expect(principalDecision(r)!.wantsAnswer).toBe(false);
+    }
+    // CEG 2026-09-30 16:07Z, as stored.
+    const floorEdit: ActivityRow = {
+      type: "UPDATED",
+      timestamp: new Date("2026-09-30T16:07:01.922Z"),
+      runId: null,
+      summary: "Principal edited CEG trigger — Price 248",
+      rationale: '[USER] Principal set Price = 248 on the "EXIT" trigger directly. Honor it; don\'t re-propose against it unless the thesis materially changes.',
+      fieldChanges: { source: { to: "USER", from: null }, stopLoss: { to: 248, from: 220 }, triggerOps: { to: [{ id: "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e", op: "edit", text: "Stop $220 → $248 (tightened)" }], from: null } },
+    };
+    expect(principalDecision(floorEdit)).toMatchObject({ wantsAnswer: true, line: expect.stringContaining("Price 248") });
+  });
+
   it("a hand edit carries its own words", () => {
     const d = principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!)!;
     expect(d.line).toBe(
