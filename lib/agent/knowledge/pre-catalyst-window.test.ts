@@ -6,7 +6,7 @@
  * setup's own numbers (open 70 days out, no buy inside the last 21) are
  * what plan-sanity and the setup's confirmation already use.
  */
-import { preCatalystWindowLine } from "./setups";
+import { getSetup, preCatalystWindowLine } from "./setups";
 
 const CORT = { setupId: "PRE_CATALYST", horizon: "CATALYST", catalystDate: "2026-12-17T00:00:00.000Z" };
 const at = (iso: string) => new Date(iso);
@@ -39,6 +39,13 @@ describe("preCatalystWindowLine", () => {
 
   it("after the event it says the date has passed", () => {
     expect(preCatalystWindowLine(CORT, at("2026-12-18T14:00:00Z"))).toMatch(/^Buying window: the event date on file \(Dec 17\) has passed\./);
+  });
+
+  it("the setup's own text says the same window as the line — one number (QB ruling, 2026-09-29)", () => {
+    const d8 = getSetup("PRE_CATALYST")!;
+    const text = [...d8.preconditions, d8.entry.text].join(" ");
+    expect(text).toContain("21–70 days out");
+    expect(text).not.toMatch(/\b14\b/);
   });
 
   it("an unnamed CATALYST stock lives by the window too; a named other setup and a stock with no date do not", () => {

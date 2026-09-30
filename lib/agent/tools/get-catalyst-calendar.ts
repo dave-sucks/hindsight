@@ -15,9 +15,10 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { searchCatalystEvents, type CatalystEvent } from "@/lib/market-data/catalyst-calendar";
+import { CATALYST_WINDOW_DAYS } from "@/lib/agent/knowledge/setups";
 
-/** The setup's own window: a dated event is tradeable 14–70 days out. */
-const DEFAULT_WINDOW: [number, number] = [0, 70];
+/** Decisions in the next 70 days — as far out as the pre-catalyst setup's window reaches. */
+const DEFAULT_WINDOW: [number, number] = [0, CATALYST_WINDOW_DAYS[1]];
 
 function describe(e: CatalystEvent): string {
   if (e.datePrecision === "month" && e.eventDate) {
@@ -43,7 +44,7 @@ export const getCatalystCalendar = defineTool({
     "This is the Catalyst seat's calendar, the way get_earnings_calendar is the earnings seat's. " +
     "Defaults to decisions landing in the next 70 days; pass `days` for a different horizon, or `from`/`to` for a specific stretch (\"the catalysts in June\"). " +
     "`scope: \"universe\"` (default) is names you don't already cover — the discovery set; `\"coverage\"` is your watchlist and holdings; `\"all\"` is both. " +
-    "WHAT TO DO WITH A ROW: a dated event 14–70 days out is a WATCH with a catalyst date and a review before it, not a buy today — and never enter the day before. " +
+    `WHAT TO DO WITH A ROW: a dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out is a WATCH with a catalyst date and a review before it, not a buy today — and never enter the day before. ` +
     "Rank a label expansion, sNDA or supplemental approval ABOVE a first approval: a miss on the incremental kind costs 5–8%, while a first-approval binary on a single-asset company gaps straight through any stop. " +
     "Size at half, and if a 50% gap down would cost more than 0.5% of equity the position is too big. The exit is the event itself, or sell the run-up one to two weeks before it. " +
     "Having a date is not enough on its own — the event has to be the kind this seat trades.",

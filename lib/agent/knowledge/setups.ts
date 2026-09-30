@@ -83,9 +83,6 @@ export const PEAD_REACTION_VOLUME_RATIO = 2;
 export const PEAD_MAX_RUN_PAST_GAP_PCT = 10;
 /** Pullback: price within this % of the 20/50-day arms the entry. */
 export const PULLBACK_NEAR_SMA_PCT = 2;
-/** Pre-catalyst: the entry window before a dated event, in days. */
-export const CATALYST_WINDOW_DAYS: [number, number] = [14, 70];
-
 /**
  * How close to the event a pre-catalyst entry stops being one (QB ruling
  * 2026-09-26). The run-up trade sells 1–2 weeks before the date, so a buy
@@ -93,6 +90,12 @@ export const CATALYST_WINDOW_DAYS: [number, number] = [14, 70];
  * there is holding the coin flip by accident.
  */
 export const PRE_CATALYST_ENTRY_CUTOFF_DAYS = 21;
+/**
+ * Pre-catalyst: the entry window before a dated event, in days — opens 70
+ * out, closes at the cutoff above. One window (QB ruling on DAV-338,
+ * 2026-09-29): this said 14 while the cutoff stopped every buy at 21.
+ */
+export const CATALYST_WINDOW_DAYS: [number, number] = [PRE_CATALYST_ENTRY_CUTOFF_DAYS, 70];
 /** Insider cluster: buyers within the window. */
 export const INSIDER_MIN_BUYERS = 3;
 export const INSIDER_WINDOW_DAYS = 30;
