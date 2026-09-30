@@ -873,7 +873,7 @@ export const getTheses = defineTool({
           activityByThesisId.get(t.id) ?? (latest ? [latest] : []);
         contextByThesisId.set(
           t.id,
-          stockContextFor({ ticker: t.ticker, rows: activity, triggers, now }),
+          stockContextFor({ ticker: t.ticker, rows: activity, triggers, now, currentPrice: latestQuote?.price ?? null }),
         );
         needsActionByThesisId.set(
           t.id,

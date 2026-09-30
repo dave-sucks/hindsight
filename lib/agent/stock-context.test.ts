@@ -72,12 +72,24 @@ describe("open fires on CEG", () => {
   });
 });
 
+const DECLINE = "cmu1ex281000104jq0w42txms";
+
 describe("the principal's decisions, as read", () => {
-  it("the 09-14 decline is word for word", () => {
-    const d = principalDecision(byId("cmu1ex281000104jq0w42txms"))!;
+  // CEG 2026-09-30 16:07Z, as stored.
+  const floorEdit: ActivityRow = {
+    type: "UPDATED",
+    timestamp: new Date("2026-09-30T16:07:01.922Z"),
+    runId: null,
+    summary: "Principal edited CEG trigger — Price 248",
+    rationale: '[USER] Principal set Price = 248 on the "EXIT" trigger directly. Honor it; don\'t re-propose against it unless the thesis materially changes.',
+    fieldChanges: { source: { to: "USER", from: null }, stopLoss: { to: 248, from: 220 }, triggerOps: { to: [{ id: "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e", op: "edit", text: "Stop $220 → $248 (tightened)" }], from: null } },
+  };
+
+  it("the 09-14 decline is word for word, uncut, with the price then and now", () => {
+    const d = principalDecision(byId(DECLINE), 273.98, 264.6)!;
     expect(d.wantsAnswer).toBe(true);
-    expect(d.line).toContain("Declined the sale (30 shares)");
-    expect(d.line).toContain("Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.");
+    expect(d.line.startsWith("Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%): \"now the strongest hold of the five")).toBe(true);
+    expect(d.line.endsWith("Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.\"")).toBe(true);
   });
 
   it("a smaller approved size reads as cut, not raised (DOCU 2026-09-30, 162 → 120 shares)", () => {
@@ -89,70 +101,82 @@ describe("the principal's decisions, as read", () => {
       rationale: "User approved the OPEN proposal, resizing 162→120 shares. Alpaca order id 23e155a2-a3f5-4f43-b485-9e4080230f6a.",
       fieldChanges: { proposal: { to: { edited: true, intent: "OPEN", status: "APPROVED", quantity: 120, proposedQuantity: 162 } } },
     };
-    expect(principalDecision(docu)).toMatchObject({ line: "Approved the buy, cut from 162 to 120 shares", wantsAnswer: true });
+    expect(principalDecision(docu, 68.18)).toMatchObject({ line: "Approved the buy, cut from 162 to 120 shares at $68.18", wantsAnswer: true });
   });
 
-  it("a plain approval is shown but asks for nothing", () => {
-    const d = principalDecision(byId(rows.find((r) => r.type === "PROPOSAL_APPROVED")!.id!))!;
-    expect(d).toMatchObject({ wantsAnswer: false });
-    expect(d.line).toMatch(/^Approved the add/);
-  });
-
-  it("a hand edit that only removed a trigger is shown but asks nothing; a level set by hand asks for an answer", () => {
-    const removal = principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!)!;
-    expect(removal.wantsAnswer).toBe(false);
+  it("nothing to decide is not shown: a plain approval, a removal-only hand edit", () => {
+    expect(principalDecision(rows.find((r) => r.type === "PROPOSAL_APPROVED")!)).toBeNull();
+    expect(principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!)).toBeNull();
     for (const r of rows.filter((x) => x.summary?.startsWith("Removed a copied rule from CEG"))) {
-      expect(principalDecision(r)!.wantsAnswer).toBe(false);
+      expect(principalDecision(r)).toBeNull();
     }
-    // CEG 2026-09-30 16:07Z, as stored.
-    const floorEdit: ActivityRow = {
-      type: "UPDATED",
-      timestamp: new Date("2026-09-30T16:07:01.922Z"),
-      runId: null,
-      summary: "Principal edited CEG trigger — Price 248",
-      rationale: '[USER] Principal set Price = 248 on the "EXIT" trigger directly. Honor it; don\'t re-propose against it unless the thesis materially changes.',
-      fieldChanges: { source: { to: "USER", from: null }, stopLoss: { to: 248, from: 220 }, triggerOps: { to: [{ id: "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e", op: "edit", text: "Stop $220 → $248 (tightened)" }], from: null } },
-    };
-    expect(principalDecision(floorEdit)).toMatchObject({ wantsAnswer: true, line: expect.stringContaining("Price 248") });
   });
 
-  it("a hand edit carries its own words", () => {
-    const d = principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!)!;
-    expect(d.line).toBe(
-      'Principal removed CEG trigger — Trailing 8% from high → exit: "Removed the "EXIT" trigger (Trailing 8% from high). Don\'t re-create it unless the thesis materially changes."',
-    );
+  it("a level set by hand shows only the change, not the app's own sentence", () => {
+    const d = principalDecision(floorEdit, 250.1, 249.69)!;
+    expect(d).toMatchObject({ wantsAnswer: true, line: "Set by hand: Stop $220 → $248 (tightened) at $250.10, now $249.69 (−0.2%)" });
+    expect(d.line).not.toContain("Honor it");
   });
 });
 
-describe("the block", () => {
+describe("the block, counted from the analyst's last answer", () => {
   const labelFor = (id: string) =>
     id === FIFTEEN_OFF_HIGH
-      ? { label: "15% off the high → review", rationale: "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level)." }
+      ? { label: "15% off the high → review", rationale: "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business." }
       : null;
+  const block = (at: string, price: number | null = null) =>
+    buildStockContext({ ticker: "CEG", rows: before(at), labelFor, now: new Date(at), currentPrice: price });
 
-  it("09-18: the decline, the last two answers, and all three open fires", () => {
-    const { text, unansweredDecision } = buildStockContext({ ticker: "CEG", rows: before("2026-09-18T12:06:25Z"), labelFor, now: new Date("2026-09-18T12:06:25Z") });
-    expect(text).toContain("WHAT'S BEEN SAID ON $CEG");
-    expect(text).toContain("09-14 11:43  Declined the sale (30 shares)");
-    expect(text).toContain("Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.");
-    expect(text).toContain("09-16 08:07  morning run");
-    expect(text).toContain("Fired since the last answer (09-16 08:07), not yet answered:");
-    expect(text).toContain("raise the floor under real structure");
-    expect(text).toMatch(/2×, first 09-16 09:35, last 09-17 09:35/);
-    // The decline was answered by the 09-14 trigger runs that came after it.
+  it("09-30 morning read: the last look, and the one review nobody answered — nothing else", () => {
+    const { text, unansweredDecision } = block("2026-09-30T12:04:25Z", 261.25);
+    expect(text).toMatch(/^WHAT'S BEEN SAID ON \$CEG\nLast look: morning run, 09-28 08:04 — "CEG's repeated 200-day review/);
+    expect(text).toContain("Since then, not yet answered:\n  15% off the high → review — 09-28 11:20 at $257.63.");
+    expect(text).toContain("If yes, hold and raise the floor under real structure (the 20-day low, the breakout level).");
+    // The cleanup, the answered 09-14 decline, the approval, the bookkeeping: all gone.
+    expect(text).not.toContain("copied rule");
+    expect(text).not.toContain("Hard reject");
+    expect(text).not.toContain("Approved");
+    expect(text).not.toContain("buy price set");
     expect(unansweredDecision).toBeNull();
-    expect(text!.length).toBeLessThanOrEqual(CONTEXT_CHAR_CAP);
+    expect(text!.length).toBeLessThan(700);
   });
 
-  it("a decision no run has answered yet is flagged, and the next run's line answers it", () => {
-    const decline = byId("cmu1ex281000104jq0w42txms");
-    const until = before("2026-09-14T15:43:30Z");
-    expect(buildStockContext({ ticker: "CEG", rows: until, labelFor, now: decline.timestamp }).unansweredDecision?.at).toEqual(decline.timestamp);
-    const after = before("2026-09-14T19:31:00Z");
-    expect(buildStockContext({ ticker: "CEG", rows: after, labelFor, now: new Date("2026-09-14T19:31:00Z") }).unansweredDecision).toBeNull();
+  it("09-18 morning read: the 09-16 answer and all three fires since it, collapsed", () => {
+    const { text } = block("2026-09-18T12:06:25Z", 262.73);
+    expect(text).toContain("Last look: morning run, 09-16 08:07");
+    expect(text).toContain("raise the floor under real structure");
+    expect(text).toMatch(/fired 2×, 09-16 09:35 to 09-17 09:35, last at \$267\.02/);
+    expect(text).not.toContain("Hard reject");
   });
 
-  it("nothing said → no block", () => {
+  it("the 09-14 15:30 trigger run gets the decline uncut, with the price then and now; the next answer closes it", () => {
+    const at1530 = block("2026-09-14T19:30:20Z", 264.6);
+    expect(at1530.text).toContain("The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%)");
+    expect(at1530.text).toContain("Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.");
+    expect(at1530.unansweredDecision?.at).toEqual(byId(DECLINE).timestamp);
+    const at1555 = block("2026-09-14T19:55:13Z", 264.99);
+    expect(at1555.text).not.toContain("Hard reject");
+    expect(at1555.unansweredDecision).toBeNull();
+  });
+
+  it("past the cap, the alerts that don't fit fold into a count; the principal's words are never cut", () => {
+    const now = new Date("2026-09-20T12:00:00Z");
+    const answer: ActivityRow = { type: "UPDATED", timestamp: new Date("2026-09-19T12:00:00Z"), runId: "r1", runMode: "MORNING_PLAN", rationale: "Hold." };
+    const long = "x".repeat(900);
+    const decline: ActivityRow = { type: "PROPOSAL_REJECTED", timestamp: new Date("2026-09-19T15:00:00Z"), runId: null, fieldChanges: { proposal: { to: { intent: "CLOSE", userMessage: long } } } };
+    const fires: ActivityRow[] = Array.from({ length: 8 }, (_, i) => ({ type: "TRIGGER_FIRED", triggerId: `t${i}`, timestamp: new Date(`2026-09-19T16:0${i}:00Z`), runId: null, summary: `alert ${i}` }));
+    const labels = (id: string) => ({ label: `alert ${id}`, rationale: "y".repeat(200) });
+    const { text } = buildStockContext({ ticker: "X", rows: [answer, decline, ...fires], labelFor: labels, now });
+    expect(text).toContain(long);
+    expect(text).toMatch(/ and \d more fired since: /);
+    expect(text!.length - long.length).toBeLessThanOrEqual(CONTEXT_CHAR_CAP);
+  });
+
+  it("nothing on record → no block; an answer with nothing since → the last look only", () => {
     expect(buildStockContext({ ticker: "X", rows: [], labelFor, now: new Date() }).text).toBeNull();
+    const only: ActivityRow = { type: "REVIEWED", timestamp: new Date("2026-09-28T12:00:00Z"), runId: "r", runMode: "MORNING_PLAN", rationale: "Nothing changed. Hold." };
+    expect(buildStockContext({ ticker: "X", rows: [only], labelFor, now: new Date() }).text).toBe(
+      'WHAT\'S BEEN SAID ON $X\nLast look: morning run, 09-28 08:00 — "Nothing changed. Hold."\nNothing since.\nFull history: get_theses(tickers: ["X"], include_history: true)',
+    );
   });
 });

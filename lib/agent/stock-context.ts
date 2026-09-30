@@ -1,27 +1,32 @@
 /**
- * stock-context.ts — what has been said about one stock, the same for every
- * agent that decides on it (docs/plans/AGENT_CONTEXT.md §3.2, §3.3).
+ * stock-context.ts — what an agent is handed about one stock before it
+ * decides: what the principal wants now, what the analyst concluded last
+ * time, and what has happened since (docs/plans/AGENT_CONTEXT.md §3.2, §3.3).
  *
- * Two things were lost before this existed, and CEG lost both in September:
+ * Everything counts from the analyst's LAST ANSWER — the newest line a run
+ * wrote on the stock:
  *
- *  - The principal's decision reached an agent only while it was the newest
- *    Activity line. CEG's 09-14 decline ("Hard reject. If anything, today is
- *    a setup for the Secular Compounder to add, not exit.") was the newest
- *    line for four hours; no morning run from 09-16 to 09-30 saw it.
- *  - A fired trigger counted as answered once ANY line landed after it —
- *    a later fire, the principal's edit, the app's bookkeeping. CEG's "15% off
- *    the high" review fired twice and no run was ever handed it: on 09-16 a
- *    later "below the 200-day" fire took its place, and on 09-28 the
- *    principal's cleanup of copied rules, 36 minutes later, closed it.
+ *  - The last answer itself, one line.
+ *  - The principal's decisions after it, word for word, with the price then
+ *    and now. Once an agent answers a decision it is done; a wish meant to
+ *    stand belongs in a note.
+ *  - Every trigger fired after it, collapsed, with its rule.
  *
- * So: a fire stays open until an AGENT answers it (a line a run wrote), and
- * the principal's decisions of the last 30 days travel with the stock,
- * word for word. One pure module, so get_theses, the trigger run,
- * complete_run and the thesis sheet all read the same rule.
+ * Nothing else. Rendered against CEG's rows for 09-30, the first version
+ * of this block carried ~650 tokens: the principal's 09-14 "Hard reject… add,
+ * not exit" at $250 (anchoring a hold on a loser), two copies of the run's
+ * own "hold", a cleanup of copied rules and bookkeeping lines. The one line
+ * that run needed was the 15%-off-the-high review nobody had answered.
  *
- * Pure and dependency-free on purpose: needs-action.ts imports it, and the
- * trigger labels come in from the caller (describePredicate lives with the
- * evaluator, which reaches node:crypto).
+ * A fire stays open until an agent answers it — a later fire, the
+ * principal's edit or the app's bookkeeping does not close it. CEG's "15% off
+ * the high" review fired twice and no run was handed it: on 09-16 a later
+ * fire took its place, and on 09-28 the principal's cleanup 36 minutes later
+ * counted as its answer. get_theses, the trigger run, complete_run and the
+ * thesis sheet all read the same rule from here.
+ *
+ * Pure: needs-action.ts imports it, and the trigger labels come in from the
+ * caller (describePredicate lives with the evaluator).
  */
 
 /** One Activity line, as the callers load it. Any order. */
@@ -35,7 +40,7 @@ export interface ActivityRow {
   fieldChanges?: unknown;
   /** Set when a run wrote the line; null for the principal and the app's bookkeeping. */
   runId?: string | null;
-  /** The writing run's mode, when the caller joined it. Labels an answer. */
+  /** The writing run's mode, when the caller joined it. Labels the last answer. */
   runMode?: string | null;
   priceAtTime?: number | null;
 }
@@ -52,14 +57,14 @@ export interface OpenFire {
   summary: string | null;
 }
 
-/** One of the principal's decisions, rendered for an agent. */
+/** One of the principal's decisions, as an agent reads it. */
 export interface PrincipalDecision {
   at: Date;
   line: string;
   /**
-   * A decision that asks for an answer: a decline with a written reason, a
-   * resized approval, a direct edit. Unanswered, it puts the stock on the
-   * morning run's full list once. A plain approval or a bare decline doesn't.
+   * A decline with a written reason, a resized approval, a level set by
+   * hand: unanswered, it puts the stock on the morning run's full list. A
+   * bare decline is shown but doesn't.
    */
   wantsAnswer: boolean;
 }
@@ -70,26 +75,22 @@ export interface TriggerLabel {
 }
 
 export interface StockContext {
-  /** The block, ready to print; null when there is nothing to say. */
+  /** The block, ready to print; null when there is nothing on record. */
   text: string | null;
   openFires: OpenFire[];
-  /** The newest decision that wants an answer and has none yet. */
+  /** The newest decision since the last answer that wants an answer. */
   unansweredDecision: PrincipalDecision | null;
 }
 
-const DAY_MS = 86_400_000;
-/** How far back the principal's decisions travel with the stock. */
-export const DECISION_WINDOW_DAYS = 30;
-const MAX_DECISIONS = 6;
-const DECISION_CHARS = 1_000;
-const ANSWER_CHARS = 300;
-const MAX_ANSWERS = 2;
-const MAX_OTHER_LINES = 5;
-/** ~1,000 tokens. Over it, other lines go first, then old decisions, then the second answer. */
-export const CONTEXT_CHAR_CAP = 4_000;
+/** ~400 tokens. Past it, the alerts that don't fit fold into a count. Decisions are never cut. */
+export const CONTEXT_CHAR_CAP = 1_600;
+/** Whole sentences up to this; a single longer sentence is cut at a word. */
+const ANSWER_CHARS = 220;
+const RULE_CHARS = 220;
 
 type Changes = {
   source?: { to?: unknown };
+  triggerOps?: { to?: Array<{ op?: string; text?: string }> };
   proposal?: {
     to?: {
       intent?: string;
@@ -109,7 +110,7 @@ const newestFirst = (rows: ActivityRow[]): ActivityRow[] =>
 
 /** A line the principal wrote: a proposal decision, or an edit made by hand. */
 export function isPrincipalRow(r: ActivityRow): boolean {
-  if (r.type === "PROPOSAL_REJECTED" || r.type === "PROPOSAL_APPROVED") return true;
+  if (r.type.startsWith("PROPOSAL_")) return true;
   if (r.runId) return false;
   if (typeof r.rationale === "string" && r.rationale.startsWith("[USER]")) return true;
   return changesOf(r).source?.to === "USER";
@@ -118,12 +119,12 @@ export function isPrincipalRow(r: ActivityRow): boolean {
 /**
  * A line an agent wrote about the stock: a review, an update, a status move,
  * a close. Not a fire, not a proposal decision, not the principal's edit, not
- * the app's own bookkeeping (a buy price set to what was paid, a status
- * change written by a fill — those carry no run).
+ * the app's bookkeeping (a buy price set to what was paid, a status change
+ * written by a fill — those carry no run).
  */
 export function isAgentAnswer(r: ActivityRow): boolean {
   if (!r.runId) return false;
-  if (r.type === "TRIGGER_FIRED" || r.type.startsWith("PROPOSAL_")) return false;
+  if (r.type === "TRIGGER_FIRED") return false;
   return !isPrincipalRow(r);
 }
 
@@ -159,63 +160,83 @@ const INTENT_WORDS: Record<string, string> = {
 };
 
 const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
-const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const money = (n: number): string => `$${n.toFixed(2)}`;
 
-/** A hand edit whose only change was taking triggers off the stock. */
-function onlyRemovedTriggers(r: ActivityRow): boolean {
-  const fc = changesOf(r) as Record<string, unknown>;
-  const ops = (fc.triggerOps as { to?: Array<{ op?: string }> } | undefined)?.to;
-  if (!Array.isArray(ops) || ops.length === 0 || !ops.every((o) => o?.op === "remove")) return false;
-  return Object.keys(fc).every((k) => k === "triggerOps" || k === "source");
+/** Cut at a word boundary, with an ellipsis. */
+function clip(s: string, n: number): string {
+  if (s.length <= n) return s;
+  const cut = s.slice(0, n - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${space > n * 0.6 ? cut.slice(0, space) : cut}…`;
 }
 
-/** The principal's decision on one line, or null when the line isn't one. */
-export function principalDecision(r: ActivityRow): PrincipalDecision | null {
+/** Whole sentences up to `n` characters; one sentence longer than that is cut at a word. */
+function sentencesUpTo(text: string, n: number): string {
+  const parts = oneLine(text).split(/(?<=[.!?])\s+/);
+  let out = "";
+  for (const p of parts) {
+    const next = out ? `${out} ${p}` : p;
+    if (next.length > n) break;
+    out = next;
+  }
+  return out || clip(parts[0] ?? "", n);
+}
+
+/** "at $273.98, now $250.00 (−8.8%)" — as much of it as the prices allow. */
+function priceThenNow(then: number | null, now: number | null | undefined): string {
+  if (then == null) return "";
+  if (now == null || now <= 0) return ` at ${money(then)}`;
+  const pct = ((now - then) / then) * 100;
+  const sign = pct >= 0 ? "+" : "−";
+  return ` at ${money(then)}, now ${money(now)} (${sign}${Math.abs(pct).toFixed(1)}%)`;
+}
+
+/**
+ * The principal's decision on one line, or null when there is nothing to
+ * decide: a plain approval (the position shows it), a hand edit that only
+ * removed triggers, an expiry, anything that isn't the principal's.
+ * `priceThen` is the price on the stock when it was made.
+ */
+export function principalDecision(
+  r: ActivityRow,
+  priceThen: number | null = null,
+  priceNow: number | null = null,
+): PrincipalDecision | null {
   if (!isPrincipalRow(r)) return null;
+  const at = priceThenNow(priceThen, priceNow);
   const to = changesOf(r).proposal?.to;
   const what = (to?.intent && INTENT_WORDS[to.intent]) ?? "the proposal";
+  const qty = to?.quantity != null ? ` (${to.quantity} shares)` : "";
 
   if (r.type === "PROPOSAL_REJECTED") {
     const raw = to?.userMessage ?? r.rationale ?? "";
     // A no-message decline stores a "[REJECTED:USER] …" sentinel.
     const message = raw && !raw.startsWith("[REJECTED:USER]") ? oneLine(raw) : null;
-    const qty = to?.quantity != null ? ` (${to.quantity} shares)` : "";
-    return {
-      at: r.timestamp,
-      line: message
-        ? `Declined ${what}${qty}: "${clip(message, DECISION_CHARS)}"`
-        : `Declined ${what}${qty}, with no reason given`,
-      wantsAnswer: message != null,
-    };
+    return message
+      ? { at: r.timestamp, line: `Declined ${what}${qty}${at}: "${message}"`, wantsAnswer: true }
+      : { at: r.timestamp, line: `Declined ${what}${qty}${at}, no reason given`, wantsAnswer: false };
   }
 
   if (r.type === "PROPOSAL_APPROVED") {
-    if (to?.edited && to.quantity != null && to.proposedQuantity != null) {
-      const way = to.quantity < to.proposedQuantity ? "cut" : "raised";
-      return {
-        at: r.timestamp,
-        line: `Approved ${what}, ${way} from ${to.proposedQuantity} to ${to.quantity} shares`,
-        wantsAnswer: true,
-      };
-    }
-    if (to?.edited) return { at: r.timestamp, line: `Approved ${what} with edits`, wantsAnswer: true };
-    const qty = to?.quantity != null ? ` (${to.quantity} shares)` : "";
-    return { at: r.timestamp, line: `Approved ${what}${qty}`, wantsAnswer: false };
+    if (!to?.edited) return null;
+    const resized =
+      to.quantity != null && to.proposedQuantity != null
+        ? `, ${to.quantity < to.proposedQuantity ? "cut" : "raised"} from ${to.proposedQuantity} to ${to.quantity} shares`
+        : " with edits";
+    return { at: r.timestamp, line: `Approved ${what}${resized}${at}`, wantsAnswer: true };
   }
 
-  // A direct edit made by hand. One that only removed triggers asks nothing
-  // of the analyst — it is shown, so the rule isn't re-created, but it does
-  // not put the stock on the full list. On 2026-09-30 the 09-28 cleanup of
-  // copied rules would otherwise have pulled ASML, WST and ABT out of the
-  // quiet list with nothing to decide. A level set by hand does want an
-  // answer (CEG's floor $220 → $248: the plan under it has to fit).
-  const said = typeof r.rationale === "string" ? oneLine(r.rationale.replace(/^\[USER\]\s*/, "")) : "";
-  const summary = oneLine(r.summary ?? "Edited the stock");
-  return {
-    at: r.timestamp,
-    line: said ? `${summary}: "${clip(said, DECISION_CHARS)}"` : summary,
-    wantsAnswer: !onlyRemovedTriggers(r),
-  };
+  if (r.type.startsWith("PROPOSAL_")) return null; // expired: not a decision
+
+  // A hand edit. Only the change is shown — the rationale on these lines is
+  // the app's own sentence, not the principal's words. One that only removed
+  // triggers asks nothing (the 09-28 cleanup of copied rules).
+  const ops = changesOf(r).triggerOps?.to ?? [];
+  const kept = ops.filter((o) => o?.op !== "remove");
+  if (ops.length > 0 && kept.length === 0) return null;
+  const change = kept.map((o) => o.text).filter((t): t is string => !!t).join("; ") || oneLine(r.summary ?? "");
+  if (!change) return null;
+  return { at: r.timestamp, line: `Set by hand: ${change}${at}`, wantsAnswer: true };
 }
 
 const MODE_WORDS: Record<string, string> = {
@@ -241,13 +262,15 @@ export function etStamp(d: Date): string {
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
-const priceText = (n: number): string => `$${n.toFixed(2)}`;
+/** The opening sentence or two of an answer, without the belief footnote. */
+function answerLine(rationale: string): string {
+  return sentencesUpTo(rationale.split(/\n\s*\n\s*\[/)[0], ANSWER_CHARS);
+}
 
 /**
- * The block every agent reads first on a stock: the principal's decisions,
- * the last two answers, what has fired since, the other recent lines, and
- * where the rest is. Plain dated lines, never raw rows — a raw history line
- * costs ~1,100 characters of ids and JSON.
+ * The block every agent reads first on a stock. Three things, all counted
+ * from the analyst's last answer: that answer, the principal's decisions
+ * since, and the triggers fired since. Everything else is one call away.
  */
 export function buildStockContext(args: {
   ticker: string;
@@ -255,104 +278,79 @@ export function buildStockContext(args: {
   /** The stock's resolved triggers, by id: what the fire was, and its rule. */
   labelFor: (triggerId: string) => TriggerLabel | null;
   now: Date;
+  /** The live price, for "now" beside the principal's price then. */
+  currentPrice?: number | null;
 }): StockContext {
   const rows = newestFirst(args.rows);
-  const since = args.now.getTime() - DECISION_WINDOW_DAYS * DAY_MS;
   const lastAnswer = rows.find(isAgentAnswer) ?? null;
+  const since = lastAnswer ? rows.slice(0, rows.indexOf(lastAnswer)) : rows;
   const fires = openFires(rows);
 
-  const decisions: PrincipalDecision[] = [];
-  for (const r of rows) {
-    if (r.timestamp.getTime() < since) break;
-    const d = principalDecision(r);
-    if (d) decisions.push(d);
-  }
-  const unansweredDecision =
-    decisions.find(
-      (d) => d.wantsAnswer && (!lastAnswer || d.at.getTime() > lastAnswer.timestamp.getTime()),
-    ) ?? null;
+  // The price on the stock when a decision was made: its own line's, or the
+  // newest line before it that recorded one.
+  const priceBefore = (r: ActivityRow): number | null => {
+    if (typeof r.priceAtTime === "number") return r.priceAtTime;
+    const older = rows.slice(rows.indexOf(r) + 1).find((x) => typeof x.priceAtTime === "number");
+    return older?.priceAtTime ?? null;
+  };
+  const decisions = since
+    .map((r) => principalDecision(r, priceBefore(r), args.currentPrice ?? null))
+    .filter((d): d is PrincipalDecision => d != null);
+  const unansweredDecision = decisions.find((d) => d.wantsAnswer) ?? null;
 
-  const answers = rows
-    .filter((r) => isAgentAnswer(r) && typeof r.rationale === "string" && r.rationale.trim())
-    .slice(0, MAX_ANSWERS);
-  const answered = new Set(answers);
-
-  const others = rows.filter(
-    (r) =>
-      r.timestamp.getTime() >= since &&
-      r.type !== "TRIGGER_FIRED" &&
-      !isPrincipalRow(r) &&
-      !answered.has(r) &&
-      !isAgentAnswer(r) &&
-      (r.summary ?? "").trim() !== "",
-  );
-
-  if (decisions.length === 0 && answers.length === 0 && fires.length === 0 && others.length === 0) {
+  if (!lastAnswer && decisions.length === 0 && fires.length === 0) {
     return { text: null, openFires: fires, unansweredDecision };
   }
 
   const T = args.ticker.toUpperCase();
-  const decisionLines = decisions.map((d) => `  ${etStamp(d.at)}  ${d.line}`);
-  const answerLines = answers.map(
-    (r) =>
-      `  ${etStamp(r.timestamp)}  ${(r.runMode && MODE_WORDS[r.runMode]) ?? "a run"} — "${clip(oneLine(r.rationale ?? ""), ANSWER_CHARS)}"`,
-  );
-  const fireLines = fires.map((f) => {
+  const head: string[] = [`WHAT'S BEEN SAID ON $${T}`];
+  if (lastAnswer) {
+    const who = (lastAnswer.runMode && MODE_WORDS[lastAnswer.runMode]) ?? "a run";
+    const said = lastAnswer.rationale?.trim() ? ` — "${answerLine(lastAnswer.rationale)}"` : "";
+    head.push(`Last look: ${who}, ${etStamp(lastAnswer.timestamp)}${said}`);
+  } else {
+    head.push("Last look: none on record.");
+  }
+
+  const tail = `Full history: get_theses(tickers: ["${T}"], include_history: true)`;
+  if (decisions.length === 0 && fires.length === 0) {
+    return { text: [...head, "Nothing since.", tail].join("\n"), openFires: fires, unansweredDecision };
+  }
+
+  const body: string[] = ["Since then, not yet answered:"];
+  // The principal's words first, uncut while unanswered.
+  for (const d of decisions) body.push(`  The principal, ${etStamp(d.at)}: ${d.line}`);
+
+  const fireLine = (f: OpenFire): string => {
     const l = args.labelFor(f.triggerId);
-    const label = l?.label ?? oneLine(f.summary ?? "a trigger that has since been removed");
+    const label = l?.label ?? oneLine(f.summary ?? "a trigger since removed");
     const when =
       f.count === 1
-        ? `once, ${etStamp(f.lastAt)}`
-        : `${f.count}×, first ${etStamp(f.firstAt)}, last ${etStamp(f.lastAt)}`;
-    const at = f.lastPrice != null ? ` at ${priceText(f.lastPrice)}` : "";
-    const rule = l?.rationale ? ` The rule: "${oneLine(l.rationale)}"` : "";
+        ? etStamp(f.lastAt)
+        : `fired ${f.count}×, ${etStamp(f.firstAt)} to ${etStamp(f.lastAt)}, last`;
+    const at = f.lastPrice != null ? ` at ${money(f.lastPrice)}` : "";
+    const rule = l?.rationale ? ` The rule: "${sentencesUpTo(l.rationale, RULE_CHARS)}"` : "";
     return `  ${label} — ${when}${at}.${rule}`;
-  });
-  const otherLines = others.slice(0, MAX_OTHER_LINES).map((r) => `${etStamp(r.timestamp)} ${oneLine(r.summary ?? "")}`);
-
-  const render = (opts: { decisionsShown: number; answersShown: number; withOthers: boolean }): string => {
-    const out: string[] = [`WHAT'S BEEN SAID ON $${T} — read this before the numbers`];
-    if (decisions.length) {
-      out.push(`The principal — decisions in the last ${DECISION_WINDOW_DAYS} days, word for word:`);
-      out.push(...decisionLines.slice(0, opts.decisionsShown));
-      const hidden = decisions.length - opts.decisionsShown;
-      if (hidden > 0) out.push(`  and ${hidden} earlier`);
-    }
-    if (answers.length && opts.answersShown > 0) {
-      out.push(answers.length === 1 || opts.answersShown === 1 ? "Last answer:" : "Last two answers:");
-      out.push(...answerLines.slice(0, opts.answersShown));
-    }
-    if (fires.length) {
-      out.push(
-        lastAnswer
-          ? `Fired since the last answer (${etStamp(lastAnswer.timestamp)}), not yet answered:`
-          : "Fired, not yet answered by any run:",
-      );
-      out.push(...fireLines);
-    }
-    if (opts.withOthers && otherLines.length) out.push(`Other lines: ${otherLines.join(" · ")}`);
-    out.push(`Full history: get_theses(tickers: ["${T}"], include_history: true)`);
-    return out.join("\n");
   };
+  const shortLabel = (f: OpenFire): string =>
+    args.labelFor(f.triggerId)?.label ?? oneLine(f.summary ?? "a trigger since removed");
 
-  // Over the cap, drop in order: other lines, the oldest decisions (counted,
-  // not shown), then the second answer. Fires are never dropped.
-  let decisionsShown = Math.min(decisions.length, MAX_DECISIONS);
-  let answersShown = answers.length;
-  let withOthers = true;
-  let text = render({ decisionsShown, answersShown, withOthers });
-  if (text.length > CONTEXT_CHAR_CAP) {
-    withOthers = false;
-    text = render({ decisionsShown, answersShown, withOthers });
+  // Past the cap, the alerts that don't fit fold into a count.
+  const lines = [...head, ...body];
+  let used = [...lines, tail].join("\n").length;
+  const folded: OpenFire[] = [];
+  for (const f of fires) {
+    const line = fireLine(f);
+    if (folded.length === 0 && used + line.length + 1 <= CONTEXT_CHAR_CAP) {
+      lines.push(line);
+      used += line.length + 1;
+    } else {
+      folded.push(f);
+    }
   }
-  while (text.length > CONTEXT_CHAR_CAP && decisionsShown > 1) {
-    decisionsShown -= 1;
-    text = render({ decisionsShown, answersShown, withOthers });
+  if (folded.length) {
+    lines.push(`  and ${folded.length} more fired since: ${folded.map((f) => `${shortLabel(f)}${f.count > 1 ? ` (${f.count}×)` : ""}`).join("; ")}.`);
   }
-  if (text.length > CONTEXT_CHAR_CAP && answersShown > 1) {
-    answersShown = 1;
-    text = render({ decisionsShown, answersShown, withOthers });
-  }
-
-  return { text, openFires: fires, unansweredDecision };
+  lines.push(tail);
+  return { text: lines.join("\n"), openFires: fires, unansweredDecision };
 }

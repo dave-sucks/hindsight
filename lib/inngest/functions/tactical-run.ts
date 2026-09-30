@@ -311,6 +311,9 @@ export const tacticalRun = inngest.createFunction(
             rows: thesis.updates.map((u) => ({ ...u, runMode: u.run?.mode ?? null })),
             triggers: ladder,
             now: new Date(),
+            // The price it fired at stands in for "now" beside the
+            // principal's price then; the run pulls a live quote itself.
+            currentPrice: fired.firedPrice ?? null,
           }).text,
         },
         trigger,

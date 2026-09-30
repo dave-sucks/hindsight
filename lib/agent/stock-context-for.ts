@@ -15,6 +15,8 @@ export function stockContextFor(args: {
   /** The resolved ladder — the stock's own triggers and the ones it inherits. */
   triggers: Trigger[];
   now: Date;
+  /** The live price, for "now" beside the principal's price then. */
+  currentPrice?: number | null;
 }): StockContext {
   return buildStockContext({
     ticker: args.ticker,
@@ -26,5 +28,6 @@ export function stockContextFor(args: {
         : null;
     },
     now: args.now,
+    currentPrice: args.currentPrice ?? null,
   });
 }

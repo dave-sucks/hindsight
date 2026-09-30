@@ -1,5 +1,5 @@
 {
- "_about": "CEG, Secular Compounder, held. `updates` is every Activity line on CEG from 2026-08-25 to 16:06:59Z on 09-30 (the minute before the principal moved the floor to $248), with each line's run mode joined in, as stored. `thesis0918` is the stored row exactly as the 09-18 morning run's get_theses call returned it (run cmu6wxadp000x04l49iqh16hh, created 12:06:18Z); its live price then was $262.73. The 09-30 morning run (cmuo24ye7002d04l7qecgwy84, created 12:04:18Z) saw CEG at $261.25 and filed it as quiet. The 09-14 15:55 trigger run (cmu1nwxh1000c04l5txifij95) loaded its lines at 19:55:13Z. Built read-only on 2026-09-30.",
+ "_about": "CEG, Secular Compounder, held. `updates` is every Activity line on CEG from 2026-08-25 to 16:06:59Z on 09-30 (the minute before the principal moved the floor to $248), with each line's run mode joined in, as stored. `thesis0918` is the stored row exactly as the 09-18 morning run's get_theses call returned it (run cmu6wxadp000x04l49iqh16hh, created 12:06:18Z); its live price then was $262.73. The 09-30 morning run (cmuo24ye7002d04l7qecgwy84, created 12:04:18Z) saw CEG at $261.25 and filed it as quiet. The 09-14 trigger runs loaded their lines at 19:30:26Z (cmu1n11rg000004l1x7fjzi8t, the 'down 7%' add, fired at $264.60) and 19:55:13Z (cmu1nwxh1000c04l5txifij95). Built read-only on 2026-09-30.",
  "runs": {
   "morning0918": {
    "id": "cmu6wxadp000x04l49iqh16hh",
@@ -14,6 +14,10 @@
   "trigger0914_1555": {
    "id": "cmu1nwxh1000c04l5txifij95",
    "loadedAt": "2026-09-14T19:55:13Z"
+  },
+  "trigger0914_1530": {
+   "id": "cmu1n11rg000004l1x7fjzi8t",
+   "loadedAt": "2026-09-14T19:30:26Z"
   }
  },
  "thesis0918": {
