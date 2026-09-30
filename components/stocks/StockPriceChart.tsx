@@ -13,6 +13,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { cn } from '@/lib/utils';
+import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
 import {
   formatDateLabel,
   formatDateTimeLabel,
@@ -61,6 +62,13 @@ type Props = {
   intradayCandles?: StockCandle[];
   /** True while the parent is (re)fetching the intraday series. */
   intradayLoading?: boolean;
+  /**
+   * The prior session's close — the 1D line is colored green above it and
+   * red below it, so the chart agrees with the header's day change. Without
+   * it the 1D line falls back to its first visible point, like every other
+   * range.
+   */
+  priorClose?: number | null;
   /**
    * Hourly bars over the last ~month — when present, the 1W and 1M tabs render
    * these (dense, Perplexity-like) instead of slicing ~3–22 daily closes. Each
@@ -137,9 +145,12 @@ function priceDomain(closes: number[]): [number, number] {
 // The 1D chart pins its x-axis to a clock window CENTERED on the regular
 // session: 2.5h of off-hours on each side (7:00 AM → 6:30 PM ET, with RTH
 // 9:30–16:00 dead-center), so the session sits balanced with equal dead space
-// left and right rather than lopsided. The pre-market + after-hours regions
-// render as a faint dot texture even with no data. Clock times are anchored to
-// the session date's actual ET offset (DST-safe, no tz lib) from the first bar.
+// left and right rather than lopsided. The window is INTRADAY_WINDOW_ET — the
+// server trims the bars to the same minutes, so every bar the chart holds is
+// drawn and the price scale is sized from what is visible. The pre-market +
+// after-hours regions render as a faint dot texture, with the tape's
+// off-hours prints drawn over it. Clock times are anchored to the session
+// date's actual ET offset (DST-safe, no tz lib) from the first bar.
 function intradaySessionGeometry(firstISO: string): {
   domain: [number, number];
   ticks: number[];
@@ -165,8 +176,9 @@ function intradaySessionGeometry(firstISO: string): {
     Date.UTC(+o.year, +o.month - 1, +o.day, h, m, 0) + offsetMs;
   const ticks: number[] = [];
   for (let h = 8; h <= 18; h += 2) ticks.push(clock(h));
+  const minutes = (m: number) => clock(Math.floor(m / 60), m % 60);
   return {
-    domain: [clock(7), clock(18, 30)],
+    domain: [minutes(INTRADAY_WINDOW_ET.start), minutes(INTRADAY_WINDOW_ET.end)],
     ticks,
     rthStart: clock(9, 30),
     rthEnd: clock(16),
@@ -186,6 +198,7 @@ export function StockPriceChart({
   showIntraday = false,
   intradayCandles,
   intradayLoading = false,
+  priorClose,
   hourlyCandles,
   onRangeChange,
   tradeSpan,
@@ -300,10 +313,14 @@ export function StockPriceChart({
     );
   }
 
-  // Color split: the line is green above / red below the graph's STARTING
-  // price (first visible point), switching mid-line. baselineOffset is where
-  // that price sits in the vertical (0 = top/high, 1 = bottom/low).
-  const baseline = hasBody ? data[0].close : 0;
+  // Color split: the line is green above / red below its baseline, switching
+  // mid-line. On 1D the baseline is the prior session's close (what the
+  // header's day change is measured from); on every other range it is the
+  // graph's starting price, the first visible point. baselineOffset is where
+  // the baseline sits in the vertical (0 = top/high, 1 = bottom/low); a
+  // baseline outside the visible range pins to an edge, so a gap day reads
+  // all green or all red, as it should.
+  const baseline = !hasBody ? 0 : isIntraday && priorClose != null && priorClose > 0 ? priorClose : data[0].close;
   const lastClose = hasBody ? data[data.length - 1].close : 0;
   const [yLo, yHi] = yDomain ?? [baseline - 1, baseline + 1];
   const baselineOffset = Math.min(

@@ -7,10 +7,15 @@
  * 2026-09-29 SMMT's tape ran 19.09 / 16.15 for the session; IEX showed 384
  * of 391 minutes and a high of 19.07, and nothing before 9:30 or after 4:00.
  *
- * Both feeds' one-minute bars for that day were pulled the same evening
- * (7:00 AM–6:30 PM ET, the chart's clock window). The vendor is doubled to
- * answer each feed with its own bars, so the test reads what the chart asks
- * for. On main it asks for IEX, and fails.
+ * Both feeds' one-minute bars for that day were pulled the same evening,
+ * 4:00 AM to 8:00 PM ET. The vendor is doubled to answer each feed with its
+ * own bars, so the test reads what the chart asks for. On main it asks for
+ * IEX, and fails.
+ *
+ * The chart draws 7:00 AM to 6:30 PM and sizes its price scale from every
+ * bar it holds, so the bars are trimmed to that window here: SMMT's 4:00 AM
+ * print at $19.81 sat above the whole visible day ($16.15–$19.09) and
+ * stretched the scale to a point nobody could see (the QB's review of #741).
  */
 import fixture from "@/lib/market-data/__fixtures__/alpaca-smmt-1min-2026-09-29.json";
 
@@ -76,6 +81,15 @@ describe("SMMT's 1D chart, 2026-09-29", () => {
     expect(etMinutes(pre[0].date)).toBe(7 * 60);
     expect(etMinutes(post[post.length - 1].date)).toBe(18 * 60 + 28);
     expect(bars.every((b) => b.date.startsWith("2026-09-29"))).toBe(true);
+  });
+
+  it("only what the chart draws: nothing before 7:00 or after 6:30, so the 4:00 AM $19.81 print never sizes the scale", async () => {
+    const { getIntradayCandles } = await import("./finnhub.actions");
+    const bars = await getIntradayCandles("SMMT");
+    expect(bars.every((b) => etMinutes(b.date) >= 7 * 60 && etMinutes(b.date) <= 18 * 60 + 30)).toBe(true);
+    expect(Math.max(...bars.map((b) => b.high))).toBe(19.09);
+    // The tape had it; the chart never sees it.
+    expect(Math.max(...toBars(fixture.sip).map((b) => b.h))).toBe(19.81);
   });
 
   it("the free feed the chart used to read: seven minutes short and two cents under the real high", async () => {

@@ -3,6 +3,7 @@
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { getLiveQuote } from '@/lib/market-data/live-quote';
 import { MARKET_DATA_FEED } from '@/lib/alpaca';
+import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
 import { cache } from 'react';
 
 // ─── Local helpers (previously imported from utils) ───────────────────────────
@@ -568,12 +569,14 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
     });
     const latest = stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
 
-    // The latest session date, every bar of it — pre-market from 4:00 and
-    // after-hours to 20:00 ride along; the chart's clock window (7:00 AM to
-    // 6:30 PM ET, StockPriceChart) decides what is in view. Before the open
-    // that is today's pre-market so far, which is the morning a gap matters.
+    // The latest session date, trimmed to the chart's clock window (7:00 AM
+    // to 6:30 PM ET, lib/market-data/intraday-window): pre-market and
+    // after-hours inside it ride along; the tape's 4:00 AM and 8:00 PM prints
+    // do not, because the chart sizes its scale from every bar it is given.
+    // Before the open this is today's pre-market so far — the morning a gap
+    // matters.
     return stamped
-      .filter((s) => s.etDate === latest)
+      .filter((s) => s.etDate === latest && s.etMinutes >= INTRADAY_WINDOW_ET.start && s.etMinutes <= INTRADAY_WINDOW_ET.end)
       .map(({ bar }) => ({
         date: bar.t, // full ISO timestamp — chart renders time-of-day for 1D
         close: bar.c,

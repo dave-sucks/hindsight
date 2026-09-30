@@ -109,6 +109,9 @@ export function ThesisChart({
   // Switch away or unmount → the interval is cleared. Cards keep daily-only.
   const enableIntraday = variant === 'full';
   const [intraday, setIntraday] = useState<StockCandle[] | undefined>(undefined);
+  // The prior session's close, from the same quote the header reads — the 1D
+  // line is colored against it so the two agree.
+  const [intradayPrevClose, setIntradayPrevClose] = useState<number | null>(null);
   const [intradayLoading, setIntradayLoading] = useState(false);
   const [is1D, setIs1D] = useState(false);
 
@@ -121,8 +124,11 @@ export function ThesisChart({
         const res = await fetch(
           `/api/stocks/intraday?symbol=${encodeURIComponent(ticker)}`,
         );
-        const json = (await res.json()) as { candles?: StockCandle[] };
-        if (!cancelled) setIntraday(Array.isArray(json.candles) ? json.candles : []);
+        const json = (await res.json()) as { candles?: StockCandle[]; prevClose?: number | null };
+        if (!cancelled) {
+          setIntraday(Array.isArray(json.candles) ? json.candles : []);
+          setIntradayPrevClose(typeof json.prevClose === 'number' && json.prevClose > 0 ? json.prevClose : null);
+        }
       } catch {
         if (!cancelled) setIntraday([]);
       } finally {
@@ -244,6 +250,7 @@ export function ThesisChart({
       showIntraday={enableIntraday}
       intradayCandles={intraday}
       intradayLoading={intradayLoading}
+      priorClose={intradayPrevClose}
       hourlyCandles={enableIntraday ? hourly : undefined}
       onRangeChange={(r) => {
         setIs1D(r === '1D');
