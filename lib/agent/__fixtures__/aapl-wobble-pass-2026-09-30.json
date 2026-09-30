@@ -1,0 +1,278 @@
+{
+  "_about": "AAPL, Secular Compounder, 2026-09-30. The 5-minute check fired the buy above $331 at 09:30:22 ET; the trigger run cmuo57v4i000804jt4sad97p2 passed on a live quote of $330.83, back under the level; at the next check (09:35:20) AAPL traded $332.42. Built read-only from production and Alpaca's tape (sip). thesisBefore is the stored row less the lastFiredAt the 09:30 check stamped (2026-09-30T13:30:22.744Z).",
+  "thesisBefore": {
+    "id": "cmum3bxkt000204l243g6s93c",
+    "ticker": "AAPL",
+    "status": "WATCHING",
+    "direction": "LONG",
+    "horizon": "COMPOUNDER",
+    "setupId": "COMPOUNDER_ACCUMULATION",
+    "entryPrice": 331,
+    "targetPrice": 385,
+    "stopLoss": 309,
+    "triggers": [
+      {
+        "id": "e8e4b204-88a1-414d-8f35-065daed9794a",
+        "action": "ENTER",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 331
+        },
+        "rationale": "Buy level — start the position when the price breaks above $331.00.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "bb542f17-aea6-4c64-a6ce-2e37a1c61ab7",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "days": 60,
+          "from": "BUY",
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "60-day business checkpoint: review whether Services growth rate is holding, CEO Ternus has communicated capital-allocation intent, and iPhone 18 cycle is tracking to expectation — confirm thesis is visibly working or articulate what changed.",
+        "cooldownDays": 60
+      },
+      {
+        "id": "e906416a-cf77-4e5b-a378-e0849b2ddfb8",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "days": 7,
+          "kind": "EARNINGS_WITHIN"
+        },
+        "rationale": "Q4 FY2026 earnings approaching — re-read thesis against Services growth trajectory, gross margin guidance, and any CEO commentary on capital allocation before the print.",
+        "cooldownDays": 30
+      },
+      {
+        "id": "9e52bd61-31e2-44c6-a066-276a713b8812",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "pct": 15,
+          "kind": "TRAILING_FROM_HIGH",
+          "armAtGainPct": 20
+        },
+        "rationale": "Once up 20%+ from entry, a 15% give-back from the peak is a prompt to name which invalidation condition tripped — do not exit without identifying what broke in the business.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "042b5be4-1dce-474e-9849-8c65c2a33a2e",
+        "action": "EXIT",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 309
+        },
+        "rationale": "Below the September 9 swing low at $309.90 and under the current pullback structure; a break there would say this base failed, not just wobbled.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "8b75f797-fe78-4b83-973e-8e08b6033b54",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 385
+        },
+        "rationale": "Prior analyst bull-case cluster in the $380-$400 range; $385 remains a realistic next upside objective if the 20-day reclaim resolves the base higher.",
+        "cooldownDays": 1
+      }
+    ],
+    "triggerState": {},
+    "createdAt": "2026-09-29T03:02:11.645Z"
+  },
+  "firedAt": "2026-09-30T13:30:22.744Z",
+  "analyst": {
+    "id": "cmmqxola3000004lbj7c11bfn",
+    "name": "Secular Compounder",
+    "setupIds": [
+      "COMPOUNDER_ACCUMULATION",
+      "BASE_BREAKOUT",
+      "MA_PULLBACK"
+    ],
+    "minConfidence": 70,
+    "triggers": [
+      {
+        "id": "06506e39-522f-4ad1-aa62-d7fe10bf7003",
+        "action": "REVIEW",
+        "predicate": {
+          "pct": 15,
+          "kind": "TRAILING_FROM_HIGH"
+        },
+        "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "823a7df5-e8a9-4502-ac6e-6968c9c96ed5",
+        "action": "EXIT",
+        "predicate": {
+          "pct": 25,
+          "kind": "TRAILING_FROM_HIGH"
+        },
+        "rationale": "Gave back 25% from the high — the catastrophe line for a multi-year hold. The review at 15% should have acted long before this; if we are here, protect the capital.",
+        "cooldownDays": 0
+      },
+      {
+        "id": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "kind": "VS_SMA",
+          "period": 200,
+          "direction": "BELOW"
+        },
+        "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "a6d188ee-d37c-4e30-925a-a12ef664dbcb",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "UP"
+        },
+        "rationale": "Up 15% from entry — re-underwrite at the new price and raise the floor under real structure (DAV-279 ruling).",
+        "cooldownDays": 7
+      },
+      {
+        "id": "98f6fe80-33da-47a4-b2ae-23f380af11d3",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "DOWN"
+        },
+        "rationale": "Down 15% from entry — decide hold-vs-cut deliberately, before the stop decides (DAV-279 ruling).",
+        "cooldownDays": 7
+      },
+      {
+        "id": "ef79457a-7273-4ce2-9b17-e030a1a8bc8e",
+        "action": "ADD",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "DOWN"
+        },
+        "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
+        "cooldownDays": 1
+      }
+    ]
+  },
+  "account": {
+    "triggers": [
+      {
+        "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
+        "action": "ADD",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "UP"
+        },
+        "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+        "cooldownDays": 3
+      },
+      {
+        "id": "b459cc93-12a4-43f1-8904-d8a8cd846b93",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "days": 7,
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "Look at this every 7 days, counting from the last real review.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "days": 3,
+          "kind": "EARNINGS_WITHIN"
+        },
+        "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+        "cooldownDays": 30
+      },
+      {
+        "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "EARNINGS_BEAT"
+        },
+        "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "EARNINGS_MISS"
+        },
+        "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "30059604-b755-4848-b938-b636464815c3",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "SEC_EVENT",
+          "tier": "MATERIAL"
+        },
+        "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story."
+      }
+    ],
+    "triggersSeededAt": "2026-09-18T12:00:33.366Z"
+  },
+  "run": {
+    "id": "cmuo57v4i000804jt4sad97p2",
+    "createdAt": "2026-09-30T13:30:33.426Z"
+  },
+  "runRows": [
+    {
+      "id": "cmuo57vh6000904jtqc5l2npk",
+      "type": "TRIGGER_FIRED",
+      "triggerId": "e8e4b204-88a1-414d-8f35-065daed9794a",
+      "priceAtTime": 331.4686,
+      "runId": "cmuo57v4i000804jt4sad97p2",
+      "timestamp": "2026-09-30T13:30:33.882Z",
+      "summary": "Price above $331 — consider entry",
+      "rationale": "Buy level — start the position when the price breaks above $331.00."
+    },
+    {
+      "id": "cmuo582ny000a04jtu5zifj7z",
+      "type": "UPDATED",
+      "triggerId": "e8e4b204-88a1-414d-8f35-065daed9794a",
+      "priceAtTime": 330.83,
+      "runId": "cmuo57v4i000804jt4sad97p2",
+      "timestamp": "2026-09-30T13:30:43.198Z",
+      "summary": "Updated AAPL thesis",
+      "rationale": "Reviewed the fired $331 buy trigger on $AAPL and did not enter. The trigger fired at $331.47, but the live quote at execution was $330.83, back below the level, so the required live-quote confirmation failed. The business thesis still looks intact: price remains above rising 50/150/200-day averages, there is no clear thesis-breaking headline in the latest news, and the setup is still a valid compounder accumulation candidate. I am leaving the ladder intact because the buy level is still the right confirmation line and the floor $309 remains under the recent swing-low structure.\n\n[Belief unchanged: Nothing in the core belief or named invalidation conditions changed; this was a failed execution-time confirmation, not a thesis break.]"
+    }
+  ],
+  "tape": {
+    "priorClose": 329.4,
+    "dayOpen": 330.8,
+    "fire": {
+      "at": "2026-09-30T13:30:22.744Z",
+      "price": 331.4686
+    },
+    "nextCheck": {
+      "at": "2026-09-30T13:35:20.197491311Z",
+      "price": 332.4187
+    }
+  }
+}
