@@ -542,6 +542,9 @@ export const triggerEvaluator = inngest.createFunction(
             `thesis=${thesis.id}`,
           ).map((t) => watchedFloorOnClose(t, thesis)),
         }))
+        // Whether the stock has a buy, read before the close pass narrows the
+        // ladder: with none, a review at a price is a wake (DAV-335).
+        .map((c) => ({ ...c, hasBuy: c.ladder.some((t) => t.action === "ENTER") }))
         // The close pass only looks at rungs that wait for the close.
         .map((c) =>
           session === "CLOSE"
@@ -666,7 +669,7 @@ export const triggerEvaluator = inngest.createFunction(
       }
 
       const events: FiringEvent[] = [];
-      for (const { thesis, analystId, ladder: triggers } of candidates) {
+      for (const { thesis, analystId, ladder: triggers, hasBuy } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
         if (!analystId) continue;
         const quote = quoteByTicker.get(thesis.ticker) ?? undefined;
@@ -772,6 +775,7 @@ export const triggerEvaluator = inngest.createFunction(
           const action = effectiveTriggerAction(t, {
             status: thesis.status,
             direction: thesis.direction,
+            hasBuy,
           });
 
           // The facts behind an earnings fire, when that's what fired. Null

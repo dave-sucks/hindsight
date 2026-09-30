@@ -206,10 +206,11 @@ describe("validateEnterTriggerRequired", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("an upside REVIEW level on a LONG is a plan level — still requires an ENTER", () => {
-    // isPlanLevel counts an upside absolute REVIEW as the target (the same
-    // set the DEMOTE fire strips). A "wake" that is really a target keeps
-    // the full-plan rule: a plan needs the buy level to reach it from.
+  it("an upside REVIEW with no buy is a wake, not a target — it needs no ENTER (QB ruling 2026-09-29)", () => {
+    // Reversed from the full-plan rule on the QB's ruling (DAV-335): on a
+    // stock we only watch, "look again at $150" is the wake the 2026-09-08
+    // design allowed. VST's "review at $146 instead of the buy" was refused
+    // here five times on 09-28.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
@@ -221,7 +222,24 @@ describe("validateEnterTriggerRequired", () => {
           rationale: "Reassess at $150.",
         },
       ],
-      targetPrice: 100,
+      targetPrice: null,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("a sale at a price with no buy is still a half plan — it requires an ENTER", () => {
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [
+        {
+          id: "trig-upside-exit",
+          predicate: { kind: "PRICE_ABOVE", level: 150 },
+          action: "EXIT",
+          rationale: "Sell at $150.",
+        },
+      ],
+      targetPrice: 150,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;

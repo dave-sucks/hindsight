@@ -6,8 +6,11 @@
  * so the loop can't spin). When the real save refuses, the model sees the
  * refusal once and resubmits; the corrected decision is saved.
  *
- * Replay: DOCU's 2026-09-15 decision (the buy level removed, the $76
- * review left behind — the save's plan rule refuses it) reaching the save.
+ * Replay: DOCU's 2026-09-15 decision with its floor kept (the buy level
+ * removed, the $57.50 sell left behind — a sale with no buy, which the save's
+ * plan rule refuses) reaching the save. DOCU's real decision took the floor
+ * off too; the $76 review it kept is a wake since the QB ruling of
+ * 2026-09-29 (DAV-335), so that call is the fix.
  * FIVE's original case (explanations over a 240-character cap) is no longer
  * a refusal: the cap is gone (DAV-316).
  */
@@ -106,15 +109,16 @@ const storedRow = {
   researchUpdatedAt: new Date(),
 };
 
-/** The fix the refusal asks for: take the $76 review off with the buy level. */
-const fixedPlan = {
+/** The refused decision: DOCU's, with its floor ($57.50 sell) kept and no buy. */
+const halfPlan = {
   ...fx.submit,
-  edit_triggers: [],
-  remove_trigger_ids: [...fx.submit.remove_trigger_ids, "d516a881-b59c-45fe-8897-0720fe8687df"],
+  remove_trigger_ids: fx.submit.remove_trigger_ids.filter((id) => !id.startsWith("85cba008")),
 };
+/** The fix the refusal asks for: take the floor off with the buy — DOCU's real call. */
+const fixedPlan = fx.submit;
 
 function research(): WriterResearchPhaseOutput {
-  const v = validateThesisDecision(fx.submit, {
+  const v = validateThesisDecision(halfPlan, {
     mode: "refresh",
     existingStatus: fx.thesis.status,
     currentPrice: 72.87,

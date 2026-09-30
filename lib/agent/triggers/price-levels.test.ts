@@ -78,6 +78,7 @@ describe("floor vs target", () => {
   it("inverts both slots on a SHORT", () => {
     const levels = canonicalLevels({
       triggers: [
+        resolved(trig(below(90), "ENTER", { id: "short" })),
         resolved(trig(above(120), "EXIT", { id: "stop" })),
         resolved(trig(below(60), "REVIEW", { id: "goal" })),
       ],
@@ -90,19 +91,73 @@ describe("floor vs target", () => {
   it("treats an upside REVIEW as the target, not just an EXIT", () => {
     // The default mint for a target is REVIEW (ruling 2026-08-24).
     const levels = canonicalLevels({
-      triggers: [resolved(trig(above(1150), "REVIEW", { id: "t" }))],
+      triggers: [resolved(trig(above(900), "ENTER", { id: "buy" })), resolved(trig(above(1150), "REVIEW", { id: "t" }))],
       direction: "LONG",
     });
     expect(levels.target?.triggerId).toBe("t");
   });
 
+  it("on a stock we only watch with no buy, an upside REVIEW is a wake, not the target (QB ruling 2026-09-29)", () => {
+    // VST: "keep a review at $146 instead of the buy".
+    const levels = canonicalLevels({
+      triggers: [resolved(trig(above(146), "REVIEW", { id: "wake" }))],
+      direction: "LONG",
+      status: "WATCHING",
+    });
+    expect(levels.target).toBeNull();
+    expect(levels.columns.targetPrice).toBeNull();
+    // …but it is still a line on the chart.
+    expect(levels.all.map((l) => l.triggerId)).toEqual(["wake"]);
+  });
+
+  it("a compound buy with no single price still keeps the upside REVIEW as the target (COGT, 2026-09-29)", () => {
+    // COGT's live list: buy on a close above $36.95 with volume 1.5x, target
+    // a close above $43.35. The buy has no one entry price, but it is a buy.
+    const levels = canonicalLevels({
+      triggers: [
+        resolved(trig({ kind: "PRICE_BELOW", level: 27 }, "REVIEW", { id: "dip" })),
+        resolved(
+          trig(
+            {
+              kind: "AND",
+              predicates: [
+                { kind: "PRICE_ABOVE", level: 36.95, basis: "close" },
+                { kind: "VOLUME_RATIO", min: 1.5 },
+              ],
+            },
+            "ENTER",
+            { id: "buy" },
+          ),
+        ),
+        resolved(trig({ kind: "PRICE_ABOVE", level: 43.35, basis: "close" }, "REVIEW", { id: "t" })),
+      ],
+      direction: null,
+      status: "WATCHING",
+    });
+    expect(levels.target?.triggerId).toBe("t");
+    expect(levels.columns.targetPrice).toBe(43.35);
+  });
+
+  it("a stock we hold keeps its upside REVIEW as the target — the buy is the fill", () => {
+    const levels = canonicalLevels({
+      triggers: [resolved(trig(above(1150), "REVIEW", { id: "t" }))],
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: 900,
+    });
+    expect(levels.target?.triggerId).toBe("t");
+  });
+
   it("does not let an ADD or TRIM level claim the target slot", () => {
+    // A trim is a held stock's action; held, the buy is the fill.
     const levels = canonicalLevels({
       triggers: [
         resolved(trig(above(900), "TRIM", { id: "trim" })),
         resolved(trig(above(1150), "REVIEW", { id: "goal" })),
       ],
       direction: "LONG",
+      status: "HOLDING",
+      avgCost: 800,
     });
     expect(levels.target?.triggerId).toBe("goal");
     // …but it is still a chart line.
@@ -525,7 +580,7 @@ describe("applyLevelArgs", () => {
     // the ratchet's job, not this function's.)
     const out = applyLevelArgs({
       ...base,
-      stored: [trig(above(1150), "REVIEW", { id: "t" })],
+      stored: [trig(above(900), "ENTER", { id: "b" }), trig(above(1150), "REVIEW", { id: "t" })],
       levels: {},
     });
     expect(out.columns.stopLoss).toBeNull();

@@ -5,11 +5,22 @@
  *   - FIVE: the writer explained its stop and target in 264 / 266 chars; the
  *     save caps both at 240 and refused after the research was done.
  *   - DOCU: the writer took the buy level off but kept the $76 review above
- *     the price; the save refuses a target with no buy level.
+ *     the price; the save refused it as a target with no buy level. Since the
+ *     QB ruling of 2026-09-29 (DAV-335) a review at any price on a stock we
+ *     only watch is a wake, so DOCU's decision now saves. The refusal these
+ *     tests exercise is the same decision with its FLOOR kept: a sale at a
+ *     price with no buy is still a half plan.
  * Both decisions passed the writer's own rules (validateThesisDecision) and
  * were thrown away at the save. The submit step now runs the save itself in
  * check-only mode, so the model hears the refusal while it can still fix it.
  */
+
+/** DOCU's 09-15 decision with its floor ($57.50 sell) kept: a genuine half plan. */
+const FLOOR_ID = "85cba008";
+const withFloorKept = <T extends { remove_trigger_ids: string[] }>(submit: T): T => ({
+  ...submit,
+  remove_trigger_ids: submit.remove_trigger_ids.filter((id) => !id.startsWith(FLOOR_ID)),
+});
 
 const mockThesisFindUnique = jest.fn();
 const mockThesisUpdate = jest.fn().mockResolvedValue({});
@@ -179,9 +190,24 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
     expect(validateThesisDecision(fx.submit, validateOpts(fx, "DOCU")).ok).toBe(true);
   });
 
-  it("is refused by the save check with the save's plan rule, before anything is written", async () => {
+  it("passes the save check: the $76 review it kept is a wake, not a target (QB ruling 2026-09-29)", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
+    const outcome = await checkDecisionAgainstSave({
+      args: writerArgs(fx, "DOCU"),
+      pull: null,
+      decision: v.decision as ValidatedThesisDecision,
+      ctx,
+      existing: { direction: "LONG", status: fx.thesis.status },
+    });
+    expect(outcome).toMatchObject({ wouldSave: true, error: null });
+    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
+  });
+
+  it("with its floor kept it is a half plan, refused by the save check before anything is written", async () => {
+    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
+    const v = validateThesisDecision(withFloorKept(fx.submit), validateOpts(fx, "DOCU"));
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "DOCU"),
       pull: null,
@@ -196,14 +222,9 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
     expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
   });
 
-  it("the fix the refusal asks for (take the $76 review off too) passes the check and writes nothing", async () => {
+  it("the fix the refusal asks for (take the floor off too — DOCU's real call) passes the check and writes nothing", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const fixed = {
-      ...fx.submit,
-      edit_triggers: [],
-      remove_trigger_ids: [...fx.submit.remove_trigger_ids, "d516a881-b59c-45fe-8897-0720fe8687df"],
-    };
-    const v = validateThesisDecision(fixed, validateOpts(fx, "DOCU"));
+    const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
     expect(v.ok).toBe(true);
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "DOCU"),
@@ -234,19 +255,15 @@ describe("submit_thesis runs the save check", () => {
     return { t, onAccept };
   }
 
-  it("hands DOCU's refusal back instead of accepting, then accepts the fix", async () => {
+  it("hands the half plan's refusal back instead of accepting, then accepts the fix", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const { t, onAccept } = submitTool();
-    const first = await t.execute(fx.submit);
+    const first = await t.execute(withFloorKept(fx.submit));
     expect(first.accepted).toBe(false);
     expect(first.errors?.[0]).toMatch(/The save refused this decision/);
     expect(onAccept).not.toHaveBeenCalled();
 
-    const second = await t.execute({
-      ...fx.submit,
-      edit_triggers: [],
-      remove_trigger_ids: [...fx.submit.remove_trigger_ids, "d516a881-b59c-45fe-8897-0720fe8687df"],
-    });
+    const second = await t.execute(fx.submit);
     expect(second.accepted).toBe(true);
     expect(onAccept).toHaveBeenCalledTimes(1);
   });
@@ -254,9 +271,9 @@ describe("submit_thesis runs the save check", () => {
   it("after two save refusals it lets the decision through, so the save reports rather than the loop spinning", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const { t, onAccept } = submitTool();
-    expect((await t.execute(fx.submit)).accepted).toBe(false);
-    expect((await t.execute(fx.submit)).accepted).toBe(false);
-    expect((await t.execute(fx.submit)).accepted).toBe(true);
+    expect((await t.execute(withFloorKept(fx.submit))).accepted).toBe(false);
+    expect((await t.execute(withFloorKept(fx.submit))).accepted).toBe(false);
+    expect((await t.execute(withFloorKept(fx.submit))).accepted).toBe(true);
     expect(onAccept).toHaveBeenCalledTimes(1);
   });
 });
@@ -296,7 +313,7 @@ describe("a check writes nothing anyone reads later", () => {
 
   it("a refused check leaves the refusal ledger empty — the ledger is the run-day record of real refusals", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
+    const v = validateThesisDecision(withFloorKept(fx.submit), validateOpts(fx, "DOCU"));
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "DOCU"),
       pull: null,
@@ -310,7 +327,7 @@ describe("a check writes nothing anyone reads later", () => {
 
   it("a real refused save still writes its refusal receipt", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
+    const v = validateThesisDecision(withFloorKept(fx.submit), validateOpts(fx, "DOCU"));
     const call = buildWriterSaveCall(writerArgs(fx, "DOCU"), null, v.decision as ValidatedThesisDecision, {}, { direction: "LONG", status: "WATCHING" });
     const saveTool = updateThesis(ctx) as unknown as { execute: (a: unknown, o: unknown) => Promise<unknown> };
     await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] });
