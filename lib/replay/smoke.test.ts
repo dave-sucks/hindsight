@@ -23,6 +23,42 @@ describe("the replay harness reaches a tool's real entry point", () => {
     expect(db.store.thesisUpdate.length).toBeGreaterThan(0);
   });
 
+  // The PLTR buy replay (place-trade.pltr-replay.test.ts) asked finnhub.io
+  // for PLTR's profile twice per run: the harness doubled Alpaca and the
+  // quote actions but not the shared finnhub() helper.
+  it("never reaches finnhub.io — a quote answers from the replay's prices", async () => {
+    const realFetch = global.fetch;
+    const asked: string[] = [];
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      asked.push(String(input));
+      throw new Error("a replay reached the network");
+    }) as typeof fetch;
+    try {
+      let answers: Array<{ data: unknown; error?: string }> = [];
+      await replayTool("update-thesis", "updateThesis", {
+        seed: { thesis: [thesisRow({ id: "t1", ticker: "PLTR" })] },
+        args: { thesis_id: "t1", rationale: "n/a" },
+        quotes: { PLTR: 180 },
+        mocks: {
+          "@/lib/agent/tools/update-thesis": () => ({
+            updateThesis: () => ({
+              execute: async () => {
+                const { finnhub } = await import("@/lib/agent/research-helpers");
+                answers = [await finnhub("/quote?symbol=PLTR", 0), await finnhub("/stock/profile2?symbol=PLTR", 0)];
+                return { summary: "ok", data: {} };
+              },
+            }),
+          }),
+        },
+      });
+      expect(asked.filter((u) => u.includes("finnhub.io"))).toEqual([]);
+      expect(answers[0].data).toMatchObject({ c: 180 });
+      expect(answers[1]).toEqual({ data: null, error: "replay: no vendor" });
+    } finally {
+      global.fetch = realFetch;
+    }
+  });
+
   it("names the export when it is wrong, instead of failing obscurely", async () => {
     await expect(replayTool("update-thesis", "nope", {})).rejects.toThrow(/no exported tool "nope"/);
   });
