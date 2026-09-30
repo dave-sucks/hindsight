@@ -60,14 +60,15 @@
    name ("research XYZ and add a note to the thesis"), your ask is the yes.
    A note stands until a newer note replaces it or someone marks it
    resolved.
-2. **One "what's been said" block, the same for every agent.** Every agent
-   deciding on a stock reads, in this order: your standing notes and your
-   decisions of the last 30 days, word for word and dated; then the
-   analyst's latest note, its last two answers, everything that has fired
-   since its last answer, and the other recent lines. After that come the
-   thesis, the plan and the numbers, as today. One function builds it, so
-   the morning run, the trigger run, the writer, discovery and /chat all
-   see the same thing.
+2. **One short "what's been said" block, the same for every agent,**
+   counted from the analyst's last answer on the stock: your standing
+   notes; the analyst's own latest note; its last answer; your decisions
+   since that answer, word for word with the price then and now; and every
+   alert fired since, collapsed, with its rule. Once an agent answers a
+   decision of yours, it's done; a wish meant to stand is a note. After the
+   block come the thesis, the plan and the numbers, as today. One function
+   builds it, so the morning run, the trigger run, the writer, discovery
+   and /chat all see the same thing.
 3. **A fired trigger stays open until an agent answers it.** Your edits,
    approvals and the app's own bookkeeping lines no longer count as the
    answer. If three things fired since the last review, the run sees all
@@ -81,9 +82,9 @@
    own score can't pass, the reply says so in words, while the agent can
    still fix it. It's a reply, not a refusal.
 
-**What it costs.** About 600 tokens per stock an agent decides on (hard cap
-1,000), and about 1,800 for the core plus the analyst's own rules in each
-prompt. The morning run comes out cheaper than today on the days it asks
+**What it costs.** About 100–150 tokens per stock an agent decides on
+(cap 400), and about 1,800 for the core plus the analyst's own rules in
+each prompt. The morning run comes out cheaper than today on the days it asks
 for history, because the block replaces the raw history, which is 10,000
 to 18,000 tokens per read (§3.8).
 
@@ -297,45 +298,54 @@ $2,219 (2.0%). You raised the floor to $248 at 12:07 on 09-30.
 | 09-30 09:35 | "$256.42" review fires. | — |
 | 09-30 12:07 | You raise the floor $220 → $248. | Counts as the answer to the 09:35 fire (mechanic B). CEG can still come back while the price sits under $256.42, through "matching now". |
 
-**Under the proposal: what the 09-18 morning run would have been handed**
-on CEG, ahead of the thesis and numbers:
+**Under the design, as built in step 1** (#745, rendered from CEG's rows).
+The 15:30 trigger run on 09-14, the first run after your decline:
 
 ```
-WHAT'S BEEN SAID ON $CEG — read this before the numbers
-The principal — decisions in the last 30 days, word for word:
-  09-14 11:43  Declined the sale (trailing 8% off the high, $273.98): "…The stock is
-               down on guilt-by-association with the AI complex, not because its thesis
-               deteriorated. Hard reject. If anything, today is a setup for the Secular
-               Compounder to add, not exit."   [full 709 characters in the real block]
-  09-14 15:52  Approved the add: 9 shares at $265.46 (now 39 at $276.90).
-  09-14 22:29  Removed the trailing-8% sale: "Don't re-create it unless the thesis
-               materially changes."
-Latest analyst note: none.
-Last two answers:
-  09-16 08:07  morning run — "none of my named invalidations has tripped … holding
-               through the drawdown … valuation compression, not business damage."
-  09-14 15:55  trigger run — "did not sell … false fire … the $220 hard floor still
-               sits well below the current structure."
-Fired since the last answer (09-16 08:07), not yet answered:
-  Gave back 15% from the high — 09-16 10:15 at $257.59. The rule: "is the reason we
-    bought still true? If yes, hold and raise the floor under real structure (the
-    20-day low, the breakout level). If partly, trim."
-  8% below what we paid ($256.42) — 09-16 10:30 at $256.37.
-  Below the 200-day — 09-16 09:35 and 09-17 09:35.
-Other lines: 09-14 15:55 buy price set to what was paid, $276.90.
+WHAT'S BEEN SAID ON $CEG
+Last look: trigger run, 09-14 09:35 — "Closeout correction after the protective exit
+proposal. The trigger validated: $CEG at $273.98 is below the authoritative 8%
+give-back line at $279.13 from the $303.40 tracked peak, so the exit proposal was
+warranted."
+Since then, not yet answered:
+  The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60
+  (−3.4%): "now the strongest hold of the five … The stock is down on
+  guilt-by-association with the AI complex, not because its thesis deteriorated.
+  Hard reject. If anything, today is a setup for the Secular Compounder to add, not
+  exit."   [uncut in the real block]
 Full history: get_theses(tickers: ["CEG"], include_history: true)
 ```
 
-That's about 2,400 characters, 600 tokens. On 09-30 CEG would have been a
-**full row**, not quiet: the 09-28 15% review would still be open, because
-your cleanup is not an agent's answer.
+That run must say what it did about your decline, by name. Once it has,
+the decline is answered and later runs don't get it; a view meant to stand
+(for example "power is the binding constraint, this is guilt-by-association")
+would be a note. The 09-30 morning read, about 165 tokens:
+
+```
+WHAT'S BEEN SAID ON $CEG
+Last look: morning run, 09-28 08:04 — "CEG's repeated 200-day review is now a
+different fact pattern from a week ago: the stock is still below the 200-day, but
+it has stabilized near $261 rather than cascading lower and the nearest forward
+review rung at…"
+Since then, not yet answered:
+  gives back 15% from the high → review — 09-28 11:20 at $257.63. The rule: "Gave
+  back 15% from the high. This is a question, not a sale: is the reason we bought
+  still true? If yes, hold and raise the floor under real structure (the 20-day
+  low, the breakout level). If partly, trim."
+Full history: get_theses(tickers: ["CEG"], include_history: true)
+```
+
+On 09-30 CEG is a **full row**, not quiet: the 09-28 15% review is still
+open, because your cleanup is not an agent's answer, and the cleanup
+itself isn't shown.
 
 **What would change.**
 
-- Every run from 09-16 to 10-14 sees your reason for holding. It argues
-  for holding, so the runs holding is not the failure. The failure is that
-  the runs never weighed it: whether "guilt-by-association with the AI
-  complex" still explained CEG two weeks and fifteen alerts later.
+- Your 09-14 decline reaches the afternoon trigger runs in full, with the
+  price then and now, and the first of them has to answer it by name.
+  After that it's done: handing a "not today" at $274 to a run at $250
+  would anchor a hold on a loser. A lasting view goes in a note, which
+  shows its age and price the same way.
 - The 15% review and its sentence ("raise the floor under real
   structure") reach a run twice (09-18 and 09-30), instead of never.
 - The 09-16 run could leave a note: "Holding through the 200-day because
@@ -541,49 +551,53 @@ one write path for triggers.
 
 ### 3.2 One "what's been said" block: the read contract per agent
 
-**One builder.** `buildStockContext(rows, { reader, now })` in
-`lib/agent/stock-context.ts`. It is pure: it takes the stock's recent
-`ThesisUpdate` rows (the 20-row scan `get_theses` already runs for the
-repeat-fire count, `get-theses.ts:857–876`, extended to 30 days for
-decisions) and returns dated plain-text lines. It returns text, not raw
-rows: a raw history line costs about 1,100 characters, because it carries
-the full rationale, the `fieldChanges` JSON and every id.
+*(Revised 09-30 after the first build rendered ~650 tokens for CEG, most of
+it noise; QB and Dave agreed this version, and #745 builds it.)*
 
-**The order, fixed for every agent** (the QB's starting proposal, plus
-the "fired since" part that the CEG replay shows is needed):
+**One builder.** `buildStockContext` in `lib/agent/stock-context.ts`, pure,
+fed the stock's recent `ThesisUpdate` lines (the batched scan `get_theses`
+already runs, 40 lines a stock). It returns dated plain text, never raw
+rows: a raw history line costs about 1,100 characters of ids and JSON.
 
-1. **The principal: standing notes**, any age, word for word. A note older
-   than 60 days shows its age ("written 74 days ago"). Nothing expires on
-   its own.
-2. **The principal: decisions in the last 30 days**, word for word and
-   dated: declines (with the message), approvals (with any resize, and
-   which way: "cut from 162 to 120 shares"), direct level edits, trigger
-   removals. At most 6, newest first; older ones are counted ("and 3
-   earlier").
-3. **The latest analyst note.**
-4. **The last two answers**: the rationale of the last two agent reviews or
-   updates, 300 characters each.
-5. **Fired since the last answer, not yet answered**: every distinct
-   trigger, its count, first and last time, and its rule sentence. (§3.3
-   decides what counts as an answer.)
-6. **Other recent lines**: up to 5, one-line summaries only.
-7. **Where the rest is**: `get_theses(tickers: ["X"], include_history: true)`.
+**Everything counts from the analyst's last answer**, the newest line a
+run wrote on the stock. What the agent needs is what you want now, what it
+concluded last time, and what has happened since:
 
-Over the cap, the builder drops in this order: other lines, then the
-oldest decisions (counted, not shown), then the second answer. **Your
-standing notes are never cut.** A single note is capped at 1,200
-characters when it is written.
+| Activity line | Shown? | What is shown | How far back |
+|---|---|---|---|
+| An alert that fired | Yes, while no agent has answered it | One line per alert: how many times, first and last time, last price, and its rule (whole sentences, ~220 characters) | Since the last answer |
+| The analyst's own review or update | The newest only | Its opening sentence or two (~220 characters), with the run and time; the "[Belief unchanged…]" tail dropped | The last one |
+| Your decline with a written reason | Yes, until an agent answers it | Your words, uncut, with the price then and now ("at $273.98, now $264.60 (−3.4%)") | Since the last answer |
+| Your decline with no reason | Yes, until answered | One line | Since the last answer |
+| An approval where you changed the size | Yes, until answered | One line: "cut from 162 to 120 shares" | Since the last answer |
+| An approval as proposed | No | The position already shows it | — |
+| A level you set by hand | Yes, until answered | Only the change ("Stop $220 → $248"), not the app's sentence | Since the last answer |
+| A rule you removed | No | The full history keeps it | — |
+| Expiries, fills, "buy price set", "levels armed" | No | The thesis fields show these | — |
+| Your notes (step 2) | Yes | Your words, the date, the price then and now | Any age, until replaced or resolved |
+| The analyst's own note (step 2) | The latest only | One line | Until it writes a new one |
+
+Typical 100–150 tokens; cap 1,600 characters (~400 tokens). Past the cap,
+the alerts that don't fit fold into a count. Your words are never cut.
+Across the account's 43 live stocks on 09-30 (upper bound): median ~92
+tokens, 90th percentile ~173, largest ~352.
+
+**Answering is by name.** The run that answers must say what it decided on
+each of your decisions and each alert in the block. That sentence is in
+both the morning run's and the trigger run's prompt. Otherwise "answered"
+would only mean "a later line exists", which is how your 09-14 decline was
+buried.
 
 **Per agent:**
 
-| Agent | When it gets the block | Parts | Budget per stock |
-|---|---|---|---|
-| **Morning run** | On every **full row**, as `context`, before the thesis fields. A **quiet row** gets one line when a standing note of yours exists ("Principal's note 09-30: Bought a starter…", 120 characters). **A note or decision of yours that no run has answered yet makes the row full**, once: a decline with a reason, a resized approval, a level set by hand. A hand edit that only removed triggers is shown but doesn't (run over this morning's book it would have pulled ASML, WST and ABT out of the quiet list with nothing to decide). That widens today's rule (only a decline with a message does, `get-theses.ts:1240`). | 1–7 | typical 400–700 tokens, cap 1,000; quiet line ~30 |
-| **Trigger run** | In the prompt, **replacing** "RECENT THESIS ACTIVITY (last 5 updates)". | 1–7 | typical 500, cap 1,000 (today ~250) |
-| **Writer: refresh** | In the prompt, after EXISTING THESIS. On a held refresh it also gets the **resolved** trigger list, marked by level ("the analyst's rule", "the account's rule"), so it knows what sits under the stock's own levels. | 1–4 | typical 500, cap 800 |
-| **Writer: mint** | Standing notes of yours from an **earlier** thesis on the same stock for this analyst (a stock sold and minted again), plus the dispatcher's reason. | 1 | typical 0–150 |
-| **Discovery** | `get_stock_data`'s prior-coverage paragraph gains the newest standing note of yours from any earlier thesis on that stock, account-wide and labelled by analyst. | 1 (one note) | 0–150 per researched name |
-| **/chat** | A `get_theses` drill-down returns the full block. `get_stock_data` on a covered stock adds two lines (your newest note, the analyst's latest note). `list_proposals` rows carry the thesis's standing notes of yours, so "Should I approve this?" starts from them. | 1–7 on a drill-down | 500 per drilled stock |
+| Agent | When it gets the block | Budget per stock |
+|---|---|---|
+| **Morning run** | On every **full row**, as `context`, before the thesis fields. A **quiet row** gets one line when a standing note of yours exists (step 2). **A decision of yours that no run has answered puts the row on the full list**, once: a decline with a reason, a resized approval, a level set by hand. A bare decline is shown but doesn't. | typical 100–150, cap 400 |
+| **Trigger run** | In the prompt, **replacing** "RECENT THESIS ACTIVITY (last 5 updates)"; "now" is the price the trigger fired at. | typical 100–150, cap 400 |
+| **Writer: refresh** | Your notes, the analyst's note and its last answer, after EXISTING THESIS. On a held refresh it also gets the **resolved** trigger list, marked by level, so it knows what sits under the stock's own levels. | typical ~100 |
+| **Writer: mint** | Standing notes of yours from an **earlier** thesis on the same stock for this analyst, plus the dispatcher's reason. | 0–150 |
+| **Discovery** | `get_stock_data`'s prior-coverage paragraph gains the newest standing note of yours from any earlier thesis on that stock, account-wide and labelled by analyst. | 0–150 per researched name |
+| **/chat** | A `get_theses` drill-down returns the full block. `get_stock_data` on a covered stock adds your newest note and the analyst's. `list_proposals` rows carry the thesis's standing notes of yours. | ~150 per drilled stock |
 
 **What goes away in the same PR** (never ship a dying idea across two
 PRs): `principalDirective`, `classifyPrincipalDirective`, and the morning
@@ -822,12 +836,14 @@ Added:
 >   `PROPOSAL_EXPIRED` rows are softer still — the user didn't decide either way — so re-proposal is allowed if the setup still holds.
 
 Added:
-> **Read what's been said before anything else.** Every full row starts with `context`: the principal's standing notes and decisions of the last 30 days (word for word, dated), your latest note on the stock, your last two answers, everything that has fired since your last answer, and the other recent lines. The principal's words outrank everything else on the row. A note or decision of theirs that no run has answered yet is why the row is in your list today:
->   - An **instruction** ("add on a close above $74", "raise the floor", "hold past the target") → carry it out with the tools, usually as a trigger via `update_thesis`, and resolve the note in the same call (`resolve_note_id`). (The CRDO miss: the principal asked to raise the stop repeatedly and it never moved.)
+> **Read what's been said before anything else.** Every full row starts with `context`, counted from your last answer on the stock: that answer, the principal's decisions since it (word for word, with the price then and now), and every trigger fired since it, with its rule. The principal's words outrank everything else on the row. A decision of theirs that no run has answered yet is why the row is in your list today:
+>   - An **instruction** ("add on a close above $74", "raise the floor", "hold past the target") → carry it out with the tools, usually as a trigger via `update_thesis`. (The CRDO miss: the principal asked to raise the stop repeatedly and it never moved.)
 >   - A **question or open consideration** → do the work it asks for, weigh it, and answer in your rationale. Answering the question is the action.
 >   - A **decline with no reason** → do not propose the same thing again unless its circumstances have changed. "Not this week" lapses after the week; "never this name" does not; "wait for the pullback" is met only by the pullback.
 >   - An **approval with a different size, or a level they set** → honor their numbers, never revert them, and read the direction: a cut size is caution, a raised one is conviction.
->   Quote them in your rationale. When your own reasoning is something the next run must build on — what you are holding through, and what would make you sell — write it as `note`; it replaces your previous note on this stock. An expired proposal is not a decision: proposing it again is allowed if the setup still holds.
+>   Quote them in your rationale. An expired proposal is not a decision: proposing it again is allowed if the setup still holds. When `context` lists the principal's decisions or triggers fired since your last answer, your one `update_thesis` on the stock answers all of them: say what you decided on each, by name.
+
+This is the text #745 ships (step 1). Step 2 adds the notes to the first sentence ("the principal's standing notes, your latest note") and two sentences at the end: resolve a note of theirs in the call that carries it out (`resolve_note_id`), and write your own reasoning the next run must build on as `note`, which replaces your previous note on the stock.
 
 **M3, lines 256–258.** Removed:
 > **The ratchet rule — protective levels move ONE way (principal ruling, 2026-08-16).** A trigger is the principal's standing order. Two consequences you must respect:
@@ -996,13 +1012,13 @@ Added, at the end of the "Composite ≥ 4" bullet:
 
 | Agent | Today | Added | Taken away | Net |
 |---|---|---|---|---|
-| **Morning run**, Compounder, 09-30 read (8 full rows, 14 quiet, history 8 lines) | prompt 11,800 + read ~56,000 | core + analyst block ~1,800; `context` 8 × ~600 = 4,800; quiet lines ~100 | raw history 72,000 characters ≈ 18,000 (on request instead of in every row); M3 and M5 ≈ 500 | **≈ −11,800** |
-| **Morning run**, a read without history (09-25: 10 full, 5 quiet) | prompt 11,800 + read ~47,000 | ~1,800 + 10 × 600 = 7,800 | ~500 | **≈ +7,300** |
+| **Morning run**, Compounder, 09-30 read (8 full rows, 14 quiet, history 8 lines) | prompt 11,800 + read ~56,000 | core + analyst block ~1,800; `context` 8 × ~150 = 1,200; quiet lines ~100 | raw history 72,000 characters ≈ 18,000 (on request instead of in every row); M3 and M5 ≈ 500 | **≈ −15,400** |
+| **Morning run**, a read without history (09-25: 10 full, 5 quiet) | prompt 11,800 + read ~47,000 | ~1,800 + 10 × 150 = 3,300 | ~500 | **≈ +2,800** |
 | — optional offset | | | send the model the rows without `cards` (the chat's card renderer keeps its copy): 37,000–49,000 characters ≈ 9,000–12,000 | **≈ −9,000 to −12,000** |
-| **Trigger run** | ~7,100 + last 5 lines ~250 | core + analyst block ~1,800; block ~500 | old block ~250; T3 ~120 | **≈ +1,900** |
-| **Writer** (refresh) | ~4,900 + data ~1,400 | core ~1,100 (its setups are already there); sell rules ~200; block ~500 | W2 ~150 | **≈ +1,650** |
+| **Trigger run** | ~7,100 + last 5 lines ~250 | core + analyst block ~1,800; block ~150 | old block ~250; T3 ~120 | **≈ +1,600** |
+| **Writer** (refresh) | ~4,900 + data ~1,400 | core ~1,100 (its setups are already there); sell rules ~200; block ~100 | W2 ~150 | **≈ +1,250** |
 | **Discovery** | ~6,300 | core + analyst block ~1,800; ~100 per researched name | — | **≈ +1,800 + 100/name** |
-| **/chat**, scoped | ~10,700 | core + analyst block ~1,800; notes section ~200; ~500 per drilled stock | C2 ~80 | **≈ +1,900 + 500/stock** |
+| **/chat**, scoped | ~10,700 | core + analyst block ~1,800; notes section ~200; ~150 per drilled stock | C2 ~80 | **≈ +1,900 + 150/stock** |
 
 The morning run carries its `get_theses` read for the rest of the run, so
 every token in the read is paid on every later step. Dropping `cards` from
@@ -1025,9 +1041,12 @@ Yes to all six recommendations, after the QB's review.
    the same call that carries it out** (for DOCU, the call that adds the
    $74.07 add trigger), shown as an Activity line. Writing the note again
    reopens it.
-3. **The reading order is as written in §3.2**: your notes, your decisions,
-   the analyst's latest note and last two answers, what has fired since,
-   then the rest.
+3. **What each agent reads is §3.2**, revised the same day after the first
+   build rendered ~650 tokens for CEG: everything counts from the
+   analyst's last answer. Your notes and the analyst's note; its last
+   answer; your decisions since, uncut, with the price then and now; the
+   alerts fired since, with their rules. An answered decision is done.
+   Whichever run answers must say what it decided on each, by name.
 4. **A fired trigger stays open until an agent answers it** (§3.3). Your
    edits no longer count as the answer. More held stocks will show up in
    the morning list on days you've edited them; that's the point.
