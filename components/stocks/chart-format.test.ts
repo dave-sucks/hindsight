@@ -51,3 +51,40 @@ describe("formatDateTimeLabel / formatTimeLabel", () => {
     expect(formatTimeLabel("nope")).toBe("");
   });
 });
+
+import { rangeChange, splitOffset } from "./chart-format";
+
+describe("rangeChange — what a range's readout says", () => {
+  it("1D: DOCU 2026-09-30 measured from yesterday's close $66.98 — the header's day change, not the 7:00 AM point", () => {
+    const closes = [66.98, 67.09, 68.42, 67.15];
+    expect(rangeChange(closes, 66.98)).toEqual({ dollars: 67.15 - 66.98, pct: ((67.15 - 66.98) / 66.98) * 100 });
+  });
+
+  it("1W / 1M: the last visible point against the first — DOCU's month, $64.00 to $67.15", () => {
+    const c = rangeChange([64, 66.5, 72.79, 67.15], null)!;
+    expect(c.dollars).toBeCloseTo(3.15);
+    expect(c.pct).toBeCloseTo(4.92, 2);
+  });
+
+  it("a fall reads with a minus, and nothing to measure against is null, never a zero", () => {
+    const fall = rangeChange([69.49, 67.15], null)!;
+    expect(fall.dollars).toBeCloseTo(-2.34);
+    expect(fall.pct).toBeCloseTo(-3.37, 2);
+    expect(rangeChange([], 66.98)).toBeNull();
+    expect(rangeChange([0, 67.15], null)).toBeNull();
+    // A missing prior close falls back to the first point rather than $0.
+    expect(rangeChange([66.98, 67.15], 0)!.dollars).toBeCloseTo(0.17);
+  });
+});
+
+describe("splitOffset — where the green/red split sits on the plot band", () => {
+  it("is the price scale's own fraction from the top: baseline halfway up the scale is 0.5", () => {
+    expect(splitOffset(60, 70, 65)).toBe(0.5);
+    expect(splitOffset(60, 70, 68)).toBeCloseTo(0.2);
+  });
+  it("a baseline outside the visible scale pins to an edge, so a gap day is all one color", () => {
+    expect(splitOffset(60, 70, 80)).toBe(0.001);
+    expect(splitOffset(60, 70, 50)).toBe(0.999);
+    expect(splitOffset(65, 65, 65)).toBe(0.001);
+  });
+});
