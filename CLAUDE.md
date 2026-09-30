@@ -36,7 +36,9 @@ op comes back by id and the rest of the call lands. The shared core is
 The chart kinds (VS_SMA, NEAR_SMA, VOLUME_RATIO, NEW_HIGH, PCT_FROM_52W_HIGH,
 RS_VS_SPY, GAP_UP, RSI, the 5D/20D move) read the daily indicator snapshot
 (`TickerIndicators`, written 06:30 ET from `lib/market-data/price-structure.ts`);
-a `basis: "close"` price level fires only on the 16:20 ET close pass. There is
+a `basis: "close"` price level fires only on the 16:20 ET close pass, and so
+does the floor of a stock we only watch: its plan comes down on a close below
+it, never an intraday dip (`watchedFloorOnClose`, DAV-337). There is
 no buy-now option: buying now is an entry price at or near the current price
 (a buy written after the prior close measures its crossing from the price it
 was written at — `lib/agent/triggers/written-price.ts` — so a level set on a

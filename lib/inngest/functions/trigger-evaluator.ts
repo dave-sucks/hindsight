@@ -25,8 +25,10 @@
 // The close pass: ticks from 16:20 to 16:34 ET on a trading day evaluate
 // only rungs carrying a `basis: "close"` price level, with the day's close
 // as the price. The 5-minute passes never fire those — "closes above the
-// pivot" is not an intraday poke. Cooldown makes the three close ticks fire
-// at most once.
+// pivot" is not an intraday poke. A watched stock's floor is one of them
+// whatever it stores: its plan comes down on a close below it, never an
+// intraday dip (watchedFloorOnClose, DAV-337). Cooldown makes the three
+// close ticks fire at most once.
 //
 // - Cooldown lives on the trigger object inside Thesis.triggers JSONB.
 //   No schema change in PR 2. A separate TriggerFiring table is a
@@ -50,7 +52,7 @@ import {
 } from "@/lib/agent/triggers/earnings";
 import type { EarningsWindow } from "@/lib/agent/triggers/earnings";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
-import { effectiveTriggerAction } from "@/lib/agent/triggers/types";
+import { effectiveTriggerAction, watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 import { demoteThesisPlan } from "@/lib/agent/triggers/demote";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
@@ -532,11 +534,13 @@ export const triggerEvaluator = inngest.createFunction(
         .map((thesis) => ({
           thesis,
           analystId: thesis.researchRun.agentConfigId,
+          // A watched stock's floor reads the close (DAV-337): a morning dip
+          // through it no longer sets the plan down.
           ladder: resolveThesisLadder(
             thesis,
             levelSources.get(thesis.researchRun.agentConfigId ?? ""),
             `thesis=${thesis.id}`,
-          ),
+          ).map((t) => watchedFloorOnClose(t, thesis)),
         }))
         // The close pass only looks at rungs that wait for the close.
         .map((c) =>
@@ -804,11 +808,18 @@ export const triggerEvaluator = inngest.createFunction(
           // explosion (28 of 35 tactical runs, zero state changes), and there
           // are 19 watchlist rows carrying a floor.
           if (action === "DEMOTE") {
+            const short = thesis.direction === "SHORT";
+            const floor =
+              t.predicate.kind === (short ? "PRICE_ABOVE" : "PRICE_BELOW")
+                ? (t.predicate as { level: number }).level
+                : null;
             const outcome = await demoteThesisPlan({
               thesisId: thesis.id,
               reason:
                 t.action === "EXIT"
-                  ? `the floor broke before we ever bought it, so the plan's premise is gone.`
+                  ? floor != null
+                    ? `it closed ${short ? "above" : "below"} the $${floor} floor before we ever bought it, so the plan's premise is gone.`
+                    : `the floor broke before we ever bought it, so the plan's premise is gone.`
                   : `it reached the target without us, so the entry is stale.`,
               triggerId: t.id,
               priceAtTime: latestQuote?.price ?? null,

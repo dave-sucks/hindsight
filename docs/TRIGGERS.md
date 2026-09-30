@@ -175,7 +175,7 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 | **`TRAILING_FROM_HIGH`** (HOLDING-only) | ✅ **fires** | — | ✅ |
 | `VS_SMA` / `NEAR_SMA` / `NEW_HIGH` / `PCT_FROM_52W_HIGH` / `RS_VS_SPY` / `RSI` / `INSIDER_CLUSTER` | ✅ (snapshot) | — | ✅ (snapshot) |
 | `VOLUME_RATIO` / `GAP_UP` | ✅ (snapshot + today's volume) | — | ❌ (no volume on that path) |
-| `PRICE_ABOVE` / `PRICE_BELOW` `basis:"close"` | ✅ **close pass only** (16:20–16:34 ET) | — | ✅ (read as a plain level) |
+| `PRICE_ABOVE` / `PRICE_BELOW` `basis:"close"` — and any floor on a stock we don't hold | ✅ **close pass only** (16:20–16:34 ET) | — | ✅ (read as a plain level) |
 | **`EARNINGS_BEAT` / `EARNINGS_MISS` / `EARNINGS_WITHIN` / `EARNINGS_SINCE`** | ✅ **fires** (calendar) | ✅ (beat/miss only, if a signal ever carries a surprise) | — |
 | **`SEC_EVENT`** | ✅ **fires** (EDGAR) | — | — |
 | `REVIEW_CADENCE` | ✅ | — | ✅ |
@@ -333,6 +333,14 @@ but the price path only **evaluates during the regular session**:
   with today's consolidated close (Alpaca SIP daily bar) as the price. A name
   with no bar for today is skipped rather than evaluated on a guess. Cooldown
   makes the three ticks fire a rung at most once.
+- **A watched stock's floor reads the close** (DAV-337). On a stock we don't
+  hold, a sell trigger sets the plan down, and it does so only on a close
+  below the floor — never an intraday touch (TRV 2026-09-29: opened under
+  its floor, back above it that morning). `watchedFloorOnClose` in
+  `lib/agent/triggers/types.ts` gives such a trigger `basis: "close"` where
+  triggers are read (the five-minute check, the morning run's snapshot, the
+  thesis sheet); nothing is stored. A held stock's floor is a sale and
+  keeps its own timing.
 - **Cap:** 200 unique tickers per tick.
 
 ## 8. Editing surfaces
@@ -353,6 +361,7 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   (`armHeldLadderOnFill`). Never a rewrite: the analyst's target and reviews
   survive the fill.
 - **A plan set-down** (DEMOTE) removes the buy, floor and target triggers.
+  An automatic one comes from the floor on the close pass (§7).
 
 Rules run per op on the resulting list; a refused op is returned by id with
 the reason and the rest of the call lands (`data.trigger_ops` on the tool):
