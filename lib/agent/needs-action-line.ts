@@ -34,6 +34,8 @@ export function needsActionLine(na: NeedsAction): string {
       );
     case "TRIGGER_MATCHING_NOW":
       return `A trigger is true right now: ${na.predicateSummary}${na.livePrice != null ? ` (price $${na.livePrice.toFixed(2)})` : ""}`;
+    case "FLOOR_TOO_FAR":
+      return na.line;
     case "UNPROTECTED_GAIN":
       return (
         `Up ${na.unrealizedGainPct.toFixed(1)}% with ` +

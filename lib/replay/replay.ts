@@ -63,6 +63,8 @@ export interface ReplayOptions {
   quotes?: Record<string, number>;
   /** Extra modules to double, e.g. `{ "@/lib/alpaca": () => ({ … }) }`. */
   mocks?: Record<string, () => unknown>;
+  /** The broker account's equity. Absent ⇒ $100,000. */
+  equity?: number;
 }
 
 /** What a tool hands back — `ToolResult`, narrowed here to what tests read. */
@@ -200,7 +202,7 @@ export async function replayTool(
       getTodaySessionBars: jest.fn(async () => ({})),
       getBars: jest.fn(async () => []),
       getAccount: jest.fn(async () => ({
-        equity: "100000", cash: "40000", buying_power: "80000", portfolio_value: "100000",
+        equity: String(opts.equity ?? 100000), cash: "40000", buying_power: "80000", portfolio_value: String(opts.equity ?? 100000),
       })),
       getPositions: jest.fn(async () => []),
       getOrder: jest.fn(async () => null),

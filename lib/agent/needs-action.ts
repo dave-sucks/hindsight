@@ -82,6 +82,7 @@ import { shouldFire } from "@/lib/agent/triggers/evaluate";
 import { isMarketOpen } from "@/lib/market-hours";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
+import { floorTooFar, type FloorStructure } from "@/lib/agent/floor-risk";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
@@ -157,6 +158,21 @@ export type NeedsAction =
       action: NeedsActionVerb;
       predicateSummary: string;
       livePrice: number | null;
+    }
+  | {
+      /**
+       * A holding whose floor would lose more than 1.5% of the account,
+       * measured from what we paid (DAV-344). Every field is on the line;
+       * the numbers ride along for the UI. See ./floor-risk.
+       */
+      kind: "FLOOR_TOO_FAR";
+      floorPrice: number;
+      avgCost: number;
+      quantity: number;
+      lossAtFloor: number;
+      pctOfAccount: number;
+      structureBelow: Array<{ label: string; price: number }>;
+      line: string;
     }
   | {
       kind: "UNPROTECTED_GAIN";
@@ -366,6 +382,10 @@ export interface NeedsActionInput {
     peakPrice?: number | null;
     /** ATR(14) from the daily snapshot — widens an atrMultiple trail (DAV-294). */
     atr14?: number | null;
+    /** Paired open Position's share count — with avgCost, what the floor would lose (DAV-344). */
+    quantity?: number | null;
+    /** The chart numbers FLOOR_TOO_FAR names as places the floor could go. */
+    structure?: FloorStructure | null;
     /**
      * Conviction context, frozen at promotion time. Surfaced into the
      * PROMOTED_AWAITING_RESOLUTION needsAction so the agent has the
@@ -409,6 +429,8 @@ export interface NeedsActionInput {
    * kind changes.
    */
   recentUpdates?: FireStreakUpdate[];
+  /** The account's equity, for FLOOR_TOO_FAR. Omit and that flag never fires. */
+  equity?: number | null;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -456,6 +478,52 @@ export function computeNeedsAction(
     };
   }
 
+  // The held row's ladder, read once: the floor both held-row flags use.
+  const ladder =
+    thesis.status === "HOLDING"
+      ? computeLadderHealth({
+          direction: thesis.direction,
+          avgCost: thesis.avgCost,
+          currentPrice: latestQuote?.price ?? null,
+          peakPrice: thesis.peakPrice ?? null,
+          triggers: thesis.triggers,
+          atr14: thesis.atr14 ?? null,
+          lastLadderEditAt: null, // not needed for the flag; surfaced via get_theses
+          now,
+        })
+      : null;
+
+  // FLOOR_TOO_FAR (DAV-344) — a holding whose floor would lose more than
+  // 1.5% of the account. It outranks a fired or matching REVIEW: CEG's
+  // reviews ("below the 200-day", "15% off the high") fired on most days
+  // from 09-15 to 09-30, so ranked under them this flag would never have
+  // been CEG's work — each run answered the review "hold, business intact"
+  // and the $220 floor stayed. A fired sale, trim, add or buy still comes
+  // first: that is money moving now.
+  const floorRisk = ladder
+    ? floorTooFar({
+        direction: thesis.direction ?? null,
+        avgCost: thesis.avgCost ?? null,
+        quantity: thesis.quantity ?? null,
+        floorPrice: ladder.floor?.price ?? null,
+        equity: input.equity ?? null,
+        currentPrice: latestQuote?.price ?? null,
+        structure: thesis.structure ?? null,
+      })
+    : null;
+  const floorWork: NeedsAction | null = floorRisk
+    ? {
+        kind: "FLOOR_TOO_FAR",
+        floorPrice: floorRisk.floorPrice,
+        avgCost: floorRisk.avgCost,
+        quantity: floorRisk.quantity,
+        lossAtFloor: floorRisk.lossAtFloor,
+        pctOfAccount: floorRisk.pctOfAccount,
+        structureBelow: floorRisk.structureBelow,
+        line: floorRisk.line,
+      }
+    : null;
+
   // 1) TRIGGER_FIRED — most recent update is a fire that hasn't been
   //    answered by the agent. Tactical-run writes its UPDATED/REVIEWED/
   //    CLOSED/INVALIDATED row at completion, so seeing TRIGGER_FIRED at
@@ -466,6 +534,7 @@ export function computeNeedsAction(
     // P1-25 Change 4: a pending buy proposal already expresses the ENTER —
     // don't re-flag it (the agent would re-attempt place_trade and hit the
     // PENDING_APPROVAL dedup guard). Fall through; non-ENTER work still surfaces.
+    if (floorWork && action === "REVIEW") return floorWork;
     if (!(hasPendingEntryProposal && action === "ENTER")) {
       // DAV-323: how long this same rung has been asking. Absent when the
       // caller passed no history, or on a first ask.
@@ -514,6 +583,7 @@ export function computeNeedsAction(
       const action = (trigger.action as NeedsActionVerb) ?? "REVIEW";
       // P1-25 Change 4: suppress ENTER while a buy proposal is pending.
       if (hasPendingEntryProposal && action === "ENTER") continue;
+      if (floorWork && action === "REVIEW") return floorWork;
       return {
         kind: "TRIGGER_MATCHING_NOW",
         triggerId: trigger.id,
@@ -535,17 +605,8 @@ export function computeNeedsAction(
   //    upside — once the agent raises the floor this flag self-clears and
   //    the press/hold/take decision surfaces on the next read. HOLDING only;
   //    needs avgCost + a live quote (graceful null degradation otherwise).
+  if (floorWork) return floorWork;
   if (thesis.status === "HOLDING") {
-    const ladder = computeLadderHealth({
-      direction: thesis.direction,
-      avgCost: thesis.avgCost,
-      currentPrice: latestQuote?.price ?? null,
-      peakPrice: thesis.peakPrice ?? null,
-      triggers: thesis.triggers,
-      atr14: thesis.atr14 ?? null,
-      lastLadderEditAt: null, // not needed for the flag; surfaced via get_theses
-      now,
-    });
     if (ladder?.isUnprotectedGain) {
       return {
         kind: "UNPROTECTED_GAIN",

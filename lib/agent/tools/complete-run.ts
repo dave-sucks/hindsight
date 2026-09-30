@@ -816,6 +816,10 @@ async function runCompleteRunPreflight(
       detail = `trigger fired: ${needsAction.action} (${needsAction.summary})`;
     } else if (needsAction.kind === "TRIGGER_MATCHING_NOW") {
       detail = `predicate matching now: ${needsAction.action} (${needsAction.predicateSummary}${needsAction.livePrice != null ? ` @ $${needsAction.livePrice.toFixed(2)}` : ""})`;
+    } else if (needsAction.kind === "FLOOR_TOO_FAR") {
+      // Like UNPROTECTED_GAIN below: this preflight feeds no position size
+      // or equity, so the flag cannot fire here. Handled for type-completeness.
+      detail = needsAction.line;
     } else if (needsAction.kind === "UNPROTECTED_GAIN") {
       // Defensive branch: this preflight does NOT feed avgCost/peakPrice
       // into computeNeedsAction,

@@ -1,0 +1,454 @@
+{
+  "_about": "CEG, Secular Compounder. thesisBefore is the stored row with one edit reversed: at 2026-09-30T16:07:01.922Z the principal moved the floor $220 → $248 (Principal edited CEG trigger — Price 248); every other field is as stored. The position, the analyst's and account's rules, the 09-29 indicator snapshot and the LIVE digests' equity are as stored. fill0813 is the 08-13 buy and the ladder its 13:31 close-out left just before it. price0930 is Alpaca's tape (sip) at 12:05 ET, two minutes before the edit. Built read-only.",
+  "thesisBefore": {
+    "id": "cmqb2ku1a000q04l6jtquuqr6",
+    "ticker": "CEG",
+    "status": "HOLDING",
+    "direction": "LONG",
+    "horizon": "COMPOUNDER",
+    "setupId": "COMPOUNDER_ACCUMULATION",
+    "entryPrice": 276.898461538462,
+    "targetPrice": 360,
+    "stopLoss": 220,
+    "triggers": [
+      {
+        "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
+        "action": "EXIT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 220
+        },
+        "rationale": "Hard stop at $248. If we hit it the thesis is broken; close and write up the lessons.",
+        "cooldownDays": 0
+      },
+      {
+        "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 256.42
+        },
+        "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+        "lastFiredAt": "2026-09-30T13:35:05.295Z",
+        "cooldownDays": 1
+      },
+      {
+        "id": "9dde5606-86b2-46c3-bed6-57cfd57ac942",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 360
+        },
+        "rationale": "Target $360.00 — decide here: take it, trim it, or raise the target.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "days": 30,
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "Look at this every 30 days, counting from the last real review.",
+        "cooldownDays": 30
+      },
+      {
+        "id": "5cf4c100-2af5-48ab-89fb-8df012063c53",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "days": 60,
+          "from": "BUY",
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "60 days after the buy — A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.",
+        "cooldownDays": 60
+      }
+    ],
+    "triggerState": {
+      "06506e39-522f-4ad1-aa62-d7fe10bf7003": {
+        "firedAt": "2026-09-28T15:20:10.196Z"
+      },
+      "cacf717e-af57-42e5-a9af-28835e20508d": {
+        "firedAt": "2026-09-14T19:30:15.215Z"
+      },
+      "cf39ff35-5a15-43d4-a0f1-911cb5fd519b": {
+        "firedAt": "2026-09-25T13:45:13.322Z"
+      }
+    },
+    "createdAt": "2026-06-12T15:16:50.062Z",
+    "lastReviewedAt": "2026-09-28T12:04:39.170Z",
+    "researchUpdatedAt": "2026-09-09T03:41:18.634Z",
+    "agentConfigId": "cmmqxola3000004lbj7c11bfn"
+  },
+  "principalEdit": {
+    "at": "2026-09-30T16:07:01.922Z",
+    "summary": "Principal edited CEG trigger — Price 248",
+    "floorTriggerId": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
+    "from": 220,
+    "to": 248
+  },
+  "lastUpdateBefore": {
+    "type": "TRIGGER_FIRED",
+    "triggerId": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+    "timestamp": "2026-09-30T13:35:10.004Z",
+    "summary": "Price below $256.42 — review — deferred to the next daily review"
+  },
+  "position": {
+    "id": "cmsrk43d7000604jxyc6s7u4r",
+    "symbol": "CEG",
+    "direction": "LONG",
+    "quantity": 39,
+    "initialQty": 30,
+    "avgCost": 276.898461538462,
+    "openedAt": "2026-08-13T14:26:27.706Z",
+    "peakPrice": 303.4,
+    "peakAt": "2026-09-08T16:00:22.060Z",
+    "environment": "LIVE",
+    "analystId": "cmmqxola3000004lbj7c11bfn",
+    "accountId": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+    "status": "OPEN"
+  },
+  "analyst": {
+    "id": "cmmqxola3000004lbj7c11bfn",
+    "name": "Secular Compounder",
+    "setupIds": [
+      "COMPOUNDER_ACCUMULATION",
+      "BASE_BREAKOUT",
+      "MA_PULLBACK"
+    ],
+    "triggers": [
+      {
+        "id": "06506e39-522f-4ad1-aa62-d7fe10bf7003",
+        "action": "REVIEW",
+        "predicate": {
+          "pct": 15,
+          "kind": "TRAILING_FROM_HIGH"
+        },
+        "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "823a7df5-e8a9-4502-ac6e-6968c9c96ed5",
+        "action": "EXIT",
+        "predicate": {
+          "pct": 25,
+          "kind": "TRAILING_FROM_HIGH"
+        },
+        "rationale": "Gave back 25% from the high — the catastrophe line for a multi-year hold. The review at 15% should have acted long before this; if we are here, protect the capital.",
+        "cooldownDays": 0
+      },
+      {
+        "id": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "kind": "VS_SMA",
+          "period": 200,
+          "direction": "BELOW"
+        },
+        "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "a6d188ee-d37c-4e30-925a-a12ef664dbcb",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "UP"
+        },
+        "rationale": "Up 15% from entry — re-underwrite at the new price and raise the floor under real structure (DAV-279 ruling).",
+        "cooldownDays": 7
+      },
+      {
+        "id": "98f6fe80-33da-47a4-b2ae-23f380af11d3",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "DOWN"
+        },
+        "rationale": "Down 15% from entry — decide hold-vs-cut deliberately, before the stop decides (DAV-279 ruling).",
+        "cooldownDays": 7
+      },
+      {
+        "id": "ef79457a-7273-4ce2-9b17-e030a1a8bc8e",
+        "action": "ADD",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "DOWN"
+        },
+        "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
+        "cooldownDays": 1
+      }
+    ]
+  },
+  "account": {
+    "id": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+    "triggers": [
+      {
+        "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
+        "action": "ADD",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "UP"
+        },
+        "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+        "cooldownDays": 3
+      },
+      {
+        "id": "b459cc93-12a4-43f1-8904-d8a8cd846b93",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "days": 7,
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "Look at this every 7 days, counting from the last real review.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "days": 3,
+          "kind": "EARNINGS_WITHIN"
+        },
+        "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+        "cooldownDays": 30
+      },
+      {
+        "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "EARNINGS_BEAT"
+        },
+        "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "EARNINGS_MISS"
+        },
+        "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "30059604-b755-4848-b938-b636464815c3",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "SEC_EVENT",
+          "tier": "MATERIAL"
+        },
+        "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story."
+      }
+    ],
+    "triggersSeededAt": "2026-09-18T12:00:33.366Z"
+  },
+  "snapshot": {
+    "asOf": "2026-09-29",
+    "snapshot": {
+      "sma": {
+        "20": 272.94,
+        "50": 272.32,
+        "150": 280.37,
+        "200": 289.38
+      },
+      "asOf": "2026-09-29",
+      "gaps": [],
+      "atr14": 9,
+      "low20": 250.55,
+      "closes": [
+        239.71,
+        244.52,
+        250.74,
+        251.38,
+        257.57,
+        256.43,
+        258.115,
+        251.77,
+        252.39,
+        253.5,
+        262.22,
+        274.9,
+        275.6,
+        274.35,
+        270,
+        259.82,
+        257.95,
+        263.56,
+        262.75,
+        273.71,
+        267.25,
+        265.12,
+        261.1,
+        269.89,
+        270.43,
+        278.36,
+        278.68,
+        278.64,
+        282.5,
+        278.2,
+        266.83,
+        274.17,
+        272.92,
+        272.88,
+        273.43,
+        278.42,
+        279.52,
+        282.41,
+        276.75,
+        274.77,
+        280.31,
+        290.04,
+        285.05,
+        298.96,
+        299.05,
+        293.905,
+        285.97,
+        284.75,
+        264.57,
+        259.89,
+        259.53,
+        262.8,
+        254.71,
+        262.11,
+        263.46,
+        263.88,
+        261.62,
+        263.27,
+        260.43,
+        264.58
+      ],
+      "high20": 305.8,
+      "low52w": 228.63,
+      "high52w": 412.7,
+      "rsVsSpy": {
+        "1M": -3.7,
+        "3M": 4.2,
+        "6M": -32.3
+      },
+      "insiderBuys": [
+        {
+          "date": "2026-08-11",
+          "name": "CRANDALL ROGER W",
+          "price": 278.621,
+          "shares": 1500,
+          "lowPrice": 278.6206
+        }
+      ],
+      "volumeAvg20": 2873668
+    }
+  },
+  "equity": {
+    "2026-09-29": 113065.28,
+    "2026-08-13": 93932.54
+  },
+  "price0930": {
+    "at": "2026-09-30T16:05:00.037134134Z",
+    "price": 251.3
+  },
+  "fill0813": {
+    "triggersBefore": [
+      {
+        "id": "b2e6d511-2bf0-4094-a25d-812708a70020",
+        "action": "ENTER",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 255
+        },
+        "rationale": "Entry trigger — price broke above $255. Validate setup and consider INITIATE.",
+        "lastFiredAt": "2026-08-13T13:31:26Z",
+        "cooldownDays": 1
+      },
+      {
+        "id": "6ad21e4b-5622-4a39-81c3-b22e199f3691",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "EARNINGS_BEAT"
+        },
+        "rationale": "Review after an earnings beat to verify that higher earnings quality, guidance, and datacenter/nuclear contracting evidence continue to support the compounder thesis.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "82b5b477-6441-4e06-810d-ea0875245307",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "EARNINGS_MISS",
+          "minSurprisePct": 3
+        },
+        "rationale": "Review immediately on a meaningful earnings miss to test whether execution, integration, or demand assumptions have weakened.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "0238fe2c-3614-431b-a247-ad74e23b7319",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "GUIDANCE_CHANGE",
+          "direction": "DOWN"
+        },
+        "rationale": "Review on any guidance reduction because two consecutive post-Calpine cuts would challenge the earnings-power and capital-allocation case.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "712d795b-814a-4db7-9cce-95b2ab3a481f",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "days": 90,
+          "kind": "TIME_ELAPSED"
+        },
+        "rationale": "Quarterly review checkpoint to test whether the business, not just the stock, is progressing against the secular nuclear-and-AI-power thesis.",
+        "cooldownDays": 72
+      }
+    ],
+    "orders": [
+      {
+        "side": "BUY",
+        "intent": "OPEN",
+        "status": "FILLED",
+        "quantity": 30,
+        "filledPrice": 280.33,
+        "filledQty": 30,
+        "filledAt": "2026-08-13T14:26:28.156Z",
+        "createdAt": "2026-08-13T13:31:25.502Z"
+      },
+      {
+        "side": "BUY",
+        "intent": "ADD",
+        "status": "FILLED",
+        "quantity": 9,
+        "filledPrice": 265.46,
+        "filledQty": 9,
+        "filledAt": "2026-09-14T19:52:17.834Z",
+        "createdAt": "2026-09-14T19:30:43.921Z"
+      }
+    ]
+  }
+}

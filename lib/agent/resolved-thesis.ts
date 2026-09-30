@@ -25,6 +25,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
 import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
+import { floorTooFar, type FloorRisk, type FloorStructure } from "@/lib/agent/floor-risk";
 import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
@@ -87,6 +88,15 @@ export interface ResolvedEnvelope {
    */
   planSanity: PlanSanityFlag[] | null;
 
+  /**
+   * A holding whose floor would lose more than 1.5% of the account,
+   * measured from what we paid (DAV-344): the numbers and the one sentence
+   * the run answers. Null when the loss fits, so quiet rows cost nothing.
+   * Carried here as well as on needsAction because a fired sale can hold
+   * the needsAction slot. See lib/agent/floor-risk.ts.
+   */
+  floorRisk: FloorRisk | null;
+
   triggerState: TriggerState;
   /** Human-readable for the agent + UI: e.g. "PRICE_ABOVE 92.5 (cur 90.30, -2.4%)". */
   triggerDetail: string | null;
@@ -125,6 +135,12 @@ export interface ResolverThesisInput {
   atr14?: number | null;
   /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
   avgCost?: number | null;
+  /** Paired open Position's share count — with avgCost, the loss at the floor (DAV-344). */
+  quantity?: number | null;
+  /** The account's equity, for the floor-risk check. Absent ⇒ no check. */
+  equity?: number | null;
+  /** Chart numbers the floor-risk sentence names (20-day low, averages). */
+  structure?: FloorStructure | null;
   /**
    * Paired open Position's water mark (high LONG / low SHORT) — feeds the
    * TRAILING_FROM_HIGH floor math in the ladder-health block. Null when not
@@ -366,6 +382,18 @@ export function buildResolvedEnvelope(args: {
     progressToTarget: winner.progressToTarget,
     ladderHealth,
     planSanity: planSanityFlags.length > 0 ? planSanityFlags : null,
+    floorRisk: ladderHealth
+      ? floorTooFar({
+          ticker: thesis.ticker,
+          direction: thesis.direction,
+          avgCost: thesis.avgCost ?? null,
+          quantity: thesis.quantity ?? null,
+          floorPrice: ladderHealth.floor?.price ?? null,
+          equity: thesis.equity ?? null,
+          currentPrice,
+          structure: thesis.structure ?? null,
+        })
+      : null,
     triggerState,
     triggerDetail,
     actionability,
