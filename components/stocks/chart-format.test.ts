@@ -52,22 +52,24 @@ describe("formatDateTimeLabel / formatTimeLabel", () => {
   });
 });
 
-import { formatRangeChange, rangeChange, splitOffset } from "./chart-format";
+import { rangeChange, splitOffset } from "./chart-format";
 
 describe("rangeChange — what a range's readout says", () => {
   it("1D: DOCU 2026-09-30 measured from yesterday's close $66.98 — the header's day change, not the 7:00 AM point", () => {
     const closes = [66.98, 67.09, 68.42, 67.15];
     expect(rangeChange(closes, 66.98)).toEqual({ dollars: 67.15 - 66.98, pct: ((67.15 - 66.98) / 66.98) * 100 });
-    expect(formatRangeChange(rangeChange(closes, 66.98)!)).toBe("+$0.17 (+0.25%)");
   });
 
   it("1W / 1M: the last visible point against the first — DOCU's month, $64.00 to $67.15", () => {
     const c = rangeChange([64, 66.5, 72.79, 67.15], null)!;
-    expect(formatRangeChange(c)).toBe("+$3.15 (+4.92%)");
+    expect(c.dollars).toBeCloseTo(3.15);
+    expect(c.pct).toBeCloseTo(4.92, 2);
   });
 
   it("a fall reads with a minus, and nothing to measure against is null, never a zero", () => {
-    expect(formatRangeChange(rangeChange([69.49, 67.15], null)!)).toBe("−$2.34 (−3.37%)");
+    const fall = rangeChange([69.49, 67.15], null)!;
+    expect(fall.dollars).toBeCloseTo(-2.34);
+    expect(fall.pct).toBeCloseTo(-3.37, 2);
     expect(rangeChange([], 66.98)).toBeNull();
     expect(rangeChange([0, 67.15], null)).toBeNull();
     // A missing prior close falls back to the first point rather than $0.

@@ -15,11 +15,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { cn } from '@/lib/utils';
+import { PriceChange } from '@/components/ui/price-change';
 import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
 import {
   formatDateLabel,
   formatDateTimeLabel,
-  formatRangeChange,
   rangeChange,
   splitOffset,
   formatTimeLabel,
@@ -428,13 +428,8 @@ export function StockPriceChart({
           every other range — so switching Day / Week / Month says how the
           stock did over that stretch, not only today. */}
       {showControls && change ? (
-        <div
-          className={cn(
-            'pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-background/80 px-2 py-1 text-xs font-medium tabular-nums backdrop-blur-sm',
-            change.dollars >= 0 ? 'text-emerald-500' : 'text-red-500',
-          )}
-        >
-          {formatRangeChange(change)}
+        <div className="pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-background/80 px-2 py-1 backdrop-blur-sm">
+          <PriceChange dollarChange={change.dollars} percentChange={change.pct} size="sm" />
         </div>
       ) : null}
 

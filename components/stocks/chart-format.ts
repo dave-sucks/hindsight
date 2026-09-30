@@ -67,12 +67,6 @@ export function rangeChange(
   return { dollars: last - base, pct: ((last - base) / base) * 100 };
 }
 
-export function formatRangeChange(change: { dollars: number; pct: number }): string {
-  const sign = change.dollars >= 0 ? '+' : '−';
-  const abs = Math.abs(change.dollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${sign}$${abs} (${sign}${Math.abs(change.pct).toFixed(2)}%)`;
-}
-
 /**
  * Where the green/red split sits, as a fraction of the plot band from the top
  * (0) to the bottom (1). The gradient is drawn in the plot's own pixels, so
