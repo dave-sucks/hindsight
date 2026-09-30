@@ -25,6 +25,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
 import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
+import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 
@@ -342,6 +343,16 @@ export function buildResolvedEnvelope(args: {
     // `entryPrice` is a read model and an inherited rule is not a plan, but
     // an ENTER trigger anywhere in the cascade genuinely can buy it.
     hasEnterTrigger: thesis.parsedTriggers.some((t) => t.action === "ENTER"),
+    // A review of the stock's own on the side a buy would profit (above the
+    // price on a LONG) — the wake it is waiting for, the level #737 stopped
+    // reading as a target. A review below is a "something broke" line, not
+    // a way in (BBIO, EME on 2026-09-29).
+    hasPriceWake: thesis.parsedTriggers.some(
+      (t) =>
+        ((t as { level?: string }).level ?? "THESIS") === "THESIS" &&
+        t.action === "REVIEW" &&
+        isPlanLevel(t, thesis.direction),
+    ),
     setupId: thesis.setupId ?? null,
     catalystDate: thesis.catalystDate ?? null,
     horizon: thesis.horizon ?? null,

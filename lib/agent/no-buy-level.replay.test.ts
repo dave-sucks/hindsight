@@ -14,6 +14,7 @@
  * rather than just to compute.
  */
 import { replayTool, thesisRow, REPLAY_ANALYST_ID } from "@/lib/replay";
+import vstRaw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
 
 type Row = {
   ticker: string;
@@ -253,5 +254,82 @@ describe("DAV-321 ruling 4 — a buy still live inside the last 21 days", () => 
       quotes: { GD: 340 },
     });
     expect(flags(result, "GD")).not.toContain("BUY_INSIDE_CUTOFF");
+  });
+});
+
+// ── A review at a price is a wake (QB ruling on DAV-335, 2026-09-29) ──────
+// VST, the Secular Compounder, 2026-09-28: while the score is under 7, keep
+// a review at $146 instead of the buy. These are the four triggers the
+// writer saved (its decision, verbatim, from the #732 fixture). Flagged, the
+// Mon/Wed/Fri run is told "price the buy or let it go" — i.e. to delete the
+// wake update_thesis now saves.
+describe("a watched stock waiting on a review at a price, with no buy", () => {
+  const vst = vstRaw as unknown as {
+    currentPrice: number;
+    submit: { add_triggers: Array<{ action: string; predicate: { kind: string } } & Record<string, unknown>> };
+  };
+  const saved = vst.submit.add_triggers.map((t, i) => ({ id: `v${i}`, ...t }));
+  const vstRow = (triggers: unknown[]) =>
+    watch({ id: "t_vst", ticker: "VST", horizon: "COMPOUNDER", setupId: "COMPOUNDER_ACCUMULATION", triggers });
+
+  it("VST with the triggers the writer saved is not flagged NO_BUY_LEVEL", async () => {
+    expect(saved.map((t) => [t.action, t.predicate.kind])).toEqual([
+      ["REVIEW", "PRICE_ABOVE"],
+      ["REVIEW", "REVIEW_CADENCE"],
+      ["REVIEW", "PRICE_BELOW"],
+      ["REVIEW", "EARNINGS_SINCE"],
+    ]);
+    const { result } = await replayTool("get-theses", "getTheses", {
+      seed: { thesis: [vstRow(saved)] },
+      args: {},
+      quotes: { VST: vst.currentPrice },
+    });
+    expect(flags(result, "VST")).not.toContain("NO_BUY_LEVEL");
+  });
+
+  it("the same VST without the $146 review — its clocks and the $132 review below — is still flagged", async () => {
+    // A review below the price is a "something broke" line, not a way in.
+    const withoutWake = saved.filter((t) => t.predicate.kind !== "PRICE_ABOVE");
+    const { result } = await replayTool("get-theses", "getTheses", {
+      seed: { thesis: [vstRow(withoutWake)] },
+      args: {},
+      quotes: { VST: vst.currentPrice },
+    });
+    expect(flags(result, "VST")).toContain("NO_BUY_LEVEL");
+  });
+
+  it("BBIO as it stands — 59 days from its PDUFA, a review below the 52-week low — is still told the window is open", async () => {
+    // Read from the book 2026-09-29. Counting any review at a price as a wake
+    // silenced this row's "price the buy now" (and EME's, whose buy was lost
+    // to the #732 save bug, not chosen).
+    const bbio = [
+      { id: "b1", action: "REVIEW", predicate: { kind: "PRICE_BELOW", basis: "close", level: 48.78 }, rationale: "A close below the 52-week low invalidates the pre-PDUFA accumulation thesis." },
+      { id: "b2", action: "REVIEW", predicate: { kind: "REVIEW_CADENCE", days: 21, from: "LAST_REVIEW" }, rationale: "Three-week cadence." },
+      { id: "b3", action: "REVIEW", predicate: { kind: "REVIEW_CADENCE", days: 14, from: "EVENT", side: "BEFORE" }, rationale: "Two weeks before the PDUFA." },
+    ];
+    const { result } = await replayTool("get-theses", "getTheses", {
+      seed: { thesis: [watch({ id: "t_bbio", ticker: "BBIO", horizon: "CATALYST", setupId: "PRE_CATALYST", catalystDate: inDays(59), triggers: bbio })] },
+      args: {},
+      quotes: { BBIO: 55 },
+    });
+    const f = flagRows(result, "BBIO").find((x) => x.kind === "NO_BUY_LEVEL");
+    expect(f?.text).toContain("The buying window is open");
+  });
+
+  it("a review at a price the analyst passes down is not the stock's own wake", async () => {
+    const { result } = await replayTool("get-theses", "getTheses", {
+      seed: {
+        thesis: [vstRow(saved.filter((t) => t.predicate.kind === "REVIEW_CADENCE"))],
+        agentConfig: [
+          {
+            id: REPLAY_ANALYST_ID,
+            triggers: [{ id: "a1", action: "REVIEW", predicate: { kind: "PRICE_ABOVE", level: 146 }, rationale: "Seat-wide look." }],
+          },
+        ],
+      },
+      args: {},
+      quotes: { VST: vst.currentPrice },
+    });
+    expect(flags(result, "VST")).toContain("NO_BUY_LEVEL");
   });
 });

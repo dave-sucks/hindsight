@@ -159,6 +159,14 @@ export function computePlanSanity(args: {
    * can be stale. Optional; absent ⇒ no NO_BUY_LEVEL check.
    */
   hasEnterTrigger?: boolean | null;
+  /**
+   * Does the stock carry, of its OWN, a review at a price on the side a buy
+   * would profit (above the price on a LONG) — a wake? With no buy that is
+   * an answer to "can this ever be bought": look again there (QB ruling on
+   * DAV-335, 2026-09-29). A review below the price is a "something broke"
+   * line and does not count. Optional; absent ⇒ no wake.
+   */
+  hasPriceWake?: boolean | null;
   /** The setup the plan is written on, for the pre-catalyst parking rule. */
   setupId?: string | null;
   /** The dated event, for the same rule. */
@@ -210,9 +218,13 @@ export function computePlanSanity(args: {
   // asks the other question: "can this ever be bought?"
   //
   // Two honest ways to have no buy level, both dated — see `parkedUntil`.
-  // Everything else owes an answer: price it, or let it go.
+  // A third, not dated: a review above the price (on a LONG), the wake the
+  // stock is waiting for (QB ruling on DAV-335, 2026-09-29). VST's "review at $146 instead
+  // of the buy while the score is under 7" is a plan to look again, not a
+  // missing one; flagging it would tell every run to drop the wake update_thesis
+  // now saves. Everything else owes an answer: price it, or let it go.
   if (args.hasEnterTrigger === false) {
-    if (parkedUntil(args, asOf) == null) {
+    if (parkedUntil(args, asOf) == null && !args.hasPriceWake) {
       const daysOut = args.catalystDate ? Math.round(daysUntil(args.catalystDate, asOf)) : null;
       const windowOpen =
         isDatedBinary(args) && daysOut != null && daysOut >= 0 && daysOut <= CATALYST_WINDOW_DAYS[1];
