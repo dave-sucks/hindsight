@@ -462,6 +462,9 @@ ${fired?.coFired?.length ? `   Two protective triggers fired together (marked AL
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why.
      Pass triggerId="${trigger.id}" so the timeline carries the link.
+   - When WHAT'S BEEN SAID lists other triggers fired since the last answer,
+     your update_thesis answers them too: say what you decided on each, by
+     name.
    - Then complete_run.
 
 ═══════════════════════════════════════════════════════════════════

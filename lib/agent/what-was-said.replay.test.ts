@@ -21,6 +21,8 @@
  */
 import raw from "@/lib/agent/__fixtures__/ceg-what-was-said-2026-09.json";
 import floorRaw from "@/lib/agent/__fixtures__/ceg-floor-too-far-2026-09-30.json";
+import muRaw from "@/lib/agent/__fixtures__/mu-trigger-run-open-reviews-2026-09-28.json";
+import { isAgentAnswer, openFires, type ActivityRow } from "@/lib/agent/stock-context";
 import {
   replayTool,
   thesisRow,
@@ -207,5 +209,66 @@ describe("the 09-14 15:55 trigger run", () => {
     expect(prompt).toContain(DECLINE_ENDS);
     expect(prompt).toContain("The principal's decisions outrank the trigger's own rationale.");
     expect(prompt).not.toContain("RECENT THESIS ACTIVITY");
+  });
+});
+
+/**
+ * MU, PEAD Specialist, 2026-09-28 (mu-trigger-run-open-reviews-2026-09-28.json).
+ * CEG never had a trigger run while a review sat open — every CEG fire after
+ * 09-15 was a review held for the morning run — so this is the real case of
+ * the same gap: at 10:45 ET a trigger run handled the $1,041 floor sale while
+ * three reviews from that morning were open (reports within 3 days, up 15%
+ * from entry, down 4% today). Its one update_thesis answered all three and
+ * named none but the report in passing.
+ */
+describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
+  type Line = Omit<ActivityRow, "timestamp"> & { timestamp: string };
+  const mu = muRaw as unknown as { loadedAt: string; triggers: Trigger[]; rows: Line[]; closeout: Line };
+  const toRow = (l: Line): ActivityRow => ({ ...l, timestamp: new Date(l.timestamp) });
+  const loaded = mu.rows.map(toRow);
+  const sale = mu.triggers.find((t) => t.id === "t4")!;
+
+  it("the fixture is the production case: three reviews open, and the run's one line closes all three", () => {
+    expect(openFires(loaded).map((f) => f.triggerId).sort()).toEqual(["2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace", "t6", "t9"].sort());
+    const closeout = toRow(mu.closeout);
+    expect(isAgentAnswer(closeout)).toBe(true);
+    expect(openFires([...loaded, closeout])).toEqual([]);
+    expect(mu.closeout.rationale).not.toMatch(/15%|4%/);
+  });
+
+  it("the prompt lists the three open reviews and tells the run its update_thesis answers each, by name", () => {
+    const context = stockContextFor({ ticker: "MU", rows: loaded, triggers: mu.triggers, now: new Date(mu.loadedAt) }).text!;
+    const prompt = buildTacticalSystemPrompt({
+      analyst: { name: "PEAD Specialist", mandate: null },
+      thesis: {
+        id: "cmrp6chyu000h04l5roqq5ha1",
+        ticker: "MU",
+        direction: "LONG",
+        horizon: "TARGET",
+        setupId: null,
+        coreBelief: "MU's HBM-driven earnings-upgrade cycle carries the stock through the next print.",
+        keyAssumptions: [],
+        invalidationConds: [],
+        entryPrice: 895.94,
+        targetPrice: 1100,
+        stopLoss: 1041,
+        snapshotText: null,
+        bullCaseBullets: [],
+        bearCaseBullets: [],
+        researchAge: { freshness: "fresh", daysOld: 3, horizonThreshold: 30 } as never,
+        allTriggers: mu.triggers,
+      },
+      trigger: sale,
+      position: { quantity: 13, avgCost: 895.94, daysHeld: 20, peakPrice: 1100 },
+      context,
+      fired: { price: 1038.82, coFired: [] },
+    });
+    expect(prompt).toContain("Fired since the last answer (09-28 08:00), not yet answered:");
+    expect(prompt).toContain("Reports within 3 days — decide before the print");
+    expect(prompt).toContain("At +15% from entry, reassess");
+    expect(prompt).toContain("A sharp 1-day drop could be either normal volatility");
+    expect(prompt).toContain(
+      "When WHAT'S BEEN SAID lists other triggers fired since the last answer,\n     your update_thesis answers them too: say what you decided on each, by\n     name.",
+    );
   });
 });
