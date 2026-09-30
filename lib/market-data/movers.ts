@@ -9,15 +9,15 @@
  * momentum-leader screen is "top 1-2% by 1-, 3- and 6-month return").
  *
  * Alpaca's screener names the symbols: gainers/losers come with price and
- * move; most-actives with volume only, so one snapshot call fills in their
- * price and move. Volume for every row is today's consolidated (SIP) bar,
- * ~16 minutes behind — the same read the trigger check uses; the plan
- * refuses SIP data newer than that. SEC's day-cached company list supplies
- * the names. Under-$5 names are dropped from all three lists, as the agent
- * tool does.
+ * move; most-actives with volume only. One snapshot call on the consolidated
+ * tape fills in the most-actives' price and move and every row's volume, to
+ * the minute (until 2026-09-25 the plan refused recent SIP data, so volume
+ * came from a separate 16-minute-old bar). SEC's day-cached company list
+ * supplies the names. Under-$5 names are dropped from all three lists, as
+ * the agent tool does.
  */
 
-import { getTodaySessionBars } from "@/lib/alpaca";
+import { MARKET_DATA_FEED } from "@/lib/alpaca";
 import { movePctOverSessions } from "./indicator-snapshot";
 import { getAlpacaMovers, getMoverSnapshots, type MoverKind } from "./alpaca-screener";
 import { loadCompanyList } from "./sec-filings";
@@ -55,9 +55,9 @@ export const TRAILING_SESSIONS = { move5d: 5, move1m: 21, move6m: 126 } as const
 const TRAILING_CALENDAR_DAYS = 300;
 
 /**
- * Completed daily closes for many symbols in one call, oldest first. IEX
- * closes are fine here — this is percent moves, not volume — and the bar
- * cap is raised so 50 symbols × 6 months fit in one page.
+ * Completed daily closes for many symbols in one call, oldest first, on the
+ * feed the app reads. The bar cap is raised so 50 symbols × 6 months fit in
+ * one page.
  */
 export async function fetchClosesBatch(symbols: string[], now: Date): Promise<Map<string, number[]>> {
   const out = new Map<string, number[]>();
@@ -69,7 +69,7 @@ export async function fetchClosesBatch(symbols: string[], now: Date): Promise<Ma
   try {
     const url =
       `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(symbols.join(","))}` +
-      `&timeframe=1Day&start=${start}&limit=10000&adjustment=split&feed=iex`;
+      `&timeframe=1Day&start=${start}&limit=10000&adjustment=split&feed=${MARKET_DATA_FEED}`;
     const res = await fetch(url, {
       headers: { "APCA-API-KEY-ID": keyId, "APCA-API-SECRET-KEY": secretKey },
       cache: "no-store",
@@ -122,9 +122,10 @@ export async function getMoversView(
   }
   const symbols = screen.data.map((r) => r.symbol.toUpperCase());
   const now = opts.now ?? new Date();
-  const [snaps, bars, companies, closes] = await Promise.all([
-    kind === "active" ? getMoverSnapshots(symbols) : Promise.resolve(null),
-    getTodaySessionBars(symbols, undefined, opts.now),
+  // One snapshot call for every list: the most-actives' price and prior
+  // close (the screener carries none), and today's volume for all three.
+  const [snaps, companies, closes] = await Promise.all([
+    getMoverSnapshots(symbols),
     loadCompanyList(),
     fetchClosesBatch(symbols, now),
   ]);
@@ -146,18 +147,20 @@ export async function getMoversView(
       price,
       change,
       changePct,
-      volume: bars[symbol]?.volume ?? r.volume ?? null,
+      volume: snap?.volume ?? r.volume ?? null,
       ...trailingMoves(closes.get(symbol), price),
       analystIds: opts.coveredBy?.get(symbol) ?? [],
     });
   }
   const hasVolume = rows.some((r) => r.volume != null);
+  // Gainers and losers carry their own price; a failed snapshot costs them
+  // only volume (hasVolume says so). Most-actives have no price without it.
   return {
     kind,
     rows,
     asOf,
     hasVolume,
-    ...(snaps?.error ? { error: `Prices unavailable for most-actives — ${snaps.error}` } : {}),
+    ...(snaps.error && kind === "active" ? { error: `Prices unavailable for most-actives — ${snaps.error}` } : {}),
   };
 }
 

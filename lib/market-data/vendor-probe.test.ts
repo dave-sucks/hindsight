@@ -10,6 +10,7 @@ import type { ProbeDeps } from "./vendor-probe";
 jest.mock("@/lib/agent/research-helpers", () => ({ finnhub: jest.fn() }));
 jest.mock("@/lib/market-data/alpaca-screener", () => ({ getAlpacaMovers: jest.fn() }));
 jest.mock("@/lib/alpaca", () => ({ getBars: jest.fn(), getSnapshots: jest.fn() }));
+jest.mock("@/lib/actions/finnhub.actions", () => ({ getIntradayCandles: jest.fn() }));
 
 // SMMT as Alpaca's tape had it at the 2026-09-29 probe; at 06:25 the daily
 // bar is still the prior session's.
@@ -32,6 +33,7 @@ const healthy: ProbeDeps = {
   getAlpacaMovers: jest.fn(async () => ({ data: [{ symbol: "NVDA", price: 100, percentChange: 1 }] })) as never,
   getBars: jest.fn(async () => [{ close: 17.1, volume: 1 }]) as never,
   getSnapshots: jest.fn(async () => ({ SMMT: smmtBefore0930 })) as never,
+  getIntradayCandles: jest.fn(async () => [{ date: "2026-09-09T19:59:00Z", open: 15.5, high: 15.5, low: 15.48, close: 15.48, volume: 12_000 }]) as never,
 };
 
 const NOW = new Date("2026-09-10T10:25:00Z");
@@ -39,10 +41,11 @@ const NOW = new Date("2026-09-10T10:25:00Z");
 describe("runVendorProbe", () => {
   it("every source answering with a body is ok — an empty calendar week is still an answer", async () => {
     const out = await runVendorProbe("smmt", { now: NOW, deps: healthy });
-    expect(out).toHaveLength(9);
+    expect(out).toHaveLength(10);
     expect(out.every((r) => r.status === "ok")).toBe(true);
     expect(out.find((r) => r.source === "Finnhub earnings calendar")?.detail).toBe("0 reports in 7 days");
-    expect(summarizeProbe("smmt", out)).toBe("ok=9 empty=0 error=0 (SMMT)");
+    expect(out.find((r) => r.source === "Alpaca intraday bars")).toMatchObject({ status: "ok", detail: "1 one-minute bars, last 19:59Z" });
+    expect(summarizeProbe("smmt", out)).toBe("ok=10 empty=0 error=0 (SMMT)");
   });
 
   it("the live price is probed on Alpaca with the mid-cap: before the open it is the last close, with its prior close", async () => {
@@ -83,7 +86,7 @@ describe("runVendorProbe", () => {
     };
     const out = await runVendorProbe("SMMT", { now: NOW, deps });
     expect(out.find((r) => r.source === "Finnhub filed statements")).toMatchObject({ status: "empty", detail: "0 filings" });
-    expect(summarizeProbe("SMMT", out)).toBe("ok=8 empty=1 error=0 (SMMT) — empty: Finnhub filed statements");
+    expect(summarizeProbe("SMMT", out)).toBe("ok=9 empty=1 error=0 (SMMT) — empty: Finnhub filed statements");
   });
 
   it("a thrown or refused call is error, and the other probes still run", async () => {
@@ -97,7 +100,7 @@ describe("runVendorProbe", () => {
     const out = await runVendorProbe("SMMT", { now: NOW, deps });
     expect(out.find((r) => r.source === "Alpaca daily bars")).toMatchObject({ status: "error", detail: "403 Forbidden" });
     expect(out.find((r) => r.source === "Alpaca screener")).toMatchObject({ status: "error", detail: "HTTP 429" });
-    expect(out.filter((r) => r.status === "ok")).toHaveLength(7);
+    expect(out.filter((r) => r.status === "ok")).toHaveLength(8);
     expect(summarizeProbe("SMMT", out)).toContain("error: Alpaca daily bars, Alpaca screener");
   });
 

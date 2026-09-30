@@ -11,7 +11,7 @@
  * passed through as ranked by volume.
  */
 
-import type { AlpacaCredentials } from "@/lib/alpaca";
+import { MARKET_DATA_FEED, type AlpacaCredentials } from "@/lib/alpaca";
 
 export type MoverKind = "gainers" | "losers" | "active";
 
@@ -108,7 +108,7 @@ export async function getAlpacaMovers(
 export interface MoverSnapshot {
   price: number | null;
   prevClose: number | null;
-  /** Always null — see getMoverSnapshots. */
+  /** Today's consolidated volume, from the snapshot's daily bar. */
   volume: number | null;
 }
 
@@ -119,11 +119,10 @@ interface SnapshotBody {
 }
 
 /**
- * Price and prior close for up to 100 symbols in one call, on the IEX feed:
- * our plan refuses SIP snapshots newer than 15 minutes ("subscription does
- * not permit querying recent SIP data", 2026-09-17), and a snapshot's volume
- * is only ever read from SIP — so volume is always null here; callers take
- * it from today's delayed SIP bar (getTodaySessionBars).
+ * Price, prior close and today's volume for up to 100 symbols in one call,
+ * on the consolidated tape (lib/alpaca.ts MARKET_DATA_FEED). Until
+ * 2026-09-25 the plan refused SIP snapshots newer than 15 minutes, so this
+ * read IEX and volume came from a separate, 16-minute-old bar call.
  */
 export async function getMoverSnapshots(
   symbols: string[],
@@ -135,7 +134,7 @@ export async function getMoverSnapshots(
   if (symbols.length === 0) return { bySymbol };
   try {
     const res = await fetch(
-      `https://data.alpaca.markets/v2/stocks/snapshots?symbols=${encodeURIComponent(symbols.slice(0, 100).join(","))}&feed=iex`,
+      `https://data.alpaca.markets/v2/stocks/snapshots?symbols=${encodeURIComponent(symbols.slice(0, 100).join(","))}&feed=${MARKET_DATA_FEED}`,
       { headers: h, cache: "no-store", signal: AbortSignal.timeout(10_000) },
     );
     if (!res.ok) return { bySymbol, error: `Alpaca snapshots returned ${res.status}` };
@@ -145,7 +144,7 @@ export async function getMoverSnapshots(
       bySymbol.set(symbol.toUpperCase(), {
         price: s.latestTrade?.p ?? s.dailyBar?.c ?? null,
         prevClose: s.prevDailyBar?.c ?? null,
-        volume: null,
+        volume: s.dailyBar?.v ?? null,
       });
     }
     return { bySymbol };

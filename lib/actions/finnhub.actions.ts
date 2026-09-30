@@ -2,6 +2,8 @@
 
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { getLiveQuote } from '@/lib/market-data/live-quote';
+import { MARKET_DATA_FEED } from '@/lib/alpaca';
+import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
 import { cache } from 'react';
 
 // ─── Local helpers (previously imported from utils) ───────────────────────────
@@ -376,8 +378,8 @@ export async function getStockCandles(
   symbol: string,
   days = 365,
 ): Promise<StockCandle[]> {
-  // Use Alpaca Data API (IEX feed) — Finnhub candles blocked on free tier,
-  // FMP historical-price-full blocked on legacy plan.
+  // Alpaca daily bars on the feed the app reads (lib/alpaca.ts
+  // MARKET_DATA_FEED) — Finnhub candles are paid-only, FMP is gone.
   try {
     const apiKey = process.env.ALPACA_API_KEY;
     const apiSecret = process.env.ALPACA_API_SECRET;
@@ -394,7 +396,7 @@ export async function getStockCandles(
     // plateau→cliff→plateau (e.g. a 3:1 split shows pre-split bars ~3x higher).
     // `split` (not `all`) keeps dividend-unadjusted prices so non-splitting
     // dividend payers stay pixel-identical to those same sources.
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=iex`;
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=${MARKET_DATA_FEED}`;
 
     const res = await fetch(url, {
       headers: {
@@ -456,7 +458,7 @@ export async function getStockCandlesBatch(
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     // adjustment=split — see getStockCandles: back-adjust for splits so the
     // chart matches Finnhub/Perplexity and a split doesn't show as a cliff.
-    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=iex`;
+    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=${MARKET_DATA_FEED}`;
 
     const res = await fetch(url, {
       headers: {
@@ -499,15 +501,17 @@ export async function getStockCandlesBatch(
  * behind the sheet chart's "1D" tab. Each candle's `date` carries the FULL ISO
  * (UTC) timestamp (not a YYYY-MM-DD day) so the chart can render time-of-day.
  *
- * Source: Alpaca IEX (regular hours only). IEX is thin (~2-3% of volume) and
- * carries little pre-market, so the 1D line is a clean 9:30–close session.
+ * Source: Alpaca's consolidated tape (MARKET_DATA_FEED), pre-market and
+ * after-hours included — for display. What the agents and triggers act on is
+ * decided elsewhere (lib/market-data/live-quote: regular hours only). Until
+ * 2026-09-29 this read the free IEX feed: one exchange, ~2–3% of volume,
+ * missing minutes on a mid-cap (SMMT 2026-09-29: 384 of 391 session bars, a
+ * high of $19.07 against the tape's $19.09) and no off-hours prints at all.
  *
  * 2026-08-19 (DAV-191) — this used to try FMP `/api/v3/historical-chart/1min`
- * first, for the consolidated pre/post-market tape. FMP retired the whole
- * /api/v3 namespace on 2025-08-31; the call returned 403 in ~83ms on EVERY 30s
- * poll of the most-polled surface in the app before falling through to here.
- * Removed. If pre/post-market coverage matters again, the path is Alpaca SIP
- * (feed=iex → feed=sip), not FMP.
+ * first. FMP retired the whole /api/v3 namespace on 2025-08-31; the call
+ * returned 403 on EVERY 30s poll of the most-polled surface in the app
+ * before falling through to here. Removed.
  */
 export async function getIntradayCandles(symbol: string): Promise<StockCandle[]> {
   return getIntradayCandlesAlpaca(symbol);
@@ -524,7 +528,7 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
 
     const end = new Date().toISOString();
     const start = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Min&start=${start}&end=${end}&limit=10000&feed=iex`;
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Min&start=${start}&end=${end}&limit=10000&feed=${MARKET_DATA_FEED}`;
 
     const res = await fetch(url, {
       headers: {
@@ -565,11 +569,14 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
     });
     const latest = stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
 
-    // Latest session, REGULAR HOURS ONLY (9:30–16:00 ET = minutes 570–960).
-    // IEX pre/post-market is too thin to be useful; excluding it keeps a clean
-    // regular session for the fixed x-axis domain.
+    // The latest session date, trimmed to the chart's clock window (7:00 AM
+    // to 6:30 PM ET, lib/market-data/intraday-window): pre-market and
+    // after-hours inside it ride along; the tape's 4:00 AM and 8:00 PM prints
+    // do not, because the chart sizes its scale from every bar it is given.
+    // Before the open this is today's pre-market so far — the morning a gap
+    // matters.
     return stamped
-      .filter((s) => s.etDate === latest && s.etMinutes >= 570 && s.etMinutes <= 960)
+      .filter((s) => s.etDate === latest && s.etMinutes >= INTRADAY_WINDOW_ET.start && s.etMinutes <= INTRADAY_WINDOW_ET.end)
       .map(({ bar }) => ({
         date: bar.t, // full ISO timestamp — chart renders time-of-day for 1D
         close: bar.c,
@@ -588,9 +595,9 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
  * Hourly candles over the last ~month — powers the sheet chart's 1W and 1M
  * tabs. Daily candles make 1W ~3 dots and 1M ~22; hourly makes them read like
  * a real finance chart (Perplexity uses intraday bars for its short ranges
- * too). Same FREE Alpaca IEX feed as the 1D tab — thin on illiquid names and
- * regular-hours only (no pre/post), but a big density step up at $0. The paid
- * upgrade (feed=sip) is the drop-in for full-volume + extended hours.
+ * too). Consolidated tape (MARKET_DATA_FEED) since 2026-09-29, regular hours
+ * only — an hourly bar per off-hours hour would add nine thin points a day to
+ * a range meant to read at a glance.
  *
  * `date` carries the FULL ISO timestamp so the chart keys each hour uniquely;
  * the categorical axis then collapses overnight/weekend gaps (no flat spans),
@@ -610,7 +617,7 @@ export async function getHourlyCandles(
 
     const end = new Date().toISOString();
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Hour&start=${start}&end=${end}&limit=10000&adjustment=split&feed=iex`;
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Hour&start=${start}&end=${end}&limit=10000&adjustment=split&feed=${MARKET_DATA_FEED}`;
 
     const res = await fetch(url, {
       headers: {
@@ -630,9 +637,8 @@ export async function getHourlyCandles(
     };
     if (!data.bars?.length) return [];
 
-    // Regular-hours bars only (9:00–16:00 ET = minutes 540–960). IEX pre/post is
-    // too thin to plot and would add stray points to the categorical axis; the
-    // loose lower bound keeps the opening bar whatever the hour alignment.
+    // Regular-hours bars only (9:00–16:00 ET = minutes 540–960); the loose
+    // lower bound keeps the opening bar whatever the hour alignment.
     const timeFmt = new Intl.DateTimeFormat('en-GB', {
       timeZone: 'America/New_York',
       hour12: false,

@@ -20,7 +20,7 @@
 // daily indicator snapshot (TickerIndicators, written 06:30 ET) next to the
 // quote — loaded once per pass, only when a ladder in the batch needs it.
 // VOLUME_RATIO / GAP_UP also read today's consolidated volume (one batched
-// Alpaca call, ~16 minutes delayed).
+// Alpaca call, to the minute).
 //
 // The close pass: ticks from 16:20 to 16:34 ET on a trading day evaluate
 // only rungs carrying a `basis: "close"` price level, with the day's close
