@@ -17,7 +17,7 @@ import {
 } from "./insider-cluster";
 
 export interface StockVolume {
-  /** Today's consolidated volume through ~16 minutes ago; null before the open. */
+  /** Today's consolidated volume, to the minute; null before the open. */
   today: number | null;
   /** Average of the last 20 completed sessions. */
   avg20: number | null;

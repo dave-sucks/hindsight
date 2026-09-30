@@ -72,8 +72,8 @@ chart for every ticker on the book with `lib/market-data/price-structure.ts`
 last 10 sessions' gaps — in `TickerIndicators`. The evaluator reads the
 newest row next to the live quote; a snapshot older than 5 days is ignored
 (logged). No snapshot ⇒ the chart kinds read false. `VOLUME_RATIO` and
-`GAP_UP` also read today's consolidated volume (one batched Alpaca call, ~16
-minutes delayed). The live quote itself is Alpaca's too — the whole book in
+`GAP_UP` also read today's consolidated volume (one batched Alpaca call, to
+the minute). The live quote itself is Alpaca's too — the whole book in
 one call, Finnhub `/quote` behind it (`lib/market-data/live-quote.ts`).
 
 **Deleted 2026-09-11 (DAV-247):** `SIGNAL_TYPE`, `GUIDANCE_CHANGE`, `FILING`.

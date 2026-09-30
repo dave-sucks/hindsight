@@ -147,7 +147,7 @@ export const getStockData = defineTool({
            * Today's session so far — the chart above is completed sessions
            * only, so "is today's breakout on volume?" needs its own read
            * (DAV-247 review: the tactical volume gate read a field #628
-           * removed). Consolidated volume through ~16 minutes ago. Null
+           * removed). Consolidated volume, to the minute. Null
            * before the first print or when the vendor didn't answer.
            */
           today: {

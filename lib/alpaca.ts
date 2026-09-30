@@ -750,16 +750,17 @@ export async function getBars(
  * A year of COMPLETED daily sessions, full OHLCV, for the chart module
  * (lib/market-data/price-structure.ts, DAV-243).
  *
- * SIP first: our plan serves the consolidated tape for any window that ends
- * 15+ minutes ago, and only SIP volume is real — IEX carries ~2% of it
- * (MSFT 2026-09-01: SIP 21.1M shares, IEX 483k). A volume ratio off IEX is a
- * ratio of a sliver. IEX is the fallback when SIP comes back empty, and the
- * result says which feed it is so a caller never presents IEX volume as the
- * market's.
+ * The consolidated tape (SIP) first — only its volume is real; IEX carries
+ * ~2% of it (MSFT 2026-09-01: SIP 21.1M shares, IEX 483k), so a volume ratio
+ * off IEX is a ratio of a sliver. IEX is the fallback when SIP errors or
+ * comes back empty, and the result says which feed it is so a caller never
+ * presents IEX volume as the market's. Until 2026-09-25 the plan refused
+ * SIP bars newer than 15 minutes, so the window used to end 16 minutes ago;
+ * it ends now.
  *
  * Today's bar is dropped until 4:20 PM ET: before then it is a partial
- * session (and on SIP, 15 minutes stale), and the chart is built from
- * finished days — the live price is passed separately.
+ * session, and the chart is built from finished days — the live price is
+ * passed separately.
  *
  * Split-adjusted (BAR_ADJUSTMENT): the year reads as one series for a stock
  * that split inside it.
@@ -789,7 +790,7 @@ export async function getDailyBars(
   const todayFinished = minutesEt >= 16 * 60 + 20;
 
   const pull = async (feed: "sip" | "iex") => {
-    const end = feed === "sip" ? new Date(now.getTime() - 16 * 60_000).toISOString() : now.toISOString();
+    const end = now.toISOString();
     const out: DailyBar[] = [];
     const it = getClient(creds).getBarsV2(symbol, {
       start,
@@ -833,9 +834,10 @@ export async function getDailyBars(
 
 /**
  * Today's session bar for many symbols in one call — consolidated (SIP)
- * volume through ~16 minutes ago, and at 16:20 ET the day's close. Read by
- * the trigger evaluator for VOLUME_RATIO / GAP_UP and by its close pass
- * (DAV-247). Finnhub quotes carry no volume; IEX volume is ~2% of the tape.
+ * volume to the minute, and at 16:20 ET the day's close. Read by the
+ * trigger evaluator for VOLUME_RATIO / GAP_UP and by its close pass
+ * (DAV-247). IEX volume is ~2% of the tape. Until 2026-09-25 the plan
+ * refused SIP bars newer than 15 minutes, so this ended 16 minutes ago.
  *
  * Only a bar dated today (ET) is returned — before the open the "today" bar
  * holds overnight prints and must not be read as the session. Fail-open:
@@ -855,7 +857,7 @@ export async function getTodaySessionBars(
     month: "2-digit",
     day: "2-digit",
   }).format(now);
-  const end = new Date(now.getTime() - 16 * 60_000).toISOString();
+  const end = now.toISOString();
   for (let i = 0; i < symbols.length; i += 100) {
     const chunk = symbols.slice(i, i + 100);
     try {
