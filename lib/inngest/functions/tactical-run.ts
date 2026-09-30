@@ -18,7 +18,7 @@ import { inngest } from "@/lib/inngest/client";
 import { enterAlreadyChecked, rearmBuyAfterPass } from "@/lib/agent/triggers/rearm";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { stockContextFor } from "@/lib/agent/stock-context-for";
+import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -144,25 +144,11 @@ export const tacticalRun = inngest.createFunction(
         include: {
           researchRun: { select: { agentConfigId: true } },
           // What's been said on the stock (stock-context.ts): back past the
-          // last run's answer, so the principal's decisions of the last 30
-          // days and every fire nobody answered reach this run. It used to be
-          // the last 5 lines cut at 120 characters — on CEG 2026-09-14 the
-          // principal's decline was cut mid-word and gone two fires later.
-          updates: {
-            orderBy: { timestamp: "desc" },
-            take: 40,
-            select: {
-              type: true,
-              summary: true,
-              rationale: true,
-              timestamp: true,
-              triggerId: true,
-              fieldChanges: true,
-              runId: true,
-              priceAtTime: true,
-              run: { select: { mode: true } },
-            },
-          },
+          // last run's answer, so the principal's decisions since and every
+          // fire nobody answered reach this run. It used to be the last 5
+          // lines cut at 120 characters — on CEG 2026-09-14 the principal's
+          // decline was cut mid-word and gone two fires later.
+          updates: { orderBy: { timestamp: "desc" }, take: 40, select: ACTIVITY_SELECT },
         },
       });
       if (!thesis) return null;
@@ -308,7 +294,13 @@ export const tacticalRun = inngest.createFunction(
           // Rendered here: the step boundary would turn the Dates to strings.
           context: stockContextFor({
             ticker: thesis.ticker,
-            rows: thesis.updates.map((u) => ({ ...u, runMode: u.run?.mode ?? null })),
+            // The principal's standing notes travel at any age, past the 40 lines.
+            rows: [
+              ...thesis.updates,
+              ...(await prisma.thesisUpdate.findMany({ where: { thesisId: thesis.id, type: "NOTE" }, select: ACTIVITY_SELECT })).filter(
+                (n) => !thesis.updates.some((u) => u.id === n.id),
+              ),
+            ].map((u) => ({ ...u, runMode: u.run?.mode ?? null })),
             triggers: ladder,
             now: new Date(),
             // The price it fired at stands in for "now" beside the

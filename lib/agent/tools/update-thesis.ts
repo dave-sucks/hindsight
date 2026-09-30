@@ -73,6 +73,9 @@ import {
   needsPairedCloseCheck,
 } from "@/lib/agent/thesis-transitions";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
+import { computePlanSanity } from "@/lib/agent/plan-sanity";
+import { writeNote } from "@/lib/agent/notes";
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 // ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
 // Same shape as record_thesis. See lib/agent/tools/record-thesis.ts.
@@ -105,6 +108,16 @@ const sectionBulletSchema = z
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
+  note: z
+    .string()
+    .optional()
+    .describe(
+      "Your note on this stock: what the next run must carry forward (what you are holding through, what would make you sell). Replaces your previous note.",
+    ),
+  resolve_note_id: z
+    .string()
+    .optional()
+    .describe("A note of the principal's this call carries out: its id from `context`. The rationale says what you did."),
   rationale: z
     .string()
     .min(10)
@@ -1492,13 +1505,17 @@ export const updateThesis = defineTool({
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,
       });
+      const reviewedNotes = await writeNoteOps(existing.id, args, ctx, resolvedPriceAtTime);
+      const reviewedMeans = whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence);
       return {
-        summary: `Reviewed ${existing.ticker} thesis: no changes.`,
+        summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}`,
         data: {
           ok: true,
           thesis_id: existing.id,
           type: "REVIEWED" as const,
           trigger_ops: opResults,
+          ...(reviewedNotes.length ? { notes: reviewedNotes } : {}),
+          ...(reviewedMeans.length ? { what_this_means: reviewedMeans } : {}),
           card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }),
         },
         sources: [],
@@ -1745,15 +1762,19 @@ export const updateThesis = defineTool({
       tradeId: args.trade_id,
       priceAtTime: resolvedPriceAtTime,
     });
+    const savedNotes = await writeNoteOps(existing.id, args, ctx, resolvedPriceAtTime);
+    const means = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
 
     return {
-      summary,
+      summary: means.length ? `${summary} ⚠ ${means[0]}` : summary,
       data: {
         ok: true,
         thesis_id: existing.id,
         type: updateType,
         changed_fields: Object.keys(fieldChanges),
         trigger_ops: opResults,
+        ...(savedNotes.length ? { notes: savedNotes } : {}),
+        ...(means.length ? { what_this_means: means } : {}),
         // Post-update thesis snapshot for the chat renderer. Merges the
         // pre-update record with the patch we just applied — no extra DB
         // read. Drives the "Wrote / edited theses" carousel.
@@ -1763,6 +1784,45 @@ export const updateThesis = defineTool({
     };
   },
 });
+
+
+/**
+ * The save's reply (docs/plans/AGENT_CONTEXT.md §3.6): what the saved plan
+ * means, in the sheet's words (plan-sanity.ts). Words, never a refusal. EME
+ * 2026-09-29: a buy armed at a score of 6 against this analyst's 7 got only
+ * "composite 3 → 6" back; told, the chat fixed it in one turn.
+ */
+function whatThisMeans(row: Record<string, unknown>, price: number | null, minConfidence?: number | null): string[] {
+  const n = (v: unknown) => (v == null ? null : Number(v));
+  const flags = computePlanSanity({
+    status: String(row.status), direction: (row.direction as string | null) ?? null, currentPrice: price,
+    entryPrice: n(row.entryPrice), targetPrice: n(row.targetPrice), stopLoss: n(row.stopLoss),
+    composite: getThesisComposite(row as never), minConfidence: minConfidence ?? null,
+  });
+  // The score line is about a buy; with no buy price there is none to refuse.
+  return flags.filter((f) => f.kind !== "COMPOSITE_BELOW_MINIMUM" || n(row.entryPrice) != null).map((f) => `${row.ticker}: ${f.text}`);
+}
+
+/** The analyst's note and the principal's note it resolves, if the call asked; a line each for the reply. */
+async function writeNoteOps(
+  thesisId: string,
+  args: { note?: string; resolve_note_id?: string; rationale: string },
+  ctx: { runId?: string | null; runMode?: string },
+  priceAtTime: number | null,
+): Promise<string[]> {
+  const base = { thesisId, author: "ANALYST" as const, via: ctx.runMode ?? "run", runId: ctx.runId ?? null, priceAtTime };
+  const out: string[] = [];
+  if (args.resolve_note_id) {
+    const note = await prisma.thesisUpdate.findFirst({ where: { id: args.resolve_note_id, thesisId, type: "NOTE" }, select: { id: true } });
+    if (note) await writeNote({ ...base, text: args.rationale, resolves: note.id });
+    out.push(note ? `Resolved note ${note.id}.` : `No note ${args.resolve_note_id} on this stock — nothing resolved.`);
+  }
+  if (args.note?.trim()) {
+    await writeNote({ ...base, text: args.note });
+    out.push("Note saved; it replaces your previous note on this stock.");
+  }
+  return out;
+}
 
 /**
  * Map a Thesis row (from prisma) to the ThesisCardData shape consumed by

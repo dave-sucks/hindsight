@@ -1,0 +1,122 @@
+{
+ "_about": "DOCU, PEAD Specialist, held from 2026-09-30 (120 shares, filled at $67.73 after the principal cut the proposal from 162). `rows` are its Activity lines from the 09:40 ET trigger run's answer through the 12:25 approval, as stored (rationales shortened; fieldChanges kept only on the approval, the one line that reads them). `note` is the note the unscoped 09-30 chat would have written after the principal's yes. Built read-only 2026-09-30.",
+ "thesis": {
+  "id": "cmtu9lfhw000004i575f6xyig",
+  "ticker": "DOCU",
+  "status": "HOLDING",
+  "direction": "LONG",
+  "horizon": "TARGET",
+  "setupId": "MA_PULLBACK",
+  "entryPrice": 67.73,
+  "targetPrice": 83,
+  "stopLoss": 63,
+  "triggers": [
+   {
+    "id": "af4d1172-ee7e-4ac1-9b92-12f2e83091e3",
+    "action": "EXIT",
+    "source": "AGENT",
+    "predicate": {
+     "kind": "PRICE_BELOW",
+     "level": 63
+    },
+    "rationale": "Under the Sep 9 swing low $63.63 and the Sep 3 gap-day low $64.16 — if both break, the MA_PULLBACK thesis is wrong. -8% from entry would be $61.64; the structural level is tighter at $63.00.",
+    "cooldownDays": 1
+   }
+  ],
+  "createdAt": "2026-09-09T15:39:59.540Z",
+  "lastReviewedAt": "2026-09-30T13:40:35.930Z"
+ },
+ "position": {
+  "symbol": "DOCU",
+  "direction": "LONG",
+  "quantity": 120,
+  "initialQty": 120,
+  "avgCost": 67.73,
+  "openedAt": "2026-09-30T16:25:14.191Z",
+  "status": "OPEN"
+ },
+ "rows": [
+  {
+   "id": "cmuobn525000a04lgn2o05ll7",
+   "type": "UPDATED",
+   "triggerId": null,
+   "timestamp": "2026-09-30T16:30:23.837Z",
+   "summary": "DOCU buy price set to what was paid — $67.73",
+   "runId": null,
+   "runMode": null,
+   "priceAtTime": 67.7347,
+   "rationale": "The buy filled at $67.73; the thesis carried the planned $68.18. Once the stock is owned the buy price is what was paid, not the plan.",
+   "fieldChanges": {}
+  },
+  {
+   "id": "cmuobgizl000204l68vk58juo",
+   "type": "PROPOSAL_APPROVED",
+   "triggerId": null,
+   "timestamp": "2026-09-30T16:25:15.297Z",
+   "summary": "Approved OPEN on DOCU (edited 162→120 sh) — submitted to Alpaca (idem=4f185947)",
+   "runId": null,
+   "runMode": null,
+   "priceAtTime": null,
+   "rationale": "User approved the OPEN proposal, resizing 162→120 shares. Alpaca order id 23e155a2-a3f5-4f43-b485-9e4080230f6a.",
+   "fieldChanges": {
+    "proposal": {
+     "to": {
+      "edited": true,
+      "intent": "OPEN",
+      "status": "APPROVED",
+      "orderId": "cmuo5kmx2000504la2yshm62p",
+      "quantity": 120,
+      "approvedAt": "2026-09-30T16:25:14.191Z",
+      "approvedBy": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+      "alpacaOrderId": "23e155a2-a3f5-4f43-b485-9e4080230f6a",
+      "proposedQuantity": 162
+     },
+     "from": {
+      "status": "AWAITING_APPROVAL",
+      "orderId": "cmuo5kmx2000504la2yshm62p",
+      "quantity": 162
+     }
+    }
+   }
+  },
+  {
+   "id": "cmuobgit0000104l6385bekk6",
+   "type": "STATUS_CHANGED",
+   "triggerId": null,
+   "timestamp": "2026-09-30T16:25:15.060Z",
+   "summary": "Promoted DOCU LONG WATCHING → HOLDING on approved proposal",
+   "runId": null,
+   "runMode": null,
+   "priceAtTime": null,
+   "rationale": "Entry filled at $68.18 — the watchlist row is now a live position. The buy trigger is gone; the analyst's other triggers stay, and the analyst's own sell rules apply.",
+   "fieldChanges": {}
+  },
+  {
+   "id": "cmuo5ks5y000904la2urebc68",
+   "type": "UPDATED",
+   "triggerId": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+   "timestamp": "2026-09-30T13:40:36.118Z",
+   "summary": "Updated DOCU thesis",
+   "runId": "cmuo5kdhl000204law61rtxw1",
+   "runMode": "INTRADAY_TACTICAL",
+   "priceAtTime": 68.18,
+   "rationale": "$DOCU trigger validated and I acted on it. The stock is trading live at $68.18, still above the $67.80 reclaim level and back above the 20-day moving average at $67.62, which is the exact confirmation",
+   "fieldChanges": {}
+  },
+  {
+   "id": "cmuo5kdtt000304latjchd8u5",
+   "type": "TRIGGER_FIRED",
+   "triggerId": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+   "timestamp": "2026-09-30T13:40:17.537Z",
+   "summary": "Price above $67.8 — consider entry",
+   "runId": "cmuo5kdhl000204law61rtxw1",
+   "runMode": "INTRADAY_TACTICAL",
+   "priceAtTime": 68.13,
+   "rationale": "Reprice the spent buy trigger to a reclaim above the 20-day moving average ($67.62). A close back above that area is the confirmation this MA_PULLBACK setup actually needs.",
+   "fieldChanges": {}
+  }
+ ],
+ "note": "Bought a starter, 120 shares (~$8K), smaller than the 162 proposed because the base hasn't resolved. Agreed with the chat: add on a close above $74.07 (the base pivot) on real volume. What would change my mind: IAM stalls under 17% of ARR at the December print.",
+ "readAt": "2026-10-02T12:00:30Z",
+ "price": 69.1
+}

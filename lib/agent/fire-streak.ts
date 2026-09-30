@@ -83,7 +83,8 @@ function hasAnyFieldChange(fieldChanges: unknown): boolean {
  * sentence says "the plan has not changed", not "nothing has changed".
  */
 export function changedTheRow(u: FireStreakUpdate): boolean {
-  if (u.type === "TRIGGER_FIRED" || u.type === "REVIEWED") return false;
+  // A note says what to carry forward; it is not the plan (lib/agent/notes.ts).
+  if (u.type === "TRIGGER_FIRED" || u.type === "REVIEWED" || u.type === "NOTE") return false;
   if (ALWAYS_A_CHANGE.has(u.type)) return true;
   return hasAnyFieldChange(u.fieldChanges);
 }

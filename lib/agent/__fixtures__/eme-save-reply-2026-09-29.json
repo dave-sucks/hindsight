@@ -1,0 +1,160 @@
+{
+ "_about": "EME, Secular Compounder (buys at 70/100 = 7/10). `thesis` is the stored row as the 2026-09-29 21:32 ET chat read it (narrative trimmed; every field update_thesis gates on as stored). `call` is that chat's 21:33 update_thesis call as sent, rationale and score notes shortened. The reply it got back: \"Updated EME: Added: buy above $807.42, Added: Reports within 5 days → review, Stop set: $724, Target set: $980, composite 3 → 6\" — nothing about the buy being refused. Built read-only 2026-09-30.",
+ "minConfidence": 70,
+ "price": 762.03,
+ "thesis": {
+  "id": "cmsplgnxd000c04l7jkp3kr8o",
+  "ticker": "EME",
+  "status": "WATCHING",
+  "direction": "LONG",
+  "horizon": "COMPOUNDER",
+  "setupId": "COMPOUNDER_ACCUMULATION",
+  "scoring": {
+   "composite": 3,
+   "entryQuality": {
+    "note": "No setup condition is met.",
+    "score": 0
+   },
+   "trendStrength": {
+    "note": "Broke the 200-day.",
+    "score": 0
+   },
+   "relativeStrength": {
+    "note": "Deeply underperforming.",
+    "score": 1
+   },
+   "catalystFreshness": {
+    "note": "Q3 earnings late Oct/early Nov.",
+    "score": 2
+   }
+  },
+  "entryPrice": null,
+  "targetPrice": null,
+  "stopLoss": null,
+  "conviction": "MEDIUM",
+  "coreBelief": "EME compounds to $1,100+ within 24 months as a $20B+ revenue run-rate, record RPO backlog (~$20B+), and 9.5–10%+ operating margins generate sustained EPS growth of 15%+, while the stock's 50–70% valuation discount to peer FIX/PWR compresses as the chart repairs.",
+  "keyAssumptions": [
+   "Record RPO backlog (~$20B+) converts to revenue at a rate consistent with the historical 50% NTM rule, sustaining 15%+ revenue growth into 2027",
+   "Operating margin continues expanding toward 10%+ as electrical/mechanical mix shift and pricing power persist against labor/material cost pressures"
+  ],
+  "invalidationConds": [
+   "Two consecutive quarters of guidance cuts — any reduction to the $32.00–$33.25 EPS range from the July 2026 raise would signal margin or backlog execution failure",
+   "Sustained gross margin compression below 17% for two consecutive quarters, signaling labor/materials cost inflation has broken the pricing-power cycle",
+   "RPO balance declines sequentially for two consecutive quarters, indicating demand is not replenishing burned backlog"
+  ],
+  "variantView": "Consensus underweights EME's RPO-to-revenue flywheel.",
+  "convictionRationale": "Business executing at peak quality; chart broken. MEDIUM until the chart confirms.",
+  "createdAt": "2026-08-12T04:33:39.361Z",
+  "lastReviewedAt": "2026-09-28T02:31:33.221Z",
+  "researchUpdatedAt": "2026-09-25T12:05:58.930Z",
+  "triggers": [
+   {
+    "id": "eme-review-break",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "predicate": {
+     "kind": "PRICE_BELOW",
+     "level": 700
+    },
+    "rationale": "Kept near-term; $700 is below the 61.8% Fibonacci retracement ($712.77) of the prior up-leg and signals further structural deterioration.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "eme-earnbeat",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "predicate": {
+     "kind": "EARNINGS_BEAT",
+     "minSurprisePct": 3
+    },
+    "rationale": "A clean earnings beat would test whether record RPO and margin discipline are still translating into upside evidence after the reset.",
+    "cooldownDays": 7
+   },
+   {
+    "id": "eme-earnmiss",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "predicate": {
+     "kind": "EARNINGS_MISS",
+     "minSurprisePct": 3
+    },
+    "rationale": "A meaningful earnings miss would force a re-check on backlog conversion and project-margin durability.",
+    "cooldownDays": 7
+   },
+   {
+    "id": "7f889636-7bab-499a-9255-614808c013b9",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "predicate": {
+     "days": 14,
+     "kind": "REVIEW_CADENCE"
+    },
+    "rationale": "Biweekly watch while chart is broken; re-assess whether Trend Template checks are improving and RS is recovering before sizing in.",
+    "cooldownDays": 14
+   },
+   {
+    "id": "082ad632-e344-4b62-8612-1b823c15f72d",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "predicate": {
+     "kind": "VS_SMA",
+     "period": 50,
+     "direction": "ABOVE"
+    },
+    "rationale": "EME is testing the 50-day/200-day cluster at ~$769-770. A reclaim and close above the 50-day is the first chart repair signal — re-score at that point. If composite reaches 7+, arm a buy trigger at the base pivot $807 with stop at $724. Do not buy automatically; chart must prove it.",
+    "lastFiredAt": "2026-09-28T14:00:11.889Z",
+    "cooldownDays": 5
+   }
+  ]
+ },
+ "call": {
+  "scoring": {
+   "entryQuality": {
+    "note": "Breakout entry above $807 pivot is a clean defined setup once triggered — but current price ($762) is in the base, not at the trigger.",
+    "score": 1
+   },
+   "trendStrength": {
+    "note": "200-day slope has turned rising; 28-bar base forming with defined pivot $807.42 and swing low $723.87.",
+    "score": 1
+   },
+   "relativeStrength": {
+    "note": "1M RS vs. SPY now +3.6 (was +1.5), vs. XLI +7.5.",
+    "score": 2
+   },
+   "catalystFreshness": {
+    "note": "Q3 earnings expected late Oct / early Nov 2026 — 3–5 weeks out.",
+    "score": 2
+   }
+  },
+  "rationale": "Re-pricing the plan after the 09-25 save bug wiped the $786 entry. [...] Composite updated to 6/10 to reflect RS improvement and the now-rising 200-day slope; still one point below the 7-point execution floor, but by the time price closes above $807 the trend will have repaired enough to clear it.",
+  "stop_loss": 724,
+  "thesis_id": "cmsplgnxd000c04l7jkp3kr8o",
+  "stop_basis": "Under the September 17 swing low at $723.87 — the base's defined floor. 1.8× ATR ($23.70) below the entry pivot. A close below $724 means the base has failed and the thesis needs a full review.",
+  "entry_price": 807.42,
+  "add_triggers": [
+   {
+    "id": "094c3106-a3d5-49fc-b04b-dc67924053bd",
+    "action": "ENTER",
+    "predicate": {
+     "kind": "PRICE_ABOVE",
+     "basis": "close",
+     "level": 807.42
+    },
+    "rationale": "A confirmed close above the base pivot at $807.42 is the first chart repair signal that clears the broken-trend flag. At that point the 50-day and 200-day will have been reclaimed, the base will have broken out on confirmation, and the composite will likely reach 7+. Entry at the close above $807.42, stop $724, target $980."
+   },
+   {
+    "id": "201b3aea-27a6-4017-8186-25e6b72e2dce",
+    "action": "REVIEW",
+    "predicate": {
+     "days": 5,
+     "kind": "EARNINGS_WITHIN"
+    },
+    "rationale": "Q3 earnings are the next fundamental test of RPO conversion, margin expansion, and the 2026 guide. Review the thesis 5 days before the print to decide whether to hold, trim, or stand pat through the event."
+   }
+  ],
+  "target_basis": "Above the prior all-time high of $951.96, measured move from the base depth (pivot $807 minus base low $722 = $85 depth; $807 + $173 = $980). 2.1:1 R/R vs. the $83 risk to stop.",
+  "target_price": 980,
+  "price_at_time": 762.03,
+  "entry_on_close": true
+ }
+}
