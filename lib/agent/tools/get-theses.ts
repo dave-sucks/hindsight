@@ -32,7 +32,9 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { getBars, getDailyRangePcts, getLatestPricesWithMeta } from "@/lib/alpaca";
+import { getAccount, getBars, getDailyRangePcts, getLatestPricesWithMeta } from "@/lib/alpaca";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import type { FloorStructure } from "@/lib/agent/floor-risk";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -499,6 +501,9 @@ export const getTheses = defineTool({
     // ladder-health block + UNPROTECTED_GAIN flag (Game Plan PR-B). Missing →
     // ladder-health falls back to the current price.
     const peakPriceByThesisId = new Map<string, number>();
+    // Paired open-position share count — with avgCost, what the floor would
+    // lose (FLOOR_TOO_FAR, DAV-344).
+    const quantityByThesisId = new Map<string, number>();
     // P1-28 (L2): how many times the user has been shown a close proposal on
     // this held position and did NOT approve it — rejected OR ignored-to-expiry
     // (the user mostly ignores cards to expiry rather than clicking Reject).
@@ -543,6 +548,7 @@ export const getTheses = defineTool({
             symbol: true,
             openedAt: true,
             avgCost: true,
+            quantity: true,
             peakPrice: true,
           },
           orderBy: { openedAt: "desc" },
@@ -550,12 +556,14 @@ export const getTheses = defineTool({
         const openedAtByTicker = new Map<string, Date>();
         const positionIdByTicker = new Map<string, string>();
         const avgCostByTicker = new Map<string, number>();
+        const quantityByTicker = new Map<string, number>();
         const peakPriceByTicker = new Map<string, number>();
         for (const p of openPositions) {
           if (!openedAtByTicker.has(p.symbol)) {
             openedAtByTicker.set(p.symbol, p.openedAt);
             positionIdByTicker.set(p.symbol, p.id);
             avgCostByTicker.set(p.symbol, Number(p.avgCost));
+            quantityByTicker.set(p.symbol, Number(p.quantity));
             if (p.peakPrice != null && Number.isFinite(Number(p.peakPrice))) {
               peakPriceByTicker.set(p.symbol, Number(p.peakPrice));
             }
@@ -571,6 +579,8 @@ export const getTheses = defineTool({
           }
           const peak = peakPriceByTicker.get(t.ticker);
           if (peak != null) peakPriceByThesisId.set(t.id, peak);
+          const qty = quantityByTicker.get(t.ticker);
+          if (qty != null && qty > 0) quantityByThesisId.set(t.id, qty);
         }
 
         // Count UNAPPROVED close proposals per open position (Order ledger):
@@ -779,16 +789,37 @@ export const getTheses = defineTool({
       );
     }
 
+    // The account's equity, once, when anything is held: a floor's loss is
+    // judged against it (FLOOR_TOO_FAR, DAV-344). The run's own credentials,
+    // as get_portfolio_context reads them — a LIVE run never reads the paper
+    // account. Fail-open: no equity, no flag.
+    let accountEquity: number | null = null;
+    if (quantityByThesisId.size > 0) {
+      try {
+        const creds =
+          ctx.alpacaCreds ??
+          (ctx.runEnvironment ? await resolveAlpacaCredentials(ctx.userId, ctx.runEnvironment) : null) ??
+          undefined;
+        const equity = parseFloat((await getAccount(creds)).equity);
+        if (Number.isFinite(equity) && equity > 0) accountEquity = equity;
+      } catch (err) {
+        console.warn("[get_theses] account equity unavailable; floor-risk check skipped:", err);
+      }
+    }
+
     // ATR(14) per ticker, for a trail whose give-back widens with the stock's
     // range (DAV-294). The SAME daily snapshot the evaluator reads, so the
     // line the agent is shown is the line that sells. Fail-open: no snapshot
     // → the written percent, which is what the evaluator will use too.
     const atrByTicker = new Map<string, number>();
+    // …and the structure a floor could sit under, for FLOOR_TOO_FAR (DAV-344).
+    const structureByTicker = new Map<string, FloorStructure>();
     if (liveTheses.length > 0) {
       try {
         const snaps = await loadIndicatorSnapshots(liveTheses.map((t) => t.ticker.toUpperCase()));
         for (const [ticker, snap] of snaps) {
           if (snap.atr14 != null && snap.atr14 > 0) atrByTicker.set(ticker, snap.atr14);
+          structureByTicker.set(ticker, { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] });
         }
       } catch (err) {
         console.warn("[get_theses] indicator snapshot load failed; trails read their written percent:", err);
@@ -902,6 +933,8 @@ export const getTheses = defineTool({
               avgCost: avgCostByThesisId.get(t.id) ?? null,
               peakPrice: peakPriceByThesisId.get(t.id) ?? null,
               atr14: atrByTicker.get(t.ticker.toUpperCase()) ?? null,
+              quantity: quantityByThesisId.get(t.id) ?? null,
+              structure: structureByTicker.get(t.ticker.toUpperCase()) ?? null,
               targetPrice: t.targetPrice ?? null,
               paperTenureDays: t.paperTenureDays ?? null,
               paperRealizedPnl:
@@ -916,6 +949,7 @@ export const getTheses = defineTool({
             latestQuote,
             now,
             hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
+            equity: accountEquity,
           }),
         );
       }
@@ -1080,6 +1114,9 @@ export const getTheses = defineTool({
             dayRangePct: dayRangePctByTicker[t.ticker.toUpperCase()] ?? null,
             atr14: atrByTicker.get(t.ticker.toUpperCase()) ?? null,
             avgCost: avgCostByThesisId.get(t.id) ?? null,
+            quantity: quantityByThesisId.get(t.id) ?? null,
+            equity: accountEquity,
+            structure: structureByTicker.get(t.ticker.toUpperCase()) ?? null,
             peakPrice: peakPriceByThesisId.get(t.id) ?? null,
             lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,
             entryRaisesAway: entryRaisesByThesisId.get(t.id) ?? null,
@@ -1197,6 +1234,9 @@ export const getTheses = defineTool({
         (needsActionByThesisId.get(t.id) ?? null) !== null ||
         ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "") ||
         (resolvedByThesisId.get(t.id)?.planSanity?.length ?? 0) > 0 ||
+        // A floor that would lose too much of the account is work even when
+        // a fired sale holds the needsAction slot (DAV-344).
+        resolvedByThesisId.get(t.id)?.floorRisk != null ||
         (directive?.decision === "REJECTED" && directive.message != null)
       );
     };
