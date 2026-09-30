@@ -29,6 +29,11 @@ export function etMinutesOf(iso: string | Date): number {
   return hh * 60 + mm;
 }
 
+/** The New York calendar date (YYYY-MM-DD) of an instant. */
+export function etDateOf(iso: string | Date): string {
+  return new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
 /** Inside the window the chart draws. */
 export function inIntradayWindow(iso: string | Date): boolean {
   const m = etMinutesOf(iso);
