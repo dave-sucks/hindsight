@@ -467,7 +467,15 @@ export function shouldFire(
     : null;
   const unfiredReport = reportDate != null && !(trigger.firedReports ?? []).includes(reportDate);
 
-  if (effectiveCooldown > 0 && trigger.lastFiredAt != null && !unfiredReport) {
+  // A buy a trigger run passed on because the price had slipped back under
+  // its level is left armed (./rearm, DAV-343): a re-arm after the last fire
+  // lifts the cooldown, and the next fire stamps a new one.
+  const rearmed =
+    trigger.rearmedAt != null &&
+    trigger.lastFiredAt != null &&
+    new Date(trigger.rearmedAt).getTime() >= new Date(trigger.lastFiredAt).getTime();
+
+  if (effectiveCooldown > 0 && trigger.lastFiredAt != null && !unfiredReport && !rearmed) {
     const lastFired = new Date(trigger.lastFiredAt).getTime();
     const cooldownMs = effectiveCooldown * 86_400_000;
     if (ctx.now.getTime() - lastFired < cooldownMs) {

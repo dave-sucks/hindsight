@@ -281,6 +281,14 @@ export type Trigger = {
    * on 09-21 and the 7-day cooldown then swallowed the real one).
    */
   firedReports?: string[];
+  /**
+   * ENTER only: when a trigger run last passed on this buy because the price
+   * was back under its level, and left it armed (./rearm, DAV-343). A re-arm
+   * newer than `lastFiredAt` lifts the cooldown. Kept in
+   * `Thesis.triggerState` and merged on at resolve time — never stored on
+   * the trigger, never written by a model.
+   */
+  rearmedAt?: string;
   /** ENTER only, server-stamped: the live price when written (./written-price). */
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp
