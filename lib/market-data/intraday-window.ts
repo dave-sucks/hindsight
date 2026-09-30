@@ -34,6 +34,16 @@ export function etDateOf(iso: string | Date): string {
   return new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
+/** The instant of a New York wall-clock minute on a date (DST-safe, no tz library). */
+export function etInstant(ymd: string, minutes: number): Date {
+  const [y, mo, d] = ymd.split("-").map(Number);
+  for (const offset of [4, 5]) {
+    const candidate = new Date(Date.UTC(y, mo - 1, d, Math.floor(minutes / 60) + offset, minutes % 60));
+    if (etDateOf(candidate) === ymd && etMinutesOf(candidate) === minutes) return candidate;
+  }
+  return new Date(Date.UTC(y, mo - 1, d, Math.floor(minutes / 60) + 5, minutes % 60));
+}
+
 /** Inside the window the chart draws. */
 export function inIntradayWindow(iso: string | Date): boolean {
   const m = etMinutesOf(iso);
