@@ -57,7 +57,7 @@ import {
   foldDeclines,
 } from "@/lib/agent/declined-sale";
 import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
-import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
+import { isPlanLevelOnList } from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
   diffThesisFields,
@@ -434,7 +434,8 @@ export function notApplied(results: TriggerOpResult[], error: string): TriggerOp
  * level on the stored list, by id, removed together, is a call that lands.
  */
 export function setDownInstruction(stored: Trigger[], direction: string | null): string {
-  const levels = stored.filter((t) => isPlanLevel(t, direction));
+  // A wake (a review with no buy behind it) is not part of a plan to set down.
+  const levels = stored.filter((t) => isPlanLevelOnList(t, stored, direction));
   if (levels.length === 0) return "";
   const ids = levels.map((t) => `"${t.id}"`).join(", ");
   const words = levels.map((t) => describeTrigger(t, direction)).join(", ");

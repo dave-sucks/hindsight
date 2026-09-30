@@ -36,7 +36,7 @@ import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { parseTriggersResilient } from "./schema";
 import type { Trigger } from "./types";
-import { isPlanLevel } from "./price-levels";
+import { isPlanLevel, isPlanLevelOnList } from "./price-levels";
 import { describeTrigger } from "./ops";
 
 export { isPlanLevel };
@@ -75,10 +75,11 @@ export async function demoteThesisPlan(args: {
   if (thesis.status !== "WATCHING") return { demoted: false, removed: [] };
 
   const current = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
-  const doomed = current.filter((t) => isPlanLevel(t, thesis.direction));
+  // A wake — a review on a stock with no buy — is not part of the plan; it stays.
+  const doomed = current.filter((t) => isPlanLevelOnList(t, current, thesis.direction));
   if (doomed.length === 0) return { demoted: false, removed: [] };
 
-  const kept = current.filter((t) => !isPlanLevel(t, thesis.direction));
+  const kept = current.filter((t) => !isPlanLevelOnList(t, current, thesis.direction));
   const removed = doomed.map((t) => ({
     action: t.action,
     price:

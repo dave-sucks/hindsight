@@ -16,10 +16,12 @@
  * deleted them. VST kept one of the four, and no wake at $146. The writer
  * was told the save landed.
  *
- * Deletions now apply before writes. Here the four new triggers land, and
- * the plan check sees what the writer actually asked for: a review above
- * the price with no buy, which it refuses as a half plan — so the writer is
- * handed the refusal instead of a quiet loss.
+ * Deletions now apply before writes (#732), so the four new triggers land
+ * and the plan check sees what the writer actually asked for: a review
+ * above the price with no buy. #732 refused that as a half plan. The QB's
+ * ruling (DAV-335, 2026-09-29): on a stock we only watch, with no buy, a
+ * review at any price is a wake, not a target — so the refresh saves, the
+ * $146 review is a wake, and the target column stays empty.
  */
 import raw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
@@ -132,18 +134,13 @@ describe("the fixture is the production call", () => {
 });
 
 describe("VST 2026-09-28 — the writer's refresh, through its check and its save", () => {
-  it("the writer's check no longer passes a save that deletes the review at $146; it is handed back", async () => {
-    const check = await save(await writerSaveArgs(decision()), true);
-    // On main the check passed (dry_run: true, nothing refused) with
-    // "Removed: review above $146" among the ops, and the save landed.
-    const applied = opsOf(check).filter((o) => o.ok);
-    expect(applied.map((o) => o.text)).not.toContain("Removed: review above $146");
-    expect(check.refused).toBe(true);
-    expect(check.refusal?.error).toBe("missing_enter_trigger");
-    expect(check.refusal?.message).toMatch(/no buy level/);
-    // What it was refused for is what the writer sent — all four new
-    // triggers, the $132 review on the close as written (main's edit of the
-    // old one dropped the close).
+  it("the writer's check passes the refresh as written, and the save keeps the review at $146 as a wake", async () => {
+    const args = await writerSaveArgs(decision());
+    const check = await save(args, true);
+    // Under #732 this was refused (missing_enter_trigger): a review above
+    // the price with no buy counted as a target with nothing to reach it from.
+    expect(check.refused).toBe(false);
+    // All four new triggers, the $132 review on the close as written.
     expect(opsOf(check).filter((o) => o.op === "add").map((o) => o.text)).toEqual([
       REVIEW_146,
       "Added: review every 30 days",
@@ -151,6 +148,23 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
       "Added: 0–2 days after the report → review",
     ]);
     expect(check.db.store.thesisUpdate ?? []).toHaveLength(0);
+
+    const saved = await save(args, false);
+    expect(saved.refused).toBe(false);
+    const row = (saved.db.store.thesis as Array<Record<string, unknown>>).find((t) => t.id === fx.thesisBefore.id)!;
+    const now = row.triggers as Trigger[];
+    expect(now.map((t) => [t.action, t.predicate.kind])).toEqual([
+      ["REVIEW", "PRICE_ABOVE"],
+      ["REVIEW", "REVIEW_CADENCE"],
+      ["REVIEW", "PRICE_BELOW"],
+      ["REVIEW", "EARNINGS_SINCE"],
+    ]);
+    expect(now[0].predicate).toMatchObject({ kind: "PRICE_ABOVE", level: 146 });
+    // A wake, not a target: no plan columns on a stock with no buy.
+    expect(row.entryPrice).toBeNull();
+    expect(row.targetPrice).toBeNull();
+    expect(row.stopLoss).toBeNull();
+    expect(saved.db.store.thesisUpdate).toHaveLength(1);
   });
 
   it("without the review above the price, the refresh saves all three replacements — on main two of them were deleted", async () => {

@@ -421,7 +421,16 @@ export function protectiveExitCloseReason(
  */
 export function effectiveTriggerAction(
   trigger: { action: TriggerAction; predicate: TriggerPredicate },
-  state: { status?: string | null; direction?: string | null },
+  state: {
+    status?: string | null;
+    direction?: string | null;
+    /**
+     * Does the stock carry a buy (an ENTER trigger)? With none, a review at
+     * any price is a wake, not a target: it fires as a review (QB ruling on
+     * DAV-335, 2026-09-29). Absent ⇒ treated as having one, as before.
+     */
+    hasBuy?: boolean;
+  },
 ): TriggerAction {
   if (state.status === "HOLDING") return trigger.action;
 
@@ -435,8 +444,9 @@ export function effectiveTriggerAction(
 
   // An upside price level reached before we bought: the move happened
   // without us, so the priced plan is stale. Housekeeping REVIEWs (earnings,
-  // review cadence, news) are untouched — they still just want a look.
-  if (trigger.action === "REVIEW" && isPriceLevel) {
+  // review cadence, news) are untouched — they still just want a look. With
+  // no buy there is no priced plan to go stale: the level is a wake.
+  if (trigger.action === "REVIEW" && isPriceLevel && state.hasBuy !== false) {
     const isLong = state.direction !== "SHORT";
     const favourable = isLong ? kind === "PRICE_ABOVE" : kind === "PRICE_BELOW";
     if (favourable) return "DEMOTE";

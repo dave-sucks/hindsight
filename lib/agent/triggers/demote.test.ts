@@ -8,7 +8,7 @@
  */
 
 import { effectiveTriggerAction, watchedFloorOnClose } from "./types";
-import { isPlanLevel } from "./price-levels";
+import { isPlanLevel, isPlanLevelOnList } from "./price-levels";
 import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
 
 const below = (level: number) => ({ kind: "PRICE_BELOW" as const, level });
@@ -76,6 +76,15 @@ describe("effectiveTriggerAction", () => {
     expect(effectiveTriggerAction(t(above(80), "REVIEW"), WATCH_SHORT)).toBe(
       "REVIEW",
     );
+  });
+
+  it("with no buy, an upside review is a wake — it fires as a review (QB ruling 2026-09-29)", () => {
+    // VST: "review above $145" on a stock with no buy. There is no priced
+    // plan for the move to have left behind.
+    expect(effectiveTriggerAction(t(above(145), "REVIEW"), { ...WATCH, hasBuy: false })).toBe("REVIEW");
+    expect(effectiveTriggerAction(t(below(40), "REVIEW"), { ...WATCH_SHORT, hasBuy: false })).toBe("REVIEW");
+    // A sale at a price still sets the plan down, buy or no buy.
+    expect(effectiveTriggerAction(t(below(132), "EXIT"), { ...WATCH, hasBuy: false })).toBe("DEMOTE");
   });
 
   it("demotes a judgment exit on a watch item too", () => {
@@ -146,5 +155,15 @@ describe("isPlanLevel — what demotion actually removes", () => {
 
   it("keeps a downside review — support watching, not a plan level", () => {
     expect(isPlanLevel(t(below(240), "REVIEW"), "LONG")).toBe(false);
+  });
+
+  it("keeps an upside review when the list has no buy — that is a wake", () => {
+    const wake = t(above(146), "REVIEW", "wake");
+    const floor = t(below(132), "EXIT", "floor");
+    expect(isPlanLevelOnList(wake, [wake, floor], "LONG")).toBe(false);
+    expect(isPlanLevelOnList(floor, [wake, floor], "LONG")).toBe(true);
+    // With a buy on the list, the same review is the target and goes with the plan.
+    const buy = t(above(120), "ENTER", "buy");
+    expect(isPlanLevelOnList(wake, [buy, wake], "LONG")).toBe(true);
   });
 });

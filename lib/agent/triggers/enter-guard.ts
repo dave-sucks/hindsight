@@ -34,7 +34,7 @@
  */
 
 import type { Trigger } from "./types";
-import { isPlanLevel } from "./price-levels";
+import { isPlanLevelOnList } from "./price-levels";
 
 export interface EnterTriggerGuardArgs {
   /**
@@ -175,16 +175,18 @@ export function validateEnterTriggerRequired(
   // without a buy plan — "not worth pricing right now." That is legal with
   // any triggers or none at all (DAV-209): a stock can be pinned with
   // nothing on it, and the only cost of doing so is that nothing wakes it.
-  // What this guard still refuses is a HALF plan — a floor or a target
-  // sitting on the row with no buy level to reach them from.
+  // What this guard still refuses is a HALF plan — a floor or a sale at a
+  // price sitting on the row with no buy level to reach them from. A review
+  // at any price is a wake, not a target, and needs no buy (QB ruling on
+  // DAV-335, 2026-09-29): VST's "review at $146" was refused here five times.
   const hasPlanLevel = args.triggers.some((t) =>
-    isPlanLevel(t, args.direction),
+    isPlanLevelOnList(t, args.triggers, args.direction),
   );
   if (!hasPlanLevel) return { ok: true };
 
   return {
     ok: false,
     reason: "missing-enter-trigger",
-    note: `This thesis carries a plan level (a floor or a target) with no buy level to reach it from. Either finish the plan — set entry_price (the level the buy trigger fires on) — or remove the floor and target triggers and keep the name in view without a plan.`,
+    note: `This thesis carries a plan level (a floor, or a sale at a price) with no buy level to reach it from. Either finish the plan — set entry_price (the level the buy trigger fires on) — or remove the floor and sale triggers and keep the name in view without a plan. A review at a price needs no buy: it is a wake.`,
   };
 }
