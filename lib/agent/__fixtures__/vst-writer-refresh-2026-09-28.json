@@ -1,0 +1,387 @@
+{
+  "_about": "VST, 2026-09-28 21:50 ET: the Secular Compounder's thesis writer refresh (run cmum0oeao000404jmts3sp8i0), its submit_thesis decision verbatim, and the thesis as that call found it. The five stored triggers are rebuilt from the calls that wrote them: the review cadence from the 09-23 daily run (cmue20swo001k04js3qerbmhh), the buy, the $132 review, the floor and the target from the 09-28 chat (cmukmqjpv000004jn9yp2c1l0). savedOps is what the save wrote (ThesisUpdate cmum0rr14000904jmq89aj5yi). Built read-only by a script; nothing edited by hand.",
+  "runId": "cmum0oeao000404jmts3sp8i0",
+  "currentPrice": 138.02,
+  "analyst": {
+    "id": "cmmqxola3000004lbj7c11bfn",
+    "name": "Secular Compounder",
+    "setupIds": [
+      "COMPOUNDER_ACCUMULATION",
+      "BASE_BREAKOUT",
+      "MA_PULLBACK"
+    ],
+    "minConfidence": 70,
+    "triggers": [
+      {
+        "id": "06506e39-522f-4ad1-aa62-d7fe10bf7003",
+        "action": "REVIEW",
+        "predicate": {
+          "pct": 15,
+          "kind": "TRAILING_FROM_HIGH"
+        },
+        "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "823a7df5-e8a9-4502-ac6e-6968c9c96ed5",
+        "action": "EXIT",
+        "predicate": {
+          "pct": 25,
+          "kind": "TRAILING_FROM_HIGH"
+        },
+        "rationale": "Gave back 25% from the high — the catastrophe line for a multi-year hold. The review at 15% should have acted long before this; if we are here, protect the capital.",
+        "cooldownDays": 0
+      },
+      {
+        "id": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "kind": "VS_SMA",
+          "period": 200,
+          "direction": "BELOW"
+        },
+        "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "a6d188ee-d37c-4e30-925a-a12ef664dbcb",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "UP"
+        },
+        "rationale": "Up 15% from entry — re-underwrite at the new price and raise the floor under real structure (DAV-279 ruling).",
+        "cooldownDays": 7
+      },
+      {
+        "id": "98f6fe80-33da-47a4-b2ae-23f380af11d3",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "DOWN"
+        },
+        "rationale": "Down 15% from entry — decide hold-vs-cut deliberately, before the stop decides (DAV-279 ruling).",
+        "cooldownDays": 7
+      },
+      {
+        "id": "ef79457a-7273-4ce2-9b17-e030a1a8bc8e",
+        "action": "ADD",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "DOWN"
+        },
+        "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
+        "cooldownDays": 1
+      }
+    ]
+  },
+  "account": {
+    "triggers": [
+      {
+        "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
+        "action": "ADD",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "UP"
+        },
+        "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+        "cooldownDays": 3
+      },
+      {
+        "id": "b459cc93-12a4-43f1-8904-d8a8cd846b93",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "days": 7,
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "Look at this every 7 days, counting from the last real review.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "days": 3,
+          "kind": "EARNINGS_WITHIN"
+        },
+        "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+        "cooldownDays": 30
+      },
+      {
+        "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "EARNINGS_BEAT"
+        },
+        "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "EARNINGS_MISS"
+        },
+        "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "30059604-b755-4848-b938-b636464815c3",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "SEC_EVENT",
+          "tier": "MATERIAL"
+        },
+        "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story."
+      }
+    ],
+    "triggersSeededAt": "2026-09-18T16:00:33.366Z"
+  },
+  "thesisBefore": {
+    "id": "cmqb2ro9x000004jiado1yk0a",
+    "ticker": "VST",
+    "status": "WATCHING",
+    "direction": "LONG",
+    "horizon": "COMPOUNDER",
+    "setupId": "COMPOUNDER_ACCUMULATION",
+    "entryPrice": 146,
+    "targetPrice": 210,
+    "stopLoss": 132,
+    "conviction": "MEDIUM",
+    "coreBelief": "VST compounds toward $210 over 18–24 months as Helix preferred-power status and long-dated AWS/Meta nuclear PPAs convert AI datacenter load growth into contracted EBITDA that lifts the 2027 baseline of $7.4–$7.8B (ex-Cogentrix/Meta) while multiple re-rates from ~8x toward 10–11x as earnings visibility improves.",
+    "keyAssumptions": [
+      "Vistra's 2026 adjusted EBITDA lands at or above the $7.2B midpoint of the $6.8–$7.6B guidance range, validating management's reaffirmation despite ERCOT softness",
+      "Helix Digital Infrastructure breaks ground on at least one AI datacenter site by mid-2027, with Vistra contracted power volume becoming quantifiable in public guidance",
+      "ERCOT forward power prices do not sustain a structural decline below current softened levels — i.e., load growth of 4–6% annually through 2030 absorbs incremental supply without prolonged price compression"
+    ],
+    "invalidationConds": [
+      "Two consecutive formal guidance cuts to the adjusted EBITDA range — not a single quarter miss but management explicitly lowering the annual band twice in succession, signaling structural demand erosion rather than timing",
+      "Helix Digital Infrastructure cancels or materially restructures such that Vistra is no longer the preferred power provider, eliminating the contracted AI-load thesis and the $1B investment value",
+      "VST breaks and closes below the 52-week low of $132.66 on material volume AND management issues a negative business update within 30 days, confirming the technical break reflects fundamental deterioration rather than sentiment overshoot",
+      "CFO Kristopher Moldovan departure within 12 months, given his centrality to the capital allocation and leverage management narrative through the Cogentrix integration"
+    ],
+    "variantView": "Consensus treats VST as a regulated-adjacent utility; I believe the Helix JV structurally transforms it into a contracted hyperscaler power platform, locking in multi-year load growth that is not yet in sell-side EBITDA models.",
+    "convictionRationale": "The EBITDA story is real — Q2 up 30% YoY, 2026 guidance intact, 2027 baseline before major upsides already implies ~$200+ stock — but I cannot call this HIGH conviction until Helix revenue shows up in actual guidance, ERCOT forwards stabilize, and the 25% EPS beat rate repairs. MEDIUM is honest here.",
+    "scoring": {
+      "composite": 5,
+      "entryQuality": {
+        "note": "Entry at $133 is below live price $138, near the 52-week low ($132.66) which serves as a real technical level — asymmetric if support holds, but proximity to the low is a risk",
+        "score": 1
+      },
+      "trendStrength": {
+        "note": "Bearish technical structure — SMA20 below SMA50, RSI 41.5, stock at 7% of 52w range; no near-term momentum support",
+        "score": 1
+      },
+      "relativeStrength": {
+        "note": "Worst YTD performer vs. peers (VST -11.1% vs. TLN -5.5%, AES -2.5%, HNRG +2.1%); composite score 3/4 in peer ranking",
+        "score": 1
+      },
+      "catalystFreshness": {
+        "note": "Helix announcement June 2026 is live and strategic; Q2 EBITDA +30% YoY, 2026 guidance reaffirmed; Meta/AWS PPAs not yet in 2027 guide represent fresh upside; Cogentrix close expected 4Q 2026",
+        "score": 2
+      }
+    },
+    "triggers": [
+      {
+        "id": "151baf10-d0da-4a61-8ad6-8fe86b552bb9",
+        "predicate": {
+          "kind": "REVIEW_CADENCE",
+          "days": 30
+        },
+        "action": "REVIEW",
+        "rationale": "No buy plan yet, but VST still belongs in coverage. Revisit in 30 days or sooner if other wakes fire and decide whether business evidence or structure has improved enough to price a real entry.",
+        "source": "AGENT"
+      },
+      {
+        "id": "aaa5c6c9-dd01-4b7c-b3af-0e3d2a8b4e8c",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 146,
+          "basis": "close"
+        },
+        "action": "ENTER",
+        "rationale": "Close above the falling 50-day (~$145-146) is the first Trend Template repair signal. Entry fires here, but the trade will be blocked by minConfidence until composite reaches 7/10. The plan documents the intended entry level.",
+        "source": "AGENT"
+      },
+      {
+        "id": "f3e60fdb-2c4d-4a3e-bea7-5c60bd3d5d9d",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 132
+        },
+        "action": "REVIEW",
+        "rationale": "Close below $132 breaks the 52-week low. Review immediately — if accompanied by ERCOT miss or guidance cut, invalidate the thesis.",
+        "source": "AGENT"
+      },
+      {
+        "id": "13783190-82a5-481f-8fdd-24aac69d4a8b",
+        "action": "EXIT",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 132
+        },
+        "rationale": "Just below the 52-week low of $132.66. A close below $132 means the low has broken decisively — review for invalidation immediately.",
+        "source": "AGENT"
+      },
+      {
+        "id": "671030d7-c5b0-4505-b771-0c1fc0f45a37",
+        "action": "REVIEW",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 210
+        },
+        "rationale": "coreBelief target — Helix JV + AWS/Meta PPAs re-rating VST toward 10x EBITDA on a $7.4-7.8B 2027 base. From entry $146, R/R is 4.6:1 vs the $132 stop.",
+        "source": "AGENT"
+      }
+    ]
+  },
+  "submit": {
+    "add_triggers": [
+      {
+        "action": "REVIEW",
+        "predicate": {
+          "basis": "close",
+          "kind": "PRICE_ABOVE",
+          "level": 146
+        },
+        "rationale": "Close above the falling 50-day (~$145-146) is the first Trend Template repair signal — review whether to convert to a priced ENTER at this level; do not auto-buy until trend template begins recovery and Q3 earnings visibility improves."
+      },
+      {
+        "action": "REVIEW",
+        "predicate": {
+          "days": 30,
+          "from": "LAST_REVIEW",
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "No position held; revisit every 30 days or sooner on a 50-day reclaim, Cogentrix close announcement, or Helix commercial power arrangement disclosure."
+      },
+      {
+        "action": "REVIEW",
+        "predicate": {
+          "basis": "close",
+          "kind": "PRICE_BELOW",
+          "level": 132
+        },
+        "rationale": "Close below $132 breaks the 52-week low of $132.66 — review immediately; if accompanied by guidance cut or Cogentrix deal failure, thesis is invalidated."
+      },
+      {
+        "action": "REVIEW",
+        "predicate": {
+          "kind": "EARNINGS_SINCE",
+          "max": 2,
+          "min": 0
+        },
+        "rationale": "Review within 2 sessions of Q3 2026 earnings — the print is the first test of whether Cogentrix contribution, hedging gains, and Helix commercial activity can support or raise the 2026 EBITDA guidance midpoint."
+      }
+    ],
+    "conviction": "MEDIUM",
+    "conviction_rationale": "The strategic thesis is intact and the Helix preferred-power anchor is now corroborated by Samsung's $1B commitment alongside NVIDIA, KKR, and KIA. The business is growing EBITDA 30%+ YoY. But two consecutive massive EPS misses, ERCOT spot at $30/MWh with no near-term catalyst for repricing, a broken chart with all moving averages declining, and the stock trading 36% below its 52-week high make this MEDIUM — the thesis is right but the market is right to wait for proof. I do not have HIGH conviction until I see a 50-day reclaim on volume and a Q3 print that holds or raises the 2026 guidance midpoint.",
+    "core_belief": "VST compounds toward $210 over 18–24 months as Vistra's preferred-power status inside the now-$11B+ Helix platform and contracted PJM/ISO-NE capacity from the pending Cogentrix close convert AI datacenter load growth into durable contracted EBITDA, lifting the 2027–2028 earnings baseline while the market re-rates from ~10x toward 11–12x as ERCOT softness resolves and guidance visibility improves.",
+    "direction": "LONG",
+    "horizon": "COMPOUNDER",
+    "invalidation_conditions": [
+      "Two consecutive full-year EBITDA guidance cuts (not quarterly misses — a cut to the annual range itself for 2026 or 2027 that narrows the bottom of the band below $6.4B).",
+      "Cogentrix acquisition fails to close or FERC approval is reversed, eliminating the PJM/ISO-NE diversification thesis.",
+      "CFO departure or a capital-allocation pivot away from growth (e.g., suspension of the buyback program combined with a leverage covenant breach) that signals balance sheet stress rather than strategic investment.",
+      "Helix relationship deteriorates — Vistra loses preferred-power status or Helix publicly moves its power sourcing to a competing generator."
+    ],
+    "key_assumptions": [
+      "ERCOT load growth inflects in 2027–2028 as data-center interconnections materialize, validating management's 4–6% annual growth forecast and tightening reserve margins from today's loose levels.",
+      "The Cogentrix acquisition closes in late 2026 (FERC approved August 2026) and adds at minimum the originally guided PJM/ISO-NE EBITDA contribution at the time of the deal announcement.",
+      "Vistra's preferred-power role inside Helix produces at least one publicly announced commercial arrangement (contracted MW or PPA) within 12 months that demonstrates the financial mechanism, not just the strategic relationship."
+    ],
+    "rationale": "The Samsung $1B commitment to Helix — raising total Helix capital to $11B+ with Vistra as preferred power provider — is the single most important development since the prior thesis and validates the Helix mechanism at institutional scale. Cogentrix received FERC approval in August and is expected to close late 2026, adding 5,500MW in PJM/ISO-NE where prices are up 81% YoY. However, the chart is a 0/8 Trend Template failure, no setup condition is active, the 50-day is falling at $145.25, and the composite cannot reach 7/10 — trendStrength and relativeStrength are both 0. The buy trigger at $146 (close above the 50-day) is structurally sound as a Trend Template repair signal but cannot execute as a blocked trade; it converts to a REVIEW trigger. The thesis stays LONG/WATCHING until price reclaims the 50-day on a close and the business delivers a Q3 print that confirms the 2027 EBITDA step-up thesis.",
+    "remove_trigger_ids": [
+      "151baf10-d0da-4a61-8ad6-8fe86b552bb9",
+      "aaa5c6c9-dd01-4b7c-b3af-0e3d2a8b4e8c",
+      "f3e60fdb-2c4d-4a3e-bea7-5c60bd3d5d9d",
+      "13783190-82a5-481f-8fdd-24aac69d4a8b",
+      "671030d7-c5b0-4505-b771-0c1fc0f45a37"
+    ],
+    "scoring": {
+      "catalystFreshness": {
+        "note": "Samsung's $1B Helix commitment is fresh (September 28, 2026) and directly validates the preferred-power mechanism. Scored 1 not 2 because Cogentrix close is delayed to late 2026 with no announced date, ERCOT pricing relief is a 2027-2028 story, and no commercial Helix power arrangement has been disclosed with financial specifics.",
+        "score": 1
+      },
+      "entryQuality": {
+        "note": "No setup condition is currently true — 50-day is falling at $145.25, 5.2% above price, and the Trend Template fails. Score 1 (not 0) only because the 43-session base with a defined low at $134.50 establishes a structure to watch; the pivot at $156.99 and the 50-day reclaim at ~$145-146 are real technical levels when they eventually activate.",
+        "score": 1
+      },
+      "relativeStrength": {
+        "note": "vs SPY: 1M -0.6pts, 3M -18.3pts, 6M -32pts. Persistent deep underperformance. No change from ground-truth output.",
+        "score": 0
+      },
+      "trendStrength": {
+        "note": "0/8 Trend Template. Price below all four moving averages, all of which are falling. 36.4% off the 52-week high. No change from ground-truth output.",
+        "score": 0
+      }
+    },
+    "setup_id": "COMPOUNDER_ACCUMULATION",
+    "variant_view": "Consensus prices VST as an ERCOT story trading on weather and spot power; I think by 2027 it is primarily a contracted-power compounder where Helix preferred-power agreements and long-dated PJM/ISO-NE capacity from Cogentrix displace spot exposure — the market will reprice this when the Q3 or Q4 2026 print shows Cogentrix EBITDA contribution and a first Helix commercial arrangement, which consensus has not modeled."
+  },
+  "savedOps": [
+    {
+      "id": "671030d7-c5b0-4505-b771-0c1fc0f45a37",
+      "op": "edit",
+      "text": "Target $210 → $146"
+    },
+    {
+      "id": "151baf10-d0da-4a61-8ad6-8fe86b552bb9",
+      "op": "edit",
+      "text": "Review cadence: wording updated"
+    },
+    {
+      "id": "f3e60fdb-2c4d-4a3e-bea7-5c60bd3d5d9d",
+      "op": "edit",
+      "text": "Price below $132: wording updated"
+    },
+    {
+      "id": "73868f51-8ad2-46eb-b0f1-c57c94f4c1ee",
+      "op": "add",
+      "text": "Added: 0–2 days after the report → review"
+    },
+    {
+      "id": "151baf10-d0da-4a61-8ad6-8fe86b552bb9",
+      "op": "remove",
+      "text": "Removed: review every 30 days"
+    },
+    {
+      "id": "aaa5c6c9-dd01-4b7c-b3af-0e3d2a8b4e8c",
+      "op": "remove",
+      "text": "Removed: buy above $146"
+    },
+    {
+      "id": "f3e60fdb-2c4d-4a3e-bea7-5c60bd3d5d9d",
+      "op": "remove",
+      "text": "Removed: Price below $132 → review"
+    },
+    {
+      "id": "13783190-82a5-481f-8fdd-24aac69d4a8b",
+      "op": "remove",
+      "text": "Removed: sell below $132"
+    },
+    {
+      "id": "671030d7-c5b0-4505-b771-0c1fc0f45a37",
+      "op": "remove",
+      "text": "Removed: review above $146"
+    }
+  ]
+}

@@ -222,6 +222,113 @@ describe("applyTriggerOps — plan levels as ops", () => {
   });
 });
 
+describe("applyTriggerOps — a removal and its replacement in one call", () => {
+  // Deletions apply before writes. In the order sent, a new trigger landed
+  // on the one it replaced (one per bucket made it an edit) and the removal
+  // deleted both: eight saves 09-15 → 09-28. VST's is replayed through
+  // update_thesis in update-thesis.replace-trigger-replay.test.ts.
+
+  it("HPE 2026-09-15: the writer's new buy at $57.25 replaces the $58.50 one instead of being deleted with it", () => {
+    // Writer run cmu30r2u20002sky7xsjj9m2u, ids from its audit row. The
+    // call's three edits touched other triggers and are left out. On main
+    // the save read "Entry $58.50 → $57.25 … Removed: buy above $57.25" and
+    // HPE was left with no buy.
+    const hpe: Trigger[] = [
+      { id: "eb59bfe1", predicate: { kind: "PRICE_ABOVE", level: 58.5 }, action: "ENTER", rationale: "Buy above $58.50.", source: "AGENT" },
+      { id: "0127a7f6", predicate: { kind: "PRICE_BELOW", level: 54.9 }, action: "EXIT", rationale: "Floor $54.90.", source: "AGENT" },
+      { id: "d5dc23fd", predicate: { kind: "PRICE_ABOVE", level: 66.5 }, action: "REVIEW", rationale: "Target $66.50.", source: "AGENT" },
+    ];
+    const out = watch(
+      [
+        { op: "add", trigger: { id: "", predicate: { kind: "PRICE_ABOVE", level: 57.25 }, action: "ENTER", rationale: "Buy the reclaim of $57.25." } },
+        { op: "remove", id: "eb59bfe1" },
+        { op: "remove", id: "0127a7f6" },
+        { op: "remove", id: "d5dc23fd" },
+      ],
+      hpe,
+    );
+    expect(out.results).toEqual([
+      { op: "remove", id: "eb59bfe1", ok: true, text: "Removed: buy above $58.50" },
+      { op: "remove", id: "0127a7f6", ok: true, text: "Removed: sell below $54.90" },
+      { op: "remove", id: "d5dc23fd", ok: true, text: "Removed: review above $66.50" },
+      { op: "add", id: "new-1", ok: true, text: "Added: buy above $57.25" },
+    ]);
+    expect(out.triggers).toEqual([
+      expect.objectContaining({ id: "new-1", action: "ENTER", predicate: { kind: "PRICE_ABOVE", level: 57.25 } }),
+    ]);
+  });
+
+  it("a level sent as null is a removal too — entry_price: null with a new buy keeps the new buy", () => {
+    // In the order sent the null ran last and deleted the buy just added.
+    const out = watch([
+      { op: "add", trigger: { id: "", predicate: { kind: "PRICE_BELOW", level: 175 }, action: "ENTER", rationale: "Buy the pullback to $175." } },
+      { op: "level", slot: "ENTRY", price: null },
+    ]);
+    expect(out.results).toEqual([
+      { op: "remove", id: "buy", ok: true, text: "Removed: buy above $183" },
+      { op: "add", id: "new-1", ok: true, text: "Added: buy below $175" },
+    ]);
+    expect(out.triggers.filter((t) => t.action === "ENTER")).toEqual([
+      expect.objectContaining({ id: "new-1", predicate: { kind: "PRICE_BELOW", level: 175 } }),
+    ]);
+  });
+
+  it("an edit of a trigger the same call removes lands neither; it comes back by id — say which — and the rest lands", () => {
+    const out = watch([
+      { op: "edit", id: "clock", days: 14, rationale: "Every two weeks until the print." },
+      { op: "remove", id: "clock" },
+      { op: "remove", id: "floor" },
+    ]);
+    expect(out.results).toEqual([
+      {
+        op: "edit",
+        id: "clock",
+        ok: false,
+        text: "Edit and remove: review every 7 days",
+        reason: "Edited and removed in the same call — say which: send the edit or the removal, not both.",
+      },
+      { op: "remove", id: "floor", ok: true, text: "Removed: sell below $150" },
+    ]);
+    expect(out.triggers.find((t) => t.id === "clock")).toEqual(expect.objectContaining({ predicate: { kind: "REVIEW_CADENCE", days: 7 } }));
+  });
+
+  it("an edit of the trigger a null level clears is the same contradiction", () => {
+    const out = watch([
+      { op: "level", slot: "FLOOR", price: null },
+      { op: "edit", id: "floor", level: 145, rationale: "Under the base low." },
+    ]);
+    expect(out.results).toEqual([
+      expect.objectContaining({ op: "edit", id: "floor", ok: false, text: "Edit and remove: sell below $150" }),
+    ]);
+    expect(out.triggers.find((t) => t.id === "floor")!.predicate).toEqual({ kind: "PRICE_BELOW", level: 150 });
+  });
+
+  it("on a stock we own the removal is refused, so the replacement edits the floor that stays — and may only tighten", () => {
+    const held = (level: number) =>
+      applyTriggerOps({
+        stored: [target, floor, clock],
+        ops: [
+          { op: "add", trigger: { id: "", predicate: { kind: "PRICE_BELOW", level }, action: "EXIT", rationale: `Floor — sell below $${level}.` } },
+          { op: "remove", id: "floor" },
+        ],
+        direction: "LONG",
+        status: "HOLDING",
+        actor: "AGENT",
+        mintId,
+      });
+    const looser = held(140);
+    expect(looser.results.map((r) => [r.op, r.ok])).toEqual([["remove", false], ["edit", false]]);
+    expect(looser.triggers.find((t) => t.id === "floor")!.predicate).toEqual({ kind: "PRICE_BELOW", level: 150 });
+
+    const tighter = held(155);
+    expect(tighter.results.map((r) => [r.op, r.ok, r.text])).toEqual([
+      ["remove", false, "Removed: sell below $150"],
+      ["edit", true, "Stop $150 → $155 (tightened)"],
+    ]);
+    expect(tighter.triggers.find((t) => t.id === "floor")!.predicate).toEqual({ kind: "PRICE_BELOW", level: 155 });
+  });
+});
+
 describe("checkLadder — the one check after all ops", () => {
   it("refuses a plan the ops left under 2:1 (ETN 432 / 490 / 355, DAV-241)", () => {
     const out = watch([{ op: "edit", id: "buy", level: 432, rationale: "Confirmation above the repair range." }], [
