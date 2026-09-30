@@ -699,13 +699,19 @@ async function getIntradayCandlesAlpaca(symbol: string, now: Date): Promise<Stoc
  * only — an hourly bar per off-hours hour would add nine thin points a day to
  * a range meant to read at a glance.
  *
+ * `timeframe` — hourly bars for 1M; 15-minute bars for 1W (2026-09-30), so a
+ * week reads as ~130 points rather than ~35.
+ *
  * `date` carries the FULL ISO timestamp so the chart keys each hour uniquely;
  * the categorical axis then collapses overnight/weekend gaps (no flat spans),
  * matching Perplexity. adjustment=split so a split doesn't render as a cliff.
  */
+export type IntradayTimeframe = '1Hour' | '15Min';
+
 export async function getHourlyCandles(
   symbol: string,
   days = 31,
+  timeframe: IntradayTimeframe = '1Hour',
 ): Promise<StockCandle[]> {
   try {
     const apiKey = process.env.ALPACA_API_KEY;
@@ -717,7 +723,7 @@ export async function getHourlyCandles(
 
     const end = new Date().toISOString();
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Hour&start=${start}&end=${end}&limit=10000&adjustment=split&feed=${MARKET_DATA_FEED}`;
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=${timeframe}&start=${start}&end=${end}&limit=10000&adjustment=split&feed=${MARKET_DATA_FEED}`;
 
     const res = await fetch(url, {
       headers: {

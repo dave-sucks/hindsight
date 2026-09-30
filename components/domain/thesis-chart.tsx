@@ -108,12 +108,17 @@ export function ThesisChart({
   // while that tab stays active (cheap IEX re-fetch — no equity WS needed).
   // Switch away or unmount → the interval is cleared. Cards keep daily-only.
   const enableIntraday = variant === 'full';
+  // The sheet opens on today (1D); a sold position opens on its own Trade
+  // window; the card keeps its month. Opening on three months hid the day's
+  // move behind a click (Dave, 2026-09-30).
+  const initialRange: '1D' | '1M' | 'Trade' | '3M' =
+    variant === 'card' ? '1M' : soldAt ? 'Trade' : enableIntraday ? '1D' : '3M';
   const [intraday, setIntraday] = useState<StockCandle[] | undefined>(undefined);
   // The prior session's close, from the same quote the header reads — the 1D
   // line is colored against it so the two agree.
   const [intradayPrevClose, setIntradayPrevClose] = useState<number | null>(null);
   const [intradayLoading, setIntradayLoading] = useState(false);
-  const [is1D, setIs1D] = useState(false);
+  const [is1D, setIs1D] = useState(initialRange === '1D');
 
   useEffect(() => {
     if (!is1D) return;
@@ -149,11 +154,35 @@ export function ThesisChart({
   // ~month of hourly bars). Reset on ticker change so a re-keyed chart refetches.
   const [hourly, setHourly] = useState<StockCandle[] | undefined>(undefined);
   const [wantHourly, setWantHourly] = useState(false);
+  // 1W reads 15-minute bars — the hourly series gave a week ~35 points.
+  const [week, setWeek] = useState<StockCandle[] | undefined>(undefined);
+  const [wantWeek, setWantWeek] = useState(false);
 
   useEffect(() => {
     setHourly(undefined);
     setWantHourly(false);
+    setWeek(undefined);
+    setWantWeek(false);
   }, [ticker]);
+
+  useEffect(() => {
+    if (!wantWeek || week !== undefined) return; // fetch once per ticker
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/stocks/hourly?symbol=${encodeURIComponent(ticker)}&timeframe=15Min&days=8`,
+        );
+        const json = (await res.json()) as { candles?: StockCandle[] };
+        if (!cancelled) setWeek(Array.isArray(json.candles) ? json.candles : []);
+      } catch {
+        if (!cancelled) setWeek([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wantWeek, week, ticker]);
 
   useEffect(() => {
     if (!wantHourly || hourly !== undefined) return; // fetch once per ticker
@@ -242,9 +271,7 @@ export function ThesisChart({
       referenceLines={referenceLines}
       verticalMarkers={verticalMarkers}
       showControls={variant === 'full'}
-      defaultRange={
-        variant === 'card' ? '1M' : soldAt && tradeSpan ? 'Trade' : '3M'
-      }
+      defaultRange={initialRange === 'Trade' && !tradeSpan ? '3M' : initialRange}
       height={variant === 'card' ? 160 : 300}
       frameless={frameless ?? variant === 'card'}
       showIntraday={enableIntraday}
@@ -252,9 +279,11 @@ export function ThesisChart({
       intradayLoading={intradayLoading}
       priorClose={intradayPrevClose}
       hourlyCandles={enableIntraday ? hourly : undefined}
+      weekCandles={enableIntraday ? week : undefined}
       onRangeChange={(r) => {
         setIs1D(r === '1D');
         if (r === '1W' || r === '1M') setWantHourly(true);
+        if (r === '1W') setWantWeek(true);
       }}
       tradeSpan={tradeSpan}
     />
