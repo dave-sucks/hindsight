@@ -1810,7 +1810,9 @@ async function writeNoteOps(
   ctx: { runId?: string | null; runMode?: string },
   priceAtTime: number | null,
 ): Promise<string[]> {
-  const base = { thesisId, author: "ANALYST" as const, via: ctx.runMode ?? "run", runId: ctx.runId ?? null, priceAtTime };
+  // In /chat the principal is the one talking: the note is theirs, and stands until replaced or resolved.
+  const principal = ctx.runMode === "PRINCIPAL_CHAT";
+  const base = { thesisId, author: principal ? ("PRINCIPAL" as const) : ("ANALYST" as const), via: principal ? "chat" : ctx.runMode ?? "run", runId: ctx.runId ?? null, priceAtTime };
   const out: string[] = [];
   if (args.resolve_note_id) {
     const note = await prisma.thesisUpdate.findFirst({ where: { id: args.resolve_note_id, thesisId, type: "NOTE" }, select: { id: true } });
@@ -1819,7 +1821,7 @@ async function writeNoteOps(
   }
   if (args.note?.trim()) {
     await writeNote({ ...base, text: args.note });
-    out.push("Note saved; it replaces your previous note on this stock.");
+    out.push(principal ? "Note saved as the principal's; it stands until replaced or resolved." : "Note saved; it replaces your previous note on this stock.");
   }
   return out;
 }

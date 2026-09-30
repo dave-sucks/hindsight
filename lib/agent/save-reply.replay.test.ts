@@ -47,3 +47,23 @@ describe("EME 09-29 21:33 — the chat arms a buy its own score can't pass", () 
     expect(result.summary).not.toContain("will be refused");
   });
 });
+
+describe("a note saved through update_thesis is filed by who is talking", () => {
+  const noteRow = async (runMode: string) => {
+    const { db } = await replayTool("update-thesis", "updateThesis", {
+      seed: seed() as never,
+      args: { thesis_id: fx.thesis.id, rationale: "Reviewed the base; no change to the plan today.", note: "Wait for the $807.42 close; re-score before any buy." },
+      ctx: { runMode, minConfidence: fx.minConfidence },
+      quotes: { EME: fx.price },
+    });
+    return (db.store.thesisUpdate as Array<Record<string, unknown>>).find((u) => u.type === "NOTE");
+  };
+
+  it("in /chat it is the principal's, so the analyst's next note can't replace it", async () => {
+    expect(await noteRow("PRINCIPAL_CHAT")).toMatchObject({ fieldChanges: { note: { to: { author: "PRINCIPAL", via: "chat" } } } });
+  });
+
+  it("in a run it is the analyst's", async () => {
+    expect(await noteRow("MORNING_PLAN")).toMatchObject({ fieldChanges: { note: { to: { author: "ANALYST", via: "MORNING_PLAN" } } } });
+  });
+});
