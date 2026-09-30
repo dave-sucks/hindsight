@@ -119,6 +119,18 @@ const LIVE_BASE_URL = "https://api.alpaca.markets";
 export const MARKET_DATA_FEED = "sip";
 const MARKET_DATA_URL = "https://data.alpaca.markets/v2/stocks";
 
+/**
+ * Bars are split-adjusted, so a stock that split inside the window reads as
+ * one price series instead of a cliff. Alpaca's default is raw: NOW (5-for-1,
+ * 2025-12-18) carried a 52-week high of $973.63 against a $135 price, CRWD
+ * (4-for-1, 2026-07-02) $786 against ~$200 — every number built from the
+ * year of bars was wrong for both, the chart read as broken, writers would
+ * not price them, and the trigger kinds that read the 52-week high and the
+ * long averages read false (DAV-333). The page charts and the movers list
+ * already asked for this; the shared bar pulls below did not.
+ */
+export const BAR_ADJUSTMENT = "split";
+
 function createClient(creds?: AlpacaCredentials): AlpacaAPI {
   const baseUrl =
     creds?.baseUrl ?? process.env.ALPACA_BASE_URL ?? PAPER_BASE_URL;
@@ -703,6 +715,7 @@ export async function getBars(
       timeframe: options.timeframe || "1Day",
       limit: options.limit || 90,
       feed: options.feed ?? MARKET_DATA_FEED,
+      adjustment: BAR_ADJUSTMENT,
     });
 
     for await (const bar of barIterator) {
@@ -747,6 +760,9 @@ export async function getBars(
  * Today's bar is dropped until 4:20 PM ET: before then it is a partial
  * session (and on SIP, 15 minutes stale), and the chart is built from
  * finished days — the live price is passed separately.
+ *
+ * Split-adjusted (BAR_ADJUSTMENT): the year reads as one series for a stock
+ * that split inside it.
  */
 export async function getDailyBars(
   symbol: string,
@@ -781,6 +797,7 @@ export async function getDailyBars(
       timeframe: "1Day",
       limit: sessions + 20,
       feed,
+      adjustment: BAR_ADJUSTMENT,
     });
     for await (const bar of it) {
       const b = bar as {
