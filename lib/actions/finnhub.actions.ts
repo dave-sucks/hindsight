@@ -3,7 +3,8 @@
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { getLiveQuote } from '@/lib/market-data/live-quote';
 import { MARKET_DATA_FEED } from '@/lib/alpaca';
-import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
+import { INTRADAY_WINDOW_ET, etDateOf, etInstant, etMinutesOf } from '@/lib/market-data/intraday-window';
+import { isTradingDay } from '@/lib/market-hours';
 import { cache } from 'react';
 
 // ─── Local helpers (previously imported from utils) ───────────────────────────
@@ -508,16 +509,76 @@ export async function getStockCandlesBatch(
  * missing minutes on a mid-cap (SMMT 2026-09-29: 384 of 391 session bars, a
  * high of $19.07 against the tape's $19.09) and no off-hours prints at all.
  *
+ * The line always runs from the window's left edge to now: where the day has
+ * no minute bars, the tape's round-lot trades stand in (see below), and the
+ * left edge starts from the last round-lot price before the window opened.
+ *
  * 2026-08-19 (DAV-191) — this used to try FMP `/api/v3/historical-chart/1min`
  * first. FMP retired the whole /api/v3 namespace on 2025-08-31; the call
  * returned 403 on EVERY 30s poll of the most-polled surface in the app
  * before falling through to here. Removed.
  */
-export async function getIntradayCandles(symbol: string): Promise<StockCandle[]> {
-  return getIntradayCandlesAlpaca(symbol);
+export async function getIntradayCandles(symbol: string, now: Date = new Date()): Promise<StockCandle[]> {
+  return getIntradayCandlesAlpaca(symbol, now);
 }
 
-async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> {
+type AlpacaTrade = { t: string; p: number; s: number };
+
+/**
+ * A trade under 100 shares is an odd lot. The consolidated tape leaves odd
+ * lots out of the last sale and the day's high and low, which is why a
+ * minute holding only odd lots never becomes a bar — so the chart leaves
+ * them out too. DOCU 2026-09-30, 8:49 AM: five shares at $65.48 drew a 2%
+ * pre-market drop the market never counted.
+ */
+const ROUND_LOT = 100;
+const roundLots = (trades: AlpacaTrade[]) => trades.filter((t) => t.s >= ROUND_LOT);
+
+/** Every trade on the tape between two instants, any size, oldest first. A few pages at most. */
+async function getTradesBetween(
+  symbol: string,
+  headers: Record<string, string>,
+  start: string,
+  end: string,
+  opts: { sort?: 'asc' | 'desc'; limit?: number; pages?: number } = {},
+): Promise<AlpacaTrade[]> {
+  const out: AlpacaTrade[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < (opts.pages ?? 3); page++) {
+    const url =
+      `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol)}/trades?start=${start}&end=${end}` +
+      `&feed=${MARKET_DATA_FEED}&limit=${opts.limit ?? 10000}&sort=${opts.sort ?? 'asc'}${token ? `&page_token=${token}` : ''}`;
+    const res = await fetch(url, { headers, cache: 'no-store' });
+    if (!res.ok) {
+      console.warn('[getIntradayCandles] Alpaca trades error', res.status, await res.text().catch(() => ''));
+      break;
+    }
+    const body = (await res.json()) as { trades?: AlpacaTrade[]; next_page_token?: string | null };
+    out.push(...(body.trades ?? []));
+    token = body.next_page_token ?? undefined;
+    if (!token) break;
+  }
+  return out;
+}
+
+/** Trades folded into one point per minute: first, high, low, last, shares. */
+function minutePoints(trades: AlpacaTrade[]): StockCandle[] {
+  const byMinute = new Map<string, StockCandle>();
+  for (const t of trades) {
+    const minute = `${t.t.slice(0, 16)}:00Z`;
+    const have = byMinute.get(minute);
+    if (!have) byMinute.set(minute, { date: minute, open: t.p, high: t.p, low: t.p, close: t.p, volume: t.s });
+    else {
+      have.high = Math.max(have.high, t.p);
+      have.low = Math.min(have.low, t.p);
+      have.close = t.p;
+      have.volume += t.s;
+    }
+  }
+  return Array.from(byMinute.values());
+}
+
+async function getIntradayCandlesAlpaca(symbol: string, now: Date): Promise<StockCandle[]> {
   try {
     const apiKey = process.env.ALPACA_API_KEY;
     const apiSecret = process.env.ALPACA_API_SECRET;
@@ -525,16 +586,15 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
       console.warn('[getIntradayCandles] No Alpaca credentials configured');
       return [];
     }
+    const headers = { 'APCA-API-KEY-ID': apiKey, 'APCA-API-SECRET-KEY': apiSecret };
+    const S = symbol.toUpperCase();
 
-    const end = new Date().toISOString();
-    const start = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Min&start=${start}&end=${end}&limit=10000&feed=${MARKET_DATA_FEED}`;
+    const end = now.toISOString();
+    const start = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(S)}/bars?timeframe=1Min&start=${start}&end=${end}&limit=10000&feed=${MARKET_DATA_FEED}`;
 
     const res = await fetch(url, {
-      headers: {
-        'APCA-API-KEY-ID': apiKey,
-        'APCA-API-SECRET-KEY': apiSecret,
-      },
+      headers,
       // Current-session bars are live price data — no Data Cache. The chart
       // polls this every 30s, and a 30s `revalidate` meant every poll sat
       // exactly on the staleness boundary, so the tab rendered one cycle
@@ -550,41 +610,81 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
     const data = (await res.json()) as {
       bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[];
     };
-    if (!data.bars?.length) return [];
+    const stamped = (data.bars ?? []).map((bar) => ({ bar, etDate: etDateOf(bar.t), etMinutes: etMinutesOf(bar.t) }));
 
-    // Stamp each bar with its ET session date + minutes-since-midnight ONCE
-    // (Intl formatting isn't free, and this runs on a 30s poll). en-CA gives a
-    // string-sortable YYYY-MM-DD; en-GB 24h gives HH:MM.
-    const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
-    const timeFmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'America/New_York',
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    const stamped = data.bars.map((bar) => {
-      const d = new Date(bar.t);
-      const [hh, mm] = timeFmt.format(d).split(':').map(Number);
-      return { bar, etDate: dayFmt.format(d), etMinutes: hh * 60 + mm };
-    });
-    const latest = stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
+    // Which day the chart shows. On a trading day, once the window opens at
+    // 7:00 AM ET, it is today — even before a single trade — so the morning
+    // reads as today against yesterday's close. Otherwise the latest day with
+    // bars (Friday on a weekend).
+    const todayEt = etDateOf(now);
+    const showToday = isTradingDay(now) && etMinutesOf(now) >= INTRADAY_WINDOW_ET.start;
+    const latest = showToday ? todayEt : stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
+    if (!latest) return [];
+    const windowStart = etInstant(latest, INTRADAY_WINDOW_ET.start);
+    const windowEnd = etInstant(latest, INTRADAY_WINDOW_ET.end);
+    // The line runs to the right edge of what has happened: now, or the
+    // window's end for a finished day.
+    const lineEnd = new Date(Math.min(now.getTime(), windowEnd.getTime()));
 
-    // The latest session date, trimmed to the chart's clock window (7:00 AM
-    // to 6:30 PM ET, lib/market-data/intraday-window): pre-market and
-    // after-hours inside it ride along; the tape's 4:00 AM and 8:00 PM prints
-    // do not, because the chart sizes its scale from every bar it is given.
-    // Before the open this is today's pre-market so far — the morning a gap
-    // matters.
-    return stamped
+    // The day's one-minute bars inside the window (7:00 AM to 6:30 PM ET).
+    // The tape's 4:00 AM and 8:00 PM prints stay out: the chart sizes its
+    // scale from every point it is given.
+    const points: StockCandle[] = stamped
       .filter((s) => s.etDate === latest && s.etMinutes >= INTRADAY_WINDOW_ET.start && s.etMinutes <= INTRADAY_WINDOW_ET.end)
-      .map(({ bar }) => ({
-        date: bar.t, // full ISO timestamp — chart renders time-of-day for 1D
-        close: bar.c,
-        open: bar.o,
-        high: bar.h,
-        low: bar.l,
-        volume: bar.v,
-      }));
+      .map(({ bar }) => ({ date: bar.t, close: bar.c, open: bar.o, high: bar.h, low: bar.l, volume: bar.v }));
+
+    // Any line is better than no line. A minute bar needs a trade of 100
+    // shares or more, so a quiet pre-market — DOCU on 2026-09-30: eleven
+    // trades, 110 shares, no bar until 9:30 — drew nothing. Where the day
+    // has no bars yet (before the first, after the last), the tape's
+    // round-lot trades stand in, one point per minute, so the line always
+    // runs from the window's left edge; a stretch with only odd lots (DOCU
+    // that morning) adds nothing and the line holds flat. Only those
+    // stretches are read: by construction they hold few trades.
+    const firstBar = points.length ? new Date(points[0].date) : null;
+    const lastBar = points.length ? new Date(points[points.length - 1].date) : null;
+    const stretches: [Date, Date][] = [];
+    if (!firstBar) stretches.push([windowStart, lineEnd]);
+    else {
+      if (firstBar > windowStart) stretches.push([windowStart, firstBar]);
+      const afterLast = new Date(lastBar!.getTime() + 60_000);
+      if (afterLast < lineEnd) stretches.push([afterLast, lineEnd]);
+    }
+    for (const [from, to] of stretches) {
+      if (to <= from) continue;
+      const trades = await getTradesBetween(S, headers, from.toISOString(), to.toISOString());
+      points.push(...minutePoints(roundLots(trades)));
+    }
+    points.sort((a, b) => a.date.localeCompare(b.date));
+
+    // Where the line starts: the last round-lot price before the window
+    // opened — last night's last real trade, or yesterday's close — so the
+    // left edge is never blank. One page of the newest trades, newest first,
+    // reaches back past the overnight odd lots to the session's closing
+    // prints (DOCU 09-30: fifteen odd lots, then 18,999 shares at the close).
+    // Skipped when the first minute already has a point.
+    if (!points.length || new Date(points[0].date) > windowStart) {
+      const prior = await getTradesBetween(
+        S,
+        headers,
+        new Date(windowStart.getTime() - 7 * 86_400_000).toISOString(),
+        windowStart.toISOString(),
+        { sort: 'desc', limit: 1000, pages: 1 },
+      );
+      const p = roundLots(prior)[0]?.p;
+      if (typeof p === 'number' && p > 0) {
+        points.unshift({ date: windowStart.toISOString(), open: p, high: p, low: p, close: p, volume: 0 });
+      }
+    }
+    // And it reaches now while the window is open: a quiet stretch carries
+    // the last price forward.
+    if (showToday && now < windowEnd && points.length) {
+      const last = points[points.length - 1];
+      if (lineEnd.getTime() - new Date(last.date).getTime() > 60_000) {
+        points.push({ date: lineEnd.toISOString(), open: last.close, high: last.close, low: last.close, close: last.close, volume: 0 });
+      }
+    }
+    return points;
   } catch (err) {
     console.error('[getIntradayCandles] Alpaca error:', err instanceof Error ? err.message : err);
     return [];

@@ -32,6 +32,7 @@ beforeEach(() => {
   global.fetch = jest.fn(async (url: string | URL) => {
     const u = new URL(String(url));
     asked.push(u);
+    if (u.pathname.endsWith("/trades")) return new Response(JSON.stringify({ trades: [], next_page_token: null }), { status: 200 });
     const feed = u.searchParams.get("feed");
     const rows = feed === "sip" ? fixture.sip : feed === "iex" ? fixture.iex : [];
     return new Response(JSON.stringify({ bars: toBars(rows), next_page_token: null }), { status: 200 });
@@ -54,11 +55,12 @@ describe("SMMT's 1D chart, 2026-09-29", () => {
   it("asks for the consolidated tape and never the Data Cache", async () => {
     const { getIntradayCandles } = await import("./finnhub.actions");
     await getIntradayCandles("smmt");
-    expect(asked).toHaveLength(1);
-    expect(asked[0].pathname).toBe("/v2/stocks/SMMT/bars");
-    expect(asked[0].searchParams.get("feed")).toBe("sip");
-    expect(asked[0].searchParams.get("timeframe")).toBe("1Min");
-    expect((global.fetch as jest.Mock).mock.calls[0][1]).toMatchObject({ cache: "no-store" });
+    const bars = asked.filter((u) => u.pathname.endsWith("/bars"));
+    expect(bars).toHaveLength(1);
+    expect(bars[0].pathname).toBe("/v2/stocks/SMMT/bars");
+    expect(bars[0].searchParams.get("feed")).toBe("sip");
+    expect(bars[0].searchParams.get("timeframe")).toBe("1Min");
+    for (const call of (global.fetch as jest.Mock).mock.calls) expect(call[1]).toMatchObject({ cache: "no-store" });
   });
 
   it("the session's bars match the tape's daily high and low — 19.09 and 16.15, every minute present", async () => {
@@ -97,5 +99,96 @@ describe("SMMT's 1D chart, 2026-09-29", () => {
     expect(rows).toHaveLength(384);
     expect(Math.max(...rows.map((b) => b.h))).toBe(19.07);
     expect(toBars(fixture.iex).some((b) => etMinutes(b.t) < 570 || etMinutes(b.t) > 960)).toBe(false);
+  });
+});
+
+/**
+ * DOCU, 2026-09-30 — the quiet morning that drew nothing.
+ *
+ * Eleven trades before the open, 110 shares in all, every one under 100
+ * shares; the consolidated tape leaves such odd lots out of the last sale and
+ * the day's high and low, so no minute before 9:30 became a bar and the
+ * chart's left band was empty. Any line is better than no line, but not a
+ * line the market doesn't count: where the day has no bars, the tape's
+ * round-lot trades stand in, and a stretch with none holds flat at the last
+ * round-lot price before the window — here yesterday's close, 18,999 shares
+ * at $66.98 at 4:50 PM, fifteen odd lots back. The bars, the trades and the
+ * newest trades before 7:00 are the vendor's own replies.
+ */
+import docu from "@/lib/market-data/__fixtures__/alpaca-docu-day-2026-09-30.json";
+
+type TradeTuple = [string, number, number, string, string];
+
+describe("DOCU's 1D chart, 2026-09-30 — a quiet pre-market", () => {
+  const allTrades = () => {
+    const seen = new Set<string>();
+    return [...(docu.lastBeforeWindow as TradeTuple[]), ...(docu.preMarketTrades as TradeTuple[])]
+      .filter(([t, p, s]) => (seen.has(`${t}${p}${s}`) ? false : (seen.add(`${t}${p}${s}`), true)))
+      .map(([t, p, s]) => ({ t, p, s }))
+      .sort((a, b) => a.t.localeCompare(b.t));
+  };
+  const vendor = () => {
+    asked = [];
+    global.fetch = jest.fn(async (url: string | URL) => {
+      const u = new URL(String(url));
+      asked.push(u);
+      // Instants, not strings: the vendor is asked with millisecond ISO
+      // stamps and answers with nanosecond ones.
+      const ms = (iso: string) => new Date(iso).getTime();
+      const start = ms(u.searchParams.get("start") ?? "2000-01-01T00:00:00Z");
+      const end = ms(u.searchParams.get("end") ?? "2100-01-01T00:00:00Z");
+      if (u.pathname.endsWith("/trades")) {
+        let rows = allTrades().filter((t) => ms(t.t) >= start && ms(t.t) < end);
+        if (u.searchParams.get("sort") === "desc") rows = rows.reverse();
+        rows = rows.slice(0, Number(u.searchParams.get("limit") ?? 10000));
+        return new Response(JSON.stringify({ trades: rows, next_page_token: null }), { status: 200 });
+      }
+      const bars = toBars(docu.bars).filter((b) => ms(b.t) >= start && ms(b.t) <= end);
+      return new Response(JSON.stringify({ bars, next_page_token: null }), { status: 200 });
+    }) as unknown as typeof fetch;
+  };
+
+  it("every pre-market trade was an odd lot, so none is drawn: at noon the line holds flat at yesterday's close from 7:00, then the 148 bars from 9:30", async () => {
+    jest.setSystemTime(new Date("2026-09-30T16:00:00Z"));
+    vendor();
+    const { getIntradayCandles } = await import("./finnhub.actions");
+    const points = await getIntradayCandles("DOCU");
+    const pre = points.filter((b) => etMinutes(b.date) < 570);
+    expect(pre.map((b) => [b.date.slice(11, 16), b.close, b.volume])).toEqual([["11:00", 66.98, 0]]);
+    // The 5-share $65.48 print at 8:49 is not on the chart, and nothing before the open sits under the close.
+    expect(points.some((b) => b.low === 65.48)).toBe(false);
+    expect(Math.min(...pre.map((b) => b.low))).toBe(66.98);
+    expect(points.filter((b) => etMinutes(b.date) >= 570)).toHaveLength(148);
+    expect(Date.parse(points[0].date)).toBe(Date.parse("2026-09-30T11:00:00Z"));
+    // Two trade reads: the bar-less stretch 7:00–9:30, then one page back from 7:00 for the anchor.
+    const tradeCalls = asked.filter((u) => u.pathname.endsWith("/trades"));
+    expect(tradeCalls.map((u) => [u.searchParams.get("start"), u.searchParams.get("end"), u.searchParams.get("sort")])).toEqual([
+      ["2026-09-30T11:00:00.000Z", "2026-09-30T13:30:00.000Z", "asc"],
+      ["2026-09-23T11:00:00.000Z", "2026-09-30T11:00:00.000Z", "desc"],
+    ]);
+  });
+
+  it("at 8:00 AM, before any bar: a flat line from 7:00 to now at yesterday's close", async () => {
+    jest.setSystemTime(new Date("2026-09-30T12:00:00Z"));
+    vendor();
+    const { getIntradayCandles } = await import("./finnhub.actions");
+    const points = await getIntradayCandles("DOCU");
+    expect(points.map((b) => [b.date.slice(11, 16), b.close, b.volume])).toEqual([
+      ["11:00", 66.98, 0],
+      ["12:00", 66.98, 0],
+    ]);
+  });
+
+  it("the anchor skips the fifteen overnight odd lots (the newest a 20-share $66.62 at 5:26 AM) for the 18,999-share close print", async () => {
+    jest.setSystemTime(new Date("2026-09-30T12:00:00Z"));
+    vendor();
+    const before = (docu.lastBeforeWindow as TradeTuple[]);
+    expect(before.slice(0, 15).every(([, , s]) => s < 100)).toBe(true);
+    expect(before[0].slice(1, 3)).toEqual([66.62, 20]);
+    expect(before[15].slice(1, 3)).toEqual([66.98, 18999]);
+    const { getIntradayCandles } = await import("./finnhub.actions");
+    const points = await getIntradayCandles("DOCU");
+    expect(points[0].close).toBe(66.98);
+    expect(points[0].close).not.toBe(66.62);
   });
 });

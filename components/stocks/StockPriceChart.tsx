@@ -2,8 +2,10 @@
 
 import { useState, useMemo } from 'react';
 import {
-  AreaChart,
+  ComposedChart,
   Area,
+  Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -255,11 +257,18 @@ export function StockPriceChart({
     return intradaySessionGeometry(data[0].date);
   }, [isIntraday, data]);
 
-  // Buffered price (y) domain — same treatment on every range.
+  // Buffered price (y) domain — same treatment on every range. On 1D the
+  // prior close is part of it, so its line is always in view.
   const yDomain = useMemo<[number, number] | undefined>(() => {
     if (data.length < 1) return undefined;
-    return priceDomain(data.map((d) => d.close));
-  }, [data]);
+    const closes = data.map((d) => d.close);
+    if (isIntraday && priorClose != null && priorClose > 0) closes.push(priorClose);
+    return priceDomain(closes);
+  }, [data, isIntraday, priorClose]);
+
+  // Volume bars sit in the bottom quarter: their own hidden axis runs to four
+  // times the tallest bar. Each bar takes the color of its minute or day.
+  const volumeTop = useMemo(() => Math.max(1, ...data.map((d) => d.volume ?? 0)) * 4, [data]);
 
   // Snap each marker to the nearest visible candle, then stagger labels that
   // land on (or near) the same candle so they don't overprint — Watching and
@@ -409,7 +418,7 @@ export function StockPriceChart({
 
       {hasBody ? (
       <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={data} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
+        <ComposedChart data={data} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
           <defs>
             {/* Off-hours dot texture — matches the dashboard chart's grid, so
                 pre/post-market read as a subtle pattern, not a gray slab. */}
@@ -469,6 +478,7 @@ export function StockPriceChart({
               full-bleeds to the container edges on every range. Consistent
               across frames; exact prices are available on hover. */}
           <YAxis hide domain={yDomain ?? ['dataMin', 'dataMax']} />
+          <YAxis yAxisId="volume" hide orientation="right" domain={[0, volumeTop]} />
 
           <Tooltip
             contentStyle={{
@@ -478,10 +488,11 @@ export function StockPriceChart({
               fontSize: '12px',
               color: 'var(--popover-foreground)',
             }}
-            formatter={(v: number) => [
-              `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              'Close',
-            ]}
+            formatter={(v: number, name: string) =>
+              name === 'volume'
+                ? [v.toLocaleString(), 'Volume']
+                : [`$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Close']
+            }
             labelFormatter={(l: string | number) =>
               isIntraday
                 ? formatTimeLabel(l)
@@ -518,6 +529,42 @@ export function StockPriceChart({
               ifOverflow="visible"
             />
           ) : null}
+
+          {/* Yesterday's close (1D only): a dot pinned to the right edge at
+              the price the day is measured from, with "Prev $X" beside it.
+              Not a line: the target and floor already draw dashed lines
+              across this chart, and a third would read as another level. */}
+          {isIntraday && intradayGeo && priorClose != null && priorClose > 0 ? (
+            <ReferenceDot
+              x={intradayGeo.domain[1]}
+              y={priorClose}
+              r={0}
+              ifOverflow="visible"
+              shape={(props: { cx?: number; cy?: number }) => {
+                // The window's last minute is the plot's right edge; pull in so
+                // the whole dot shows.
+                const cx = (props.cx ?? 0) - 4;
+                const cy = props.cy ?? 0;
+                const text = `Prev $${priorClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                return (
+                  <g>
+                    <circle cx={cx} cy={cy} r={3} fill={REF_LINE} fillOpacity={0.9} stroke="none" />
+                    <text x={cx - 7} y={cy + 3.5} fill={AXIS_TICK} fontSize={9} textAnchor="end" fontFamily="var(--font-mono)">
+                      {text}
+                    </text>
+                  </g>
+                );
+              }}
+            />
+          ) : null}
+
+          {/* Volume — one faint bar per point along the bottom, green when the
+              close rose from the point before, red when it fell. */}
+          <Bar yAxisId="volume" dataKey="volume" isAnimationActive={false} fillOpacity={0.35} maxBarSize={6}>
+            {data.map((d, i) => (
+              <Cell key={`v-${d.date}`} fill={i > 0 && d.close < data[i - 1].close ? LINE_RED : LINE_GREEN} />
+            ))}
+          </Bar>
 
           {/* Vertical markers — Watching / Entry / Sold. Labels stagger down
               when two land on (or near) the same candle so they don't overprint. */}
@@ -588,7 +635,7 @@ export function StockPriceChart({
             activeDot={{ r: 3, fill: endColor }}
             isAnimationActive={!isIntraday}
           />
-        </AreaChart>
+        </ComposedChart>
       </ResponsiveContainer>
       ) : (
         <div className="flex items-center justify-center" style={{ height }}>
