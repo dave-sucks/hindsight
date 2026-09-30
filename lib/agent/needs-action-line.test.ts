@@ -13,7 +13,8 @@
  * Numbers below are live rows on 2026-09-22.
  */
 import { computeNeedsAction } from "./needs-action";
-import { needsActionLine } from "./needs-action-line";
+import { needsActionFlag, needsActionLine } from "./needs-action-line";
+import type { NeedsAction } from "./needs-action";
 import type { Trigger } from "./triggers/types";
 
 describe("the review flag says when it was due", () => {
@@ -123,5 +124,67 @@ describe("the other flags a person needs to see", () => {
     expect(needsActionLine({ kind: "PROMOTED_AWAITING_RESOLUTION" })).toContain(
       "re-enter it, defer it, or kill it",
     );
+  });
+});
+
+/**
+ * The sheet header's flag line (2026-09-30). Dave asked whether this line is
+ * "pure eligible Flag Enums, no customization that complicates it" — these
+ * cases are the answer: every `kind` gets one fixed sentence, and the only
+ * thing that varies inside it is a value the flag itself carries.
+ */
+describe("the flag line names the flag and nothing else", () => {
+  const cases: Array<[NeedsAction, string]> = [
+    [
+      { kind: "PROMOTED_AWAITING_RESOLUTION", paperTenureDays: null, paperRealizedPnl: null, paperReviewCount: null, promotedAt: null },
+      "Flagged to decide — promoted to live money",
+    ],
+    [
+      { kind: "SALE_DECLINED", declineCount: 1, lastDeclinedAt: "2026-09-28T13:00:00.000Z", rejectMessage: null, floorPrice: 1041, recentLow: null },
+      "Flagged to review the declined sale",
+    ],
+    [
+      { kind: "SALE_DECLINED", declineCount: 3, lastDeclinedAt: "2026-09-28T13:00:00.000Z", rejectMessage: null, floorPrice: null, recentLow: null },
+      "Flagged to review the declined sale (declined 3×)",
+    ],
+    [
+      { kind: "TRIGGER_FIRED", triggerId: "t1", action: "REVIEW", summary: "Price below the 200-day", firedAt: "2026-09-29T13:40:00.000Z" },
+      "Flagged to answer a trigger — Price below the 200-day",
+    ],
+    [
+      { kind: "TRIGGER_MATCHING_NOW", triggerId: "t2", action: "ENTER", predicateSummary: "Price above $406", livePrice: 412.18 },
+      "Flagged — a trigger is true right now: Price above $406",
+    ],
+    [
+      { kind: "UNPROTECTED_GAIN", unrealizedGainPct: 19.4, flooredGainPct: 4.2, unprotectedGapPct: 15.2, hasTrail: true, floorSummary: "25% off the high" },
+      "Flagged to raise the floor — up 19%, floor locks 4%",
+    ],
+    [
+      { kind: "UNPROTECTED_GAIN", unrealizedGainPct: 31, flooredGainPct: null, unprotectedGapPct: null, hasTrail: false, floorSummary: null },
+      "Flagged to raise the floor — up 31%, nothing under it",
+    ],
+    [
+      { kind: "RESEARCH_STALE", daysOld: null, threshold: 30, freshness: "missing" },
+      "Flagged — no research has ever been written",
+    ],
+    [
+      { kind: "RESEARCH_STALE", daysOld: 44, threshold: 30, freshness: "stale" },
+      "Flagged — research is 44 days old",
+    ],
+    [{ kind: "REVIEW_DUE", daysOverdue: 0 }, "Flagged — review is due today"],
+    [{ kind: "REVIEW_DUE", daysOverdue: 1 }, "Flagged — review is 1 day overdue"],
+    [{ kind: "REVIEW_DUE", daysOverdue: 6 }, "Flagged — review is 6 days overdue"],
+    [
+      { kind: "REVIEW_DUE", daysOverdue: 3, pendingFirstReview: true },
+      "Flagged — awaiting its first research",
+    ],
+  ];
+
+  it.each(cases)("%#", (na, expected) => {
+    expect(needsActionFlag(na)).toBe(expected);
+  });
+
+  it("every line starts with the word Flagged — one grammar, no model text", () => {
+    for (const [na] of cases) expect(needsActionFlag(na)).toMatch(/^Flagged/);
   });
 });

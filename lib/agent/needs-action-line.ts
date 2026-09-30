@@ -53,3 +53,50 @@ export function needsActionLine(na: NeedsAction): string {
         : "Review is due today.";
   }
 }
+
+/**
+ * The same flag, named in one short line — the version the thesis sheet
+ * leads with (2026-09-30).
+ *
+ * `needsActionLine` above explains the flag to someone reading an audit; at
+ * the top of a stock's page that explanation read as a paragraph of jargon
+ * competing with the analyst's own paragraph right under it. Dave: "just say
+ * the actual flag. 'Flagged to Review the Declined Proposal' — which would
+ * actually make sense."
+ *
+ * So: one fixed sentence per `kind`, with only real values substituted (a
+ * trigger's own summary, a count, a date). No model text ever reaches this
+ * line, which is the point — the flag vocabulary is seven enum cases, and
+ * the header says which one fired, nothing more.
+ */
+export function needsActionFlag(na: NeedsAction): string {
+  switch (na.kind) {
+    case "PROMOTED_AWAITING_RESOLUTION":
+      return "Flagged to decide — promoted to live money";
+    case "SALE_DECLINED":
+      return (
+        "Flagged to review the declined sale" +
+        (na.declineCount > 1 ? ` (declined ${na.declineCount}×)` : "")
+      );
+    case "TRIGGER_FIRED":
+      return `Flagged to answer a trigger — ${na.summary}`;
+    case "TRIGGER_MATCHING_NOW":
+      return `Flagged — a trigger is true right now: ${na.predicateSummary}`;
+    case "UNPROTECTED_GAIN":
+      return (
+        `Flagged to raise the floor — up ${na.unrealizedGainPct.toFixed(0)}%, ` +
+        (na.flooredGainPct == null
+          ? "nothing under it"
+          : `floor locks ${na.flooredGainPct.toFixed(0)}%`)
+      );
+    case "RESEARCH_STALE":
+      return na.freshness === "missing"
+        ? "Flagged — no research has ever been written"
+        : `Flagged — research is ${na.daysOld ?? "?"} days old`;
+    case "REVIEW_DUE":
+      if (na.pendingFirstReview) return "Flagged — awaiting its first research";
+      return na.daysOverdue > 0
+        ? `Flagged — review is ${na.daysOverdue} day${na.daysOverdue === 1 ? "" : "s"} overdue`
+        : "Flagged — review is due today";
+  }
+}

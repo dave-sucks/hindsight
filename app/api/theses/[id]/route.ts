@@ -165,7 +165,17 @@ export async function GET(
       // Not simply the newest row: TRIGGER_FIRED is templated machine text
       // and PROPOSAL_APPROVED is an order receipt, and between them they win
       // the recency race on most stocks. See lib/thesis/latest-note.ts.
-      where: { thesisId: thesis.id, type: { in: [...HERO_UPDATE_TYPES] } },
+      // A principal edit from the trigger popover writes a templated
+      // `[USER] ...` rationale. It is a real audit row, but it is MY note to
+      // the agent, not the analyst's read on the stock — leading the sheet
+      // with it answered "what is going on with this stock?" with "you moved
+      // a stop." Excluded here so the headline is always something a run
+      // wrote.
+      where: {
+        thesisId: thesis.id,
+        type: { in: [...HERO_UPDATE_TYPES] },
+        NOT: { rationale: { startsWith: "[USER]" } },
+      },
       orderBy: { timestamp: "desc" },
       select: {
         id: true,

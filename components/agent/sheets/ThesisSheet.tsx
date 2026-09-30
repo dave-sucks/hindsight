@@ -43,11 +43,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
-import {
-  relativeTimestamp,
-  titleSegments,
-} from "@/components/agent/sheets/thesis-timeline-utils";
-import { needsActionLine } from "@/lib/agent/needs-action-line";
+import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { latestNoteView } from "@/lib/thesis/latest-note";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import { SendToAgentButton } from "@/components/stocks/SendToAgentButton";
@@ -383,6 +379,30 @@ function humanizeCloseReason(raw: string | null | undefined): string | null {
   return raw;
 }
 
+// ── TradeNote ──
+// The proposal's own write-up. These run long — the agent explains the level,
+// the risk math, the exposure after the buy — and at full length the trade
+// block pushed the chart and the triggers off the screen.
+//
+// Same gesture as the Activity feed's rows: clamped to four lines, the whole
+// paragraph is the hit area, hover darkens it so it reads as pressable, click
+// toggles. No "Show more" link — the text itself is the control.
+function TradeNote({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <p
+      className={cn(
+        "text-sm text-muted-foreground leading-relaxed cursor-pointer transition-colors hover:text-foreground",
+        !open && "line-clamp-4",
+      )}
+      onClick={() => setOpen((v) => !v)}
+      title={open ? "Collapse" : "Expand"}
+    >
+      {text}
+    </p>
+  );
+}
+
 // ── TradeBlock ──
 // The ONE trade section in the sheet. Every state — pending proposal,
 // holding, closed — renders through the SAME container and the SAME slot
@@ -517,9 +537,7 @@ function TradeBlock({
           right), never squeezed by an action control. */}
       {review ? <div className="flex justify-start">{review}</div> : null}
       <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
-      {note ? (
-        <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
-      ) : null}
+      {note ? <TradeNote text={note} /> : null}
       {/* Meta line doubles as the path to the trade detail page — the old
           standalone "View trade →" under the sheet header is gone (principal
           feedback: the banner already exists exactly when a trade exists). */}
@@ -725,47 +743,32 @@ function FilingsBlock({ data }: { data: FilingsResponse }) {
   );
 }
 
-// ── TradeStructureBlock ───────────────────────────────────────────────
-// Compact single-row block of trade-shape mechanics: next review (with
-// the absolute date in tooltip), max hold (TRADE horizon only — see
-// THESIS_ARCHITECTURE §7), target size as % of portfolio. Renders nothing
-// when there's no data — and renders ONLY the cells that have values, so
-// COMPOUNDER theses (no max hold) and theses without a target size don't
-// produce empty slots. Lives in this file so it can be reordered next to
-// price-targets without touching ThesisTriggersSection.
-
-function fmtRelativeDate(iso: string): string {
-  const d = new Date(iso);
-  const diffMs = d.getTime() - Date.now();
-  const diffDays = Math.round(diffMs / 86_400_000);
-  const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  if (diffDays === 0) return `${dateLabel} · today`;
-  if (diffDays > 0) return `${dateLabel} · ${diffDays}d`;
-  return `${dateLabel} · ${Math.abs(diffDays)}d ago`;
-}
-
-const HORIZON_TOOLTIP: Record<string, string> = {
-  CATALYST: "Exit on the catalyst event (good or bad), or 30 days past the catalyst date.",
-  TARGET: "Open-ended hold. Exit only at target, stop, or thesis invalidation.",
-  TRADE: "Bounded short-term trade. Exit on the stop, the target, or when it has been open long enough.",
-  COMPOUNDER: "Multi-year hold. Exits only when invalidation triggers fire — never auto-exits on time.",
-};
+// TradeStructureBlock (Status · Horizon · Next review · Size) was deleted
+// 2026-09-30. Dave: "For trade structure. No. lol. We just dont need it."
+// Next review was a row of derived restatements: the review clock is a
+// REVIEW_CADENCE trigger and shows in the trigger list, the horizon is on
+// the thesis body, and "Status" was an internal actionability enum nobody
+// could name. Nothing here had a reader.
 
 /**
- * What just happened, and whether this stock is flagged for work (DAV-304).
+ * The top of the sheet: what is going on with this stock, right now.
  *
- * Dave: "Right now I have my activity feed and I have my summary — so it
- * doesn't appear like the thesis is updating even though it really is." On
- * 2026-09-22 three analysts made 26 durable changes in one morning and none
- * of it was visible without querying the database.
+ * Three lines, in this order, and nothing else:
+ *   1. the flag, named — `needsActionFlag`, one fixed sentence per enum
+ *      case. Absent when nothing is flagged; "nothing is flagged" is not
+ *      news and it used to take a line at the top of every stock.
+ *   2. the newest thing an analyst WROTE about this stock — the rationale
+ *      off the latest run-authored update. This is the block: it is the
+ *      only part of the page that says what the situation is today.
+ *   3. who wrote it and when, plus how old that is once it is stale.
  *
- * Two lines, above the standing belief:
- *   1. the most recent durable event, worded by the Activity tab's own
- *      `titleSegments` so there is one grammar for both;
- *   2. whether the run would pick this stock up today, and why — the
- *      `needsAction` flag and the plan-sanity flags, both of which the server
- *      has always computed and nothing has ever shown. A flag nobody can see
- *      is a flag nobody can test, so "nothing flagged" is stated, not implied.
+ * What this replaced (2026-09-30): "LATEST · Updated · 1h" over the frozen
+ * core belief. Dave: "I like that I show the Core Belief. That is a
+ * paragraph. It is helpful. The issue is it is not point in time." The
+ * belief still renders — below the trade, labelled as the standing claim.
+ *
+ * The paragraph is only as good as what the run wrote; the header cannot
+ * fix unreadable text, and the writing standard is tracked separately.
  */
 function LatestNoteBlock({
   status,
@@ -774,6 +777,9 @@ function LatestNoteBlock({
   planSanity,
   quoteLoading,
   quoteFailed,
+  analystName,
+  /** Text already shown verbatim in the trade block — never repeated here. */
+  suppressText,
 }: {
   status: string;
   latestUpdate: ThesisDossier["latestUpdate"];
@@ -782,50 +788,45 @@ function LatestNoteBlock({
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
+  analystName: string | null;
+  suppressText: string | null;
 }) {
-  const reasons = [
-    ...(needsAction ? [needsActionLine(needsAction)] : []),
+  const note = latestUpdate?.rationale?.trim() || latestUpdate?.summary?.trim() || null;
+  // A pending proposal prints its own rationale in the trade block right
+  // below. When the newest written note IS that rationale, showing it twice
+  // made the sheet read as two agents saying the same thing.
+  const sameAsTrade =
+    note != null &&
+    suppressText != null &&
+    note.replace(/\s+/g, " ") === suppressText.replace(/\s+/g, " ");
+  const text = sameAsTrade ? null : note;
+
+  const flagLines = [
+    ...(needsAction ? [needsActionFlag(needsAction)] : []),
     ...(planSanity ?? []).map((f) => f.text),
   ];
-  const title = latestUpdate ? titleSegments(latestUpdate) : null;
-  // The work-flag line is live-only — it is scored against a live price and
-  // means nothing on a stock the run will not pick up again. The note is not:
-  // a sale, a pass and a supersede each leave the one write-up explaining it.
   const view = latestNoteView({
     status,
-    hasNote: title != null,
-    hasReasons: reasons.length > 0,
+    hasNote: text != null,
+    hasReasons: flagLines.length > 0,
     quoteLoading,
     quoteFailed,
   });
   if (!view) return null;
 
+  const writtenAt = latestUpdate ? new Date(latestUpdate.timestamp) : null;
+  const daysOld = writtenAt
+    ? Math.floor((Date.now() - writtenAt.getTime()) / 86_400_000)
+    : null;
+
   return (
     <div className="space-y-2">
-      {view.showNote && title ? (
-        <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Latest
-          </span>
-          <span className="font-medium">{title.primary}</span>
-          {title.secondary ? (
-            <span className="text-muted-foreground">{title.secondary}</span>
-          ) : null}
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {relativeTimestamp(latestUpdate!.timestamp)}
-          </span>
-        </div>
-      ) : null}
-
       {view.flags === "hidden" ? null : view.flags === "loading" ? (
         <Skeleton className="h-4 w-56" />
       ) : view.flags === "reasons" ? (
-        <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Flagged for work
-          </p>
-          {reasons.map((r, i) => (
-            <p key={i} className="text-sm text-muted-foreground">
+        <div className="space-y-0.5">
+          {flagLines.map((r, i) => (
+            <p key={i} className="text-sm font-medium text-amber-600 dark:text-amber-500">
               {r}
             </p>
           ))}
@@ -837,140 +838,22 @@ function LatestNoteBlock({
         <p className="text-sm text-muted-foreground">
           Couldn&apos;t reach the live price, so the work flags couldn&apos;t be checked.
         </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Nothing flagged for work right now.
+      ) : null}
+
+      {view.showNote && text ? (
+        <p className="text-base leading-relaxed text-foreground">{text}</p>
+      ) : null}
+
+      {view.showNote && writtenAt ? (
+        <p className="text-xs text-muted-foreground">
+          {analystName ? `${analystName} · ` : ""}
+          written{" "}
+          {writtenAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          {/* Past a fortnight the paragraph is history, not news, and it
+              has to say so — it reads as current either way. */}
+          {daysOld != null && daysOld >= 14 ? ` · ${daysOld} days ago` : ""}
         </p>
-      )}
-    </div>
-  );
-}
-
-function TradeStructureBlock({
-  state,
-}: {
-  state: {
-    horizon: string | null;
-    lastReviewedAt: string | null;
-    reviewDueAt: string | null;
-    analystName: string | null;
-    resolved?: ResolvedEnvelope | null;
-  };
-}) {
-  const hasAnalyst = state.analystName != null;
-  const hasHorizon = state.horizon != null;
-  const hasLastReview = state.lastReviewedAt != null;
-  const hasNextReview = state.reviewDueAt != null;
-  // Conviction Expression v4 — actionability rollup. Lives in Trade
-  // Structure (not as a top-of-sheet badge per principal feedback) —
-  // it's "execution context" alongside Horizon / Next review / Size.
-  const hasStatus =
-    state.resolved != null && state.resolved.actionability !== "DEAD";
-
-  if (!hasHorizon && !hasLastReview && !hasNextReview && !hasStatus && !hasAnalyst)
-    return null;
-
-  const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
-  // Status first — it's the "should I act on this right now" answer
-  // that should anchor reading the row.
-  if (hasStatus && state.resolved) {
-    const r = state.resolved;
-    let statusValue: React.ReactNode;
-    switch (r.actionability) {
-      case "ENTER_NOW":
-        statusValue = "Ready to buy";
-        break;
-      case "WAIT_FOR_TRIGGER":
-        statusValue = r.triggerDetail
-          ? `Waiting — ${r.triggerDetail}`
-          : "Waiting on trigger";
-        break;
-      case "PENDING_CATALYST":
-        statusValue = "Catalyst pending";
-        break;
-      case "ACTIVE_HOLD":
-        statusValue = "Holding";
-        break;
-      case "STALE_PAST_CATALYST":
-        statusValue = "Past catalyst — review";
-        break;
-      case "SUPERSEDED":
-        statusValue = "Superseded by newer thesis";
-        break;
-      case "PROMOTED_DECIDE_TODAY":
-        // Promoted is a daily-run forcing function (paper position was
-        // force-closed at promotion; user said yes to live money). Use
-        // the affirmative tone — same `text-emerald-500` ProposalActions
-        // uses for approved actions — to carry urgency through the
-        // status cell instead of inventing a third header badge.
-        statusValue = (
-          <span className="text-emerald-500">Decide today — re-enter / wait / kill</span>
-        );
-        break;
-      default:
-        statusValue = r.actionability;
-    }
-    cells.push({ label: "Status", value: statusValue });
-  }
-  if (hasHorizon) {
-    cells.push({
-      label: "Horizon",
-      value: state.horizon,
-      tooltip: HORIZON_TOOLTIP[state.horizon!] ?? undefined,
-    });
-  }
-  // "When did anyone last look at this" — the other half of Next review, and
-  // the only stored answer to it (DAV-304).
-  if (hasLastReview) {
-    cells.push({
-      label: "Last reviewed",
-      value: fmtRelativeDate(state.lastReviewedAt!),
-      tooltip: new Date(state.lastReviewedAt!).toLocaleString(),
-    });
-  }
-  if (hasNextReview) {
-    cells.push({
-      label: "Next review",
-      value: fmtRelativeDate(state.reviewDueAt!),
-      tooltip: new Date(state.reviewDueAt!).toLocaleString(),
-    });
-  }
-  // "Max hold" is a trigger now, not a field — it renders in the trigger
-  // list as "Open 14 days — a TRADE should have resolved by now." See
-  // docs/plans/LEVELS_AS_TRIGGERS.md (L8).
-  // Last cell — "who authored this" is context for the row above it, not
-  // the lead. Null on manual/legacy runs with no analyst attached.
-  if (hasAnalyst) {
-    cells.push({
-      label: "Analyst",
-      value: state.analystName,
-      tooltip: "The analyst whose research run authored this thesis.",
-    });
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-        Trade Structure
-      </p>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
-        {cells.map((c, i) => (
-          <span key={c.label} className="inline-flex items-center gap-1.5">
-            {i > 0 && <span className="text-muted-foreground/40">·</span>}
-            <span className="text-muted-foreground">{c.label}</span>
-            {c.tooltip ? (
-              <Tooltip>
-                <TooltipTrigger render={<span className="font-medium tabular-nums cursor-default" />}>
-                  {c.value}
-                </TooltipTrigger>
-                <TooltipContent className="text-xs">{c.tooltip}</TooltipContent>
-              </Tooltip>
-            ) : (
-              <span className="font-medium tabular-nums">{c.value}</span>
-            )}
-          </span>
-        ))}
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -1633,18 +1516,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         planSanity={resolved?.planSanity ?? null}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
+        analystName={state.analystName}
+        suppressText={state.position?.pendingProposal?.rationale ?? null}
       />
-
-      {/* ── Core Belief headline ─────────────────────────────── */}
-      {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
-          trade evaluator grades on close. Large + normal weight so it
-          reads as the load-bearing claim, and it leads the tab body: main
-          summary first, then the trade row, then the chart. */}
-      {state.coreBelief ? (
-        <p className="text-xl font-normal leading-relaxed">
-          {state.coreBelief}
-        </p>
-      ) : null}
 
       {/* ── Trade block (one unified, state-aware section) ── */}
       {/* The single place the trade lives. Headline morphs by state:
@@ -1660,6 +1534,24 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           pendingProposal={state.position?.pendingProposal ?? null}
           direction={direction}
         />
+      ) : null}
+
+      {/* ── Core belief ──────────────────────────────────────── */}
+      {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
+          trade evaluator grades on close. It used to headline the sheet,
+          which was the problem: it is written once at mint and never moves,
+          so the top of the page never changed no matter what happened to
+          the stock. It is the standing claim, so it sits under the trade
+          and says so. */}
+      {state.coreBelief ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Core belief
+          </p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {state.coreBelief}
+          </p>
+        </div>
       ) : null}
 
       {/* ── Price chart (annotated) ───────────────────────────── */}
@@ -1773,16 +1665,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
             <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
           </div>
         </Card>
-      ) : null}
-
-      {/* ── Trade Structure ───────────────────────────────────── */}
-      {/* Next review · Max hold (TRADE-horizon only per architecture) ·
-          Target size. Extracted from the prior "Schedule" block in
-          ThesisTriggersSection so it can sit next to price targets where
-          it belongs — these are the trade-shape mechanics that pair with
-          entry/target/stop, not metadata about the trigger pile. */}
-      {state ? (
-        <TradeStructureBlock state={{ ...state, resolved }} />
       ) : null}
 
       {/* ── Earnings ─────────────────────────────────────────── */}
