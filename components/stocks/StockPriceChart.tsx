@@ -530,26 +530,26 @@ export function StockPriceChart({
             />
           ) : null}
 
-          {/* Yesterday's close (1D only): the dashed line the day is measured
-              against, labelled at the right edge, the way finance charts do. */}
-          {isIntraday && priorClose != null && priorClose > 0 ? (
-            <ReferenceLine
+          {/* Yesterday's close (1D only): a dot pinned to the right edge at
+              the price the day is measured from, with "Prev $X" beside it.
+              Not a line: the target and floor already draw dashed lines
+              across this chart, and a third would read as another level. */}
+          {isIntraday && intradayGeo && priorClose != null && priorClose > 0 ? (
+            <ReferenceDot
+              x={intradayGeo.domain[1]}
               y={priorClose}
-              stroke={REF_LINE}
-              strokeOpacity={0.6}
-              strokeDasharray="4 4"
-              strokeWidth={1}
+              r={0}
               ifOverflow="visible"
-              label={(props: { viewBox?: { x?: number; y?: number; width?: number } }) => {
-                const vx = props.viewBox?.x ?? 0;
-                const vy = props.viewBox?.y ?? 0;
-                const vw = props.viewBox?.width ?? 0;
-                const text = `Prev close $${priorClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                const w = text.length * 5.6 + 12;
+              shape={(props: { cx?: number; cy?: number }) => {
+                // The window's last minute is the plot's right edge; pull in so
+                // the whole dot shows.
+                const cx = (props.cx ?? 0) - 4;
+                const cy = props.cy ?? 0;
+                const text = `Prev $${priorClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 return (
                   <g>
-                    <rect x={vx + vw - w - 6} y={vy - 9} width={w} height={18} rx={9} fill={REF_LINE} fillOpacity={0.14} />
-                    <text x={vx + vw - 12} y={vy + 3.5} fill={AXIS_TICK} fontSize={9} textAnchor="end" fontFamily="var(--font-mono)">
+                    <circle cx={cx} cy={cy} r={3} fill={REF_LINE} fillOpacity={0.9} stroke="none" />
+                    <text x={cx - 7} y={cy + 3.5} fill={AXIS_TICK} fontSize={9} textAnchor="end" fontFamily="var(--font-mono)">
                       {text}
                     </text>
                   </g>
