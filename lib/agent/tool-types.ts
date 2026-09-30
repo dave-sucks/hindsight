@@ -124,8 +124,12 @@ export interface SignalItem {
 /** get_market_context → data */
 export interface MarketContextData {
   spy: { price: number; changePct: number; dayHigh: number; dayLow: number } | null;
-  vix: { level: number; changePct: number | null } | null;
-  regime: "RISK_ON" | "RISK_OFF" | "NEUTRAL";
+  /** VIXY, an ETF of VIX futures — its day move, never read as the VIX level (DAV-339). */
+  vixy: { price: number; changePct: number | null } | null;
+  /** The playbook regime (lib/agent/regime.ts), as of the last close; null when SPY's snapshot is missing. */
+  regime: "RISK_ON" | "CAUTION" | "RISK_OFF" | null;
+  regimeLine: string | null;
+  regimeAsOf: string | null;
   spyTrend: {
     sma20: number;
     position: "above" | "below";
