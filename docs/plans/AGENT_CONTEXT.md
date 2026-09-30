@@ -578,7 +578,7 @@ characters when it is written.
 
 | Agent | When it gets the block | Parts | Budget per stock |
 |---|---|---|---|
-| **Morning run** | On every **full row**, as `context`, before the thesis fields. A **quiet row** gets one line when a standing note of yours exists ("Principal's note 09-30: Bought a starter…", 120 characters). **A note or decision of yours that no run has answered yet makes the row full**, once. That widens today's rule (only a decline with a message does, `get-theses.ts:1240`). | 1–7 | typical 400–700 tokens, cap 1,000; quiet line ~30 |
+| **Morning run** | On every **full row**, as `context`, before the thesis fields. A **quiet row** gets one line when a standing note of yours exists ("Principal's note 09-30: Bought a starter…", 120 characters). **A note or decision of yours that no run has answered yet makes the row full**, once: a decline with a reason, a resized approval, a level set by hand. A hand edit that only removed triggers is shown but doesn't (run over this morning's book it would have pulled ASML, WST and ABT out of the quiet list with nothing to decide). That widens today's rule (only a decline with a message does, `get-theses.ts:1240`). | 1–7 | typical 400–700 tokens, cap 1,000; quiet line ~30 |
 | **Trigger run** | In the prompt, **replacing** "RECENT THESIS ACTIVITY (last 5 updates)". | 1–7 | typical 500, cap 1,000 (today ~250) |
 | **Writer: refresh** | In the prompt, after EXISTING THESIS. On a held refresh it also gets the **resolved** trigger list, marked by level ("the analyst's rule", "the account's rule"), so it knows what sits under the stock's own levels. | 1–4 | typical 500, cap 800 |
 | **Writer: mint** | Standing notes of yours from an **earlier** thesis on the same stock for this analyst (a stock sold and minted again), plus the dispatcher's reason. | 1 | typical 0–150 |
@@ -1060,7 +1060,9 @@ Signals lane has an open PR on it. All of this is the Agents lane's.
    row, not quiet); the 09-14 15:55 trigger run's prompt carries the whole
    decline (today it isn't among the five lines at all). **Before it
    merges:** run the "fires stay open" rule over the live book and report
-   how many rows go from quiet to full, and why.
+   how many rows go from quiet to full, and why. *(Done in #745: 1 of the
+   21 quiet rows at the 09-30 morning reads, CEG; 2 of 43 live stocks for
+   Friday, DOCU and CEG.)*
 2. **Notes.** `notes.ts`; `update_thesis` `note` and `resolve_note_id`;
    /chat `write_note` (allowed unscoped) and `ask_question` on /chat's
    tool list; the C4 notes section; M2's two note sentences; the Activity
