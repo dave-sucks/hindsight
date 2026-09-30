@@ -35,6 +35,7 @@ jest.mock("@/lib/prisma", () => ({
 }));
 jest.mock("@/lib/alpaca", () => ({
   getLatestPrices: jest.fn().mockResolvedValue({}),
+  getLatestPricesWithMeta: jest.fn().mockResolvedValue({ prices: {}, sources: {}, asOf: {}, fetchedAt: "2026-09-29T14:00:00.000Z" }),
   getBars: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("@/lib/proposals/pending-entry", () => ({

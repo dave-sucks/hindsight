@@ -1,7 +1,8 @@
 // ── Trigger Evaluator ─────────────────────────────────────────────────────
 // One cron, one consumer (the pure `evaluateTrigger` function in
 // lib/agent/triggers/evaluate.ts): every 5 min during US market hours it
-// walks every HOLDING/WATCHING thesis, pulls the latest Finnhub quote and
+// walks every HOLDING/WATCHING thesis, prices the whole book in one Alpaca
+// call (lib/market-data/live-quote; Finnhub is the fallback) and
 // evaluates the ladder. Since 2026-09-02 it also pulls the firm-wide
 // earnings calendar (one call for the whole batch) and evaluates
 // EARNINGS_BEAT / EARNINGS_MISS off reported EPS vs estimate. See
@@ -34,7 +35,7 @@
 import { randomUUID } from "node:crypto";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { finnhub } from "@/lib/agent/research-helpers";
+import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
@@ -461,8 +462,7 @@ export const triggerEvaluator = inngest.createFunction(
     // "real-time enough to act on a breakout." Swing analysts unaffected
     // because per-trigger cooldowns prevent over-firing — a EXIT trigger
     // with cooldownDays=1 fires once whether the cron checks every 5 or
-    // every 15 min. Cost: 3x Finnhub /quote calls per market hour, still
-    // within the 200-unique-ticker cap and Finnhub paid-tier rate limits.
+    // every 15 min. Cost: one Alpaca call per hundred tickers per pass.
     { cron: "TZ=America/New_York */5 9-16 * * 1-5" },
   ],
   async ({ step }) => {
@@ -526,8 +526,7 @@ export const triggerEvaluator = inngest.createFunction(
 
       // Resolve BEFORE picking tickers to quote. Dropping the
       // `triggers: { not: [] }` DB filter widened the candidate set, and
-      // quoting a thesis whose resolved ladder is empty would spend a
-      // Finnhub call to evaluate nothing — and worse, consume one of the
+      // a thesis whose resolved ladder is empty would consume one of the
       // 200 ticker slots that a thesis with a live stop needs.
       const candidates = theses
         .map((thesis) => ({
@@ -556,49 +555,44 @@ export const triggerEvaluator = inngest.createFunction(
         candidates.map((c) => c.thesis),
       );
 
-      // Cap unique tickers per tick to bound Finnhub calls. Theses past
-      // the cap defer to the next tick.
+      // Cap unique tickers per tick. Theses past the cap defer to the next
+      // tick.
       const uniqueTickers = Array.from(
         new Set(candidates.map((c) => c.thesis.ticker)),
       ).slice(0, 200);
-      const quoteResults = await Promise.all(
-        uniqueTickers.map(async (ticker) => {
-          const r = await finnhub(`/quote?symbol=${ticker}`, 1);
-          const q = r.data as Record<string, number> | null;
-          if (!q || typeof q.c !== "number" || q.c <= 0) {
-            return [ticker, null] as const;
-          }
-          // A stale quote still scores sells and reviews — skipping a stop is
-          // the worse failure — but a buy never fires on it (shouldFire reads
-          // `stale`; DAV-261). See lib/market-data/quote-age.
-          const stale = staleForTrading(q, new Date());
-          if (stale) {
-            const age = quoteAgeMs(q);
-            console.warn(
-              `[trigger-evaluator] STALE QUOTE ${ticker}: ${age != null ? Math.round(age / 60_000) + "min old" : "no timestamp"} (price ${q.c}) — sells evaluate, buys wait`,
-            );
-          }
-          // Daily % change vs prior close. Prefer Finnhub's `dp`, but fall back
-          // to computing it from `pc` (prior close) when `dp` is missing —
-          // thin/ADR names often omit `dp`, and silently coercing to 0% would
-          // make a Movement-Amount STOP never fire on exactly those names
-          // (fail-unsafe for a stop). Only 0 when we genuinely can't tell.
-          const changePct =
-            typeof q.dp === "number"
-              ? q.dp
-              : typeof q.pc === "number" && q.pc > 0
-                ? ((q.c - q.pc) / q.pc) * 100
-                : 0;
-          // Prior close: an ENTER fires on the crossing of its level
-          // (DAV-229), and "crossed since the last close" is the cheapest
-          // honest definition the cron can afford. Finnhub always sends it.
-          const prevClose =
-            typeof q.pc === "number" && q.pc > 0 ? q.pc : undefined;
-          // Today's regular-session open — GAP_UP reads it.
-          const open = typeof q.o === "number" && q.o > 0 ? q.o : null;
-          return [ticker, { price: q.c, changePct, prevClose, open, stale }] as const;
-        }),
-      );
+      // The whole book in one call, and never the caller that yields when a
+      // vendor's minute runs low (lib/market-data/quote-budget).
+      const liveQuotes = await getLiveQuotes(uniqueTickers, { caller: "trigger-check", now });
+      const quoteResults = uniqueTickers.map((ticker) => {
+        const { quote: q, error } = liveQuotes[ticker.toUpperCase()] ?? { quote: null };
+        if (!q) {
+          console.error(`[trigger-evaluator] NO PRICE ${ticker} — its price triggers are not checked this pass: ${error ?? "no quote"}`);
+          return [ticker, null] as const;
+        }
+        // A stale quote still scores sells and reviews — skipping a stop is
+        // the worse failure — but a buy never fires on it (shouldFire reads
+        // `stale`; DAV-261). See lib/market-data/quote-age.
+        const stale = staleForTrading(q, new Date());
+        if (stale) {
+          const age = quoteAgeMs(q);
+          console.warn(
+            `[trigger-evaluator] STALE QUOTE ${ticker}: ${age != null ? Math.round(age / 60_000) + "min old" : "no timestamp"} (price ${q.c}, ${q.source}) — sells evaluate, buys wait`,
+          );
+        }
+        // Daily % change vs prior close. Null when the prior close is unknown
+        // (live-quote never invents one); only then 0, because we genuinely
+        // can't tell.
+        const changePct = q.dp ?? 0;
+        // Prior close: an ENTER fires on the crossing of its level
+        // (DAV-229), and "crossed since the last close" is the cheapest
+        // honest definition the cron can afford.
+        const prevClose = q.pc ?? undefined;
+        // Today's regular-session open — GAP_UP reads it. A quote from an
+        // earlier session carries that session's open, which is not today's.
+        const etDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        const open = etDay(new Date(q.t * 1000)) === etDay(now) ? q.o : null;
+        return [ticker, { price: q.c, changePct, prevClose, open, stale }] as const;
+      });
       const quoteByTicker = new Map(quoteResults);
 
       // The daily indicator snapshot — only for tickers with a rung that
@@ -624,7 +618,7 @@ export const triggerEvaluator = inngest.createFunction(
       const wantsTodayBar =
         session === "CLOSE" ||
         candidates.some((c) => c.ladder.some((t) => needsTodayVolume(t.predicate)));
-      const todayBars = wantsTodayBar ? await getTodaySessionBars(uniqueTickers, undefined, now) : {};
+      const todayBars = wantsTodayBar ? await getTodaySessionBars(uniqueTickers, undefined, now, "trigger-check") : {};
 
       // Reported earnings for the whole firm in ONE call, only when some
       // thesis in this batch actually carries an earnings trigger. The
@@ -678,7 +672,7 @@ export const triggerEvaluator = inngest.createFunction(
         // close rungs wait for tomorrow rather than fire on a guess.
         if (session === "CLOSE" && !todayBar) continue;
         // Prior close for the crossing: the quote's, else yesterday's close
-        // off the snapshot — so a Finnhub miss at 16:20 doesn't skip a day's
+        // off the snapshot — so a missed quote at 16:20 doesn't skip a day's
         // close-basis rungs when the closing bar itself is in hand.
         const snapPrev = indicators.get(thesis.ticker)?.closes.at(-1);
         const prevForClose = quote?.prevClose ?? (typeof snapPrev === "number" ? snapPrev : undefined);

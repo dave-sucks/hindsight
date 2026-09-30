@@ -32,7 +32,8 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { getBars, getDailyRangePcts, getLatestPrices } from "@/lib/alpaca";
+import { getBars, getDailyRangePcts, getLatestPricesWithMeta } from "@/lib/alpaca";
+import { readPrice } from "@/lib/market-data/quote-age";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
@@ -280,6 +281,8 @@ export const getTheses = defineTool({
     // Set when the live-quote fetch throws — forces full-book detail so a
     // data outage can't hide actionable rows behind the quiet split.
     let priceFetchFailed = false;
+    // When each live price printed — so the result can say how old it is.
+    const priceAsOf: Record<string, string> = {};
 
     // Scope by analyst when present (the right thing for normal calls);
     // fall back to userId scope for any builder/editor or system call
@@ -847,7 +850,9 @@ export const getTheses = defineTool({
       );
       let priceByTicker: Record<string, number> = {};
       try {
-        priceByTicker = await getLatestPrices(uniqueTickers, ctx.alpacaCreds);
+        const lookup = await getLatestPricesWithMeta(uniqueTickers, ctx.alpacaCreds);
+        priceByTicker = lookup.prices;
+        Object.assign(priceAsOf, lookup.asOf);
       } catch (err) {
         // Review finding #3: when quotes are down, every price-dependent
         // needsAction kind (TRIGGER_MATCHING_NOW / UNPROTECTED_GAIN /
@@ -961,8 +966,9 @@ export const getTheses = defineTool({
       // computation ran) but theses still need resolution.
       const tickers = Array.from(new Set(liveTheses.map((t) => t.ticker)));
       try {
-        const prices = await getLatestPrices(tickers, ctx.alpacaCreds);
-        Object.assign(resolverPriceMap, prices);
+        const lookup = await getLatestPricesWithMeta(tickers, ctx.alpacaCreds);
+        Object.assign(resolverPriceMap, lookup.prices);
+        Object.assign(priceAsOf, lookup.asOf);
       } catch {
         /* degraded gracefully; envelope renders with currentPrice=null */
       }
@@ -1089,6 +1095,7 @@ export const getTheses = defineTool({
             positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
           },
           currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
+          priceAsOf: priceAsOf[t.ticker] ?? null,
           supersession: supersessionByTicker.get(t.ticker) ?? null,
           now: resolverNow,
         }),
@@ -1493,14 +1500,29 @@ export const getTheses = defineTool({
               ? ` — ${enriched.length} actionable in full, ${quietRows.length} quiet as index rows`
               : ""
           }.`;
+    // A price that is missing or old is said in words (lib/market-data/
+    // quote-age) — it used to come back as a blank or as if it were live.
+    const priceWarnings = Array.from(new Set(liveTheses.map((t) => t.ticker)))
+      .map((ticker) => {
+        const price = resolverPriceMap[ticker];
+        const at = priceAsOf[ticker];
+        return readPrice({
+          ticker,
+          quote: typeof price === "number" && price > 0 ? { c: price, t: at ? new Date(at).getTime() / 1000 : undefined } : null,
+          now: resolverNow,
+        }).warning;
+      })
+      .filter((w): w is string => w != null);
     const summaryWithSold =
-      soldToReview.length > 0
+      (priceWarnings.length > 0 ? `⚠ ${priceWarnings.join(" ")} ` : "") +
+      (soldToReview.length > 0
         ? `${summary} ${soldToReview.length} recently sold stock${soldToReview.length === 1 ? "" : "s"} (${soldToReview.map((x) => `$${x.ticker}`).join(", ")}) still need${soldToReview.length === 1 ? "s" : ""} a keep-watching-or-let-it-go decision.`
-        : summary;
+        : summary);
 
     return {
       summary: summaryWithSold,
       data: {
+        ...(priceWarnings.length > 0 ? { priceWarnings } : {}),
         count: theses.length,
         active: activeCount,
         watching: watchingCount,

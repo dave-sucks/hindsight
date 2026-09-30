@@ -1,6 +1,7 @@
 'use server';
 
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
+import { getLiveQuote } from '@/lib/market-data/live-quote';
 import { cache } from 'react';
 
 // ─── Local helpers (previously imported from utils) ───────────────────────────
@@ -278,6 +279,9 @@ export async function getStockProfile(symbol: string): Promise<StockProfile | nu
 // because `/api/quotes` is hit by every open tab and quote row, and the two
 // `Promise.all` fan-outs over `getStockQuote` (lib/alpaca.ts, complete-run.ts)
 // are unthrottled. Keep this TTL in SECONDS. See CLAUDE.md → recurring bugs.
+//
+// Since 2026-09-29 the price behind it is Alpaca's, with Finnhub `/quote` as
+// the fallback. The name and the shape stay so every reader moved at once.
 const QUOTE_TTL_MS = 10_000;
 const QUOTE_TIMEOUT_MS = 8_000;
 const quoteCache = new Map<string, { quote: StockQuote | null; ts: number }>();
@@ -294,22 +298,39 @@ export async function getStockQuote(symbol: string): Promise<StockQuote | null> 
   if (pending) return pending;
 
   const task = (async (): Promise<StockQuote | null> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
-      if (!token) return null;
-      const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(key)}&token=${token}`;
-      // No revalidateSeconds → `cache: 'no-store'`. The timeout is required,
-      // not cosmetic: callers are coalesced onto this one promise, so a hung
-      // request without it would stall every waiter for that symbol.
-      const data = await fetchJSON<StockQuote>(url, undefined, QUOTE_TIMEOUT_MS);
-      const quote = data ?? null;
+      // Alpaca's tape first, Finnhub `/quote` behind it — both `no-store`
+      // (lib/market-data/live-quote). Pages and write prices yield to the
+      // trigger check when a vendor's minute runs low. The timeout is
+      // required, not cosmetic: callers are coalesced onto this one promise,
+      // so a hung request without it would stall every waiter for the symbol.
+      const { quote: live } = await Promise.race([
+        getLiveQuote(key, { caller: "other" }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("quote timeout")), QUOTE_TIMEOUT_MS);
+        }),
+      ]);
+      // Don't cache a miss — the next caller should retry rather than be
+      // pinned to a null for the whole TTL.
+      if (!live) return null;
+      // This legacy shape has no "unknown": an absent figure is 0, as Finnhub sends it.
+      const quote: StockQuote = {
+        c: live.c,
+        d: live.d ?? 0,
+        dp: live.dp ?? 0,
+        h: live.h ?? 0,
+        l: live.l ?? 0,
+        o: live.o ?? 0,
+        pc: live.pc ?? 0,
+        t: live.t,
+      };
       quoteCache.set(key, { quote, ts: Date.now() });
       return quote;
     } catch {
-      // Don't cache failures — the next caller should retry rather than be
-      // pinned to a null for the whole TTL.
       return null;
     } finally {
+      clearTimeout(timer);
       quoteInFlight.delete(key);
     }
   })();
