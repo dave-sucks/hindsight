@@ -195,6 +195,24 @@ It deletes the numbers from chat's "Sizing" line, which shows only the largest
 trade. The sentence that the app sizes the buy, and that a size you name in
 chat is honored as given, stays.
 
+**What the real-model runs say this PR does and doesn't fix** (built locally,
+run 2026-10-01):
+
+- DOCU chat, names the setup correctly as a pullback: 3 of 3.
+- DOCU chat, judges the size by dollars in: 2 of 3 before, 1 of 3 after. All
+  three now quote the dollars at risk.
+- DOCU chat, reads light volume as weakness: 3 of 3 before and after. **Not
+  fixed.** The figure is a partial-day number read minutes after the open.
+  The fix belongs in the stock-data tool's reply (say how much of the session
+  has passed). It is on the list, not in this plan.
+- EME chat, writes a buy at a score under the analyst's 7: 6 of 9 before, 6 of
+  6 after, and 3 of 3 still report the plan as armed after the save warning.
+  **Not fixed, and words don't fix it**: the fact is in the prompt, on the
+  stock and in the warning. The review session's reading is that the model is
+  not the one that is wrong here: a stock waiting for its buy price is scored
+  with the entry not yet formed, and the check on the day it fires reads that
+  old score. That goes to Dave as its own finding and is not built.
+
 ### 4. The morning run's prompt
 
 The morning prompt is the longest and carries at least eight passages each
@@ -214,10 +232,12 @@ PR 1 and PR 4 each merge alone, on a day before a morning run you can watch.
 ## How we check it
 
 - **A prompt can't grow by accident.** A test records the size of each of the
-  five prompts and fails if one gets longer. A PR that deletes lowers the
-  number. A PR that makes a prompt longer has to raise the number by hand and
-  give the reason. The plan expects that once: discovery gains the list of its
-  analyst's setups in PR 3, which it needs and doesn't have.
+  five prompts and fails if one changes. A PR that deletes lowers the number.
+  A PR that makes a prompt longer has to raise the number by hand and give
+  the reason. The plan expects that in PR 3: each prompt that loads the
+  shared file grows by about 100 to 190 characters (the sentence is longer
+  than the one it replaces), and discovery also gains the list of its
+  analyst's setups.
 - **Three real cases, run against the real models before and after.** Tests
   prove what an agent is handed, not what it decides. So for each change we
   replay three real moments and paste what the model said, pass or fail:
