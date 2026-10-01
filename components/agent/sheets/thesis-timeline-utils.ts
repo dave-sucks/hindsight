@@ -697,17 +697,6 @@ function conditionList(fires: TimelineUpdate[]): string {
     .join(", ");
 }
 
-/**
- * When one episode happened: fired, and answered. Collapses to a single date
- * when a fire was answered the same day (a tactical run answers in the same
- * second, and "fired Sep 17 · answered Sep 17" is noise).
- */
-export function episodeRange(g: GroupItem): string {
-  const fired = dateRangeLabel(g.fires[0].timestamp, g.fires[g.fires.length - 1].timestamp);
-  const answered = dateRangeLabel(g.response.timestamp, g.response.timestamp);
-  return fired === answered ? answered : `fired ${fired} · answered ${answered}`;
-}
-
 /** Month header label — "August", with the year when it isn't this year. */
 export function monthLabel(timestamp: string, now = new Date()): string {
   const d = new Date(timestamp);
@@ -817,8 +806,16 @@ export interface TimelineRow {
   runId: string | null;
   /** Order id — drives the dashed proposal span. */
   orderId: string | null;
-  /** Fold row (quiet cluster / ×N repeat): the row itself is the control. */
+  /** Fold row (×N roll-up): the row itself is the control. */
   fold: boolean;
+  /**
+   * A member of an expanded row, shown small. Nothing produces these by
+   * itself — the section splices them in under the row you opened, so you
+   * can see the individual fires and the review behind a roll-up.
+   */
+  child?: boolean;
+  /** This row has member events to reveal, so it opens even with no prose. */
+  members?: boolean;
 }
 
 /**
@@ -920,10 +917,11 @@ export function toRow(item: TimelineItem): TimelineRow {
       //     write-up, so the episode would print it twice.
       showDescription:
         outcome !== "no change" && !outcome.startsWith("proposed "),
+      members: true,
       // An episode spans two moments. Showing only the fire is what made the
       // sheet header ("written Sep 28") disagree with the feed ("Fri") on the
       // same paragraph — and it is the answer's date you are looking for.
-      when: episodeRange(item),
+      when: relativeTimestamp(item.response.timestamp),
       runId: lead.runId ?? item.response.runId,
       orderId: null,
       fold: false,
@@ -950,7 +948,7 @@ export function toRow(item: TimelineItem): TimelineRow {
     description: null,
     quoted: false,
     showDescription: false,
-    when: dateRangeLabel(itemTimestamp(item), oldestTimestamp(item)),
+    when: relativeTimestamp(itemTimestamp(item)),
     runId: null,
     orderId: null,
     fold: true,
@@ -976,6 +974,21 @@ export function dropRepeatedProse(rows: TimelineRow[]): TimelineRow[] {
     seen.add(text);
     return r;
   });
+}
+
+/**
+ * The rows behind one episode: each fire that asked, then the review that
+ * answered. The summary line is enough — this is the audit trail under a
+ * roll-up, not a second feed.
+ */
+export function episodeMembers(g: GroupItem): TimelineRow[] {
+  return [...g.fires, g.response].map((u) => ({
+    ...toRow({ kind: "event", row: u }),
+    key: `m:${u.id}`,
+    description: null,
+    showDescription: false,
+    child: true,
+  }));
 }
 
 // ── Relative timestamps ──────────────────────────────────────────────────────

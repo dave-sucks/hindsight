@@ -25,6 +25,7 @@ import {
   proposalSpanSegments,
   toRow,
   dropRepeatedProse,
+  episodeMembers,
   relativeTimestamp,
   type TimelineItem,
 } from "./thesis-timeline-utils";
@@ -372,7 +373,12 @@ describe("buildTimeline", () => {
     expect(g.kind).toBe("group");
     expect(g.fires.map((f) => f.id)).toEqual(["f2", "f1"]);
     expect(toRow(g).title.secondary).toBe("Price below the 200-day ×2");
-    expect(toRow(g).when).toBe("fired Sep 16 – 17 · answered Sep 18");
+    // One date per row, and it is the answer's — the last thing that
+    // happened. "fired X · answered Y" was clutter at a glance; the fires
+    // are there when you open the row.
+    expect(toRow(g).when).toBe("Sep 18");
+    expect(episodeMembers(g).map((m) => m.key)).toEqual(["m:f2", "m:f1", "m:resp"]);
+    expect(episodeMembers(g).every((m) => m.child)).toBe(true);
   });
 
   it("folds ≥2 consecutive identical check-ins; real fires stay visible", () => {
@@ -718,7 +724,7 @@ describe("toRow — one shape for every item", () => {
     expect(edit.description).toBe("Set the floor at $64.");
   });
 
-  it("a fold row says when it spans, in the same field every other row uses", () => {
+  it("a fold row carries one date, in the same field every other row uses", () => {
     const folded = toRow({
       kind: "fold",
       items: [
@@ -727,7 +733,7 @@ describe("toRow — one shape for every item", () => {
       ],
     });
     expect(folded.fold).toBe(true);
-    expect(folded.when).toBe("Aug 13 – 14");
+    expect(folded.when).toBe("Aug 14");
     expect(folded.title.secondary).toBe("no changes ×2");
   });
 
