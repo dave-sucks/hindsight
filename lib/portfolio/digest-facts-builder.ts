@@ -13,6 +13,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { thesisForTradeRow } from "@/lib/thesis/row-thesis";
 import { getOwnerUserId } from "@/lib/auth/account";
 import {
   resolveAlpacaCredentials,
@@ -187,14 +188,18 @@ export async function buildDigestFacts(
     ? await prisma.thesis.findMany({
         where: { accountId, ticker: { in: heldSymbols }, researchRun: { environment } },
         orderBy: { updatedAt: "desc" },
-        select: { id: true, ticker: true, sector: true },
+        select: { id: true, ticker: true, sector: true, status: true },
       })
     : [];
   const sectorByTicker = new Map<string, string | null>();
-  const thesisIdByTicker = new Map<string, string>();
+  // Same rule as the trade rows: the newest thesis on a ticker is not
+  // necessarily the one we hold it on. See lib/thesis/row-thesis.ts.
+  const thesesByTicker = new Map<string, { id: string; status: string }[]>();
   for (const t of sectorTheses) {
     if (!sectorByTicker.has(t.ticker)) sectorByTicker.set(t.ticker, t.sector);
-    if (!thesisIdByTicker.has(t.ticker)) thesisIdByTicker.set(t.ticker, t.id);
+    const seen = thesesByTicker.get(t.ticker);
+    if (seen) seen.push(t);
+    else thesesByTicker.set(t.ticker, [t]);
   }
 
   // ── Pending proposals (positions awaiting approval) ──────────────────────────
@@ -355,7 +360,10 @@ export async function buildDigestFacts(
       quantity: p.quantity,
       avgCost: p.avgCost,
       sector: sectorByTicker.get(p.symbol) ?? null,
-      thesisId: thesisIdByTicker.get(p.symbol) ?? null,
+      thesisId: thesisForTradeRow({
+        decisionThesisId: null,
+        tickerTheses: thesesByTicker.get(p.symbol) ?? [],
+      }),
       analystId: p.analystId,
       analystName: p.analyst?.name ?? null,
     })),

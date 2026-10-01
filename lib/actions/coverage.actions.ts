@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { thesisForTradeRow } from "@/lib/thesis/row-thesis";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import { getLatestPrices } from "@/lib/alpaca";
@@ -228,20 +229,22 @@ export async function getCoverageData(
     });
   }
 
-  // Resolve a thesis per traded ticker so a trade row opens its thesis sheet
-  // (the position's thesis may be HOLDING or, for a sold name, RETIRED).
+  // Every thesis on each traded ticker, newest-updated first. Which one a row
+  // opens is `thesisForTradeRow` — see lib/thesis/row-thesis.ts.
   const tradeTickers = Array.from(new Set(positions.map((p) => p.symbol)));
-  const thesisIdByTicker = new Map<string, string>();
+  const thesesByTicker = new Map<string, { id: string; status: string }[]>();
   if (tradeTickers.length > 0) {
     const tradeTheses = await prisma.thesis
       .findMany({
         where: { accountId, ticker: { in: tradeTickers }, researchRun: { environment } },
         orderBy: { updatedAt: "desc" },
-        select: { id: true, ticker: true },
+        select: { id: true, ticker: true, status: true },
       })
-      .catch(() => [] as { id: string; ticker: string }[]);
+      .catch(() => [] as { id: string; ticker: string; status: string }[]);
     for (const t of tradeTheses) {
-      if (!thesisIdByTicker.has(t.ticker)) thesisIdByTicker.set(t.ticker, t.id);
+      const seen = thesesByTicker.get(t.ticker);
+      if (seen) seen.push(t);
+      else thesesByTicker.set(t.ticker, [t]);
     }
   }
 
@@ -300,7 +303,10 @@ export async function getCoverageData(
       costBasis !== 0 && sinceDollar != null ? (sinceDollar / costBasis) * 100 : null;
     return {
       key: p.id,
-      thesisId: thesisIdByTicker.get(p.symbol) ?? p.decisions[0]?.thesisId ?? null,
+      thesisId: thesisForTradeRow({
+        decisionThesisId: p.decisions[0]?.thesisId,
+        tickerTheses: thesesByTicker.get(p.symbol) ?? [],
+      }),
       ticker: p.symbol,
       direction: p.direction ?? null,
       analystName: p.analyst?.name ?? null,
