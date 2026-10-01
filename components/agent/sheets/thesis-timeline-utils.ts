@@ -673,12 +673,6 @@ export function dateRangeLabel(newestTs: string, oldestTs: string): string {
   return `${fmt(oldest)} – ${fmt(newest)}`;
 }
 
-function oldestTimestamp(item: TimelineItem): string {
-  if (item.kind === "event") return item.row.timestamp;
-  if (item.kind === "group") return item.fires[item.fires.length - 1].timestamp;
-  return oldestTimestamp(item.items[item.items.length - 1]);
-}
-
 /**
  * The conditions an episode covers: each distinct one once, with "×N" when
  * that rung asked more than once. A morning review answers every fire since
