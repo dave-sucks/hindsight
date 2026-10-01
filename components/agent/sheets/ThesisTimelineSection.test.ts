@@ -24,6 +24,7 @@ import {
   groupTitle,
   proposalSpanSegments,
   toRow,
+  dropRepeatedProse,
   relativeTimestamp,
   type TimelineItem,
 } from "./thesis-timeline-utils";
@@ -849,3 +850,95 @@ describe("the most recent durable event, worded once", () => {
     expect(titleSegments(etn).primary).toBe("Updated");
   });
 });
+
+describe("the outcome names what the review actually changed", () => {
+  const resp = (fieldChanges: unknown) =>
+    row({ type: "UPDATED", fieldChanges: fieldChanges as never });
+  const ops = (...o: Array<{ op: string; text: string }>) => ({ triggerOps: { to: o } });
+
+  // HPE 2026-09-09: the buy flipped from a breakout ABOVE $54.75 to a
+  // pullback BELOW it, stored as a `triggers` from/to diff. 97 episodes
+  // across the book carried one of these and read "no change".
+  it("a trigger change that moves no price is a plan change, not nothing", () => {
+    expect(
+      outcomePhrase(resp({ triggers: { from: "ENTER PRICE_ABOVE 54.75", to: "ENTER PRICE_BELOW 54.75" } })),
+    ).toBe("plan changed");
+    expect(outcomePhrase(resp(ops({ op: "add", text: "Added: review every 10 days" })))).toBe(
+      "plan changed",
+    );
+    expect(outcomePhrase(resp(ops({ op: "edit", text: "Review cadence: wording updated" })))).toBe(
+      "plan changed",
+    );
+  });
+
+  it("a price level moving is levels moved, however it was written", () => {
+    expect(outcomePhrase(resp({ stopLoss: { from: 54, to: 62 } }))).toBe("levels moved");
+    expect(outcomePhrase(resp(ops({ op: "edit", text: "Entry $148 → $162.91" })))).toBe(
+      "levels moved",
+    );
+  });
+
+  // CEG: you removed two earnings-review rungs. The buy, floor and target
+  // were untouched — the plan was not set down, it just gets looked at less.
+  it("dropping review rungs is not setting the plan down", () => {
+    expect(
+      outcomePhrase(
+        resp(
+          ops(
+            { op: "remove", text: "Removed: Any earnings beat → review" },
+            { op: "remove", text: "Removed: Earnings miss ≥3% → review" },
+          ),
+        ),
+      ),
+    ).toBe("plan changed");
+    expect(
+      outcomePhrase(resp(ops({ op: "remove", text: "Removed: buy above $383" }))),
+    ).toBe("plan set down");
+  });
+
+  it("a rewritten argument with the plan untouched is research refreshed", () => {
+    expect(outcomePhrase(resp({ bullCase: { from: "a", to: "b" }, snapshot: { from: 1, to: 2 } }))).toBe(
+      "research refreshed",
+    );
+  });
+
+  it("no change means the row carries nothing", () => {
+    expect(outcomePhrase(resp({}))).toBe("no change");
+  });
+});
+
+describe("prose is not printed twice in a row", () => {
+  // ISRG: Proposed, then Expired, then the episode that staged it — all
+  // three carry the ORIGINAL rationale, stacked.
+  it("drops the repeat and keeps the row", () => {
+    const same = "I am buying $ISRG here because the entry level confirmed.";
+    // Not adjacent: the episode that staged the order sits between the
+    // Proposed row and the Expired row, and all three carry the original.
+    const out = dropRepeatedProse([
+      { ...baseRow(), key: "proposed", description: same, showDescription: true },
+      { ...baseRow(), key: "episode", description: "A different paragraph.", showDescription: true },
+      { ...baseRow(), key: "expired", description: same, showDescription: true },
+    ]);
+    expect(out.map((r) => r.description)).toEqual([same, "A different paragraph.", null]);
+    expect(out[2].showDescription).toBe(false);
+    expect(out[2].key).toBe("expired");
+  });
+});
+
+function baseRow() {
+  return {
+    key: "",
+    type: "UPDATED",
+    dot: "default" as const,
+    title: { primary: "Updated", secondary: null },
+    chips: [],
+    price: null,
+    description: null as string | null,
+    quoted: false,
+    showDescription: false,
+    when: "",
+    runId: null,
+    orderId: null,
+    fold: false,
+  };
+}

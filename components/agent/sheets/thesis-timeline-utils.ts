@@ -603,19 +603,45 @@ export function outcomePhrase(
   }
 
   const fc = response.fieldChanges ?? {};
+  const ops = ladderChangeLines(response);
+  const removed = ops.filter((o) => o.kind === "remove");
+
+  // Read top to bottom, first match wins. The order is "what would make me
+  // look": the plan's shape, then its numbers, then the words.
   if (fc.status?.to === "RETIRED" || fc.status?.to === "PASSED")
     return "archived";
 
-  const ops = ladderChangeLines(response);
-  if (ops.some((o) => o.kind === "remove")) return "plan set down";
-  if (ops.length > 0) return "levels moved";
-  if (LEVEL_KEYS_CHANGED.some((k) => fc[k] != null)) return "levels moved";
+  // Taking the buy / floor / target off is setting the plan down. Dropping
+  // only review rungs is not — the plan still stands, it just gets looked at
+  // less (CEG's "Removed: Any earnings beat → review" cleanup).
+  if (removed.length > 0 && !removed.every(isReviewRung)) return "plan set down";
+
+  if (LEVEL_FIELDS.some((k) => fc[k] != null)) return "levels moved";
+  if (ops.some((o) => /\$\d/.test(o.text))) return "levels moved";
+
+  // Everything else the plan can change and used to have nowhere to go: a
+  // review cadence, a fire mode, a rung's predicate. 97 episodes read "no
+  // change" while carrying a `triggers` from/to diff — HPE's buy flipped
+  // from a breakout above $54.75 to a pullback below it and the row said
+  // nothing happened.
+  if (ops.length > 0 || fc.triggers != null || fc.nextReviewAt != null)
+    return "plan changed";
+
+  // The plan is untouched but the argument was rewritten — the cases, the
+  // snapshot, the conviction score.
+  if (RESEARCH_KEYS.some((k) => fc[k] != null) || fc.scoring != null || fc.conviction != null)
+    return "research refreshed";
 
   return "no change";
 }
 
+/** A rung whose only job is to wake a review — not part of the buy/sell plan. */
+function isReviewRung(o: LadderChange): boolean {
+  return /→\s*review\b|review (every|above|below)/i.test(o.text);
+}
+
 /** Plan levels whose movement counts as "levels moved". */
-const LEVEL_KEYS_CHANGED = ["entryPrice", "targetPrice", "stopLoss"] as const;
+const LEVEL_FIELDS = ["entryPrice", "targetPrice", "stopLoss"] as const;
 
 /**
  * One-sentence title for a trigger episode:
@@ -862,6 +888,7 @@ export function toRow(item: TimelineItem): TimelineRow {
     // whatever the response actually changed.
     const { text, quoted } = describe(item.response);
     const lead = item.fires[0];
+    const outcome = outcomePhrase(item.response, item.proposal);
     return {
       key: `g:${lead.id}`,
       type: "TRIGGER_FIRED",
@@ -869,18 +896,16 @@ export function toRow(item: TimelineItem): TimelineRow {
       title: {
         primary: "Trigger:",
         secondary: conditionList(item.fires),
-        outcome: `— ${outcomePhrase(item.response, item.proposal)}`,
+        outcome: `— ${outcome}`,
       },
       chips: ladderChangeLines(item.response),
       price: lead.priceAtTime ?? item.response.priceAtTime,
       description: text,
       quoted,
-      // Every row that has prose shows two lines of it — one rule, no
-      // per-kind exception. Episodes used to hide theirs on the grounds that
-      // the title told the story; now that an episode absorbs the morning
-      // review that answered the fire, its prose IS the analyst's write-up
-      // on the stock, and hiding it hid most of the writing in the feed.
-      showDescription: true,
+      // Prose shows when the review CHANGED something. A "no change" row's
+      // paragraph is the agent restating the thesis — 230 of them across the
+      // book, and they were the wall. Still one click away.
+      showDescription: outcome !== "no change",
       // An episode spans two moments. Showing only the fire is what made the
       // sheet header ("written Sep 28") disagree with the feed ("Fri") on the
       // same paragraph — and it is the answer's date you are looking for.
@@ -916,6 +941,27 @@ export function toRow(item: TimelineItem): TimelineRow {
     orderId: null,
     fold: true,
   };
+}
+
+/**
+ * A paragraph is never printed twice in a row.
+ *
+ * A proposal's life — Proposed, then Expired or Declined, and the episode
+ * that staged it — each carries the ORIGINAL rationale, so ISRG showed "I am
+ * buying $ISRG here because the stock has confirmed the entry level…" on
+ * three rows. They are not adjacent (the episode sits between the Proposed
+ * and the Expired), so this is once per feed, not once in a row. Later
+ * copies keep their title, date and dot; only the repeated text goes.
+ */
+export function dropRepeatedProse(rows: TimelineRow[]): TimelineRow[] {
+  const seen = new Set<string>();
+  return rows.map((r) => {
+    const text = r.description?.replace(/\s+/g, " ").trim();
+    if (!text) return r;
+    if (seen.has(text)) return { ...r, description: null, showDescription: false };
+    seen.add(text);
+    return r;
+  });
 }
 
 // ── Relative timestamps ──────────────────────────────────────────────────────

@@ -32,6 +32,7 @@ import {
   itemTimestamp,
   monthLabel,
   proposalSpanSegments,
+  dropRepeatedProse,
   toRow,
   type LadderChange,
   type DotKind,
@@ -206,7 +207,7 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
         ? label
         : null;
     });
-    const mapped = items.map(toRow).map((r) => {
+    const mapped = dropRepeatedProse(items.map(toRow)).map((r) => {
       if (r.type !== "CREATED" || !provenance) return r;
       const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
       const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
