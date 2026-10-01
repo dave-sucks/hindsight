@@ -128,63 +128,89 @@ describe("the other flags a person needs to see", () => {
 });
 
 /**
- * The sheet header's flag line (2026-09-30). Dave asked whether this line is
- * "pure eligible Flag Enums, no customization that complicates it" — these
- * cases are the answer: every `kind` gets one fixed sentence, and the only
- * thing that varies inside it is a value the flag itself carries.
+ * The sheet header's flag line. Dave asked whether this is "pure eligible
+ * Flag Enums, no customization that complicates it" — these cases are the
+ * answer: one name per kind, and at most one fact beside it.
+ *
+ * The union is a discriminated one because each kind genuinely knows
+ * different things — REVIEW_DUE has no trigger to name, FLOOR_TOO_FAR has no
+ * date. That shape is right; what was wrong was rendering all eight richly,
+ * so every stock's header had a differently shaped sentence on it.
  */
-describe("the flag line names the flag and nothing else", () => {
-  const cases: Array<[NeedsAction, string]> = [
+describe("the flag is a name and at most one fact", () => {
+  const cases: Array<[NeedsAction, string, string | null]> = [
     [
       { kind: "PROMOTED_AWAITING_RESOLUTION", paperTenureDays: null, paperRealizedPnl: null, paperReviewCount: null, promotedAt: null },
-      "Flagged to decide — promoted to live money",
+      "Promoted to live money",
+      null,
     ],
     [
       { kind: "SALE_DECLINED", declineCount: 1, lastDeclinedAt: "2026-09-28T13:00:00.000Z", rejectMessage: null, floorPrice: 1041, recentLow: null },
-      "Flagged to review the declined sale",
+      "Sale declined",
+      "2026-09-28",
     ],
     [
       { kind: "SALE_DECLINED", declineCount: 3, lastDeclinedAt: "2026-09-28T13:00:00.000Z", rejectMessage: null, floorPrice: null, recentLow: null },
-      "Flagged to review the declined sale (declined 3×)",
+      "Sale declined",
+      "3×, last 2026-09-28",
     ],
     [
       { kind: "TRIGGER_FIRED", triggerId: "t1", action: "REVIEW", summary: "Price below the 200-day", firedAt: "2026-09-29T13:40:00.000Z" },
-      "Flagged to answer a trigger — Price below the 200-day",
+      "Trigger fired",
+      "Price below the 200-day",
     ],
     [
-      { kind: "TRIGGER_MATCHING_NOW", triggerId: "t2", action: "ENTER", predicateSummary: "Price above $406", livePrice: 412.18 },
-      "Flagged — a trigger is true right now: Price above $406",
+      { kind: "TRIGGER_MATCHING_NOW", triggerId: "t2", action: "ENTER", predicateSummary: "closes > $406", livePrice: 412.18 },
+      "Trigger true now",
+      "closes > $406",
+    ],
+    [
+      { kind: "FLOOR_TOO_FAR", floorPrice: 248, avgCost: 276.9, quantity: 39, lossAtFloor: 1127, pctOfAccount: 2.14, structureBelow: [], line: "..." },
+      "Floor too far",
+      "2.1% of the account below here",
     ],
     [
       { kind: "UNPROTECTED_GAIN", unrealizedGainPct: 19.4, flooredGainPct: 4.2, unprotectedGapPct: 15.2, hasTrail: true, floorSummary: "25% off the high" },
-      "Flagged to raise the floor — up 19%, floor locks 4%",
+      "Gain unprotected",
+      "up 19%, floor locks 4%",
     ],
     [
       { kind: "UNPROTECTED_GAIN", unrealizedGainPct: 31, flooredGainPct: null, unprotectedGapPct: null, hasTrail: false, floorSummary: null },
-      "Flagged to raise the floor — up 31%, nothing under it",
+      "Gain unprotected",
+      "up 31%, no floor under it",
     ],
     [
       { kind: "RESEARCH_STALE", daysOld: null, threshold: 30, freshness: "missing" },
-      "Flagged — no research has ever been written",
+      "Research stale",
+      "never written",
     ],
     [
       { kind: "RESEARCH_STALE", daysOld: 44, threshold: 30, freshness: "stale" },
-      "Flagged — research is 44 days old",
+      "Research stale",
+      "44 days old",
     ],
-    [{ kind: "REVIEW_DUE", daysOverdue: 0 }, "Flagged — review is due today"],
-    [{ kind: "REVIEW_DUE", daysOverdue: 1 }, "Flagged — review is 1 day overdue"],
-    [{ kind: "REVIEW_DUE", daysOverdue: 6 }, "Flagged — review is 6 days overdue"],
+    [{ kind: "REVIEW_DUE", daysOverdue: 0 }, "Review due", null],
+    [{ kind: "REVIEW_DUE", daysOverdue: 1 }, "Review due", "1 day overdue"],
+    [{ kind: "REVIEW_DUE", daysOverdue: 6 }, "Review due", "6 days overdue"],
     [
       { kind: "REVIEW_DUE", daysOverdue: 3, pendingFirstReview: true },
-      "Flagged — awaiting its first research",
+      "Review due",
+      "never researched",
     ],
   ];
 
-  it.each(cases)("%#", (na, expected) => {
-    expect(needsActionFlag(na)).toBe(expected);
+  it.each(cases)("%#", (na, name, detail) => {
+    expect(needsActionFlag(na)).toEqual({ name, detail });
   });
 
-  it("every line starts with the word Flagged — one grammar, no model text", () => {
-    for (const [na] of cases) expect(needsActionFlag(na)).toMatch(/^Flagged/);
+  // The flag never carries a sentence. The paragraph under it is the
+  // analyst's; the flag's job is to say which of eight things happened.
+  it("a detail is a fact, never prose", () => {
+    for (const [na] of cases) {
+      const { detail } = needsActionFlag(na);
+      if (detail == null) continue;
+      expect(detail.length).toBeLessThan(45);
+      expect(detail).not.toMatch(/\. /);
+    }
   });
 });

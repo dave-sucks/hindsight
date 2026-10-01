@@ -44,6 +44,8 @@ import {
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
+import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
+import { planSanityLabel } from "@/lib/agent/plan-sanity-label";
 import { latestNoteView } from "@/lib/thesis/latest-note";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import { SendToAgentButton } from "@/components/stocks/SendToAgentButton";
@@ -774,7 +776,6 @@ function LatestNoteBlock({
   status,
   latestUpdate,
   needsAction,
-  planSanity,
   quoteLoading,
   quoteFailed,
   analystName,
@@ -784,7 +785,6 @@ function LatestNoteBlock({
   status: string;
   latestUpdate: ThesisDossier["latestUpdate"];
   needsAction: NeedsAction | null;
-  planSanity: { kind: string; text: string }[] | null;
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
@@ -801,14 +801,15 @@ function LatestNoteBlock({
     note.replace(/\s+/g, " ") === suppressText.replace(/\s+/g, " ");
   const text = sameAsTrade ? null : note;
 
-  const flagLines = [
-    ...(needsAction ? [needsActionFlag(needsAction)] : []),
-    ...(planSanity ?? []).map((f) => f.text),
-  ];
+  // ONE flag line. `planSanity` used to stack under it — a second, unrelated
+  // system (is this PLAN coherent?) painting the same amber as the work flag
+  // (why will a run pick this up?), in prose written for the agent to read.
+  // It renders beside the triggers now, where its numbers live.
+  const flag = needsAction ? needsActionFlag(needsAction) : null;
   const view = latestNoteView({
     status,
     hasNote: text != null,
-    hasReasons: flagLines.length > 0,
+    hasReasons: flag != null,
     quoteLoading,
     quoteFailed,
   });
@@ -823,14 +824,16 @@ function LatestNoteBlock({
     <div className="space-y-2">
       {view.flags === "hidden" ? null : view.flags === "loading" ? (
         <Skeleton className="h-4 w-56" />
-      ) : view.flags === "reasons" ? (
-        <div className="space-y-0.5">
-          {flagLines.map((r, i) => (
-            <p key={i} className="text-sm font-medium text-amber-600 dark:text-amber-500">
-              {r}
-            </p>
-          ))}
-        </div>
+      ) : view.flags === "reasons" && flag ? (
+        <p className="flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-500">
+          <FlagNotificationIcon className="size-4 shrink-0" />
+          <span>
+            Flagged for review — {flag.name}
+            {flag.detail ? (
+              <span className="font-normal">: {flag.detail}</span>
+            ) : null}
+          </span>
+        </p>
       ) : view.flags === "unchecked" ? (
         // The flags are computed against the live price. Without one we do
         // not know whether this stock is flagged, and saying "nothing" would
@@ -1513,7 +1516,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         status={state.status}
         latestUpdate={state.latestUpdate}
         needsAction={quote?.needsAction ?? null}
-        planSanity={resolved?.planSanity ?? null}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
         analystName={state.analystName}
@@ -1590,6 +1592,28 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           }
           onChanged={() => setRefreshKey((k) => k + 1)}
         />
+      ) : null}
+
+      {/* ── Plan checks ──────────────────────────────────────────── */}
+      {/* Arithmetic on the plan above — does it have a buy level, is the stop
+          inside normal daily noise, does the reward clear 2:1. A different
+          question from the work flag at the top of the sheet ("why will a run
+          pick this up today?"), so it sits with the numbers it is about
+          instead of stacking under that flag in the same amber. The label is
+          which check failed; the sentence under it is the agent's own, which
+          is why it is small and grey rather than a warning. */}
+      {resolved?.planSanity && resolved.planSanity.length > 0 ? (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Plan checks
+          </p>
+          {resolved.planSanity.map((f, i) => (
+            <div key={i} className="space-y-0.5">
+              <p className="text-sm text-foreground">{planSanityLabel(f.kind)}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{f.text}</p>
+            </div>
+          ))}
+        </div>
       ) : null}
 
       {/* ── Snapshot ──────────────────────────────────────────── */}
