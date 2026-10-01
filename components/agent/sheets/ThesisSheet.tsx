@@ -45,6 +45,7 @@ import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
+import { FlameIcon } from "@/components/ui/flame-icon";
 import { planSanityLabel } from "@/lib/agent/plan-sanity-label";
 import { latestNoteView } from "@/lib/thesis/latest-note";
 import type { NeedsAction } from "@/lib/agent/needs-action";
@@ -213,16 +214,14 @@ function StatusPill({
 }
 
 // ── ConvictionBadge ──
-// Conviction Expression v4 — writer's view-strength tier. Sits next to
-// StatusPill in the ThesisSheet header. Tooltip surfaces the writer's
-// one-sentence rationale (≤200 chars). See
-// docs/plans/CONVICTION_EXPRESSION.md §8.
+// Conviction Expression v4 — the writer's view-strength tier, beside
+// StatusPill in the header. Tooltip carries the writer's one-sentence
+// rationale. See docs/plans/CONVICTION_EXPRESSION.md §8.
 //
-// Tier → ShadCN Badge variant (no className overrides per CLAUDE.md):
-//   STRONG → positive (highest visibility)
-//   HIGH   → positive
-//   MEDIUM → secondary
-//   LOW    → outline (most muted)
+// ONE variant for every tier. Green for STRONG/HIGH meant the header's colour
+// changed per stock for a reason that is not about money — a high-conviction
+// watch read greener than a position that was up. The tier is carried by the
+// word, and the top tiers add a flame in the badge's own text colour.
 //
 // Renders null on unknown tier or pre-v4 legacy rows (conviction null).
 function ConvictionBadge({
@@ -233,17 +232,16 @@ function ConvictionBadge({
   rationale: string | null;
 }) {
   if (!conviction) return null;
-  const variant: "positive" | "secondary" | "outline" =
-    conviction === "STRONG" || conviction === "HIGH"
-      ? "positive"
-      : conviction === "MEDIUM"
-        ? "secondary"
-        : "outline";
-  // Sentence-case label: "Strong Conviction" / "High Conviction" /
-  // "Medium Conviction" / "Low Conviction". Per principal feedback —
-  // bare tier ("HIGH") didn't make clear what the badge represented.
+  // Sentence-case: "Strong Conviction" / "High Conviction" / … Per principal
+  // feedback — a bare tier ("HIGH") didn't say what the badge was about.
   const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} Conviction`;
-  const badge = <Badge variant={variant}>{label}</Badge>;
+  const hot = conviction === "STRONG" || conviction === "HIGH";
+  const badge = (
+    <Badge variant="secondary">
+      {hot ? <FlameIcon className="size-3" /> : null}
+      {label}
+    </Badge>
+  );
   // Wrap in tooltip when a rationale exists; bare badge otherwise.
   if (!rationale) return badge;
   return (
@@ -1494,6 +1492,19 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         ) : null}
       </div>
 
+      {/* ── The trade, above the tabs ─────────────────────────── */}
+      {/* It was inside the Thesis tab, which hid your own position the moment
+          you opened Activity. What you hold on a stock is not one view of it:
+          it belongs with the identity and the price, over both tabs. */}
+      {position ? (
+        <TradeBlock
+          position={position}
+          pnl={quote?.positionPnl ?? null}
+          pendingProposal={state.position?.pendingProposal ?? null}
+          direction={direction}
+        />
+      ) : null}
+
       {/* ── Tabs: Thesis (the dossier) | Activity (the audit log) ── */}
       {/* Only identity + live price stay fixed above (principal feedback
           2026-08-19); the belief, trade block, and everything else split
@@ -1519,40 +1530,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         analystName={state.analystName}
         suppressText={state.position?.pendingProposal?.rationale ?? null}
       />
-
-      {/* ── Trade block (one unified, state-aware section) ── */}
-      {/* The single place the trade lives. Headline morphs by state:
-          held → "Bought N @ $X, now $Y" + P&L; pending buy → "Proposed:
-          buy N @ $X"; held + pending sell/add/trim → the holding line PLUS
-          the proposed action + rationale + Review dropdown, all in one
-          grouped block. Its meta line carries the "View trade →" link.
-          See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
-      {position ? (
-        <TradeBlock
-          position={position}
-          pnl={quote?.positionPnl ?? null}
-          pendingProposal={state.position?.pendingProposal ?? null}
-          direction={direction}
-        />
-      ) : null}
-
-      {/* ── Core belief ──────────────────────────────────────── */}
-      {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
-          trade evaluator grades on close. It used to headline the sheet,
-          which was the problem: it is written once at mint and never moves,
-          so the top of the page never changed no matter what happened to
-          the stock. It is the standing claim, so it sits under the trade
-          and says so. */}
-      {state.coreBelief ? (
-        <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Core belief
-          </p>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {state.coreBelief}
-          </p>
-        </div>
-      ) : null}
 
       {/* ── Price chart (annotated) ───────────────────────────── */}
       {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
@@ -1614,17 +1591,25 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         </div>
       ) : null}
 
-      {/* ── Snapshot ──────────────────────────────────────────── */}
-      {/* Descriptive summary paragraph (the analyst's "where this name
-          is right now" prose). Lives at tier-1 so it surfaces alongside
-          Core Belief — Belief says what WILL happen, Snapshot says what
-          IS happening. Citations render as inline chips. Skeleton while
-          /triggers is in flight. */}
-      {state.snapshot ? (
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-          {state.snapshot.text}{" "}
-          <SourceCitation sources={researchCitationSources(state.snapshot.citations)} />
-        </p>
+      {/* ── Core belief, over the snapshot it heads ──────────── */}
+      {/* Two halves of one statement, so they read as one: the belief says
+          what WILL happen (the falsifiable claim the trade evaluator grades
+          on close), the snapshot says what IS happening. The belief takes no
+          label — at this size, over that paragraph, it does not need one, and
+          it stopped leading the sheet because it is written once at mint and
+          never moves. Citations render as inline chips. */}
+      {state.coreBelief || state.snapshot ? (
+        <div className="space-y-2">
+          {state.coreBelief ? (
+            <p className="text-xl font-normal leading-relaxed">{state.coreBelief}</p>
+          ) : null}
+          {state.snapshot ? (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+              {state.snapshot.text}{" "}
+              <SourceCitation sources={researchCitationSources(state.snapshot.citations)} />
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {/* (The old props-fed "Pass reason" paragraph is gone — a PASSED
