@@ -127,107 +127,145 @@ function tradeSentence(u: TimelineUpdate): string | null {
   return fill ? `${qty} at ${fill}` : qty;
 }
 
-export function titleSegments(u: TimelineUpdate): TitleSegments {
+/**
+ * ── The ONE place a row is identified ───────────────────────────────────────
+ *
+ * A stored `type` is not an event. `STATUS_CHANGED` is four different things
+ * (a position opened, a position sold, a name dropped, a name back on watch),
+ * and `UPDATED` is two (a run wrote it, or you edited it from the trigger
+ * popover). Every renderer downstream used to re-derive which one it was
+ * looking at, so the same if-ladder lived in the title, in the dot, and in
+ * the "does this show its prose" set.
+ *
+ * It happens once, here. Everything after this keys off `EventKind` alone —
+ * one table lookup each, no nesting, no re-reading fieldChanges.
+ */
+export type EventKind =
+  | "fired"
+  | "reviewed"
+  | "note"
+  | "created"
+  | "updated"
+  | "edited-by-you"
+  | "invalidated"
+  | "superseded"
+  | "opened"
+  | "sold"
+  | "dropped"
+  | "back-to-watching"
+  | "status"
+  | "closed"
+  | "bought"
+  | "sold-fill"
+  | "approved"
+  | "declined"
+  | "expired"
+  | "proposed"
+  | "unknown";
+
+export function eventKind(u: TimelineUpdate): EventKind {
   const fc = u.fieldChanges ?? {};
   switch (u.type) {
     case "TRIGGER_FIRED":
-      return { primary: "Trigger:", secondary: triggerPhrase(u.summary) };
-
+      return "fired";
     case "REVIEWED":
-      return { primary: "Reviewed", secondary: "no changes" };
-
+      return "reviewed";
     // The principal's note, from chat (lib/agent/notes.ts).
     case "NOTE":
-      return { primary: "Note added", secondary: stripTicker(u.summary) || null };
-
+      return "note";
     case "CREATED":
-      return { primary: "Created", secondary: stripTicker(u.summary) || null };
-
-    case "UPDATED": {
-      // Principal edits from the trigger popover are tagged [USER].
-      const isPrincipal = u.rationale?.startsWith("[USER]") ?? false;
-      return {
-        primary: isPrincipal ? "Edited by you" : "Updated",
-        secondary: updatedSecondary(u),
-      };
-    }
-
+      return "created";
+    case "UPDATED":
+      // The trigger popover tags the principal's own edits.
+      return u.rationale?.startsWith("[USER]") ? "edited-by-you" : "updated";
     case "INVALIDATED":
-      return { primary: "Invalidated", secondary: "belief broken" };
-
+      return "invalidated";
     case "SUPERSEDED":
-      return { primary: "Superseded", secondary: "replaced by a newer thesis" };
-
-    case "STATUS_CHANGED": {
-      const to = fc.status?.to;
-      if (to === "HOLDING")
-        return { primary: "Position opened", secondary: "watching → holding" };
-      if (fc.retiredReason?.to === "SOLD")
-        return { primary: "Position closed", secondary: "retired — sold" };
-      if (fc.retiredReason?.to === "DROPPED")
-        return { primary: "Archived", secondary: "dropped from watch" };
-      if (to === "WATCHING")
-        return { primary: "Back to watching", secondary: null };
-      return {
-        primary: "Status changed",
-        secondary:
-          fc.status?.from != null && to != null
-            ? `${String(fc.status.from).toLowerCase()} → ${String(to).toLowerCase()}`
-            : null,
-      };
-    }
-
+      return "superseded";
+    case "STATUS_CHANGED":
+      if (fc.status?.to === "HOLDING") return "opened";
+      if (fc.retiredReason?.to === "SOLD") return "sold";
+      if (fc.retiredReason?.to === "DROPPED") return "dropped";
+      if (fc.status?.to === "WATCHING") return "back-to-watching";
+      return "status";
     case "CLOSED":
-      return { primary: "Position closed", secondary: closedSecondary(u) };
-
+      return "closed";
     case "PROPOSAL_APPROVED": {
       const { side } = proposalMeta(u);
-      const sentence = tradeSentence(u);
-      if (side === "buy") return { primary: "Bought", secondary: sentence };
-      if (side === "sell") return { primary: "Sold", secondary: sentence };
-      return { primary: "Approved", secondary: sentence };
+      return side === "buy" ? "bought" : side === "sell" ? "sold-fill" : "approved";
     }
-
-    case "PROPOSAL_REJECTED": {
-      const { side, quantity } = proposalMeta(u);
-      const qty = fmtQty(quantity);
-      return {
-        primary: "Declined",
-        secondary: side && qty ? `${side} ${qty}` : (qty ?? null),
-      };
-    }
-
-    case "PROPOSAL_EXPIRED": {
-      const { side, quantity } = proposalMeta(u);
-      const qty = fmtQty(quantity);
-      return {
-        primary: "Expired",
-        secondary:
-          side && qty ? `${side} ${qty} — no decision` : "no decision",
-      };
-    }
-
-    case "PROPOSAL_PROPOSED": {
-      const { side, quantity } = proposalMeta(u);
-      const qty = fmtQty(quantity);
-      const what = side && qty ? `${side} ${qty}` : (qty ?? null);
-      const awaiting = isAwaiting(u);
-      return {
-        primary: "Proposed",
-        secondary: awaiting
-          ? `${what ?? ""}${what ? " — " : ""}awaiting your review`
-          : what,
-      };
-    }
-
+    case "PROPOSAL_REJECTED":
+      return "declined";
+    case "PROPOSAL_EXPIRED":
+      return "expired";
+    case "PROPOSAL_PROPOSED":
+      return "proposed";
     default:
-      // Unknown/legacy type — title-case it rather than invent grammar.
-      return {
-        primary:
-          u.type.charAt(0) + u.type.slice(1).toLowerCase().replace(/_/g, " "),
-        secondary: null,
-      };
+      return "unknown";
   }
+}
+
+/**
+ * kind → the two-tone sentence. One row per kind, read it like a table.
+ * `secondary` is a function only because some kinds carry a value from the
+ * row (a price, a share count); none of them branch on anything else.
+ */
+const TITLES: Record<EventKind, { primary: string; secondary: (u: TimelineUpdate) => string | null }> = {
+  fired:              { primary: "Trigger:",         secondary: (u) => triggerPhrase(u.summary) },
+  reviewed:           { primary: "Reviewed",         secondary: () => "no changes" },
+  note:               { primary: "Note added",       secondary: (u) => stripTicker(u.summary) || null },
+  created:            { primary: "Created",          secondary: (u) => stripTicker(u.summary) || null },
+  updated:            { primary: "Updated",          secondary: updatedSecondary },
+  "edited-by-you":    { primary: "Edited by you",    secondary: updatedSecondary },
+  invalidated:        { primary: "Invalidated",      secondary: () => "belief broken" },
+  superseded:         { primary: "Superseded",       secondary: () => "replaced by a newer thesis" },
+  opened:             { primary: "Position opened",  secondary: () => "watching → holding" },
+  sold:               { primary: "Position closed",  secondary: () => "retired — sold" },
+  dropped:            { primary: "Archived",         secondary: () => "dropped from watch" },
+  "back-to-watching": { primary: "Back to watching", secondary: () => null },
+  status:             { primary: "Status changed",   secondary: statusSecondary },
+  closed:             { primary: "Position closed",  secondary: closedSecondary },
+  bought:             { primary: "Bought",           secondary: tradeSentence },
+  "sold-fill":        { primary: "Sold",             secondary: tradeSentence },
+  approved:           { primary: "Approved",         secondary: tradeSentence },
+  declined:           { primary: "Declined",         secondary: proposalSideQty },
+  expired:            { primary: "Expired",          secondary: (u) => proposalSideQty(u) ? `${proposalSideQty(u)} — no decision` : "no decision" },
+  proposed:           { primary: "Proposed",         secondary: proposedSecondary },
+  unknown:            { primary: "",                 secondary: () => null },
+};
+
+export function titleSegments(u: TimelineUpdate): TitleSegments {
+  const kind = eventKind(u);
+  if (kind === "unknown")
+    return {
+      // Legacy/unrecognised type — title-case it rather than invent grammar.
+      primary: u.type.charAt(0) + u.type.slice(1).toLowerCase().replace(/_/g, " "),
+      secondary: null,
+    };
+  const t = TITLES[kind];
+  return { primary: t.primary, secondary: t.secondary(u) };
+}
+
+/** "buy 28 shares" — the side and size of a proposal. */
+function proposalSideQty(u: TimelineUpdate): string | null {
+  const { side, quantity } = proposalMeta(u);
+  const qty = fmtQty(quantity);
+  return side && qty ? `${side} ${qty}` : (qty ?? null);
+}
+
+function proposedSecondary(u: TimelineUpdate): string | null {
+  const what = proposalSideQty(u);
+  if (!isAwaiting(u)) return what;
+  return `${what ?? ""}${what ? " — " : ""}awaiting your review`;
+}
+
+function statusSecondary(u: TimelineUpdate): string | null {
+  const fc = u.fieldChanges ?? {};
+  const from = fc.status?.from;
+  const to = fc.status?.to;
+  return from != null && to != null
+    ? `${String(from).toLowerCase()} → ${String(to).toLowerCase()}`
+    : null;
 }
 
 /** "Closed XENE position on approved proposal — STOP" → "stop". */
@@ -246,13 +284,14 @@ function closedSecondary(u: TimelineUpdate): string | null {
 export function updatedSecondary(u: TimelineUpdate): string | null {
   const fc = u.fieldChanges;
   if (!fc || typeof fc !== "object") return null;
-  // The trigger ops lead — a moved entry IS the entry change, so the level
-  // columns are not repeated after them.
-  const ops = ladderChangeLines(u);
-  const parts: string[] = ops.map((o) => o.text);
+  // ONE rule: this line says what the chips don't. A level move (entry /
+  // target / stop) is written as a trigger op and already renders as a chip
+  // under the title, so naming it here too prints the same change twice.
+  const coveredByChips = ladderChangeLines(u).length > 0;
+  const parts: string[] = [];
   for (const { key, label, fmt } of SCALAR_LINES) {
     const entry = fc[key];
-    if (!entry || (ops.length > 0 && LEVEL_KEYS.has(key))) continue;
+    if (!entry || (coveredByChips && LEVEL_KEYS.has(key))) continue;
     parts.push(`${label.toLowerCase()} ${fmt(entry.from)} → ${fmt(entry.to)}`);
   }
   const scoring = fc.scoring;
@@ -262,10 +301,7 @@ export function updatedSecondary(u: TimelineUpdate): string | null {
     if (from != null && to != null && from !== to)
       parts.push(`composite ${from} → ${to}`);
   }
-  if (
-    RESEARCH_KEYS.some((k) => fc[k]) &&
-    parts.length === 0 // research alone; otherwise the level moves lead
-  )
+  if (parts.length === 0 && RESEARCH_KEYS.some((k) => fc[k]))
     parts.push("research refreshed");
   return parts.length > 0 ? parts.join(", ") : null;
 }
@@ -286,23 +322,42 @@ const RESEARCH_KEYS = [
 // ── Rail dot ─────────────────────────────────────────────────────────────────
 // Money semantics at a glance: green in, red out, amber for a proposal that
 // did NOT trade (declined / expired), hollow amber for the Proposed anchor.
-// Everything else gray.
+// Everything else gray. One row per kind — see `eventKind`.
 
-export type RailDot = "buy" | "sell" | "proposal" | "proposed" | null;
+export type DotKind =
+  | "buy"
+  | "sell"
+  | "declined"
+  | "open-ask"
+  | "quiet"
+  | "default";
 
-export function railDot(u: TimelineUpdate): RailDot {
-  const fc = u.fieldChanges ?? {};
-  if (u.type === "CLOSED") return "sell";
-  if (u.type === "STATUS_CHANGED") {
-    if (fc.status?.to === "HOLDING") return "buy";
-    if (fc.retiredReason?.to === "SOLD") return "sell";
-    return null;
-  }
-  if (u.type === "PROPOSAL_APPROVED") return proposalMeta(u).side;
-  if (u.type === "PROPOSAL_PROPOSED") return "proposed";
-  if (u.type === "PROPOSAL_REJECTED" || u.type === "PROPOSAL_EXPIRED")
-    return "proposal";
-  return null;
+const DOTS: Record<EventKind, DotKind> = {
+  opened: "buy",
+  bought: "buy",
+  sold: "sell",
+  "sold-fill": "sell",
+  closed: "sell",
+  declined: "declined",
+  expired: "declined",
+  proposed: "open-ask",
+  approved: "default",
+  fired: "default",
+  reviewed: "default",
+  note: "default",
+  created: "default",
+  updated: "default",
+  "edited-by-you": "default",
+  invalidated: "default",
+  superseded: "default",
+  dropped: "default",
+  "back-to-watching": "default",
+  status: "default",
+  unknown: "default",
+};
+
+export function dotFor(u: TimelineUpdate): DotKind {
+  return DOTS[eventKind(u)];
 }
 
 // ── Timeline assembly (grouping · clustering · spans) ────────────────────────
@@ -310,7 +365,13 @@ export function railDot(u: TimelineUpdate): RailDot {
 
 export type GroupItem = {
   kind: "group";
-  fire: TimelineUpdate;
+  /**
+   * Every fire this review answered, newest first; always at least one.
+   * A standing rung re-fires each day it holds, so one Monday review can be
+   * the answer to Thursday's AND Friday's fire. Plural so the row can say
+   * "×2 · fired Sep 16–17 · answered Sep 18" from the episode itself.
+   */
+  fires: TimelineUpdate[];
   response: TimelineUpdate;
   /** The proposal this episode staged, absorbed into the line — the fire's
    * decision then reads "— proposed buy", never "— passed". */
@@ -320,10 +381,8 @@ export type GroupItem = {
 export type TimelineItem =
   | { kind: "event"; row: TimelineUpdate }
   | GroupItem
-  /** ≥2 consecutive identical trigger episodes (same condition, same
-   * decision) folded into one line — the P1-37 re-fire wall. */
-  | { kind: "repeat"; episodes: GroupItem[] }
-  | { kind: "cluster"; items: TimelineItem[] };
+  /** ≥2 consecutive items that print the same sentence — see `foldKey`. */
+  | { kind: "fold"; items: TimelineItem[] };
 
 export type TimelineFilter = "all" | "money" | "triggers";
 
@@ -345,47 +404,37 @@ function rowMatchesFilter(row: TimelineUpdate, filter: TimelineFilter): boolean 
 }
 
 /** Housekeeping fire ("Scheduled review due/overdue…"), not a market event. */
-function isHousekeepingFire(row: TimelineUpdate): boolean {
-  return row.type === "TRIGGER_FIRED" && /scheduled review/i.test(row.summary);
-}
-
-/**
- * An item nobody needs until they ask: a standalone Reviewed-no-changes, a
- * housekeeping fire, or a housekeeping fire whose nested response was
- * Reviewed. REAL fires (price/trail/earnings) never count as quiet even
- * when held — "fired BUT HELD" is exactly the story the timeline exists
- * to tell.
- */
-export function isQuietItem(item: TimelineItem): boolean {
-  if (item.kind === "cluster") return true;
-  if (item.kind === "repeat") return false;
-  if (item.kind === "group")
-    return isHousekeepingFire(item.fire) && item.response.type === "REVIEWED";
-  const r = item.row;
-  return r.type === "REVIEWED" || isHousekeepingFire(r);
-}
-
-/**
- * Assemble the display list: filter → nest fire+response pairs → fold
- * consecutive quiet items (≥2) into clusters.
- *
- * Nesting rule: a TRIGGER_FIRED immediately followed (newer, adjacent) by
- * the UPDATED/REVIEWED row that answered it — same triggerId, or same
- * runId. Adjacent-only, so out-of-order interleavings never mis-nest.
- */
 export function buildTimeline(
   rows: TimelineUpdate[],
   filter: TimelineFilter,
 ): TimelineItem[] {
   const filtered = rows.filter((r) => rowMatchesFilter(r, filter));
 
-  // Pair each fire with its nearest NEWER non-proposal row when that row
-  // answers it (same triggerId, or same runId). Proposal rows are skipped
-  // during the walk — a tactical that proposes a sell writes Proposed
-  // BETWEEN the fire and its update_thesis close-out, which broke plain
-  // adjacency (the Aug 19 HPE fire rendered unanswered).
+  // ONE pairing rule: a fire is answered by the next review that follows it.
+  //
+  // It used to also require the review to carry the same `triggerId` or
+  // `runId` as the fire, which split the feed in two without meaning to.
+  // A fire that wakes a tactical run is answered in the same second by that
+  // run, with both ids on the row — those paired. A REVIEW fire is
+  // "deferred to the next daily review": nothing wakes, and the next
+  // morning's run writes a real answer with no idea which fire it was
+  // answering. Those never paired. ISRG fired "price below the 200-day"
+  // nine times between Sep 15 and Sep 25 and not one of them joined the
+  // five reviews that answered them, so the feed showed nine identical
+  // template lines and hid five written paragraphs.
+  //
+  // Dropping the id test is what makes it one rule. The tactical case still
+  // pairs — its answer is the next row either way.
+  //
+  // This is an inference: "the next review after it" is not the same as
+  // "the run said so". It is the right one — the run did review the stock
+  // that morning — but a review that ignored the fire is still credited.
+  //
+  // Proposal rows are skipped during the walk — a tactical that proposes a
+  // sell writes Proposed BETWEEN the fire and its update_thesis close-out,
+  // which broke plain adjacency (the Aug 19 HPE fire rendered unanswered).
   const consumedRows = new Set<number>();
-  const fireForResponse = new Map<number, number>();
+  const firesForResponse = new Map<number, number[]>();
   const proposalForResponse = new Map<number, number>();
   for (let j = 0; j < filtered.length; j++) {
     const fire = filtered[j];
@@ -397,6 +446,9 @@ export function buildTimeline(
     let crossedProposal: number | null = null;
     for (let k = j - 1; k >= 0; k--) {
       const cand = filtered[k];
+      // Another fire is not an answer — keep walking. Two fires of the same
+      // rung on consecutive days are answered by the one review after them.
+      if (cand.type === "TRIGGER_FIRED") continue;
       if (cand.type.startsWith("PROPOSAL_")) {
         if (
           cand.type === "PROPOSAL_PROPOSED" &&
@@ -406,18 +458,16 @@ export function buildTimeline(
           crossedProposal = k;
         continue;
       }
-      if (
-        (cand.type === "UPDATED" || cand.type === "REVIEWED") &&
-        !fireForResponse.has(k) &&
-        ((cand.triggerId != null && cand.triggerId === fire.triggerId) ||
-          (cand.runId != null && cand.runId === fire.runId))
-      ) {
-        fireForResponse.set(k, j);
+      if (cand.type === "UPDATED" || cand.type === "REVIEWED") {
+        const claimed = firesForResponse.get(k);
+        if (claimed) claimed.push(j);
+        else firesForResponse.set(k, [j]);
         consumedRows.add(j);
         // Reference it for the verb only. The Proposed row stays in the
         // list as its own step: staging an order is a distinct moment
         // between the fire and the decision (principal, 2026-08-21).
-        if (crossedProposal != null) proposalForResponse.set(k, crossedProposal);
+        if (crossedProposal != null && !proposalForResponse.has(k))
+          proposalForResponse.set(k, crossedProposal);
       }
       break; // nearest non-proposal row decides either way
     }
@@ -426,12 +476,13 @@ export function buildTimeline(
   const items: TimelineItem[] = [];
   for (let i = 0; i < filtered.length; i++) {
     if (consumedRows.has(i)) continue; // renders inside its group
-    const fireIdx = fireForResponse.get(i);
-    if (fireIdx != null) {
+    const fireIdxs = firesForResponse.get(i);
+    if (fireIdxs != null) {
       const proposalIdx = proposalForResponse.get(i);
       items.push({
         kind: "group",
-        fire: filtered[fireIdx],
+        // Newest first, like every other list here.
+        fires: [...fireIdxs].sort((a, b) => a - b).map((n) => filtered[n]),
         response: filtered[i],
         ...(proposalIdx != null ? { proposal: filtered[proposalIdx] } : {}),
       });
@@ -440,59 +491,51 @@ export function buildTimeline(
     }
   }
 
-  // Fold consecutive IDENTICAL trigger episodes (same condition, same
-  // decision) into one repeat row — a stuck ENTER rung re-fires every day
-  // (P1-37) and was rendering as a wall of "Trigger: Price above $255 —
-  // passed" pairs.
-  const sig = (g: GroupItem) =>
-    `${triggerPhrase(g.fire.summary)}|${outcomePhrase(g.fire, g.response, g.proposal)}`;
-  const deduped: TimelineItem[] = [];
-  let run: GroupItem[] = [];
-  const flushRun = () => {
-    if (run.length >= 2) deduped.push({ kind: "repeat", episodes: run });
-    else deduped.push(...run);
+  // ── The one clustering rule ───────────────────────────────────────────
+  // Consecutive items that READ THE SAME fold into one "×N" row covering
+  // their date range. Nothing about triggers, nothing about what is
+  // "quiet" — if two rows in a row would print the same sentence, you only
+  // want to be told once.
+  //
+  // This replaced two separate mechanisms that each folded a different
+  // thing with its own rules: a "repeat" fold for identical trigger
+  // episodes (the P1-37 re-fire wall) and a "cluster" fold for runs of
+  // housekeeping rows ("5 quiet check-ins"). Both are this.
+  const out: TimelineItem[] = [];
+  let run: TimelineItem[] = [];
+  const flush = () => {
+    if (run.length >= 2) out.push({ kind: "fold", items: run });
+    else out.push(...run);
     run = [];
   };
   for (const item of items) {
-    if (item.kind === "group" && !isQuietItem(item)) {
-      if (run.length > 0 && sig(run[0]) !== sig(item)) flushRun();
-      run.push(item);
-    } else {
-      flushRun();
-      deduped.push(item);
-    }
-  }
-  flushRun();
-
-  // Fold runs of quiet items.
-  const out: TimelineItem[] = [];
-  let quietRun: TimelineItem[] = [];
-  const flush = () => {
-    if (quietRun.length >= 2) out.push({ kind: "cluster", items: quietRun });
-    else out.push(...quietRun);
-    quietRun = [];
-  };
-  for (const item of deduped) {
-    if (
-      item.kind !== "cluster" &&
-      item.kind !== "repeat" &&
-      isQuietItem(item)
-    )
-      quietRun.push(item);
-    else {
-      flush();
-      out.push(item);
-    }
+    if (run.length > 0 && foldKey(run[0]) !== foldKey(item)) flush();
+    run.push(item);
   }
   flush();
   return out;
+}
+
+/**
+ * What makes two consecutive rows "the same row twice": the sentence they
+ * print. Derived from the rendered title, so nothing can read identically
+ * on screen and fail to fold, or fold while reading differently.
+ *
+ * A row with its own prose never folds — the writing is the point, and two
+ * paragraphs are not one row said twice.
+ */
+function foldKey(item: TimelineItem): string {
+  if (item.kind === "fold") return `fold:${item.items.length}`;
+  const row = toRow(item);
+  if (row.description) return `unique:${row.key}`;
+  const t = row.title;
+  return `${t.primary}|${t.secondary ?? ""}|${t.outcome ?? ""}`;
 }
 
 /** Newest timestamp an item covers (drives month headers). */
 export function itemTimestamp(item: TimelineItem): string {
   if (item.kind === "event") return item.row.timestamp;
   if (item.kind === "group") return item.response.timestamp;
-  if (item.kind === "repeat") return item.episodes[0].response.timestamp;
   return itemTimestamp(item.items[0]);
 }
 
@@ -523,19 +566,28 @@ export function proposalSpanSegments(items: TimelineItem[]): Set<number> {
 }
 
 /**
- * The decision clause for a trigger episode, lowercase, one phrase:
- * entry fires that didn't buy are "passed"; held-side fires that didn't
- * sell are "held"; a raised stop is "raised floor to $X"; terminal is
- * "archived". Consistent by construction — never the agent's prose.
+ * The decision clause for a trigger episode, lowercase, one phrase.
+ *
+ * ONE ordered table, read top to bottom, first match wins. It looks only at
+ * what the REVIEW did — never at what kind of trigger fired. The old version
+ * asked whether the fire was an entry fire and said "passed" if it was and
+ * "held" if it wasn't: two words for the one fact that nothing changed, and
+ * a rule you had to hold in your head per row. One word now.
+ *
+ * Reading it is the whole spec:
+ *   proposed buy/sell  the review staged an order
+ *   archived           the stock left the book (RETIRED / PASSED)
+ *   plan set down      the review removed rungs — ISRG Sep 23 took off the
+ *                      buy, the floor AND the target and used to read
+ *                      "held", i.e. the month's biggest decision rendered
+ *                      as nothing happening
+ *   levels moved       a price level changed
+ *   no change          the review looked and left it alone
  */
 export function outcomePhrase(
-  fire: TimelineUpdate,
   response: TimelineUpdate,
   proposal?: TimelineUpdate,
 ): string {
-  // The episode staged a proposal — that IS the decision, and it is never
-  // "passed" (the ANET bug: fire → proposed buy → approved → bought
-  // rendered as "— passed" above the Bought row).
   if (proposal) {
     const fc = proposal.fieldChanges as
       | { proposal?: { to?: { intent?: unknown } } }
@@ -549,22 +601,47 @@ export function outcomePhrase(
           : "trade";
     return `proposed ${side}`;
   }
-  const isEntryFire = /consider entry|— enter\b/i.test(fire.summary);
-  const passHold = isEntryFire ? "passed" : "held";
-  if (response.type === "REVIEWED") return passHold;
+
   const fc = response.fieldChanges ?? {};
+  const ops = ladderChangeLines(response);
+  const removed = ops.filter((o) => o.kind === "remove");
+
+  // Read top to bottom, first match wins.
   if (fc.status?.to === "RETIRED" || fc.status?.to === "PASSED")
     return "archived";
-  const stop = fc.stopLoss;
+
+  // Taking the buy / floor / target off is setting the plan down. Dropping
+  // only review rungs is not — the plan still stands, it just gets looked at
+  // less (CEG's "Removed: Any earnings beat → review" cleanup).
+  if (removed.length > 0 && !removed.every(isReviewRung)) return "plan set down";
+
+  // One word for every plan change, whether a price level moved or a rung's
+  // cadence / fire mode / predicate did. They were two ("levels moved" and
+  // "plan changed") and they are the same event to a reader — the chips
+  // under the title already say which fields moved.
   if (
-    stop &&
-    typeof stop.from === "number" &&
-    typeof stop.to === "number" &&
-    stop.to > stop.from
+    ops.length > 0 ||
+    LEVEL_FIELDS.some((k) => fc[k] != null) ||
+    fc.triggers != null ||
+    fc.nextReviewAt != null
   )
-    return `raised floor to $${stop.to.toFixed(2)}`;
-  return passHold;
+    return "updated";
+
+  // The plan is untouched but the argument was rewritten — the cases, the
+  // snapshot, the conviction score.
+  if (RESEARCH_KEYS.some((k) => fc[k] != null) || fc.scoring != null || fc.conviction != null)
+    return "thesis refreshed";
+
+  return "no change";
 }
+
+/** A rung whose only job is to wake a review — not part of the buy/sell plan. */
+function isReviewRung(o: LadderChange): boolean {
+  return /→\s*review\b|review (every|above|below)/i.test(o.text);
+}
+
+/** Plan levels whose movement counts as "levels moved". */
+const LEVEL_FIELDS = ["entryPrice", "targetPrice", "stopLoss"] as const;
 
 /**
  * One-sentence title for a trigger episode:
@@ -580,7 +657,7 @@ export function groupTitle(
   return {
     primary: "Trigger:",
     secondary: triggerPhrase(fire.summary),
-    outcome: `— ${outcomePhrase(fire, response, proposal)}`,
+    outcome: `— ${outcomePhrase(response, proposal)}`,
   };
 }
 
@@ -596,33 +673,22 @@ export function dateRangeLabel(newestTs: string, oldestTs: string): string {
   return `${fmt(oldest)} – ${fmt(newest)}`;
 }
 
-function oldestTimestamp(item: TimelineItem): string {
-  if (item.kind === "event") return item.row.timestamp;
-  if (item.kind === "group") return item.fire.timestamp;
-  if (item.kind === "repeat")
-    return item.episodes[item.episodes.length - 1].fire.timestamp;
-  return oldestTimestamp(item.items[item.items.length - 1]);
-}
-
-/** "5 quiet check-ins" + the date range they cover. */
-export function clusterLabel(items: TimelineItem[]): {
-  label: string;
-  range: string;
-} {
-  const n = items.length;
-  const range = dateRangeLabel(
-    itemTimestamp(items[0]),
-    oldestTimestamp(items[items.length - 1]),
-  );
-  return { label: `${n} quiet check-in${n === 1 ? "" : "s"}`, range };
-}
-
-/** Right-rail label for a repeat row: the span the re-fires covered. */
-export function repeatRange(episodes: GroupItem[]): string {
-  return dateRangeLabel(
-    episodes[0].response.timestamp,
-    episodes[episodes.length - 1].fire.timestamp,
-  );
+/**
+ * The conditions an episode covers: each distinct one once, with "×N" when
+ * that rung asked more than once. A morning review answers every fire since
+ * the previous review and those are not always the same rung, so the row
+ * names what it actually covers instead of borrowing the first fire's
+ * condition for all of them.
+ */
+function conditionList(fires: TimelineUpdate[]): string {
+  const counts = new Map<string, number>();
+  for (const f of fires) {
+    const phrase = triggerPhrase(f.summary);
+    counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([phrase, n]) => (n > 1 ? `${phrase} ×${n}` : phrase))
+    .join(", ");
 }
 
 /** Month header label — "August", with the year when it isn't this year. */
@@ -707,14 +773,6 @@ export function proposalUserMessage(u: TimelineUpdate): string | null {
 //                whether it's visible before any click, per type.
 //   fold         true for the roll-up rows whose whole surface is a control
 
-export type DotKind =
-  | "buy"
-  | "sell"
-  | "declined"
-  | "open-ask"
-  | "quiet"
-  | "default";
-
 export interface TimelineRow {
   key: string;
   /** Underlying ThesisUpdate type ("" for fold rows) — lets the caller
@@ -731,49 +789,62 @@ export interface TimelineRow {
   quoted: boolean;
   /** Per-type constant: is the description visible before any click? */
   showDescription: boolean;
-  /** ISO timestamp for normal rows; null when rangeLabel is used. */
-  timestamp: string | null;
-  /** Pre-built span label for fold rows ("Aug 13 – 17"). */
-  rangeLabel: string | null;
+  /**
+   * When it happened, already worded — a relative stamp for a single moment
+   * ("3h", "Mon 11:56 AM"), a span for an episode ("fired Sep 16 – 17 ·
+   * answered Sep 18") or for a fold ("Aug 13 – 17"). ONE field: the row used
+   * to carry a raw timestamp and a pre-built range and the component had to
+   * know which kinds used which.
+   */
+  when: string;
   runId: string | null;
   /** Order id — drives the dashed proposal span. */
   orderId: string | null;
-  /** Fold row (quiet cluster / ×N repeat): the row itself is the control. */
+  /** Fold row (×N roll-up): the row itself is the control. */
   fold: boolean;
+  /**
+   * A member of an expanded row, shown small. Nothing produces these by
+   * itself — the section splices them in under the row you opened, so you
+   * can see the individual fires and the review behind a roll-up.
+   */
+  child?: boolean;
+  /** This row has member events to reveal, so it opens even with no prose. */
+  members?: boolean;
 }
 
 /**
- * Types whose description earns its place without a click. Everything else
- * is title-only until asked. One list, no scattered conditions.
+ * Kinds whose prose earns its place without a click. Everything else is
+ * title-only until asked. One set, keyed the same way as the title and the
+ * dot — see `eventKind`.
  */
-const DESCRIPTION_VISIBLE = new Set([
-  "CREATED",
-  "UPDATED",
-  "INVALIDATED",
+const PROSE_VISIBLE = new Set<EventKind>([
+  // Your own note on the stock — it is the row.
+  "note",
+  "created",
+  "updated",
+  "edited-by-you",
+  "invalidated",
   // Every transaction shows its reasoning — proposals included
-  // (principal, 2026-08-21). Only triggers, reviews and fold rows stay
+  // (principal, 2026-08-21). Only bare triggers and reviews stay
   // title-only until asked.
-  "CLOSED",
-  "STATUS_CHANGED",
-  "PROPOSAL_PROPOSED",
-  "PROPOSAL_APPROVED",
-  "PROPOSAL_REJECTED",
-  "PROPOSAL_EXPIRED",
+  "closed",
+  "opened",
+  "sold",
+  "dropped",
+  "back-to-watching",
+  "status",
+  "proposed",
+  "bought",
+  "sold-fill",
+  "approved",
+  "declined",
+  "expired",
 ]);
 
-function dotFor(u: TimelineUpdate): DotKind {
-  switch (railDot(u)) {
-    case "buy":
-      return "buy";
-    case "sell":
-      return "sell";
-    case "proposal":
-      return "declined";
-    case "proposed":
-      return "open-ask";
-    default:
-      return "default";
-  }
+/** A review row that recorded nothing — same "no change" as an episode's. */
+const REVIEW_KINDS = new Set<EventKind>(["updated", "edited-by-you", "reviewed"]);
+function isSilentReview(u: TimelineUpdate): boolean {
+  return REVIEW_KINDS.has(eventKind(u)) && outcomePhrase(u) === "no change";
 }
 
 /** The prose for a row + whether it's the principal's own words. */
@@ -801,9 +872,12 @@ export function toRow(item: TimelineItem): TimelineRow {
       price: u.type === "PROPOSAL_APPROVED" ? null : u.priceAtTime,
       description: text,
       quoted,
-      showDescription: DESCRIPTION_VISIBLE.has(u.type),
-      timestamp: u.timestamp,
-      rangeLabel: null,
+      // A review's own row follows the same rule as an episode's: if it
+      // changed nothing, its paragraph is the agent restating the thesis and
+      // stays collapsed. A transaction row is never collapsed this way — its
+      // write-up is the only place that reasoning appears.
+      showDescription: PROSE_VISIBLE.has(eventKind(u)) && !isSilentReview(u),
+      when: relativeTimestamp(u.timestamp),
       runId: u.runId,
       orderId: proposalOrderId(u),
       fold: false,
@@ -814,62 +888,101 @@ export function toRow(item: TimelineItem): TimelineRow {
     // The episode's prose is the agent's close-out reasoning; its chips are
     // whatever the response actually changed.
     const { text, quoted } = describe(item.response);
+    const lead = item.fires[0];
+    const outcome = outcomePhrase(item.response, item.proposal);
     return {
-      key: `g:${item.fire.id}`,
+      key: `g:${lead.id}`,
       type: "TRIGGER_FIRED",
       dot: "default",
-      title: groupTitle(item.fire, item.response, item.proposal),
+      title: {
+        primary: "Trigger:",
+        secondary: conditionList(item.fires),
+        outcome: `— ${outcome}`,
+      },
       chips: ladderChangeLines(item.response),
-      price: item.fire.priceAtTime ?? item.response.priceAtTime,
+      price: lead.priceAtTime ?? item.response.priceAtTime,
       description: text,
       quoted,
-      showDescription: false, // an episode's title already tells the story
-      timestamp: item.fire.timestamp,
-      rangeLabel: null,
-      runId: item.fire.runId ?? item.response.runId,
+      // Prose shows when the review changed something AND nothing else on
+      // screen is already saying it. Two cases stay collapsed (one click
+      // away either way):
+      //   • "no change" — the paragraph is the agent restating the thesis.
+      //   • a staged proposal — the Proposed row right below carries the
+      //     write-up, so the episode would print it twice.
+      showDescription:
+        outcome !== "no change" && !outcome.startsWith("proposed "),
+      members: true,
+      // An episode spans two moments. Showing only the fire is what made the
+      // sheet header ("written Sep 28") disagree with the feed ("Fri") on the
+      // same paragraph — and it is the answer's date you are looking for.
+      when: relativeTimestamp(item.response.timestamp),
+      runId: lead.runId ?? item.response.runId,
       orderId: null,
       fold: false,
     };
   }
 
-  if (item.kind === "repeat") {
-    const first = item.episodes[0];
-    const title = groupTitle(first.fire, first.response, first.proposal);
-    return {
-      key: `r:${first.fire.id}`,
-      type: "TRIGGER_FIRED",
-      dot: "default",
-      title: { ...title, secondary: `${title.secondary} ×${item.episodes.length}` },
-      chips: [],
-      price: null,
-      description: null,
-      quoted: false,
-      showDescription: false,
-      timestamp: null,
-      rangeLabel: repeatRange(item.episodes),
-      runId: null,
-      orderId: null,
-      fold: true,
-    };
-  }
-
-  const { label, range } = clusterLabel(item.items);
+  // ── The fold row ──
+  // N consecutive rows that print the same sentence. It borrows the first
+  // one's title and dot and adds "×N" — there is no separate vocabulary for
+  // a folded trigger versus a folded check-in, because there is no longer a
+  // separate mechanism.
+  const first = toRow(item.items[0]);
+  const n = item.items.length;
   return {
-    key: `c:${itemTimestamp(item.items[0])}`,
-    type: "",
-    dot: "quiet",
-    title: { primary: "", secondary: label },
+    key: `f:${first.key}`,
+    type: first.type,
+    dot: first.dot,
+    title: {
+      ...first.title,
+      secondary: `${first.title.secondary ?? ""}${first.title.secondary ? " " : ""}×${n}`,
+    },
     chips: [],
     price: null,
     description: null,
     quoted: false,
     showDescription: false,
-    timestamp: null,
-    rangeLabel: range,
+    when: relativeTimestamp(itemTimestamp(item)),
     runId: null,
     orderId: null,
     fold: true,
   };
+}
+
+/**
+ * A paragraph is never printed twice in a row.
+ *
+ * A proposal's life — Proposed, then Expired or Declined, and the episode
+ * that staged it — each carries the ORIGINAL rationale, so ISRG showed "I am
+ * buying $ISRG here because the stock has confirmed the entry level…" on
+ * three rows. They are not adjacent (the episode sits between the Proposed
+ * and the Expired), so this is once per feed, not once in a row. Later
+ * copies keep their title, date and dot; only the repeated text goes.
+ */
+export function dropRepeatedProse(rows: TimelineRow[]): TimelineRow[] {
+  const seen = new Set<string>();
+  return rows.map((r) => {
+    const text = r.description?.replace(/\s+/g, " ").trim();
+    if (!text) return r;
+    if (seen.has(text)) return { ...r, description: null, showDescription: false };
+    seen.add(text);
+    return r;
+  });
+}
+
+/**
+ * The rows behind one episode: each fire that asked, then the review that
+ * answered. The summary line is enough — this is the audit trail under a
+ * roll-up, not a second feed.
+ */
+export function episodeMembers(g: GroupItem): TimelineRow[] {
+  return [...g.fires, g.response].map((u) => ({
+    ...toRow({ kind: "event", row: u }),
+    key: `m:${u.id}`,
+    description: null,
+    showDescription: false,
+    child: true,
+  }));
 }
 
 // ── Relative timestamps ──────────────────────────────────────────────────────

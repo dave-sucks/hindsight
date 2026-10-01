@@ -32,11 +32,13 @@ import {
   itemTimestamp,
   monthLabel,
   proposalSpanSegments,
-  relativeTimestamp,
+  dropRepeatedProse,
   toRow,
+  episodeMembers,
   type LadderChange,
   type DotKind,
   type TimelineFilter,
+  type TimelineItem,
   type TimelineRow,
   type TimelineUpdate,
 } from "@/components/agent/sheets/thesis-timeline-utils";
@@ -197,19 +199,28 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
     const items = built.flatMap((item) => {
       // Keep the fold row itself when expanded — it is the only control
       // that can collapse the group again.
-      if (item.kind === "cluster" && open.has(`c:${itemTimestamp(item.items[0])}`))
+      if (item.kind === "fold" && open.has(toRow(item).key))
         return [item, ...item.items];
-      if (item.kind === "repeat" && open.has(`r:${item.episodes[0].fire.id}`))
-        return [item, ...item.episodes];
       return [item];
     });
-    const monthAt = items.map((item, i) => {
+    // An open episode also reveals the fires it answered, small, under it.
+    const expanded = items.flatMap<TimelineItem | TimelineRow>((item) =>
+      item.kind === "group" && open.has(toRow(item).key)
+        ? [item, ...episodeMembers(item)]
+        : [item],
+    );
+    // A child row never starts a month — it belongs to the row above it.
+    const monthAt = expanded.map((item, i) => {
+      if (!("kind" in item)) return null;
       const label = monthLabel(itemTimestamp(item));
-      return i === 0 || label !== monthLabel(itemTimestamp(items[i - 1]))
+      const prev = expanded.slice(0, i).reverse().find((p) => "kind" in p);
+      return prev == null || label !== monthLabel(itemTimestamp(prev as TimelineItem))
         ? label
         : null;
     });
-    const mapped = items.map(toRow).map((r) => {
+    const mapped = dropRepeatedProse(
+      expanded.map((item) => ("kind" in item ? toRow(item) : item)),
+    ).map((r) => {
       if (r.type !== "CREATED" || !provenance) return r;
       const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
       const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
@@ -292,7 +303,9 @@ function Row({
 }) {
   // A row is interactive when it has something more to show: prose to
   // expand, or a fold to unpack. Everything else is plain text.
-  const interactive = row.fold || row.description != null;
+  // A row opens when it has more to show: prose, a roll-up, or the member
+  // events behind an episode.
+  const interactive = row.fold || row.description != null || row.members;
   const showDescription = row.description != null && (open || row.showDescription);
 
   return (
@@ -310,12 +323,13 @@ function Row({
         ) : null}
       </div>
 
-      <div className={cn("flex-1 min-w-0", !isLast && "pb-4")}>
+      <div className={cn("flex-1 min-w-0", !isLast && (row.child ? "pb-2" : "pb-4"))}>
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3">
           <p
             className={cn(
-              "text-sm font-normal leading-snug min-w-0",
-              row.fold ? "text-muted-foreground" : "text-foreground",
+              "font-normal leading-snug min-w-0",
+              row.child ? "text-xs text-muted-foreground" : "text-sm",
+              row.fold ? "text-muted-foreground" : !row.child && "text-foreground",
               interactive && "cursor-pointer",
             )}
             onClick={interactive ? onToggle : undefined}
@@ -345,7 +359,7 @@ function Row({
                 </span>
               ) : null}
               <span className="text-xs font-light tabular-nums text-muted-foreground">
-                {row.rangeLabel ?? (row.timestamp ? relativeTimestamp(row.timestamp) : "")}
+                {row.when}
               </span>
             </span>
             <span className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">

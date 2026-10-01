@@ -211,15 +211,23 @@ function FilingRow({
 export function EarningsCalendar({
   analysts,
   initialDate,
+  mode: modeProp,
 }: {
   analysts: Array<{ id: string; name: string }>;
   initialDate: string;
+  /**
+   * Earnings or filings, when the caller owns that choice — the Market page
+   * makes them two of its tabs, so the internal toggle is hidden and this
+   * drives the view instead. Left out, the component toggles itself.
+   */
+  mode?: "earnings" | "filings";
 }) {
   const [date, setDate] = useState(initialDate);
   const [view, setView] = useState<EarningsDayView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"earnings" | "filings">("earnings");
+  const [ownMode, setMode] = useState<"earnings" | "filings">("earnings");
+  const mode = modeProp ?? ownMode;
   const [filings, setFilings] = useState<FilingsWeekView | null>(null);
   const [filingsLoading, setFilingsLoading] = useState(false);
   const [filingsError, setFilingsError] = useState<string | null>(null);
@@ -287,7 +295,7 @@ export function EarningsCalendar({
     <div className="space-y-3">
       {/* Header line: label left, week controls right — as Perplexity. */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
+        <div className={cn("flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5", modeProp && "hidden")}>
           {(["earnings", "filings"] as const).map((m) => (
             <button
               key={m}

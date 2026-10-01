@@ -39,31 +39,40 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { SourceCitation, type CitationSource } from "@/components/ai-elements/inline-citation";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import type {
   ResearchCitation,
   ResearchTextSection,
 } from "@/lib/types/thesis-sheet";
 
-/** Inline source chip for research citations ("reuters.com" etc.). */
-export function ResearchCitationChip({ citation }: { citation: ResearchCitation }) {
-  const label = citation.domain ?? citation.title ?? "source";
-  const inner = (
-    <Badge variant="secondary" className="ml-1 align-baseline font-mono text-[10px]">
-      {label}
-    </Badge>
-  );
-  if (!citation.url) return inner;
-  return (
-    <a
-      href={citation.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="no-underline"
-    >
-      {inner}
-    </a>
-  );
+/**
+ * A thesis's research citations as sources for the one SourceCitation pill.
+ * A citation with neither a URL nor a domain ("Current", "Price levels" — the
+ * writer naming our own price data) points nowhere a reader can go, so it's
+ * dropped rather than drawn as a badge.
+ */
+export function researchCitationSources(
+  citations: ResearchCitation[] | null | undefined,
+): CitationSource[] {
+  const out: CitationSource[] = [];
+  const seen = new Set<string>();
+  for (const c of citations ?? []) {
+    let url: string | null = null;
+    for (const raw of [c.url, c.domain]) {
+      if (!raw) continue;
+      try {
+        url = new URL(raw.includes("://") ? raw : `https://${raw}`).toString();
+        break;
+      } catch {
+        // not a URL — try the next field
+      }
+    }
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, title: c.title, provider: c.domain });
+  }
+  return out;
 }
 
 export function AnalystConsensusWidget({
@@ -331,14 +340,8 @@ function ConsensusNarrative({
       </CollapsibleTrigger>
       <CollapsibleContent className="pt-2 text-sm leading-relaxed">
         <p className="whitespace-pre-wrap">
-          {narrative.text}
-          {narrative.citations && narrative.citations.length > 0 ? (
-            <span className="ml-1 inline-flex flex-wrap gap-1">
-              {narrative.citations.map((c, i) => (
-                <ResearchCitationChip key={i} citation={c} />
-              ))}
-            </span>
-          ) : null}
+          {narrative.text}{" "}
+          <SourceCitation sources={researchCitationSources(narrative.citations)} />
         </p>
       </CollapsibleContent>
     </Collapsible>

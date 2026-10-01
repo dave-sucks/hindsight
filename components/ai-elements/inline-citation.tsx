@@ -286,3 +286,69 @@ export const InlineCitationQuote = ({
     {children}
   </blockquote>
 );
+
+// ─── SourceCitation — THE source citation ────────────────────────────────────
+// A "reuters.com +1" pill whose hover card pages through every source behind
+// it. Chat messages, tool rows and the thesis sheet all render this one — never
+// compose the parts above by hand, and never build another citation chip.
+
+export interface CitationSource {
+  /** Absolute URL — drives the pill's hostname and the favicon. */
+  url: string;
+  title?: string;
+  /** Label beside the favicon; the hostname when omitted. */
+  provider?: string;
+  excerpt?: string;
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+function CitationProviderRow({ provider, url }: { provider: string; url: string }) {
+  return (
+    <span className="flex items-center gap-2 mb-1">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`https://www.google.com/s2/favicons?domain=${hostnameOf(url)}&sz=32`}
+        alt=""
+        width={16}
+        height={16}
+        className="size-4 shrink-0 rounded-sm"
+      />
+      <span className="text-xs font-medium text-muted-foreground">{provider}</span>
+    </span>
+  );
+}
+
+export function SourceCitation({ sources }: { sources: CitationSource[] }) {
+  if (sources.length === 0) return null;
+  return (
+    <InlineCitation>
+      <InlineCitationCard>
+        <InlineCitationCardTrigger sources={sources.map((s) => s.url)} />
+        <InlineCitationCardBody>
+          <InlineCitationCarousel>
+            <InlineCitationCarouselHeader>
+              <InlineCitationCarouselPrev />
+              <InlineCitationCarouselNext />
+              <InlineCitationCarouselIndex />
+            </InlineCitationCarouselHeader>
+            <InlineCitationCarouselContent>
+              {sources.map((s, i) => (
+                <InlineCitationCarouselItem key={i}>
+                  <CitationProviderRow provider={s.provider ?? hostnameOf(s.url)} url={s.url} />
+                  <InlineCitationSource title={s.title} url={s.url} description={s.excerpt} />
+                </InlineCitationCarouselItem>
+              ))}
+            </InlineCitationCarouselContent>
+          </InlineCitationCarousel>
+        </InlineCitationCardBody>
+      </InlineCitationCard>
+    </InlineCitation>
+  );
+}

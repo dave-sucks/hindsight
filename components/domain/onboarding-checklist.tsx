@@ -52,7 +52,7 @@ export function OnboardingChecklist({
       label: "Review your first brief",
       description: "See what your analyst found",
       done: hasBrief,
-      action: () => { window.location.href = "/intelligence"; },
+      action: () => { window.location.href = "/market?tab=signals"; },
     },
   ];
 

@@ -16,14 +16,16 @@ import {
   titleSegments,
   triggerPhrase,
   updatedSecondary,
-  railDot,
+  dotFor,
+  eventKind,
   ladderChangeLines,
   buildTimeline,
   outcomePhrase,
   groupTitle,
   proposalSpanSegments,
-  clusterLabel,
   toRow,
+  dropRepeatedProse,
+  episodeMembers,
   relativeTimestamp,
   type TimelineItem,
 } from "./thesis-timeline-utils";
@@ -236,10 +238,24 @@ describe("updatedSecondary", () => {
   });
 });
 
-describe("railDot", () => {
+describe("one kind per row, then one table each", () => {
+  // The stored type is not the event: STATUS_CHANGED is four of them and
+  // UPDATED is two. eventKind resolves that ONCE; the title, the dot and the
+  // prose-visible set all read the kind and never re-derive it.
+  it("resolves the overloaded types", () => {
+    const k = (type: string, fieldChanges?: unknown, rationale?: string) =>
+      eventKind(row({ type, fieldChanges: fieldChanges as never, rationale: rationale as never }));
+    expect(k("STATUS_CHANGED", { status: { from: "WATCHING", to: "HOLDING" } })).toBe("opened");
+    expect(k("STATUS_CHANGED", { retiredReason: { to: "SOLD" } })).toBe("sold");
+    expect(k("STATUS_CHANGED", { retiredReason: { to: "DROPPED" } })).toBe("dropped");
+    expect(k("STATUS_CHANGED", { status: { to: "WATCHING" } })).toBe("back-to-watching");
+    expect(k("UPDATED", {}, "The run's own words")).toBe("updated");
+    expect(k("UPDATED", {}, "[USER] Principal set Price = 248")).toBe("edited-by-you");
+  });
+
   it("green in, red out, amber for proposals that didn't trade", () => {
     expect(
-      railDot(
+      dotFor(
         row({
           type: "STATUS_CHANGED",
           fieldChanges: { status: { from: "WATCHING", to: "HOLDING" } },
@@ -247,26 +263,27 @@ describe("railDot", () => {
       ),
     ).toBe("buy");
     expect(
-      railDot(
+      dotFor(
         row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("ADD", 5) }),
       ),
     ).toBe("buy");
-    expect(railDot(row({ type: "CLOSED" }))).toBe("sell");
+    expect(dotFor(row({ type: "CLOSED" }))).toBe("sell");
     expect(
-      railDot(
+      dotFor(
         row({
           type: "PROPOSAL_APPROVED",
           fieldChanges: proposalFc("PARTIAL_CLOSE", 5),
         }),
       ),
     ).toBe("sell");
-    expect(railDot(row({ type: "PROPOSAL_REJECTED" }))).toBe("proposal");
-    expect(railDot(row({ type: "PROPOSAL_EXPIRED" }))).toBe("proposal");
-    expect(railDot(row({ type: "PROPOSAL_PROPOSED" }))).toBe("proposed");
-    expect(railDot(row({ type: "TRIGGER_FIRED" }))).toBeNull();
-    expect(railDot(row({ type: "REVIEWED" }))).toBeNull();
+    expect(dotFor(row({ type: "PROPOSAL_REJECTED" }))).toBe("declined");
+    expect(dotFor(row({ type: "PROPOSAL_EXPIRED" }))).toBe("declined");
+    expect(dotFor(row({ type: "PROPOSAL_PROPOSED" }))).toBe("open-ask");
+    expect(dotFor(row({ type: "TRIGGER_FIRED" }))).toBe("default");
+    expect(dotFor(row({ type: "REVIEWED" }))).toBe("default");
   });
 });
+
 
 describe("buildTimeline", () => {
   // Newest-first, like the API returns.
@@ -305,12 +322,12 @@ describe("buildTimeline", () => {
     const items = buildTimeline([answer, proposed, fire], "all");
     expect(items.map((i) => i.kind)).toEqual(["group", "event"]);
     const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
-    expect(g.fire.id).toBe("f1");
+    expect(g.fires[0].id).toBe("f1");
     expect(g.response.id).toBe("r1");
     expect(g.proposal?.id).toBe("order:o9:proposed");
-    expect(outcomePhrase(g.fire, g.response, g.proposal)).toBe("proposed sell");
+    expect(outcomePhrase(g.response, g.proposal)).toBe("proposed sell");
     expect(
-      groupTitle(g.fire, g.response, g.proposal).outcome,
+      groupTitle(g.fires[0], g.response, g.proposal).outcome,
     ).toBe("— proposed sell");
   });
 
@@ -328,13 +345,43 @@ describe("buildTimeline", () => {
     expect(proposalSpanSegments(items)).toEqual(new Set([0, 1]));
   });
 
-  it("does not nest across unrelated triggerIds/runs", () => {
+  // The rule used to be "same triggerId or runId", which split the feed in
+  // two. A REVIEW fire is deferred to the next daily review, and that run
+  // writes its answer carrying neither id — ISRG's "price below the 200-day"
+  // fired 9× between Sep 15 and Sep 25 and not one joined the 5 reviews that
+  // answered it. One rule now: the next review answers it, ids or not.
+  it("pairs a fire with the next review even when it shares no ids", () => {
     const other = { ...answer, triggerId: "t-other", runId: null };
     const items = buildTimeline([other, fire], "all");
-    expect(items.map((i) => i.kind)).toEqual(["event", "event"]);
+    expect(items.map((i) => i.kind)).toEqual(["group"]);
   });
 
-  it("folds ≥2 consecutive quiet rows into a cluster; real fires stay visible", () => {
+  // ISRG Sep 16 + Sep 17 fires, both answered by the Sep 18 morning review.
+  it("one review answers every fire since the last one", () => {
+    const r = (id: string, type: string, ts: string, summary = "") =>
+      row({ id, type, timestamp: ts, summary });
+    const items = buildTimeline(
+      [
+        r("resp", "UPDATED", "2026-09-18T12:06:00Z"),
+        r("f2", "TRIGGER_FIRED", "2026-09-17T13:35:00Z", "Price below the 200-day — review"),
+        r("f1", "TRIGGER_FIRED", "2026-09-16T13:35:00Z", "Price below the 200-day — review"),
+      ],
+      "all",
+    );
+    expect(items).toHaveLength(1);
+    const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
+    expect(g.kind).toBe("group");
+    expect(g.fires.map((f) => f.id)).toEqual(["f2", "f1"]);
+    expect(toRow(g).title.secondary).toBe("Price below the 200-day ×2");
+    // One date per row, and it is the answer's — the last thing that
+    // happened. "fired X · answered Y" was clutter at a glance; the fires
+    // are there when you open the row.
+    expect(toRow(g).when).toBe("Sep 18");
+    expect(episodeMembers(g).map((m) => m.key)).toEqual(["m:f2", "m:f1", "m:resp"]);
+    expect(episodeMembers(g).every((m) => m.child)).toBe(true);
+  });
+
+  it("folds ≥2 consecutive identical check-ins; real fires stay visible", () => {
     const quiet1 = row({
       id: "q1",
       type: "REVIEWED",
@@ -346,15 +393,33 @@ describe("buildTimeline", () => {
       summary: "Scheduled review due on CYTK (HOLDING)",
       timestamp: "2026-08-16T12:00:00Z",
     });
-    const items = buildTimeline([answer, fire, quiet1, quiet2], "all");
-    expect(items.map((i) => i.kind)).toEqual(["group", "cluster"]);
-    const label = clusterLabel(
-      (items[1] as Extract<TimelineItem, { kind: "cluster" }>).items,
+    const quiet3 = row({
+      id: "q3",
+      type: "REVIEWED",
+      timestamp: "2026-08-15T12:00:00Z",
+    });
+    const quiet4 = row({
+      id: "q4",
+      type: "TRIGGER_FIRED",
+      summary: "Scheduled review due on CYTK (HOLDING)",
+      timestamp: "2026-08-14T12:00:00Z",
+    });
+    // quiet1+quiet2 and quiet3+quiet4 each pair into a quiet episode; two
+    // quiet items in a row is what a cluster is made of.
+    const items = buildTimeline(
+      [answer, fire, quiet1, quiet2, quiet3, quiet4],
+      "all",
     );
-    expect(label.label).toBe("2 quiet check-ins");
+    // One rule folds them: two rows that print the same sentence. The
+    // folded row keeps that sentence rather than a separate "N quiet
+    // check-ins" vocabulary — it says which check-in repeated.
+    expect(items.map((i) => i.kind)).toEqual(["group", "fold"]);
+    const folded = toRow(items[1]);
+    expect(folded.title.secondary).toBe("Scheduled review due ×2");
+    expect(folded.title.outcome).toBe("— no change");
   });
 
-  it("folds consecutive identical episodes into one ×N repeat row (the CEG wall)", () => {
+  it("folds consecutive identical episodes into one ×N row (the CEG wall)", () => {
     // Same ENTER rung re-fires daily, same "passed" outcome each time.
     const mk = (day: number, trig: string, resp: string) => [
       row({
@@ -375,9 +440,10 @@ describe("buildTimeline", () => {
     const rows = [...mk(7, "f3", "r3"), ...mk(6, "f2", "r2"), ...mk(5, "f1", "r1")];
     const items = buildTimeline(rows, "all");
     expect(items).toHaveLength(1);
-    expect(items[0].kind).toBe("repeat");
-    const rep = items[0] as Extract<TimelineItem, { kind: "repeat" }>;
-    expect(rep.episodes).toHaveLength(3);
+    expect(items[0].kind).toBe("fold");
+    const rep = items[0] as Extract<TimelineItem, { kind: "fold" }>;
+    expect(rep.items).toHaveLength(3);
+    expect(toRow(rep).title.secondary).toBe("Price above $255 ×3");
   });
 
   it("does not fold episodes whose decision differs", () => {
@@ -433,33 +499,64 @@ describe("trigger episodes — one sentence, fire + decision", () => {
     summary: "Price above $255 — consider entry",
   });
 
-  it("held for an exit fire answered without action", () => {
-    expect(outcomePhrase(exitFire, row({ type: "REVIEWED" }))).toBe("held");
+  // One table, read top to bottom, keyed only on what the REVIEW did. The
+  // kind of fire never enters into it — "passed" vs "held" was two words
+  // for the one fact that nothing changed.
+  it("no change — the review looked and left it alone", () => {
+    expect(outcomePhrase(row({ type: "REVIEWED" }))).toBe("no change");
+    expect(outcomePhrase(row({ type: "UPDATED", fieldChanges: {} }))).toBe(
+      "no change",
+    );
   });
 
-  it("passed for an entry fire answered without a buy", () => {
-    expect(
-      outcomePhrase(entryFire, row({ type: "UPDATED", fieldChanges: {} })),
-    ).toBe("passed");
+  it("the same words whether an entry fire or an exit fire asked", () => {
+    const review = row({ type: "REVIEWED" });
+    expect(groupTitle(entryFire, review).outcome).toBe(
+      groupTitle(exitFire, review).outcome,
+    );
   });
 
-  it("raised floor to $X when the stop moved up", () => {
+  it("updated when a price level changed", () => {
     expect(
       outcomePhrase(
-        exitFire,
+        row({ type: "UPDATED", fieldChanges: { stopLoss: { from: 54, to: 62 } } }),
+      ),
+    ).toBe("updated");
+  });
+
+  // ISRG Sep 23 removed the buy, the floor AND the target — the month's
+  // biggest decision on the name, and it used to render "held".
+  it("plan set down when the review removed rungs", () => {
+    expect(
+      outcomePhrase(
         row({
           type: "UPDATED",
-          fieldChanges: { stopLoss: { from: 54, to: 62 } },
+          fieldChanges: {
+            triggerOps: {
+              to: [
+                { op: "remove", text: "Removed: buy above $383" },
+                { op: "remove", text: "Removed: sell below $325" },
+              ],
+            },
+          },
         }),
       ),
-    ).toBe("raised floor to $62.00");
+    ).toBe("plan set down");
+  });
+
+  it("archived when the stock left the book", () => {
+    expect(
+      outcomePhrase(
+        row({ type: "UPDATED", fieldChanges: { status: { to: "PASSED" } } }),
+      ),
+    ).toBe("archived");
   });
 
   it("groupTitle composes the full sentence with the decision medium-weight", () => {
     expect(groupTitle(entryFire, row({ type: "REVIEWED" }))).toEqual({
       primary: "Trigger:",
       secondary: "Price above $255",
-      outcome: "— passed",
+      outcome: "— no change",
     });
   });
 });
@@ -515,7 +612,7 @@ describe("ladderChangeLines — the chips are the ops the caller sent (DAV-242)"
     expect(ladderChangeLines(row({ fieldChanges: { triggers: { from: 11, to: 14 } } }))).toEqual([]);
   });
 
-  it("the secondary clause leads with the ops and does not repeat the level columns", () => {
+  it("each change prints once: the op as a chip, everything else in the clause", () => {
     const u = row({
       fieldChanges: {
         triggerOps: { from: null, to: [{ op: "edit", id: "buy", text: "Entry $183 → $190" }] },
@@ -523,7 +620,13 @@ describe("ladderChangeLines — the chips are the ops the caller sent (DAV-242)"
         conviction: { from: "MEDIUM", to: "HIGH" },
       },
     });
-    expect(updatedSecondary(u)).toBe("Entry $183 → $190, conviction MEDIUM → HIGH");
+    // The op renders as a chip under the title; naming it here too printed
+    // the same change twice — visible on CEG as "Edited by you Stop $220 →
+    // $248" above a chip reading "Stop $220 → $248".
+    expect(updatedSecondary(u)).toBe("conviction MEDIUM → HIGH");
+    expect(ladderChangeLines(u).map((o) => o.text)).toEqual([
+      "Entry $183 → $190",
+    ]);
   });
 });
 
@@ -621,18 +724,29 @@ describe("toRow — one shape for every item", () => {
     expect(edit.description).toBe("Set the floor at $64.");
   });
 
-  it("fold rows carry a range label instead of a timestamp", () => {
-    const cluster = toRow({
-      kind: "cluster",
+  it("a fold row carries one date, in the same field every other row uses", () => {
+    const folded = toRow({
+      kind: "fold",
       items: [
         { kind: "event", row: row({ id: "a", type: "REVIEWED", timestamp: "2026-08-14T12:00:00Z" }) },
         { kind: "event", row: row({ id: "b", type: "REVIEWED", timestamp: "2026-08-13T12:00:00Z" }) },
       ],
     });
-    expect(cluster.fold).toBe(true);
-    expect(cluster.timestamp).toBeNull();
-    expect(cluster.rangeLabel).toBe("Aug 13 – 14");
-    expect(cluster.title.secondary).toBe("2 quiet check-ins");
+    expect(folded.fold).toBe(true);
+    expect(folded.when).toBe("Aug 14");
+    expect(folded.title.secondary).toBe("no changes ×2");
+  });
+
+  // A row with its own write-up is never "the same row twice".
+  it("never folds rows that carry prose", () => {
+    const items = buildTimeline(
+      [
+        row({ id: "a", type: "UPDATED", rationale: "First paragraph.", timestamp: "2026-08-14T12:00:00Z" }),
+        row({ id: "b", type: "UPDATED", rationale: "Second paragraph.", timestamp: "2026-08-13T12:00:00Z" }),
+      ],
+      "all",
+    );
+    expect(items.map((i) => i.kind)).toEqual(["event", "event"]);
   });
 });
 
@@ -740,5 +854,141 @@ describe("the most recent durable event, worded once", () => {
       fieldChanges: {},
     });
     expect(titleSegments(etn).primary).toBe("Updated");
+  });
+});
+
+describe("the outcome names what the review actually changed", () => {
+  const resp = (fieldChanges: unknown) =>
+    row({ type: "UPDATED", fieldChanges: fieldChanges as never });
+  const ops = (...o: Array<{ op: string; text: string }>) => ({ triggerOps: { to: o } });
+
+  // HPE 2026-09-09: the buy flipped from a breakout ABOVE $54.75 to a
+  // pullback BELOW it, stored as a `triggers` from/to diff. 97 episodes
+  // across the book carried one of these and read "no change".
+  it("a trigger change that moves no price is an update, not nothing", () => {
+    expect(
+      outcomePhrase(resp({ triggers: { from: "ENTER PRICE_ABOVE 54.75", to: "ENTER PRICE_BELOW 54.75" } })),
+    ).toBe("updated");
+    expect(outcomePhrase(resp(ops({ op: "add", text: "Added: review every 10 days" })))).toBe(
+      "updated",
+    );
+    expect(outcomePhrase(resp(ops({ op: "edit", text: "Review cadence: wording updated" })))).toBe(
+      "updated",
+    );
+  });
+
+  // A moved price and a changed cadence are the same event to a reader —
+  // the chips say which fields moved. Two words were one too many.
+  it("a price level moving is the same word as any other plan change", () => {
+    expect(outcomePhrase(resp({ stopLoss: { from: 54, to: 62 } }))).toBe("updated");
+    expect(outcomePhrase(resp(ops({ op: "edit", text: "Entry $148 → $162.91" })))).toBe("updated");
+  });
+
+  // CEG: you removed two earnings-review rungs. The buy, floor and target
+  // were untouched — the plan was not set down, it just gets looked at less.
+  it("dropping review rungs is not setting the plan down", () => {
+    expect(
+      outcomePhrase(
+        resp(
+          ops(
+            { op: "remove", text: "Removed: Any earnings beat → review" },
+            { op: "remove", text: "Removed: Earnings miss ≥3% → review" },
+          ),
+        ),
+      ),
+    ).toBe("updated");
+    expect(
+      outcomePhrase(resp(ops({ op: "remove", text: "Removed: buy above $383" }))),
+    ).toBe("plan set down");
+  });
+
+  it("a rewritten argument with the plan untouched is a thesis refresh", () => {
+    expect(outcomePhrase(resp({ bullCase: { from: "a", to: "b" }, snapshot: { from: 1, to: 2 } }))).toBe(
+      "thesis refreshed",
+    );
+  });
+
+  it("no change means the row carries nothing", () => {
+    expect(outcomePhrase(resp({}))).toBe("no change");
+  });
+});
+
+describe("prose is not printed twice in a row", () => {
+  // ISRG: Proposed, then Expired, then the episode that staged it — all
+  // three carry the ORIGINAL rationale, stacked.
+  it("drops the repeat and keeps the row", () => {
+    const same = "I am buying $ISRG here because the entry level confirmed.";
+    // Not adjacent: the episode that staged the order sits between the
+    // Proposed row and the Expired row, and all three carry the original.
+    const out = dropRepeatedProse([
+      { ...baseRow(), key: "proposed", description: same, showDescription: true },
+      { ...baseRow(), key: "episode", description: "A different paragraph.", showDescription: true },
+      { ...baseRow(), key: "expired", description: same, showDescription: true },
+    ]);
+    expect(out.map((r) => r.description)).toEqual([same, "A different paragraph.", null]);
+    expect(out[2].showDescription).toBe(false);
+    expect(out[2].key).toBe("expired");
+  });
+});
+
+function baseRow() {
+  return {
+    key: "",
+    type: "UPDATED",
+    dot: "default" as const,
+    title: { primary: "Updated", secondary: null },
+    chips: [],
+    price: null,
+    description: null as string | null,
+    quoted: false,
+    showDescription: false,
+    when: "",
+    runId: null,
+    orderId: null,
+    fold: false,
+  };
+}
+
+describe("a row that changed nothing stays collapsed", () => {
+  const show = (r: ReturnType<typeof row>) =>
+    toRow({ kind: "event", row: r }).showDescription;
+
+  it("a review that recorded nothing hides its paragraph — trigger or no trigger", () => {
+    // Standalone: the review clock came round and the run wrote a
+    // re-attestation.
+    expect(show(row({ type: "REVIEWED", rationale: "Still holds." }))).toBe(false);
+    expect(show(row({ type: "UPDATED", fieldChanges: {}, rationale: "Still holds." }))).toBe(false);
+    // Answering a fire: same rule, via the episode's outcome.
+    const items = buildTimeline(
+      [
+        row({ id: "r", type: "UPDATED", fieldChanges: {}, rationale: "Still holds.", timestamp: "2026-09-18T12:00:00Z" }),
+        row({ id: "f", type: "TRIGGER_FIRED", summary: "Price below the 200-day — review", timestamp: "2026-09-17T13:35:00Z" }),
+      ],
+      "all",
+    );
+    expect(toRow(items[0]).showDescription).toBe(false);
+  });
+
+  it("a review that changed something still shows it", () => {
+    expect(
+      show(row({ type: "UPDATED", fieldChanges: { stopLoss: { from: 54, to: 62 } }, rationale: "Floor up." })),
+    ).toBe(true);
+  });
+
+  // The Proposed row right below carries the write-up; the episode would
+  // print the same reasoning twice.
+  it("an episode that staged a proposal leaves the words to the proposal row", () => {
+    const items = buildTimeline(
+      [
+        row({ id: "resp", type: "UPDATED", fieldChanges: {}, rationale: "I am buying here because…", timestamp: "2026-09-28T20:20:42Z" }),
+        row({ id: "prop", type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("OPEN", 16), timestamp: "2026-09-28T20:20:30Z" }),
+        row({ id: "f", type: "TRIGGER_FIRED", summary: "Closes above $406 — consider entry", timestamp: "2026-09-28T20:20:17Z" }),
+      ],
+      "all",
+    );
+    const episode = items.find((i) => i.kind === "group")!;
+    expect(toRow(episode).title.outcome).toBe("— proposed buy");
+    expect(toRow(episode).showDescription).toBe(false);
+    expect(show(row({ type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("OPEN", 16), rationale: "I am buying here because…" }))).toBe(true);
   });
 });
