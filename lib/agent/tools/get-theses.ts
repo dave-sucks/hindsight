@@ -41,7 +41,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { ActivityRow, StockContext } from "@/lib/agent/stock-context";
-import { stockContextFor } from "@/lib/agent/stock-context-for";
+import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import {
   buildResolvedEnvelope,
   buildSupersessionMap,
@@ -772,6 +772,7 @@ export const getTheses = defineTool({
         orderBy: { timestamp: "desc" },
         distinct: ["thesisId"],
         select: {
+          id: true,
           thesisId: true,
           type: true,
           triggerId: true,
@@ -803,19 +804,15 @@ export const getTheses = defineTool({
           where: { thesisId: { in: liveTheses.map((t) => t.id) } },
           orderBy: { timestamp: "desc" },
           take: Math.min(40 * liveTheses.length, 1200),
-          select: {
-            thesisId: true,
-            type: true,
-            triggerId: true,
-            timestamp: true,
-            fieldChanges: true,
-            summary: true,
-            rationale: true,
-            runId: true,
-            priceAtTime: true,
-            run: { select: { mode: true } },
-          },
+          select: ACTIVITY_SELECT,
         });
+        // The principal's notes travel at any age, past the scan's window.
+        const notes = await prisma.thesisUpdate.findMany({
+          where: { thesisId: { in: liveTheses.map((t) => t.id) }, type: "NOTE" },
+          select: ACTIVITY_SELECT,
+        });
+        const seen = new Set(activityScan.map((r) => r.id));
+        activityScan.push(...notes.filter((n) => !seen.has(n.id)));
         for (const row of activityScan) {
           const bucket = streakRowsByThesisId.get(row.thesisId);
           if (bucket) bucket.push(row);
@@ -1242,6 +1239,8 @@ export const getTheses = defineTool({
       ),
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
+      // The principal's newest note, one line (docs/plans/AGENT_CONTEXT.md §3.2).
+      ...(contextByThesisId.get(t.id)?.principalNote ? { principalNote: contextByThesisId.get(t.id)!.principalNote } : {}),
     }));
 
     const enriched = fullTheses.map((t) => {

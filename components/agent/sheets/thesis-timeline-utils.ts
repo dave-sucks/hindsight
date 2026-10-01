@@ -136,6 +136,10 @@ export function titleSegments(u: TimelineUpdate): TitleSegments {
     case "REVIEWED":
       return { primary: "Reviewed", secondary: "no changes" };
 
+    // The principal's note, from chat (lib/agent/notes.ts).
+    case "NOTE":
+      return { primary: "Note added", secondary: stripTicker(u.summary) || null };
+
     case "CREATED":
       return { primary: "Created", secondary: stripTicker(u.summary) || null };
 

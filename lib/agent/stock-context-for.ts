@@ -9,6 +9,12 @@ import { describePredicate } from "@/lib/agent/needs-action";
 import { buildStockContext, type ActivityRow, type StockContext } from "@/lib/agent/stock-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
+/** The Activity columns the block reads, for every caller's query. */
+export const ACTIVITY_SELECT = {
+  id: true, thesisId: true, type: true, triggerId: true, timestamp: true, fieldChanges: true,
+  summary: true, rationale: true, runId: true, priceAtTime: true, run: { select: { mode: true } },
+} as const;
+
 export function stockContextFor(args: {
   ticker: string;
   rows: ActivityRow[];
