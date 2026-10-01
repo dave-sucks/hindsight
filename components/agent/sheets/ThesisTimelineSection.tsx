@@ -32,7 +32,6 @@ import {
   itemTimestamp,
   monthLabel,
   proposalSpanSegments,
-  relativeTimestamp,
   toRow,
   type LadderChange,
   type DotKind,
@@ -197,10 +196,8 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
     const items = built.flatMap((item) => {
       // Keep the fold row itself when expanded — it is the only control
       // that can collapse the group again.
-      if (item.kind === "cluster" && open.has(`c:${itemTimestamp(item.items[0])}`))
+      if (item.kind === "fold" && open.has(toRow(item).key))
         return [item, ...item.items];
-      if (item.kind === "repeat" && open.has(`r:${item.episodes[0].fires[0].id}`))
-        return [item, ...item.episodes];
       return [item];
     });
     const monthAt = items.map((item, i) => {
@@ -345,7 +342,7 @@ function Row({
                 </span>
               ) : null}
               <span className="text-xs font-light tabular-nums text-muted-foreground">
-                {row.rangeLabel ?? (row.timestamp ? relativeTimestamp(row.timestamp) : "")}
+                {row.when}
               </span>
             </span>
             <span className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
