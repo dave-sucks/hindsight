@@ -27,15 +27,7 @@ import { SignalFeed } from "@/components/intelligence/signal-feed";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import type { Signal } from "@/components/intelligence/types";
 import type { MoverKind } from "@/lib/market-data/movers";
-
-export type MarketTab = "earnings" | "filings" | "movers" | "signals";
-
-export const MARKET_TABS: Array<{ value: MarketTab; label: string; blurb: string }> = [
-  { value: "earnings", label: "Earnings", blurb: "Who reports this week, and how it went. Your names first." },
-  { value: "filings", label: "Filings", blurb: "This week's SEC filings for the names you follow." },
-  { value: "movers", label: "Movers", blurb: "Today's biggest gainers, losers and most-traded stocks." },
-  { value: "signals", label: "Signals", blurb: "What the retired monitors found. Read-only." },
-];
+import { MARKET_TABS, type MarketTab } from "@/lib/market/tabs";
 
 export function MarketTabs({
   analysts,

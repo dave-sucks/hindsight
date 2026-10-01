@@ -12,7 +12,8 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
-import { MarketTabs, MARKET_TABS, type MarketTab } from "@/components/market/MarketTabs";
+import { MarketTabs } from "@/components/market/MarketTabs";
+import { marketTabFromParam } from "@/lib/market/tabs";
 import type { MoverKind } from "@/lib/market-data/movers";
 
 export default async function MarketPage({
@@ -35,8 +36,7 @@ export default async function MarketPage({
       })
     : [];
 
-  const initialTab: MarketTab =
-    MARKET_TABS.find((t) => t.value === tab)?.value ?? "earnings";
+  const initialTab = marketTabFromParam(tab);
   const initialKind: MoverKind = kind === "losers" || kind === "active" ? kind : "gainers";
 
   return (

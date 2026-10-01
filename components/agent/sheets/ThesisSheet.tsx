@@ -799,6 +799,7 @@ function LatestNoteBlock({
   needsAction,
   quoteLoading,
   quoteFailed,
+  analystName,
   /** Text already shown verbatim in the trade block — never repeated here. */
   suppressText,
 }: {
@@ -808,6 +809,7 @@ function LatestNoteBlock({
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
+  analystName: string | null;
   suppressText: string | null;
 }) {
   const note = latestUpdate?.rationale?.trim() || latestUpdate?.summary?.trim() || null;
@@ -855,16 +857,20 @@ function LatestNoteBlock({
         </p>
       ) : null}
 
-      {view.showNote && text ? <ClampedParagraph text={text} /> : null}
+      {view.showNote && text ? (
+        <>
+          <ClampedParagraph text={text} />
+          <WrittenByLine latestUpdate={latestUpdate} analystName={analystName} />
+        </>
+      ) : null}
     </div>
   );
 }
 
 /**
- * Who wrote the newest note and when — one line, at the BOTTOM of the dossier
- * under the research it belongs to, not under the paragraph at the top. Past a
- * fortnight it says how old it is: a month-old paragraph reads as current
- * otherwise.
+ * Who wrote the newest note and when — one line, directly under that note.
+ * Past a fortnight it says how old it is: a month-old paragraph reads as
+ * current otherwise.
  */
 function WrittenByLine({
   latestUpdate,
@@ -1521,28 +1527,29 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         ) : null}
       </div>
 
+      {/* ── The trade, above the tabs ─────────────────────────── */}
+      {/* Held or merely proposed, it sits with the identity and the price,
+          over both tabs. Inside the Thesis panel it vanished the moment you
+          opened Activity; under the tab list it made the tab strip look like
+          part of the trade. Above both is where it belongs. */}
+      {position ? (
+        <TradeBlock
+          position={position}
+          pnl={quote?.positionPnl ?? null}
+          pendingProposal={state.position?.pendingProposal ?? null}
+          direction={direction}
+        />
+      ) : null}
+
       {/* ── Tabs: Thesis (the dossier) | Activity (the audit log) ── */}
-      {/* Only identity + live price stay fixed above (principal feedback
-          2026-08-19); everything else splits into the dossier view and the
-          P1-33 activity timeline. Same Tabs idiom as AgentChat. */}
-      <Tabs defaultValue={0} className="gap-5">
+      {/* Only identity, live price and the trade stay fixed above (principal
+          feedback 2026-08-19); everything else splits into the dossier view
+          and the P1-33 activity timeline. Same Tabs idiom as AgentChat. */}
+      <Tabs defaultValue={0}>
         <TabsList>
           <TabsTrigger value={0}>Thesis</TabsTrigger>
           <TabsTrigger value={1}>Activity</TabsTrigger>
         </TabsList>
-
-        {/* The trade sits INSIDE the tabs but OUTSIDE either panel: under the
-            tab list, above both. It was in the Thesis panel, which hid your
-            own position the moment you opened Activity — what you hold on a
-            stock is not one view of it. */}
-        {position ? (
-          <TradeBlock
-            position={position}
-            pnl={quote?.positionPnl ?? null}
-            pendingProposal={state.position?.pendingProposal ?? null}
-            direction={direction}
-          />
-        ) : null}
 
         <TabsContent value={0} className="space-y-5">
 
@@ -1555,6 +1562,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         needsAction={quote?.needsAction ?? null}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
+        analystName={state.analystName}
         suppressText={state.position?.pendingProposal?.rationale ?? null}
       />
 
@@ -1636,10 +1644,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
               <SourceCitation sources={researchCitationSources(state.snapshot.citations)} />
             </p>
           ) : null}
-          <WrittenByLine
-            latestUpdate={state.latestUpdate}
-            analystName={state.analystName}
-          />
         </div>
       ) : null}
 
