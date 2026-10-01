@@ -1,8 +1,9 @@
 # How the agents learn your system: the stock carries its rules
 
 > **Status:** agreed between the design session and the review session
-> ("State of the cycle review"), 2026-10-01, after four rounds. Waiting on
-> Dave. Nothing here is built.
+> ("State of the cycle review"), 2026-10-01. PR 1 is open. The pullback
+> section was rewritten the same day after a test: "buy the touch" is
+> withdrawn and nothing in the plan now needs a trading decision from Dave.
 >
 > **It replaces** the "one trading core" part of `AGENT_CONTEXT.md` (§3.4,
 > §3.5, §3.7 and build steps 3 to 5). The parts of that doc already built
@@ -11,59 +12,52 @@
 
 ---
 
-## The one decision for you: the pullback rule
+## The pullback rule: no decision needed, and why that changed
 
 All three analysts run the pullback setup (buy a strong stock when it dips to
-its rising 20- or 50-day average). Today three texts disagree about it:
+its rising 20- or 50-day average). Three texts describe it differently:
 
 - The setup and the writer put the buy **at the average, on the way down**.
 - The trigger run is told to buy only after **a close above the prior day's
-  high**. At the moment a dip buy fires, that close has not happened and
-  cannot have.
+  high**, which has not happened at the moment a dip buy fires.
 
-DOCU's pullback buy was passed on 09-28 for exactly this. It was bought on
-09-30 only after the morning run rewrote the buy as "back above $67.80". The
-QB's count on 09-28 was that no pullback buy had gone through in 30 days, 0 of
-5; we have re-read only the DOCU one.
+So when a pullback buy fires, the trigger run passes. DOCU's was passed on
+09-28.
 
-**We recommend: buy the touch.** The buy stays at the average, as the writer
-writes it today. When it fires, the trigger run checks what it can see at that
-moment:
+**What we first recommended, and withdrew.** We recommended "buy the touch":
+buy the dip itself and let the floor limit a wrong one. Then we tested it.
+With the agreed wording, the real model on DOCU's 09-28 case bought 1 time in
+4, the same as before. The passes only changed their reason, from "no close
+above the prior day's high" to "the price has undercut the average". That is
+the playbook's own rule for this setup, and getting past it would have meant
+stronger and stronger words to make the model buy a stock falling through
+its level. The only limit on that would be the floor, and the floor is a sale
+you have to approve.
 
-1. The trend is intact: the average being bought is still rising, and the
-   stock has not closed below its 50-day.
-2. The pullback came on light volume. Before about 2 PM this is context, not
-   a reason to pass.
-3. No bad company news in the last hour. This check already applies to every
-   buy.
+**What the app already does.** It buys pullbacks on the bounce, in two steps
+and slowly. From the review session's read of every trigger run on a pullback
+buy since 08-28 (the design session verified DOCU's rows only):
 
-It stops waiting for the close above the prior day's high.
+- **DOCU:** passed 09-28 at $65.88. The 09-30 morning run moved the buy to
+  "back above $67.80", naming the 20-day average. It fired 40 minutes after
+  the open and was bought at $67.73.
+- **ABT:** passed 09-08 and 09-10, bought 09-11 at $103.66.
+- **HPE:** passed 09-14 (the stock was down 9.8% that day, not a pullback),
+  re-priced 09-15, never bought.
 
-**What this costs.** It buys the dip, not the bounce, which departs from the
-playbook's wording for this setup. A stock that keeps falling through its
-average gets bought.
+So the bounce entry works. What's wrong is that the first step waits for the
+next morning run. DOCU waited two days.
 
-What limits that loss is the floor, set one average day's move (1 ATR) under
-the average. Two things about it:
+**What the plan does now.** It keeps the playbook's rule and makes the three
+texts say the same thing: the dip to the average arms the buy, and the buy is
+taken on the bounce. When the dip fires, the trigger run moves the buy to the
+bounce level itself, naming the average or the prior day's high it sits on,
+the way the 09-30 morning run did. The buy can then fire the next session,
+not two days later.
 
-- **The floor proposes the sale; it does not sell.** The day the price is
-  under it, you get a sale proposal, and the loss is limited when that sale is
-  approved. In the 30 days to 09-28, 50 sales were proposed: 7 filled, 20
-  were declined and 23 expired unanswered (the 09-28 state-of-the-cycle
-  review). Buying the touch leans on those approvals more than waiting for the
-  bounce would.
-- **The size of that loss** is 1% of the account times conviction (from half
-  to one and a quarter), and halved in a cautious market or into a dated
-  event. So between about 0.25% and 1.25% of the account. DOCU's was 0.75%.
-
-On 09-28 this would have bought DOCU near $67.
-
-**Why not wait for the bounce.** The app can't today. A buy written as "back
-above the level" can't be stored while the stock is still above its average,
-which is when a pullback plan is normally written. The alternative is a
-wake-up at the average that gets answered the same day and writes the buy
-then. That is a feature, not a wording fix, and it is not in this plan. It can
-follow if buying the touch proves too loose.
+This is not a new trading rule, so there is nothing for you to decide. If the
+test shows the trigger run still just passes, this PR shrinks to deleting the
+duplicate text and the pullback stays as it works today.
 
 ---
 
@@ -146,11 +140,11 @@ It also adds two checks used by every later PR (see "How we check it").
 
 ### 2. The pullback rule
 
-The decision above, in the setup list and the trigger run. It deletes the
+The section above, in the setup list and the trigger run. It deletes the
 trigger run's second, hand-written list of what confirms each setup, so one
-list remains. It also corrects the trigger run's first check, which is written
-only for a buy that fires on the way up: for a dip buy, the price bouncing
-back above the level is the touch holding, not a failed move.
+list remains. It also says the trigger run's first check ("the move hasn't
+failed back below the level") is for a buy that fires on the way up; for a
+dip buy, the setup's own confirmation is the check.
 
 ### 3. The stock carries its rules
 
@@ -224,16 +218,20 @@ PR 1 and PR 4 each merge alone, on a day before a morning run you can watch.
   it is BWXT on 09-30, written at a score of 2 with a buy. PR 1 corrects the
   writer's instruction. It gets built only if that case still goes wrong
   afterwards.
-- **A same-day wake-up that writes the pullback buy on the bounce.** See the
-  decision above.
+- **Buying the touch on a pullback.** Tested and withdrawn; see the first
+  section.
+- **A re-priced pullback buy firing the same day.** A buy that has fired
+  waits a day before it can fire again, and changing that is code on the
+  money path. The re-priced buy fires the next session at the earliest.
 
 ## What this plan does not claim
 
 Since 09-25, six buy prices were hit in trigger runs (the review session's
 count). Three became proposals: CORT and DOCU were bought, ISRG expired
 unclicked. Three were missed: PLTR on size (fixed that day), AAPL on a price
-wobble (fixed since), and DOCU on the pullback wording. Of this plan, only
-PR 2 bears on buys being made. The rest makes chat's advice and the analysts'
+wobble (fixed since), and DOCU on the pullback, which was bought two days
+later. Of this plan, only PR 2 bears on buys being made, and what it changes
+is how soon. The rest makes chat's advice and the analysts'
 reviews more accurate.
 
 ---
@@ -272,15 +270,20 @@ Files and lines, as of main at `e4f1e1d8`.
 - The PR body shows the morning prompt's removed and added text exactly.
 
 **PR 2**
-- `lib/agent/knowledge/setups.ts`, `MA_PULLBACK`: `entry.confirmation` and
-  `entry.text`. The 3-month strength line stays a precondition.
+- `lib/agent/knowledge/setups.ts`, `MA_PULLBACK`: `entry.text` says the dip
+  arms the buy and the buy is taken on the reversal. `entry.confirmation`
+  keeps the reversal and says what to do when a dip buy fires before it:
+  re-price this buy to the reversal level, naming the structure.
 - `lib/agent/system-prompts/intraday-tactical.ts`: `:342-350` deleted (the
-  rendered list at `:208` remains); gate (a) at `:335-340` says which way the
-  buy fires. For a buy that fires on the way down, pass only if the price is
-  past the setup's chase limit above the level or already under the floor.
-  `:370-374` (volume timing) stays. Gate (c) already covers company news.
-- The writer, the crossing rule (`triggers/evaluate.ts:443-453`) and the
-  plan-sanity flags are untouched. `rearm.ts` already covers `PRICE_BELOW`.
+  rendered list at `:208` remains); gate (a) at `:335-340` says it is for a
+  buy that fires on the way up. `:370-374` (volume timing) stays.
+- The writer, the crossing rule (`triggers/evaluate.ts:443-453`), `rearm.ts`
+  and the plan-sanity flags are untouched. A re-levelled buy takes its side
+  from the live price (`ops.ts:361-372`), keeps its id and its one-day
+  cooldown (`defaults.ts:645-653`), and is not flagged by `ENTRY_RAISED_AWAY`
+  when its rationale names the structure. The model is DOCU's 09-30 edit.
+- Hero case: DOCU 09-28, six runs a side, three outcomes counted: bought,
+  re-priced to the reclaim, bare pass.
 
 **PR 3**
 - One builder, in the manner of `stock-context.ts`, called by `get_theses`
