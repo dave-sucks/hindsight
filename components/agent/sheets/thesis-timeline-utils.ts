@@ -143,6 +143,7 @@ function tradeSentence(u: TimelineUpdate): string | null {
 export type EventKind =
   | "fired"
   | "reviewed"
+  | "note"
   | "created"
   | "updated"
   | "edited-by-you"
@@ -169,6 +170,9 @@ export function eventKind(u: TimelineUpdate): EventKind {
       return "fired";
     case "REVIEWED":
       return "reviewed";
+    // The principal's note, from chat (lib/agent/notes.ts).
+    case "NOTE":
+      return "note";
     case "CREATED":
       return "created";
     case "UPDATED":
@@ -209,6 +213,7 @@ export function eventKind(u: TimelineUpdate): EventKind {
 const TITLES: Record<EventKind, { primary: string; secondary: (u: TimelineUpdate) => string | null }> = {
   fired:              { primary: "Trigger:",         secondary: (u) => triggerPhrase(u.summary) },
   reviewed:           { primary: "Reviewed",         secondary: () => "no changes" },
+  note:               { primary: "Note added",       secondary: (u) => stripTicker(u.summary) || null },
   created:            { primary: "Created",          secondary: (u) => stripTicker(u.summary) || null },
   updated:            { primary: "Updated",          secondary: updatedSecondary },
   "edited-by-you":    { primary: "Edited by you",    secondary: updatedSecondary },
@@ -339,6 +344,7 @@ const DOTS: Record<EventKind, DotKind> = {
   approved: "default",
   fired: "default",
   reviewed: "default",
+  note: "default",
   created: "default",
   updated: "default",
   "edited-by-you": "default",
@@ -795,6 +801,8 @@ export interface TimelineRow {
  * dot — see `eventKind`.
  */
 const PROSE_VISIBLE = new Set<EventKind>([
+  // Your own note on the stock — it is the row.
+  "note",
   "created",
   "updated",
   "edited-by-you",

@@ -21,9 +21,11 @@
  *
  * ── Why it did nothing, which is three things ────────────────────────────
  *
- * 1. The note arrived on a field the prompt does not hang an obligation on.
- *    `principalDirective` was null; the prompt's hardest paragraph says
- *    "whenever `principalDirective` is set, read it and respond."
+ * 1. The note arrived on a field the prompt did not hang an obligation on.
+ *    The old `principalDirective` field was null (it showed only the newest
+ *    line), and the prompt's hardest paragraph was keyed to it. Since
+ *    2026-09-30 every full row opens with `context` instead: the
+ *    principal's decisions of the last 30 days, whatever came after them.
  * 2. The only sensible answer was forbidden. He asked for the floor to come
  *    DOWN to ~$40.50; the ratchet (DAV-185) says an agent never lowers a
  *    protective level. So the one instruction he gave was the one thing the

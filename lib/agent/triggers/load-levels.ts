@@ -169,6 +169,11 @@ export function resolveThesisLadder(
         ([id, e]) => [id, e.firedReports] as const,
       ),
     ),
+    rearmedAtState: Object.fromEntries(
+      Object.entries(parseTriggerState(thesis.triggerState)).map(
+        ([id, e]) => [id, e.rearmedAt?.at(-1)] as const,
+      ),
+    ),
   });
 }
 
@@ -190,6 +195,12 @@ export interface TriggerStateEntry {
   firedFilings?: string[];
   /** EARNINGS_WITHIN: the report dates this inherited heads-up has fired for. */
   firedReports?: string[];
+  /**
+   * ENTER, any level: when a trigger run passed on this buy because the price
+   * was back under its level and left it armed (./rearm, DAV-343). Today's
+   * only; the latest lifts the cooldown.
+   */
+  rearmedAt?: string[];
 }
 
 /**
@@ -212,7 +223,7 @@ export function parseTriggerState(
       continue;
     }
     if (v && typeof v === "object" && !Array.isArray(v)) {
-      const e = v as { firedAt?: unknown; firedFilings?: unknown; firedReports?: unknown };
+      const e = v as { firedAt?: unknown; firedFilings?: unknown; firedReports?: unknown; rearmedAt?: unknown };
       const entry: TriggerStateEntry = {};
       if (typeof e.firedAt === "string") entry.firedAt = e.firedAt;
       if (Array.isArray(e.firedFilings)) {
@@ -221,10 +232,14 @@ export function parseTriggerState(
       if (Array.isArray(e.firedReports)) {
         entry.firedReports = e.firedReports.filter((x): x is string => typeof x === "string");
       }
+      if (Array.isArray(e.rearmedAt)) {
+        entry.rearmedAt = e.rearmedAt.filter((x): x is string => typeof x === "string");
+      }
       if (
         entry.firedAt !== undefined ||
         entry.firedFilings !== undefined ||
-        entry.firedReports !== undefined
+        entry.firedReports !== undefined ||
+        entry.rearmedAt !== undefined
       ) {
         out[k] = entry;
       }

@@ -49,3 +49,31 @@ export function formatTimeLabel(v: string | number): string {
     minute: '2-digit',
   });
 }
+
+/**
+ * The change a range shows: the last visible price against what the range is
+ * measured from — yesterday's close on 1D (what the header's day change reads
+ * from), the first visible point on every other range. Null when there is
+ * nothing to measure against, never a made-up zero.
+ */
+export function rangeChange(
+  closes: number[],
+  from: number | null | undefined,
+): { dollars: number; pct: number } | null {
+  if (closes.length === 0) return null;
+  const base = from != null && from > 0 ? from : closes[0];
+  const last = closes[closes.length - 1];
+  if (!(base > 0) || !Number.isFinite(last)) return null;
+  return { dollars: last - base, pct: ((last - base) / base) * 100 };
+}
+
+/**
+ * Where the green/red split sits, as a fraction of the plot band from the top
+ * (0) to the bottom (1). The gradient is drawn in the plot's own pixels, so
+ * this is the price scale's own arithmetic; a baseline outside the visible
+ * range pins to an edge, so a gap day reads all green or all red.
+ */
+export function splitOffset(yLo: number, yHi: number, baseline: number): number {
+  const span = yHi - yLo || 1;
+  return Math.min(0.999, Math.max(0.001, (yHi - baseline) / span));
+}

@@ -121,6 +121,11 @@ export interface LadderLevels {
   /** Same, for an inherited heads-up's report-date memory. */
   firedReportsState?: Record<string, string[] | undefined>;
   /**
+   * When a pass on the price last left a buy armed (./rearm), for every rung
+   * — it is per-thesis bookkeeping whichever level the rung lives at.
+   */
+  rearmedAtState?: Record<string, string | undefined>;
+  /**
    * Which level the caller is rendering FROM. Everything below it is
    * inherited; rungs at this level are owned and editable.
    *
@@ -329,12 +334,14 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
 
       const firedFilings = inherited ? input.firedFilingsState?.[t.id] : t.firedFilings;
       const firedReports = inherited ? input.firedReportsState?.[t.id] : t.firedReports;
+      const rearmedAt = input.rearmedAtState?.[t.id];
 
       out.push({
         ...t,
         lastFiredAt: lastFiredAt ?? undefined,
         ...(firedFilings?.length ? { firedFilings } : {}),
         ...(firedReports?.length ? { firedReports } : {}),
+        ...(rearmedAt ? { rearmedAt } : {}),
         level,
         inherited,
       });

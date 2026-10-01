@@ -1,0 +1,270 @@
+{
+  "_about": "TRV, 2026-09-29: the Secular Compounder's watched plan (minted 23:02 ET 09-28 by writer run cmum387fw000b04jpyc607ao6) and the 09:30:27 ET set-down that removed it (ThesisUpdate cmumprvlh000604jvt06eurv2). thesisBefore is the row as the five-minute check found it: the four triggers still stored, plus the buy, floor and target the set-down removed, rebuilt from the writer's final decision under the ids the set-down recorded. Built read-only by a script.",
+  "thesisBefore": {
+    "id": "cmum3c72c000h04jp9ztyxxko",
+    "ticker": "TRV",
+    "status": "WATCHING",
+    "direction": "LONG",
+    "horizon": "COMPOUNDER",
+    "setupId": "COMPOUNDER_ACCUMULATION",
+    "entryPrice": 372.51,
+    "targetPrice": 425,
+    "stopLoss": 359.87,
+    "triggers": [
+      {
+        "id": "9fa20dbb-9525-4d92-b908-609418d3e8d1",
+        "action": "ENTER",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 372.51
+        },
+        "rationale": "50-day SMA reclaim at $372.51 confirms buyers have returned to the base and the pullback has held — COMPOUNDER_ACCUMULATION entry trigger.",
+        "source": "AGENT"
+      },
+      {
+        "id": "1e77a40b-4036-4f65-b928-6d8fc28e9889",
+        "action": "EXIT",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 359.87
+        },
+        "rationale": "Under the last swing low at $359.87 (printed September 9, 2026) — 1.9 ATR below entry of $372.51 ($372.51 - $359.87 = $12.64, approximately 1.9× ATR of $6.70); the stop sits at a natural price structure floor and invalidates the 50-day reclaim if breached.",
+        "source": "AGENT"
+      },
+      {
+        "id": "b8adce69-0343-451d-99ee-d6e04e2a1f03",
+        "action": "REVIEW",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 425
+        },
+        "rationale": "Measured move: 14.3% base depth applied to the $372.51 entry pivot = $425.78, consistent with the 1.272 Fibonacci extension at $431.53 and aligning with the Roth Capital bull price target of $425; R multiple: ($425 - $372.51) / ($372.51 - $359.87) = $52.49 / $12.64 = 4.2R.",
+        "source": "AGENT"
+      },
+      {
+        "id": "c3dd145a-2420-45cf-a815-d071112883b6",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "days": 7,
+          "kind": "EARNINGS_WITHIN"
+        },
+        "rationale": "Q3 2026 earnings in ~7 days — review position sizing, combined ratio expectations, and NII guidance before the report.",
+        "cooldownDays": 30
+      },
+      {
+        "id": "4dc33c7d-8b00-45dd-8b1e-a6a302094567",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "EARNINGS_BEAT",
+          "minSurprisePct": 10
+        },
+        "rationale": "A 10%+ EPS beat confirms the underwriting and NII compounding thesis is intact — review whether to size up after confirmation.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "1a4dd264-2bb6-4d51-904b-386e7516e0ab",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "kind": "EARNINGS_MISS"
+        },
+        "rationale": "Any earnings miss warrants reviewing whether the underlying combined ratio or NII trajectory has deteriorated, as these are the two core assumptions.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "d7ee0098-e1c7-4ce9-8ad9-81e922500234",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "days": 60,
+          "from": "BUY",
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "60-day business checkpoint: has the underlying combined ratio trajectory and NII growth started proving out? If not, name what is missing or exit.",
+        "cooldownDays": 60
+      }
+    ],
+    "triggerState": {},
+    "createdAt": "2026-09-29T03:02:23.940Z",
+    "lastReviewedAt": null,
+    "catalystDate": null
+  },
+  "analyst": {
+    "id": "cmmqxola3000004lbj7c11bfn",
+    "name": "Secular Compounder",
+    "setupIds": [
+      "COMPOUNDER_ACCUMULATION",
+      "BASE_BREAKOUT",
+      "MA_PULLBACK"
+    ],
+    "triggers": [
+      {
+        "id": "06506e39-522f-4ad1-aa62-d7fe10bf7003",
+        "action": "REVIEW",
+        "predicate": {
+          "pct": 15,
+          "kind": "TRAILING_FROM_HIGH"
+        },
+        "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "823a7df5-e8a9-4502-ac6e-6968c9c96ed5",
+        "action": "EXIT",
+        "predicate": {
+          "pct": 25,
+          "kind": "TRAILING_FROM_HIGH"
+        },
+        "rationale": "Gave back 25% from the high — the catastrophe line for a multi-year hold. The review at 15% should have acted long before this; if we are here, protect the capital.",
+        "cooldownDays": 0
+      },
+      {
+        "id": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "kind": "VS_SMA",
+          "period": 200,
+          "direction": "BELOW"
+        },
+        "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "a6d188ee-d37c-4e30-925a-a12ef664dbcb",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "UP"
+        },
+        "rationale": "Up 15% from entry — re-underwrite at the new price and raise the floor under real structure (DAV-279 ruling).",
+        "cooldownDays": 7
+      },
+      {
+        "id": "98f6fe80-33da-47a4-b2ae-23f380af11d3",
+        "action": "REVIEW",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "DOWN"
+        },
+        "rationale": "Down 15% from entry — decide hold-vs-cut deliberately, before the stop decides (DAV-279 ruling).",
+        "cooldownDays": 7
+      },
+      {
+        "id": "ef79457a-7273-4ce2-9b17-e030a1a8bc8e",
+        "action": "ADD",
+        "source": "PRINCIPAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "DOWN"
+        },
+        "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
+        "cooldownDays": 1
+      }
+    ]
+  },
+  "account": {
+    "triggers": [
+      {
+        "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
+        "action": "ADD",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "UP"
+        },
+        "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+        "cooldownDays": 3
+      },
+      {
+        "id": "b459cc93-12a4-43f1-8904-d8a8cd846b93",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "days": 7,
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "Look at this every 7 days, counting from the last real review.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "days": 3,
+          "kind": "EARNINGS_WITHIN"
+        },
+        "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+        "cooldownDays": 30
+      },
+      {
+        "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "EARNINGS_BEAT"
+        },
+        "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "EARNINGS_MISS"
+        },
+        "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "30059604-b755-4848-b938-b636464815c3",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "predicate": {
+          "kind": "SEC_EVENT",
+          "tier": "MATERIAL"
+        },
+        "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story."
+      }
+    ],
+    "triggersSeededAt": "2026-09-18T12:00:33.366Z"
+  },
+  "setDown": {
+    "at": "2026-09-29T13:30:27.125Z",
+    "price": 359.51,
+    "triggerId": "1e77a40b-4036-4f65-b928-6d8fc28e9889",
+    "summary": "TRV plan set down — the floor broke before we ever bought it, so the plan's premise is gone.",
+    "removed": [
+      {
+        "id": "9fa20dbb-9525-4d92-b908-609418d3e8d1",
+        "op": "remove",
+        "text": "Removed: buy above $372.51"
+      },
+      {
+        "id": "1e77a40b-4036-4f65-b928-6d8fc28e9889",
+        "op": "remove",
+        "text": "Removed: sell below $359.87"
+      },
+      {
+        "id": "b8adce69-0343-451d-99ee-d6e04e2a1f03",
+        "op": "remove",
+        "text": "Removed: review above $425"
+      }
+    ]
+  },
+  "priorClose": null
+}

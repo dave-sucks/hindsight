@@ -4,8 +4,10 @@
  *
  * The raw screener's top gainers were DLXY $2.29, SNYR $0.27, QCLS $0.96,
  * SHFSW $0.01 — shells and warrants. Most-actives came with volume only (no
- * price), and the plan refuses SIP snapshots newer than 15 minutes, so the
- * page's volume has to come from the delayed SIP bar.
+ * price). Since DAV-340 one snapshot call on the consolidated tape carries
+ * the price, the prior close and today's volume for every list; the double
+ * below answers it with the tape's daily bar the fixture captured for each
+ * name (the same bar the old separate volume call read).
  */
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
@@ -26,10 +28,19 @@ function alpaca(overrides: { screener?: number } = {}) {
     if (u.includes("company_tickers_exchange.json")) return json(fixture.companies);
     if (u.includes("/screener/stocks/movers")) return overrides.screener ? json({ message: "forbidden" }, overrides.screener) : json(fixture.movers);
     if (u.includes("/screener/stocks/most-actives")) return json(fixture.actives);
-    if (u.includes("/v2/stocks/snapshots")) return json(fixture.snapshotsIex);
-    // The trailing read asks for months and no end date; the volume read is today's.
-    // Today's volume read carries an end time; the trailing read doesn't.
-    if (u.includes("/v2/stocks/bars")) return json(u.includes("&end=") ? fixture.bars : trailing);
+    if (u.includes("/v2/stocks/snapshots")) {
+      const asked = decodeURIComponent(new URL(u).searchParams.get("symbols") ?? "").split(",");
+      const iex = fixture.snapshotsIex as Record<string, { latestTrade?: unknown; prevDailyBar?: unknown; dailyBar?: unknown }>;
+      const tape = fixture.bars.bars as Record<string, unknown[]>;
+      return json(
+        Object.fromEntries(
+          asked
+            .filter((s) => iex[s] || tape[s])
+            .map((s) => [s, { ...(iex[s] ?? {}), dailyBar: tape[s]?.[0] ?? iex[s]?.dailyBar }]),
+        ),
+      );
+    }
+    if (u.includes("/v2/stocks/bars")) return json(trailing);
     return json({}, 404);
   }) as unknown as typeof fetch;
   return urls;
@@ -42,7 +53,7 @@ beforeEach(() => {
 });
 
 describe("gainers", () => {
-  it("drops the sub-$5 shells and warrants, names the rest, and reads volume off the delayed SIP bar", async () => {
+  it("drops the sub-$5 shells and warrants, names the rest, and reads today's volume off the snapshot", async () => {
     const urls = alpaca();
     const v = await getMoversView("gainers", { now: NOW, coveredBy: new Map([["AEHL", ["a1"]]]) });
     expect(v.rows).toHaveLength(12);
@@ -51,13 +62,14 @@ describe("gainers", () => {
     expect(v.rows[0].changePct).toBeCloseTo(274.69, 1);
     expect(v.rows[1]).toMatchObject({ symbol: "AEHL", analystIds: ["a1"] });
     expect(v.hasVolume).toBe(true);
-    // Gainers carry their own price: no snapshot call.
-    expect(urls.some((u) => u.includes("/snapshots"))).toBe(false);
+    // One snapshot call for volume, on the tape; no separate bar call.
+    expect(urls.filter((u) => u.includes("/snapshots"))).toHaveLength(1);
+    expect(urls.some((u) => u.includes("/v2/stocks/bars") && u.includes("&end="))).toBe(false);
   });
 });
 
 describe("most-active", () => {
-  it("fills price and the day's move from one IEX snapshot call, and drops sub-$5 names", async () => {
+  it("fills price, the day's move and volume from one snapshot call on the tape, and drops sub-$5 names", async () => {
     const urls = alpaca();
     const v = await getMoversView("active", { now: NOW });
     expect(v.rows).toHaveLength(30);
@@ -66,7 +78,7 @@ describe("most-active", () => {
     expect(aal).toMatchObject({ name: "American Airlines Group Inc.", price: 12.715, volume: 137584673 });
     expect(aal.changePct).toBeCloseTo(-0.35, 2);
     expect(urls.filter((u) => u.includes("/snapshots"))).toHaveLength(1);
-    expect(urls.find((u) => u.includes("/snapshots"))).toContain("feed=iex");
+    expect(urls.find((u) => u.includes("/snapshots"))).toContain("feed=sip");
   });
 });
 

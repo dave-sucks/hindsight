@@ -32,11 +32,16 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { getBars, getDailyRangePcts, getLatestPrices } from "@/lib/alpaca";
+import { getAccount, getBars, getDailyRangePcts, getLatestPricesWithMeta } from "@/lib/alpaca";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import type { FloorStructure } from "@/lib/agent/floor-risk";
+import { readPrice } from "@/lib/market-data/quote-age";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
+import type { ActivityRow, StockContext } from "@/lib/agent/stock-context";
+import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import {
   buildResolvedEnvelope,
   buildSupersessionMap,
@@ -144,71 +149,6 @@ const schema = z.object({
     ),
 });
 
-/** A principal review decision surfaced to the agent (P1-29 — the learning loop). */
-export interface PrincipalDirective {
-  decision: "REJECTED" | "APPROVED" | "EDITED";
-  /** The principal's verbatim message (null on a no-message reject). */
-  message: string | null;
-  /** ISO timestamp of the decision. */
-  at: string;
-}
-
-/**
- * Classify a thesis's MOST-RECENT ThesisUpdate row as an unaddressed principal
- * decision, or null when the top-of-log row is an agent action. "Unaddressed"
- * is implicit in being the top row: any agent follow-up would have replaced it
- * (same latest-on-top contract TRIGGER_FIRED uses), so this self-clears once
- * the agent acts. A reject WITH a message also forces the row into the full
- * work list (see isFullDetail), so the agent reads this note on its next run
- * — there's no separate forcing needsAction.
- */
-function classifyPrincipalDirective(
-  u:
-    | { type: string; rationale: string | null; fieldChanges: unknown; timestamp: Date }
-    | null
-    | undefined,
-): PrincipalDirective | null {
-  if (!u) return null;
-  const at = u.timestamp.toISOString();
-
-  if (u.type === "PROPOSAL_REJECTED") {
-    const msg = typeof u.rationale === "string" ? u.rationale : null;
-    // A no-message reject stores a "[REJECTED:USER] …" sentinel rationale —
-    // surface it as a bare reject (null message); a real written message rides through.
-    const hasMessage = msg != null && !msg.startsWith("[REJECTED:USER]");
-    return { decision: "REJECTED", message: hasMessage ? msg : null, at };
-  }
-
-  if (u.type === "PROPOSAL_APPROVED") {
-    // Only surface approvals that CHANGED the order (e.g. upsized 6→12); a plain
-    // approve carries no instruction worth surfacing.
-    const fc = u.fieldChanges as
-      | { proposal?: { to?: { edited?: boolean; quantity?: number; proposedQuantity?: number } } }
-      | null;
-    const to = fc?.proposal?.to;
-    if (!to?.edited) return null;
-    const msg =
-      to.proposedQuantity != null && to.quantity != null
-        ? `Approved, resized ${to.proposedQuantity}→${to.quantity} shares (principal raised the size).`
-        : "Approved with edits.";
-    return { decision: "APPROVED", message: msg, at };
-  }
-
-  if (
-    u.type === "UPDATED" &&
-    typeof u.rationale === "string" &&
-    u.rationale.startsWith("[USER]")
-  ) {
-    return {
-      decision: "EDITED",
-      message: u.rationale.replace(/^\[USER\]\s*/, ""),
-      at,
-    };
-  }
-
-  return null;
-}
-
 export const getTheses = defineTool({
   description:
     "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
@@ -280,6 +220,8 @@ export const getTheses = defineTool({
     // Set when the live-quote fetch throws — forces full-book detail so a
     // data outage can't hide actionable rows behind the quiet split.
     let priceFetchFailed = false;
+    // When each live price printed — so the result can say how old it is.
+    const priceAsOf: Record<string, string> = {};
 
     // Scope by analyst when present (the right thing for normal calls);
     // fall back to userId scope for any builder/editor or system call
@@ -476,7 +418,10 @@ export const getTheses = defineTool({
     // P1-29 (L2): the most-recent unaddressed PRINCIPAL decision per thesis
     // (reject / approve-with-edit / direct edit), surfaced verbatim so the
     // agent reads the instruction directly instead of inferring it from a count.
-    const principalDirectiveByThesisId = new Map<string, PrincipalDirective | null>();
+    // What's been said on each live stock (stock-context.ts): the block a
+    // full row carries, its open fires, and any decision of the principal's
+    // no run has answered yet.
+    const contextByThesisId = new Map<string, StockContext>();
 
     // ── Position openedAt per ACTIVE thesis (P1-14) ─────────────────────
     // A HELD thesis measures elapsed time from when the
@@ -496,6 +441,9 @@ export const getTheses = defineTool({
     // ladder-health block + UNPROTECTED_GAIN flag (Game Plan PR-B). Missing →
     // ladder-health falls back to the current price.
     const peakPriceByThesisId = new Map<string, number>();
+    // Paired open-position share count — with avgCost, what the floor would
+    // lose (FLOOR_TOO_FAR, DAV-344).
+    const quantityByThesisId = new Map<string, number>();
     // P1-28 (L2): how many times the user has been shown a close proposal on
     // this held position and did NOT approve it — rejected OR ignored-to-expiry
     // (the user mostly ignores cards to expiry rather than clicking Reject).
@@ -540,6 +488,7 @@ export const getTheses = defineTool({
             symbol: true,
             openedAt: true,
             avgCost: true,
+            quantity: true,
             peakPrice: true,
           },
           orderBy: { openedAt: "desc" },
@@ -547,12 +496,14 @@ export const getTheses = defineTool({
         const openedAtByTicker = new Map<string, Date>();
         const positionIdByTicker = new Map<string, string>();
         const avgCostByTicker = new Map<string, number>();
+        const quantityByTicker = new Map<string, number>();
         const peakPriceByTicker = new Map<string, number>();
         for (const p of openPositions) {
           if (!openedAtByTicker.has(p.symbol)) {
             openedAtByTicker.set(p.symbol, p.openedAt);
             positionIdByTicker.set(p.symbol, p.id);
             avgCostByTicker.set(p.symbol, Number(p.avgCost));
+            quantityByTicker.set(p.symbol, Number(p.quantity));
             if (p.peakPrice != null && Number.isFinite(Number(p.peakPrice))) {
               peakPriceByTicker.set(p.symbol, Number(p.peakPrice));
             }
@@ -568,6 +519,8 @@ export const getTheses = defineTool({
           }
           const peak = peakPriceByTicker.get(t.ticker);
           if (peak != null) peakPriceByThesisId.set(t.id, peak);
+          const qty = quantityByTicker.get(t.ticker);
+          if (qty != null && qty > 0) quantityByThesisId.set(t.id, qty);
         }
 
         // Count UNAPPROVED close proposals per open position (Order ledger):
@@ -776,16 +729,37 @@ export const getTheses = defineTool({
       );
     }
 
+    // The account's equity, once, when anything is held: a floor's loss is
+    // judged against it (FLOOR_TOO_FAR, DAV-344). The run's own credentials,
+    // as get_portfolio_context reads them — a LIVE run never reads the paper
+    // account. Fail-open: no equity, no flag.
+    let accountEquity: number | null = null;
+    if (quantityByThesisId.size > 0) {
+      try {
+        const creds =
+          ctx.alpacaCreds ??
+          (ctx.runEnvironment ? await resolveAlpacaCredentials(ctx.userId, ctx.runEnvironment) : null) ??
+          undefined;
+        const equity = parseFloat((await getAccount(creds)).equity);
+        if (Number.isFinite(equity) && equity > 0) accountEquity = equity;
+      } catch (err) {
+        console.warn("[get_theses] account equity unavailable; floor-risk check skipped:", err);
+      }
+    }
+
     // ATR(14) per ticker, for a trail whose give-back widens with the stock's
     // range (DAV-294). The SAME daily snapshot the evaluator reads, so the
     // line the agent is shown is the line that sells. Fail-open: no snapshot
     // → the written percent, which is what the evaluator will use too.
     const atrByTicker = new Map<string, number>();
+    // …and the structure a floor could sit under, for FLOOR_TOO_FAR (DAV-344).
+    const structureByTicker = new Map<string, FloorStructure>();
     if (liveTheses.length > 0) {
       try {
         const snaps = await loadIndicatorSnapshots(liveTheses.map((t) => t.ticker.toUpperCase()));
         for (const [ticker, snap] of snaps) {
           if (snap.atr14 != null && snap.atr14 > 0) atrByTicker.set(ticker, snap.atr14);
+          structureByTicker.set(ticker, { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] });
         }
       } catch (err) {
         console.warn("[get_theses] indicator snapshot load failed; trails read their written percent:", err);
@@ -798,47 +772,58 @@ export const getTheses = defineTool({
         orderBy: { timestamp: "desc" },
         distinct: ["thesisId"],
         select: {
+          id: true,
           thesisId: true,
           type: true,
           triggerId: true,
           timestamp: true,
-          // P1-29 (L2): rationale + fieldChanges let us classify whether the
-          // top-of-log row is an unaddressed PRINCIPAL decision (reject /
-          // approve-with-edit / direct edit) and extract the verbatim message.
+          // The fallback line for a stock the activity scan below truncated
+          // away: enough to tell a fire from an answer.
+          runId: true,
+          summary: true,
           rationale: true,
           fieldChanges: true,
+          priceAtTime: true,
         },
       });
       const latestByThesisId = new Map(
         latestUpdates.map((u) => [u.thesisId, u]),
       );
 
-      // DAV-323: a slice of each thesis's log, so a fired trigger can say
-      // how many times it has already asked. One batched scan, capped the
-      // same way the ladder-edit scan above is; when it truncates, the
-      // oldest rows are simply missing and the count reads low, which is
-      // the safe direction — it never invents repetition.
+      // A slice of each thesis's log, read once for three things: which
+      // fires no agent has answered (needsAction), what has been said on
+      // the stock (the `context` block), and how many times a fired trigger
+      // has already asked (DAV-323). One batched scan; the Compounder's 22
+      // stocks wrote 334 lines in the 30 days to 2026-09-30, so 40 a stock
+      // covers a month. When it truncates, the oldest rows are missing: the
+      // repeat count reads low and the block shows less, never more.
       const streakRowsByThesisId = new Map<string, FireStreakUpdate[]>();
+      const activityByThesisId = new Map<string, ActivityRow[]>();
       try {
-        const streakScan = await prisma.thesisUpdate.findMany({
+        const activityScan = await prisma.thesisUpdate.findMany({
           where: { thesisId: { in: liveTheses.map((t) => t.id) } },
           orderBy: { timestamp: "desc" },
-          take: Math.min(20 * liveTheses.length, 600),
-          select: {
-            thesisId: true,
-            type: true,
-            triggerId: true,
-            timestamp: true,
-            fieldChanges: true,
-          },
+          take: Math.min(40 * liveTheses.length, 1200),
+          select: ACTIVITY_SELECT,
         });
-        for (const row of streakScan) {
+        // The principal's notes travel at any age, past the scan's window.
+        const notes = await prisma.thesisUpdate.findMany({
+          where: { thesisId: { in: liveTheses.map((t) => t.id) }, type: "NOTE" },
+          select: ACTIVITY_SELECT,
+        });
+        const seen = new Set(activityScan.map((r) => r.id));
+        activityScan.push(...notes.filter((n) => !seen.has(n.id)));
+        for (const row of activityScan) {
           const bucket = streakRowsByThesisId.get(row.thesisId);
           if (bucket) bucket.push(row);
           else streakRowsByThesisId.set(row.thesisId, [row]);
+          const line: ActivityRow = { ...row, runMode: row.run?.mode ?? null };
+          const lines = activityByThesisId.get(row.thesisId);
+          if (lines) lines.push(line);
+          else activityByThesisId.set(row.thesisId, [line]);
         }
       } catch (err) {
-        console.warn("[get_theses] repeat-fire scan failed; count omitted:", err);
+        console.warn("[get_theses] activity scan failed; open fires read from the newest line only:", err);
       }
 
       // Live quotes — one Alpaca call per unique ticker.
@@ -847,7 +832,9 @@ export const getTheses = defineTool({
       );
       let priceByTicker: Record<string, number> = {};
       try {
-        priceByTicker = await getLatestPrices(uniqueTickers, ctx.alpacaCreds);
+        const lookup = await getLatestPricesWithMeta(uniqueTickers, ctx.alpacaCreds);
+        priceByTicker = lookup.prices;
+        Object.assign(priceAsOf, lookup.asOf);
       } catch (err) {
         // Review finding #3: when quotes are down, every price-dependent
         // needsAction kind (TRIGGER_MATCHING_NOW / UNPROTECTED_GAIN /
@@ -873,13 +860,17 @@ export const getTheses = defineTool({
           typeof price === "number" && price > 0
             ? { price, changePct: 0 }
             : null;
-        // P1-29: surface the most-recent unaddressed principal decision on the
-        // row (verbatim). A reject-with-comment forces the row into the full
-        // work list (see isFullDetail below), so the agent reads this note on
-        // its next run — no separate forcing needsAction kind.
-        principalDirectiveByThesisId.set(
+        // What's been said on this stock: the principal's decisions of the
+        // last 30 days, the last two answers, the fires no agent has
+        // answered. A decision that wants an answer and has none puts the row
+        // on the full list (isFullDetail). The scan's lines, or the newest
+        // line alone when the scan didn't reach this stock.
+        const latest = latestByThesisId.get(t.id);
+        const activity: ActivityRow[] =
+          activityByThesisId.get(t.id) ?? (latest ? [latest] : []);
+        contextByThesisId.set(
           t.id,
-          classifyPrincipalDirective(latestByThesisId.get(t.id)),
+          stockContextFor({ ticker: t.ticker, rows: activity, triggers, now, currentPrice: latestQuote?.price ?? null }),
         );
         needsActionByThesisId.set(
           t.id,
@@ -897,6 +888,8 @@ export const getTheses = defineTool({
               avgCost: avgCostByThesisId.get(t.id) ?? null,
               peakPrice: peakPriceByThesisId.get(t.id) ?? null,
               atr14: atrByTicker.get(t.ticker.toUpperCase()) ?? null,
+              quantity: quantityByThesisId.get(t.id) ?? null,
+              structure: structureByTicker.get(t.ticker.toUpperCase()) ?? null,
               targetPrice: t.targetPrice ?? null,
               paperTenureDays: t.paperTenureDays ?? null,
               paperRealizedPnl:
@@ -906,11 +899,12 @@ export const getTheses = defineTool({
               paperReviewCount: t.paperReviewCount ?? null,
               promotedAt: t.promotedAt ?? null,
             },
-            latestUpdate: latestByThesisId.get(t.id) ?? null,
+            activity,
             recentUpdates: streakRowsByThesisId.get(t.id),
             latestQuote,
             now,
             hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
+            equity: accountEquity,
           }),
         );
       }
@@ -961,8 +955,9 @@ export const getTheses = defineTool({
       // computation ran) but theses still need resolution.
       const tickers = Array.from(new Set(liveTheses.map((t) => t.ticker)));
       try {
-        const prices = await getLatestPrices(tickers, ctx.alpacaCreds);
-        Object.assign(resolverPriceMap, prices);
+        const lookup = await getLatestPricesWithMeta(tickers, ctx.alpacaCreds);
+        Object.assign(resolverPriceMap, lookup.prices);
+        Object.assign(priceAsOf, lookup.asOf);
       } catch {
         /* degraded gracefully; envelope renders with currentPrice=null */
       }
@@ -1074,6 +1069,9 @@ export const getTheses = defineTool({
             dayRangePct: dayRangePctByTicker[t.ticker.toUpperCase()] ?? null,
             atr14: atrByTicker.get(t.ticker.toUpperCase()) ?? null,
             avgCost: avgCostByThesisId.get(t.id) ?? null,
+            quantity: quantityByThesisId.get(t.id) ?? null,
+            equity: accountEquity,
+            structure: structureByTicker.get(t.ticker.toUpperCase()) ?? null,
             peakPrice: peakPriceByThesisId.get(t.id) ?? null,
             lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,
             entryRaisesAway: entryRaisesByThesisId.get(t.id) ?? null,
@@ -1089,6 +1087,7 @@ export const getTheses = defineTool({
             positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
           },
           currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
+          priceAsOf: priceAsOf[t.ticker] ?? null,
           supersession: supersessionByTicker.get(t.ticker) ?? null,
           now: resolverNow,
         }),
@@ -1139,11 +1138,10 @@ export const getTheses = defineTool({
     //     tape (DAV-188: buy level far from price / target passed / stop
     //     breached). A flagged-but-quiet row is the exact "wrong through 5
     //     runs" failure this exists to end; the flag forces the full row.
-    //   • an unanswered principal reject WITH a written message — the note
-    //     must reach the agent's work list on its next run (P1-29). This
-    //     used to ride on a due-review date stamped at reject time; the
-    //     date column is gone (DAV-221), so the directive itself forces
-    //     the full row until the agent's answer replaces it at top-of-log.
+    //   • a decision of the principal's that wants an answer and has none
+    //     — a decline with a written reason, a resized approval, a direct
+    //     edit (stock-context.ts). It must reach the agent's work list on
+    //     its next run; the first line an agent writes after it answers it.
     // ACTIVE_HOLD deliberately stays quiet: it's the healthy-holding
     // default, and its work signals (UNPROTECTED_GAIN / RUNNING_WINNER /
     // trigger fires) all arrive via needsAction.
@@ -1180,7 +1178,6 @@ export const getTheses = defineTool({
       nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null);
 
     const isFullDetail = (t: (typeof theses)[number]): boolean => {
-      const directive = principalDirectiveByThesisId.get(t.id);
       return (
         setupAskFor(t) !== null ||
         blockedByThesisId.has(t.id) ||
@@ -1190,7 +1187,10 @@ export const getTheses = defineTool({
         (needsActionByThesisId.get(t.id) ?? null) !== null ||
         ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "") ||
         (resolvedByThesisId.get(t.id)?.planSanity?.length ?? 0) > 0 ||
-        (directive?.decision === "REJECTED" && directive.message != null)
+        // A floor that would lose too much of the account is work even when
+        // a fired sale holds the needsAction slot (DAV-344).
+        resolvedByThesisId.get(t.id)?.floorRisk != null ||
+        contextByThesisId.get(t.id)?.unansweredDecision != null
       );
     };
 
@@ -1239,12 +1239,19 @@ export const getTheses = defineTool({
       ),
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
+      // The principal's newest note, one line (docs/plans/AGENT_CONTEXT.md §3.2).
+      ...(contextByThesisId.get(t.id)?.principalNote ? { principalNote: contextByThesisId.get(t.id)!.principalNote } : {}),
     }));
 
     const enriched = fullTheses.map((t) => {
       // Resolved ladder, not the stored column — see quietRows above.
       const triggerCount = (ladderByThesisId.get(t.id) ?? []).length;
       return {
+        // What's been said on the stock, first — the principal's decisions,
+        // the last two answers, the fires no agent has answered. Read before
+        // the numbers (docs/plans/AGENT_CONTEXT.md §3.2). Null when nothing
+        // has been said in the lines this read reached.
+        context: contextByThesisId.get(t.id)?.text ?? null,
         ...t,
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
@@ -1312,13 +1319,6 @@ export const getTheses = defineTool({
             recentLow: recentLowByThesisId.get(t.id) ?? null,
           };
         })(),
-        // P1-29 (L2): the most-recent unaddressed principal review decision on
-        // this thesis — reject (verbatim message), approve-with-edit, or a
-        // direct edit — surfaced so the agent reads + honors it. A reject with a
-        // message also flags the thesis for review (REVIEW_DUE) at reject time,
-        // so the agent reads this during that review. null when the latest
-        // activity is an agent action.
-        principalDirective: principalDirectiveByThesisId.get(t.id) ?? null,
       };
     });
 
@@ -1493,14 +1493,29 @@ export const getTheses = defineTool({
               ? ` — ${enriched.length} actionable in full, ${quietRows.length} quiet as index rows`
               : ""
           }.`;
+    // A price that is missing or old is said in words (lib/market-data/
+    // quote-age) — it used to come back as a blank or as if it were live.
+    const priceWarnings = Array.from(new Set(liveTheses.map((t) => t.ticker)))
+      .map((ticker) => {
+        const price = resolverPriceMap[ticker];
+        const at = priceAsOf[ticker];
+        return readPrice({
+          ticker,
+          quote: typeof price === "number" && price > 0 ? { c: price, t: at ? new Date(at).getTime() / 1000 : undefined } : null,
+          now: resolverNow,
+        }).warning;
+      })
+      .filter((w): w is string => w != null);
     const summaryWithSold =
-      soldToReview.length > 0
+      (priceWarnings.length > 0 ? `⚠ ${priceWarnings.join(" ")} ` : "") +
+      (soldToReview.length > 0
         ? `${summary} ${soldToReview.length} recently sold stock${soldToReview.length === 1 ? "" : "s"} (${soldToReview.map((x) => `$${x.ticker}`).join(", ")}) still need${soldToReview.length === 1 ? "s" : ""} a keep-watching-or-let-it-go decision.`
-        : summary;
+        : summary);
 
     return {
       summary: summaryWithSold,
       data: {
+        ...(priceWarnings.length > 0 ? { priceWarnings } : {}),
         count: theses.length,
         active: activeCount,
         watching: watchingCount,

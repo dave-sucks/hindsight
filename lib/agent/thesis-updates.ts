@@ -38,7 +38,9 @@ export type ThesisUpdateType =
   // changed). See docs/plans/TRADE_AS_PROPOSAL.md.
   | "PROPOSAL_APPROVED"
   | "PROPOSAL_REJECTED"
-  | "PROPOSAL_EXPIRED";
+  | "PROPOSAL_EXPIRED"
+  // The principal's note on the stock (lib/agent/notes.ts).
+  | "NOTE";
 
 /**
  * Diff payload shape for `fieldChanges`. Each key is a Thesis column name;

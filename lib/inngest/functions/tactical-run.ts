@@ -15,8 +15,10 @@
 // change_status="INVALIDATED" and close_position.
 
 import { inngest } from "@/lib/inngest/client";
+import { enterAlreadyChecked, rearmBuyAfterPass } from "@/lib/agent/triggers/rearm";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -38,6 +40,7 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import {
   getThesisBearCaseBullets,
@@ -140,16 +143,12 @@ export const tacticalRun = inngest.createFunction(
         where: { id: fired.thesisId },
         include: {
           researchRun: { select: { agentConfigId: true } },
-          updates: {
-            orderBy: { timestamp: "desc" },
-            take: 5,
-            select: {
-              type: true,
-              summary: true,
-              rationale: true,
-              timestamp: true,
-            },
-          },
+          // What's been said on the stock (stock-context.ts): back past the
+          // last run's answer, so the principal's decisions since and every
+          // fire nobody answered reach this run. It used to be the last 5
+          // lines cut at 120 characters — on CEG 2026-09-14 the principal's
+          // decline was cut mid-word and gone two fires later.
+          updates: { orderBy: { timestamp: "desc" }, take: 40, select: ACTIVITY_SELECT },
         },
       });
       if (!thesis) return null;
@@ -277,6 +276,9 @@ export const tacticalRun = inngest.createFunction(
           direction: thesis.direction,
           horizon: thesis.horizon,
           setupId: thesis.setupId ?? null,
+          // The event date, for the buying-window line (DAV-338). ISO here:
+          // the step boundary would turn a Date into a string anyway.
+          catalystDate: thesis.catalystDate ? thesis.catalystDate.toISOString() : null,
           coreBelief: thesis.coreBelief,
           keyAssumptions: thesis.keyAssumptions,
           invalidationConds: thesis.invalidationConds,
@@ -289,12 +291,22 @@ export const tacticalRun = inngest.createFunction(
           bearCaseBullets: thesisBearBullets,
           researchAge: thesisResearchAge,
           allTriggers,
-          updates: thesis.updates.map((u) => ({
-            type: u.type,
-            summary: u.summary,
-            rationale: u.rationale,
-            timestamp: u.timestamp.toISOString(),
-          })),
+          // Rendered here: the step boundary would turn the Dates to strings.
+          context: stockContextFor({
+            ticker: thesis.ticker,
+            // The principal's notes travel at any age, past the 40 lines.
+            rows: [
+              ...thesis.updates,
+              ...(await prisma.thesisUpdate.findMany({ where: { thesisId: thesis.id, type: "NOTE" }, select: ACTIVITY_SELECT })).filter(
+                (n) => !thesis.updates.some((u) => u.id === n.id),
+              ),
+            ].map((u) => ({ ...u, runMode: u.run?.mode ?? null })),
+            triggers: ladder,
+            now: new Date(),
+            // The price it fired at stands in for "now" beside the
+            // principal's price then; the run pulls a live quote itself.
+            currentPrice: fired.firedPrice ?? null,
+          }).text,
         },
         trigger,
         agentConfig,
@@ -414,7 +426,9 @@ export const tacticalRun = inngest.createFunction(
           select: { id: true, createdAt: true },
         }),
       );
-      if (recentEnterCheck) {
+      // A buy the last run passed on because the price had slipped back
+      // under its level was left armed (DAV-343); its re-fire is checked.
+      if (recentEnterCheck && enterAlreadyChecked(recentEnterCheck, trigger)) {
         return {
           skipped: "enter-already-checked",
           thesisId: fired.thesisId,
@@ -451,7 +465,7 @@ export const tacticalRun = inngest.createFunction(
             analystName: agentConfig.name,
           } as object,
         },
-        select: { id: true },
+        select: { id: true, createdAt: true },
       });
     });
 
@@ -716,7 +730,7 @@ export const tacticalRun = inngest.createFunction(
         },
         trigger,
         position,
-        recentUpdates: thesis.updates,
+        context: thesis.context,
         latestDigest,
         fired: { price: fired.firedPrice ?? null, coFired: fired.coFired ?? [] },
         capacity: ctx.capacity ?? null,
@@ -734,6 +748,11 @@ export const tacticalRun = inngest.createFunction(
       const coFiredSuffix = fired.coFired?.length
         ? ` Also fired on the same pass: ${fired.coFired.map((c) => c.sentence).join("; ")} — one decision covers both.`
         : "";
+      // A pre-catalyst buy is told where the event date sits against the
+      // setup's buying window (DAV-338). Information for the decision,
+      // never a gate; the proposal carries the same line.
+      const windowLine = triggerTyped.action === "ENTER" ? preCatalystWindowLine(thesis) : null;
+      const windowSuffix = windowLine ? ` ${windowLine}` : "";
       // A refused call on this stock from a recent run that was never redone
       // rides the kickoff, so the wake that fires today also settles it.
       const openOnStock = refusalLinesFor(
@@ -742,7 +761,7 @@ export const tacticalRun = inngest.createFunction(
         (thesis as { ticker: string }).ticker,
       );
       const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${coFiredSuffix}${openOnStock} ` +
+        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock} ` +
         `Validate, decide, act if warranted, then close out via update_thesis. ` +
         `You are running unattended — no human will respond. Every turn must call a tool; ` +
         `text-only turns terminate the run as FAILED.`;
@@ -1044,6 +1063,30 @@ export const tacticalRun = inngest.createFunction(
       }
     });
 
+    // ── A pass on a wobble doesn't spend the buy (DAV-343) ─────────────
+    // AAPL 09-30: fired at $331.47, the run read $330.83 and passed, and the
+    // buy was used up for the day. When the pass was because the price was
+    // back under the level, the next check past it fires the buy again.
+    const rearm =
+      trigger.action === "ENTER" && outcome.closedOut
+        ? await step.run("rearm-buy-after-pass", async () => {
+            try {
+              return await rearmBuyAfterPass({
+                runId: run.id,
+                runStartedAt: new Date(run.createdAt),
+                thesisId: thesis.id,
+                trigger,
+              });
+            } catch (err) {
+              console.error(
+                `[tactical-run] thesis=${thesis.id} re-arm check failed:`,
+                err instanceof Error ? err.message : err,
+              );
+              return null;
+            }
+          })
+        : null;
+
     return {
       runId: run.id,
       thesisId: thesis.id,
@@ -1051,6 +1094,7 @@ export const tacticalRun = inngest.createFunction(
       ticker: thesis.ticker,
       action: trigger.action,
       ...outcome,
+      ...(rearm ? { rearm } : {}),
     };
   },
 );

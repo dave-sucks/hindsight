@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
 import {
-  AreaChart,
+  ComposedChart,
   Area,
+  Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -13,9 +15,13 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { cn } from '@/lib/utils';
+import { PriceChange } from '@/components/ui/price-change';
+import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
 import {
   formatDateLabel,
   formatDateTimeLabel,
+  rangeChange,
+  splitOffset,
   formatTimeLabel,
 } from '@/components/stocks/chart-format';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
@@ -62,6 +68,13 @@ type Props = {
   /** True while the parent is (re)fetching the intraday series. */
   intradayLoading?: boolean;
   /**
+   * The prior session's close — the 1D line is colored green above it and
+   * red below it, so the chart agrees with the header's day change. Without
+   * it the 1D line falls back to its first visible point, like every other
+   * range.
+   */
+  priorClose?: number | null;
+  /**
    * Hourly bars over the last ~month — when present, the 1W and 1M tabs render
    * these (dense, Perplexity-like) instead of slicing ~3–22 daily closes. Each
    * bar's `date` is a full ISO timestamp; the categorical axis collapses the
@@ -69,6 +82,12 @@ type Props = {
    * 1W/1M fall back to the daily slice in the meantime.
    */
   hourlyCandles?: StockCandle[];
+  /**
+   * 15-minute bars over the last week, for 1W — five times the hourly
+   * series' detail, the way Perplexity's 5D reads. Undefined until the parent
+   * fetches it; 1W shows the hourly slice (or the daily one) meanwhile.
+   */
+  weekCandles?: StockCandle[];
   /** Fired on every pill click so the parent can start/stop intraday polling. */
   onRangeChange?: (range: Range) => void;
   /**
@@ -87,6 +106,12 @@ type DailyRange = (typeof DAILY_RANGES)[number];
 // "Trade" windows the daily candles to a position's own lifespan (watch → sold,
 // or watch → now while held) rather than a fixed trailing day-count.
 type Range = '1D' | 'Trade' | DailyRange;
+
+// The plot band: the pills row sits in the top margin, the x-axis (recharts'
+// default 30px) at the bottom. The gradients and the floating price labels
+// are both placed from these, so the split and the labels sit on the scale.
+const PLOT_TOP = 40;
+const X_AXIS_HEIGHT = 30;
 
 const RANGE_DAYS: Record<DailyRange, number> = {
   '1W': 5,
@@ -137,9 +162,12 @@ function priceDomain(closes: number[]): [number, number] {
 // The 1D chart pins its x-axis to a clock window CENTERED on the regular
 // session: 2.5h of off-hours on each side (7:00 AM → 6:30 PM ET, with RTH
 // 9:30–16:00 dead-center), so the session sits balanced with equal dead space
-// left and right rather than lopsided. The pre-market + after-hours regions
-// render as a faint dot texture even with no data. Clock times are anchored to
-// the session date's actual ET offset (DST-safe, no tz lib) from the first bar.
+// left and right rather than lopsided. The window is INTRADAY_WINDOW_ET — the
+// server trims the bars to the same minutes, so every bar the chart holds is
+// drawn and the price scale is sized from what is visible. The pre-market +
+// after-hours regions render as a faint dot texture, with the tape's
+// off-hours prints drawn over it. Clock times are anchored to the session
+// date's actual ET offset (DST-safe, no tz lib) from the first bar.
 function intradaySessionGeometry(firstISO: string): {
   domain: [number, number];
   ticks: number[];
@@ -165,8 +193,9 @@ function intradaySessionGeometry(firstISO: string): {
     Date.UTC(+o.year, +o.month - 1, +o.day, h, m, 0) + offsetMs;
   const ticks: number[] = [];
   for (let h = 8; h <= 18; h += 2) ticks.push(clock(h));
+  const minutes = (m: number) => clock(Math.floor(m / 60), m % 60);
   return {
-    domain: [clock(7), clock(18, 30)],
+    domain: [minutes(INTRADAY_WINDOW_ET.start), minutes(INTRADAY_WINDOW_ET.end)],
     ticks,
     rthStart: clock(9, 30),
     rthEnd: clock(16),
@@ -186,17 +215,26 @@ export function StockPriceChart({
   showIntraday = false,
   intradayCandles,
   intradayLoading = false,
+  priorClose,
   hourlyCandles,
+  weekCandles,
   onRangeChange,
   tradeSpan,
   children,
 }: Props) {
   const [range, setRange] = useState<Range>(defaultRange);
+  // SVG gradient ids are document-wide: two charts on one page that both
+  // called theirs "fillSplit" shared the FIRST one's split point, so the
+  // sheet's 1M chart was colored by a row card's start price (2026-09-30).
+  const uid = useId().replace(/:/g, '');
+  const lineGradient = `line-${uid}`;
+  const fillGradient = `fill-${uid}`;
   const isIntraday = range === '1D';
   // 1W / 1M render the hourly series when the parent has fetched it; until then
   // they fall back to the daily slice (so there's no empty beat on selection).
+  const isWeek = range === '1W' && !!weekCandles && weekCandles.length >= 2;
   const isHourly =
-    (range === '1W' || range === '1M') && !!hourlyCandles && hourlyCandles.length >= 2;
+    !isWeek && (range === '1W' || range === '1M') && !!hourlyCandles && hourlyCandles.length >= 2;
 
   const ranges = useMemo<Range[]>(
     () => [
@@ -215,6 +253,7 @@ export function StockPriceChart({
         x: new Date(c.date).getTime(),
       }));
     }
+    if (isWeek && weekCandles) return weekCandles;
     if (isHourly && hourlyCandles) {
       // 1M = the full ~month of hourly bars; 1W = its last 7 calendar days.
       // Bars keep their ISO-timestamp `date` and flow through the categorical
@@ -234,7 +273,7 @@ export function StockPriceChart({
       return candles.filter((c) => c.date >= start && c.date <= end);
     }
     return candles.slice(-RANGE_DAYS[range as DailyRange]);
-  }, [candles, intradayCandles, hourlyCandles, range, isIntraday, isHourly, tradeSpan]);
+  }, [candles, intradayCandles, hourlyCandles, weekCandles, range, isIntraday, isHourly, isWeek, tradeSpan]);
 
   // 1D full-day geometry (domain + ticks + regular-session bounds). Null else.
   const intradayGeo = useMemo(() => {
@@ -242,11 +281,18 @@ export function StockPriceChart({
     return intradaySessionGeometry(data[0].date);
   }, [isIntraday, data]);
 
-  // Buffered price (y) domain — same treatment on every range.
+  // Buffered price (y) domain — same treatment on every range. On 1D the
+  // prior close is part of it, so its line is always in view.
   const yDomain = useMemo<[number, number] | undefined>(() => {
     if (data.length < 1) return undefined;
-    return priceDomain(data.map((d) => d.close));
-  }, [data]);
+    const closes = data.map((d) => d.close);
+    if (isIntraday && priorClose != null && priorClose > 0) closes.push(priorClose);
+    return priceDomain(closes);
+  }, [data, isIntraday, priorClose]);
+
+  // Volume bars sit along the bottom sixth: their own hidden axis runs to six
+  // times the tallest bar. Each bar takes the color of its minute or day.
+  const volumeTop = useMemo(() => Math.max(1, ...data.map((d) => d.volume ?? 0)) * 6, [data]);
 
   // Snap each marker to the nearest visible candle, then stagger labels that
   // land on (or near) the same candle so they don't overprint — Watching and
@@ -300,17 +346,21 @@ export function StockPriceChart({
     );
   }
 
-  // Color split: the line is green above / red below the graph's STARTING
-  // price (first visible point), switching mid-line. baselineOffset is where
-  // that price sits in the vertical (0 = top/high, 1 = bottom/low).
-  const baseline = hasBody ? data[0].close : 0;
+  // Color split: the line is green above / red below its baseline, switching
+  // mid-line. On 1D the baseline is the prior session's close (what the
+  // header's day change is measured from); on every other range it is the
+  // graph's starting price, the first visible point. baselineOffset is where
+  // the baseline sits in the vertical (0 = top/high, 1 = bottom/low); a
+  // baseline outside the visible range pins to an edge, so a gap day reads
+  // all green or all red, as it should.
+  const baseline = !hasBody ? 0 : isIntraday && priorClose != null && priorClose > 0 ? priorClose : data[0].close;
   const lastClose = hasBody ? data[data.length - 1].close : 0;
   const [yLo, yHi] = yDomain ?? [baseline - 1, baseline + 1];
-  const baselineOffset = Math.min(
-    0.999,
-    Math.max(0.001, (yHi - baseline) / (yHi - yLo || 1)),
-  );
+  const baselineOffset = splitOffset(yLo, yHi, baseline);
   const endColor = lastClose >= baseline ? LINE_GREEN : LINE_RED;
+  // What the range shows, in dollars and percent: the last price against the
+  // baseline the line is colored from, so the readout and the colors agree.
+  const change = hasBody ? rangeChange(data.map((d) => d.close), isIntraday ? priorClose : null) : null;
 
   // Left edge x-value for the reference-line dots (numeric epoch for 1D, the
   // first candle date for daily/Trade). Undefined when there's no data yet —
@@ -332,7 +382,7 @@ export function StockPriceChart({
           minimumFractionDigits: priceDigits,
           maximumFractionDigits: priceDigits,
         }),
-        top: 40 + f * (height - 40 - 28),
+        top: PLOT_TOP + f * (height - PLOT_TOP - X_AXIS_HEIGHT),
       }))
     : [];
 
@@ -373,6 +423,16 @@ export function StockPriceChart({
         </div>
       )}
 
+      {/* The range's change, top-right, opposite the pills: the last price
+          against yesterday's close on 1D and the first visible point on
+          every other range — so switching Day / Week / Month says how the
+          stock did over that stretch, not only today. */}
+      {showControls && change ? (
+        <div className="pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-background/80 px-2 py-1 backdrop-blur-sm">
+          <PriceChange dollarChange={change.dollars} percentChange={change.pct} size="sm" />
+        </div>
+      ) : null}
+
       {/* Floating price labels — overlaid on the left so the plot still
           full-bleeds (a reserved y-axis gutter would push the line off the
           edges). Non-interactive so they never block chart hover. */}
@@ -392,7 +452,7 @@ export function StockPriceChart({
 
       {hasBody ? (
       <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={data} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
+        <ComposedChart data={data} margin={{ top: PLOT_TOP, right: 0, bottom: 0, left: 0 }}>
           <defs>
             {/* Off-hours dot texture — matches the dashboard chart's grid, so
                 pre/post-market read as a subtle pattern, not a gray slab. */}
@@ -404,8 +464,11 @@ export function StockPriceChart({
             >
               <circle cx={1} cy={1} r={1} fill={AXIS_TICK} fillOpacity={0.35} />
             </pattern>
-            {/* Line color split at the graph's starting price. */}
-            <linearGradient id="lineSplit" x1="0" y1="0" x2="0" y2="1">
+            {/* Line color split at the baseline. Drawn in the plot's own
+                pixels (top margin to the x-axis), not the shape's bounding
+                box: a gradient measured over the shape moved its split with
+                every range, since the line never spans the whole scale. */}
+            <linearGradient id={lineGradient} gradientUnits="userSpaceOnUse" x1={0} y1={PLOT_TOP} x2={0} y2={height - X_AXIS_HEIGHT}>
               <stop offset={0} stopColor={LINE_GREEN} />
               <stop offset={baselineOffset} stopColor={LINE_GREEN} />
               <stop offset={baselineOffset} stopColor={LINE_RED} />
@@ -413,7 +476,7 @@ export function StockPriceChart({
             </linearGradient>
             {/* Area fill split — filled between the line and the baseline,
                 green above / red below, fading toward the baseline. */}
-            <linearGradient id="fillSplit" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={fillGradient} gradientUnits="userSpaceOnUse" x1={0} y1={PLOT_TOP} x2={0} y2={height - X_AXIS_HEIGHT}>
               <stop offset={0} stopColor={LINE_GREEN} stopOpacity={0.18} />
               <stop offset={baselineOffset} stopColor={LINE_GREEN} stopOpacity={0.02} />
               <stop offset={baselineOffset} stopColor={LINE_RED} stopOpacity={0.02} />
@@ -452,6 +515,7 @@ export function StockPriceChart({
               full-bleeds to the container edges on every range. Consistent
               across frames; exact prices are available on hover. */}
           <YAxis hide domain={yDomain ?? ['dataMin', 'dataMax']} />
+          <YAxis yAxisId="volume" hide orientation="right" domain={[0, volumeTop]} />
 
           <Tooltip
             contentStyle={{
@@ -461,10 +525,11 @@ export function StockPriceChart({
               fontSize: '12px',
               color: 'var(--popover-foreground)',
             }}
-            formatter={(v: number) => [
-              `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              'Close',
-            ]}
+            formatter={(v: number, name: string) =>
+              name === 'volume'
+                ? [v.toLocaleString(), 'Volume']
+                : [`$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Close']
+            }
             labelFormatter={(l: string | number) =>
               isIntraday
                 ? formatTimeLabel(l)
@@ -501,6 +566,42 @@ export function StockPriceChart({
               ifOverflow="visible"
             />
           ) : null}
+
+          {/* Yesterday's close (1D only): a dot pinned to the right edge at
+              the price the day is measured from, with "Prev $X" beside it.
+              Not a line: the target and floor already draw dashed lines
+              across this chart, and a third would read as another level. */}
+          {isIntraday && intradayGeo && priorClose != null && priorClose > 0 ? (
+            <ReferenceDot
+              x={intradayGeo.domain[1]}
+              y={priorClose}
+              r={0}
+              ifOverflow="visible"
+              shape={(props: { cx?: number; cy?: number }) => {
+                // The window's last minute is the plot's right edge; pull in so
+                // the whole dot shows.
+                const cx = (props.cx ?? 0) - 4;
+                const cy = props.cy ?? 0;
+                const text = `Prev $${priorClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                return (
+                  <g>
+                    <circle cx={cx} cy={cy} r={3} fill={REF_LINE} fillOpacity={0.9} stroke="none" />
+                    <text x={cx - 7} y={cy + 3.5} fill={AXIS_TICK} fontSize={9} textAnchor="end" fontFamily="var(--font-mono)">
+                      {text}
+                    </text>
+                  </g>
+                );
+              }}
+            />
+          ) : null}
+
+          {/* Volume — one faint bar per point along the bottom, green when the
+              close rose from the point before, red when it fell. */}
+          <Bar yAxisId="volume" dataKey="volume" isAnimationActive={false} fillOpacity={0.35} maxBarSize={3}>
+            {data.map((d, i) => (
+              <Cell key={`v-${d.date}`} fill={i > 0 && d.close < data[i - 1].close ? LINE_RED : LINE_GREEN} />
+            ))}
+          </Bar>
 
           {/* Vertical markers — Watching / Entry / Sold. Labels stagger down
               when two land on (or near) the same candle so they don't overprint. */}
@@ -563,15 +664,15 @@ export function StockPriceChart({
             // baseline and colored green above / red below it.
             type="linear"
             dataKey="close"
-            stroke="url(#lineSplit)"
+            stroke={`url(#${lineGradient})`}
             strokeWidth={1.5}
-            fill="url(#fillSplit)"
+            fill={`url(#${fillGradient})`}
             baseValue={baseline}
             dot={false}
             activeDot={{ r: 3, fill: endColor }}
             isAnimationActive={!isIntraday}
           />
-        </AreaChart>
+        </ComposedChart>
       </ResponsiveContainer>
       ) : (
         <div className="flex items-center justify-center" style={{ height }}>

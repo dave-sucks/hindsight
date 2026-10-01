@@ -136,9 +136,9 @@ export interface Team {
 // ── Shared tools (referenced by multiple teams) ──────────────────────────
 
 const TOOL_GET_MARKET_CONTEXT: ToolEntry = {
-  name: "get_market_context", provider: "finnhub", summary: "SPY, VIX, sector ETFs, macro events, regime classification.",
+  name: "get_market_context", provider: "finnhub", summary: "SPY, VIXY's day move, sector ETFs, macro events, and the regime (SPY against its averages).",
   resources: [
-    { source: "finnhub", title: "Index & sector quotes", description: "SPY, VIX, and 11 sector ETFs in a single batch.", type: "api", endpointOrPath: "/quote?symbol=SPY,^VIX,XLK,...", exampleOutput: "SPY $542.31 +0.8% · VIX 14.2 · XLK +1.2% (leading)" },
+    { source: "alpaca", title: "Index & sector quotes", description: "SPY, VIXY and 11 sector ETFs in one call. VIXY is an ETF of VIX futures — no plan we have serves the VIX index itself.", type: "api", endpointOrPath: "/v2/stocks/snapshots?symbols=SPY,VIXY,XLK,...", exampleOutput: "SPY $542.31 +0.8% · VIXY −1.7% · XLK +1.2% (leading)" },
     { source: "finnhub", title: "Broad market trend", description: "30 days of SPY candles to determine uptrend/downtrend.", type: "api", endpointOrPath: "/stock/candle?symbol=SPY&resolution=D", exampleOutput: "SPY above SMA-20 ($538.50) → uptrend" },
     { source: "finnhub", title: "Earnings density", description: "How many companies report this week.", type: "api", endpointOrPath: "/calendar/earnings", exampleOutput: "47 companies reporting — elevated density" },
     { source: "fmp", title: "Economic calendar", description: "Major macro events today — Fed, CPI, jobs.", type: "api", endpointOrPath: "/economic_calendar", exampleOutput: "CPI release 8:30 AM (high impact)" },
@@ -148,7 +148,7 @@ const TOOL_GET_MARKET_CONTEXT: ToolEntry = {
 const TOOL_GET_STOCK_DATA: ToolEntry = {
   name: "get_stock_data", provider: "finnhub", summary: "Price, profile, financials, technicals, consensus, news for one ticker.",
   resources: [
-    { source: "finnhub", title: "Live price", description: "Current price, change, and day range.", type: "api", endpointOrPath: "/quote?symbol={ticker}", exampleOutput: "NVDA $134.23 +2.1%" },
+    { source: "alpaca", title: "Live price", description: "Current price with the time it printed, change, and day range.", type: "api", endpointOrPath: "/v2/stocks/snapshots?symbols={ticker}", exampleOutput: "NVDA $134.23 +2.1%" },
     { source: "finnhub", title: "Company profile", description: "Name, sector, market cap, exchange.", type: "api", endpointOrPath: "/stock/profile2?symbol={ticker}", exampleOutput: "NVIDIA Corp · Technology · $3.3T" },
     { source: "finnhub", title: "Key financials", description: "P/E, P/B, beta, 52W range, EPS.", type: "api", endpointOrPath: "/stock/metric?symbol={ticker}&metric=all", exampleOutput: "P/E 65.2 · Beta 1.68 · 52W $75–$153" },
     { source: "finnhub", title: "Recent headlines", description: "5 most recent news articles.", type: "api", endpointOrPath: "/company-news?symbol={ticker}", exampleOutput: "\"NVIDIA Announces Blackwell GPUs\" — Reuters" },
@@ -427,7 +427,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "get_market_context",
     category: "research",
-    summary: "SPY, VIX, 11 sector ETFs, macro events, earnings density, and regime classification.",
+    summary: "SPY, VIXY's day move, 11 sector ETFs, macro events, earnings density, and the regime (SPY against its averages).",
     providers: ["finnhub", "fmp"],
     agents: ["builder", "editor", "agent", "tactical", "discovery"],
     resources: TOOL_GET_MARKET_CONTEXT.resources,

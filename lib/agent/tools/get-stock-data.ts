@@ -4,8 +4,8 @@
  * Gets comprehensive stock data: quote, company profile, financials,
  * the chart (lib/market-data/price-structure.ts — a year of daily bars:
  * moving averages, ATR, swings, base, gaps, relative strength), analyst
- * consensus, and recent news. Finnhub for quote/profile/metrics/news,
- * Alpaca for bars.
+ * consensus, and recent news. Alpaca for the live price and the bars,
+ * Finnhub for profile/metrics/news.
  */
 
 import { z } from "zod";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/market-data/price-structure";
 import { getBenchmarkBars, CHART_SESSIONS } from "@/lib/market-data/benchmark-bars";
 import { readPrice } from "@/lib/market-data/quote-age";
+import { getLiveQuote } from "@/lib/market-data/live-quote";
 import type { NewsItem } from "@/lib/agent/tool-types";
 import { checkUniverse } from "@/lib/agent/universe";
 import type { UniverseCheck } from "@/lib/agent/universe";
@@ -95,7 +96,7 @@ export const getStockData = defineTool({
     // is gone (2026-09-08).
     const [quoteResult, profileResult, financialsResult, newsResult, recsResult, priceTargetResult] =
       await Promise.all([
-        finnhub(`/quote?symbol=${ticker}`, 2),
+        getLiveQuote(ticker, { caller: "other", creds: ctx.alpacaCreds }),
         finnhub(`/stock/profile2?symbol=${ticker}`, 2),
         finnhub(`/stock/metric?symbol=${ticker}&metric=all`, 2),
         finnhub(
@@ -109,7 +110,7 @@ export const getStockData = defineTool({
         Promise.resolve({ data: null as unknown, error: undefined as string | undefined }),
       ]);
 
-    const quote = quoteResult.data as Record<string, number> | null;
+    const quote = quoteResult.quote;
     const profile = profileResult.data as Record<string, unknown> | null;
     const financials = financialsResult.data as { metric?: Record<string, unknown> } | null;
     const news = newsResult.data;
@@ -146,7 +147,7 @@ export const getStockData = defineTool({
            * Today's session so far — the chart above is completed sessions
            * only, so "is today's breakout on volume?" needs its own read
            * (DAV-247 review: the tactical volume gate read a field #628
-           * removed). Consolidated volume through ~16 minutes ago. Null
+           * removed). Consolidated volume, to the minute. Null
            * before the first print or when the vendor didn't answer.
            */
           today: {
@@ -183,8 +184,8 @@ export const getStockData = defineTool({
         const todayBar = (await getTodaySessionBars([ticker.toUpperCase()]).catch(() => ({}) as Record<string, { volume: number }>))[ticker.toUpperCase()];
         const recentVols = own.bars.slice(-20).map((b) => b.volume);
         const avg20 = recentVols.length === 20 ? recentVols.reduce((a, b) => a + b, 0) / 20 : null;
-        const open = typeof quote?.o === "number" && quote.o > 0 ? quote.o : null;
-        const prevClose = typeof quote?.pc === "number" && quote.pc > 0 ? quote.pc : null;
+        const open = quote?.o ?? null;
+        const prevClose = quote?.pc ?? null;
         techData = {
           ...structure,
           volumeFeed: own.feed,
@@ -360,7 +361,9 @@ export const getStockData = defineTool({
         ],
       },
       sources: [
-        { provider: "Finnhub", title: `${ticker} Real-Time Quote`, url: "https://finnhub.io/docs/api/quote" },
+        quote?.source === "finnhub"
+          ? { provider: "Finnhub", title: `${ticker} Real-Time Quote`, url: "https://finnhub.io/docs/api/quote" }
+          : { provider: "Alpaca", title: `${ticker} Real-Time Quote`, url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
         { provider: "Finnhub", title: `${ticker} Company Profile`, url: "https://finnhub.io/docs/api/company-profile2" },
         { provider: "Finnhub", title: `${ticker} Key Financials`, url: "https://finnhub.io/docs/api/stock-basic-financials" },
         ...(consensusData ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus`, url: "https://finnhub.io/docs/api/recommendation-trends" }] : []),

@@ -56,10 +56,15 @@ export interface ReplayOptions {
   args?: Record<string, unknown>;
   /** ToolContext overrides — analystId, runMode, runId … */
   ctx?: Record<string, unknown>;
-  /** Live price per ticker. Absent ⇒ the quote vendor returns nothing. */
+  /**
+   * Live price per ticker, printed "now" on both vendors' doubles. Absent ⇒
+   * the quote vendors return nothing.
+   */
   quotes?: Record<string, number>;
   /** Extra modules to double, e.g. `{ "@/lib/alpaca": () => ({ … }) }`. */
   mocks?: Record<string, () => unknown>;
+  /** The broker account's equity. Absent ⇒ $100,000. */
+  equity?: number;
 }
 
 /** What a tool hands back — `ToolResult`, narrowed here to what tests read. */
@@ -138,6 +143,31 @@ function quoteStub(quotes: Record<string, number>) {
 }
 
 /**
+ * Alpaca's snapshot for a replay price: the latest trade printed now, today's
+ * bar around it, and a prior close equal to it. The real
+ * lib/market-data/live-quote reads this — only the vendor is doubled.
+ */
+function snapshotStub(quotes: Record<string, number>) {
+  return (symbols: string[]) => {
+    const now = new Date();
+    const day = (d: Date) => `${d.toLocaleDateString("en-CA", { timeZone: "America/New_York" })}T04:00:00Z`;
+    return Object.fromEntries(
+      symbols
+        .map((s) => [s?.toUpperCase?.() ?? s, quotes[s?.toUpperCase?.() ?? s]] as const)
+        .filter(([, c]) => c != null)
+        .map(([s, c]) => [
+          s,
+          {
+            latestTrade: { p: c, t: now.toISOString() },
+            dailyBar: { t: day(now), o: c, h: c, l: c, c, v: 1_000_000 },
+            prevDailyBar: { t: day(new Date(now.getTime() - 86_400_000)), o: c, h: c, l: c, c, v: 1_000_000 },
+          },
+        ]),
+    );
+  };
+}
+
+/**
  * Run `toolModule`'s exported tool through its real `execute`.
  *
  * `toolModule` is the basename under `lib/agent/tools/` ("update-thesis") and
@@ -167,9 +197,12 @@ export async function replayTool(
         Object.fromEntries(syms.map((s) => [s, quotes[s?.toUpperCase?.() ?? s]]).filter(([, v]) => v != null)),
       ),
       getLatestPrice: jest.fn(async (s: string) => quotes[s?.toUpperCase?.() ?? s] ?? null),
+      MARKET_DATA_FEED: "sip",
+      getSnapshots: jest.fn(async (syms: string[]) => snapshotStub(quotes)(syms)),
+      getTodaySessionBars: jest.fn(async () => ({})),
       getBars: jest.fn(async () => []),
       getAccount: jest.fn(async () => ({
-        equity: "100000", cash: "40000", buying_power: "80000", portfolio_value: "100000",
+        equity: String(opts.equity ?? 100000), cash: "40000", buying_power: "80000", portfolio_value: String(opts.equity ?? 100000),
       })),
       getPositions: jest.fn(async () => []),
       getOrder: jest.fn(async () => null),
@@ -177,7 +210,16 @@ export async function replayTool(
       getAllPositions: jest.fn(async () => []),
       getPosition: jest.fn(async () => null),
       getOpenOrders: jest.fn(async () => []),
-      getLatestPricesWithMeta: jest.fn(async () => ({})),
+      getLatestPricesWithMeta: jest.fn(async (syms: string[]) => {
+        const priced = syms.filter((s) => quotes[s?.toUpperCase?.() ?? s] != null);
+        const at = new Date().toISOString();
+        return {
+          prices: Object.fromEntries(priced.map((s) => [s, quotes[s.toUpperCase()]])),
+          sources: Object.fromEntries(syms.map((s) => [s, priced.includes(s) ? "alpaca" : "missing"])),
+          asOf: Object.fromEntries(priced.map((s) => [s, at])),
+          fetchedAt: at,
+        };
+      }),
       getDailyBars: jest.fn(async () => []),
       getDailyRangePcts: jest.fn(async () => ({})),
       ...Object.fromEntries(
@@ -193,6 +235,19 @@ export async function replayTool(
           ],
         ),
       ),
+    }));
+    // Finnhub, the one vendor call every helper shares. Without this a
+    // replay reached finnhub.io for real (load-account-risk's profile2 on
+    // every buy): a live call, a spent slot of the shared key's minute, and
+    // an answer the test never chose. A quote answers from `quotes`; every
+    // other path answers empty, the way a refused vendor does.
+    jest.doMock("@/lib/agent/research-helpers", () => ({
+      ...jest.requireActual("@/lib/agent/research-helpers"),
+      finnhub: jest.fn(async (path: string) => {
+        const symbol = path.startsWith("/quote") ? decodeURIComponent(path.match(/symbol=([^&]+)/)?.[1] ?? "") : null;
+        const quote = symbol ? quoteStub(quotes)(symbol) : null;
+        return quote ? { data: quote } : { data: null, error: "replay: no vendor" };
+      }),
     }));
     jest.doMock("@/lib/inngest/client", () => ({
       inngest: { createFunction: jest.fn(() => ({})), send: jest.fn(async () => undefined) },

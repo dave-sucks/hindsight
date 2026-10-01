@@ -227,6 +227,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("edit_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("remove_trigger_ids", "IDENTITY"),
   ],
+  write_note: [f("thesis_id", "IDENTITY"), f("text", "TEXT")],
 };
 
 /** The tool factories, by registered name, and the modes' run-mode strings. */
@@ -236,6 +237,7 @@ export const WRITE_TOOL_EXPORTS: Record<string, string> = {
   close_position: "closePosition",
   record_thesis: "recordThesis",
   update_thesis: "updateThesis",
+  write_note: "writeNoteTool",
   record_run_summary: "recordRunSummary",
   complete_run: "completeRun",
   dispatch_thesis_research: "dispatchThesisResearch",

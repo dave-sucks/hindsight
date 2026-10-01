@@ -30,10 +30,15 @@ export function needsActionLine(na: NeedsAction): string {
       // (DAV-323) — on a first ask there is no history worth a sentence.
       return (
         `A trigger fired and nothing has answered it: ${na.summary}` +
-        (na.repeatLine ? ` ${na.repeatLine}` : "")
+        (na.repeatLine ? ` ${na.repeatLine}` : "") +
+        (na.alsoFired?.length
+          ? ` Also fired since the last answer: ${na.alsoFired.map((x) => `${x.summary}${x.count > 1 ? ` (${x.count}×)` : ""}`).join("; ")}.`
+          : "")
       );
     case "TRIGGER_MATCHING_NOW":
       return `A trigger is true right now: ${na.predicateSummary}${na.livePrice != null ? ` (price $${na.livePrice.toFixed(2)})` : ""}`;
+    case "FLOOR_TOO_FAR":
+      return na.line;
     case "UNPROTECTED_GAIN":
       return (
         `Up ${na.unrealizedGainPct.toFixed(1)}% with ` +
@@ -71,6 +76,11 @@ export function needsActionLine(na: NeedsAction): string {
  */
 export function needsActionFlag(na: NeedsAction): string {
   switch (na.kind) {
+    case "FLOOR_TOO_FAR":
+      return (
+        `Flagged to raise the floor — it is ${na.pctOfAccount.toFixed(1)}% ` +
+        "of the account below here"
+      );
     case "PROMOTED_AWAITING_RESOLUTION":
       return "Flagged to decide — promoted to live money";
     case "SALE_DECLINED":

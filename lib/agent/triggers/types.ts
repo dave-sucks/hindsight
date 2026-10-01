@@ -281,6 +281,14 @@ export type Trigger = {
    * on 09-21 and the 7-day cooldown then swallowed the real one).
    */
   firedReports?: string[];
+  /**
+   * ENTER only: when a trigger run last passed on this buy because the price
+   * was back under its level, and left it armed (./rearm, DAV-343). A re-arm
+   * newer than `lastFiredAt` lifts the cooldown. Kept in
+   * `Thesis.triggerState` and merged on at resolve time — never stored on
+   * the trigger, never written by a model.
+   */
+  rearmedAt?: string;
   /** ENTER only, server-stamped: the live price when written (./written-price). */
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp
@@ -421,7 +429,16 @@ export function protectiveExitCloseReason(
  */
 export function effectiveTriggerAction(
   trigger: { action: TriggerAction; predicate: TriggerPredicate },
-  state: { status?: string | null; direction?: string | null },
+  state: {
+    status?: string | null;
+    direction?: string | null;
+    /**
+     * Does the stock carry a buy (an ENTER trigger)? With none, a review at
+     * any price is a wake, not a target: it fires as a review (QB ruling on
+     * DAV-335, 2026-09-29). Absent ⇒ treated as having one, as before.
+     */
+    hasBuy?: boolean;
+  },
 ): TriggerAction {
   if (state.status === "HOLDING") return trigger.action;
 
@@ -435,8 +452,9 @@ export function effectiveTriggerAction(
 
   // An upside price level reached before we bought: the move happened
   // without us, so the priced plan is stale. Housekeeping REVIEWs (earnings,
-  // review cadence, news) are untouched — they still just want a look.
-  if (trigger.action === "REVIEW" && isPriceLevel) {
+  // review cadence, news) are untouched — they still just want a look. With
+  // no buy there is no priced plan to go stale: the level is a wake.
+  if (trigger.action === "REVIEW" && isPriceLevel && state.hasBuy !== false) {
     const isLong = state.direction !== "SHORT";
     const favourable = isLong ? kind === "PRICE_ABOVE" : kind === "PRICE_BELOW";
     if (favourable) return "DEMOTE";
@@ -444,3 +462,39 @@ export function effectiveTriggerAction(
 
   return trigger.action;
 }
+
+/**
+ * When a trigger is read, for a thesis in this state (DAV-337).
+ *
+ * On a stock we don't own, a sell trigger sets the plan down (above), and a
+ * plan comes down only on a close past its floor — never an intraday touch.
+ * An undercut of a low that is reclaimed the same day is a shakeout, not a
+ * breakdown: TRV opened at $359.51 on 2026-09-29, under its $359.87 floor,
+ * traded back to $363.83 that morning, and its plan was gone at 09:30. In
+ * the 30 days to that day, three of six floor set-downs were dips like it.
+ *
+ * So on a thesis we don't hold, a sell trigger's price level reads the day's
+ * close (the 16:20 pass). On a stock we hold the floor is a sale and keeps
+ * its own timing. Resolved where triggers are read, never stored, so a buy
+ * never has to rewrite it. The five-minute check, the morning run's snapshot
+ * and the thesis sheet all call this one function. Pure.
+ */
+export function watchedFloorOnClose<T extends { action: string; predicate: TimedPredicate }>(
+  trigger: T,
+  state: { status?: string | null },
+): T {
+  if (state.status === "HOLDING" || trigger.action !== "EXIT") return trigger;
+  const onClose = (p: TimedPredicate): TimedPredicate =>
+    p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW"
+      ? { ...p, basis: "close" }
+      : (p.kind === "AND" || p.kind === "OR") && p.predicates
+        ? { ...p, predicates: p.predicates.map(onClose) }
+        : p;
+  const predicate = onClose(trigger.predicate);
+  return JSON.stringify(predicate) === JSON.stringify(trigger.predicate)
+    ? trigger
+    : ({ ...trigger, predicate } as T);
+}
+
+/** What `watchedFloorOnClose` reads — the server's predicates and the sheet's both have it. */
+type TimedPredicate = { kind: string; basis?: string; predicates?: TimedPredicate[] };

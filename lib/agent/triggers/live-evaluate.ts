@@ -27,6 +27,7 @@ import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { isMarketOpen } from "@/lib/market-hours";
 import { describePredicate } from "@/lib/agent/needs-action";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import type {
   Trigger,
   TriggerPredicate,
@@ -177,11 +178,11 @@ export async function evaluateLiveTriggerMatches({
   const levelSources = (await loadLevelSources([analystId])).get(analystId);
 
   for (const thesis of theses) {
-    const triggers = resolveThesisLadder(
-      thesis,
-      levelSources,
-      `thesis=${thesis.id}`,
-    ) as Trigger[];
+    // A watched stock's floor reads the close, as in the five-minute check
+    // (DAV-337) — the run is not told a morning dip broke it.
+    const triggers = (
+      resolveThesisLadder(thesis, levelSources, `thesis=${thesis.id}`) as Trigger[]
+    ).map((t) => watchedFloorOnClose(t, thesis));
 
     const price = prices[thesis.ticker];
     // changePct from a single quote isn't available without a prior

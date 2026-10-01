@@ -57,7 +57,7 @@ import {
   foldDeclines,
 } from "@/lib/agent/declined-sale";
 import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
-import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
+import { isPlanLevelOnList } from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
   diffThesisFields,
@@ -73,6 +73,8 @@ import {
   needsPairedCloseCheck,
 } from "@/lib/agent/thesis-transitions";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
+import { computePlanSanity } from "@/lib/agent/plan-sanity";
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 // ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
 // Same shape as record_thesis. See lib/agent/tools/record-thesis.ts.
@@ -434,7 +436,8 @@ export function notApplied(results: TriggerOpResult[], error: string): TriggerOp
  * level on the stored list, by id, removed together, is a call that lands.
  */
 export function setDownInstruction(stored: Trigger[], direction: string | null): string {
-  const levels = stored.filter((t) => isPlanLevel(t, direction));
+  // A wake (a review with no buy behind it) is not part of a plan to set down.
+  const levels = stored.filter((t) => isPlanLevelOnList(t, stored, direction));
   if (levels.length === 0) return "";
   const ids = levels.map((t) => `"${t.id}"`).join(", ");
   const words = levels.map((t) => describeTrigger(t, direction)).join(", ");
@@ -474,7 +477,7 @@ export const updateThesis = defineTool({
   execute: async (args, ctx) => {
     // Resolve priceAtTime defensively. The agent SHOULD pass price_at_time
     // (it just called get_stock_data on this ticker). When it forgets, we
-    // fall back to a fresh Finnhub quote so the timeline row never has a
+    // fall back to a fresh live quote so the timeline row never has a
     // null price for an active update. Cheap (one HTTP call, 30s cache);
     // worth it for the timeline integrity.
     let resolvedPriceAtTime: number | null = args.price_at_time ?? null;
@@ -1491,13 +1494,15 @@ export const updateThesis = defineTool({
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,
       });
+      const reviewedMeans = whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence);
       return {
-        summary: `Reviewed ${existing.ticker} thesis: no changes.`,
+        summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}`,
         data: {
           ok: true,
           thesis_id: existing.id,
           type: "REVIEWED" as const,
           trigger_ops: opResults,
+          ...(reviewedMeans.length ? { what_this_means: reviewedMeans } : {}),
           card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }),
         },
         sources: [],
@@ -1744,15 +1749,17 @@ export const updateThesis = defineTool({
       tradeId: args.trade_id,
       priceAtTime: resolvedPriceAtTime,
     });
+    const means = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
 
     return {
-      summary,
+      summary: means.length ? `${summary} ⚠ ${means[0]}` : summary,
       data: {
         ok: true,
         thesis_id: existing.id,
         type: updateType,
         changed_fields: Object.keys(fieldChanges),
         trigger_ops: opResults,
+        ...(means.length ? { what_this_means: means } : {}),
         // Post-update thesis snapshot for the chat renderer. Merges the
         // pre-update record with the patch we just applied — no extra DB
         // read. Drives the "Wrote / edited theses" carousel.
@@ -1762,6 +1769,24 @@ export const updateThesis = defineTool({
     };
   },
 });
+
+
+/**
+ * The save's reply (docs/plans/AGENT_CONTEXT.md §3.6): what the saved plan
+ * means, in the sheet's words (plan-sanity.ts). Words, never a refusal. EME
+ * 2026-09-29: a buy armed at a score of 6 against this analyst's 7 got only
+ * "composite 3 → 6" back; told, the chat fixed it in one turn.
+ */
+function whatThisMeans(row: Record<string, unknown>, price: number | null, minConfidence?: number | null): string[] {
+  const n = (v: unknown) => (v == null ? null : Number(v));
+  const flags = computePlanSanity({
+    status: String(row.status), direction: (row.direction as string | null) ?? null, currentPrice: price,
+    entryPrice: n(row.entryPrice), targetPrice: n(row.targetPrice), stopLoss: n(row.stopLoss),
+    composite: getThesisComposite(row as never), minConfidence: minConfidence ?? null,
+  });
+  // The score line is about a buy; with no buy price there is none to refuse.
+  return flags.filter((f) => f.kind !== "COMPOSITE_BELOW_MINIMUM" || n(row.entryPrice) != null).map((f) => `${row.ticker}: ${f.text}`);
+}
 
 /**
  * Map a Thesis row (from prisma) to the ThesisCardData shape consumed by

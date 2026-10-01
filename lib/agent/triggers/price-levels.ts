@@ -178,11 +178,16 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
 
   const floors = all.filter((l) => l.side === "DOWNSIDE" && l.action === "EXIT");
   const floor = firstToFire(floors, long);
+  // On a stock we only watch, a review with no buy behind it is a wake, not
+  // the target (isPlanLevelOnList). "A buy" is an ENTER on the list, priced
+  // or not: COGT's buy is a close above $36.95 on 1.5x volume, which has no
+  // single entry price and still keeps its $43.35 target.
+  const wakeOnly = !held && !triggers.some((t) => t.action === "ENTER");
   const target = furthest(
     all.filter(
       (l) =>
         l.side === "UPSIDE" &&
-        (l.action === "EXIT" || l.action === "REVIEW") &&
+        (l.action === "EXIT" || (l.action === "REVIEW" && !wakeOnly)) &&
         // A gain milestone off entry is a checkpoint, not a destination.
         !l.projected,
     ),
@@ -472,6 +477,24 @@ export function isPlanLevel(t: Trigger, direction: string | null): boolean {
   if (t.action === "ENTER" || t.action === "EXIT") return true;
   if (t.action !== "REVIEW") return false;
   return levelSide(t.predicate, direction) === "UPSIDE";
+}
+
+/**
+ * Is this trigger part of the priced plan, read against the list it sits
+ * in? On a stock we only watch, a review at any price is a wake, not the
+ * plan's target, until there is a buy to reach a target from (QB ruling
+ * on DAV-335, 2026-09-29; the 2026-09-08 design: "if chat says 'look
+ * again under $203', that price is the wake"). VST's "review at $146
+ * instead of the buy" was refused as a half plan five times on 09-28. The
+ * buy, the floor and a sale at a price are always plan levels.
+ */
+export function isPlanLevelOnList(
+  t: Trigger,
+  list: readonly Pick<Trigger, "action">[],
+  direction: string | null,
+): boolean {
+  if (!isPlanLevel(t, direction)) return false;
+  return t.action !== "REVIEW" || list.some((x) => x.action === "ENTER");
 }
 
 // ── Internals ──────────────────────────────────────────────────────────

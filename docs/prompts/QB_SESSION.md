@@ -61,7 +61,7 @@ rebuild follows) and `docs/THESIS_ARCHITECTURE.md`.
 | No new refusals | Judgment goes in the proposal Dave approves or in a visible flag, never in a tool that fails the run. |
 | There is no buy-now option | Buying now is an entry price at or near the current price. A new or edited buy level measures its crossing from the price when it was written, so it isn't dead on a down day. The run that decides to buy can call `place_trade`. |
 | The vendor is the store | Prices, earnings, movers are read live. Only what the system *did* is written down. |
-| FMP is gone; Finnhub is alive | Finnhub serves quotes, statements, earnings and filings on one key at about 60 calls a minute, shared by the trigger check, writers, chat and reviews — the trigger check has first claim, and reviews never spend it during market hours. Movers come from Alpaca; live quotes are moving to Alpaca. Never probe a vendor with a mega-cap. |
+| FMP is gone; Finnhub is alive | Live prices come from Alpaca's consolidated tape (10,000 calls a minute per key; the whole book is one call), with Finnhub's quote as the fallback. Finnhub serves statements, earnings and filings on one key at about 60 calls a minute. On both, the trigger check has first claim — every other caller is refused a quote before it is — and reviews never spend the Finnhub key during market hours. Movers come from Alpaca. Never probe a vendor with a mega-cap. |
 | Every price carries its age | Buys wait on a quote older than 15 minutes; sells don't. A failed or stale source is said in words to the agent and on the row. |
 | Discovery is manual by design | Dave runs it by chat. Never investigate or report the missing weekly run. |
 | No hand data fixes | A wrong row gets a code fix and a regression test. |

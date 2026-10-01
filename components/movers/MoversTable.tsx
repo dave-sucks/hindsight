@@ -208,7 +208,7 @@ export function MoversTable({
 
       <p className="text-xs text-muted-foreground">
         Common stock at $5 and up. 5D / 1M / 6M are measured from the close that many sessions back.
-        Volume is the consolidated tape, about 16 minutes behind
+        Volume is the consolidated tape, to the minute
         {view && !view.hasVolume ? " — unavailable right now" : ""}.
       </p>
     </div>

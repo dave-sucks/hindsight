@@ -29,11 +29,21 @@ jest.mock("@/lib/prisma", () => ({
     account: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
-jest.mock("@/lib/alpaca", () => ({
-  getLatestPrices: jest.fn().mockResolvedValue({}),
-  // P1-39: daily bars for the HELD_THROUGH_FLOOR recent-low fetch.
-  getBars: jest.fn().mockResolvedValue([]),
-}));
+jest.mock("@/lib/alpaca", () => {
+  const getLatestPrices = jest.fn().mockResolvedValue({});
+  return {
+    getLatestPrices,
+    // get_theses reads each price with the time it printed. The cases below
+    // set prices on `getLatestPrices`; this hands them over printed "now".
+    getLatestPricesWithMeta: jest.fn(async (...args: unknown[]) => {
+      const prices = (await getLatestPrices(...args)) as Record<string, number>;
+      const at = new Date().toISOString();
+      return { prices, sources: {}, asOf: Object.fromEntries(Object.keys(prices).map((k) => [k, at])), fetchedAt: at };
+    }),
+    // P1-39: daily bars for the HELD_THROUGH_FLOOR recent-low fetch.
+    getBars: jest.fn().mockResolvedValue([]),
+  };
+});
 jest.mock("@/lib/proposals/pending-entry", () => ({
   getPendingEntryTickers: jest.fn().mockResolvedValue(new Set()),
 }));

@@ -5,6 +5,8 @@
  * run-followup chat (api/chat/run-followup/route.ts) to avoid duplication.
  */
 
+import { mayCall, noteAllowance, type QuoteCaller } from "@/lib/market-data/quote-budget";
+
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
 const API_TIMEOUT_MS = 10_000;
 
@@ -14,10 +16,10 @@ const finnhubCache = new Map<string, { data: unknown; ts: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
 
 // Live quotes get their own (much shorter) TTL and skip the Next.js Data
-// Cache entirely — see `isLiveQuote` below. 30s is short enough that a
-// trigger evaluating a stop is never acting on a materially old price, but
-// long enough to absorb the per-tick burst (the trigger evaluator fans out
-// over up to 200 tickers) without tripping Finnhub's 60/min limit.
+// Cache entirely — see `isLiveQuote` below. Since 2026-09-29 `/quote` is only
+// the fallback behind Alpaca (lib/market-data/live-quote); when it is in use,
+// 30s absorbs the burst of a whole book falling back at once without
+// tripping Finnhub's 60/min limit.
 const QUOTE_CACHE_TTL = 30 * 1000;
 
 /**
@@ -68,6 +70,8 @@ export async function finnhub(
   path: string,
   retries = 2,
   stats: ApiCallStats = defaultStats,
+  /** Who is asking for a `/quote`. Everyone but the trigger check yields when the minute runs low. */
+  caller: QuoteCaller = "other",
 ): Promise<{ data: unknown; error?: string }> {
   // Check cache first. Live quotes use the short TTL; everything else keeps
   // the 5-minute one.
@@ -84,6 +88,11 @@ export async function finnhub(
 
   await finnhubThrottle();
   try {
+    // Asked here, after the wait for a slot, so a burst is judged against
+    // what the replies ahead of it reported (lib/market-data/quote-budget).
+    if (liveQuote && !mayCall("finnhub", caller)) {
+      return { data: null, error: `Finnhub ${endpoint} held for the trigger check (rate limit reserve)` };
+    }
     let t0 = Date.now();
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -96,6 +105,9 @@ export async function finnhub(
           signal: AbortSignal.timeout(API_TIMEOUT_MS),
         });
         const elapsed = Date.now() - t0;
+        // What the key has left this minute — the quote fallback yields to
+        // the trigger check on it (lib/market-data/quote-budget).
+        noteAllowance("finnhub", res.headers);
         if (res.status === 429) {
           if (attempt < retries) {
             console.warn(`[finnhub] 429 on ${endpoint}, retry ${attempt + 1}/${retries} after 1s`);

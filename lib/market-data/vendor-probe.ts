@@ -20,7 +20,9 @@
 
 import { finnhub } from "@/lib/agent/research-helpers";
 import { getAlpacaMovers } from "@/lib/market-data/alpaca-screener";
-import { getBars, type AlpacaCredentials } from "@/lib/alpaca";
+import { getBars, getSnapshots, type AlpacaCredentials } from "@/lib/alpaca";
+import { quoteFromSnapshot } from "@/lib/market-data/live-quote";
+import { getIntradayCandles } from "@/lib/actions/finnhub.actions";
 
 export type ProbeStatus = "ok" | "empty" | "error";
 
@@ -37,9 +39,11 @@ export interface ProbeDeps {
   finnhub: (path: string, retries?: number) => Promise<{ data: unknown; error?: string }>;
   getAlpacaMovers: typeof getAlpacaMovers;
   getBars: typeof getBars;
+  getSnapshots: typeof getSnapshots;
+  getIntradayCandles: typeof getIntradayCandles;
 }
 
-const DEFAULT_DEPS: ProbeDeps = { finnhub, getAlpacaMovers, getBars };
+const DEFAULT_DEPS: ProbeDeps = { finnhub, getAlpacaMovers, getBars, getSnapshots, getIntradayCandles };
 
 /** The mid-cap used when the book has nothing held. */
 export const DEFAULT_PROBE_TICKER = "SMMT";
@@ -96,8 +100,10 @@ export async function runVendorProbe(
 
   const finnhubProbes = async (): Promise<ProbeResult[]> => {
     const out: ProbeResult[] = [];
+    // The fallback behind Alpaca's live price since 2026-09-29 — still probed,
+    // because a fallback nobody checks is not one.
     out.push(
-      await timed("Finnhub quote", async () =>
+      await timed("Finnhub quote (fallback)", async () =>
         classify(await d.finnhub(`/quote?symbol=${T}`, 1), (data) => {
           const c = (data as { c?: number }).c;
           return { ok: typeof c === "number" && c > 0, detail: c ? `$${c}` : "no price" };
@@ -150,15 +156,34 @@ export async function runVendorProbe(
   };
 
   const alpacaProbes = async (): Promise<ProbeResult[]> => {
+    // The live price every reader gets: a price, the time it printed, and a
+    // prior close. A reply missing any of the three is empty — the trigger
+    // check cannot tell a crossing without the prior close.
+    const quote = await timed("Alpaca live quote", async () => {
+      const snap = (await d.getSnapshots([T], { creds: opts.creds }))[T];
+      const q = quoteFromSnapshot(snap, now);
+      if (!q) return { status: "empty" as const, detail: "no price on the tape" };
+      if (q.pc == null) return { status: "empty" as const, detail: `$${q.c}, no prior close` };
+      return { status: "ok" as const, detail: `$${q.c}, prior close $${q.pc}, printed ${new Date(q.t * 1000).toISOString()}` };
+    });
     const bars = await timed("Alpaca daily bars", async () => {
       const rows = await d.getBars(
         T,
-        { start: tenBack, end: today, timeframe: "1Day", limit: 5, feed: "iex" },
+        { start: tenBack, end: today, timeframe: "1Day", limit: 5 },
         opts.creds,
       );
       return rows.length > 0
         ? { status: "ok" as const, detail: `${rows.length} bars, last close $${rows[rows.length - 1].close}` }
         : { status: "empty" as const, detail: "no bars in 10 days" };
+    });
+    // The 1D chart's own read: one-minute bars on the consolidated tape with
+    // no end bound — the call the old plan refused ("subscription does not
+    // permit querying recent SIP data"). At 06:25 it is the prior session.
+    const minutes = await timed("Alpaca intraday bars", async () => {
+      const rows = await d.getIntradayCandles(T);
+      return rows.length > 0
+        ? { status: "ok" as const, detail: `${rows.length} one-minute bars, last ${String(rows[rows.length - 1].date).slice(11, 16)}Z` }
+        : { status: "empty" as const, detail: "no one-minute bars" };
     });
     const screener = await timed("Alpaca screener", async () => {
       const res = await d.getAlpacaMovers("active", { top: 5, creds: opts.creds });
@@ -168,7 +193,7 @@ export async function runVendorProbe(
         ? { status: "ok" as const, detail: `${n} most-active names` }
         : { status: "empty" as const, detail: "empty movers list" };
     });
-    return [bars, screener];
+    return [quote, bars, minutes, screener];
   };
 
   const [fh, al] = await Promise.all([finnhubProbes(), alpacaProbes()]);

@@ -294,7 +294,7 @@ like. "Trigger vocabulary" notes what Hindsight can express today.
   rule).
 - **Entry trigger.** A technical entry inside the window (D1 or D5 shape),
   never the day before the event. Vocabulary: a catalyst-window predicate
-  (`DAYS_TO_CATALYST 14..70` off `catalystDate`, or `EARNINGS_WITHIN` when
+  (`DAYS_TO_CATALYST 21..70` off `catalystDate`, or `EARNINGS_WITHIN` when
   the catalyst is the print) composed with the technical entry.
 - **Stop.** Structural but advisory: gaps skip stops. **Size is the stop.**
 - **Size.** If a −50% gap would cost more than 0.5% of equity, the position
@@ -401,7 +401,7 @@ derived. A plan has six numbers. Each has a rule.
 | PEAD | Above the gap-day low, days 1–3 | — | Now | Surprise ≥ 5%, revenue beat, guide up |
 | Pullback | Prior-day high after touching the 20/50-day | — | Close | Pullback on light volume; RS intact |
 | Compounder | Whichever of the above comes first | — | Close | Thesis intact |
-| Pre-catalyst | A technical entry inside the 4–10 week window | — | Close | Never day-before |
+| Pre-catalyst | A technical entry inside the window, 70 to 21 days before the event | — | Close | Never day-before |
 
 **Buy now** is legal whenever the condition is already true and the price
 is inside the chase limit. It is the normal case for PEAD and for a

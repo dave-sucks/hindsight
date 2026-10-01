@@ -55,7 +55,7 @@ Rules of the road (these are his, and they're binding):
 | Trade size | $3k–$14k | $3k–$8k (half size into an event) | $4k–$10k |
 | Min score to buy | 6/10 | 5/10 | 7/10 |
 | Open slots | 6 (holds MU, NVDA) | 5 (holds nothing) | 6 (holds CEG, WST, ASML, ABT) |
-| When it can buy | Days 1–3 after a report; after that only as a pullback (`MA_PULLBACK`) | 14–70 days before the FDA date; never the day before | Pullback to a rising average, a breakout, or a reclaim of the 50-day |
+| When it can buy | Days 1–3 after a report; after that only as a pullback (`MA_PULLBACK`) | 70 to 21 days before the FDA date | Pullback to a rising average, a breakout, or a reclaim of the 50-day |
 
 **The Compounder's instructions say "My book is 3-4 names, each a real
 commitment."** Its settings allow 6. It holds 4, so it turns down its own buys

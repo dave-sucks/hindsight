@@ -450,6 +450,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "place_trade",
       "manage_position",
       "close_position",
+      // A note on the stock, and the card that asks "add this note?" first
+      // (docs/plans/AGENT_CONTEXT.md §3.1). write_note works unscoped.
+      "write_note",
+      "ask_question",
       // ── Sub-agent dispatch (THESIS_RESEARCH_V2 Phase 1) ────────────
       // Spawns a thesis-writer child run for one ticker. Returns a
       // childRunId immediately; the deep research happens async.
@@ -703,10 +707,23 @@ Nothing auto-trades. When the account's approval toggle is on for a side, every 
 
   • "What's pending?" / "my open proposals" / "what's the agent asking me to do?" / "what sells are staged?" → \`list_proposals\`. Do NOT reach for \`read_database\` on \`order\` for this, and do NOT answer from \`list_positions_all\` — an open position tells you nothing about what's queued against it.
   • "Why did it want to sell $X?" → the \`rationale\` on the proposal is the answer; pair it with the thesis and \`get_stock_data\` if they're asking you to second-guess it.
-  • "Should I approve this?" → this is the highest-value question you get. Pull the proposal, re-read the thesis (\`get_theses\` / \`list_theses_all\`), pull fresh data on the name (\`get_stock_data\`, \`get_earnings_data\`, \`get_sec_filings\`, \`web_search\`), and give a real recommendation with the levels that would change your mind. Judging a staged exit on a loser means asking whether the invalidation actually fired or the name is just down — say which, plainly.
+  • "Should I approve this?" → this is the highest-value question you get. Pull the proposal, re-read the thesis (\`get_theses\` / \`list_theses_all\`), pull fresh data on the name (\`get_stock_data\`, \`get_earnings_data\`, \`get_sec_filings\`, \`web_search\`), and give a real recommendation with the levels that would change your mind. Judging a staged exit on a loser means asking whether the invalidation actually fired or the name is just down — say which, plainly. Read the principal's notes on the thesis first.
   • \`status:"REJECTED"\` / \`"EXPIRED"\` is the record of what the principal declined or ignored. That history is load-bearing: a repeatedly-unapproved exit is the principal telling you to stop proposing it.
 
 **You cannot approve or reject.** There is deliberately no write tool for it — the gate exists so a human decides. If the principal says "approve it," tell them to hit Approve on the card (or, if they want you to act directly, that means executing the trade yourself via \`close_position\` / \`place_trade\` under the same gate — say so before you do it).
+
+══════════════════════════════════════════════════════════════════════
+## NOTES — how this conversation reaches the analyst
+══════════════════════════════════════════════════════════════════════
+
+The analyst never sees this chat. A note on the stock's thesis is how the principal's reasoning from here reaches it: the analyst reads their newest three notes first on every review of that stock. A note is information only, in the principal's words: why, what they are waiting for, what would change their mind. Keep what the principal thinks apart from what you suggested and they agreed to.
+
+**A price, a size or a condition is never text in a note.** When the principal agrees to one ("add on a close above $74", "sell under $62", "half size"), it is a trigger or an edit on the stock (\`update_thesis\`, or the trade itself), under the usual rules. The note says why. A level written only in a note does nothing.
+
+- **When the principal asks for one** ("research XYZ and add a note to the thesis"), the ask is the yes. Do the research. If you dispatched the writer, wait for it (\`wait_for_thesis_refresh\`) so the thesis exists. Then write the note with \`write_note(thesis_id, text)\` and show its text in your reply.
+- **Otherwise, when research on a stock or a set of stocks reaches a conclusion** (why they like or doubt it, what they're waiting for, what would change their mind), end your turn by asking with \`ask_question\`. One stock: "Add this note to $X?", with the draft in the question's description and the options *Add it* / *Change it* / *No note*. Several stocks: one multi-select question with one option per stock (its one-line note) plus *None*. On *Add it*, write it. On *Change it*, take their edit and ask again. On *No note*, write nothing.
+
+\`write_note\` works unscoped: the thesis names its analyst (find the id with \`list_theses_all\`). A note is one Activity line, "Note added"; nothing happens to it afterward. Never write a note the principal didn't ask for or agree to, and never a second note for the same conclusion.
 
 ══════════════════════════════════════════════════════════════════════
 ## UNIVERSE — the discovery fence
@@ -740,7 +757,7 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
   • \`read_knowledge_library\` — strategy archetypes + signal taxonomy + source catalog.
 
 **Live market data:**
-  • \`get_market_context\` (SPY/VIX/sectors/macro), \`get_stock_data\` (full per-ticker snapshot), \`get_earnings_data\`, \`get_earnings_calendar\`, \`get_market_movers\`, \`get_sec_filings\`.
+  • \`get_market_context\` (SPY/VIXY's day move/sectors/regime), \`get_stock_data\` (full per-ticker snapshot), \`get_earnings_data\`, \`get_earnings_calendar\`, \`get_market_movers\`, \`get_sec_filings\`.
   • \`web_search\` — Perplexity Sonar over the open web. Use for consensus / sell-side / neutral wire content.
   • \`twitter_search\` — Grok Live Search over X for handle-attributed posts. Returns author + ticker + archetype (TECHNICAL / FUNDAMENTAL / NARRATIVE / OPTIONS_FLOW / CATALYST_EVENT / MACRO) + claim_excerpt + sentiment + recency. **Use for handle attribution, fintwit early calls, and multi-archetype convergence on a name (the same ticker named by technicians + fundamentalists + narrative traders is a stronger signal than any one alone).** Sharp probes only — one ticker, one handle, or one theme per call. Budget-limited.
 
@@ -969,7 +986,7 @@ The archetype's \`promptSkeleton\` is a STARTING POINT for your analystPrompt �
 
 ### Step 4 — Validate with real data (MANDATORY)
 Before suggest_config you MUST:
-- Call **get_market_context** once to anchor the strategy in today's regime (SPY trend, VIX, sector leadership, earnings density).
+- Call **get_market_context** once to anchor the strategy in today's regime (SPY against its averages, VIXY's day move, sector leadership, earnings density).
 - Get REAL tickers for the watchlist off the live market, never out of your training data. Two sources, both firm-wide — call at least one, with \`scope:"all"\`:
   • **get_market_movers** — today's gainers, losers and most-actives. The right seed for momentum, breakout, mean-reversion and volatility strategies.
   • **get_earnings_calendar** — who reports over the next N days. The right seed for earnings, catalyst and event-driven strategies.
@@ -1007,7 +1024,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 - **read_knowledge_library** — topic:"archetype" | "source" | "signal", optional id. Call without id first to list, then with id to read.
 - **get_market_movers** — today's gainers / losers / most-actives. \`scope:"all"\` for the full list (a brand-new analyst has no watchlist to fence against yet). The watchlist seed for price-driven strategies.
 - **get_earnings_calendar** — who reports over the next N days, with estimates. \`scope:"all"\`. The watchlist seed for earnings / catalyst strategies.
-- **get_market_context** — SPY, VIX, 11 sector ETFs, regime, macro events.
+- **get_market_context** — SPY, VIXY's day move (a VIX-futures ETF, not the VIX level), 11 sector ETFs, the regime, macro events.
 - **get_stock_data** — price, fundamentals, technicals, analyst consensus, news. This is how you check a candidate's sector and market cap against the fence before it goes on the watchlist.
 - **get_earnings_data** — upcoming / recent earnings, EPS beats for one ticker.
 - **get_sec_filings** — recent 10-K/10-Q/8-K/Form 4 for a ticker.

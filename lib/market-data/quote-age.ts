@@ -1,8 +1,9 @@
 /**
  * How old is this price — decided in one place for buys, chat and research.
  *
- * Every Finnhub quote carries `t`, the time of its last print. Two things go
- * wrong without reading it:
+ * Every quote carries `t`, the time its price printed — Alpaca's trade
+ * timestamp, or Finnhub's when the fallback served it
+ * (lib/market-data/live-quote). Two things go wrong without reading it:
  *   - at 09:30 the quote still reports Friday's close as "now" (ETN,
  *     2026-09-14: a buy fired on a price the stock never traded that day);
  *   - when the quote fails (the shared key's per-minute limit), research

@@ -13,6 +13,7 @@
 import AlpacaAPI from "@alpacahq/alpaca-trade-api";
 import type { FundingEvent } from "@/lib/portfolio/contributions";
 import type { DailyBar } from "@/lib/market-data/price-structure";
+import { noteAllowance, withAllowance, type QuoteCaller } from "@/lib/market-data/quote-budget";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,33 @@ export interface LimitOrderParams extends OrderParams {
 const PAPER_BASE_URL = "https://paper-api.alpaca.markets";
 const LIVE_BASE_URL = "https://api.alpaca.markets";
 
+/**
+ * The consolidated tape (SIP), real time — every market-data call names it.
+ *
+ * The account took Algo Trader Plus on 2026-09-25. Probed 2026-09-29 with
+ * SMMT, SRRK and IOT: the paper keys, the live keys and the env keys all get
+ * SIP, at 10,000 calls a minute each. So market data is signed with whatever
+ * keys the caller already holds — each environment keeps its own, and
+ * trading keys are untouched. IEX is one exchange: ~5% of the volume, a last
+ * print 50–90 seconds old on a mid-cap, and a quote nobody could trade
+ * (SRRK $41.54 / $54.51 against $47.96 / $48.10 on the tape). It survives
+ * only as getDailyBars' fallback.
+ */
+export const MARKET_DATA_FEED = "sip";
+const MARKET_DATA_URL = "https://data.alpaca.markets/v2/stocks";
+
+/**
+ * Bars are split-adjusted, so a stock that split inside the window reads as
+ * one price series instead of a cliff. Alpaca's default is raw: NOW (5-for-1,
+ * 2025-12-18) carried a 52-week high of $973.63 against a $135 price, CRWD
+ * (4-for-1, 2026-07-02) $786 against ~$200 — every number built from the
+ * year of bars was wrong for both, the chart read as broken, writers would
+ * not price them, and the trigger kinds that read the 52-week high and the
+ * long averages read false (DAV-333). The page charts and the movers list
+ * already asked for this; the shared bar pulls below did not.
+ */
+export const BAR_ADJUSTMENT = "split";
+
 function createClient(creds?: AlpacaCredentials): AlpacaAPI {
   const baseUrl =
     creds?.baseUrl ?? process.env.ALPACA_BASE_URL ?? PAPER_BASE_URL;
@@ -115,6 +143,7 @@ function createClient(creds?: AlpacaCredentials): AlpacaAPI {
     secretKey: creds?.secretKey ?? process.env.ALPACA_API_SECRET!,
     baseUrl,
     paper,
+    feed: MARKET_DATA_FEED,
   });
 }
 
@@ -297,15 +326,114 @@ function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 // ─── Market data ──────────────────────────────────────────────────────────────
 
 /**
- * Returns the latest trade price for a US equity symbol.
- * Uses Alpaca Data API v2 — real-time during market hours, last close after.
+ * One GET against Alpaca's market data: the feed named, never the Next.js
+ * Data Cache (CLAUDE.md recurring-bugs rule), and the caller's claim on the
+ * minute's allowance checked first — the trigger check always goes through,
+ * everyone else yields the reserve (lib/market-data/quote-budget).
  */
+async function marketDataGet<T>(
+  path: string,
+  params: Record<string, string>,
+  opts: { creds?: AlpacaCredentials; caller?: QuoteCaller; label: string },
+): Promise<T> {
+  const keyId = opts.creds?.keyId || process.env.ALPACA_API_KEY;
+  const secretKey = opts.creds?.secretKey || process.env.ALPACA_API_SECRET;
+  if (!keyId || !secretKey) throw new Error(`Alpaca ${opts.label}: no credentials`);
+  const bucket = `alpaca:${keyId}`;
+  const url = `${MARKET_DATA_URL}${path}?${new URLSearchParams({ ...params, feed: MARKET_DATA_FEED })}`;
+  return withAllowance(bucket, opts.caller ?? "other", async () => {
+    const res = await fetch(url, {
+      headers: { "APCA-API-KEY-ID": keyId, "APCA-API-SECRET-KEY": secretKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(ALPACA_TIMEOUT_MS),
+    });
+    noteAllowance(bucket, res.headers);
+    if (!res.ok) {
+      const said = await res.text().catch(() => "");
+      throw new Error(
+        `Alpaca ${opts.label} ${res.status}${res.status === 429 ? " (rate limited)" : ""}${said ? `: ${said.slice(0, 200)}` : ""}`,
+      );
+    }
+    return (await res.json()) as T;
+  });
+}
+
+export interface AlpacaSnapshotBar {
+  /** Daily bars are stamped at midnight ET — the first ten characters are the session date. */
+  t?: string;
+  o?: number;
+  h?: number;
+  l?: number;
+  c?: number;
+  v?: number;
+}
+
+export interface AlpacaSnapshot {
+  latestTrade?: { p?: number; t?: string };
+  dailyBar?: AlpacaSnapshotBar;
+  prevDailyBar?: AlpacaSnapshotBar;
+}
+
+/**
+ * Latest trade, the latest daily bar and the one before it, for many symbols
+ * in one call — the whole book (44 names) came back priced in 20 ms on
+ * 2026-09-29. This is the raw vendor reply; lib/market-data/live-quote turns
+ * it into a price with its age. Throws when the vendor refuses; a symbol it
+ * does not know is simply absent.
+ *
+ * One malformed symbol refuses the whole request (400 "invalid symbol: ^VIX"
+ * — an index, a crypto pair, BRK-B for BRK.B). That symbol is dropped and the
+ * rest asked again, so one bad ticker can't leave the book unpriced.
+ */
+export async function getSnapshots(
+  symbols: string[],
+  opts: { creds?: AlpacaCredentials; caller?: QuoteCaller } = {},
+): Promise<Record<string, AlpacaSnapshot>> {
+  const out: Record<string, AlpacaSnapshot> = {};
+  for (let i = 0; i < symbols.length; i += 100) {
+    let chunk = symbols.slice(i, i + 100);
+    while (chunk.length > 0) {
+      try {
+        const body = await marketDataGet<Record<string, AlpacaSnapshot>>(
+          "/snapshots",
+          { symbols: chunk.join(",") },
+          { ...opts, label: `getSnapshots(${chunk.length} symbols)` },
+        );
+        for (const [symbol, snap] of Object.entries(body ?? {})) out[symbol.toUpperCase()] = snap;
+        break;
+      } catch (err) {
+        const bad = /invalid symbol: ([^\s"}]+)/.exec(err instanceof Error ? err.message : "")?.[1];
+        if (!bad || !chunk.includes(bad)) throw err;
+        console.warn(`[alpaca] getSnapshots: ${bad} is not a symbol Alpaca prices — asked again without it`);
+        chunk = chunk.filter((s) => s !== bad);
+      }
+    }
+  }
+  return out;
+}
+
+/** The latest trade on the tape for each symbol — any hour, pre-market and after-hours prints included. */
+async function getLatestTrades(
+  symbols: string[],
+  creds?: AlpacaCredentials,
+): Promise<Record<string, { p?: number; t?: string }>> {
+  const out: Record<string, { p?: number; t?: string }> = {};
+  for (let i = 0; i < symbols.length; i += 100) {
+    const chunk = symbols.slice(i, i + 100);
+    const body = await marketDataGet<{ trades?: Record<string, { p?: number; t?: string }> }>(
+      "/trades/latest",
+      { symbols: chunk.join(",") },
+      { creds, label: `getLatestPrices(${chunk.length} symbols)` },
+    );
+    Object.assign(out, body.trades ?? {});
+  }
+  return out;
+}
+
+/** Returns the latest trade price for a US equity symbol. */
 export async function getLatestPrice(symbol: string, creds?: AlpacaCredentials): Promise<number> {
-  const trade = await withTimeout(getClient(creds).getLatestTrade(symbol), `getLatestPrice(${symbol})`);
-  // SDK v3 returns PascalCase fields: { Price, Size, Timestamp, ... }
-  const t = trade as { Price?: number; p?: number };
-  const price = t.Price ?? t.p;
-  if (price === undefined) {
+  const price = (await getLatestTrades([symbol.toUpperCase()], creds))[symbol.toUpperCase()]?.p;
+  if (typeof price !== "number" || !(price > 0)) {
     throw new Error(`No price available for ${symbol}`);
   }
   return price;
@@ -314,18 +442,14 @@ export async function getLatestPrice(symbol: string, creds?: AlpacaCredentials):
 /**
  * Returns latest prices for multiple symbols in one call.
  *
- * Resilient design (free Alpaca plans use the IEX feed which has very spotty
- * coverage outside RTH and for many tickers):
- *  1. Try Alpaca `getLatestTrades` — handles Map / object / array return
- *     shapes from SDK v3 and tries multiple price field names.
- *  2. For any symbol that didn't get a price, fall back to Finnhub `/quote`
- *     in parallel (free tier covers ~all US equities).
- *  3. For any symbol *still* missing, fall back to single-symbol Alpaca
- *     `getLatestTrade` (uses a different SDK code path that we know works).
- *  4. Anything still missing is left unset — caller must handle.
+ *  1. Alpaca's latest trades for the whole list, one request.
+ *  2. For any symbol that didn't get a price, `getStockQuote` — a different
+ *     Alpaca endpoint first, then Finnhub `/quote`.
+ *  3. Anything still missing is left unset — caller must handle.
  *
- * Returns a `PriceLookup` containing the price map plus per-symbol source
- * metadata so the UI can show "live" vs "stale" indicators.
+ * Returns a `PriceLookup`: the price map, where each price came from, and
+ * when it printed (`asOf`) so a caller can say how old it is
+ * (lib/market-data/quote-age).
  */
 
 export type PriceSource = "alpaca" | "finnhub" | "missing";
@@ -333,17 +457,9 @@ export type PriceSource = "alpaca" | "finnhub" | "missing";
 export interface PriceLookup {
   prices: Record<string, number>;
   sources: Record<string, PriceSource>;
+  /** When each price printed (ISO). Absent for a symbol with no price. */
+  asOf: Record<string, string>;
   fetchedAt: string; // ISO timestamp
-}
-
-function extractPrice(trade: unknown): number | undefined {
-  if (trade == null || typeof trade !== "object") return undefined;
-  const t = trade as Record<string, unknown>;
-  const candidates = [t.Price, t.price, t.p, t.tp, t.tradePrice, t.ClosePrice, t.c];
-  for (const v of candidates) {
-    if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
-  }
-  return undefined;
 }
 
 export async function getLatestPrices(
@@ -361,55 +477,32 @@ export async function getLatestPricesWithMeta(
 ): Promise<PriceLookup> {
   const result: Record<string, number> = {};
   const sources: Record<string, PriceSource> = {};
+  const asOf: Record<string, string> = {};
   const fetchedAt = new Date().toISOString();
 
   if (symbols.length === 0) {
-    return { prices: result, sources, fetchedAt };
+    return { prices: result, sources, asOf, fetchedAt };
   }
 
-  // ── 1. Alpaca batch trades (works on free IEX feed for liquid US equities) ──
+  // ── 1. Alpaca latest trades, the whole list ────────────────────────────────
   try {
-    const trades = await withTimeout(
-      getClient(creds).getLatestTrades(symbols),
-      `getLatestPrices(${symbols.length} symbols)`,
-    );
-
-    if (trades instanceof Map) {
-      trades.forEach((trade, symbol) => {
-        const price = extractPrice(trade);
-        if (price !== undefined) {
-          result[symbol] = price;
-          sources[symbol] = "alpaca";
-        }
-      });
-    } else if (Array.isArray(trades)) {
-      for (const entry of trades as Array<{ Symbol?: string; symbol?: string; S?: string } & Record<string, unknown>>) {
-        const sym = entry.Symbol ?? entry.symbol ?? entry.S;
-        if (typeof sym !== "string") continue;
-        const price = extractPrice(entry);
-        if (price !== undefined) {
-          result[sym] = price;
-          sources[sym] = "alpaca";
-        }
-      }
-    } else if (trades && typeof trades === "object") {
-      for (const [sym, trade] of Object.entries(trades as Record<string, unknown>)) {
-        const price = extractPrice(trade);
-        if (price !== undefined) {
-          result[sym] = price;
-          sources[sym] = "alpaca";
-        }
+    const trades = await getLatestTrades(symbols, creds);
+    for (const [symbol, trade] of Object.entries(trades)) {
+      if (typeof trade?.p === "number" && Number.isFinite(trade.p) && trade.p > 0) {
+        result[symbol] = trade.p;
+        sources[symbol] = "alpaca";
+        if (trade.t) asOf[symbol] = trade.t;
       }
     }
   } catch (err) {
     console.warn(
-      `[alpaca] getLatestTrades batch failed (${symbols.length} symbols), falling back to Finnhub: ${
+      `[alpaca] latest trades failed (${symbols.length} symbols), falling back to getStockQuote: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
   }
 
-  // ── 2. Finnhub fallback for anything Alpaca missed ─────────────────────────
+  // ── 2. getStockQuote for anything the batch missed ─────────────────────────
   const missing = symbols.filter((s) => result[s] === undefined);
   if (missing.length > 0) {
     try {
@@ -424,28 +517,13 @@ export async function getLatestPricesWithMeta(
         if (typeof c === "number" && Number.isFinite(c) && c > 0) {
           result[sym] = c;
           sources[sym] = "finnhub";
+          if (typeof quote?.t === "number" && quote.t > 0) asOf[sym] = new Date(quote.t * 1000).toISOString();
         }
       }
     } catch (err) {
       console.warn(
-        `[alpaca] Finnhub fallback failed: ${err instanceof Error ? err.message : String(err)}`,
+        `[alpaca] getStockQuote fallback failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-    }
-  }
-
-  // ── 3. Single-symbol Alpaca for anything still missing ────────────────────
-  const stillMissing = symbols.filter((s) => result[s] === undefined);
-  if (stillMissing.length > 0) {
-    const single = await Promise.allSettled(
-      stillMissing.map(async (sym) => ({ sym, price: await getLatestPrice(sym, creds) })),
-    );
-    for (const r of single) {
-      if (r.status !== "fulfilled") continue;
-      const { sym, price } = r.value;
-      if (Number.isFinite(price) && price > 0) {
-        result[sym] = price;
-        sources[sym] = "alpaca";
-      }
     }
   }
 
@@ -463,7 +541,7 @@ export async function getLatestPricesWithMeta(
     );
   }
 
-  return { prices: result, sources, fetchedAt };
+  return { prices: result, sources, asOf, fetchedAt };
 }
 
 // ─── Portfolio history ────────────────────────────────────────────────────────
@@ -616,19 +694,11 @@ export async function getFundingActivities(
 // ─── Historical bars ─────────────────────────────────────────────────────────
 
 /**
- * Returns daily bars for a symbol using Alpaca Data API v2.
- *
- * Promoted from "fallback for Finnhub/FMP" to "primary candle source"
- * 2026-05-19: Finnhub `/stock/candle` returns 403 on the basic plan
- * (paid tier only) and FMP `/historical-price-full` is fully deprecated
- * since 2025-08-31 ("Legacy endpoint, no longer supported"). Without
- * `feed: "iex"`, Alpaca defaults to the SIP feed which requires a paid
- * market-data subscription — silently returning zero bars on the free
- * plan. The whole `get_stock_data.technicals` block was null on 128/128
- * tactical runs and 10/10 morning runs in the 14d window ending
- * 2026-05-19 because of this default. IEX is the right feed for free-plan
- * paper accounts and is consistent with how Alpaca's own tutorials
- * recommend defaulting for non-paid users.
+ * Returns daily bars for a symbol using Alpaca Data API v2 — the primary
+ * candle source since 2026-05-19 (Finnhub `/stock/candle` is paid-only and
+ * FMP is gone). Consolidated (SIP) bars by default; until the plan changed
+ * on 2026-09-25 this had to be IEX, whose volume is a sliver of the tape.
+ * A caller may still name a feed.
  */
 export async function getBars(
   symbol: string,
@@ -644,7 +714,8 @@ export async function getBars(
       end: options.end,
       timeframe: options.timeframe || "1Day",
       limit: options.limit || 90,
-      feed: options.feed ?? "iex",
+      feed: options.feed ?? MARKET_DATA_FEED,
+      adjustment: BAR_ADJUSTMENT,
     });
 
     for await (const bar of barIterator) {
@@ -679,16 +750,20 @@ export async function getBars(
  * A year of COMPLETED daily sessions, full OHLCV, for the chart module
  * (lib/market-data/price-structure.ts, DAV-243).
  *
- * SIP first: our plan serves the consolidated tape for any window that ends
- * 15+ minutes ago, and only SIP volume is real — IEX carries ~2% of it
- * (MSFT 2026-09-01: SIP 21.1M shares, IEX 483k). A volume ratio off IEX is a
- * ratio of a sliver. IEX is the fallback when SIP comes back empty, and the
- * result says which feed it is so a caller never presents IEX volume as the
- * market's.
+ * The consolidated tape (SIP) first — only its volume is real; IEX carries
+ * ~2% of it (MSFT 2026-09-01: SIP 21.1M shares, IEX 483k), so a volume ratio
+ * off IEX is a ratio of a sliver. IEX is the fallback when SIP errors or
+ * comes back empty, and the result says which feed it is so a caller never
+ * presents IEX volume as the market's. Until 2026-09-25 the plan refused
+ * SIP bars newer than 15 minutes, so the window used to end 16 minutes ago;
+ * it ends now.
  *
  * Today's bar is dropped until 4:20 PM ET: before then it is a partial
- * session (and on SIP, 15 minutes stale), and the chart is built from
- * finished days — the live price is passed separately.
+ * session, and the chart is built from finished days — the live price is
+ * passed separately.
+ *
+ * Split-adjusted (BAR_ADJUSTMENT): the year reads as one series for a stock
+ * that split inside it.
  */
 export async function getDailyBars(
   symbol: string,
@@ -715,7 +790,7 @@ export async function getDailyBars(
   const todayFinished = minutesEt >= 16 * 60 + 20;
 
   const pull = async (feed: "sip" | "iex") => {
-    const end = feed === "sip" ? new Date(now.getTime() - 16 * 60_000).toISOString() : now.toISOString();
+    const end = now.toISOString();
     const out: DailyBar[] = [];
     const it = getClient(creds).getBarsV2(symbol, {
       start,
@@ -723,6 +798,7 @@ export async function getDailyBars(
       timeframe: "1Day",
       limit: sessions + 20,
       feed,
+      adjustment: BAR_ADJUSTMENT,
     });
     for await (const bar of it) {
       const b = bar as {
@@ -758,9 +834,10 @@ export async function getDailyBars(
 
 /**
  * Today's session bar for many symbols in one call — consolidated (SIP)
- * volume through ~16 minutes ago, and at 16:20 ET the day's close. Read by
- * the trigger evaluator for VOLUME_RATIO / GAP_UP and by its close pass
- * (DAV-247). Finnhub quotes carry no volume; IEX volume is ~2% of the tape.
+ * volume to the minute, and at 16:20 ET the day's close. Read by the
+ * trigger evaluator for VOLUME_RATIO / GAP_UP and by its close pass
+ * (DAV-247). IEX volume is ~2% of the tape. Until 2026-09-25 the plan
+ * refused SIP bars newer than 15 minutes, so this ended 16 minutes ago.
  *
  * Only a bar dated today (ET) is returned — before the open the "today" bar
  * holds overnight prints and must not be read as the session. Fail-open:
@@ -770,37 +847,26 @@ export async function getTodaySessionBars(
   symbols: string[],
   creds?: AlpacaCredentials,
   now: Date = new Date(),
+  caller: QuoteCaller = "other",
 ): Promise<Record<string, { close: number; high: number; low: number; volume: number }>> {
   const out: Record<string, { close: number; high: number; low: number; volume: number }> = {};
   if (symbols.length === 0) return out;
-  const keyId = creds?.keyId || process.env.ALPACA_API_KEY;
-  const secretKey = creds?.secretKey || process.env.ALPACA_API_SECRET;
-  if (!keyId || !secretKey) return out;
   const todayEt = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(now);
-  const end = new Date(now.getTime() - 16 * 60_000).toISOString();
+  const end = now.toISOString();
   for (let i = 0; i < symbols.length; i += 100) {
     const chunk = symbols.slice(i, i + 100);
     try {
-      const url =
-        `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(chunk.join(","))}` +
-        `&timeframe=1Day&start=${todayEt}&end=${end}&feed=sip&limit=10000`;
-      const body = await withTimeout(
-        fetch(url, {
-          headers: { "APCA-API-KEY-ID": keyId, "APCA-API-SECRET-KEY": secretKey },
-          // Intraday-fresh — never the Data Cache (CLAUDE.md recurring-bugs rule).
-          cache: "no-store",
-        }).then(async (res) => {
-          if (!res.ok) throw new Error(`Alpaca bars ${res.status}`);
-          return res.json() as Promise<{
-            bars?: Record<string, { t: string; c: number; h: number; l: number; v: number }[]>;
-          }>;
-        }),
-        `getTodaySessionBars(${chunk.length} symbols)`,
+      const body = await marketDataGet<{
+        bars?: Record<string, { t: string; c: number; h: number; l: number; v: number }[]>;
+      }>(
+        "/bars",
+        { symbols: chunk.join(","), timeframe: "1Day", start: todayEt, end, limit: "10000" },
+        { creds, caller, label: `getTodaySessionBars(${chunk.length} symbols)` },
       );
       for (const [symbol, rows] of Object.entries(body.bars ?? {})) {
         const today = rows.find((r) => String(r.t).slice(0, 10) === todayEt);
@@ -839,40 +905,10 @@ export async function getDailyRangePcts(
 ): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   if (symbols.length === 0) return out;
-  const keyId = creds?.keyId || process.env.ALPACA_API_KEY;
-  const secretKey = creds?.secretKey || process.env.ALPACA_API_SECRET;
-  if (!keyId || !secretKey) return out;
 
   try {
-    const url = `https://data.alpaca.markets/v2/stocks/snapshots?symbols=${encodeURIComponent(symbols.join(","))}&feed=iex`;
-    const res = await withTimeout(
-      fetch(url, {
-        headers: {
-          "APCA-API-KEY-ID": keyId,
-          "APCA-API-SECRET-KEY": secretKey,
-        },
-        // Intraday-fresh input to a live check — never the Data Cache
-        // (CLAUDE.md recurring-bugs rule).
-        cache: "no-store",
-      }).then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`Alpaca snapshots ${res.status}`);
-        }
-        return res.json() as Promise<
-          Record<
-            string,
-            {
-              dailyBar?: { h?: number; l?: number; c?: number };
-              prevDailyBar?: { h?: number; l?: number; c?: number };
-              latestTrade?: { p?: number };
-            }
-          >
-        >;
-      }),
-      `getDailyRangePcts(${symbols.length} symbols)`,
-    );
-
-    for (const [symbol, snap] of Object.entries(res ?? {})) {
+    const res = await getSnapshots(symbols, { creds });
+    for (const [symbol, snap] of Object.entries(res)) {
       const price =
         snap?.latestTrade?.p ?? snap?.dailyBar?.c ?? snap?.prevDailyBar?.c;
       if (typeof price !== "number" || price <= 0) continue;

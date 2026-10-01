@@ -16,7 +16,8 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { loadAccountRisk } from "@/lib/agent/load-account-risk";
 import { heatLine } from "@/lib/agent/portfolio-risk";
 import { prisma } from "@/lib/prisma";
-import { getLatestPrices, getAccount } from "@/lib/alpaca";
+import { getLatestPricesWithMeta, getAccount, type PriceLookup } from "@/lib/alpaca";
+import { readPrice } from "@/lib/market-data/quote-age";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import {
   getThesisComposite,
@@ -40,6 +41,10 @@ interface PositionDetail {
   trailPct: number | null;
   peakPrice: number | null;
   distanceFromPeak: number | null;
+  /** When `currentPrice` printed (ISO). Null when there was no live price. */
+  priceAsOf: string | null;
+  /** Plain words when `currentPrice` is missing or old; absent when it is live. */
+  priceWarning?: string;
   thesis: { id: string; reasoning: string; confidence: number; signalTypes: string[]; status: string } | null;
 }
 
@@ -129,10 +134,11 @@ export const getPortfolioContext = defineTool({
 
     // Fetch live prices
     const symbols = openPositions.map((p) => p.symbol);
-    let prices: Record<string, number> = {};
+    let lookup: PriceLookup | null = null;
     try {
-      prices = await getLatestPrices(symbols, creds);
-    } catch { /* use avgCost as fallback */ }
+      lookup = await getLatestPricesWithMeta(symbols, creds);
+    } catch { /* every position is then shown at cost, and says so */ }
+    const prices = lookup?.prices ?? {};
 
     // Load theses if requested
     const thesisMap = new Map<string, { id: string; reasoning: string; confidence: number; signalTypes: string[]; status: string } | null>();
@@ -175,6 +181,19 @@ export const getPortfolioContext = defineTool({
     const now = Date.now();
     const positionDetails: PositionDetail[] = openPositions.map((pos) => {
       const currentPrice = prices[pos.symbol] ?? pos.avgCost;
+      // How old the price is, in words when it isn't live (quote-age). A
+      // missing price used to show the position at cost, flat, with nothing
+      // said.
+      const at = lookup?.asOf[pos.symbol];
+      const reading = readPrice({
+        ticker: pos.symbol,
+        quote: prices[pos.symbol] != null ? { c: prices[pos.symbol], t: at ? new Date(at).getTime() / 1000 : undefined } : null,
+        now: new Date(now),
+      });
+      const priceWarning =
+        reading.price == null
+          ? `Live price for $${pos.symbol} unavailable — shown at its cost $${pos.avgCost.toFixed(2)}; its P&L and distance from peak are not measured.`
+          : reading.warning;
       const isLong = pos.direction === "LONG";
       const unrealizedPnl = isLong
         ? (currentPrice - pos.avgCost) * pos.quantity
@@ -211,6 +230,8 @@ export const getPortfolioContext = defineTool({
         trailPct: pos.trailingStopPct ?? null,
         peakPrice: pos.peakPrice ?? null,
         distanceFromPeak: distanceFromPeak !== null ? Math.round(distanceFromPeak * 100) / 100 : null,
+        priceAsOf: reading.asOf,
+        ...(priceWarning ? { priceWarning } : {}),
         thesis: thesisMap.get(pos.id) ?? null,
       };
     });
@@ -236,7 +257,7 @@ export const getPortfolioContext = defineTool({
     const summaryLines = positionDetails.map((p) => {
       const pnlSign = p.unrealizedPnlPct >= 0 ? "+" : "";
       const peakStr = p.distanceFromPeak !== null ? ` | ${p.distanceFromPeak >= 0 ? "+" : ""}${p.distanceFromPeak}% from peak` : "";
-      return `${p.symbol} ${p.direction} ${p.qty}sh @ $${p.avgCost.toFixed(2)} | now $${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.daysHeld}d held${peakStr}`;
+      return `${p.priceWarning ? `⚠ ${p.priceWarning} ` : ""}${p.symbol} ${p.direction} ${p.qty}sh @ $${p.avgCost.toFixed(2)} | now $${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.daysHeld}d held${peakStr}`;
     });
 
     // Ticker rows for UI rendering — portfolio data, not stock data
@@ -246,7 +267,7 @@ export const getPortfolioContext = defineTool({
       return {
         ticker: p.symbol,
         tag: p.direction,
-        summary: `$${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.qty}sh @ $${p.avgCost.toFixed(2)} | ${p.daysHeld}d held${peakStr}`,
+        summary: `${p.priceWarning ? "⚠ Price not live · " : ""}$${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.qty}sh @ $${p.avgCost.toFixed(2)} | ${p.daysHeld}d held${peakStr}`,
       };
     });
 
@@ -263,6 +284,7 @@ export const getPortfolioContext = defineTool({
 
     return {
       summary:
+        positionDetails.filter((p) => p.priceWarning).map((p) => `⚠ ${p.priceWarning} `).join("") +
         `Portfolio: ${openPositions.length} open position${openPositions.length !== 1 ? "s" : ""}${capitalSummary ? ` | ${capitalSummary.deployedPct}% deployed | $${capitalSummary.buyingPower.toFixed(0)} buying power` : ""}` +
         (bookLines.length ? ` | ${bookLines.join(" ")}` : ""),
       data: {
