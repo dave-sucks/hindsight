@@ -199,7 +199,7 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
       // that can collapse the group again.
       if (item.kind === "cluster" && open.has(`c:${itemTimestamp(item.items[0])}`))
         return [item, ...item.items];
-      if (item.kind === "repeat" && open.has(`r:${item.episodes[0].fire.id}`))
+      if (item.kind === "repeat" && open.has(`r:${item.episodes[0].fires[0].id}`))
         return [item, ...item.episodes];
       return [item];
     });

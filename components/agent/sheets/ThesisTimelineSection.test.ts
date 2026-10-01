@@ -305,12 +305,12 @@ describe("buildTimeline", () => {
     const items = buildTimeline([answer, proposed, fire], "all");
     expect(items.map((i) => i.kind)).toEqual(["group", "event"]);
     const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
-    expect(g.fire.id).toBe("f1");
+    expect(g.fires[0].id).toBe("f1");
     expect(g.response.id).toBe("r1");
     expect(g.proposal?.id).toBe("order:o9:proposed");
-    expect(outcomePhrase(g.fire, g.response, g.proposal)).toBe("proposed sell");
+    expect(outcomePhrase(g.response, g.proposal)).toBe("proposed sell");
     expect(
-      groupTitle(g.fire, g.response, g.proposal).outcome,
+      groupTitle(g.fires[0], g.response, g.proposal).outcome,
     ).toBe("— proposed sell");
   });
 
@@ -328,10 +328,35 @@ describe("buildTimeline", () => {
     expect(proposalSpanSegments(items)).toEqual(new Set([0, 1]));
   });
 
-  it("does not nest across unrelated triggerIds/runs", () => {
+  // The rule used to be "same triggerId or runId", which split the feed in
+  // two. A REVIEW fire is deferred to the next daily review, and that run
+  // writes its answer carrying neither id — ISRG's "price below the 200-day"
+  // fired 9× between Sep 15 and Sep 25 and not one joined the 5 reviews that
+  // answered it. One rule now: the next review answers it, ids or not.
+  it("pairs a fire with the next review even when it shares no ids", () => {
     const other = { ...answer, triggerId: "t-other", runId: null };
     const items = buildTimeline([other, fire], "all");
-    expect(items.map((i) => i.kind)).toEqual(["event", "event"]);
+    expect(items.map((i) => i.kind)).toEqual(["group"]);
+  });
+
+  // ISRG Sep 16 + Sep 17 fires, both answered by the Sep 18 morning review.
+  it("one review answers every fire since the last one", () => {
+    const r = (id: string, type: string, ts: string, summary = "") =>
+      row({ id, type, timestamp: ts, summary });
+    const items = buildTimeline(
+      [
+        r("resp", "UPDATED", "2026-09-18T12:06:00Z"),
+        r("f2", "TRIGGER_FIRED", "2026-09-17T13:35:00Z", "Price below the 200-day — review"),
+        r("f1", "TRIGGER_FIRED", "2026-09-16T13:35:00Z", "Price below the 200-day — review"),
+      ],
+      "all",
+    );
+    expect(items).toHaveLength(1);
+    const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
+    expect(g.kind).toBe("group");
+    expect(g.fires.map((f) => f.id)).toEqual(["f2", "f1"]);
+    expect(toRow(g).title.secondary).toBe("Price below the 200-day ×2");
+    expect(toRow(g).rangeLabel).toBe("fired Sep 16 – 17 · answered Sep 18");
   });
 
   it("folds ≥2 consecutive quiet rows into a cluster; real fires stay visible", () => {
@@ -346,7 +371,23 @@ describe("buildTimeline", () => {
       summary: "Scheduled review due on CYTK (HOLDING)",
       timestamp: "2026-08-16T12:00:00Z",
     });
-    const items = buildTimeline([answer, fire, quiet1, quiet2], "all");
+    const quiet3 = row({
+      id: "q3",
+      type: "REVIEWED",
+      timestamp: "2026-08-15T12:00:00Z",
+    });
+    const quiet4 = row({
+      id: "q4",
+      type: "TRIGGER_FIRED",
+      summary: "Scheduled review due on CYTK (HOLDING)",
+      timestamp: "2026-08-14T12:00:00Z",
+    });
+    // quiet1+quiet2 and quiet3+quiet4 each pair into a quiet episode; two
+    // quiet items in a row is what a cluster is made of.
+    const items = buildTimeline(
+      [answer, fire, quiet1, quiet2, quiet3, quiet4],
+      "all",
+    );
     expect(items.map((i) => i.kind)).toEqual(["group", "cluster"]);
     const label = clusterLabel(
       (items[1] as Extract<TimelineItem, { kind: "cluster" }>).items,
@@ -433,33 +474,64 @@ describe("trigger episodes — one sentence, fire + decision", () => {
     summary: "Price above $255 — consider entry",
   });
 
-  it("held for an exit fire answered without action", () => {
-    expect(outcomePhrase(exitFire, row({ type: "REVIEWED" }))).toBe("held");
+  // One table, read top to bottom, keyed only on what the REVIEW did. The
+  // kind of fire never enters into it — "passed" vs "held" was two words
+  // for the one fact that nothing changed.
+  it("no change — the review looked and left it alone", () => {
+    expect(outcomePhrase(row({ type: "REVIEWED" }))).toBe("no change");
+    expect(outcomePhrase(row({ type: "UPDATED", fieldChanges: {} }))).toBe(
+      "no change",
+    );
   });
 
-  it("passed for an entry fire answered without a buy", () => {
-    expect(
-      outcomePhrase(entryFire, row({ type: "UPDATED", fieldChanges: {} })),
-    ).toBe("passed");
+  it("the same words whether an entry fire or an exit fire asked", () => {
+    const review = row({ type: "REVIEWED" });
+    expect(groupTitle(entryFire, review).outcome).toBe(
+      groupTitle(exitFire, review).outcome,
+    );
   });
 
-  it("raised floor to $X when the stop moved up", () => {
+  it("levels moved when a price level changed", () => {
     expect(
       outcomePhrase(
-        exitFire,
+        row({ type: "UPDATED", fieldChanges: { stopLoss: { from: 54, to: 62 } } }),
+      ),
+    ).toBe("levels moved");
+  });
+
+  // ISRG Sep 23 removed the buy, the floor AND the target — the month's
+  // biggest decision on the name, and it used to render "held".
+  it("plan set down when the review removed rungs", () => {
+    expect(
+      outcomePhrase(
         row({
           type: "UPDATED",
-          fieldChanges: { stopLoss: { from: 54, to: 62 } },
+          fieldChanges: {
+            triggerOps: {
+              to: [
+                { op: "remove", text: "Removed: buy above $383" },
+                { op: "remove", text: "Removed: sell below $325" },
+              ],
+            },
+          },
         }),
       ),
-    ).toBe("raised floor to $62.00");
+    ).toBe("plan set down");
+  });
+
+  it("archived when the stock left the book", () => {
+    expect(
+      outcomePhrase(
+        row({ type: "UPDATED", fieldChanges: { status: { to: "PASSED" } } }),
+      ),
+    ).toBe("archived");
   });
 
   it("groupTitle composes the full sentence with the decision medium-weight", () => {
     expect(groupTitle(entryFire, row({ type: "REVIEWED" }))).toEqual({
       primary: "Trigger:",
       secondary: "Price above $255",
-      outcome: "— passed",
+      outcome: "— no change",
     });
   });
 });
