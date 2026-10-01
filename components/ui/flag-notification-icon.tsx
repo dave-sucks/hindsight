@@ -1,12 +1,16 @@
 // Flag-notification icon — the glyph on a stock's work flag.
 //
-// A speech bubble with a notification dot: "a run has something to say about
-// this stock." Hand-rolled outline for now; Dave is supplying the licensed
-// HugeIcons ChatNotificationIcon to drop in its place, so the shape lives in
-// one file and nothing else needs to change when it does.
+// A solid speech bubble with a notification dot: "a run has something to say
+// about this stock."
 //
-// Sized by the host, coloured by currentColor — same contract as the lucide
-// icons it sits beside.
+// Two paths, two colours, both responsive:
+//   • the bubble is `currentColor`, so it takes the colour of the sentence it
+//     sits in and follows light/dark with it;
+//   • the dot is `fill-blue-500` — the same blue the app already uses for a
+//     live, open thing (the OPEN status dot). Tailwind's blue-500 IS the
+//     #3B82F6 in the source file, so nothing is hardcoded to get there.
+//
+// Sized by the host, same contract as the lucide icons it sits beside.
 export function FlagNotificationIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -15,21 +19,19 @@ export function FlagNotificationIcon({ className }: { className?: string }) {
       width="24"
       height="24"
       fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
       aria-hidden="true"
       className={className}
     >
-      {/* Bubble, with the top-right corner left open for the dot to sit in. */}
-      <path d="M14.5 3.2A9.6 9.6 0 0 0 12 2.9c-5 0-9.1 3.3-9.1 7.4 0 2.3 1.3 4.4 3.3 5.8v3.6l3.4-2a10.8 10.8 0 0 0 2.4.3c5 0 9.1-3.3 9.1-7.4 0-.6-.1-1.2-.3-1.8" />
-      {/* The three dots the bubble is about. */}
-      <circle cx="8.6" cy="10.3" r=".9" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="10.3" r=".9" fill="currentColor" stroke="none" />
-      <circle cx="15.4" cy="10.3" r=".9" fill="currentColor" stroke="none" />
-      {/* The notification. */}
-      <circle cx="19" cy="5" r="2.6" />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        fill="currentColor"
+        d="M12 1.75C13.4892 1.75 14.9255 1.78112 16.2754 1.83887L16.2969 1.83984C15.4951 2.65242 15 3.7683 15 5C15 7.48528 17.0147 9.5 19.5 9.5C20.7561 9.5 21.8907 8.98419 22.707 8.1543C22.7078 8.17734 22.7091 8.20044 22.71 8.22363C22.7359 8.95905 22.75 9.72053 22.75 10.5C22.75 11.2795 22.7359 12.0409 22.71 12.7764C22.6298 15.0495 22.6167 16.5869 21.4023 17.8105C20.7921 18.4254 20.0995 18.7383 19.2588 18.9082C18.4718 19.0672 17.5091 19.1083 16.3418 19.1582L16.2754 19.1611C15.5355 19.1928 14.7696 19.2165 13.9834 19.2314C13.1863 19.2466 12.9733 19.2608 12.7988 19.3271C12.6239 19.3938 12.4615 19.5198 11.873 20.0244L9.69336 21.8936C9.4251 22.1236 9.08286 22.25 8.72949 22.25C7.91249 22.2498 7.25022 21.5875 7.25 20.7705V19.1396C6.26419 19.0959 5.43456 19.0483 4.74121 18.9082C3.9005 18.7383 3.20787 18.4254 2.59766 17.8105C1.38331 16.5869 1.37023 15.0495 1.29004 12.7764C1.26409 12.0409 1.25 11.2795 1.25 10.5C1.25 9.72053 1.26409 8.95905 1.29004 8.22363C1.37023 5.95046 1.38331 4.41312 2.59766 3.18945C3.20788 2.57464 3.90049 2.26171 4.74121 2.0918C5.52815 1.93277 6.49097 1.89169 7.6582 1.8418L7.72461 1.83887C9.0745 1.78112 10.5108 1.75 12 1.75ZM8.00879 9.5C7.45651 9.5 7.00879 9.94772 7.00879 10.5C7.00879 11.0523 7.45651 11.5 8.00879 11.5H8.01758L8.12012 11.4951C8.62432 11.4439 9.01758 11.0177 9.01758 10.5C9.01758 9.98227 8.62432 9.55615 8.12012 9.50488L8.01758 9.5H8.00879ZM12.0039 9.5C11.4517 9.50022 11.0039 9.94785 11.0039 10.5C11.0039 11.0522 11.4517 11.4998 12.0039 11.5H12.0137C12.5658 11.4998 13.0137 11.0521 13.0137 10.5C13.0137 9.94785 12.5658 9.50023 12.0137 9.5H12.0039ZM16 9.5C15.4478 9.5 15 9.94772 15 10.5C15 11.0523 15.4478 11.5 16 11.5H16.0088C16.5611 11.5 17.0088 11.0523 17.0088 10.5C17.0088 9.94774 16.5611 9.50004 16.0088 9.5H16Z"
+      />
+      <path
+        className="fill-blue-500"
+        d="M19.5 8.25C21.2949 8.25 22.75 6.79493 22.75 5C22.75 3.20507 21.2949 1.75 19.5 1.75C17.705 1.75 16.25 3.20507 16.25 5C16.25 6.79493 17.705 8.25 19.5 8.25Z"
+      />
     </svg>
   );
 }

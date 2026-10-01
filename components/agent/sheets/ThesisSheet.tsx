@@ -825,13 +825,11 @@ function LatestNoteBlock({
       {view.flags === "hidden" ? null : view.flags === "loading" ? (
         <Skeleton className="h-4 w-56" />
       ) : view.flags === "reasons" && flag ? (
-        <p className="flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-500">
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <FlagNotificationIcon className="size-4 shrink-0" />
           <span>
             Flagged for review — {flag.name}
-            {flag.detail ? (
-              <span className="font-normal">: {flag.detail}</span>
-            ) : null}
+            {flag.detail ? <>: {flag.detail}</> : null}
           </span>
         </p>
       ) : view.flags === "unchecked" ? (
