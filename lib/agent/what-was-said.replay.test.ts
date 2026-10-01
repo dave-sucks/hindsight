@@ -213,7 +213,7 @@ describe("the 09-14 trigger runs", () => {
     expect(prompt).toContain("WHAT'S BEEN SAID ON $CEG");
     expect(prompt).toContain("The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%)");
     expect(prompt).toContain(DECLINE_ENDS);
-    expect(prompt).toContain("The principal's notes and decisions outrank the trigger's own rationale.");
+    expect(prompt).toContain("The principal's decisions outrank the trigger's own rationale.");
     expect(prompt).toContain("When WHAT'S BEEN SAID lists the principal's decisions or other triggers");
     expect(prompt).not.toContain("RECENT THESIS ACTIVITY");
   });

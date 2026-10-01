@@ -74,7 +74,6 @@ import {
 } from "@/lib/agent/thesis-transitions";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { computePlanSanity } from "@/lib/agent/plan-sanity";
-import { writeNote } from "@/lib/agent/notes";
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 // ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
@@ -108,16 +107,6 @@ const sectionBulletSchema = z
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
-  note: z
-    .string()
-    .optional()
-    .describe(
-      "Your note on this stock: what the next run must carry forward (what you are holding through, what would make you sell). Replaces your previous note.",
-    ),
-  resolve_note_id: z
-    .string()
-    .optional()
-    .describe("A note of the principal's this call carries out: its id from `context`. The rationale says what you did."),
   rationale: z
     .string()
     .min(10)
@@ -1505,7 +1494,6 @@ export const updateThesis = defineTool({
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,
       });
-      const reviewedNotes = await writeNoteOps(existing.id, args, ctx, resolvedPriceAtTime);
       const reviewedMeans = whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence);
       return {
         summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}`,
@@ -1514,7 +1502,6 @@ export const updateThesis = defineTool({
           thesis_id: existing.id,
           type: "REVIEWED" as const,
           trigger_ops: opResults,
-          ...(reviewedNotes.length ? { notes: reviewedNotes } : {}),
           ...(reviewedMeans.length ? { what_this_means: reviewedMeans } : {}),
           card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }),
         },
@@ -1762,7 +1749,6 @@ export const updateThesis = defineTool({
       tradeId: args.trade_id,
       priceAtTime: resolvedPriceAtTime,
     });
-    const savedNotes = await writeNoteOps(existing.id, args, ctx, resolvedPriceAtTime);
     const means = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
 
     return {
@@ -1773,7 +1759,6 @@ export const updateThesis = defineTool({
         type: updateType,
         changed_fields: Object.keys(fieldChanges),
         trigger_ops: opResults,
-        ...(savedNotes.length ? { notes: savedNotes } : {}),
         ...(means.length ? { what_this_means: means } : {}),
         // Post-update thesis snapshot for the chat renderer. Merges the
         // pre-update record with the patch we just applied — no extra DB
@@ -1801,29 +1786,6 @@ function whatThisMeans(row: Record<string, unknown>, price: number | null, minCo
   });
   // The score line is about a buy; with no buy price there is none to refuse.
   return flags.filter((f) => f.kind !== "COMPOSITE_BELOW_MINIMUM" || n(row.entryPrice) != null).map((f) => `${row.ticker}: ${f.text}`);
-}
-
-/** The analyst's note and the principal's note it resolves, if the call asked; a line each for the reply. */
-async function writeNoteOps(
-  thesisId: string,
-  args: { note?: string; resolve_note_id?: string; rationale: string },
-  ctx: { runId?: string | null; runMode?: string },
-  priceAtTime: number | null,
-): Promise<string[]> {
-  // In /chat the principal is the one talking: the note is theirs, and stands until replaced or resolved.
-  const principal = ctx.runMode === "PRINCIPAL_CHAT";
-  const base = { thesisId, author: principal ? ("PRINCIPAL" as const) : ("ANALYST" as const), via: principal ? "chat" : ctx.runMode ?? "run", runId: ctx.runId ?? null, priceAtTime };
-  const out: string[] = [];
-  if (args.resolve_note_id) {
-    const note = await prisma.thesisUpdate.findFirst({ where: { id: args.resolve_note_id, thesisId, type: "NOTE" }, select: { id: true } });
-    if (note) await writeNote({ ...base, text: args.rationale, resolves: note.id });
-    out.push(note ? `Resolved note ${note.id}.` : `No note ${args.resolve_note_id} on this stock — nothing resolved.`);
-  }
-  if (args.note?.trim()) {
-    await writeNote({ ...base, text: args.note });
-    out.push(principal ? "Note saved as the principal's; it stands until replaced or resolved." : "Note saved; it replaces your previous note on this stock.");
-  }
-  return out;
 }
 
 /**

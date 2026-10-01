@@ -294,7 +294,7 @@ export const tacticalRun = inngest.createFunction(
           // Rendered here: the step boundary would turn the Dates to strings.
           context: stockContextFor({
             ticker: thesis.ticker,
-            // The principal's standing notes travel at any age, past the 40 lines.
+            // The principal's notes travel at any age, past the 40 lines.
             rows: [
               ...thesis.updates,
               ...(await prisma.thesisUpdate.findMany({ where: { thesisId: thesis.id, type: "NOTE" }, select: ACTIVITY_SELECT })).filter(

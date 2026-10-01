@@ -54,21 +54,20 @@
 
 **The proposal, in five parts.**
 
-1. **Notes.** A new Activity line, *Note*, written by your chat or by any
-   agent. When the chat finishes research on a stock, it asks you "add this
+1. **Notes.** A new Activity line, *Note added*, written only by your chat.
+   When the chat finishes research on a stock, it asks you "add this
    note?" on the question card you already have. When you ask for one by
    name ("research XYZ and add a note to the thesis"), your ask is the yes.
-   A note stands until a newer note replaces it or someone marks it
-   resolved.
+   A note is information only, and nothing happens to it afterward
+   (revised 09-30, see §3.1).
 2. **One short "what's been said" block, the same for every agent,**
-   counted from the analyst's last answer on the stock: your standing
-   notes; the analyst's own latest note; its last answer; your decisions
-   since that answer, word for word with the price then and now; and every
-   alert fired since, collapsed, with its rule. Once an agent answers a
-   decision of yours, it's done; a wish meant to stand is a note. After the
-   block come the thesis, the plan and the numbers, as today. One function
-   builds it, so the morning run, the trigger run, the writer, discovery
-   and /chat all see the same thing.
+   counted from the analyst's last answer on the stock: your newest three
+   notes; its last answer; your decisions since that answer, word for word
+   with the price then and now; and every alert fired since, collapsed,
+   with its rule. Once an agent answers a decision of yours, it's done.
+   After the block come the thesis, the plan and the numbers, as today.
+   One function builds it, so the morning run, the trigger run, the writer,
+   discovery and /chat all see the same thing.
 3. **A fired trigger stays open until an agent answers it.** Your edits,
    approvals and the app's own bookkeeping lines no longer count as the
    answer. If three things fired since the last review, the run sees all
@@ -495,6 +494,30 @@ CEG where it was. That's why this is one design.
 ## 3. The proposal
 
 ### 3.1 Notes: the write path
+
+> **Revised 2026-09-30, after the first build. This block is what was
+> built; where the rest of the doc disagrees, this wins.**
+>
+> - **A note is information only**: your reasoning, what you are waiting
+>   for, what would change your mind. It is one Activity line, "Note
+>   added", written only by your chat after your yes. Nothing happens to it
+>   afterward: no replacing, no resolving.
+> - **A price, a size or a condition is never a note.** When you agree to
+>   one in chat ("add on a close above $74.07"), the chat sets it as a
+>   trigger or an edit on the stock. The note says why.
+> - **Agents see your newest 3 notes on that stock**, in full, each with
+>   its date and the price then and now. A new note puts the stock on the
+>   morning run's full list once.
+> - **The analyst writes no notes.** The block already shows its last
+>   answer.
+>
+> So the following below are withdrawn: `replaces` / `resolves`,
+> `standingNotes`, the `note` and `resolve_note_id` fields on
+> `update_thesis`, the sheet's note field, "the analyst's latest note"
+> wherever a reading order lists it, decision 2 in §4, the last clause of
+> core rule 9 ("leave a note of your own"), and the note sentences in M2
+> and C4. In the DOCU replay, the $74.07 add is a trigger the chat sets,
+> and the note carries only the reasoning.
 
 **What a note is.** A point-in-time conclusion about one stock that the
 next reader must carry forward: what was decided, what would change the

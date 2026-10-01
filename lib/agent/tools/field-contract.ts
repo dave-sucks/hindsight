@@ -194,8 +194,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("add_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("edit_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("remove_trigger_ids", "IDENTITY", { note: "A wrong id is refused by id; the rest of the call lands." }),
-    f("note", "TEXT"),
-    f("resolve_note_id", "IDENTITY"),
     f("change_status", "CHOSEN"),
     f("research_data", "CARRIED"),
     ...RESEARCH_BLOCKS,
@@ -229,7 +227,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("edit_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("remove_trigger_ids", "IDENTITY"),
   ],
-  write_note: [f("thesis_id", "IDENTITY"), f("text", "TEXT"), f("replaces_note_id", "IDENTITY")],
+  write_note: [f("thesis_id", "IDENTITY"), f("text", "TEXT")],
 };
 
 /** The tool factories, by registered name, and the modes' run-mode strings. */

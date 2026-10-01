@@ -5,8 +5,7 @@
  *
  *  - that answer, a sentence or two;
  *  - the principal's decisions since it, word for word, with the price then
- *    and now (once answered, a decision is done; a wish meant to stand is a
- *    note);
+ *    and now (once answered, a decision is done);
  *  - every trigger fired since it, collapsed, with its rule.
  *
  * Nothing else. The first version also carried answered decisions, two of
@@ -19,11 +18,11 @@
  * 09-28 the principal's cleanup counted as its answer). get_theses, the
  * trigger run, complete_run and the thesis sheet all use this rule.
  *
- * Notes (notes.ts) come first, and a note line is never an answer.
+ * The principal's newest notes (notes.ts) come first. A note is information:
+ * never an answer, never a plan change, and nothing closes it.
  *
  * Pure: needs-action.ts imports it; trigger labels come from the caller.
  */
-import type { NoteMeta } from "@/lib/agent/notes";
 
 /** One Activity line, as the callers load it. Any order. */
 export interface ActivityRow {
@@ -68,7 +67,7 @@ export interface StockContext {
   text: string | null;
   openFires: OpenFire[];
   unansweredDecision: PrincipalDecision | null;
-  /** The principal's newest standing note, one line — what a quiet row carries. */
+  /** The principal's newest note, one line — what a quiet row carries. */
   principalNote: string | null;
 }
 
@@ -104,18 +103,12 @@ export function isAgentAnswer(r: ActivityRow): boolean {
   return !!r.runId && r.type !== "TRIGGER_FIRED" && r.type !== "NOTE" && !isPrincipalRow(r);
 }
 
-const noteOf = (r: ActivityRow) =>
-  r.type === "NOTE" ? ((r.fieldChanges as { note?: { to?: NoteMeta } } | null)?.note?.to ?? null) : null;
+/** How many of the principal's notes an agent is shown: the newest. */
+export const NOTES_SHOWN = 3;
 
-/** The principal's notes no newer note replaced or resolved, and the analyst's newest note. */
-export function standingNotes(rows: ActivityRow[]): { principal: ActivityRow[]; analyst: ActivityRow | null } {
-  const gone = new Set(rows.flatMap((r) => [noteOf(r)?.replaces, noteOf(r)?.resolves]).filter(Boolean));
-  const notes = newestFirst(rows).filter((r) => noteOf(r) && !noteOf(r)!.resolves && !gone.has(r.id));
-  const analyst = newestFirst(rows).find((r) => noteOf(r)?.author === "ANALYST" && !noteOf(r)!.resolves) ?? null;
-  return {
-    principal: notes.filter((r) => noteOf(r)!.author === "PRINCIPAL"),
-    analyst: analyst && !gone.has(analyst.id) ? analyst : null,
-  };
+/** The principal's newest notes on the stock (lib/agent/notes.ts), newest first. */
+export function newestNotes(rows: ActivityRow[]): ActivityRow[] {
+  return newestFirst(rows).filter((r) => r.type === "NOTE").slice(0, NOTES_SHOWN);
 }
 
 /** Every trigger fired after the newest agent answer, newest first. */
@@ -237,24 +230,23 @@ export function buildStockContext(args: {
   const decisions = since
     .map((r) => principalDecision(r, priceBefore(r), args.currentPrice ?? null))
     .filter((d): d is PrincipalDecision => d != null);
-  const notes = standingNotes(rows);
-  // A note of the principal's written after the last answer asks for one, like a decision.
-  const newNote = notes.principal.find((n) => !last || n.timestamp > last.timestamp);
+  const notes = newestNotes(rows);
+  // A note written after the last answer puts the stock on the list once, so a run reads it in full.
+  const newNote = notes.find((n) => !last || n.timestamp > last.timestamp);
   const unansweredDecision =
     decisions.find((d) => d.wantsAnswer) ??
     (newNote ? { at: newNote.timestamp, line: `Note: ${oneLine(newNote.rationale ?? "")}`, wantsAnswer: true } : null);
-  if (!last && decisions.length === 0 && fires.length === 0 && !notes.principal.length && !notes.analyst) {
+  if (!last && decisions.length === 0 && fires.length === 0 && !notes.length) {
     return { text: null, openFires: fires, unansweredDecision, principalNote: null };
   }
 
   const T = args.ticker.toUpperCase();
   const lines = [`WHAT'S BEEN SAID ON $${T}`];
-  if (notes.principal.length) lines.push("The principal's notes:");
-  for (const n of notes.principal) {
+  if (notes.length) lines.push("The principal's notes:");
+  for (const n of notes) {
     const then = thenNow(n.priceAtTime ?? null, args.currentPrice ?? null);
-    lines.push(`  ${etStamp(n.timestamp)} (${noteOf(n)!.via})${then}: "${oneLine(n.rationale ?? "")}"`);
+    lines.push(`  ${etStamp(n.timestamp)}${then}: "${oneLine(n.rationale ?? "")}"`);
   }
-  if (notes.analyst) lines.push(`The analyst's note, ${etStamp(notes.analyst.timestamp)}: "${sentences(notes.analyst.rationale ?? "")}"`);
   const said = last?.rationale?.trim() ? ` — "${sentences(last.rationale.split(/\n\s*\n\s*\[/)[0])}"` : "";
   lines.push(last ? `Last look: ${(last.runMode && RUN_WORDS[last.runMode]) ?? "a run"}, ${etStamp(last.timestamp)}${said}` : "Last look: none on record.");
   const tail = `Full history: get_theses(tickers: ["${T}"], include_history: true)`;
@@ -279,7 +271,7 @@ export function buildStockContext(args: {
     if (folded.length) lines.push(`  and ${folded.length} more fired since: ${folded.map((f) => `${label(f)}${f.count > 1 ? ` (${f.count}×)` : ""}`).join("; ")}.`);
   }
   lines.push(tail);
-  const p0 = notes.principal[0];
+  const p0 = notes[0];
   const principalNote = p0 ? `${etStamp(p0.timestamp)}: ${sentences(p0.rationale ?? "", 120)}` : null;
   return { text: lines.join("\n"), openFires: fires, unansweredDecision, principalNote };
 }

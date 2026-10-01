@@ -5,7 +5,7 @@
  */
 import raw from "@/lib/agent/__fixtures__/ceg-what-was-said-2026-09.json";
 import {
-  standingNotes,
+  newestNotes,
   buildStockContext,
   isAgentAnswer,
   isPrincipalRow,
@@ -184,37 +184,26 @@ describe("the block, counted from the analyst's last answer", () => {
 
 describe("notes (lib/agent/notes.ts)", () => {
   const at = (h: number) => new Date(Date.UTC(2026, 9, 1, h));
-  const note = (id: string, h: number, author: "PRINCIPAL" | "ANALYST", text: string, extra: Record<string, string> = {}): ActivityRow => ({
-    id, type: "NOTE", timestamp: at(h), runId: "run", rationale: text, priceAtTime: 100,
-    fieldChanges: { note: { from: null, to: { author, via: author === "PRINCIPAL" ? "chat" : "MORNING_PLAN", ...extra } } },
-  });
+  const note = (id: string, h: number, text: string): ActivityRow => ({ id, type: "NOTE", timestamp: at(h), runId: "run", rationale: text, priceAtTime: 100 });
   const answer: ActivityRow = { type: "UPDATED", timestamp: at(12), runId: "r", runMode: "MORNING_PLAN", rationale: "Hold." };
 
-  it("a replaced or resolved note of the principal's is gone; the analyst's newest note replaces its last", () => {
-    const rows = [
-      note("p1", 10, "PRINCIPAL", "Old size."),
-      note("p2", 11, "PRINCIPAL", "New size.", { replaces: "p1" }),
-      note("p3", 11, "PRINCIPAL", "Add at $74."),
-      note("x", 13, "ANALYST", "Added the $74 buy.", { resolves: "p3" }),
-      note("a1", 9, "ANALYST", "Holding through the 200-day."),
-      note("a2", 12, "ANALYST", "Floor raised to $248."),
-    ];
-    const { principal, analyst } = standingNotes(rows);
-    expect(principal.map((r) => r.id)).toEqual(["p2"]);
-    expect(analyst?.id).toBe("a2");
+  it("an agent is shown the principal's newest three notes, whatever their age", () => {
+    const rows = [note("p1", 9, "Old."), note("p2", 10, "Second."), note("p3", 11, "Third."), note("p4", 13, "Newest.")];
+    expect(newestNotes(rows).map((r) => r.id)).toEqual(["p4", "p3", "p2"]);
   });
 
-  it("a note is never an agent's answer — even one a run wrote", () => {
-    expect(isAgentAnswer(note("a", 13, "ANALYST", "x"))).toBe(false);
+  it("a note is never an agent's answer, though a chat run wrote it", () => {
+    expect(isAgentAnswer(note("a", 13, "x"))).toBe(false);
   });
 
   it("the principal's notes come first with the price then and now; a note newer than the last answer puts the stock on the list", () => {
-    const rows = [answer, note("p", 14, "PRINCIPAL", "Starter only; add on a close above $74.07."), note("a", 11, "ANALYST", "Watching the base.")];
+    const text = "Starter only: the base hasn't resolved.";
+    const rows = [answer, note("p", 14, text)];
     const c = buildStockContext({ ticker: "DOCU", rows, labelFor: () => null, now: at(15), currentPrice: 110 });
-    expect(c.text).toMatch(/^WHAT'S BEEN SAID ON \$DOCU\nThe principal's notes:\n  10-01 10:00 \(chat\) at \$100\.00, now \$110\.00 \(\+10\.0%\): "Starter only; add on a close above \$74\.07\."\nThe analyst's note, 10-01 07:00: "Watching the base\."\nLast look: morning run/);
-    expect(c.unansweredDecision?.line).toBe("Note: Starter only; add on a close above $74.07.");
-    expect(c.principalNote).toBe('10-01 10:00: Starter only; add on a close above $74.07.');
-    const older = buildStockContext({ ticker: "DOCU", rows: [note("p", 10, "PRINCIPAL", "Starter only."), answer], labelFor: () => null, now: at(15) });
+    expect(c.text).toMatch(/^WHAT'S BEEN SAID ON \$DOCU\nThe principal's notes:\n  10-01 10:00 at \$100\.00, now \$110\.00 \(\+10\.0%\): "Starter only: the base hasn't resolved\."\nLast look: morning run/);
+    expect(c.unansweredDecision?.line).toBe(`Note: ${text}`);
+    expect(c.principalNote).toBe(`10-01 10:00: ${text}`);
+    const older = buildStockContext({ ticker: "DOCU", rows: [note("p", 10, "Starter only."), answer], labelFor: () => null, now: at(15) });
     expect(older.unansweredDecision).toBeNull();
     expect(older.text).toContain("Starter only.");
   });

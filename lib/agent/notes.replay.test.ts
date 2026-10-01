@@ -1,8 +1,9 @@
 /**
  * notes.replay.test.ts — a conclusion reached in chat reaches the analyst
  * (docs/plans/AGENT_CONTEXT.md §3.1). DOCU, 2026-09-30: in an unscoped chat the
- * principal settled a starter size, an add on a close above $74.07 and what
- * would change their mind. None of it reached DOCU's analyst. Through
+ * principal settled why the starter was small and what would change their
+ * mind. None of it reached DOCU's analyst. (The add above $74.07 agreed in the
+ * same chat is a trigger, not a note.) Through
  * write_note's and get_theses's real entry points, on DOCU's stored rows
  * (lib/agent/__fixtures__/docu-note-2026-09-30.json).
  */
@@ -35,7 +36,7 @@ const stored = fx.rows.map((r) => ({
 }));
 
 describe("DOCU: the principal's note, from an unscoped chat to the next morning run", () => {
-  it("write_note lands one NOTE line on DOCU, the principal's, with the price then", async () => {
+  it("write_note lands one NOTE line on DOCU with the price then, and nothing else", async () => {
     const { refused, db } = await replayTool("write-note", "writeNoteTool", {
       seed: seed(stored) as never,
       args: { thesis_id: fx.thesis.id, text: fx.note },
@@ -45,7 +46,8 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
     expect(refused).toBe(false);
     const notes = (db.store.thesisUpdate as Row[]).filter((u) => u.type === "NOTE");
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ thesisId: fx.thesis.id, rationale: fx.note, priceAtTime: 67.9, fieldChanges: { note: { to: { author: "PRINCIPAL", via: "chat" } } } });
+    expect(notes[0]).toMatchObject({ thesisId: fx.thesis.id, rationale: fx.note, priceAtTime: 67.9, });
+    expect(Object.keys(notes[0].fieldChanges ?? {})).toEqual([]); // information only: nothing to replace or resolve
   });
 
   it("Friday's morning read opens DOCU with the note, the price then and now, and puts it on the full list", async () => {
@@ -66,8 +68,8 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
       });
       const docu = (result as unknown as { data: { theses: Array<{ ticker: string; context: string }> } }).data.theses.find((t) => t.ticker === "DOCU");
       expect(docu).toBeDefined();
-      expect(docu!.context).toMatch(/^WHAT'S BEEN SAID ON \$DOCU\nThe principal's notes:\n  09-30 13:05 \(chat\) at \$67\.90, now \$69\.10 \(\+1\.8%\): "Bought a starter/);
-      expect(docu!.context).toContain("add on a close above $74.07");
+      expect(docu!.context).toMatch(/^WHAT'S BEEN SAID ON \$DOCU\nThe principal's notes:\n  09-30 13:05 at \$67\.90, now \$69\.10 \(\+1\.8%\): "Bought a starter/);
+      expect(docu!.context).toContain("IAM stalls under 17% of ARR");
       expect(docu!.context).toContain("Approved the buy, cut from 162 to 120 shares");
     } finally {
       jest.useRealTimers();

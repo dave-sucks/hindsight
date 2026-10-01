@@ -806,7 +806,7 @@ export const getTheses = defineTool({
           take: Math.min(40 * liveTheses.length, 1200),
           select: ACTIVITY_SELECT,
         });
-        // The principal's standing notes travel at any age, past the scan's window.
+        // The principal's notes travel at any age, past the scan's window.
         const notes = await prisma.thesisUpdate.findMany({
           where: { thesisId: { in: liveTheses.map((t) => t.id) }, type: "NOTE" },
           select: ACTIVITY_SELECT,
@@ -1239,7 +1239,7 @@ export const getTheses = defineTool({
       ),
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
-      // The principal's newest standing note, one line (docs/plans/AGENT_CONTEXT.md §3.2).
+      // The principal's newest note, one line (docs/plans/AGENT_CONTEXT.md §3.2).
       ...(contextByThesisId.get(t.id)?.principalNote ? { principalNote: contextByThesisId.get(t.id)!.principalNote } : {}),
     }));
 
