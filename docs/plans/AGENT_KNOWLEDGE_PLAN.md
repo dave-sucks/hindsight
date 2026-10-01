@@ -173,12 +173,19 @@ setups: its prompt points at "your setups above" and there is no such list
 until this PR adds it.
 
 **One thing this changes about money, said here so it is read before it
-happens.** Today the morning run never sees what confirms a setup, which is
-how it bought ABT's dip on 09-11. Once the confirmation arrives with the
-stock, the morning run reads the pullback rule for the first time. From then
-on a dip like ABT's becomes a buy moved to the bounce, not a buy of the dip.
-That is consistent with the rule the plan keeps, and it removes one place
-where two agents disagree, but it is a change in what the morning run does.
+happens.** Today the morning run is never shown what confirms a setup. Once
+that arrives with the stock, it reads the pullback rule for the first time.
+
+- After PR 2 and PR 3 no agent buys a pullback at the dip. Every pullback buy
+  is the bounce, the next session at the earliest.
+- What that costs when the stock does bounce: a later and higher fill. DOCU
+  was $65.88 at the dip on 09-28 and $67.73 on the bounce on 09-30, 2.8%
+  higher.
+- What it saves when the stock does not bounce: it is never bought. HPE on
+  09-14 is the example, down 9.8% through its level.
+- ABT is the one pullback bought at the dip in the period. The morning run
+  did it without having been shown the rule.
+- If you would rather the analysts buy dips, say so before PR 3 merges.
 
 It also creates the shared file, with its one sentence, and loads it into the
 trigger run, the writer, discovery and chat. Each of those four drops its own
