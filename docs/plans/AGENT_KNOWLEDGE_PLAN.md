@@ -34,19 +34,23 @@ stronger and stronger words to make the model buy a stock falling through
 its level. The only limit on that would be the floor, and the floor is a sale
 you have to approve.
 
-**What the app already does.** It buys pullbacks on the bounce, in two steps
-and slowly. From the review session's read of every trigger run on a pullback
-buy since 08-28 (the design session verified DOCU's rows only):
+**What the app does today.** The trigger run passes the dip, and the next
+morning run finishes it, one of two ways. From the review session's read of
+every trigger run on a pullback buy since 08-28 (the setup shown is the one
+stored on each stock today; the design session verified DOCU's rows only):
 
 - **DOCU:** passed 09-28 at $65.88. The 09-30 morning run moved the buy to
   "back above $67.80", naming the 20-day average. It fired 40 minutes after
-  the open and was bought at $67.73.
-- **ABT:** passed 09-08 and 09-10, bought 09-11 at $103.66.
+  the open and was bought at $67.73. That is the bounce, two days late.
+- **ABT:** passed 09-08 and 09-10. On 09-11 the morning run bought the dip
+  itself, with the price still under its buy level, filled at $103.66.
 - **HPE:** passed 09-14 (the stock was down 9.8% that day, not a pullback),
   re-priced 09-15, never bought.
 
-So the bounce entry works. What's wrong is that the first step waits for the
-next morning run. DOCU waited two days.
+So the two agents were following different rules. The trigger run waits for
+the bounce. The morning run sometimes re-prices for the bounce and sometimes
+buys the dip, because its prompt points at a confirmation the stock's row
+doesn't carry.
 
 **What the plan does now.** It keeps the playbook's rule and makes the three
 texts say the same thing: the dip to the average arms the buy, and the buy is
@@ -54,6 +58,11 @@ taken on the bounce. When the dip fires, the trigger run moves the buy to the
 bounce level itself, naming the average or the prior day's high it sits on,
 the way the 09-30 morning run did. The buy can then fire the next session,
 not two days later.
+
+Tested on the real model, six runs each on DOCU's 09-28 case: before, 1
+bought the dip and 5 passed with no change; after, all 6 moved the buy to
+$67.43, the 20-day. On DOCU's second fire (09-30, the buy above $67.80), 2 of
+3 bought both before and after, and none moved the buy a second time.
 
 This is not a new trading rule, so there is nothing for you to decide. If the
 test shows the trigger run still just passes, this PR shrinks to deleting the
@@ -162,6 +171,14 @@ One piece of code builds this, and the morning run, the trigger run and chat's
 proposals list all read from it. Discovery gets the list of its analyst's
 setups: its prompt points at "your setups above" and there is no such list
 until this PR adds it.
+
+**One thing this changes about money, said here so it is read before it
+happens.** Today the morning run never sees what confirms a setup, which is
+how it bought ABT's dip on 09-11. Once the confirmation arrives with the
+stock, the morning run reads the pullback rule for the first time. From then
+on a dip like ABT's becomes a buy moved to the bounce, not a buy of the dip.
+That is consistent with the rule the plan keeps, and it removes one place
+where two agents disagree, but it is a change in what the morning run does.
 
 It also creates the shared file, with its one sentence, and loads it into the
 trigger run, the writer, discovery and chat. Each of those four drops its own
