@@ -379,6 +379,29 @@ function humanizeCloseReason(raw: string | null | undefined): string | null {
   return raw;
 }
 
+// ── ClampedParagraph ──
+// The two long paragraphs on this sheet — the newest written note at the top
+// and the research snapshot at the bottom — are the same thing at different
+// times, so they are one size, one colour and one gesture. Clamped to four
+// lines; the whole paragraph is the hit area, hover darkens, click toggles.
+// Same as the Activity feed's rows.
+function ClampedParagraph({ text, className }: { text: string; className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <p
+      className={cn(
+        "text-xl font-normal leading-relaxed cursor-pointer transition-colors",
+        !open && "line-clamp-4",
+        className,
+      )}
+      onClick={() => setOpen((v) => !v)}
+      title={open ? "Collapse" : "Expand"}
+    >
+      {text}
+    </p>
+  );
+}
+
 // ── TradeNote ──
 // The proposal's own write-up. These run long — the agent explains the level,
 // the risk math, the exposure after the buy — and at full length the trade
@@ -776,7 +799,6 @@ function LatestNoteBlock({
   needsAction,
   quoteLoading,
   quoteFailed,
-  analystName,
   /** Text already shown verbatim in the trade block — never repeated here. */
   suppressText,
 }: {
@@ -786,7 +808,6 @@ function LatestNoteBlock({
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
-  analystName: string | null;
   suppressText: string | null;
 }) {
   const note = latestUpdate?.rationale?.trim() || latestUpdate?.summary?.trim() || null;
@@ -813,11 +834,6 @@ function LatestNoteBlock({
   });
   if (!view) return null;
 
-  const writtenAt = latestUpdate ? new Date(latestUpdate.timestamp) : null;
-  const daysOld = writtenAt
-    ? Math.floor((Date.now() - writtenAt.getTime()) / 86_400_000)
-    : null;
-
   return (
     <div className="space-y-2">
       {view.flags === "hidden" ? null : view.flags === "loading" ? (
@@ -839,21 +855,34 @@ function LatestNoteBlock({
         </p>
       ) : null}
 
-      {view.showNote && text ? (
-        <p className="text-base leading-relaxed text-foreground">{text}</p>
-      ) : null}
-
-      {view.showNote && writtenAt ? (
-        <p className="text-xs text-muted-foreground">
-          {analystName ? `${analystName} · ` : ""}
-          written{" "}
-          {writtenAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-          {/* Past a fortnight the paragraph is history, not news, and it
-              has to say so — it reads as current either way. */}
-          {daysOld != null && daysOld >= 14 ? ` · ${daysOld} days ago` : ""}
-        </p>
-      ) : null}
+      {view.showNote && text ? <ClampedParagraph text={text} /> : null}
     </div>
+  );
+}
+
+/**
+ * Who wrote the newest note and when — one line, at the BOTTOM of the dossier
+ * under the research it belongs to, not under the paragraph at the top. Past a
+ * fortnight it says how old it is: a month-old paragraph reads as current
+ * otherwise.
+ */
+function WrittenByLine({
+  latestUpdate,
+  analystName,
+}: {
+  latestUpdate: ThesisDossier["latestUpdate"];
+  analystName: string | null;
+}) {
+  if (!latestUpdate) return null;
+  const writtenAt = new Date(latestUpdate.timestamp);
+  if (!Number.isFinite(writtenAt.getTime())) return null;
+  const daysOld = Math.floor((Date.now() - writtenAt.getTime()) / 86_400_000);
+  return (
+    <p className="text-xs text-muted-foreground">
+      {analystName ? `${analystName} · ` : ""}
+      written {writtenAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+      {daysOld >= 14 ? ` · ${daysOld} days ago` : ""}
+    </p>
   );
 }
 
@@ -1492,29 +1521,28 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         ) : null}
       </div>
 
-      {/* ── The trade, above the tabs ─────────────────────────── */}
-      {/* It was inside the Thesis tab, which hid your own position the moment
-          you opened Activity. What you hold on a stock is not one view of it:
-          it belongs with the identity and the price, over both tabs. */}
-      {position ? (
-        <TradeBlock
-          position={position}
-          pnl={quote?.positionPnl ?? null}
-          pendingProposal={state.position?.pendingProposal ?? null}
-          direction={direction}
-        />
-      ) : null}
-
       {/* ── Tabs: Thesis (the dossier) | Activity (the audit log) ── */}
       {/* Only identity + live price stay fixed above (principal feedback
-          2026-08-19); the belief, trade block, and everything else split
-          into the dossier view and the P1-33 activity timeline (trigger
-          fires → runs → outcomes). Same Tabs idiom as AgentChat. */}
-      <Tabs defaultValue={0}>
+          2026-08-19); everything else splits into the dossier view and the
+          P1-33 activity timeline. Same Tabs idiom as AgentChat. */}
+      <Tabs defaultValue={0} className="gap-5">
         <TabsList>
           <TabsTrigger value={0}>Thesis</TabsTrigger>
           <TabsTrigger value={1}>Activity</TabsTrigger>
         </TabsList>
+
+        {/* The trade sits INSIDE the tabs but OUTSIDE either panel: under the
+            tab list, above both. It was in the Thesis panel, which hid your
+            own position the moment you opened Activity — what you hold on a
+            stock is not one view of it. */}
+        {position ? (
+          <TradeBlock
+            position={position}
+            pnl={quote?.positionPnl ?? null}
+            pendingProposal={state.position?.pendingProposal ?? null}
+            direction={direction}
+          />
+        ) : null}
 
         <TabsContent value={0} className="space-y-5">
 
@@ -1527,7 +1555,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         needsAction={quote?.needsAction ?? null}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
-        analystName={state.analystName}
         suppressText={state.position?.pendingProposal?.rationale ?? null}
       />
 
@@ -1604,11 +1631,15 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
             <p className="text-xl font-normal leading-relaxed">{state.coreBelief}</p>
           ) : null}
           {state.snapshot ? (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">
               {state.snapshot.text}{" "}
               <SourceCitation sources={researchCitationSources(state.snapshot.citations)} />
             </p>
           ) : null}
+          <WrittenByLine
+            latestUpdate={state.latestUpdate}
+            analystName={state.analystName}
+          />
         </div>
       ) : null}
 
