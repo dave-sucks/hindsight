@@ -606,8 +606,7 @@ export function outcomePhrase(
   const ops = ladderChangeLines(response);
   const removed = ops.filter((o) => o.kind === "remove");
 
-  // Read top to bottom, first match wins. The order is "what would make me
-  // look": the plan's shape, then its numbers, then the words.
+  // Read top to bottom, first match wins.
   if (fc.status?.to === "RETIRED" || fc.status?.to === "PASSED")
     return "archived";
 
@@ -616,21 +615,22 @@ export function outcomePhrase(
   // less (CEG's "Removed: Any earnings beat → review" cleanup).
   if (removed.length > 0 && !removed.every(isReviewRung)) return "plan set down";
 
-  if (LEVEL_FIELDS.some((k) => fc[k] != null)) return "levels moved";
-  if (ops.some((o) => /\$\d/.test(o.text))) return "levels moved";
-
-  // Everything else the plan can change and used to have nowhere to go: a
-  // review cadence, a fire mode, a rung's predicate. 97 episodes read "no
-  // change" while carrying a `triggers` from/to diff — HPE's buy flipped
-  // from a breakout above $54.75 to a pullback below it and the row said
-  // nothing happened.
-  if (ops.length > 0 || fc.triggers != null || fc.nextReviewAt != null)
-    return "plan changed";
+  // One word for every plan change, whether a price level moved or a rung's
+  // cadence / fire mode / predicate did. They were two ("levels moved" and
+  // "plan changed") and they are the same event to a reader — the chips
+  // under the title already say which fields moved.
+  if (
+    ops.length > 0 ||
+    LEVEL_FIELDS.some((k) => fc[k] != null) ||
+    fc.triggers != null ||
+    fc.nextReviewAt != null
+  )
+    return "updated";
 
   // The plan is untouched but the argument was rewritten — the cases, the
   // snapshot, the conviction score.
   if (RESEARCH_KEYS.some((k) => fc[k] != null) || fc.scoring != null || fc.conviction != null)
-    return "research refreshed";
+    return "thesis refreshed";
 
   return "no change";
 }
@@ -850,6 +850,12 @@ const PROSE_VISIBLE = new Set<EventKind>([
   "expired",
 ]);
 
+/** A review row that recorded nothing — same "no change" as an episode's. */
+const REVIEW_KINDS = new Set<EventKind>(["updated", "edited-by-you", "reviewed"]);
+function isSilentReview(u: TimelineUpdate): boolean {
+  return REVIEW_KINDS.has(eventKind(u)) && outcomePhrase(u) === "no change";
+}
+
 /** The prose for a row + whether it's the principal's own words. */
 function describe(u: TimelineUpdate): { text: string | null; quoted: boolean } {
   const note = proposalUserMessage(u);
@@ -875,7 +881,11 @@ export function toRow(item: TimelineItem): TimelineRow {
       price: u.type === "PROPOSAL_APPROVED" ? null : u.priceAtTime,
       description: text,
       quoted,
-      showDescription: PROSE_VISIBLE.has(eventKind(u)),
+      // A review's own row follows the same rule as an episode's: if it
+      // changed nothing, its paragraph is the agent restating the thesis and
+      // stays collapsed. A transaction row is never collapsed this way — its
+      // write-up is the only place that reasoning appears.
+      showDescription: PROSE_VISIBLE.has(eventKind(u)) && !isSilentReview(u),
       when: relativeTimestamp(u.timestamp),
       runId: u.runId,
       orderId: proposalOrderId(u),
@@ -902,10 +912,14 @@ export function toRow(item: TimelineItem): TimelineRow {
       price: lead.priceAtTime ?? item.response.priceAtTime,
       description: text,
       quoted,
-      // Prose shows when the review CHANGED something. A "no change" row's
-      // paragraph is the agent restating the thesis — 230 of them across the
-      // book, and they were the wall. Still one click away.
-      showDescription: outcome !== "no change",
+      // Prose shows when the review changed something AND nothing else on
+      // screen is already saying it. Two cases stay collapsed (one click
+      // away either way):
+      //   • "no change" — the paragraph is the agent restating the thesis.
+      //   • a staged proposal — the Proposed row right below carries the
+      //     write-up, so the episode would print it twice.
+      showDescription:
+        outcome !== "no change" && !outcome.startsWith("proposed "),
       // An episode spans two moments. Showing only the fire is what made the
       // sheet header ("written Sep 28") disagree with the feed ("Fri") on the
       // same paragraph — and it is the answer's date you are looking for.

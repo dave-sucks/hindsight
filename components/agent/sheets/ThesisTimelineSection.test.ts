@@ -510,12 +510,12 @@ describe("trigger episodes — one sentence, fire + decision", () => {
     );
   });
 
-  it("levels moved when a price level changed", () => {
+  it("updated when a price level changed", () => {
     expect(
       outcomePhrase(
         row({ type: "UPDATED", fieldChanges: { stopLoss: { from: 54, to: 62 } } }),
       ),
-    ).toBe("levels moved");
+    ).toBe("updated");
   });
 
   // ISRG Sep 23 removed the buy, the floor AND the target — the month's
@@ -859,23 +859,23 @@ describe("the outcome names what the review actually changed", () => {
   // HPE 2026-09-09: the buy flipped from a breakout ABOVE $54.75 to a
   // pullback BELOW it, stored as a `triggers` from/to diff. 97 episodes
   // across the book carried one of these and read "no change".
-  it("a trigger change that moves no price is a plan change, not nothing", () => {
+  it("a trigger change that moves no price is an update, not nothing", () => {
     expect(
       outcomePhrase(resp({ triggers: { from: "ENTER PRICE_ABOVE 54.75", to: "ENTER PRICE_BELOW 54.75" } })),
-    ).toBe("plan changed");
+    ).toBe("updated");
     expect(outcomePhrase(resp(ops({ op: "add", text: "Added: review every 10 days" })))).toBe(
-      "plan changed",
+      "updated",
     );
     expect(outcomePhrase(resp(ops({ op: "edit", text: "Review cadence: wording updated" })))).toBe(
-      "plan changed",
+      "updated",
     );
   });
 
-  it("a price level moving is levels moved, however it was written", () => {
-    expect(outcomePhrase(resp({ stopLoss: { from: 54, to: 62 } }))).toBe("levels moved");
-    expect(outcomePhrase(resp(ops({ op: "edit", text: "Entry $148 → $162.91" })))).toBe(
-      "levels moved",
-    );
+  // A moved price and a changed cadence are the same event to a reader —
+  // the chips say which fields moved. Two words were one too many.
+  it("a price level moving is the same word as any other plan change", () => {
+    expect(outcomePhrase(resp({ stopLoss: { from: 54, to: 62 } }))).toBe("updated");
+    expect(outcomePhrase(resp(ops({ op: "edit", text: "Entry $148 → $162.91" })))).toBe("updated");
   });
 
   // CEG: you removed two earnings-review rungs. The buy, floor and target
@@ -890,15 +890,15 @@ describe("the outcome names what the review actually changed", () => {
           ),
         ),
       ),
-    ).toBe("plan changed");
+    ).toBe("updated");
     expect(
       outcomePhrase(resp(ops({ op: "remove", text: "Removed: buy above $383" }))),
     ).toBe("plan set down");
   });
 
-  it("a rewritten argument with the plan untouched is research refreshed", () => {
+  it("a rewritten argument with the plan untouched is a thesis refresh", () => {
     expect(outcomePhrase(resp({ bullCase: { from: "a", to: "b" }, snapshot: { from: 1, to: 2 } }))).toBe(
-      "research refreshed",
+      "thesis refreshed",
     );
   });
 
@@ -942,3 +942,47 @@ function baseRow() {
     fold: false,
   };
 }
+
+describe("a row that changed nothing stays collapsed", () => {
+  const show = (r: ReturnType<typeof row>) =>
+    toRow({ kind: "event", row: r }).showDescription;
+
+  it("a review that recorded nothing hides its paragraph — trigger or no trigger", () => {
+    // Standalone: the review clock came round and the run wrote a
+    // re-attestation.
+    expect(show(row({ type: "REVIEWED", rationale: "Still holds." }))).toBe(false);
+    expect(show(row({ type: "UPDATED", fieldChanges: {}, rationale: "Still holds." }))).toBe(false);
+    // Answering a fire: same rule, via the episode's outcome.
+    const items = buildTimeline(
+      [
+        row({ id: "r", type: "UPDATED", fieldChanges: {}, rationale: "Still holds.", timestamp: "2026-09-18T12:00:00Z" }),
+        row({ id: "f", type: "TRIGGER_FIRED", summary: "Price below the 200-day — review", timestamp: "2026-09-17T13:35:00Z" }),
+      ],
+      "all",
+    );
+    expect(toRow(items[0]).showDescription).toBe(false);
+  });
+
+  it("a review that changed something still shows it", () => {
+    expect(
+      show(row({ type: "UPDATED", fieldChanges: { stopLoss: { from: 54, to: 62 } }, rationale: "Floor up." })),
+    ).toBe(true);
+  });
+
+  // The Proposed row right below carries the write-up; the episode would
+  // print the same reasoning twice.
+  it("an episode that staged a proposal leaves the words to the proposal row", () => {
+    const items = buildTimeline(
+      [
+        row({ id: "resp", type: "UPDATED", fieldChanges: {}, rationale: "I am buying here because…", timestamp: "2026-09-28T20:20:42Z" }),
+        row({ id: "prop", type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("OPEN", 16), timestamp: "2026-09-28T20:20:30Z" }),
+        row({ id: "f", type: "TRIGGER_FIRED", summary: "Closes above $406 — consider entry", timestamp: "2026-09-28T20:20:17Z" }),
+      ],
+      "all",
+    );
+    const episode = items.find((i) => i.kind === "group")!;
+    expect(toRow(episode).title.outcome).toBe("— proposed buy");
+    expect(toRow(episode).showDescription).toBe(false);
+    expect(show(row({ type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("OPEN", 16), rationale: "I am buying here because…" }))).toBe(true);
+  });
+});
