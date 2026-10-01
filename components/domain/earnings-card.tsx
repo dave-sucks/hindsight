@@ -22,10 +22,10 @@
  */
 
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { EarningsResponse } from "@/lib/types/thesis-sheet";
+import { daysUntilReport, earningsSoon } from "@/lib/market-data/earnings-window";
 
 /** $13.1B / $68.0M / $113.9K — the compact money the earnings surfaces use. */
 export function compactMoney(n: number): string {
@@ -48,10 +48,7 @@ function signedPct(n: number): string {
 function reportWhen(iso: string, hour: string | null): string {
   const d = new Date(`${iso}T00:00:00Z`);
   const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  const now = new Date();
-  const days = Math.round(
-    (d.getTime() - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / 86_400_000,
-  );
+  const days = daysUntilReport(iso);
   const when =
     days === 0 ? "today" : days === 1 ? "tomorrow" : days > 0 ? `in ${days} days` : `${Math.abs(days)} days ago`;
   const bell = hour === "bmo" ? "before open" : hour === "amc" ? "after close" : null;
@@ -81,8 +78,8 @@ interface Column {
   estimate: number | null;
   actual: number | null;
   surprisePct: number | null;
-  /** The upcoming report — estimate only, and its date instead of a verdict. */
-  upcoming?: { when: string };
+  /** The upcoming report — estimate only, no verdict yet. */
+  upcoming?: { when: string; revenueEstimate: number | null };
 }
 
 // ── The dot plot ─────────────────────────────────────────────────────────────
@@ -103,11 +100,6 @@ function DotPlot({ columns }: { columns: Column[] }) {
     <div className="flex items-stretch">
       {columns.map((c) => {
         const beat = c.surprisePct != null && c.surprisePct >= 0;
-        const detail = c.upcoming
-          ? `${c.label} · reports ${c.upcoming.when}${c.estimate != null ? ` · street expects EPS ${eps(c.estimate)}` : ""}`
-          : `${c.label} · EPS ${eps(c.actual)} vs ${eps(c.estimate)} expected${
-              c.surprisePct != null ? ` · ${beat ? "Beat" : "Miss"} ${signedPct(c.surprisePct)}` : ""
-            }`;
         return (
           <Tooltip key={c.key}>
             <TooltipTrigger
@@ -142,33 +134,64 @@ function DotPlot({ columns }: { columns: Column[] }) {
                   />
                 )}
               </div>
-              {/* The x-axis IS the verdict strip — label over result. */}
-              <div className="mt-1 space-y-0.5 text-center">
-                <p className="text-[10px] text-muted-foreground tabular-nums">{c.label}</p>
-                {c.upcoming ? (
-                  <p className="text-xs text-muted-foreground tabular-nums truncate">
-                    {c.upcoming.when.split(" · ")[0]}
-                  </p>
-                ) : c.surprisePct != null ? (
-                  <p
-                    className={cn(
-                      "text-xs tabular-nums",
-                      beat ? "text-positive" : "text-negative",
-                    )}
-                  >
-                    {beat ? "Beat" : "Miss"} {signedPct(c.surprisePct)}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">—</p>
-                )}
-              </div>
+              {/* The x-axis is the quarter, nothing else. The numbers and
+                  the verdict are on hover — printing them under every column
+                  made five columns of competing green text. */}
+              <p className="mt-1 text-center text-[10px] text-muted-foreground tabular-nums">
+                {c.label}
+              </p>
             </TooltipTrigger>
             <TooltipContent side="top" className="text-xs">
-              {detail}
+              <QuarterDetail column={c} />
             </TooltipContent>
           </Tooltip>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * What one column says on hover: the quarter, the two numbers that make it,
+ * and the verdict under a rule. Everything the column used to print under
+ * itself, plus the revenue estimate that used to need its own row.
+ */
+function QuarterDetail({ column: c }: { column: Column }) {
+  const beat = c.surprisePct != null && c.surprisePct >= 0;
+  const rows: Array<[string, string]> = c.upcoming
+    ? [
+        ["Reports", c.upcoming.when],
+        ...(c.estimate != null ? ([["Est. EPS", eps(c.estimate)]] as Array<[string, string]>) : []),
+        ...(c.upcoming.revenueEstimate != null
+          ? ([["Est. rev.", compactMoney(c.upcoming.revenueEstimate)]] as Array<[string, string]>)
+          : []),
+      ]
+    : [
+        ["Est.", eps(c.estimate)],
+        ["Act.", eps(c.actual)],
+      ];
+
+  return (
+    <div className="space-y-1">
+      <p className="font-medium">{c.label}</p>
+      <div className="space-y-0.5">
+        {rows.map(([label, value]) => (
+          <p key={label} className="flex items-baseline justify-between gap-4">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="tabular-nums">{value}</span>
+          </p>
+        ))}
+      </div>
+      {c.surprisePct != null ? (
+        <p
+          className={cn(
+            "border-t pt-1 tabular-nums",
+            beat ? "text-positive" : "text-negative",
+          )}
+        >
+          {beat ? "Beat" : "Miss"} {signedPct(c.surprisePct)}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -201,79 +224,50 @@ export function EarningsCard({
       estimate: data.next.epsEstimate,
       actual: null,
       surprisePct: null,
-      upcoming: { when: reportWhen(data.next.reportDate, data.next.hour) },
+      upcoming: {
+        when: reportWhen(data.next.reportDate, data.next.hour),
+        revenueEstimate: data.next.revenueEstimate,
+      },
     });
   }
 
-  const withVerdict = scored.filter((q) => q.surprisePct != null);
-  const beats = withVerdict.filter((q) => (q.surprisePct as number) >= 0).length;
-  const record =
-    withVerdict.length > 0
-      ? {
-          text: `Beat ${beats} of ${withVerdict.length}`,
-          variant:
-            beats * 2 > withVerdict.length
-              ? ("positive" as const)
-              : beats * 2 < withVerdict.length
-                ? ("negative" as const)
-                : ("secondary" as const),
-        }
-      : null;
-
+  // The next report earns a line only when it is nearly here. Its date,
+  // bell, and both street estimates are on the upcoming column's hover —
+  // a permanent two-line header restated them 19 days early, every day.
   const next = data.next;
-  const street = next
-    ? [
-        next.epsEstimate != null ? `EPS ${eps(next.epsEstimate)}` : null,
-        next.revenueEstimate != null ? `revenue ${compactMoney(next.revenueEstimate)}` : null,
-      ].filter(Boolean)
-    : [];
+  const imminent = next != null && earningsSoon(next.reportDate);
 
   return (
     <Card className={className ?? "bg-muted/40 p-2 gap-4"}>
+      {/* The key sits where the verdict badge was: it is what you need to
+          read the plot, and "Beat 4 of 4" was a number the plot already
+          shows four times over. */}
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Earnings</p>
-        {record ? (
-          <Badge variant={record.variant} className="font-normal tabular-nums">
-            {record.text}
-          </Badge>
-        ) : null}
+        <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <span className="size-1.5 rounded-full border border-muted-foreground/70 bg-card" />
+            Expected
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="size-1.5 rounded-full bg-positive" />
+            Beat
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="size-1.5 rounded-full bg-negative" />
+            Miss
+          </span>
+        </div>
       </div>
 
-      {next ? (
-        <div className="space-y-0.5">
-          <p className="text-sm">
-            <span className="text-muted-foreground">Next report </span>
-            <span className="font-medium tabular-nums">
-              {reportWhen(next.reportDate, next.hour)}
-            </span>
-          </p>
-          {street.length > 0 ? (
-            <p className="text-xs text-muted-foreground tabular-nums">
-              Street expects {street.join(" · ")}
-            </p>
-          ) : null}
-        </div>
+      {imminent && next ? (
+        <p className="text-sm tabular-nums">
+          <span className="text-muted-foreground">Earnings report soon — </span>
+          <span className="font-medium">{reportWhen(next.reportDate, next.hour)}</span>
+        </p>
       ) : null}
 
-      {columns.length > 0 ? (
-        <div className="space-y-2">
-          <DotPlot columns={columns} />
-          <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <span className="size-1.5 rounded-full border border-muted-foreground/70 bg-card" />
-              Expected
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-positive" />
-              Beat
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-negative" />
-              Miss
-            </span>
-          </div>
-        </div>
-      ) : null}
+      {columns.length > 0 ? <DotPlot columns={columns} /> : null}
     </Card>
   );
 }
