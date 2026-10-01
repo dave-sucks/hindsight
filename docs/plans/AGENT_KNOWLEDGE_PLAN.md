@@ -142,8 +142,11 @@ No new instructions. It removes or corrects what is wrong today:
 - Chat's false line that a briefing is "how the analyst remembers".
 - Chat's line that a repeatedly declined sale means "stop proposing it". Your
   ruling is that a decline means "not today".
-- The writer's line to calibrate scores against "70/100". It becomes: a buy
-  under the analyst's buying score is refused.
+- The writer's line to calibrate scores against "70/100" is left as it is.
+  Rewriting it to "a buy under the analyst's score is refused, so write a
+  review" would change which buys get written, and whether the check should
+  read a score taken before the buy condition has formed is a question for
+  you first (see the EME result under PR 3).
 
 It also adds two checks used by every later PR (see "How we check it").
 
@@ -295,7 +298,8 @@ Files and lines, as of main at `e4f1e1d8`.
 - `lib/agent/system-prompts/intraday-tactical.ts:323`, `:483`: a first buy on
   a watched stock is `ENTER`, not `ADD`.
 - `lib/agent/run-thesis-writer.ts:422` (the heads-up number is deleted, not
-  replaced), `:610-612` (70/100).
+  replaced). `:610-612` (70/100) is left as on main until the score question
+  is decided.
 - `lib/agent/system-prompts/discovery.ts:139`, `:196`, `:239`, `:424` (weekly
   and Sunday run), `:299` (the deleted feed subscription). `:306` ("YOUR
   SETUPS above") is left for PR 3, which adds the list.
