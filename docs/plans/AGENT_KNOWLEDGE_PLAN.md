@@ -182,8 +182,10 @@ The morning prompt is the longest and carries at least eight passages each
 written after one incident. This PR goes through it paragraph by paragraph:
 whatever PR 3 now puts on the stock comes out of the prompt, and each incident
 passage is deleted only where a check in the app now covers it, named one by
-one. It loads the shared file here too, in the same change that removes the
-morning prompt's own copy of that sentence. The stage headers and the tool-call rules are not touched; changing those
+one. A passage that is really about one setup moves to that setup's list of
+known mistakes, where every agent gets it with the stock. It loads the shared
+file here too, in the same change that removes the morning prompt's own copy
+of that sentence. The stage headers and the tool-call rules are not touched; changing those
 broke every run once.
 
 PR 1 and PR 4 each merge alone, on a day before a morning run you can watch.
