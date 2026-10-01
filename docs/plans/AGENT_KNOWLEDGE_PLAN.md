@@ -129,8 +129,8 @@ the model.
 No new instructions. It removes or corrects what is wrong today:
 
 - Instructions that point at things that no longer exist: an input that was
-  removed, options that were deleted, a trigger kind that was deleted, a
-  setups list that isn't there, routed news signals, a feed subscription, a
+  removed, options that were deleted, a trigger kind that was deleted,
+  routed news signals, a feed subscription, a
   thesis status that was renamed, a deleted doc, Sunday and weekly discovery.
 - A first buy on a watched stock called an "add" in the trigger run. It is a
   buy.
@@ -166,7 +166,8 @@ Every time an agent is handed a stock, it also gets:
 
 One piece of code builds this, and the morning run, the trigger run and chat's
 proposals list all read from it. Discovery gets the list of its analyst's
-setups, which its prompt already refers to and doesn't have.
+setups: its prompt points at "your setups above" and there is no such list
+until this PR adds it.
 
 It also creates the shared file, with its one sentence, and loads it into the
 trigger run, the writer, discovery and chat. Each of those four drops its own
@@ -254,12 +255,14 @@ Files and lines, as of main at `e4f1e1d8`.
 - `lib/agent/run-thesis-writer.ts:422` (the heads-up number is deleted, not
   replaced), `:610-612` (70/100).
 - `lib/agent/system-prompts/discovery.ts:139`, `:196`, `:239`, `:424` (weekly
-  and Sunday run), `:299` (the deleted feed subscription), `:306` ("YOUR
-  SETUPS above"; the list itself arrives in PR 3).
+  and Sunday run), `:299` (the deleted feed subscription). `:306` ("YOUR
+  SETUPS above") is left for PR 3, which adds the list.
 - `lib/agent/modes.ts`: `:666` (the briefing line), `:711` (repeatedly
   declined), `:665`, `:805`, `:873` (Sunday discovery), `:832` (`ACTIVE`),
   `:888` (`docs/GAPS.md`), `:766` (time-elapsed trigger). `:662` says the
-  Daily Run is 8 AM per analyst; add Mon/Wed/Fri.
+  Daily Run is 8 AM per analyst; it becomes "on each analyst's run days"
+  (the days are a per-analyst setting, so no weekday is written into a
+  prompt).
 - The prompt-size test: each of the five prompts rendered from a fixed
   fixture, one recorded number each.
 - The hero-case script: under `scripts/`, about 120 lines at most, not in CI,
