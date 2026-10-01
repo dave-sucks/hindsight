@@ -114,8 +114,9 @@ four possible homes:
 An agent's own prompt gets only what is about that agent's job. A fix that
 doesn't fit one of the four isn't ready to be written.
 
-The shared file starts with one sentence: judge a position or a proposal by
-what it loses at its floor, not by the dollars in. A sentence gets into it
+The shared file starts with one sentence: the app sizes every buy from the
+distance to its floor, so judge a position or a proposal by what it loses at
+that floor, not by the dollars in. A sentence gets into it
 only if a real case goes wrong without it, shown by running that case against
 the model.
 
@@ -168,7 +169,8 @@ proposals list all read from it. Discovery gets the list of its analyst's
 setups, which its prompt already refers to and doesn't have.
 
 It also creates the shared file, with its one sentence, and loads it into the
-trigger run, the writer, discovery and chat.
+trigger run, the writer, discovery and chat. Each of those four drops its own
+sentence about sizing in the same PR, so none of them says it twice.
 
 It deletes the numbers from chat's "Sizing" line, which shows only the largest
 trade. The sentence that the app sizes the buy, and that a size you name in
@@ -190,8 +192,11 @@ PR 1 and PR 4 each merge alone, on a day before a morning run you can watch.
 
 ## How we check it
 
-- **Prompts can only shrink.** A test measures all five prompts and fails if
-  any grows past its recorded size. Each PR that deletes lowers the number.
+- **A prompt can't grow by accident.** A test records the size of each of the
+  five prompts and fails if one gets longer. A PR that deletes lowers the
+  number. A PR that makes a prompt longer has to raise the number by hand and
+  give the reason. The plan expects that once: discovery gains the list of its
+  analyst's setups in PR 3, which it needs and doesn't have.
 - **Three real cases, run against the real models before and after.** Tests
   prove what an agent is handed, not what it decides. So for each change we
   replay three real moments and paste what the model said, pass or fail:
@@ -281,7 +286,11 @@ Files and lines, as of main at `e4f1e1d8`.
 - The shared file: one file, loaded in PR 3 by the trigger run, writer,
   discovery and chat (scoped and unscoped). Day-one content is the one size
   sentence, worded to read correctly for all four; chat's approve bullet
-  needs no sentence of its own. Its header carries the admission rule (a real
+  needs no sentence of its own. Each prompt that loads it drops its own
+  sizing sentence in the same PR: the tail of `intraday-tactical.ts:452-458`
+  ("a buy needs this analyst's minimum confidence ... you name no amount";
+  the row now carries the buying score), `run-thesis-writer.ts:606-609`, the
+  bracket at `discovery.ts:161`, and chat's Sizing numbers (below). Its header carries the admission rule (a real
   case goes wrong without it, shown by a hero-case run; the prompt-size test
   counts it) and what may never go in it: anything about one setup (the setup
   list), anything about one stock or one action (the tool's reply), anything a
