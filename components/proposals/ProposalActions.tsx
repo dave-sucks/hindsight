@@ -43,6 +43,12 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Check, X, Loader2, ChevronDown, Pencil } from "lucide-react";
 import { ThesisTriggersSection } from "@/components/agent/sheets/ThesisTriggersSection";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { EXECUTING_LABEL, EXECUTING_TOOLTIP } from "@/lib/trade-status";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -285,21 +291,26 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className }
     resolved == null && expiresAt != null && Date.parse(expiresAt) <= Date.now();
 
   if (resolved || lapsed) {
-    const label =
-      resolved === "approved"
-        ? "Approved"
-        : resolved === "rejected"
-          ? "Rejected"
-          : "Expired";
+    // An approved order is not a finished thing — it is at Alpaca, waiting on
+    // a fill. So this is the SAME shimmering "Executing" the trade block shows
+    // once the server reports it, and the swap over the refresh is invisible.
+    // It used to read "Approved" in a one-off emerald that is not the app's
+    // green, as if the decision were the outcome.
+    if (resolved === "approved") {
+      return (
+        <Tooltip>
+          <TooltipTrigger
+            render={<span className={cn("text-xs shimmer-text cursor-default", className)} />}
+          >
+            {EXECUTING_LABEL}
+          </TooltipTrigger>
+          <TooltipContent className="text-xs">{EXECUTING_TOOLTIP}</TooltipContent>
+        </Tooltip>
+      );
+    }
     return (
-      <span
-        className={cn(
-          "text-xs tabular-nums",
-          resolved === "approved" ? "text-emerald-500" : "text-muted-foreground",
-          className,
-        )}
-      >
-        {label}
+      <span className={cn("text-xs text-muted-foreground", className)}>
+        {resolved === "rejected" ? "Rejected" : "Expired"}
       </span>
     );
   }

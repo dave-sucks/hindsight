@@ -19,6 +19,8 @@
  * ("Holding" / "Won" / "Loss"). Only the sentence + gain unify.
  */
 
+import { EXECUTING_LABEL } from "@/lib/trade-status";
+
 /** Share quantity: integer as-is, otherwise 2 decimals (no 5.953027164). */
 export function fmtQty(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
@@ -65,6 +67,13 @@ export interface TradeStatementInput {
    * the action clause has no share count (a full close doesn't need one).
    */
   proposalQty?: number | null;
+  /**
+   * The order has been approved and sent, and the fill has not landed. The
+   * lead word becomes "Executing" — the same word every other trade surface
+   * uses for that moment (EXECUTING_LABEL in lib/trade-status.ts). Nothing is
+   * being proposed any more; there is nothing left to decide.
+   */
+  executing?: boolean;
 }
 
 /**
@@ -73,6 +82,7 @@ export interface TradeStatementInput {
  * entry context trails:
  *
  *   proposed-buy   → "Proposed: Buy 100 shares at $40.93"
+ *     (executing)  → "Executing: Buy 100 shares at $40.93"
  *   holding        → "Bought 100 shares at $40.93, now trading at $45.41"
  *   closed         → "Sold at $416.63, bought 3.54 shares at $282.35"
  *   proposed-exit  → "Proposed: Sell at $45.41, bought 100 shares at $40.93"
@@ -85,10 +95,11 @@ export function buildTradeSentence(i: TradeStatementInput): string | null {
   const unit = sharesWord(i.qty);
   // Trailing entry context (lowercase — it follows the action clause).
   const entryClause = `bought ${q} ${unit} at ${usd(i.entry)}`;
+  const lead = i.executing ? EXECUTING_LABEL : "Proposed";
 
   switch (i.kind) {
     case "proposed-buy":
-      return `Proposed: ${i.buyVerb ?? "Buy"} ${q} ${unit}${
+      return `${lead}: ${i.buyVerb ?? "Buy"} ${q} ${unit}${
         i.entry > 0 ? ` at ${usd(i.entry)}` : ""
       }`;
     case "holding":
@@ -109,7 +120,7 @@ export function buildTradeSentence(i: TradeStatementInput): string | null {
           ? ` ${fmtQty(i.proposalQty)} ${sharesWord(i.proposalQty)}`
           : "";
       const at = i.current != null ? ` at ${usd(i.current)}` : "";
-      return `Proposed: ${verb}${pq}${at}, ${entryClause}`;
+      return `${lead}: ${verb}${pq}${at}, ${entryClause}`;
     }
   }
 }

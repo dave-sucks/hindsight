@@ -411,7 +411,11 @@ export function TradeRow({
             // Pending proposal — amber dot overrides whatever the underlying
             // status would normally show. Same amber the Coverage Table uses.
             className={
-              isAwaitingApproval ? getTradeStatusDisplay("PENDING").dotClass : cfg.dotClass
+              // Amber is "waiting on you". Once the order is at Alpaca there
+              // is nothing to decide, so it takes the live-and-open blue.
+              isAwaitingApproval
+                ? getTradeStatusDisplay(isExecuting ? "OPEN" : "PENDING").dotClass
+                : cfg.dotClass
             }
             label={timeLabel}
             alpacaId={shortId}

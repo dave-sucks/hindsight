@@ -77,7 +77,11 @@ import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { buildTradeSentence } from "@/lib/trade-statement";
-import { EXECUTING_LABEL, EXECUTING_TOOLTIP } from "@/lib/trade-status";
+import {
+  EXECUTING_LABEL,
+  EXECUTING_TOOLTIP,
+  getTradeStatusDisplay,
+} from "@/lib/trade-status";
 import {
   getThesisStatusDisplay,
   type ThesisStatus,
@@ -502,9 +506,13 @@ function TradeBlock({
       qty: pp.quantity,
       entry,
       buyVerb: direction === "SHORT" ? "Short" : "Buy",
+      executing: pp.executing,
     });
     review = reviewSlot;
-    dotClass = "bg-amber-500";
+    // Amber is "waiting on you". Once the order is at Alpaca there is nothing
+    // to decide, so it takes the same live-and-open blue the holding row uses —
+    // from the shared status map, not a colour spelled out here.
+    dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
     note = pp.rationale;
     meta = proposalMeta;
   } else if (pp) {
@@ -519,9 +527,10 @@ function TradeBlock({
       exitVerb:
         pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
       proposalQty: pp.quantity,
+      executing: pp.executing,
     });
     review = reviewSlot;
-    dotClass = "bg-amber-500";
+    dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
     if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
     note = pp.rationale;
     meta = proposalMeta;
@@ -841,7 +850,7 @@ function LatestNoteBlock({
       {view.flags === "hidden" ? null : view.flags === "loading" ? (
         <Skeleton className="h-4 w-56" />
       ) : view.flags === "reasons" && flag ? (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-sm text-foreground">
           <FlagNotificationIcon className="size-4 shrink-0" />
           <span>
             Flagged for review — {flag.name}
@@ -1614,7 +1623,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           is why it is small and grey rather than a warning. */}
       {resolved?.planSanity && resolved.planSanity.length > 0 ? (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
             Plan checks
           </p>
           {resolved.planSanity.map((f, i) => (

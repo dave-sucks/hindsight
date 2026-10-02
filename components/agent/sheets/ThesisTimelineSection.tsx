@@ -266,7 +266,7 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
           {rows.map((row, idx) => (
             <Fragment key={row.key}>
               {months[idx] ? (
-                <p className="text-xs font-light text-muted-foreground pb-2 pl-[19px]">
+                <p className="text-xs text-muted-foreground pb-2 pl-[19px]">
                   {months[idx]}
                 </p>
               ) : null}
@@ -354,11 +354,11 @@ function Row({
               )}
             >
               {row.price != null ? (
-                <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                <span className="text-xs tabular-nums text-muted-foreground">
                   ${row.price.toFixed(2)}
                 </span>
               ) : null}
-              <span className="text-xs font-light tabular-nums text-muted-foreground">
+              <span className="text-xs tabular-nums text-muted-foreground">
                 {row.when}
               </span>
             </span>
