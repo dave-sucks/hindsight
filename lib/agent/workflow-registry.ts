@@ -171,6 +171,7 @@ const TOOL_GET_SEC_FILINGS: ToolEntry = {
   resources: [
     { source: "sec", title: "Company lookup", description: "Finds SEC CIK identifier.", type: "api", endpointOrPath: "sec.gov/files/company_tickers_exchange.json", exampleOutput: "NVDA → CIK 0001045810" },
     { source: "sec", title: "Recent filings", description: "Last 8 filings — annuals, quarterlies, material events, insider trades.", type: "api", endpointOrPath: "data.sec.gov/submissions/CIK{cik}.json", exampleOutput: "8-K Mar 15 · Form 4 — insider sale 50K shares" },
+    { source: "sec", title: "Filing text", description: "The words of one filing, or its press-release exhibit — cleaned, 8-K item sections labelled, capped.", type: "api", endpointOrPath: "sec.gov/Archives/edgar/data/{cik}/{accession}/{document}", exampleOutput: "[Item 8.01 — other events] On September 21, 2026, the Company…" },
   ],
 };
 

@@ -11,6 +11,11 @@
  * with who took the stake; everything else is a plain list. A search that
  * hit its page cap, or failed, says so in words — never "nothing filed".
  *
+ * And one way to READ: `read` takes a filing's link or accession number and
+ * returns the text of that filing, or of its press-release exhibit
+ * (lib/market-data/filing-text → readFilingText). The list says what kind of
+ * event a filing is; only the text says what happened.
+ *
  * The trigger evaluator reads the same search (`SEC_EVENT`). Insider buying
  * is get_insider_activity (Form 4), not this tool.
  */
@@ -24,6 +29,7 @@ import {
   type FoundFiling,
 } from "@/lib/market-data/sec-filings";
 import { describeFilingEvent, FORM_NAMES, ITEM_NAMES, type SecFiling } from "@/lib/market-data/sec-events";
+import { FILING_TEXT_CAP, readFilingText, type FilingReadResult } from "@/lib/market-data/filing-text";
 
 const TIER_WORD: Record<SecFiling["tier"], string> = {
   RED: "serious",
@@ -50,8 +56,14 @@ export const getSecFilings = defineTool({
     "its tier and a link. New activist stakes (13D) across the market come back grouped with who took the stake. " +
     "Examples: review the book — {scope:\"coverage\", tier:\"MATERIAL\", days:7}; one name — {symbol:\"MU\", days:30}; " +
     "discovery — {scope:\"universe\", forms:[\"SCHEDULE 13D\"], days:30}; every restatement this month — " +
-    "{scope:\"all\", items:[\"4.02\"], days:30}. The code says what KIND of event it was, not whether it's good: " +
-    "read the document before acting. Market-wide results carry no company size — check it with get_stock_data " +
+    "{scope:\"all\", items:[\"4.02\"], days:30}. The code says what KIND of event it was, not what happened. " +
+    "READ — `read` (a filing row's `url`, a catalyst-calendar row's, or an accession number) returns the text of that " +
+    `one filing instead of a list: cleaned, 8-K item sections labelled, capped at ${FILING_TEXT_CAP.toLocaleString("en-US")} characters. ` +
+    "An 8-K's own text often just points at its press release; `part:\"press_release\"` reads that exhibit (EX-99), " +
+    "where the detail of an FDA outcome, a deal or a trial result is. Read before you classify a filing, quote it, " +
+    "take a date from it or act on it; quote only words the returned text contains, and if the read failed or was " +
+    "cut, say so. Example — {read:\"https://www.sec.gov/Archives/edgar/data/…/….htm\"}. " +
+    "Market-wide results carry no company size — check it with get_stock_data " +
     "before researching a name. For insider buying use get_insider_activity.",
   schema: z.object({
     symbol: z.string().optional().describe("One company, e.g. MU."),
@@ -87,11 +99,26 @@ export const getSecFilings = defineTool({
       .boolean()
       .optional()
       .describe("Keep amended 13Ds / offerings (amended 8-Ks are always kept). Default false."),
+    read: z
+      .string()
+      .min(18)
+      .max(400)
+      .optional()
+      .describe(
+        'Read ONE filing\'s text instead of searching: its sec.gov link (the `url` on a filing row) or its accession number, e.g. "0001070081-26-000023". The search fields are ignored.',
+      ),
+    part: z
+      .enum(["filing", "press_release"])
+      .optional()
+      .describe(
+        "With `read`: 'filing' = the filing's own document; 'press_release' = its press-release exhibit (EX-99). Default: the document the link points at, or the filing's own document for an accession number.",
+      ),
   }),
   ui: "tool-ui" as const,
   groupId: "Researching",
 
   progressLabel: (args) => {
+    if (args.read) return args.part === "press_release" ? "Reading a filing's press release" : "Reading an SEC filing";
     const scope = resolveScope(args);
     if (scope === "company") {
       const names = args.symbols?.length ? args.symbols : [args.symbol ?? ""];
@@ -105,6 +132,8 @@ export const getSecFilings = defineTool({
   },
 
   execute: async (args, ctx) => {
+    if (args.read) return readResult(await readFilingText({ ref: args.read, part: args.part }));
+
     const scope = resolveScope(args);
     const covered = coveredTickers(ctx);
     const market = scope === "universe" || scope === "all";
@@ -236,6 +265,73 @@ function words(text: string, extra: Record<string, unknown> = {}) {
     summary: text,
     data: { items: [{ kind: "generic" as const, text }], filings: [] as FilingRow[], count: 0, ...extra },
     sources: [] as Array<{ provider: string; title: string; url: string }>,
+  };
+}
+
+/**
+ * One filing's text. The words go in `data.text`; the rows say what was read,
+ * what was left out, and what else the filing holds — so a cut or a pointer
+ * to a press release is never something the reader has to notice on its own.
+ */
+function readResult(r: FilingReadResult) {
+  if (!r.ok) {
+    const text = `Filing not read — ${r.error} Nothing was read, so nothing can be said about what it contains.`;
+    return {
+      summary: text,
+      data: { items: [{ kind: "generic" as const, text }], error: r.error },
+      sources: [] as Array<{ provider: string; title: string; url: string }>,
+    };
+  }
+  const n = (x: number) => x.toLocaleString("en-US");
+  const rootForm = r.filing.form.replace(/\/A$/, "");
+  const what = describeFilingEvent({ form: r.filing.form, rootForm, items: r.filing.items });
+  const doc = r.document.isPressRelease
+    ? `its press-release exhibit (${r.document.type})`
+    : r.document.type && r.document.type !== r.filing.form
+      ? `its ${r.document.type} exhibit`
+      : `the ${r.filing.form} itself`;
+  const header =
+    `${r.filing.company} ${what}, filed ${r.filing.filedDate ?? "on a date EDGAR didn't give"}. ` +
+    `Read ${doc}: ${n(r.shown)} characters, in data.text.`;
+
+  const notes: string[] = [];
+  if (r.sections.length) {
+    notes.push(
+      `Sections: ${r.sections.map((s) => `Item ${s.item} (${s.name})`).join(", ")}. Cover page and signature block left out.`,
+    );
+  }
+  if (r.cut) {
+    notes.push(`Cut at ${n(r.shown)} of ${n(r.total)} characters — the rest of this document was not read.`);
+  }
+  const release = r.others.find((o) => o.isPressRelease);
+  if (release && !r.document.isPressRelease) {
+    notes.push(`Not read: its press-release exhibit (${release.type}) — read it with part:"press_release".`);
+  }
+  const rest = r.others.filter((o) => o !== release);
+  if (rest.length) {
+    notes.push(`Also in this filing, not read: ${rest.map((o) => `${o.type}${o.description ? ` (${o.description})` : ""} ${o.url}`).join("; ")}.`);
+  }
+
+  return {
+    summary: [header, ...notes].join(" "),
+    data: {
+      items: [header, ...notes].map((text) => ({ kind: "generic" as const, text })),
+      filing: r.filing,
+      document: r.document,
+      sections: r.sections,
+      text: r.text,
+      shown: r.shown,
+      total: r.total,
+      truncated: r.cut,
+      otherDocuments: r.others,
+    },
+    sources: [
+      {
+        provider: "SEC EDGAR",
+        title: `${r.filing.company} ${r.filing.form} ${r.filing.filedDate ?? ""} — ${r.document.type || r.document.name}`.replace(/\s+—/, " —"),
+        url: r.document.url,
+      },
+    ],
   };
 }
 
