@@ -568,7 +568,18 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                                     <span className="text-xs text-primary">✓</span>
                                   )}
                                 </DropdownMenuItem>
-                                {analystScope.options.map((a) => (
+                                {/* A disabled analyst can't run, so it isn't a
+                                    scope you can pick — it only made the list
+                                    longer. The one exception is the scope
+                                    already selected: hiding that would leave
+                                    the menu with no checkmark and no way to
+                                    see what you are pointed at. */}
+                                {analystScope.options
+                                  .filter(
+                                    (a) =>
+                                      a.enabled || a.id === analystScope.current?.id,
+                                  )
+                                  .map((a) => (
                                   <DropdownMenuItem
                                     key={a.id}
                                     onClick={() => analystScope.onChange(a.id)}
@@ -587,7 +598,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                                       <span className="text-xs text-primary">✓</span>
                                     )}
                                   </DropdownMenuItem>
-                                ))}
+                                  ))}
                               </DropdownMenuSubContent>
                             </DropdownMenuSub>
                           </DropdownMenuGroup>
