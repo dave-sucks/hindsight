@@ -419,7 +419,7 @@ calendar, not news):
     BEFORE the report. Fires once per approaching report.
   • EARNINGS_BEAT / EARNINGS_MISS { minSurprisePct? } — reported EPS
     against the estimate, at the first open after the report.
-  The account rules already give EVERY name a 3-day heads-up and a
+  The account rules already give EVERY name a heads-up and a
   review on any beat or miss, so most theses need none of these. Author
   one only when the report is the thesis: a CATALYST built on the print
   wants a tighter bar (EARNINGS_BEAT minSurprisePct 5 → REVIEW, or the
