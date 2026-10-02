@@ -27,6 +27,7 @@ import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-t
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { describeTriggerFire, predicateSentence } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
+import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { listOpenRefusalsForAnalyst, listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalLinesFor, refusalNudge } from "@/lib/agent/refusal-carryover";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
@@ -765,17 +766,28 @@ export const tacticalRun = inngest.createFunction(
         `Validate, decide, act if warranted, then close out via update_thesis. ` +
         `You are running unattended — no human will respond. Every turn must call a tool; ` +
         `text-only turns terminate the run as FAILED.`;
+      // What this run read and wrote, every request counted, recorded on
+      // the run row at the end (also on the failure path below).
+      const tokenUsage = emptyTokenUsage();
+      // Pins the run's requests to one cache route, as the morning run
+      // does. The tool definitions are byte-identical from step to step
+      // since 2026-10-02 (triggers/schema.ts, triggerInputSchema), so the
+      // growing conversation is read from the cache rather than re-billed.
+      const openaiOptions = { strictJsonSchema: true, promptCacheKey: run.id };
       try {
         const { steps, response } = await generateText({
           model: openai(MODES["tactical"].model),
           system: systemPrompt,
           prompt: userPrompt,
           tools,
-          providerOptions: { openai: { strictJsonSchema: true } },
+          providerOptions: { openai: openaiOptions },
           stopWhen: stepCountIs(MODES["tactical"].maxSteps),
           abortSignal: AbortSignal.timeout(
             (MODES["tactical"].maxDuration - 30) * 1000,
           ),
+          onStepFinish({ usage }) {
+            addTokenUsage(tokenUsage, usage);
+          },
         });
 
         let toolCalls = steps.reduce(
@@ -851,10 +863,11 @@ export const tacticalRun = inngest.createFunction(
                 },
               ],
               tools,
-              providerOptions: { openai: { strictJsonSchema: true } },
+              providerOptions: { openai: openaiOptions },
               stopWhen: stepCountIs(5),
               abortSignal: AbortSignal.timeout(60_000),
             });
+            addTokenUsage(tokenUsage, retryResp.totalUsage, retryResp.steps.length);
             const retrySteps = retryResp.steps.length;
             const retryToolCalls = retryResp.steps.reduce(
               (s, x) => s + (x.toolCalls?.length ?? 0),
@@ -935,10 +948,11 @@ export const tacticalRun = inngest.createFunction(
                 { role: "user", content: refusalNudge(openRefusals) },
               ],
               tools,
-              providerOptions: { openai: { strictJsonSchema: true } },
+              providerOptions: { openai: openaiOptions },
               stopWhen: stepCountIs(5),
               abortSignal: AbortSignal.timeout(60_000),
             });
+            addTokenUsage(tokenUsage, refusalResp.totalUsage, refusalResp.steps.length);
             const refusalToolCalls = refusalResp.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
             toolCalls += refusalToolCalls;
             elapsed = Date.now() - t0;
@@ -995,6 +1009,7 @@ export const tacticalRun = inngest.createFunction(
           );
         }
 
+        await recordTokenUsage(run.id, tokenUsage, MODES["tactical"].model);
         await prisma.researchRun.update({
           where: { id: run.id },
           data: {
@@ -1037,6 +1052,7 @@ export const tacticalRun = inngest.createFunction(
         // pattern in morning-research.ts. Best-effort — wrapped in try so a
         // parameters-merge failure doesn't mask the original error.
         try {
+          await recordTokenUsage(run.id, tokenUsage, MODES["tactical"].model);
           const fresh = await prisma.researchRun.findUnique({
             where: { id: run.id },
             select: { parameters: true },

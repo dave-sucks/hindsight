@@ -26,6 +26,7 @@ import {
   formatBookContextBlock,
 } from "@/lib/agent/context-bundle";
 import { MODES } from "@/lib/agent/modes";
+import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalNudge } from "@/lib/agent/refusal-carryover";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
@@ -271,17 +272,24 @@ export const discoveryRun = inngest.createFunction(
           (focus ? `THE ASK FOR THIS RUN: ${focus}\n\nRead the pool through that ask first — if it names a report window, start from get_earnings_calendar(window:"reported", scope:"universe") as your system prompt describes. Then the standard pass.\n\n` : "") +
           "Begin your weekly discovery scan (Phase 2 — two-pass funnel). Pass 1: call get_market_movers(scope:\"universe\") for gainers and most-active (and losers if your edge buys dislocations), and get_earnings_calendar(scope:\"universe\"). Triage the resulting pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, honoring the dispatch cap stated in your system prompt. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
 
+        // Every request counted and recorded on the run row (token-usage.ts);
+        // one cache route per run, as the morning run has.
+        const tokenUsage = emptyTokenUsage();
+        const openaiOptions = { strictJsonSchema: true, promptCacheKey: run.id };
         try {
           const { steps, response } = await generateText({
             model: openai(MODES["discovery"].model),
             system: systemPrompt,
             prompt: userPrompt,
             tools,
-            providerOptions: { openai: { strictJsonSchema: true } },
+            providerOptions: { openai: openaiOptions },
             stopWhen: stepCountIs(MODES["discovery"].maxSteps),
             abortSignal: AbortSignal.timeout(
               (MODES["discovery"].maxDuration - 30) * 1000,
             ),
+            onStepFinish({ usage }) {
+              addTokenUsage(tokenUsage, usage);
+            },
           });
 
           let toolCalls = steps.reduce(
@@ -324,10 +332,11 @@ export const discoveryRun = inngest.createFunction(
                   { role: "user", content: refusalNudge(openRefusals) },
                 ],
                 tools,
-                providerOptions: { openai: { strictJsonSchema: true } },
+                providerOptions: { openai: openaiOptions },
                 stopWhen: stepCountIs(8),
                 abortSignal: AbortSignal.timeout(120_000),
               });
+              addTokenUsage(tokenUsage, refusalResp.totalUsage, refusalResp.steps.length);
               toolCalls += refusalResp.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
               elapsed = Date.now() - t0;
               let refusalMessages = refusalResp.response?.messages;
@@ -424,6 +433,8 @@ export const discoveryRun = inngest.createFunction(
                 : {}),
             },
           });
+          // After the status write above, which may replace `parameters`.
+          await recordTokenUsage(run.id, tokenUsage, MODES["discovery"].model);
 
           console.log(
             `[discovery-run] ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms, ${newTheses} new theses, ranSummary=${ranSummary}, status=${producedWork ? "COMPLETE" : "FAILED"}`,
@@ -437,6 +448,7 @@ export const discoveryRun = inngest.createFunction(
             where: { id: run.id, status: "RUNNING" },
             data: { status: "FAILED", completedAt: new Date() },
           });
+          await recordTokenUsage(run.id, tokenUsage, MODES["discovery"].model);
           return { error: msg };
         }
       });

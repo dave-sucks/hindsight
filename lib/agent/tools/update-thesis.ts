@@ -30,7 +30,7 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import {
   parseTriggersResilient,
-  triggersArraySchema,
+  triggersInputArraySchema,
   editTriggerOpSchema,
 } from "@/lib/agent/triggers/schema";
 import {
@@ -278,7 +278,7 @@ const updateSchema = z.object({
   catalyst_date: z.string().datetime().nullable().optional(),
 
   // ── Trigger ops (DAV-242) — one trigger at a time, never a whole list ──
-  add_triggers: triggersArraySchema
+  add_triggers: triggersInputArraySchema
     .optional()
     .describe(
       "Triggers to ADD. Each is { predicate, action, rationale, cooldownDays?, fireMode? }; ids are minted here. " +
