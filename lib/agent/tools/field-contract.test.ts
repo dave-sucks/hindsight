@@ -16,13 +16,9 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 
 import { zodSchema } from "ai";
 import * as tools from "@/lib/agent/tools";
-import { MODES, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
-import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
-import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
-import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery";
-import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
-import type { RunInput } from "@/lib/agent/run-input";
-import { FIELD_CONTRACT, MODE_PROMPTS, RULES, WRITE_TOOL_EXPORTS, type FieldContract, type PromptName } from "./field-contract";
+import { MODES } from "@/lib/agent/modes";
+import { SAMPLE_PROMPTS as PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
+import { FIELD_CONTRACT, MODE_PROMPTS, RULES, WRITE_TOOL_EXPORTS, type FieldContract } from "./field-contract";
 
 type JsonSchema = { properties?: Record<string, Record<string, unknown>>; required?: string[] };
 
@@ -49,34 +45,6 @@ function isClosedSet(p: Record<string, unknown>): boolean {
 const offered = (mode: string): string[] => {
   const list = (MODES as Record<string, { toolAllowlist?: readonly string[] }>)[mode]?.toolAllowlist ?? [];
   return Object.keys(WRITE_TOOL_EXPORTS).filter((t) => list.includes(t));
-};
-
-// ── The prompts, built as the prompt tests build them ──────────────────────
-const runInput = {
-  analyst: { name: "Secular Compounder", mandate: null, voice: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, exclusionList: [], minConfidence: 70, minPositionSize: 3000, maxPositionSize: 10000, maxOpenPositions: 6 },
-  portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
-  watchlist: [], activeTheses: [], performance: null, recentClosedTrades: [], priorityReviews: [],
-  triggersFiredSinceLastRun: [], triggersMatchingNow: [], latestDigest: null,
-  earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, intelligencePolicy: { maxSignalsPerRun: 0 }, openRefusals: [],
-} as unknown as RunInput;
-
-const trailTrigger = { id: "trig_trail", predicate: { kind: "TRAILING_FROM_HIGH", pct: 12 }, action: "EXIT", rationale: "Protect the gain." };
-
-const PROMPTS: Record<PromptName, () => string> = {
-  daily: () => buildDailyRunSystemPromptV2({ name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),
-  tactical: () =>
-    buildTacticalSystemPrompt({
-      analyst: { name: "PEAD Specialist", mandate: null },
-      thesis: { id: "thesis_1", ticker: "HPE", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"], entryPrice: 53, targetPrice: 70, stopLoss: 50, snapshotText: null, bullCaseBullets: [], bearCaseBullets: [], researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 }, allTriggers: [trailTrigger] },
-      trigger: trailTrigger, signal: null, position: { quantity: 60, avgCost: 53.1, daysHeld: 10, peakPrice: 62.7 }, recentUpdates: [], latestDigest: null,
-    } as never),
-  discovery: () => buildDiscoverySystemPrompt({ config: { name: "PEAD Specialist", sectors: [], minConfidence: 70, maxPositionSize: 14000 }, analystId: "an", existingTickers: ["MU"] } as never),
-  chat: () =>
-    buildPrincipalSystemPrompt({
-      scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 6 },
-    }),
-  writer: () =>
-    buildWriterResearchPrompt({ analystPrompt: null, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", minConfidence: 70, runDate: "2026-09-25" } as never),
 };
 
 describe("the field contract — every field on every write tool, in every mode", () => {

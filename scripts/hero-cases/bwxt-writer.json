@@ -1,0 +1,113 @@
+{
+ "what": "BWXT 2026-09-30, the writer refreshing a watched stock for the Secular Compounder (buys at 7/10). On the day it scored the stock 2/10 and still wrote a buy (a close above $158.83 and above the 50-day). The ground-truth data block is the recorded one. The existing thesis is put back as it stood before that run from its audit row: score 8, a buy above $162.91, reviews at $133 and $285, a sale below $125, a 30-day review. Web search is off, so the model writes its note from the data block alone, then submits.",
+ "lookFor": "The composite it submits, and whether the decision carries a buy (entry_price, or an ENTER trigger) while that score is under 7.",
+ "mode": "thesis-writer",
+ "runMode": "THESIS_WRITER",
+ "toolCtx": {},
+ "promptArgs": {
+  "analystName": "Secular Compounder",
+  "analystPrompt": "I am a secular-themes PM. I find businesses that will be structurally more valuable in 3-5 years and own them at conviction size through volatility. My book is up to 8 names, each a real commitment. I am the defensive, long-horizon seat in this firm — my job is to hold what the event-driven seats cannot.\n\nNON-NEGOTIABLE EXECUTION RULES (these override everything below):\n1. SIZE TO CONVICTION. Every position I open is a full position in my band — a real commitment. My band is enforced by config and stated in my run brief, so I do not restate the numbers here. If my conviction does not justify a full in-band position, it is NOT a position — I record a WATCHING thesis and wait. A 1-share or token \"starter\" is a mandate violation, not a small bet. Scaling in over 3-6 months is how I BUILD to full size, not a licence to enter small — the first tranche is a meaningful fraction of the target, and I state the completion plan in the thesis.\n   Within my band, AI infrastructure and datacenter buildout are my highest-conviction themes and size at the TOP of it; names in my other themes size at the lower end. This is a sizing preference only — it is not a sourcing licence. Rule 4 still governs WHICH themes I buy, and a top-of-band AI position never justifies skipping an under-represented theme.\n2. TENURE. I do not take profits inside 30 days of entry. Ever. \"Up 12%\" is not an exit reason — it is the beginning of compounding. I sell only when a named invalidation condition trips: regulatory break, structural demand erosion, two consecutive guidance cuts, CFO departure, capital-allocation breakdown.\n3. THE CHURN TEST. Before any close, I must name which invalidation condition tripped. \"De-risking,\" \"locking in gains,\" and \"rotating\" are not invalidation conditions and I do not use them. A price-based trigger firing is a prompt to think, not an invalidation condition by itself — if a trail or drawdown rung fires, I still have to name what broke in the business, or I hold.\n4. THEME BALANCE. My mandate spans 7 themes. Best-in-class businesses outside my themes — consumer, financials, anything — are in scope on the same quality bar, judged against their own industry. Theme balance means I don't stack one theme; it does not mean I only buy inside them. If my current holdings are concentrated in one theme (e.g., all AI/tech), my next positions MUST come from the under-represented themes. I read my own book each run and know which themes are empty — those outrank another name in a theme I already hold, at equal quality. An all-tech book is a failed mandate even if every name is green.\n5. ENTRY ON CONFIRMATION, NOT ONLY ON WEAKNESS. My first tranche goes in when the thesis is CONFIRMED, whichever comes first: a breakout above a base, a reclaim of the 50-day average, or a pullback to the 50-day. A stock making new highs on a working thesis is not \"extended\" for a multi-year hold — it is working. I never wait more than 30 days for a pullback on a stock in an uptrend; if the pullback has not come by then I take the breakout entry at full size. Waiting four months for a price that never arrives while the thesis plays out without me is a mandate failure, not discipline.\n6. PROGRESS CHECKPOINT. I hold for years, but I expect the thesis to be visibly working within ~60 days of entry. At 60 days I re-read the thesis against what the BUSINESS has done — not what the price has done. If nothing in my core belief has started proving out, that is a REVIEW, not an automatic exit: I either name what I got wrong, or state what I am still waiting for and by when. Slow is fine; directionless is not.\n\nWhat I look for:\n- Durable secular tailwind (capex cycle, regulatory, demographic, technological)\n- Best-in-class operator with capital allocation discipline\n- Pricing power evidenced by gross margin trajectory\n- Free cash flow conversion that funds the next cycle\n- Management aligned with long-term holders (insider ownership, comp structure)\nI judge these against the norms of the name's OWN industry. A compounding industrial, CDMO or medtech will not show software growth rates or software margins; I do not apply software screens to them and reject real compounders for failing a bar their sector never clears.\n\nWhat I avoid:\n- Profitless growth dressed up as \"secular\"\n- Story stocks without unit economics\n- Names where the theme is real but the operator is mediocre\n- Cyclical names mislabeled as secular (commodity producers, hardware cycles dressed as platforms)\n\nI tolerate -15% drawdowns on conviction names; I do not tolerate broken theses at any price. I add on weakness when the thesis is intact, and I add on strength when the business confirms. A give-back from the high is a question (\"is the reason I bought still true?\"), never an automatic sale. If I cannot articulate why this name compounds over 3+ years, I do not own it.\n\nThemes I cover: AI infrastructure, datacenter buildout, GLP-1 / obesity drugs, energy transition (nuclear + grid), defense reindustrialization, onshoring, demographic shifts (aging, healthcare demand).\n\nHorizon: COMPOUNDER for multi-year holds, TARGET for 3-12 month holds of a strong business. Never TRADE or CATALYST.",
+  "setupIds": [
+   "COMPOUNDER_ACCUMULATION",
+   "BASE_BREAKOUT",
+   "MA_PULLBACK"
+  ],
+  "ticker": "BWXT",
+  "mode": "refresh",
+  "reason": "BWXT is stale and the current buy at $162.91 sits far above price after continued technical damage. Refresh the thesis to decide whether this is still a valid defense+nuclear compounder with a re-anchored watch plan, or whether the chart deterioration has changed conviction.",
+  "minConfidence": 70,
+  "runDate": "2026-09-30",
+  "existingThesis": {
+   "id": "cmqb2ksrb000m04l6ifhce815",
+   "status": "WATCHING",
+   "direction": "LONG",
+   "horizon": "COMPOUNDER",
+   "coreBelief": "BWXT compounds to $220+ over 3 years as the $8.4B backlog (1.7× trailing book-to-bill) converts into revenue, commercial nuclear revenues ramp via the PCG platform and BANR/Janus awards, and DoD naval propulsion spending sustains high-single-digit revenue growth — provided the current multiple compression is cyclical rather than structural.",
+   "targetPrice": 285,
+   "stopLoss": 125,
+   "composite": 8,
+   "snapshotText": "BWXT remains a valid secular defense-and-nuclear compounder, but the stock has now fully broken the prior support zone and is trading at a fresh 52-week low.",
+   "triggers": [
+    {
+     "id": "hero-buy",
+     "predicate": {
+      "kind": "PRICE_ABOVE",
+      "level": 162.91
+     },
+     "action": "ENTER",
+     "rationale": "The plan's buy: back above the last swing high."
+    },
+    {
+     "id": "hero-review-low",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 133
+     },
+     "action": "REVIEW",
+     "rationale": "Review at the 52-week low."
+    },
+    {
+     "id": "hero-target",
+     "predicate": {
+      "kind": "PRICE_ABOVE",
+      "level": 285
+     },
+     "action": "REVIEW",
+     "rationale": "The plan's target."
+    },
+    {
+     "id": "hero-floor",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 125
+     },
+     "action": "EXIT",
+     "rationale": "The plan's floor."
+    },
+    {
+     "id": "hero-cadence",
+     "predicate": {
+      "kind": "REVIEW_CADENCE",
+      "days": 30,
+      "from": "LAST_REVIEW"
+     },
+     "action": "REVIEW",
+     "rationale": "Review every 30 days."
+    }
+   ]
+  }
+ },
+ "messages": [
+  {
+   "role": "user",
+   "content": "═══════════════════════════════════════════════════════════════════\nGROUND-TRUTH DATA — use these numbers; do not invent or contradict\n═══════════════════════════════════════════════════════════════════\n═══════════════════════════════════════════════════════════════════\nSTRUCTURED DATA: $BWXT (BWX Technologies Inc)\nPulled 2026-09-30 12:05 UTC — use these numbers as ground truth.\n═══════════════════════════════════════════════════════════════════\n\n## Snapshot\n\nCurrent: $138.01 (+2.72%) · Day range: $133.21-$143.00\n52w range: $133.90-$241.82\nMarket cap: $12.64B · Beta: 0.74 · P/E: 37.4\n\n## Price structure\n\nChart: 260 daily sessions through 2026-09-29 (consolidated volume) · Verdict: DOWNTREND\nMoving averages — 20-day $148.64 (falling; price -7.2%) · 50-day $158.83 (falling; price -13.1%) · 150-day $188.77 (falling; price -26.9%) · 200-day $190.33 (falling; price -27.5%) · 10-day EMA $141.81 · 21-day EMA $147.20\nVolatility — ATR(14) $5.15 (3.7% of price) · average daily range (20d) 3.4% · RSI(14) 33.4\nRange — 20-day $133.21–$162.91 · 52-week $133.21–$241.82 · 42.9% below the 52-week high · 3.6% above the 52-week low\nSwings — last swing high $162.91 (2026-09-08) · last swing low $147.74 (2026-08-25)\nBase — 21 sessions, 2026-08-24 to 2026-09-22: pivot $162.91, low $143.53, 11.9% deep, last 10 sessions 10.7% tight; price below the pivot\nVolume — last session 1.71× its 20-day average · up-day ÷ down-day volume (20d) 0.73 · average dollar volume (50d) $166M\nGaps (last 10 sessions, 3%+) — none\nRelative strength (stock return minus benchmark, percentage points) — vs SPY: 1M -9.0 · 3M -31.4 · 6M -48.9 | vs XLI: 1M -5.2 · 3M -20.4 · 6M -36.0\nRetracements of the last up-leg ($164.01 on 2025-11-21 → $241.82 on 2026-04-16) — 38.2% $212.10 · 50% $202.92 · 61.8% $193.73 · extensions 1.272 $262.98 · 1.618 $289.91 (candidates only: use one when it lines up with a level above — a moving average, swing or base edge)\nTrend Template — 0/8; failing: Price above the 150-day and 200-day; 150-day above the 200-day; 200-day rising for at least a month; 50-day above the 150-day and 200-day; Price above the 50-day; Price at least 30% above the 52-week low; Price within 25% of the 52-week high; Beat SPY over 3 and 6 months (stand-in for RS rating ≥ 70)\nComputed composite scores from this chart — trendStrength 0 (\"Below the 200-day.\") · relativeStrength 0 (\"vs SPY: 1M -9pts, 3M -31.4pts, 6M -48.9pts.\"). Use them unless your research says otherwise; if you change one, say why in its note.\n(These are the levels your setup's entry, stop and target come from. A setup already true today is an entry at or a few cents past the live price.)\n\n## Company\n\nNEW YORK STOCK EXCHANGE, INC. · Sector: Aerospace & Defense\n\n## Financials, Annual + Forward Estimates\n\nAnnual ($M, growth %):\n\nMetric                 2021     2022     2023     2024     2025\nRevenue               2,124    2,233    2,496    2,704    3,198\n  % Growth                —    +5.1%   +11.8%    +8.3%   +18.3%\nGross Profit            550      552      621      655      733\n  % Margin           +25.9%   +24.7%   +24.9%   +24.2%   +22.9%\nEBITDA                  415      422      462      466      514\n  % Margin           +19.5%   +18.9%   +18.5%   +17.3%   +16.1%\nNet Income              306      238      246      282      329\nDiluted EPS            3.24     2.60     2.68     3.07     3.58\nOperating CF            386      245      364      408      480\nCapEx                   311      198      151      154      185\nFree Cash Flow           75       46      212      255      295\n\nLatest ratios — P/E 34.6 · PEG 2.78 · D/E 1.51 · Current 2.40\n\n## Earnings History\n\nLast report: none on the calendar in the last 100 days.\nBeat rate: 75% (3/3 clean outcomes across 4q)\nQ2 2026: EPS $1.07 vs $1.07 est (+0.4%) — INLINE\nQ1 2026: EPS $1.12 vs $0.94 est (+18.6%) rev $860M (filed; no estimate on plan) — BEAT\nQ4 2025: EPS $1.08 vs $0.90 est (+19.8%) — BEAT\nQ3 2025: EPS $1.00 vs $0.87 est (+14.3%) rev $866M (filed; no estimate on plan) — BEAT\n\n## Event date on file\n\nNone on file: no dated FDA decision in the company's filings of the last ~13 months.\n\n## Analyst Coverage\n\nConsensus: BUY · 23 analyst(s) tracked (18 Bullish / 5 Neutral / 0 Bearish) · as of 2026-09-01\n\n## Analyst Price Targets (snapshot)\n\n(price targets unavailable from snapshot — see Analyst Coverage section above)\n\n## Insider Activity\n\nOpen-market buying (Form 4 purchases only): No open-market insider buying in the last 30 days.\nEstimate revisions: not available — Finnhub's EPS-estimate history is not on our data plan, so there is no revision signal to cite.\n\nNo Form 4 transactions in the last 90 days.\n\n## Peer Comparison\n\nPeers: CW, CRS, FTAI\n\nTicker        MktCap        P/E    RevGrth        YTD        RSI      Score\nBWXT*        $12.64B       37.4     +22.7%     +13.7%       33.3         74\nCW           $19.72B       40.6     +10.5%     +28.5%         26         70\nCRS          $19.41B       36.4      +8.6%     +25.5%       26.2         67\nFTAI         $17.35B       34.6     +45.3%     +26.6%       35.6         86\n\n$BWXT ranks: growth 2/4 · YTD 4/4 · composite 2/4\n\n## Recent SEC Filings\n\n2026-08-03 — 10-Q\n2026-08-03 — 8-K — earnings results (2.02)\n\n## Recent News (last 7 days)\n\n2026-09-29 — SeekingAlpha: BWX Technologies, Inc. (BWXT) Analyst/Investor Day Transcript\n2026-09-29 — SeekingAlpha: BWX Technologies, Inc. (BWXT) Analyst/Investor Day - Slideshow\n2026-09-29 — Yahoo: BWX Technologies Hosting Investor Day\n\nWrite the research note now, then call submit_thesis."
+  }
+ ],
+ "expect": {
+  "call": [
+   {
+    "tool": "submit_thesis"
+   }
+  ],
+  "never": [
+   {
+    "tool": "submit_thesis",
+    "where": {
+     "scoring.$sum": {
+      "lt": 7
+     },
+     "entry_price": "present"
+    }
+   },
+   {
+    "tool": "submit_thesis",
+    "where": {
+     "scoring.$sum": {
+      "lt": 7
+     },
+     "triggers.*.action": "ENTER"
+    }
+   }
+  ]
+ }
+}
