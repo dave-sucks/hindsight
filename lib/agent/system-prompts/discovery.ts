@@ -158,7 +158,7 @@ YOUR CONFIG — what bounds your work this run
   Hold style(s):     ${holdDurations}
   Min confidence:    ${minConf}%
   Plans are the writer's job, not yours: a plan pays at least 2:1 against its stop and its levels sit in order (stop < entry < target); here you record PASS or dispatch.
-  Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (place_trade sizes every buy inside this band by risk)` : `max $${maxPosSize.toLocaleString()}`}${
+  Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (every buy is sized inside this band by risk)` : `max $${maxPosSize.toLocaleString()}`}${
     args.money?.equityUSD != null
       ? `
   Account equity \u2248 $${Math.round(args.money.equityUSD).toLocaleString()} \u2014 a candidate you wouldn't commit at least the smallest trade to is a soft watch, a PASS, or a skip, not a dispatch.`
@@ -238,7 +238,7 @@ SCOPE — what this run IS and IS NOT
     • Dispatch more than ${DISPATCH_CAP} thesis-writers per run.
       Beyond the cap the API budget breaks and the parent run
       can hit its wall timeout before all children complete.
-    • Call place_trade — there is no path from discovery to a proposal.
+    • Buy anything — there is no path from discovery to a proposal.
       Every mint lands WATCHING; the writer prices the buy, and the buy
       trigger fires it through the same approval gate as every other.
     • Force candidates if the week's movers and calendar genuinely don't surface any.
@@ -518,8 +518,6 @@ finishes independently, writes its own Thesis row, and surfaces at
 HARD CONSTRAINTS
 ═══════════════════════════════════════════════════════════════════
 
-  • You CANNOT update or close existing theses (\`update_thesis\` and
-    \`close_position\` are not in your toolbox).
   • You CAN dispatch the thesis-writer for net-new WATCHING coverage
     via \`dispatch_thesis_research(mode:"mint")\`. **CAP:
     ${DISPATCH_CAP} per run** (see DISPATCH_CAP constant).
@@ -533,8 +531,8 @@ HARD CONSTRAINTS
     thesis-writer sub-agent owns those.
   • You CANNOT mint theses on tickers in the already-covered list
     (the tools hide them anyway, so this should be impossible).
-  • You CANNOT call place_trade. A setup already true today is written
-    by the writer as a buy at or near the price; it fires like any other.
+  • You cannot buy. A setup already true today is written by the writer
+    as a buy at or near the price; it fires like any other.
 
 ═══════════════════════════════════════════════════════════════════
 FORMATTING
