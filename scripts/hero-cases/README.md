@@ -58,14 +58,13 @@ change and reports both.
 | ceg-plan-stands | morning run | 3/6 | Says the plan stands on a held stock whose standing review fired. Three runs never reached CEG within four turns; none moved a level. |
 | docu-chat | chat | 5/6 | Judges the DOCU buy by the dollars at risk, not the dollars in, and does not read light volume as weakness. |
 | docu-trigger | trigger run | 2/6 | Re-prices the pullback buy to the bounce instead of passing or buying the dip. Waits for the pullback PR. |
-| eme-arm | chat | 2/6 | Does not arm a buy at a score of 6 unless it re-scores all four parts to 7 or better; asking first is fine. Four runs armed it anyway. |
+| eme-arm | chat | 0/6 | Does not arm a buy at a score of 6 unless the same save re-scores the stock to 7 or better; asking first is fine. All six armed it with the trend part scored 0 or 1; none asked. |
 | eme-reply | chat | 3/6 | Tells the principal plainly that the buy will be refused at its score; three runs explained the flag away. |
 | five-broken-belief | morning run | 6/6 | Sells on the broken belief (belief_survived false), from the thesis's own invalidation conditions. |
-| mu-earnings-review | morning run | 5/6 | Keeps MU after a beat the market sold and tightens the floor, through either stop-moving tool. One run sold at target. |
-| nvda-declined-sale | trigger run | 2/6 | After a declined sale: proposes it again, or re-plans the protection. Two runs tried to delete the principal's own trigger and two went quiet. |
+| mu-earnings-review | morning run | 6/6 | Keeps MU after a beat the market sold and tightens the floor, through either stop-moving tool. |
+| nvda-declined-sale | trigger run | 4/6 | After a declined sale: proposes it again, or re-plans the protection. Two runs saved a review and finished without doing either. |
 
-Six runs per case, about $13 of model calls in all. `eme-arm`, `mu-earnings-review`
-and `nvda-declined-sale` were scored from their recorded calls after their
-expectations were refined on a first reading; the re-run of those three
-stopped when the OpenAI balance ran out. `eme-reply` is from its re-run.
+Six runs per case, about $16 of model calls in all. The production runs share
+the OpenAI key, so check the balance before a batch: a full baseline is about
+a day of morning runs.
 
