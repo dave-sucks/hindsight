@@ -35,6 +35,7 @@
 
 import type { Trigger } from "./types";
 import { isPlanLevelOnList } from "./price-levels";
+import { predicateSentence } from "./format";
 
 export interface EnterTriggerGuardArgs {
   /**
@@ -67,6 +68,7 @@ export type EnterTriggerGuardResult =
       ok: false;
       reason:
         | "missing-enter-trigger"
+        | "two-buy-triggers"
         | "enter-actions-on-active"
         | "missing-exit-trigger-on-active";
       note: string;
@@ -143,6 +145,32 @@ export function validateEnterTriggerRequired(
 
   // ── WATCHING-side checks ───────────────────────────────────────────────
   if (args.status !== "WATCHING") return { ok: true };
+
+  // One buy per stock. The plan slot in price-levels.ts keeps one buy LEVEL
+  // (a PRICE_ABOVE / PRICE_BELOW ENTER), but a buy on a chart condition —
+  // "closes above $17.10 and above the 20-day", "within 2% of the 20-day" —
+  // sits in no slot, so a buy level written next to it was a second buy.
+  // Twice on 2026-10-02: SMMT, where a chat set direction LONG with
+  // entry_price $17.10 while that exact buy already existed as an AND
+  // trigger, and CRWD, where the writer's mint sent entry_price $242.28 and
+  // an ENTER on NEAR_SMA in the same call. Both left two ENTERs; the
+  // principal deleted one by hand each time. A stock is bought once, on one
+  // condition — whichever fires first would place the order and the other
+  // would then be a buy on a stock we own.
+  const buys = args.triggers.filter((t) => t.action === "ENTER");
+  if (buys.length > 1) {
+    return {
+      ok: false,
+      reason: "two-buy-triggers",
+      note:
+        `This plan would carry ${buys.length} buy triggers: ` +
+        buys.map((t) => `"${predicateSentence(t.predicate)}" (${t.id})`).join(", ") +
+        `. A stock has one buy — one condition that starts the position. ` +
+        `If the buy is a price, send entry_price and no ENTER trigger; if it is a chart condition, ` +
+        `send that one ENTER trigger and no entry_price. To replace a buy that is already on the stock, ` +
+        `remove it by id (remove_trigger_ids) in the same call as the new one.`,
+    };
+  }
 
   // The HELD-action guard that used to sit here is GONE (DAV-195 L5).
   //
