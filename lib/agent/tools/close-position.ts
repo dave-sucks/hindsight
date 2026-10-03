@@ -54,7 +54,7 @@ export const closePosition = defineTool({
         "Did the thesis's CORE BELIEF survive this exit? Answer this on every protective exit (reason=STOP). " +
           "true = you are selling on PRICE while the story is still intact (a trailing give-back, a stop tripped in a broad-market flush, risk trimmed on an unchanged thesis) — the thesis returns to WATCHING with its triggers cleared so the next run can arm a reclaim entry, instead of dying. " +
           "false = the belief itself broke (invalidation condition tripped, catalyst failed, the bear case confirmed) — the thesis retires permanently. " +
-          "Omit only when you genuinely cannot tell. Getting this right is how a name you stopped out of on noise stays on your radar: today 28 of 29 sold theses went dark forever, including three green protective exits (ARQT +$845, VRDN +$445, XENE +$966). Ignored on reason=TARGET, which always keeps the name on watch.",
+          "Omit only when you genuinely cannot tell. Ignored on reason=TARGET, which always keeps the name on watch.",
       ),
   }),
   ui: "tool-ui" as const,

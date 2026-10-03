@@ -241,7 +241,7 @@ export const triggerSchema = z.object({
       // including the legitimate EXIT stops sitting next to the bad
       // REVIEW. That's the same silent-failure shape PR #371 just fixed
       // for the id-less bug; don't re-introduce it.
-      "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_BEAT/MISS: 7, PRICE_* and chart kinds: 1, REVIEW_CADENCE: matches the cadence) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
+      "Don't re-fire this trigger more than once per N days. Omit it to use the per-kind default (earnings kinds 7, price and chart kinds 1, REVIEW_CADENCE its cadence) — the right answer in almost every case. 0 is for EXIT triggers only; on any other action the runtime replaces it with the default.",
     ),
   lastFiredAt: z.string().datetime().optional(),
   firedFilings: z

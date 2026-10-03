@@ -98,24 +98,10 @@ describe("the field contract — every field on every write tool, in every mode"
     });
   });
 
-  it("a rule offered in a mode is stated in that mode's prompt — or the registry says it has no words", () => {
-    // Every JUDGED rule with markers declares one for each prompt of a mode
-    // that offers a tool carrying it. A rule with no markers (EVENT_DATE,
-    // TRIGGER_SHAPE) is enforced by coercion, not by a refusal the model
-    // must anticipate, and is exempt.
-    const gaps: string[] = [];
-    for (const { mode, prompt } of MODE_PROMPTS) {
-      for (const toolName of offered(mode)) {
-        for (const r of FIELD_CONTRACT[toolName]) {
-          if (r.kind !== "JUDGED" || !r.rule) continue;
-          const rule = RULES[r.rule];
-          if (Object.keys(rule.markers).length === 0) continue;
-          if (!rule.markers[prompt]) gaps.push(`${r.rule} via ${toolName}.${r.field} has no marker for the ${prompt} prompt`);
-        }
-      }
-    }
-    expect([...new Set(gaps)]).toEqual([]);
-  });
+  // A rule offered in a mode no longer has to be restated in that mode's
+  // prompt: the tool's refusal carries it (step 3 of
+  // docs/plans/AGENT_ARCHITECTURE.md). A marker a prompt does declare must
+  // still be there — that is the test above.
 });
 
 function k(props: Record<string, unknown>, field: string): boolean {

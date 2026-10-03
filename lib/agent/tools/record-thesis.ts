@@ -148,39 +148,19 @@ const thesisFields = z.object({
     .describe("Structured stock metrics from get_stock_data — populates the Data tab in the inline thesis card. Distinct from the V2 `fundamentals` narrative section below."),
   parent_thesis_id: z.string().optional()
     .describe("ID of the prior thesis being updated or invalidated. Links thesis chain."),
-  // V3 Session 3 — forcing-function trio.
-  // source_kind is optional at the Zod layer so the agent can't tank an
-  // entire run by forgetting the field — execute() infers a fallback
-  // from context. When the agent DOES pass it, the cross-field rule in
-  // superRefine below still enforces the per-kind shape, and the
-  // execute()-level existence check still verifies ROUTED_SIGNAL IDs
-  // against AnalystSignalRoute for this analyst.
+  // Where the idea came from. The routed-signal kind and its ids went with
+  // the signal router (deleted 2026-09-15); the stored column keeps the old
+  // values on old rows.
   source_kind: z
-    .enum([
-      "ROUTED_SIGNAL",
-      "WEB_SEARCH",
-      "WATCHLIST_REVIEW",
-      "POSITION_REVIEW",
-      "USER_ADDED",
-      "BUILDER_SEED",
-      "EDITOR_SEED",
-    ])
+    .enum(["WEB_SEARCH", "WATCHLIST_REVIEW", "POSITION_REVIEW"])
     .optional()
     .describe(
-      "Where this thesis came from. ROUTED_SIGNAL = informed by a routed signal (requires non-empty source_signal_ids; only a mode that can read the signal inbox has those — no agent mode does today). WEB_SEARCH = came from a live web_search call only. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position. USER_ADDED/BUILDER_SEED/EDITOR_SEED are reserved for non-agent code paths (UI manual add, analyst-creation, editor chat) and should not be passed by the agent."
-    ),
-  source_signal_ids: z
-    .array(z.string())
-    .default([])
-    .describe(
-      "Routed-signal ids that informed this thesis. MUST be non-empty when source_kind is ROUTED_SIGNAL; leave empty otherwise. Persisted so trade-evaluator can credit the originating monitors when the position closes."
+      "Where this thesis came from: WEB_SEARCH, WATCHLIST_REVIEW (reviewing your own watchlist) or POSITION_REVIEW (reviewing an open position)."
     ),
   source_rationale: z
     .string()
     .optional()
-    .describe(
-      "One-line explanation of how you got to this ticker. REQUIRED when source_kind is WEB_SEARCH, WATCHLIST_REVIEW, or POSITION_REVIEW."
-    ),
+    .describe("One line on how you got to this ticker. Required with source_kind."),
   // ── Decision-framework scoring (added 2026-04-25) ────────────────────────
   // Four weighted dimensions summing to 10. Locked structure: don't add
   // freeform "7/10 because vibes" — every score is the SUM of explicit
@@ -343,24 +323,11 @@ const thesisFields = z.object({
     // discovery red error. They're ignored for directional theses: the
     // effectiveStatusForTriggers guard below honors ONLY ACTIVE/WATCHING
     // from input on a LONG/SHORT, and a PASS always lands PASSED regardless.
-    .enum(["ACTIVE", "WATCHING", "ARCHIVED", "PASSED"])
+    .enum(["WATCHING", "ARCHIVED", "PASSED"])
     .optional()
     .describe(
-      "Coverage status. ACTIVE = trade-eligible coverage (the agent intends to act now or imminently). WATCHING = on-the-radar coverage (watchlist review, discovery candidate, named-but-not-yet-actionable). Default is derived from source_kind — WATCHLIST_REVIEW → WATCHING, else ACTIVE — pass explicitly when the intent differs. " +
+      "A LONG/SHORT mint lands WATCHING (a buy happens through place_trade, never here). " +
         "PASS alone = terminal (recorded as Passed, no triggers, never woken). PASS + status:'WATCHING' = 'no view yet, but keep the name in view' — it stores no direction and no committed plan, carries whatever triggers you give it (including none), and is reviewed on a schedule only if you include a REVIEW_CADENCE trigger in `triggers` — the review clock is an ordinary trigger, and omitting it means nothing looks at the name until one of its other triggers fires. Use it when you're out of dispatch slots or the setup isn't ripe — a capacity rejection keeps the name, it isn't a terminal PASS.",
-    ),
-  // Cross-analyst overlap acknowledgement. The tool blocks DAY-only
-  // analysts from minting a thesis on a ticker another analyst on the
-  // same account already covers ACTIVE/WATCHING in the same direction —
-  // the day-trader's edge is the marginal intraday setup, not duplicate
-  // coverage. To proceed anyway, pass a one-line rationale explaining
-  // what's specifically intraday-distinct about this setup vs the
-  // existing coverage. Non-DAY analysts ignore this field.
-  acknowledge_cross_analyst_overlap: z
-    .string()
-    .optional()
-    .describe(
-      "DAY-only override. When another analyst already covers this ticker + direction, pass a one-line rationale explaining the day-trade-specific setup (e.g. 'opening-range breakout setup distinct from Tech Momentum's multi-week thesis'). Required to proceed in DAY-only configs; ignored otherwise.",
     ),
 
   // ── Recently-sold acknowledgment (P1-35 Half B — the XENE re-buy guard) ──
@@ -444,19 +411,8 @@ const thesisFields = z.object({
 });
 
 export const thesisSchema = thesisFields.superRefine((val, ctx) => {
-  // If source_kind is absent the inference fallback in execute()
-  // handles it — don't reject here.
-  if (val.source_kind === "ROUTED_SIGNAL") {
-    if (!val.source_signal_ids || val.source_signal_ids.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message:
-          "source_signal_ids must be non-empty when source_kind is ROUTED_SIGNAL. Cite the signalId values from read_signals that informed this thesis — or change source_kind to WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW if no routed signal was involved.",
-        path: ["source_signal_ids"],
-      });
-    }
-  } else if (val.source_kind) {
-    // Explicit non-ROUTED_SIGNAL kind: rationale required.
+  if (val.source_kind) {
+    // A kind needs its rationale.
     if (!val.source_rationale || val.source_rationale.trim().length === 0) {
       ctx.addIssue({
         code: "custom",
@@ -469,7 +425,7 @@ export const thesisSchema = thesisFields.superRefine((val, ctx) => {
 
 export const recordThesis = defineTool({
   description:
-    "STAGE 3 ONLY. Write a thesis for every ticker you researched in Stage 2, back to back, in one batch. Direction must be LONG, SHORT, or PASS — PASS theses are mandatory for tickers you researched but won't trade, they document the decision. Never call this in Stage 2 (research) or Stage 4 (execution). Never write a verdict as narration text instead of calling this tool. " +
+    "Write a new thesis on a stock. Direction is LONG, SHORT, or PASS — a PASS documents a stock you researched and won't trade. Never write a verdict as narration text instead of calling this tool. " +
     "Structural-belief gate: directional theses (LONG/SHORT) MUST include core_belief (1 sentence), key_assumptions (≥2 specific items), and invalidation_conditions (≥2 specific items). Without all three the call is rejected — these fields drive the trade evaluator's post-mortem, the tactical agent's invalidation reasoning, and the daily run's assumption-drift checks. PASS theses are exempt.",
   schema: thesisSchema,
   ui: "thesis-card" as const,
@@ -495,7 +451,7 @@ export const recordThesis = defineTool({
       // seed thesis to a real view, the path is
       // update_thesis(thesis_id, direction: "LONG"|"SHORT"|"PASS", ...).
 
-      const sourceSignalIds = Array.from(new Set(args.source_signal_ids ?? []));
+      const sourceSignalIds: string[] = [];
       const sourceRationale = args.source_rationale?.trim() ?? "";
 
       // Provenance gate: every thesis must declare WHERE the idea came from.
@@ -505,9 +461,9 @@ export const recordThesis = defineTool({
       // run" argument doesn't apply anymore — we have a retry path in
       // morning-research.ts that recovers FAILED theses. Reject here and
       // make the agent fix the call.
-      if (!args.source_kind && sourceSignalIds.length === 0 && sourceRationale.length === 0) {
+      if (!args.source_kind && sourceRationale.length === 0) {
         console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — no provenance provided (no source_kind, no source_signal_ids, no source_rationale).`
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — no provenance provided (no source_kind, no source_rationale).`
         );
         return {
           summary: `Thesis rejected for ${args.ticker}: no provenance provided.`,
@@ -596,92 +552,8 @@ export const recordThesis = defineTool({
         }
       }
 
-      // Inference fallback (only fires when agent provided at least SOME
-      // provenance but missed source_kind). Infers from what's present:
-      //   - signal_ids present → ROUTED_SIGNAL
-      //   - rationale present → WEB_SEARCH (conservative default)
-      const inferredSourceKind =
-        args.source_kind ??
-        (sourceSignalIds.length > 0 ? "ROUTED_SIGNAL" : "WEB_SEARCH");
-
-      if (!args.source_kind) {
-        console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — source_kind missing, inferred=${inferredSourceKind} from signal_ids=${sourceSignalIds.length} rationale_len=${sourceRationale.length}. Agent prompt compliance issue.`
-        );
-      }
-
-      // Provenance soft-nudge — Monitor ROI tracer hook (VISION Pillar 5).
-      // When the agent picks non-ROUTED_SIGNAL provenance for a ticker that
-      // appeared in this run's read_signals output, the chain
-      //   Thesis.sourceSignalIds → Signal.monitorId → Monitor
-      // loses its hook and the trade-evaluator can't credit the source
-      // monitor on close. We log loud, append a hint to the success message,
-      // but do NOT reject — a hard gate would risk a regression and the
-      // thesis itself is fine. The fix is a prompt-level expectation; this
-      // gives us telemetry on how often the agent ignores it AND reminds
-      // the agent in-context for the rest of the run.
-      let provenanceNudge: string | null = null;
-      if (
-        inferredSourceKind !== "ROUTED_SIGNAL" &&
-        ctx.signalsByTicker &&
-        ctx.analystId
-      ) {
-        const tickerKey = args.ticker.toUpperCase();
-        const matchingSignals = ctx.signalsByTicker.get(tickerKey);
-        if (matchingSignals && matchingSignals.size > 0) {
-          const sample = Array.from(matchingSignals).slice(0, 3);
-          console.warn(
-            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} provenance=${inferredSourceKind} ` +
-              `but read_signals returned ${matchingSignals.size} matching signal(s) this run (e.g. ${sample.join(", ")}). ` +
-              `Monitor ROI credit chain broken — agent should pass source_kind=ROUTED_SIGNAL with these IDs.`,
-          );
-          provenanceNudge =
-            `Note: read_signals returned ${matchingSignals.size} signal${matchingSignals.size === 1 ? "" : "s"} on $${args.ticker} this run ` +
-            `(IDs: ${sample.join(", ")}${matchingSignals.size > sample.length ? ", …" : ""}). ` +
-            `Next time, pass source_kind:"ROUTED_SIGNAL" + source_signal_ids:[those IDs] so the trade-evaluator can credit the source monitor on close.`;
-        }
-      }
-
-      // Forcing function: when the call claims (or infers) ROUTED_SIGNAL
-      // provenance, every signalId must belong to this analyst's routed
-      // inbox for today (ET trading day). Rejecting out-of-pool IDs prevents
-      // the agent from satisfying the Zod non-empty check by fabricating
-      // strings.
-      if (inferredSourceKind === "ROUTED_SIGNAL" && sourceSignalIds.length > 0) {
-        if (!ctx.analystId) {
-          return {
-            summary: `Thesis rejected for ${args.ticker}: source_kind=ROUTED_SIGNAL requires an analyst context, which is missing for this run.`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note: "Cannot validate source_signal_ids without an analystId. Use source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW with a source_rationale instead, or retry from an analyst-scoped run.",
-            },
-            sources: [],
-          };
-        }
-        const todayStart = etTradingDayDate();
-        const validRoutes = await prisma.analystSignalRoute.findMany({
-          where: {
-            analystId: ctx.analystId,
-            signalId: { in: sourceSignalIds },
-            routedAt: { gte: todayStart },
-          },
-          select: { signalId: true },
-        });
-        const validIds = new Set(validRoutes.map((r) => r.signalId));
-        const missing = sourceSignalIds.filter((id) => !validIds.has(id));
-        if (missing.length > 0) {
-          return {
-            summary: `Thesis rejected for ${args.ticker}: ${missing.length} source_signal_ids not in today's routed inbox.`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note: `Invalid signalIds for ROUTED_SIGNAL: ${missing.join(", ")}. Every id must come from today's read_signals output for this analyst. Call read_signals and cite IDs from its result, or change source_kind to WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW with a source_rationale if this thesis did not actually rely on a routed signal.`,
-            },
-            sources: [],
-          };
-        }
-      }
+      const inferredSourceKind = args.source_kind ?? "WEB_SEARCH";
+      const provenanceNudge: string | null = null;
 
       // Relative-ordering gate. The shape rule depends on direction:
       //   LONG  — target_price > entry_price > stop_loss
@@ -901,11 +773,6 @@ export const recordThesis = defineTool({
       const isDiscoveryDirectional =
         ctx.discoveryOnly === true &&
         (args.direction === "LONG" || args.direction === "SHORT");
-      if (isDiscoveryDirectional && args.status === "ACTIVE") {
-        console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in discovery mode; forced WATCHING. Promotion is the daily-run's job.`,
-        );
-      }
       // ── Chat-dispatch hard-clamp for LONG/SHORT (Phase 1 mint flow) ───
       // Same shape as the discovery clamp above, different trigger source:
       // dispatch_thesis_research sets ctx.forceWatchingMint = true on
@@ -926,11 +793,6 @@ export const recordThesis = defineTool({
       const isChatDispatchDirectional =
         ctx.forceWatchingMint === true &&
         (args.direction === "LONG" || args.direction === "SHORT");
-      if (isChatDispatchDirectional && args.status === "ACTIVE") {
-        console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in chat-dispatch mode; forced WATCHING. User must send a follow-up trade message to promote.`,
-        );
-      }
       // P1-24 contract: a record_thesis mint NEVER has an open position, so
       // the only two persistable mint statuses are WATCHING (directional
       // coverage, entry-gated) and PASSED (researched-and-declined). The
@@ -998,27 +860,6 @@ export const recordThesis = defineTool({
             sources: [],
           };
         }
-      }
-
-      // Reject illegal (direction, status) pairs explicitly when the agent
-      // passes an `status` arg that conflicts with direction. PASS+WATCHING
-      // is legal — it is the keep-in-view row (see above).
-      if (args.direction === "PASS" && args.status === "ACTIVE") {
-        return {
-          summary: `Thesis rejected for ${args.ticker}: illegal (direction, status) pair.`,
-          data: {
-            thesis_id: null,
-            status: "FAILED" as const,
-            note:
-              `Direction='${args.direction}' is incompatible with status='${args.status}'. ` +
-              `Legal pairs:\n` +
-              `  • PASS → PASSED (terminal, off the watchlist)\n` +
-              `  • PASS + status:"WATCHING" → no view yet, name stays in view (any triggers, or none)\n` +
-              `  • LONG/SHORT → WATCHING (entry-gated; place_trade flips it to HOLDING on a fill)\n` +
-              `Retry with a legal pair.`,
-          },
-          sources: [],
-        };
       }
 
       // TERMINAL PASS theses reject triggers[] at write — no wake-up
@@ -1554,83 +1395,6 @@ export const recordThesis = defineTool({
             }
           }
         } catch { /* non-fatal — the mint proceeds without the context */ }
-      }
-
-      // ── Cross-analyst overlap guard (DAY-only) ──────────────────────────
-      // Day-traders should pick fresh names from today's tape, not lean on
-      // tickers another analyst already covers. Observed in production
-      // 2026-05-07: a fresh DAY analyst minted theses on AMD/MU/SMCI —
-      // every one already covered ACTIVE/WATCHING by another analyst on
-      // the same account. The intraday workflow degenerated into "review
-      // the rest of the book's tickers" instead of net-new discovery.
-      //
-      // For DAY-only analysts: block when another analyst has the same
-      // (ticker, direction) ACTIVE/WATCHING. Override allowed via
-      // acknowledge_cross_analyst_overlap with a rationale — the marginal
-      // intraday setup may genuinely be distinct from a multi-week thesis.
-      // Non-DAY analysts: no check (overlapping coverage across time
-      // horizons is a feature, not a bug).
-      if (ctx.analystId && ctx.userId && args.direction !== "PASS") {
-        try {
-          const thisAnalyst = await prisma.agentConfig.findFirst({
-            where: { id: ctx.analystId },
-            select: { holdDurations: true },
-          });
-          const isDayOnly =
-            (thisAnalyst?.holdDurations ?? []).length > 0 &&
-            (thisAnalyst?.holdDurations ?? []).every(
-              (h: string) => h.toUpperCase() === "DAY",
-            );
-          if (isDayOnly && !args.acknowledge_cross_analyst_overlap) {
-            const otherAnalystThesis = await prisma.thesis.findFirst({
-              where: {
-                ticker: args.ticker,
-                direction: args.direction,
-                // Include PROMOTED — another analyst on the account having
-                // a PROMOTED row on this ticker still counts as duplicate
-                // coverage from our DAY analyst's perspective.
-                status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
-                researchRun: {
-                  agentConfig: {
-                    accountId: ctx.accountId,
-                    id: { not: ctx.analystId },
-                  },
-                },
-              },
-              orderBy: { createdAt: "desc" },
-              select: {
-                id: true,
-                status: true,
-                researchRun: {
-                  select: { agentConfig: { select: { id: true, name: true } } },
-                },
-              },
-            });
-            if (otherAnalystThesis) {
-              const otherName =
-                otherAnalystThesis.researchRun.agentConfig?.name ?? "another analyst";
-              return {
-                summary: `${args.ticker} already covered ${otherAnalystThesis.status} ${args.direction} by ${otherName} — pick a fresh name or pass acknowledge_cross_analyst_overlap.`,
-                data: {
-                  thesis_id: null,
-                  status: "CROSS_ANALYST_OVERLAP" as const,
-                  ticker: args.ticker,
-                  conflicting_analyst: otherName,
-                  conflicting_thesis_id: otherAnalystThesis.id,
-                  conflicting_status: otherAnalystThesis.status,
-                  note:
-                    `${args.ticker} (${args.direction}) is already covered ${otherAnalystThesis.status} by ${otherName} (thesis ${otherAnalystThesis.id}). ` +
-                    `As a DAY-only analyst, your edge is the intraday setup — duplicating swing/position coverage doesn't add edge to this account. ` +
-                    `OPTIONS:\n` +
-                    `  1. (preferred) Pick a different name from today's movers list. Plenty of net-new candidates above your $5B cap floor.\n` +
-                    `  2. (override) If today's intraday setup is genuinely distinct from ${otherName}'s thesis (e.g. opening-range breakout vs multi-week earnings drift), retry record_thesis with acknowledge_cross_analyst_overlap: "<one-line rationale>".\n` +
-                    `Do NOT retry without one of these — the same block will fire again.`,
-                },
-                sources: [],
-              };
-            }
-          }
-        } catch { /* non-fatal — overlap check is advisory, not blocking on error */ }
       }
 
       // ── No double-PASS on the same name in the same run ──────────────
