@@ -227,8 +227,11 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 // position's lifetime P&L or a watched name's move today. ONE component so a
 // trade row and a watchlist row can never drift into showing the gain
 // differently — the whole point of "one row design everywhere".
+//
+// Exported for the same reason TradeRowShell is: a surface that shows a stock
+// and its move composes these two, it does not write its own.
 
-function GainPair({ dollar, pct }: { dollar: number; pct: number }) {
+export function GainPair({ dollar, pct }: { dollar: number; pct: number }) {
   return (
     <>
       <span className={cn("text-sm tabular-nums", pnlColor(dollar))}>
@@ -411,7 +414,11 @@ export function TradeRow({
             // Pending proposal — amber dot overrides whatever the underlying
             // status would normally show. Same amber the Coverage Table uses.
             className={
-              isAwaitingApproval ? getTradeStatusDisplay("PENDING").dotClass : cfg.dotClass
+              // Amber is "waiting on you". Once the order is at Alpaca there
+              // is nothing to decide, so it takes the live-and-open blue.
+              isAwaitingApproval
+                ? getTradeStatusDisplay(isExecuting ? "OPEN" : "PENDING").dotClass
+                : cfg.dotClass
             }
             label={timeLabel}
             alpacaId={shortId}

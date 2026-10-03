@@ -140,12 +140,17 @@ const SOURCES = [
   },
   {
     label: "Live Market Data",
-    description: "Real-time quotes, earnings, and company metrics via Finnhub. Put/call ratios and options flow via FMP. 10-K, 10-Q, 8-K, and Form 4 filings from SEC EDGAR.",
+    // Named three sources, two of which are gone: FMP was removed 2026-09-08
+    // (its tier refused 26 of the 28 names on the book) and the options-flow
+    // tool with it, and live prices moved to Alpaca 2026-09-29 with Finnhub
+    // behind them as the fallback.
+    description:
+      "Live prices and bars from Alpaca. Earnings, company metrics, filed statements and news from Finnhub. 10-K, 10-Q, 8-K and Form 4 filings from SEC EDGAR.",
     icon: TrendingUp,
     logos: [
+      { domain: "alpaca.markets", name: "Alpaca" },
       { domain: "finnhub.io", name: "Finnhub" },
       { domain: "sec.gov", name: "SEC EDGAR" },
-      { domain: "financialmodelingprep.com", name: "FMP" },
     ],
   },
   {
@@ -568,7 +573,18 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                                     <span className="text-xs text-primary">✓</span>
                                   )}
                                 </DropdownMenuItem>
-                                {analystScope.options.map((a) => (
+                                {/* A disabled analyst can't run, so it isn't a
+                                    scope you can pick — it only made the list
+                                    longer. The one exception is the scope
+                                    already selected: hiding that would leave
+                                    the menu with no checkmark and no way to
+                                    see what you are pointed at. */}
+                                {analystScope.options
+                                  .filter(
+                                    (a) =>
+                                      a.enabled || a.id === analystScope.current?.id,
+                                  )
+                                  .map((a) => (
                                   <DropdownMenuItem
                                     key={a.id}
                                     onClick={() => analystScope.onChange(a.id)}
@@ -587,7 +603,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                                       <span className="text-xs text-primary">✓</span>
                                     )}
                                   </DropdownMenuItem>
-                                ))}
+                                  ))}
                               </DropdownMenuSubContent>
                             </DropdownMenuSub>
                           </DropdownMenuGroup>
