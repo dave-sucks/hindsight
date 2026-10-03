@@ -21,7 +21,7 @@ describe("the discovery prompt", () => {
   it("the immediate-buy exception is deleted; discovery cannot place a trade", () => {
     expect(prompt).not.toContain("IMMEDIATE-BUY");
     expect(prompt).not.toContain("wait_for_thesis_refresh");
-    expect(prompt).toContain("You CANNOT call place_trade");
+    expect(prompt).toContain("You cannot buy.");
   });
   it("dispatch carries the screen row and the setup", () => {
     expect(prompt).toContain("`setup_id` and `screen_row`");

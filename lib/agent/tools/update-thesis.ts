@@ -119,23 +119,11 @@ const updateSchema = z.object({
     .describe(
       "Optional. When you move a level without changing the belief, one line on why the belief still holds — it is appended to the activity row. Nothing is refused without it.",
     ),
-  signal_ids: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Signal ids that informed this update. Cited in the activity log row so we can trace causality back to the source.",
-    ),
   trigger_id: z
     .string()
     .optional()
     .describe(
       "If this update was prompted by a trigger firing, the id of that trigger. Optional.",
-    ),
-  trade_id: z
-    .string()
-    .optional()
-    .describe(
-      "If this update produced a trade, the trade id. Optional — a trade typically writes its own update via place_trade / close_position; only set this for an out-of-band link.",
     ),
   price_at_time: z
     .number()
@@ -148,30 +136,6 @@ const updateSchema = z.object({
   // ── Patchable fields ──────────────────────────────────────────────────
   // Every field is optional. Whatever's passed gets written; whatever's
   // omitted is left unchanged.
-  //
-  // PR-9 flat schema: the legacy plain-string args
-  // (reasoning_summary / thesis_bullets / risk_flags) accept the legacy
-  // shape AND get wrapped into the new JSONB section shape on persist.
-  // V2 callers pass the new section args directly (snapshot / bull_case /
-  // bear_case + 6 new sections) for richer citations.
-  reasoning_summary: z
-    .string()
-    .optional()
-    .describe(
-      "Legacy plain-string update for the snapshot section. V2 callers prefer `snapshot: { text, citations }`.",
-    ),
-  thesis_bullets: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Legacy plain-string-array update for the bull case. V2 callers prefer `bull_case: { bullets: [{ text, citation }] }`.",
-    ),
-  risk_flags: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Legacy plain-string-array update for the bear case. V2 callers prefer `bear_case: { bullets: [{ text, citation }] }`.",
-    ),
   // The three "structural belief" fields. Substantive non-belief patches
   // (target/stop/confidence) without touching at least one of these are
   // rejected at the discipline gate below — the agent must either update
@@ -181,7 +145,7 @@ const updateSchema = z.object({
     .string()
     .optional()
     .describe(
-      "The durable claim — one sentence that captures WHAT you believe will happen and why. Diverges from reasoning_summary: core_belief is the underlying claim (rarely changes), reasoning_summary is the current-state framing (refreshed often). Touch this when the actual belief has shifted. If you're moving a level and the belief is unchanged, leave this alone (and say why in the rationale, or in `structural_unchanged_reason`).",
+      "The durable claim — one sentence that captures WHAT you believe will happen and why. The snapshot is the current-state framing (refreshed often); this is the underlying claim (rarely changes). Touch this when the actual belief has shifted. If you're moving a level and the belief is unchanged, leave this alone (and say why in the rationale, or in `structural_unchanged_reason`).",
     ),
   key_assumptions: z
     .array(z.string())
@@ -262,18 +226,17 @@ const updateSchema = z.object({
     .enum(["LONG", "SHORT", "PASS"])
     .optional()
     .describe(
-      "Direction commitment for a PENDING thesis (user/builder/editor seed). " +
-      "Only legal when existing.direction === 'PENDING'. " +
-      "LONG/SHORT: requires horizon, target_price, stop_loss, entry_price, core_belief, ≥2 key_assumptions, ≥2 invalidation_conditions, and triggers (or rely on horizon defaults). Stays WATCHING. " +
-      "PASS: requires invalidation_conditions (≥1 — the flip-criteria). Automatically flips status to PASSED and clears triggers. " +
-      "For direction flips on already-committed theses (LONG↔SHORT, etc.), use record_thesis with parent_thesis_id instead — same-direction changes here are rejected."
+      "Commit a direction on a stock that has none yet (a watchlist seed). " +
+      "LONG/SHORT: requires horizon, target_price, stop_loss, a buy (entry_price, or one ENTER trigger already on the stock or in add_triggers), core_belief, ≥2 key_assumptions, ≥2 invalidation_conditions. Stays WATCHING. " +
+      "PASS: requires invalidation_conditions (≥1). Lands status PASSED and clears triggers. " +
+      "A direction flip on a committed thesis (LONG↔SHORT) goes through record_thesis with parent_thesis_id."
     ),
 
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .optional()
     .describe(
-      "Promote or demote when the trade structure has actually changed. Examples: a TRADE that's compounding past its 14d window because the thesis got bigger → upgrade to TARGET. A COMPOUNDER whose moat eroded but isn't dead → downgrade to TARGET with a tighter exit. A CATALYST that printed and is now a position trade on residual momentum → upgrade to TARGET. The review cadence follows the new horizon automatically — leaving the old cadence trigger in place produces a thesis whose exit policy doesn't match its label, so resend the trigger list to match. Only spawn a fresh record_thesis when direction or core belief flips, not when the time horizon evolves.",
+      "Change when the trade's structure has changed: a TRADE that is compounding past its window → TARGET; a COMPOUNDER whose moat eroded but isn't dead → TARGET with a tighter exit; a CATALYST that printed and now runs on momentum → TARGET. Retune the REVIEW_CADENCE trigger to match (edit_triggers). A fresh record_thesis is for a direction or belief flip, not a horizon change.",
     ),
   catalyst_date: z.string().datetime().nullable().optional(),
 
@@ -950,18 +913,12 @@ export const updateThesis = defineTool({
     // / risk_flags). Legacy values are wrapped in the new JSONB shape.
     if (args.snapshot !== undefined) {
       patch.snapshot = args.snapshot;
-    } else if (args.reasoning_summary !== undefined) {
-      patch.snapshot = { text: args.reasoning_summary, citations: [] };
     }
     if (args.bull_case !== undefined) {
       patch.bullCase = args.bull_case;
-    } else if (args.thesis_bullets !== undefined) {
-      patch.bullCase = { bullets: args.thesis_bullets.map((t) => ({ text: t })) };
     }
     if (args.bear_case !== undefined) {
       patch.bearCase = args.bear_case;
-    } else if (args.risk_flags !== undefined) {
-      patch.bearCase = { bullets: args.risk_flags.map((t) => ({ text: t })) };
     }
     // 6 new V2 sections — no legacy fallback.
     if (args.recent_catalysts !== undefined) patch.recentCatalysts = args.recent_catalysts;
@@ -1490,7 +1447,6 @@ export const updateThesis = defineTool({
         summary: `Reviewed ${existing.ticker} thesis — no changes`,
         rationale: args.rationale,
         runId: ctx.runId,
-        signalIds: args.signal_ids,
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,
       });
@@ -1744,9 +1700,7 @@ export const updateThesis = defineTool({
       rationale: persistedRationale,
       fieldChanges,
       runId: ctx.runId,
-      signalIds: args.signal_ids,
       triggerId: args.trigger_id,
-      tradeId: args.trade_id,
       priceAtTime: resolvedPriceAtTime,
     });
     const means = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);

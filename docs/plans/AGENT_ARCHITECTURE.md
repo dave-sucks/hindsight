@@ -397,9 +397,12 @@ Every step is one or two small PRs. Appendix D has the rules each PR follows.
    the five texts and the tool definitions, and the tools an agent never
    calls. No structure changes. Add a test that every tool a text names is on
    that agent's list. The deletions PR, merged 2026-10-02, was the first
-   slice. One exception to "never called": the filing-reader PR (#753)
+   slice; the rest of Appendix B was built 2026-10-03 (the step-3 PR).
+   One exception to "never called": the filing-reader PR (#753)
    gives the trigger run a reason to call `get_sec_filings`, so that tool
    stays on its list until a re-measure after #753 has run for a while.
+   One rule that had to go with it: the field contract test no longer
+   requires a prompt to restate a rule the tool refuses.
 4. **Fix the read.**
    - a. Keep the screen's copy out of what the model reads. Safe.
    - b. Stop inviting raw history. Checked against the cases.
@@ -454,6 +457,18 @@ It is judged on behaviour first. The sizes are reported, not targeted.
 
 It does not promise that any analyst trades better. It should make the
 agents agree with each other and read what is true.
+
+**What six runs can and cannot say (learned at step 3, 2026-10-03).** Once
+the cache fix made every request byte-identical, repeated runs of a case
+stopped being independent: twelve runs of the NVDA case on main gave twelve
+identical answers, and a per-run user id did not change that. The same case
+on the same text scored 4/6 on Thursday and 2/6 on Saturday. So a case's
+number moves with the day as much as with the text, and a change of one or
+two runs between batches means nothing. A case is read three ways: a 6/6 or
+0/6 that holds across days is a fact; the two texts are compared in the
+same hour, not across days; and a difference is claimed only when the
+runs' answers differ in kind (a sale proposed vs a review saved), not in
+count.
 
 ---
 
@@ -555,9 +570,11 @@ What the reviews raised, and where each point is handled:
 
 ## Appendix B. The delete list
 
-Line numbers are on main at `1831f149`. The open deletions PR already
-removes some of these lines. A situation's text is not deleted outright: it
-moves onto its flag in step 6.
+Line numbers are on main at `1831f149`. Built 2026-10-03 in the step-3
+PR, except the rows marked as situations (earnings and filings, confirming
+a buy, adding to a holding, the buy-fire wording) and the `get_theses`
+description, which is step 4. A situation's text is not deleted outright:
+it moves onto its flag in step 6.
 
 **Morning run, `lib/agent/system-prompt.ts`**
 
