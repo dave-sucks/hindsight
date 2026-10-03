@@ -25,6 +25,7 @@ import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
+import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { getResearchedTickersForRun } from "@/lib/agent/researched-tickers";
 import {
   getMoneyContext,
@@ -864,6 +865,10 @@ export async function POST(
         ? anthropic(effectiveModel as Parameters<typeof anthropic>[0])
         : openai(effectiveModel);
 
+    // Every request of this turn, recorded on the run row in onFinish and
+    // added to the turns before it (token-usage.ts). Builder and editor
+    // chats have no run row and are not recorded.
+    const tokenUsage = emptyTokenUsage();
     const result = streamText({
       model: resolvedModel,
       // Provider-specific options. For OpenAI, strictJsonSchema forces OpenAI
@@ -925,6 +930,7 @@ export async function POST(
       ],
 
       onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {
+        addTokenUsage(tokenUsage, usage);
         const now = Date.now();
         const elapsed = now - t0;
         const stepLatencyMs = now - lastStepTimeMs;
@@ -1074,6 +1080,10 @@ export async function POST(
               data: { status: "COMPLETE", completedAt: new Date() },
             });
           }
+
+          // After the toolStats merge above, which reads and rewrites
+          // `parameters`; this adds to the turns before it.
+          await recordTokenUsage(runId, tokenUsage, effectiveModel);
 
           // Persist messages — shared for research-run and podcast-segment-run.
           // Defensive: response.messages may be undefined if the stream ended

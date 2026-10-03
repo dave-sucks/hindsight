@@ -50,6 +50,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { prisma } from "@/lib/prisma";
 import { MODES } from "@/lib/agent/modes";
+import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import {
   getThesisComposite,
@@ -938,6 +939,9 @@ Write the research note now, then call submit_thesis.`;
         : { submit_thesis: submitThesisTool };
 
     let loopError: string | null = null;
+    // Every request this phase makes, recorded on the child run at the end
+    // (token-usage.ts); the save phase's retry records its own.
+    const tokenUsage = emptyTokenUsage();
     try {
       await generateText({
         model,
@@ -948,6 +952,7 @@ Write the research note now, then call submit_thesis.`;
         stopWhen: [stepCountIs(modeConfig.maxSteps), () => accepted !== null],
         abortSignal: AbortSignal.timeout(RESEARCH_TIMEOUT_MS),
         onStepFinish(step) {
+          addTokenUsage(tokenUsage, step.usage);
           stepCount++;
           toolCallCount += step.toolCalls.length;
           searchCount += step.toolCalls.filter((c) => c.toolName === "web_search").length;
@@ -1010,6 +1015,7 @@ Write the research note now, then call submit_thesis.`;
           ],
           abortSignal: AbortSignal.timeout(SECTION_REPAIR_TIMEOUT_MS),
         });
+        addTokenUsage(tokenUsage, repair.totalUsage, repair.steps.length);
         if (repair.text) {
           noteText = `${noteText}\n\n${repair.text}`;
           capturedMessages.push(...(repair.response?.messages ?? []));
@@ -1102,6 +1108,7 @@ Write the research note now, then call submit_thesis.`;
         riskReward: finalRR,
       },
     );
+    await recordTokenUsage(args.childRunId, tokenUsage, modeConfig.model);
 
     return result;
   } catch (err) {
@@ -1607,6 +1614,11 @@ async function resubmitWithFeedback(input: {
       stopWhen: [stepCountIs(SAVE_RETRY_MAX_STEPS), () => accepted !== null],
       abortSignal: AbortSignal.timeout(SAVE_RETRY_TIMEOUT_MS),
     });
+    await recordTokenUsage(
+      args.childRunId,
+      addTokenUsage(emptyTokenUsage(), res.totalUsage, res.steps.length),
+      modeConfig.model,
+    );
     messages.push(...((res?.response?.messages ?? []) as ModelMessage[]));
   } catch (err) {
     console.warn(

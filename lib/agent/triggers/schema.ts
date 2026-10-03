@@ -303,6 +303,37 @@ export const triggersArraySchema = z
   );
 
 /**
+ * The trigger shape the two thesis tools show the MODEL: `triggerSchema`
+ * without the fields only the server writes. `id` is minted on the way in
+ * (ops.ts: `trigger.id || mintId()`; record_thesis mints for the triggers
+ * it stores directly), and the evaluator and the write paths stamp
+ * `lastFiredAt`, `firedFilings`, `firedReports`, `writtenPrice`, `writtenAt`
+ * and `source`. Each of those used to sit in the tool definition saying
+ * "do not set" — and `id` carried its `.default(() => randomUUID())`, which
+ * the SDK re-ran on every request, so every request's tool definition held
+ * a different id. OpenAI caches an exact prefix, so the cache stopped at
+ * that id on every step of every run (measured 2026-10-02: the same request
+ * cached 71% with the random id and 97% without). The server schema above
+ * is unchanged; this is only what the model is shown.
+ */
+export const triggerInputSchema = triggerSchema.omit({
+  id: true,
+  lastFiredAt: true,
+  firedFilings: true,
+  firedReports: true,
+  writtenPrice: true,
+  writtenAt: true,
+  source: true,
+});
+
+export const triggersInputArraySchema = z
+  .array(triggerInputSchema)
+  .max(20)
+  .describe(
+    "Structured triggers attached to this thesis. Each is a (predicate, action, rationale) tuple the router evaluates deterministically. Capped at 20 per thesis to keep the matching loop bounded.",
+  );
+
+/**
  * One edit to an existing trigger, by id. The ONE shape for every caller that
  * edits a trigger — update_thesis and the thesis writer's submit_thesis both
  * use it. Two hand-written copies drifted on 2026-09-11 (the writer's `action`
