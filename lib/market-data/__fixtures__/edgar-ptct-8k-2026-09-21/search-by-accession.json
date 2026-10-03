@@ -1,0 +1,102 @@
+{
+  "hits": {
+    "total": {
+      "value": 2,
+      "relation": "eq"
+    },
+    "hits": [
+      {
+        "_id": "0001070081-26-000023:tmb-20260921x8k.htm",
+        "_source": {
+          "ciks": [
+            "0001070081"
+          ],
+          "period_ending": "2026-09-21",
+          "file_num": [
+            "001-35969"
+          ],
+          "display_names": [
+            "PTC THERAPEUTICS, INC.  (PTCT)  (CIK 0001070081)"
+          ],
+          "xsl": null,
+          "sequence": 1,
+          "root_forms": [
+            "8-K"
+          ],
+          "file_date": "2026-09-21",
+          "biz_states": [
+            "NJ"
+          ],
+          "sics": [
+            "2834"
+          ],
+          "form": "8-K",
+          "adsh": "0001070081-26-000023",
+          "film_num": [
+            "261394356"
+          ],
+          "biz_locations": [
+            "Warren, NJ"
+          ],
+          "file_type": "8-K",
+          "ma_i_individual": null,
+          "file_description": "8-K",
+          "inc_states": [
+            "DE"
+          ],
+          "items": [
+            "7.01",
+            "8.01",
+            "9.01"
+          ]
+        }
+      },
+      {
+        "_id": "0001070081-26-000023:tmb-20260921xex99d1.htm",
+        "_source": {
+          "ciks": [
+            "0001070081"
+          ],
+          "period_ending": "2026-09-21",
+          "file_num": [
+            "001-35969"
+          ],
+          "display_names": [
+            "PTC THERAPEUTICS, INC.  (PTCT)  (CIK 0001070081)"
+          ],
+          "xsl": null,
+          "sequence": "2",
+          "root_forms": [
+            "8-K"
+          ],
+          "file_date": "2026-09-21",
+          "biz_states": [
+            "NJ"
+          ],
+          "sics": [
+            "2834"
+          ],
+          "form": "8-K",
+          "adsh": "0001070081-26-000023",
+          "film_num": [
+            "261394356"
+          ],
+          "biz_locations": [
+            "Warren, NJ"
+          ],
+          "file_type": "EX-99.1",
+          "ma_i_individual": null,
+          "file_description": "EX-99.1",
+          "inc_states": [
+            "DE"
+          ],
+          "items": [
+            "7.01",
+            "8.01",
+            "9.01"
+          ]
+        }
+      }
+    ]
+  }
+}
