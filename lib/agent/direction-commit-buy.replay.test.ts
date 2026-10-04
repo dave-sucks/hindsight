@@ -1,22 +1,21 @@
 /**
- * two-buy-triggers.replay.test.ts — a save never leaves a stock with two buy
- * triggers. From the two saves that did, on 2026-10-02.
+ * direction-commit-buy.replay.test.ts — committing a direction does not
+ * demand entry_price when the stock already has a buy trigger. From the
+ * SMMT save of 2026-10-02.
  *
- * SMMT (chat, Catalyst Event PM, 18:58 ET): the stock already carried its buy
- * as a chart condition — "closes above $17.10 and above the 20-day", an AND
- * trigger with action ENTER. The chat committed direction LONG and sent
- * entry_price 17.10, meaning that same buy. The buy slot in price-levels.ts
- * only sees PRICE_ABOVE / PRICE_BELOW triggers, so the AND buy was not in it
- * and "Entry set: $17.10" was added as a second ENTER. The principal removed
- * it by hand 25 minutes later.
+ * SMMT (chat, Catalyst Event PM, 18:58 ET): the stock already carried its
+ * buy as a chart condition — "closes above $17.10 and above the 20-day", an
+ * AND trigger with action ENTER. The chat committed direction LONG. The
+ * direction commit demanded entry_price as an argument, so the chat sent
+ * $17.10 to satisfy it, meaning the buy it already had — and the app saved
+ * an accidental copy of that buy. The principal removed it by hand.
  *
- * CRWD (writer mint, Secular Compounder, 21:21 ET): the writer sent
- * entry_price 242.28 (the 20-day) AND an ENTER trigger on NEAR_SMA 20 within
- * 2% in `triggers`. Both landed; the stock was born with two buys.
+ * The cause is the demand. With it lifted, the same commit lands without
+ * entry_price and the stock keeps its one buy.
  *
- * Both go through the real tools, so the rule is proven where the saves
- * happened: `update_thesis` (through checkLadder) and `record_thesis`
- * (through its own call of the same guard).
+ * More than one buy condition on a stock is normal trading (a buy on a
+ * breakout and a buy on a pullback): a plan with two different buys saves,
+ * shown here on the CRWD writer mint of the same day.
  */
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 
@@ -186,26 +185,8 @@ const crwdMint = {
   source_rationale: "Mint requested on CRWD for the Secular Compounder.",
 };
 
-describe("a save never leaves a stock with two buy triggers", () => {
-  it("SMMT: committing LONG with entry_price next to the existing AND buy is refused, naming both", async () => {
-    const { refused, refusal, db } = await replayTool("update-thesis", "updateThesis", {
-      seed: { thesis: [smmt()] },
-      args: smmtCommit,
-      quotes: { SMMT: 16.785 },
-    });
-
-    expect(refused).toBe(true);
-    expect(refusal?.error).toBe("two_buy_triggers");
-    expect(refusal?.message).toMatch(/Closes above \$17\.1/);
-    expect(refusal?.message).toMatch(/above the 20-day|20-day/i);
-    expect(refusal?.message).toContain(SMMT_AND_BUY);
-    // Nothing moved: the stock still has its one buy, and is still undirected.
-    const row = (db.store.thesis as Array<Record<string, unknown>>)[0];
-    expect(buysOf(row.triggers).map((t) => t.id)).toEqual([SMMT_AND_BUY]);
-    expect(row.direction).toBeNull();
-  });
-
-  it("SMMT: the same commit without entry_price lands, with the AND trigger as the buy", async () => {
+describe("committing a direction uses the buy already on the stock", () => {
+  it("SMMT: the commit lands without entry_price, with its one existing buy", async () => {
     const { entry_price: _omit, ...withoutLevel } = smmtCommit;
     void _omit;
     const { refused, refusal, db } = await replayTool("update-thesis", "updateThesis", {
@@ -221,7 +202,7 @@ describe("a save never leaves a stock with two buy triggers", () => {
     expect(buysOf(row.triggers).map((t) => t.id)).toEqual([SMMT_AND_BUY]);
   });
 
-  it("CRWD: a mint with entry_price and an ENTER trigger is refused, and nothing is minted", async () => {
+  it("CRWD: a plan with two different buys (a price and a pullback to the 20-day) saves", async () => {
     const { refused, refusal, db } = await replayTool("record-thesis", "recordThesis", {
       seed: { agentConfig: [agentConfigRow({ setupIds: ["COMPOUNDER_ACCUMULATION"] })], account: [accountRow()] },
       ctx: { runMode: "THESIS_WRITER", analystId: REPLAY_ANALYST_ID },
@@ -229,29 +210,10 @@ describe("a save never leaves a stock with two buy triggers", () => {
       quotes: { CRWD: 270.04 },
     });
 
-    expect(refused).toBe(true);
-    expect(refusal?.message).toMatch(/2 buy triggers/);
-    expect(refusal?.message).toMatch(/within 2% of the 20-day|20-day/i);
-    expect(refusal?.message).toMatch(/\$242\.28/);
-    expect(db.store.thesis ?? []).toHaveLength(0);
-  });
-
-  it("CRWD: the same mint with the chart buy alone saves with one buy trigger", async () => {
-    const { entry_price: _omit, ...oneBuy } = crwdMint;
-    void _omit;
-    const { refused, refusal, db } = await replayTool("record-thesis", "recordThesis", {
-      seed: { agentConfig: [agentConfigRow({ setupIds: ["COMPOUNDER_ACCUMULATION"] })], account: [accountRow()] },
-      ctx: { runMode: "THESIS_WRITER", analystId: REPLAY_ANALYST_ID },
-      args: oneBuy,
-      quotes: { CRWD: 270.04 },
-    });
-
     expect(refusal).toBeNull();
     expect(refused).toBe(false);
     const rows = db.store.thesis as Array<Record<string, unknown>>;
     expect(rows).toHaveLength(1);
-    const buys = buysOf(rows[0].triggers);
-    expect(buys).toHaveLength(1);
-    expect(buys[0].predicate.kind).toBe("NEAR_SMA");
+    expect(buysOf(rows[0].triggers).map((t) => t.predicate.kind).sort()).toEqual(["NEAR_SMA", "PRICE_BELOW"]);
   });
 });

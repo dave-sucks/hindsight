@@ -1204,13 +1204,10 @@ export const recordThesis = defineTool({
       });
       if (!enterGuard.ok) {
         console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — ${enterGuard.reason}.`,
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — WATCHING ${args.direction} with no ENTER trigger.`,
         );
         return {
-          summary:
-            enterGuard.reason === "two-buy-triggers"
-              ? `Thesis rejected for ${args.ticker}: the plan has two buy triggers; a stock has one.`
-              : `Thesis rejected for ${args.ticker}: WATCHING ${args.direction} requires an ENTER trigger.`,
+          summary: `Thesis rejected for ${args.ticker}: WATCHING ${args.direction} requires an ENTER trigger.`,
           data: {
             thesis_id: null,
             status: "FAILED" as const,

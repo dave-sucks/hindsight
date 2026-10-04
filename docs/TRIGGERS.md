@@ -374,10 +374,8 @@ the reason and the rest of the call lands (`data.trigger_ops` on the tool):
 - On a held stock an agent may only tighten a protective sell level (§ the
   ratchet, DAV-185); the principal is exempt.
 - After all ops, ONE check on the derived plan: ordering everywhere, a buy
-  trigger where a floor or target is armed, **at most one buy trigger** (a
-  buy as a price and a buy as a chart condition are two buys; the save is
-  refused naming both — SMMT and CRWD, 2026-10-02), and — for an agent only —
-  2:1 on a plan we don't own. The same check runs on a mint. The principal is exempt from the ratio as from the
+  trigger where a floor or target is armed, and — for an agent only — 2:1 on
+  a plan we don't own. The principal is exempt from the ratio as from the
   ratchet; a stop above the buy price is refused for anyone.
 
 The plan columns (`entryPrice` / `targetPrice` / `stopLoss`) are recomputed from

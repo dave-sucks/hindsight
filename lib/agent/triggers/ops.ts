@@ -587,7 +587,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
 
 export type LadderCheck =
   | { ok: true; columns: { entryPrice: number | null; targetPrice: number | null; stopLoss: number | null } }
-  | { ok: false; error: "invalid_thesis_shape" | "missing_enter_trigger" | "two_buy_triggers"; message: string };
+  | { ok: false; error: "invalid_thesis_shape" | "missing_enter_trigger"; message: string };
 
 /**
  * Derive the plan from the list and check it once: ordering everywhere, the
@@ -635,13 +635,7 @@ export function checkLadder(input: {
     triggers: [...triggers, ...inherited],
     targetPrice: columns.targetPrice,
   });
-  if (!guard.ok) {
-    return {
-      ok: false,
-      error: guard.reason === "two-buy-triggers" ? "two_buy_triggers" : "missing_enter_trigger",
-      message: guard.note,
-    };
-  }
+  if (!guard.ok) return { ok: false, error: "missing_enter_trigger", message: guard.note };
   return { ok: true, columns };
 }
 

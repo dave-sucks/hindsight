@@ -75,8 +75,8 @@ const RULE_DEFS = {
     markers: {},
   },
   TRIGGER_SHAPE: {
-    says: "A trigger's kind is one of the evaluator's kinds, by name. An unknown kind is coerced or dropped with a note; a plan level without a buy level is refused with the fix; a plan with two buy triggers is refused naming both.",
-    refusal: "missing_enter_trigger — names the missing buy level and the two answers. two_buy_triggers — names both buys and which argument carries the one to keep.",
+    says: "A trigger's kind is one of the evaluator's kinds, by name. An unknown kind is coerced or dropped with a note; a plan level without a buy level is refused with the fix.",
+    refusal: "missing_enter_trigger — names the missing buy level and the two answers.",
     markers: {},
   },
 } as const satisfies Record<string, Rule>;

@@ -783,7 +783,7 @@ export const updateThesis = defineTool({
         // in this call as one. SMMT 2026-10-02: the buy was "closes above
         // $17.10 and above the 20-day" (an AND trigger); this rule demanded
         // entry_price anyway, the chat sent $17.10 to satisfy it, and the
-        // stock got a second buy. A stock has one buy, in whichever form.
+        // stock got an accidental copy of the buy it already had.
         const hasBuy =
           args.entry_price != null ||
           existingRowTriggers.some((t) => t.action === "ENTER") ||
@@ -1241,12 +1241,7 @@ export const updateThesis = defineTool({
                 // exact ids so the agent doesn't guess (DAV-258 for the half
                 // plan, DAV-262 for the 2:1 floor — MSFT 2026-09-14 was told
                 // to send the whole list again, an argument that no longer exists).
-                // Two buys is not a plan to set down: the message already says
-                // which buy to keep and how to replace the other.
-                message:
-                  check.error === "two_buy_triggers"
-                    ? check.message
-                    : `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim(),
+                message: `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim(),
                 trigger_ops: notApplied(opResults, check.error),
               },
               sources: [],

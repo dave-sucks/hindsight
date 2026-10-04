@@ -76,10 +76,7 @@ describe("validateEnterTriggerRequired", () => {
     ).toEqual({ ok: true });
   });
 
-  // A stock has one buy. Two ENTERs — a price and a chart or event condition
-  // — were legal here until 2026-10-02, when SMMT and CRWD each got a second
-  // buy from a save (lib/agent/two-buy-triggers.replay.test.ts).
-  it("WATCHING LONG with two ENTER triggers (price + event): refused, naming both", () => {
+  it("WATCHING LONG with multiple ENTER triggers (price + event): ok", () => {
     const eventEnter: Trigger = {
       id: "trig-enter-event",
       predicate: { kind: "EARNINGS_BEAT" },
@@ -87,17 +84,14 @@ describe("validateEnterTriggerRequired", () => {
       rationale: "Entry on catalyst",
       cooldownDays: 7,
     };
-    const r = validateEnterTriggerRequired({
-      direction: "LONG",
-      status: "WATCHING",
-      triggers: [ENTER_LONG, eventEnter, REVIEW_HYGIENE],
-      targetPrice: 100,
-    });
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.reason).toBe("two-buy-triggers");
-    expect(r.note).toContain(ENTER_LONG.id);
-    expect(r.note).toContain("trig-enter-event");
+    expect(
+      validateEnterTriggerRequired({
+        direction: "LONG",
+        status: "WATCHING",
+        triggers: [ENTER_LONG, eventEnter, REVIEW_HYGIENE],
+        targetPrice: 100,
+      }),
+    ).toEqual({ ok: true });
   });
 
   // ── A floor on a watch item is legal now (DAV-195 L5) ─────────────────
