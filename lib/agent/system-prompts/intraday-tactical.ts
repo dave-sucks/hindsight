@@ -254,7 +254,7 @@ POSITION:
   ${positionLine}
 
 ${context ?? `WHAT'S BEEN SAID ON $${thesis.ticker}\n  (nothing written on this stock in the lines on record)`}
-The principal's decisions outrank the trigger's own rationale. If they declined this same action and nothing they named has changed, say so and pass.
+The principal's decisions outrank the trigger's own rationale.${trigger.action === "ENTER" || trigger.action === "ADD" ? " If they declined this same buy and nothing they named has changed, say so and pass." : ""}
 ${digestSection}
 ═══════════════════════════════════════════════════════════════════
 CURRENT TRIGGER LADDER (your standing game plan on $${thesis.ticker})
