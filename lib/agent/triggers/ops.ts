@@ -75,6 +75,12 @@ export type TriggerOp =
       cooldownDays?: number;
     }
   | { op: "remove"; id: string }
+  /**
+   * Swap a trigger's condition, action and fire mode in one step (the trigger
+   * dialog's Save). Kept in the same slot, it keeps its id, history and
+   * cooldown; moved to another slot, it is a new trigger with a new id.
+   */
+  | { op: "replace"; id: string; trigger: Trigger }
   /** A plan level as an op — resolves to add / edit / remove on the slot's trigger. */
   | {
       op: "level";
@@ -237,7 +243,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   // The one real contradiction: an edit, by id, of a trigger the same call
   // deletes. Neither is applied; it comes back by id.
   const contradicted = new Set(
-    input.ops.flatMap((o) => (o.op === "edit" && deleted.has(o.id) ? [o.id] : [])),
+    input.ops.flatMap((o) => ((o.op === "edit" || o.op === "replace") && deleted.has(o.id) ? [o.id] : [])),
   );
 
   const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string) =>
@@ -492,6 +498,57 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     commit(next, { op: "add", id, ok: true, text });
   };
 
+  const doReplace = (id: string, trigger: Trigger) => {
+    const target = stored.find((t) => t.id === id);
+    if (!target) return refuse("edit", id, `Change trigger ${id}`, notStored(id));
+    const sameSlot = triggerBucket(target) === triggerBucket(trigger);
+    const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerBucket(s) === triggerBucket(trigger));
+    const text = `Changed: ${describeTrigger(target, direction)} → ${describeTrigger(trigger, direction)}`;
+    if (clash) {
+      return refuse("edit", id, text, `This stock already has "${describeTrigger(clash, direction)}". Edit that one instead.`);
+    }
+    if (
+      sameSlot &&
+      JSON.stringify(target.predicate) === JSON.stringify(trigger.predicate) &&
+      target.action === trigger.action &&
+      (target.fireMode ?? "TACTICAL") === (trigger.fireMode ?? "TACTICAL")
+    ) {
+      return refuse("edit", id, text, "Nothing to change — the trigger already says this.");
+    }
+    // The history belongs to the condition. Same slot: a new value for the
+    // same rule keeps its id, its fire history, its cooldown and its
+    // sentence (the number moved in it). Another slot: a different rule,
+    // so a new id and a clean history (inherited rules keep theirs per stock
+    // under the id, so a reused id would carry the old cooldown along).
+    let replaced: Trigger;
+    if (sameSlot) {
+      const was = numberOf(target.predicate);
+      const now = numberOf(trigger.predicate);
+      const moved =
+        was && now && was.field === now.field && was.value !== now.value
+          ? moveNumberInText(target.rationale, was.field, was.value, now.value)
+          : null;
+      replaced = {
+        ...target,
+        predicate: trigger.predicate,
+        action: trigger.action,
+        fireMode: trigger.fireMode,
+        rationale: moved ?? target.rationale,
+        source: stamp(trigger),
+      };
+    } else {
+      const { lastFiredAt: _f, firedFilings: _ff, firedReports: _fr, ...fresh } = trigger;
+      void _f;
+      void _ff;
+      void _fr;
+      replaced = { ...fresh, id: mintId(), source: stamp(trigger) };
+    }
+    const next = stored.map((t) => (t.id === id ? replaced : t));
+    const blocked = ratchetReason(next);
+    if (blocked) return refuse("edit", id, text, blocked);
+    commit(next, { op: "edit", id: replaced.id, ok: true, text });
+  };
+
   const doLevel = (
     slot: LevelSlot,
     price: number | null,
@@ -562,6 +619,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         break;
       case "remove":
         if (!contradicted.has(op.id)) doRemove(op.id);
+        break;
+      case "replace":
+        if (!contradicted.has(op.id)) doReplace(op.id, op.trigger);
         break;
       case "level":
         doLevel(op.slot, op.price, { rationale: op.rationale, basis: op.basis });

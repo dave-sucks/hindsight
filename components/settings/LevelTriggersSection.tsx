@@ -4,25 +4,23 @@
  * LevelTriggersSection — the standing trigger ladder at the ACCOUNT or
  * ANALYST level.
  *
- * Deliberately NOT a new trigger UI. It renders the exact `TriggerGroups`
- * + `AddTriggerDialog` the thesis sheet uses, pointed at
- * `/api/levels/:level/:ownerId/triggers` instead of the thesis routes.
- * Same pill, same popover, same Add dialog, same dashed treatment for
- * anything inherited from below — a rung looks and edits identically
- * wherever it lives, which is the whole point of the cascade.
+ * Deliberately NOT a new trigger UI. It renders the exact pills and trigger
+ * dialog the thesis sheet uses, pointed at `/api/levels/:level/:ownerId/triggers`
+ * instead of the thesis routes, so a rule looks and edits the same wherever it
+ * lives.
  *
  * What differs from the thesis view, and why:
- *   • No "$ Price" criterion. An absolute dollar level is meaningless
- *     applied across every ticker (`addLevelTrigger` refuses it too).
- *   • `held` is forced true. There is no position in scope here; the flag
- *     means "offer the position-scoped criteria", and "every holding
+ *   • No typed price. An absolute dollar level is meaningless applied across
+ *     every stock (the dialog says so, and `addLevelTrigger` refuses it); a
+ *     price variable such as the 200-day average is fine.
+ *   • `held` is forced true. There is no position in scope; "every holding
  *     trails 6%" is the most valuable thing a standing rule can say.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import {
   TriggerGroups,
-  AddTriggerDialog,
+  AddTriggerButtons,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import { Button } from "@/components/ui/button";
 import {
@@ -203,6 +201,7 @@ export function LevelTriggersSection({
   const groupProps = {
     direction: null,
     held: true,
+    level: level === "account" ? "ACCOUNT" : "ANALYST",
     endpointBase,
     onChanged: () => void load(),
   } as const;
@@ -222,11 +221,11 @@ export function LevelTriggersSection({
         </p>
       )}
       {editable ? (
-        <div className="flex items-center gap-2">
-          <AddTriggerDialog
+        <div className="flex flex-wrap items-center gap-2">
+          <AddTriggerButtons
+            level={level === "account" ? "ACCOUNT" : "ANALYST"}
             held
             endpointBase={endpointBase}
-            allowAbsolutePrice={false}
             onChanged={() => void load()}
           />
           {level === "analyst" ? <ReseedDialog endpointBase={endpointBase} onChanged={() => void load()} /> : null}
