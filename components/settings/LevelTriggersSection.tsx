@@ -4,8 +4,8 @@
  * LevelTriggersSection — the standing trigger ladder at the ACCOUNT or
  * ANALYST level.
  *
- * Deliberately NOT a new trigger UI. It renders the exact pills and trigger
- * dialog the thesis sheet uses, pointed at `/api/levels/:level/:ownerId/triggers`
+ * Deliberately NOT a new trigger UI. It renders the exact pills, popovers and
+ * Add trigger dialog the thesis sheet uses, pointed at `/api/levels/:level/:ownerId/triggers`
  * instead of the thesis routes, so a rule looks and edits the same wherever it
  * lives.
  *
@@ -18,10 +18,8 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  TriggerGroups,
-  AddTriggerButtons,
-} from "@/components/agent/sheets/ThesisTriggersSection";
+import { TriggerGroups } from "@/components/agent/sheets/ThesisTriggersSection";
+import { AddTrigger } from "@/components/agent/triggers/TriggerDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -222,7 +220,7 @@ export function LevelTriggersSection({
       )}
       {editable ? (
         <div className="flex flex-wrap items-center gap-2">
-          <AddTriggerButtons
+          <AddTrigger
             level={level === "account" ? "ACCOUNT" : "ANALYST"}
             held
             endpointBase={endpointBase}

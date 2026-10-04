@@ -1,7 +1,8 @@
 /**
- * The checks: what's wrong with a condition, in one plain sentence, or null.
- * The dialog shows the message under the input. A check never changes the
- * form, it only says what to fix. docs/plans/TRIGGER_TYPES.md §3.2.
+ * The checks: what's wrong with a condition, in one plain sentence, or null,
+ * and which variables the {x} menu offers. The form shows the message under
+ * the input. A check never changes the form, it only says what to fix.
+ * docs/plans/TRIGGER_TYPES.md §3.2.
  *
  * Pure and client-safe.
  */
@@ -10,15 +11,37 @@ import { LEVEL_ELIGIBLE_KINDS, THESIS_ADDABLE_KINDS } from "../addable";
 import type { TriggerPredicate } from "../types";
 import { tabOfCondition } from "./catalog";
 import { toLegacy } from "./legacy";
-import type { Condition, When } from "./types";
+import type { Condition, Direction, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
-import { isPositionVariable } from "./variables";
+import { isPositionVariable, variableDef, type VariableDef } from "./variables";
 
 export interface CheckContext {
   /** Where the trigger is stored. */
   level: "THESIS" | "ANALYST" | "ACCOUNT";
   /** We own the stock (a thesis at HOLDING). Ignored at the analyst and account levels. */
   held: boolean;
+}
+
+/**
+ * The variables the {x} menu offers: the ones today's checker can read with
+ * this condition's button, at this level. A menu never offers a variable that
+ * would then refuse to save.
+ */
+export function variableOptions(c: Condition, ctx: CheckContext): readonly VariableDef[] {
+  const vars = tabOfCondition(c).variables;
+  if (!vars) return [];
+  return vars.options.filter((o) => {
+    if (isPositionVariable(o.id) && ctx.level === "THESIS" && !ctx.held) return false;
+    const legacy = toLegacy({ ...c, variable: o.id, value: c.value ?? 1, params: { ...c.params, onClose: undefined } });
+    return legacy != null && kindProblem(legacy, ctx) == null;
+  });
+}
+
+/** A new button. A variable the new button can't take is dropped, and the line under the input asks for another. */
+export function withDirection(c: Condition, is: Direction, ctx: CheckContext): Condition {
+  const next: Condition = { ...c, is };
+  if (next.variable && !variableOptions(next, ctx).some((o) => o.id === next.variable)) delete next.variable;
+  return next;
 }
 
 export function conditionProblem(c: Condition, ctx: CheckContext): string | null {
@@ -37,6 +60,7 @@ export function conditionProblem(c: Condition, ctx: CheckContext): string | null
     if (c.watch === "price" && c.unit !== "%" && v === 0) return "Enter a price, or use a price variable.";
   }
 
+  if (c.watch === "filing" && !c.variable) return "Choose a filing.";
   if (c.watch === "price" && c.unit !== "%" && !c.variable && standing) {
     return "A typed price can't apply to every stock. Use a price variable instead, like the 200-day average.";
   }
@@ -45,20 +69,20 @@ export function conditionProblem(c: Condition, ctx: CheckContext): string | null
     if (c.is === "near" && (c.value ?? 0) === 0) return "Near needs a distance, such as 2%.";
     if (c.is === "below" && (c.value ?? 0) >= 100) return "A fall of 100% or more can't happen.";
   }
-  if (c.variable === "peak" && c.is !== "below") return "The price can't rise above the high since we bought. Pick Below.";
+  if (c.watch === "schedule" && c.is !== "every" && !c.variable) return "Choose what to count from.";
   if (isPositionVariable(c.variable) && ctx.level === "THESIS" && !ctx.held) {
     return "Our entry and the high since we bought exist only once we own the stock.";
   }
-  if (c.watch === "report" && c.is === "before" && (c.value ?? 0) > 14) return "The earnings calendar looks 14 days ahead.";
-  if (c.watch === "schedule" && c.is !== "every") {
-    if (!c.variable) return "Choose what to count from.";
-    if (c.variable === "buy" && c.is === "before") return "The buy is already in the past. Pick After.";
+  if (c.variable === "buy" && c.is === "before") return "The buy is already in the past. Pick After.";
+  if (c.variable && tab.variables && !variableOptions(c, ctx).some((o) => o.id === c.variable)) {
+    const button = tab.buttons.find((b) => b.is === c.is)?.label ?? c.is;
+    return `${capitalise(variableDef(c.variable).chip)} doesn't work with ${button}. Pick another with the {x} button.`;
   }
+  if (c.params?.onClose && c.variable) return "Only on the close works with a typed price.";
+  if (c.watch === "report" && c.is === "before" && (c.value ?? 0) > 14) return "The earnings calendar looks 14 days ahead.";
 
-  // Until the cutover the server stores today's kinds, so a condition no
-  // kind can say is held back (docs/plans/TRIGGER_TYPES.md, PR 1).
   const legacy = toLegacy(c);
-  if (!legacy) return "Not available yet: today's triggers can't say this. It arrives with the cutover.";
+  if (!legacy) return "This can't be saved yet.";
   return kindProblem(legacy, ctx);
 }
 
@@ -81,4 +105,8 @@ function kindProblem(p: TriggerPredicate, ctx: CheckContext): string | null {
   return ctx.level === "THESIS"
     ? "That can't be added to a stock by hand."
     : "That can't be a standing rule: it has to mean the same thing on every stock.";
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

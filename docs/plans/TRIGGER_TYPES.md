@@ -224,7 +224,7 @@ second condition.
 all / Match any**. Groups can nest one level, because the setup templates
 need it ("a breakout on volume, or a pullback to the average").
 
-"And also…" first offers the five type buttons, then adds that type's parts
+"And also…" first opens the same menu of types, then adds that type's parts
 under the first condition. The type picked there is the second condition's
 own, so "earnings beat **and** down 3% today" is an Earnings condition plus a
 Price condition. A range, such as a price band, is two conditions joined
@@ -388,7 +388,7 @@ assuming them.
 // lib/agent/triggers/condition/catalog.ts: one entry per watch. Client-safe (no node imports).
 interface WatchDef {
   watch: Watch;
-  type: "price" | "indicator" | "earnings" | "filing" | "schedule";   // the sheet's five buttons
+  type: "price" | "indicator" | "earnings" | "filing" | "schedule";   // the Add trigger menu
   tabs: Tab[];                    // each tab: its label, its buttons, its value input, its one setting
   params: ZodType<Params>;        // which params this watch accepts, with defaults
   needs(c: Condition): DataNeeds; // quote, position, chart snapshot, today's volume, calendar, filings
@@ -521,16 +521,15 @@ Every other type fills the same parts:
   Filing · SEC filing  [ Material | Red flag ] [ Any filing {x} ]  or [ ⟨8-K 5.02⟩ × {x} ]
 ```
 
-- **The type is picked on the sheet**, from the five buttons under "Add
-  trigger", and it shows in the dialog's title. It never changes inside the
-  dialog. "And also…" offers the same five buttons for the second
-  condition.
+- **The type is picked first**: Add trigger opens a menu of the five types,
+  and the one picked shows in the dialog's title. It never changes inside the
+  dialog. "And also…" opens the same menu for the second condition.
 - **The variable button `{x}` sits inside the value input.** It opens a
   short menu grouped by kind (recent closes, our position, averages, highs
   and lows; or dates; or filing events), each with today's value. The chosen
   variable shows as a blue chip in the input; its × removes it.
-- **Clicking a pill opens the same form.** A stock's own trigger opens it
-  editable, with Save and Delete. An analyst or account rule opens it
+- **Clicking a pill opens the same form in a popover**, without the tabs.
+  A stock's own trigger opens it editable, with Save and Delete. An analyst or account rule opens it
   read-only, with "Set on Secular Compounder — edit in analyst settings".
   The analyst and account settings pages use the same pills and the same
   form.

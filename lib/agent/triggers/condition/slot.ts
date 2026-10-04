@@ -38,7 +38,7 @@ export function conditionSlot(c: Condition): string {
     case "filing":
       // A material rule and a red-flag rule override each other; a rule
       // naming one event adds to them and never silences them.
-      return c.variable ? `filing:${c.variable}` : "filing:tier";
+      return c.variable && !c.variable.startsWith("tier:") ? `filing:${c.variable}` : "filing:tier";
     case "schedule":
       if (c.is === "every") return "schedule:every";
       return c.variable === "event" ? `schedule:event:${c.is}` : `schedule:${c.variable ?? "none"}`;

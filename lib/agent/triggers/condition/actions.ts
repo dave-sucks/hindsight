@@ -12,7 +12,7 @@ import { conditionsOf, isGroup } from "./types";
 /** The order the dialog lists them in. */
 export const DIALOG_ACTIONS: readonly TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW"];
 
-/** A schedule, an earnings condition, a filing and insider buying can only ask for a review. */
+/** A repeating schedule, an earnings condition, a filing and insider buying can only ask for a review. */
 function reviewOnly(c: Condition): boolean {
   switch (c.watch) {
     case "report":

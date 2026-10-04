@@ -45,8 +45,10 @@ export const DATE_VARIABLES: readonly (VariableDef & { id: DateVariable })[] = [
   { id: "event", label: "The event date", group: "Dates", chip: "the event date", words: "the event date" },
 ];
 
-/** Every 8-K item and watched form the evaluator knows, from lib/market-data/sec-events. */
+/** Any filing of a tier, then every 8-K item and watched form the evaluator knows (lib/market-data/sec-events). */
 export const FILING_VARIABLES: readonly (VariableDef & { id: FilingVariable })[] = [
+  { id: "tier:MATERIAL", label: "Anything material", group: "Any filing", chip: "anything material", words: "something material with the SEC" },
+  { id: "tier:RED", label: "A red flag", group: "Any filing", chip: "a red flag", words: "a red-flag filing with the SEC" },
   ...Object.entries(ITEM_NAMES)
     // Exhibits and the earnings release are not events a review waits on.
     .filter(([code]) => code !== "9.01" && code !== "2.02")

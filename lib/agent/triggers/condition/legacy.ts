@@ -12,7 +12,7 @@
  */
 
 import type { TriggerPredicate } from "../types";
-import type { Condition, Group, Params, Retired, VariableId, When } from "./types";
+import type { Condition, FilingVariable, Group, Params, Retired, When } from "./types";
 import { isGroup } from "./types";
 
 type Kind<K extends TriggerPredicate["kind"]> = Extract<TriggerPredicate, { kind: K }>;
@@ -20,7 +20,6 @@ type Kind<K extends TriggerPredicate["kind"]> = Extract<TriggerPredicate, { kind
 const SMA = { 20: "sma20", 50: "sma50", 150: "sma150", 200: "sma200" } as const;
 const MOVE_VARIABLE = { "1D": "prev_close", "5D": "close_5d", "20D": "close_20d" } as const;
 const MOVE_WINDOW = { prev_close: "1D", close_5d: "5D", close_20d: "20D" } as const;
-const UNIT_DAYS = { days: 1, weeks: 7, months: 30 } as const;
 
 function withParams(c: Condition, params: Params): Condition {
   return Object.keys(params).length ? { ...c, params } : c;
@@ -82,7 +81,7 @@ export function fromLegacy(p: unknown): When | Retired {
         params: { volume: q.minVolRatio, ...(q.withinDays != null ? { withinDays: q.withinDays } : {}) },
       };
     case "INSIDER_CLUSTER":
-      return { watch: "insiders", is: "at_least", value: q.minBuyers, params: { days: q.days } };
+      return { watch: "insiders", is: "above", value: q.minBuyers, params: { days: q.days } };
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
       // A negative minimum is ignored by today's checker (any beat or miss
@@ -108,16 +107,15 @@ export function fromLegacy(p: unknown): When | Retired {
 }
 
 function secEventFromLegacy(q: Kind<"SEC_EVENT">): When {
-  const is = q.tier === "RED" ? "red_flag" : "material";
-  const events: VariableId[] = [
+  const events: FilingVariable[] = [
+    ...(q.tier ? [`tier:${q.tier}` as const] : []),
     ...(q.items ?? []).map((i) => `item:${i}` as const),
     ...(q.forms ?? []).map((f) => `form:${f}` as const),
   ];
-  if (events.length === 0) return { watch: "filing", is };
-  if (events.length === 1) return { watch: "filing", is, variable: events[0] };
+  if (events.length <= 1) return { watch: "filing", is: "files", ...(events[0] ? { variable: events[0] } : {}) };
   // A rule naming several events (the Catalyst seat's 8.01 + 7.01 wake) is
   // "any of" one-event conditions. toLegacy folds it back into one kind.
-  return { match: "any", conditions: events.map((variable) => ({ watch: "filing", is, variable })) };
+  return { match: "any", conditions: events.map((variable) => ({ watch: "filing", is: "files", variable })) };
 }
 
 function cadenceFromLegacy(q: Kind<"REVIEW_CADENCE">): Condition {
@@ -237,20 +235,17 @@ function priceToLegacy(c: Condition): TriggerPredicate | null {
 }
 
 function filingToLegacy(c: Condition): TriggerPredicate | null {
-  if (c.is !== "material" && c.is !== "red_flag") return null;
-  const variable = c.variable;
-  if (!variable) return { kind: "SEC_EVENT", tier: c.is === "red_flag" ? "RED" : "MATERIAL" };
-  if (variable.startsWith("item:")) return { kind: "SEC_EVENT", items: [variable.slice(5)] };
-  if (variable.startsWith("form:")) return { kind: "SEC_EVENT", forms: [variable.slice(5)] };
+  const v = c.variable;
+  if (v === "tier:MATERIAL" || v === "tier:RED") return { kind: "SEC_EVENT", tier: v === "tier:RED" ? "RED" : "MATERIAL" };
+  if (v?.startsWith("item:")) return { kind: "SEC_EVENT", items: [v.slice(5)] };
+  if (v?.startsWith("form:")) return { kind: "SEC_EVENT", forms: [v.slice(5)] };
   return null;
 }
 
 function scheduleToLegacy(c: Condition): TriggerPredicate | null {
   const v = c.value;
   if (v == null) return null;
-  if (c.is === "every" && !c.variable) {
-    return { kind: "REVIEW_CADENCE", days: Math.round(v * UNIT_DAYS[c.params?.every ?? "days"]) };
-  }
+  if (c.is === "every" && !c.variable) return { kind: "REVIEW_CADENCE", days: v };
   if (c.variable === "buy") return c.is === "after" ? { kind: "REVIEW_CADENCE", days: v, from: "BUY" } : null;
   if (c.variable === "event" && (c.is === "before" || c.is === "after")) {
     return { kind: "REVIEW_CADENCE", days: v, from: "EVENT", side: c.is === "before" ? "BEFORE" : "AFTER" };
@@ -258,24 +253,26 @@ function scheduleToLegacy(c: Condition): TriggerPredicate | null {
   return null;
 }
 
-/** "Any of" one-event filing conditions is one SEC_EVENT naming them all. */
+/** "Any of" filing conditions is one SEC_EVENT naming them all (at most one tier). */
 function foldFilingEvents(g: Group): TriggerPredicate | null {
   if (g.match !== "any" || g.conditions.length < 2) return null;
+  let tier: "RED" | "MATERIAL" | undefined;
   const items: string[] = [];
   const forms: string[] = [];
-  let is: string | null = null;
   for (const c of g.conditions) {
     if (isGroup(c) || c.watch !== "filing" || !c.variable) return null;
-    if (is != null && c.is !== is) return null;
-    is = c.is;
-    if (c.variable.startsWith("item:")) items.push(c.variable.slice(5));
-    else if (c.variable.startsWith("form:")) forms.push(c.variable.slice(5));
+    const v = c.variable;
+    if (v === "tier:MATERIAL" || v === "tier:RED") {
+      if (tier) return null;
+      tier = v === "tier:RED" ? "RED" : "MATERIAL";
+    } else if (v.startsWith("item:")) items.push(v.slice(5));
+    else if (v.startsWith("form:")) forms.push(v.slice(5));
     else return null;
   }
-  return { kind: "SEC_EVENT", ...(items.length ? { items } : {}), ...(forms.length ? { forms } : {}) };
+  return { kind: "SEC_EVENT", ...(tier ? { tier } : {}), ...(items.length ? { items } : {}), ...(forms.length ? { forms } : {}) };
 }
 
-function smaPeriod(variable: VariableId): 20 | 50 | 150 | 200 | null {
+function smaPeriod(variable: string): 20 | 50 | 150 | 200 | null {
   switch (variable) {
     case "sma20":
       return 20;

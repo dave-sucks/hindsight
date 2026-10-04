@@ -3,14 +3,15 @@
  *
  *   watch · is (the button) · value (what you type) or variable (what you insert)
  *
- * The dialog is this shape on screen: the type is picked before it opens, the
- * tabs pick the watch, the button group is `is`, and the value input takes a
- * typed number or a variable chip. docs/plans/TRIGGER_TYPES.md §3 and §5.
+ * The dialog and the pill's popover are this shape on screen: the type is
+ * picked from the Add trigger menu, the tabs pick the watch, the button group
+ * is `is`, and the value input takes a typed number or a variable chip.
+ * docs/plans/TRIGGER_TYPES.md §3 and §5.
  *
  * Pure and client-safe: types only.
  */
 
-/** The five buttons under "Add trigger" on the sheet. */
+/** The five types in the Add trigger menu. */
 export type TriggerType = "price" | "indicator" | "earnings" | "filing" | "schedule";
 
 /** What a condition watches. The dialog's type and tab pick it. */
@@ -26,19 +27,8 @@ export type Watch =
   | "insiders"
   | "schedule";
 
-/** The button group. Which ones a watch accepts lives in the catalog. */
-export type Direction =
-  | "below"
-  | "above"
-  | "near"
-  | "before"
-  | "after"
-  | "miss"
-  | "beat"
-  | "material"
-  | "red_flag"
-  | "at_least"
-  | "every";
+/** The button group. Which ones a watch accepts lives in the catalog; a watch with one draws it as a word. */
+export type Direction = "below" | "above" | "near" | "before" | "after" | "miss" | "beat" | "files" | "every";
 
 /** A price a condition can be measured against instead of a typed number. */
 export type PriceVariable =
@@ -59,12 +49,12 @@ export type PriceVariable =
 /** A date a day count is measured from. */
 export type DateVariable = "buy" | "event";
 
-/** One SEC event: an 8-K item ("item:5.02") or a form ("form:S-3"). */
-export type FilingVariable = `item:${string}` | `form:${string}`;
+/** What a filing condition waits for: any filing of a tier, one 8-K item ("item:5.02") or one form ("form:S-3"). */
+export type FilingVariable = "tier:MATERIAL" | "tier:RED" | `item:${string}` | `form:${string}`;
 
 export type VariableId = PriceVariable | DateVariable | FilingVariable;
 
-/** A watch's own settings: the one setting under the input, and More options. */
+/** A watch's own settings: the one setting above the input, and values only an agent writes. */
 export interface Params {
   /** price, volume: read on the 16:20 close pass. */
   onClose?: boolean;
@@ -79,8 +69,6 @@ export interface Params {
   fromDay?: number;
   /** insiders: the look-back window. */
   days?: number;
-  /** schedule, every: the unit the value is in. */
-  every?: "days" | "weeks" | "months";
   /** price, % from the high since we bought: the trailing-stop options. */
   startOnceUpPct?: number;
   widenAtr?: number;

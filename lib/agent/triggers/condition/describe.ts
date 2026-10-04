@@ -1,7 +1,7 @@
 /**
  * The words: one sentence and one pill per condition, read from the shape.
  *
- * The dialog's sentence, the pill on the sheet and (from PR 3) the Activity
+ * The line under the input, the pill on the sheet and (from PR 3) the Activity
  * line and the agent's fire payload all come from here, so a trigger reads the
  * same everywhere. docs/plans/TRIGGER_TYPES.md §6.
  *
@@ -29,9 +29,7 @@ function plural(n: number, one: string, many: string): string {
 
 function everyWords(c: Condition): string {
   const n = c.value ?? 0;
-  const unit = c.params?.every ?? "days";
-  const word = unit === "weeks" ? plural(n, "week", "weeks") : unit === "months" ? plural(n, "month", "months") : plural(n, "day", "days");
-  return n === 1 ? `every ${word}` : `every ${n} ${word}`;
+  return n === 1 ? "every day" : `every ${n} days`;
 }
 
 /** One condition as a clause: "the price falls below $248". `inGroup` words a schedule as a state. */
@@ -60,17 +58,13 @@ export function conditionSentence(c: Condition, opts: { inGroup?: boolean } = {}
       return s;
     }
     case "volume":
-      return `volume is ${c.is === "above" ? "above" : "below"} ${v}× a normal day${close ? " at the close" : ""}`;
+      return `volume is at least ${v}× a normal day`;
     case "rsi":
       return `the ${p.period ?? 14}-day RSI is ${c.is === "above" ? "above" : "below"} ${v}`;
     case "strength": {
       const w = WINDOW_WORDS[p.window ?? "3M"];
-      if (c.is === "above") {
-        if (v === 0) return `it is beating the S&P over ${w}`;
-        return v > 0 ? `it is beating the S&P by more than ${v} points over ${w}` : `it is no more than ${-v} points behind the S&P over ${w}`;
-      }
-      if (v === 0) return `it is trailing the S&P over ${w}`;
-      return v < 0 ? `it is more than ${-v} points behind the S&P over ${w}` : `it is less than ${v} points ahead of the S&P over ${w}`;
+      if (v === 0) return `it is beating the S&P over ${w}`;
+      return v > 0 ? `it is beating the S&P by more than ${v} points over ${w}` : `it is no more than ${-v} points behind the S&P over ${w}`;
     }
     case "gap":
       return `it gapped up ${pct(v)} or more on ${p.volume ?? 3}× volume in the last ${p.withinDays ?? 1} ${plural(p.withinDays ?? 1, "day", "days")}`;
@@ -80,8 +74,7 @@ export function conditionSentence(c: Condition, opts: { inGroup?: boolean } = {}
     case "surprise":
       return `earnings ${c.is === "beat" ? "beat" : "miss"} the estimate${v > 0 ? ` by ${pct(v)} or more` : ""}`;
     case "filing":
-      if (c.variable) return `the company files ${words}`;
-      return c.is === "red_flag" ? "the company files a red-flag filing with the SEC" : "the company files something material with the SEC";
+      return `the company files ${words || "something with the SEC"}`;
     case "insiders":
       return `${v} or more insiders buy within ${p.days ?? 30} days`;
     case "schedule":
@@ -90,6 +83,12 @@ export function conditionSentence(c: Condition, opts: { inGroup?: boolean } = {}
       if (c.is === "before") return opts.inGroup ? `the event date is ${v} days away or less` : `${v} days before the event date`;
       return opts.inGroup ? `it is ${v} days past the event date` : `${v} days after the event date`;
   }
+}
+
+/** The line under the input: "Fires when the price falls below $248." */
+export function fireLine(c: Condition): string {
+  const s = conditionSentence(c);
+  return c.watch === "schedule" ? `Fires ${s}.` : `Fires when ${s}.`;
 }
 
 export function whenSentence(w: When): string {
@@ -160,11 +159,12 @@ export function pillPart(c: Condition): PillPart {
     case "surprise":
       return { label: `earnings ${c.is === "beat" ? "beat" : "miss"}`, value: v > 0 ? `${pct(v)}+` : undefined };
     case "filing":
-      return chip ? { label: "SEC filing", chip } : { label: "SEC filing", value: c.is === "red_flag" ? "red flag" : "material" };
+      if (c.variable?.startsWith("tier:")) return { label: "SEC filing", value: c.variable === "tier:RED" ? "red flag" : "material" };
+      return { label: "SEC filing", chip };
     case "insiders":
       return { label: "insiders buying", value: `${v}+ in ${p.days ?? 30}d` };
     case "schedule":
-      if (c.is === "every") return { label: "every", value: everyWords(c).replace(/^every /, "") || "day" };
+      if (c.is === "every") return { label: "every", value: `${v} ${plural(v, "day", "days")}` };
       return { label: `${v} days ${c.is === "before" ? "before" : "after"}`, chip };
   }
 }

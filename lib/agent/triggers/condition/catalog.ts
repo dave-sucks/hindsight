@@ -1,12 +1,13 @@
 /**
- * The catalog: how each type fills the one dialog.
+ * The catalog: how each type fills the one condition layout.
  *
- *   type (picked on the sheet) → tabs → button group · value input → one setting
+ *   type (the Add trigger menu) → tab → setting → button group · value input
  *
- * Every tab names its watch, its buttons, what the value input takes (a typed
- * number, a variable from the {x} button, or both), and the one setting under
- * it. The dialog renders from this; nothing else in the UI switches on a
- * type. docs/plans/TRIGGER_TYPES.md §3.
+ * Every tab is the same fields: what it watches, its buttons, the value input
+ * (a typed number, a variable chip from the {x} button, or both) and at most
+ * one setting. The dialog and the pill's popover draw from this; nothing in
+ * the UI switches on a type. A tab with one button draws it as a word in the
+ * input ("Every 30 days"). docs/plans/TRIGGER_TYPES.md §3.
  *
  * Pure and client-safe.
  */
@@ -23,10 +24,10 @@ export interface ButtonDef {
 export interface ValueDef {
   /** "$" before the number. */
   prefix?: string;
-  /** "%", "× a normal day", "days" after it. */
+  /** "%", "days" after it. */
   suffix?: string;
   placeholder: string;
-  /** No number at all: the input holds only a variable or its placeholder (a filing). */
+  /** No number at all: the input holds only a variable chip (a filing). */
   none?: boolean;
   /** Whole numbers only (days, insiders). */
   integer?: boolean;
@@ -34,8 +35,6 @@ export interface ValueDef {
   max?: number;
   /** A negative number means something (strength vs. the S&P). */
   allowNegative?: boolean;
-  /** A unit picker inside the input ("every 2 weeks"): writes params.every. */
-  unitPicker?: boolean;
 }
 
 export interface VariablesDef {
@@ -49,10 +48,9 @@ export interface VariablesDef {
 }
 
 export interface SettingDef {
-  key: keyof Params;
+  key: "onClose" | "window" | "days";
+  label: string;
   options: { value: string; label: string }[];
-  /** Shown only when it applies (the report window's start, on After). */
-  when?: (c: Condition) => boolean;
 }
 
 export interface TabDef {
@@ -73,8 +71,6 @@ export interface TabDef {
 export interface TypeDef {
   id: TriggerType;
   label: string;
-  /** One line under the button, and in the dialog's title. */
-  blurb: string;
   tabs: TabDef[];
 }
 
@@ -82,20 +78,12 @@ const BELOW_ABOVE: ButtonDef[] = [
   { is: "below", label: "Below" },
   { is: "above", label: "Above" },
 ];
-
-const ON_CLOSE: SettingDef = {
-  key: "onClose",
-  options: [
-    { value: "false", label: "Any time in the day" },
-    { value: "true", label: "Only on the close" },
-  ],
-};
+const AT_LEAST: ButtonDef[] = [{ is: "above", label: "At least" }];
 
 export const TRIGGER_TYPES: readonly TypeDef[] = [
   {
     id: "price",
     label: "Price",
-    blurb: "A price or a % move, fixed or measured from another price",
     tabs: [
       {
         id: "$",
@@ -105,7 +93,14 @@ export const TRIGGER_TYPES: readonly TypeDef[] = [
         buttons: BELOW_ABOVE,
         value: { prefix: "$", placeholder: "0.00", min: 0 },
         variables: { mode: "replace", options: PRICE_VARIABLES, title: "Use a price instead" },
-        setting: ON_CLOSE,
+        setting: {
+          key: "onClose",
+          label: "When it is checked",
+          options: [
+            { value: "false", label: "Any time in the day" },
+            { value: "true", label: "Only on the close" },
+          ],
+        },
         matches: (c) => c.watch === "price" && c.unit !== "%",
         fresh: () => ({ watch: "price", unit: "$", is: "below" }),
       },
@@ -120,13 +115,7 @@ export const TRIGGER_TYPES: readonly TypeDef[] = [
           { is: "above", label: "Above" },
         ],
         value: { suffix: "%", placeholder: "0", min: 0 },
-        variables: {
-          mode: "from",
-          options: PRICE_VARIABLES,
-          title: "Measured from",
-          word: (c) => (c.is === "near" ? "of" : "from"),
-        },
-        setting: ON_CLOSE,
+        variables: { mode: "from", options: PRICE_VARIABLES, title: "Measured from", word: (c) => (c.is === "near" ? "of" : "from") },
         matches: (c) => c.watch === "price" && c.unit === "%",
         fresh: () => ({ watch: "price", unit: "%", is: "below", variable: "prev_close" }),
       },
@@ -135,15 +124,13 @@ export const TRIGGER_TYPES: readonly TypeDef[] = [
   {
     id: "indicator",
     label: "Indicator",
-    blurb: "Volume, RSI, strength vs. the S&P, a gap up",
     tabs: [
       {
         id: "volume",
         label: "Volume",
         watch: "volume",
-        buttons: BELOW_ABOVE,
-        value: { suffix: "× a normal day", placeholder: "1.5", min: 0 },
-        setting: ON_CLOSE,
+        buttons: AT_LEAST,
+        value: { suffix: "× normal volume", placeholder: "2", min: 0 },
         matches: (c) => c.watch === "volume",
         fresh: () => ({ watch: "volume", is: "above" }),
       },
@@ -152,25 +139,19 @@ export const TRIGGER_TYPES: readonly TypeDef[] = [
         label: "RSI",
         watch: "rsi",
         buttons: BELOW_ABOVE,
-        value: { suffix: "on 0–100", placeholder: "30", min: 0, max: 100 },
-        setting: {
-          key: "period",
-          options: [
-            { value: "14", label: "14-day RSI" },
-            { value: "2", label: "2-day RSI" },
-          ],
-        },
+        value: { placeholder: "30", min: 0, max: 100 },
         matches: (c) => c.watch === "rsi",
-        fresh: () => ({ watch: "rsi", is: "below", params: { period: 14 } }),
+        fresh: () => ({ watch: "rsi", is: "below" }),
       },
       {
         id: "strength",
         label: "vs. S&P",
         watch: "strength",
-        buttons: BELOW_ABOVE,
-        value: { suffix: "points", placeholder: "0", allowNegative: true },
+        buttons: AT_LEAST,
+        value: { suffix: "points ahead", placeholder: "0", allowNegative: true },
         setting: {
           key: "window",
+          label: "Measured over",
           options: [
             { value: "1M", label: "Over 1 month" },
             { value: "3M", label: "Over 3 months" },
@@ -184,7 +165,7 @@ export const TRIGGER_TYPES: readonly TypeDef[] = [
         id: "gap",
         label: "Gap up",
         watch: "gap",
-        buttons: [{ is: "above", label: "At least" }],
+        buttons: AT_LEAST,
         value: { suffix: "% on 3× volume", placeholder: "4", min: 0 },
         matches: (c) => c.watch === "gap",
         fresh: () => ({ watch: "gap", is: "above", params: { volume: 3, withinDays: 3 } }),
@@ -194,7 +175,6 @@ export const TRIGGER_TYPES: readonly TypeDef[] = [
   {
     id: "earnings",
     label: "Earnings",
-    blurb: "Before or after the report, a beat or a miss",
     tabs: [
       {
         id: "report",
@@ -205,14 +185,6 @@ export const TRIGGER_TYPES: readonly TypeDef[] = [
           { is: "after", label: "After" },
         ],
         value: { suffix: "days", placeholder: "3", integer: true, min: 0 },
-        setting: {
-          key: "fromDay",
-          options: [
-            { value: "0", label: "Counted from the report day" },
-            { value: "1", label: "Counted from the day after" },
-          ],
-          when: (c) => c.is === "after",
-        },
         matches: (c) => c.watch === "report",
         fresh: () => ({ watch: "report", is: "before" }),
       },
@@ -233,50 +205,46 @@ export const TRIGGER_TYPES: readonly TypeDef[] = [
   {
     id: "filing",
     label: "Filing",
-    blurb: "SEC filings and insider buying",
     tabs: [
       {
         id: "sec",
         label: "SEC filing",
         watch: "filing",
-        buttons: [
-          { is: "material", label: "Material" },
-          { is: "red_flag", label: "Red flag" },
-        ],
-        value: { none: true, placeholder: "Any filing" },
-        variables: { mode: "replace", options: FILING_VARIABLES, title: "One event instead" },
+        buttons: [{ is: "files", label: "Files" }],
+        value: { none: true, placeholder: "Choose a filing" },
+        variables: { mode: "replace", options: FILING_VARIABLES, title: "Choose a filing" },
         matches: (c) => c.watch === "filing",
-        fresh: () => ({ watch: "filing", is: "material" }),
+        fresh: () => ({ watch: "filing", is: "files", variable: "tier:MATERIAL" }),
       },
       {
         id: "insiders",
         label: "Insider buying",
         watch: "insiders",
-        buttons: [{ is: "at_least", label: "At least" }],
+        buttons: AT_LEAST,
         value: { suffix: "insiders", placeholder: "3", integer: true, min: 1 },
         setting: {
           key: "days",
+          label: "Look-back",
           options: [
             { value: "30", label: "In the last 30 days" },
             { value: "90", label: "In the last 90 days" },
           ],
         },
         matches: (c) => c.watch === "insiders",
-        fresh: () => ({ watch: "insiders", is: "at_least", params: { days: 30 } }),
+        fresh: () => ({ watch: "insiders", is: "above", params: { days: 30 } }),
       },
     ],
   },
   {
     id: "schedule",
     label: "Schedule",
-    blurb: "Every N days, or N days from the buy or the event date",
     tabs: [
       {
         id: "repeat",
         label: "Repeat",
         watch: "schedule",
         buttons: [{ is: "every", label: "Every" }],
-        value: { placeholder: "30", integer: true, min: 1, unitPicker: true },
+        value: { suffix: "days", placeholder: "30", integer: true, min: 1 },
         matches: (c) => c.watch === "schedule" && c.is === "every",
         fresh: () => ({ watch: "schedule", is: "every" }),
       },
@@ -321,4 +289,22 @@ export function typeOfCondition(c: Condition): TriggerType {
 export function tabOfCondition(c: Condition): TabDef {
   const type = typeDef(typeOfCondition(c));
   return type.tabs.find((t) => t.matches(c)) ?? type.tabs[0];
+}
+
+/** A setting's current value, as its select stores it. */
+export function settingValue(c: Condition, key: SettingDef["key"]): string {
+  const p = c.params ?? {};
+  if (key === "onClose") return String(p.onClose === true);
+  if (key === "window") return p.window ?? "3M";
+  return String(p.days ?? 30);
+}
+
+export function withSetting(c: Condition, key: SettingDef["key"], v: string): Condition {
+  const params: Params = { ...(c.params ?? {}) };
+  if (key === "onClose") {
+    if (v === "true") params.onClose = true;
+    else delete params.onClose;
+  } else if (key === "window") params.window = v as Params["window"];
+  else params.days = Number(v);
+  return { ...c, params };
 }

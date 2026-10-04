@@ -2,17 +2,17 @@
 
 /**
  * ThesisTriggersSection — a stock's triggers on the thesis sheet: one row of
- * pills per action ("Buy if", "Sell if", …) and, under them, the five type
- * buttons that open the trigger dialog. Clicking a pill opens the same
- * dialog: editable for the stock's own trigger, read-only for an analyst or
- * account rule it inherits. docs/plans/TRIGGER_TYPES.md §7.
+ * pills per action ("Buy if", "Sell if", …) and, under them, Add trigger.
+ * A pill opens its trigger in a popover: editable for the stock's own
+ * trigger, locked for an analyst or account rule it inherits.
+ * docs/plans/TRIGGER_TYPES.md §7.
  */
 import { useEffect, useState } from "react";
 import { editableTriggerParts } from "@/lib/agent/triggers/editable";
 import { actionGroupLabel } from "@/lib/agent/triggers/format";
 import type { TriggerPredicate as SharedTriggerPredicate } from "@/lib/agent/triggers/types";
-import type { TriggerType } from "@/lib/agent/triggers/condition";
-import { TriggerDialog, TriggerPill, TriggerTypeButtons } from "@/components/agent/triggers/TriggerDialog";
+import { AddTrigger } from "@/components/agent/triggers/TriggerDialog";
+import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 
 // The thesis-sheet contract types (the /triggers payload shape) live in
 // lib/types/thesis-sheet — the server route + state builders + hooks speak
@@ -44,7 +44,7 @@ type Level = "THESIS" | "ANALYST" | "ACCOUNT";
 // Rows with no triggers don't render.
 const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = ["ENTER", "ADD", "REVIEW", "MOVE_STOP", "TRIM", "EXIT"];
 
-/** The pill rows. A pill opens its trigger in the dialog. */
+/** The pill rows. A pill opens its trigger in a popover. */
 export function TriggerGroups({
   triggers,
   editable,
@@ -64,7 +64,6 @@ export function TriggerGroups({
   onChanged?: () => void;
   level?: Level;
 }) {
-  const [opened, setOpened] = useState<Trigger | null>(null);
   const grouped = new Map<string, Trigger[]>();
   for (const t of triggers) grouped.set(t.action, [...(grouped.get(t.action) ?? []), t]);
 
@@ -77,59 +76,21 @@ export function TriggerGroups({
           <div key={action} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
             <span className="shrink-0 text-sm text-muted-foreground">{actionGroupLabel(action, level === "THESIS" ? held : undefined)}</span>
             {items.map((t) => (
-              <TriggerPill key={t.id} trigger={t} held={held} onOpen={() => setOpened(t)} />
+              <TriggerPill
+                key={t.id}
+                trigger={t}
+                level={level}
+                held={held}
+                editable={editable}
+                endpointBase={endpointBase}
+                analystId={analystId}
+                onChanged={onChanged}
+              />
             ))}
           </div>
         );
       })}
-      <TriggerDialog
-        open={opened != null}
-        onOpenChange={(o) => {
-          if (!o) setOpened(null);
-        }}
-        // An inherited rule is changed where it lives, so one edit can't
-        // silently mean different things on different stocks.
-        mode={opened && editable && !opened.inherited ? "edit" : "view"}
-        trigger={opened}
-        level={level}
-        held={held}
-        endpointBase={endpointBase}
-        analystId={analystId}
-        onChanged={onChanged}
-      />
     </div>
-  );
-}
-
-/** The five type buttons under the pills, and the dialog they open. */
-export function AddTriggerButtons({
-  level,
-  held,
-  endpointBase,
-  onChanged,
-}: {
-  level: Level;
-  held: boolean;
-  endpointBase: string;
-  onChanged?: () => void;
-}) {
-  const [type, setType] = useState<TriggerType | null>(null);
-  return (
-    <>
-      <TriggerTypeButtons onPick={setType} />
-      <TriggerDialog
-        open={type != null}
-        onOpenChange={(o) => {
-          if (!o) setType(null);
-        }}
-        mode="add"
-        type={type ?? "price"}
-        level={level}
-        held={held}
-        endpointBase={endpointBase}
-        onChanged={onChanged}
-      />
-    </>
   );
 }
 
@@ -216,7 +177,7 @@ export function ThesisTriggersSection({
           {editableOnly
             ? "No price or % triggers yet. Add one below."
             : editable
-              ? "No triggers yet. Pick a type below to add one."
+              ? "No triggers yet. Add one below."
               : "No triggers attached."}
         </p>
       ) : (
@@ -230,7 +191,11 @@ export function ThesisTriggersSection({
           onChanged={onChanged}
         />
       )}
-      {editable ? <AddTriggerButtons level="THESIS" held={held} endpointBase={endpointBase} onChanged={onChanged} /> : null}
+      {editable ? (
+        <div>
+          <AddTrigger level="THESIS" held={held} endpointBase={endpointBase} onChanged={onChanged} />
+        </div>
+      ) : null}
     </div>
   );
 }
