@@ -82,7 +82,7 @@ import {
   type VariableId,
   type When,
 } from "@/lib/agent/triggers/condition";
-import { levelBadgeLabel, levelScopeLabel, predicateSentence } from "@/lib/agent/triggers/format";
+import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
 import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
 import { watchedFloorOnClose, type TriggerAction, type TriggerPredicate } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/types/thesis-sheet";
@@ -800,10 +800,4 @@ function VariableMenu({ options, title, onPick }: { options: readonly VariableDe
       </PopoverContent>
     </Popover>
   );
-}
-
-/** The sentence for a stored predicate, for surfaces that only read. */
-export function storedTriggerSentence(t: Pick<Trigger, "action" | "predicate">, held?: boolean): string {
-  const w = fromLegacy(t.predicate);
-  return isRetired(w) ? predicateSentence(t.predicate as TriggerPredicate) : triggerSentence(t.action, w, held);
 }
