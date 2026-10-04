@@ -1,6 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { generateText, stepCountIs } from "ai";
+import { generateText, stepCountIs, type ModelMessage } from "ai";
+import { withScreenOutputs } from "@/lib/agent/screen-outputs";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
@@ -327,6 +328,9 @@ export const morningResearch = inngest.createFunction(
         const trackUsage = (usage: any) => {
           addTokenUsage(tokenUsage, usage);
         };
+        // Every tool result as execute() returned it, for the saved thread
+        // (screen-outputs.ts): the model's copy leaves out screen-only data.
+        const screenSteps: Array<{ toolResults?: Array<{ toolCallId: string; output?: unknown }> }> = [];
         const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
         let lastStepTimeMs = t0;
 
@@ -389,6 +393,7 @@ export const morningResearch = inngest.createFunction(
             ),
             onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage }) {
               trackUsage(usage);
+              screenSteps.push({ toolResults: toolResults as never });
               const now = Date.now();
               const elapsed = now - t0;
               const stepLatencyMs = now - lastStepTimeMs;
@@ -701,6 +706,7 @@ export const morningResearch = inngest.createFunction(
                 abortSignal: AbortSignal.timeout(120_000),
                 onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason, usage }) {
                   trackUsage(usage);
+                  screenSteps.push({ toolResults: toolResults as never });
                   const now = Date.now();
                   const stepLatencyMs = now - lastStepTimeMs;
                   lastStepTimeMs = now;
@@ -988,7 +994,7 @@ export const morningResearch = inngest.createFunction(
                 return Array.isArray(stepMsgs) ? stepMsgs : [];
               }) as typeof responseMessages;
             }
-            const allMessages = [userMessage, ...responseMessages];
+            const allMessages = [userMessage, ...withScreenOutputs(responseMessages as ModelMessage[], screenSteps)];
             const json = JSON.stringify(allMessages);
             console.log(
               `[morning-research] Persisting ${allMessages.length} messages (${(json.length / 1024).toFixed(0)}KB) for run ${run.id}`
@@ -1089,7 +1095,7 @@ export const morningResearch = inngest.createFunction(
                   if (recoveryMessages && recoveryMessages.length > 0) {
                     const userMessage = { role: "user", content: [{ type: "text", text: userPrompt }] };
                     const recoveryNote = { role: "user", content: "(catch-path recovery: prior attempt produced zero tool calls — restarting)" };
-                    const allMessages = [userMessage, recoveryNote, ...recoveryMessages];
+                    const allMessages = [userMessage, recoveryNote, ...withScreenOutputs(recoveryMessages as ModelMessage[], recoveryResp.steps as never)];
                     await prisma.$transaction(async (tx) => {
                       await tx.runMessage.deleteMany({ where: { runId: run.id } });
                       await tx.runMessage.create({ data: { runId: run.id, role: "thread", content: JSON.stringify(allMessages) } });
