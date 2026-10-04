@@ -458,17 +458,16 @@ It is judged on behaviour first. The sizes are reported, not targeted.
 It does not promise that any analyst trades better. It should make the
 agents agree with each other and read what is true.
 
-**What six runs can and cannot say (learned at step 3, 2026-10-03).** Once
-the cache fix made every request byte-identical, repeated runs of a case
-stopped being independent: twelve runs of the NVDA case on main gave twelve
-identical answers, and a per-run user id did not change that. The same case
-on the same text scored 4/6 on Thursday and 2/6 on Saturday. So a case's
-number moves with the day as much as with the text, and a change of one or
-two runs between batches means nothing. A case is read three ways: a 6/6 or
-0/6 that holds across days is a fact; the two texts are compared in the
-same hour, not across days; and a difference is claimed only when the
-runs' answers differ in kind (a sale proposed vs a review saved), not in
-count.
+**What six runs can and cannot say (learned at step 3, 2026-10-03/04).** A
+case's score moves with the day as much as with the text. The NVDA case on
+the same code (the cache fix, with only tests added after it) scored 0/12
+on Saturday and 5/12 on Sunday; the baseline commit scored 4/6 Thursday,
+2/6 Saturday and 1/12 Sunday. So a change of a few runs between batches
+means nothing, and a before/after is never read across days. A case is
+read three ways: a 6/6 or 0/6 that holds across days is a fact; two texts
+are compared in the same hour, twelve runs each; and a difference is
+claimed only when the answers differ in kind (a sale proposed vs a review
+saved) or by more than the day-to-day swing.
 
 ---
 
