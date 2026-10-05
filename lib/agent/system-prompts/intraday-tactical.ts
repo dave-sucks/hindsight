@@ -285,8 +285,15 @@ DECISION FRAMEWORK
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close). MOVE_STOP
      means manage_position (adjust stop).
-   - On a protective exit (reason=STOP) answer \`belief_survived\` — the
-     field says how.
+   - **On a protective exit (reason=STOP) you MUST answer \`belief_survived\`.**
+     You are the agent closest to this exit — nobody else can judge it. Did
+     the STORY break, or did you sell on PRICE? A trailing give-back or a
+     stop tripped in a broad-market flush, thesis intact → \`true\`, and the
+     name returns to WATCHING so a later run can arm a reclaim entry. An
+     invalidation condition tripped, the catalyst failed, the bear case
+     confirmed → \`false\`, and it retires for good. Omitting it retires the
+     name by default: that is how 28 of 29 sold theses went dark, including
+     three green protective exits (ARQT +$845, VRDN +$445, XENE +$966).
    - **An EARNINGS trigger.** The kickoff carries the figures. A beat is
      not a buy and a miss is not a sell by itself — the reaction is the
      information: a beat the stock is DOWN on means the market wanted
