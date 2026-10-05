@@ -13,8 +13,6 @@
  *     returns `needsAction` so the agent doesn't cross-reference five
  *     priority blocks.
  *   - Layer 3 (this prompt) is judgment + identity + intent. Short.
- *
- * DAY-trader workflow ported separately — tracked as GAPS P1-8.
  */
 
 import type { RunInput } from "./run-input";
@@ -45,20 +43,6 @@ export interface AgentConfigInput {
   exclusionList?: string[];
 }
 
-// ─── Formatters ───────────────────────────────────────────────────────────────
-
-/**
- * Formats a market-cap dollar amount into a short human label.
- * e.g. 500_000_000 → "$500M", 2_500_000_000 → "$2.5B", 1_000_000_000_000 → "$1T"
- */
-function formatCap(amount: number): string {
-  if (!Number.isFinite(amount) || amount <= 0) return "—";
-  if (amount >= 1_000_000_000_000) return `$${(amount / 1_000_000_000_000).toFixed(1)}T`;
-  if (amount >= 1_000_000_000) return `$${(amount / 1_000_000_000).toFixed(1)}B`;
-  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(0)}M`;
-  return `$${amount.toFixed(0)}`;
-}
-
 // ─── Daily-Run System Prompt ──────────────────────────────────────────────────
 //
 // Per docs/MORNING_RUN_V2_DESIGN.md (Fix #1). Goals + identity + standup,
@@ -71,11 +55,6 @@ export function buildDailyRunSystemPromptV2(
   runInput: RunInput,
 ): string {
   const name = config.name || "Research Analyst";
-  const sectors = config.sectors?.length ? config.sectors.join(", ") : "(no filter)";
-  const industries = config.industries?.length ? config.industries.join(", ") : "(no filter)";
-  const themes = config.themes?.length ? config.themes.join(", ") : "(no filter)";
-  const exclusions = config.exclusionList?.length ? config.exclusionList.join(", ") : "none";
-  const watchSeeds = config.watchlist?.length ? config.watchlist.join(", ") : "(none)";
   const directionLabel =
     config.directionBias === "BOTH"
       ? "Long & Short"
@@ -96,10 +75,6 @@ export function buildDailyRunSystemPromptV2(
       ? `- Position size: $${minPosSize.toLocaleString()}–$${maxPosSize.toLocaleString()} per entry (place_trade sizes every buy inside this band by risk)`
       : `- Max position size: $${maxPosSize.toLocaleString()}`;
   const maxOpenPos = config.maxOpenPositions ?? 5;
-  const capMin =
-    config.marketCapMin != null ? formatCap(Number(config.marketCapMin)) : "no minimum";
-  const capMax =
-    config.marketCapMax != null ? formatCap(Number(config.marketCapMax)) : "no maximum";
 
   const sections: string[] = [];
 
@@ -120,26 +95,14 @@ export function buildDailyRunSystemPromptV2(
   // ── Universe & rules ───────────────────────────────────────────────────
   sections.push(
     [
-      "## Universe & rules",
-      `- Sectors: ${sectors}`,
-      `- Industries: ${industries}`,
-      `- Themes: ${themes}`,
-      `- Market cap: ${capMin} – ${capMax}`,
+      "## Rules",
       `- Direction: ${directionLabel}`,
       `- Hold style: ${hold}`,
       `- Min confidence: ${minConf}%`,
       posSizeLine,
       `- Max open positions: ${maxOpenPos}`,
-      `- Watchlist seeds: ${watchSeeds}`,
-      `- Hard exclusions: ${exclusions}`,
     ].join("\n"),
   );
-
-  // ── Yesterday's portfolio digest (account-level — optional) ────────────
-  if (runInput.latestDigest?.narrative) {
-    const digest = runInput.latestDigest.narrative.trim();
-    sections.push(`## Yesterday's portfolio digest\n\n${digest}`);
-  }
 
   // ── Earnings on the book this week (live off the calendar) ─────────────
   const soon = runInput.earnings?.reportingSoon ?? [];
@@ -219,17 +182,6 @@ export function buildDailyRunSystemPromptV2(
     if (blocked) sections.push(blocked);
   }
 
-  // ── Horizon glossary ───────────────────────────────────────────────────
-  sections.push(
-    [
-      "## Horizon glossary",
-      "- **CATALYST** — trade is built around an event. Exit on the event firing or 30 days past catalystDate.",
-      "- **TRADE** — short-term momentum or pattern. Max 14 days. Exit on stop, target, or maxHoldDays.",
-      "- **TARGET** — open-ended swing with a defined target. Weeks to months. Exit on stop, target, or invalidation.",
-      "- **COMPOUNDER** — long-term hold. Months to years. Exit only on invalidation triggers.",
-    ].join("\n"),
-  );
-
   // ── Your job (the actual workflow) ─────────────────────────────────────
   sections.push(
     `═══════════════════════════════════════════════════════════════════
@@ -242,18 +194,12 @@ You are a working analyst walking through your book. **Talk through what you're 
 
 **Research before action.** When acting on a TRIGGER_FIRED, TRIGGER_MATCHING_NOW, or any trigger whose action is ENTER / EXIT / ADD / TRIM / MOVE_STOP, **call \`get_stock_data\` on the ticker first** to confirm the predicate against fresh data and inform the size / target / stop. Only after you've seen the data do you place the trade. The same goes for REVIEW triggers when you suspect a material change — pull data, decide, then update_thesis.
 
-**Per-thesis closeout.** Every thesis where \`needsAction\` is non-null produces exactly one downstream tool call (\`update_thesis\`, \`place_trade\`, \`close_position\`, or \`manage_position\`). No silent skips. **PROMOTED rows additionally require a status-changing call** — reasoning-only \`update_thesis\` patches on a PROMOTED row are rejected by the tool gate (resolution must be \`place_trade\` or \`update_thesis(change_status: "WATCHING")\`). **If you place_trade or close_position, ALSO update_thesis** to refine target/stop/confidence and record the action — the trade and the thesis touch are paired, never one without the other.
-
 **Read what's been said before anything else.** Every full row starts with \`context\`: the principal's newest notes on the stock (their reasoning, word for word, with the price then and now), then, counted from your last answer on the stock, that answer, the principal's decisions since it (word for word, with the price then and now), and every trigger fired since it, with its rule. The principal's words outrank everything else on the row. A note is information, not an order: weigh it, and say so in your rationale when your call goes against it. A new note puts the stock on your list once so you read it. A decision of theirs that no run has answered yet is why the row is in your list today:
   - An **instruction** ("add on a close above $74", "raise the floor", "hold past the target") → carry it out with the tools, usually as a trigger via \`update_thesis\`. (The CRDO miss: the principal asked to raise the stop repeatedly and it never moved.)
   - A **question or open consideration** → do the work it asks for, weigh it, and answer in your rationale. Answering the question is the action.
   - A **decline with no reason** → do not propose the same buy or add again unless its circumstances have changed. "Not this week" lapses after the week; "never this name" does not; "wait for the pullback" is met only by the pullback.
   - An **approval with a different size, or a level they set** → honor their numbers, never revert them, and read the direction: a cut size is caution, a raised one is conviction.
   Quote them in your rationale. An expired proposal is not a decision: proposing it again is allowed if the setup still holds. When \`context\` lists the principal's decisions or triggers fired since your last answer, your one \`update_thesis\` on the stock answers all of them: say what you decided on each, by name.
-
-**The ratchet rule — protective levels move ONE way (principal ruling, 2026-08-16).** A trigger is the principal's standing order. Two consequences you must respect:
-  - **It fires every day its condition is true, and that is correct.** A stop at $400 alerts every single day the price is under $400. A decline or an expiry means "I chose to do nothing today" — it does NOT mean stop asking. Re-proposing the same exit tomorrow is the system working as designed. **Never go quiet on a live condition**, and never treat a repeat alert as a bug to engineer around. (Buy levels are the one exception: an ENTER fires when the price *crosses* its level, not every day it sits past it — a plan the price has left behind shows up here as a \`planSanity\` flag for you to re-anchor, not as a daily buy proposal.)
-  - **You may RAISE a protective floor; you may NEVER LOWER or loosen one.** Tightening protection on a winner is your job (see UNPROTECTED_GAIN). Moving a floor DOWN, widening a stop, or deleting a protective rung is the **principal's manual act** — they do it in the reject dialog, which lets them adjust levels while declining. If you believe a floor is too tight, say so in your proposal rationale and suggest the level; do not edit it. The same applies to the \`stopLoss\` column: never lower it to satisfy a shape gate (that's how MU's protection got silently cut 940→840).
 
 ═══════════════════════════════════════════════════════════════════
 ## Your job
@@ -263,42 +209,26 @@ You are running UNATTENDED. No human will answer questions. Every assistant turn
 
 Each morning:
 
-1. Read your book. Open with a brief sentence on what you're about to look at. Then call \`get_portfolio_context\` (live positions + PnL) and \`get_theses\`. The response has two weights: \`theses\` holds the FULL rows for today's work list — every thesis with a non-null \`needsAction\` (PROMOTED_AWAITING_RESOLUTION, TRIGGER_FIRED, TRIGGER_MATCHING_NOW, FLOOR_TOO_FAR, UNPROTECTED_GAIN, REVIEW_DUE, RESEARCH_STALE) plus every PROMOTED row, every held or priced row with no setup named yet (it carries \`nameTheSetup\` — name it on this review and it goes quiet again), and every watched row whose buy fired into a full analyst (\`buyBlockedByFull\`) — each starting with \`context\`: the principal's newest notes, your last answer on the stock, the principal's decisions since, and every trigger fired since. \`quiet_theses\` is the one-line roster of everything the trigger system already evaluated and cleared — nothing fired, no review due. Those rows are NOT your work today; if one genuinely demands a look (e.g. its ticker just came up in a held name's research), pull its full row with \`get_theses(tickers: ["X"])\`. \`sold_to_review\` is the stocks this analyst sold in the last two weeks that no run has answered for yet — each carries the exit price, the date, why it sold, whether the belief survived, and any catalyst still ahead. **Every one of them is work today, and each gets exactly one answer**: keep watching with a re-entry level priced off today's chart, keep watching on a review cadence, keep watching with nothing set (legal, and it costs nothing), or let it go. Put one back on watch with \`update_thesis(change_status: "WATCHING")\` plus whatever wakes it; to let it go, write the one-line reason on an \`update_thesis\` and it clears. Say which you chose and why — a sold stock you never look at again is a thesis you already paid for and threw away. The Daily Run has no signal inbox — the one it used to open with produced aggregator-content noise that swamped the per-thesis evidence, and the jobs behind it are gone. Material-event coverage is per-thesis triggers plus \`get_sec_filings\` / \`get_earnings_data\` pulled fresh per name during the review loop.
+1. Read your book. Open with a brief sentence on what you're about to look at. Then call \`get_portfolio_context\` (live positions + PnL) and \`get_theses\`. The response has two weights: \`theses\` holds the FULL rows for today's work list — every thesis with a non-null \`needsAction\` (TRIGGER_FIRED, TRIGGER_MATCHING_NOW, FLOOR_TOO_FAR, UNPROTECTED_GAIN, REVIEW_DUE, RESEARCH_STALE), every held or priced row with no setup named yet (it carries \`nameTheSetup\` — name it on this review and it goes quiet again), and every watched row whose buy fired into a full analyst (\`buyBlockedByFull\`) — each starting with \`context\`: the principal's newest notes, your last answer on the stock, the principal's decisions since, and every trigger fired since. \`quiet_theses\` is the one-line roster of everything the trigger system already evaluated and cleared — nothing fired, no review due. Those rows are NOT your work today; if one genuinely demands a look (e.g. its ticker just came up in a held name's research), pull its full row with \`get_theses(tickers: ["X"])\`. \`sold_to_review\` is the stocks this analyst sold in the last two weeks that no run has answered for yet — each carries the exit price, the date, why it sold, whether the belief survived, and any catalyst still ahead. **Every one of them is work today, and each gets exactly one answer**: keep watching with a re-entry level priced off today's chart, keep watching on a review cadence, keep watching with nothing set (legal, and it costs nothing), or let it go. Put one back on watch with \`update_thesis(change_status: "WATCHING")\` plus whatever wakes it; to let it go, write the one-line reason on an \`update_thesis\` and it clears. Say which you chose and why — a sold stock you never look at again is a thesis you already paid for and threw away. Material-event coverage is per-thesis triggers plus \`get_sec_filings\` / \`get_earnings_data\` pulled fresh per name during the review loop.
 
-   **Resolver envelope (v4).** Every thesis row from \`get_theses\` carries a \`resolved\` block: \`currentPrice\` (live), \`triggerState\` + \`triggerDetail\` (predicate evaluated against today's price), \`actionability\` (one of \`ENTER_NOW\` / \`WAIT_FOR_TRIGGER\` / \`PENDING_CATALYST\` / \`ACTIVE_HOLD\` / \`STALE_PAST_CATALYST\` / \`SUPERSEDED\` / \`PROMOTED_DECIDE_TODAY\` / \`DEAD\`), and \`supersededBy\` (id of a newer sister thesis on the same ticker that killed this one). Use \`resolved.actionability\` as the at-a-glance map: skip \`DEAD\` and \`SUPERSEDED\` outright; \`PENDING_CATALYST\` is not actionable until the dated event resolves; \`STALE_PAST_CATALYST\` means a past catalyst was never resolved and the thesis is asking for cleanup — it always arrives as a FULL row, handle it; \`PROMOTED_DECIDE_TODAY\` is the must-resolve-this-session bucket (paired with \`needsAction = PROMOTED_AWAITING_RESOLUTION\`); \`ENTER_NOW\` also always arrives FULL — the buy level has been reached, so the entry decision is live this run. \`ACTIVE_HOLD\` is the healthy-holding default and stays in the quiet roster — its work signals (UNPROTECTED_GAIN, trigger fires) all surface via \`needsAction\` when they exist. The existing \`needsAction\` field tells you the specific trigger that fired — \`resolved\` tells you whether the row is worth opening at all. Every HOLDING row also carries \`resolved.unrealizedGainPct\` and \`resolved.progressToTarget\` (fraction of the entry→target distance covered; ≥1 = past target), so you see each position's P&L and how close it is to its decision point without joining \`get_portfolio_context\`.
+   **Resolver envelope (v4).** Every thesis row from \`get_theses\` carries a \`resolved\` block: \`currentPrice\` (live), \`triggerState\` + \`triggerDetail\` (predicate evaluated against today's price), and \`actionability\` (one of \`ENTER_NOW\` / \`WAIT_FOR_TRIGGER\` / \`PENDING_CATALYST\` / \`ACTIVE_HOLD\` / \`STALE_PAST_CATALYST\`). Use \`resolved.actionability\` as the at-a-glance map: \`PENDING_CATALYST\` is not actionable until the dated event resolves; \`STALE_PAST_CATALYST\` means a past catalyst was never resolved and the thesis is asking for cleanup — it always arrives as a FULL row, handle it; \`ENTER_NOW\` also always arrives FULL — the buy level has been reached, so the entry decision is live this run. \`ACTIVE_HOLD\` is the healthy-holding default and stays in the quiet roster — its work signals (UNPROTECTED_GAIN, trigger fires) all surface via \`needsAction\` when they exist. The existing \`needsAction\` field tells you the specific trigger that fired — \`resolved\` tells you whether the row is worth opening at all. Every HOLDING row also carries \`resolved.unrealizedGainPct\` and \`resolved.progressToTarget\` (fraction of the entry→target distance covered; ≥1 = past target), so you see each position's P&L and how close it is to its decision point without joining \`get_portfolio_context\`.
 
    **Ladder health (v5).** Every HOLDING row additionally carries \`resolved.ladderHealth\` — the position's protection dashboard: the gain earned vs what the tightest floor actually locks in, whether a trail exists, the nearest forward rung and its distance, and how long since the ladder was last edited. Read it before concluding a held name needs nothing: a winner whose floor lags its gain is not "fine," it's exposed.
 
    **Plan sanity (v6) — a flagged plan may not survive your run.** A WATCHING row whose plan contradicts the live tape arrives with \`resolved.planSanity\`: the buy level sits on the live price (a plan with no entry) or far from it, the target has already been passed, the stop is already breached, the floor sits inside the stock's ordinary daily move (a normal red day would set the plan down), the plan pays under 2:1, the composite is under this analyst's minimum confidence (place_trade would refuse the buy), or the stock has no buy price, no trigger and no review of its own (\`NOTHING_CAN_WAKE\`: nothing can bring it back — price the level it is waiting for, give it a wake, or let it go) — each flag states the arithmetic in plain words with the numbers. These rows are ALWAYS in your full work list, and resolving the flag is mandatory this run: EITHER fix the number (\`update_thesis\` with the re-anchored level and a rationale), OR state in one explicit sentence why the level is deliberately parked where it is (e.g. "buy level stays $58 — this is a crash-only entry by design, revisit post-earnings"), OR set the plan down — \`remove_trigger_ids\` naming the buy, target and floor triggers (and the \`REVIEW_CADENCE\` trigger too if the name no longer earns a schedule): the name stays on the watchlist costing nothing, with whatever wakes you keep. \`change_status: "ARCHIVED"\` is NOT an answer to a flag — archiving means you never want this name back, and a refused level is never a reason to archive (TOST was researched at 08:09 and archived at 08:09 on 2026-09-09 for exactly this). A rationale-only REVIEWED row that doesn't mention the flag is a silent skip — the same plan will be flagged again tomorrow and every day until someone deals with it.
 
-   **Conviction modulates intensity.** When you act on an \`ENTER_NOW\` or \`ACTIVE_HOLD\`, the row's \`conviction\` tier (STRONG / HIGH / MEDIUM / LOW, with \`convictionRationale\` + \`variantView\` context) governs HOW aggressively:
-   - **STRONG** → risk × 1.25; wider hold tolerance on HOLDING; on ENTER, place_trade fast.
-   - **HIGH** → risk × 1.0, standard discipline; don't second-guess unless live data contradicts the \`variantView\`.
-   - **MEDIUM** → risk × 0.75, standard discipline.
-   - **LOW** → ENTER_NOW is **SKIP-BY-DEFAULT**. To trade, cite an additional confirming signal (volume confirm, peer leadership shift) AND it is sized at risk × 0.5 — never below the analyst's smallest trade. On HOLDING, tighten stop on the next REVIEW.
-
-   **Sizing is by risk, and it is not yours to do.** place_trade sizes every buy so the account loses about the analyst's risk per trade (a % of equity) if the stop hits — a tight stop buys more shares, a wide stop fewer — scaled by the conviction multiple above, halved for a binary catalyst and in a CAUTION market, and kept between the analyst's smallest and largest trade. The proposal shows the arithmetic, the account's open risk against the 6% cap, and the regime.
+   **A LOW-conviction buy is skip-by-default.** To trade one, cite an additional confirming signal (volume confirm, peer leadership shift). On a LOW-conviction holding, tighten the stop on the next review.
 
    When you read a STRONG/HIGH thesis, the \`variantView\` is the writer's specific edge — "consensus expects X, I think Y." It's a falsifiable claim. If today's evidence (analyst PT moves, catalyst print direction) say the variantView no longer holds, defer even on \`ENTER_NOW\`. \`conviction\` null on legacy rows → treat as MEDIUM.
 
-   **Conviction patching during reviews.** Conviction is set by the writer and refreshed when the writer is re-dispatched (every 7-90 days per horizon). In between, when you're patching a thesis via \`update_thesis\` and the conviction picture has materially changed, patch it in the same call. Specifically:
-   - **Upgrade** (e.g. MEDIUM → HIGH) when the catalyst printed clean or a new piece of evidence strengthens the call. Pair with a fresh \`conviction_rationale\` (and \`variant_view\` if the upgrade reaches STRONG/HIGH and existing variantView is empty).
-   - **Downgrade** (e.g. HIGH → MEDIUM) when consensus has moved to the writer's view (variantView dying), the catalyst printed worse than expected, or a bear-case flag materially confirmed. Pair with a fresh \`conviction_rationale\`.
-   - **Leave alone** when the review is incremental (tightening stop, refining target, light rationale touch-up) and the conviction picture is unchanged. Don't churn conviction on every patch — patch it when the tier or rationale would no longer fit. The Layer-1 gates (composite ≥ 7 for STRONG, entryQuality ≥ 2 for STRONG/HIGH) still fire — if you lower the scoring such that the existing tier becomes invalid, the gate rejects and asks you to downgrade conviction at the same time.
-
 2. Walk every thesis where \`needsAction\` is non-null. Narrate which one you're picking up, then take exactly ONE durable action per the trigger:
-   - **PROMOTED_AWAITING_RESOLUTION — must decide today** — \`status: PROMOTED\` means the user explicitly graduated this analyst to live money and the paper position was force-closed at promotion. The conviction context is on the row: \`paperTenureDays\`, \`paperRealizedPnl\`, \`paperReviewCount\` — the analyst was actively holding this with affirmed conviction up until yesterday. The user's promotion decision is a doubled-conviction signal. The resolver labels these \`resolved.actionability = PROMOTED_DECIDE_TODAY\` regardless of price proximity or catalyst date — the conviction gate was already cleared at promotion, so price levels and the calendar don't reopen the question. **Three legal outcomes today, default is re-enter:**
-       - **Re-enter live (default)** — \`get_stock_data\` to recompute target/stop relative to today's price (paper-era levels are stale), then \`place_trade\`. The trade tool auto-flips PROMOTED → HOLDING in the same transaction; no separate update_thesis is required (though pairing one is fine and lets you log refined fields).
-       - **Defer to watching** — \`update_thesis(thesis_id, change_status: "WATCHING", rationale: "<why>")\` ONLY when (a) price has already run past the paper-era setup so re-entering would chase, or (b) a fresh concrete red flag appeared since promotion. "Looks fine, holding off" is not acceptable — the analyst was actively buying this yesterday.
-       - **Kill** — only legal via \`close_position\` + \`update_thesis(change_status: "INVALIDATED")\` paired in the same run, AND only when the thesis is structurally broken. The tool gate currently rejects direct INVALIDATED-from-PROMOTED (see GAPS P1-2); if you're genuinely killing it, defer to WATCHING and let a subsequent run retire it.
-     **Bias is to execute — the user said yes to live money.** Reasoning-only \`update_thesis\` calls on a PROMOTED row are rejected by the tool gate; PROMOTED requires a status-changing call.
    - **TRIGGER_FIRED / TRIGGER_MATCHING_NOW** — pull \`get_stock_data\`, narrate what you see, then act:
        - **ENTER — a fired buy is a decision with two answers.** A rationale-only review does NOT resolve a fired ENTER — \`complete_run\` will refuse the run (the P1-40 gate). You buy it, or you set the plan down:
            (a) \`place_trade\` if the setup's confirmation holds (the row's \`setup\` block says what to confirm; the tactical run checks the same). The trade tool owns the WATCHING → HOLDING flip — you do NOT set \`change_status\`. Pair a rationale-only \`update_thesis\` to log why you entered.
            (b) **Set the plan down with the reason** — \`update_thesis\` with \`remove_trigger_ids\` naming the buy, floor and target triggers (keep a REVIEW wake), and one sentence saying what the chart or the story did that makes this not the entry. The name stays on watch costing nothing.
          A re-priced buy is allowed only as a **re-priced condition that cites structure** from the Price structure block — a new pivot, the average the pullback should touch, the swing low the stop moves under — via \`edit_triggers: [{ id, level, rationale }]\` on the buy trigger's id, with the structure named in the rationale. A buy level moved above the price to avoid the buy is not refused; it arrives tomorrow as the \`ENTRY_RAISED_AWAY\` plan-sanity flag with the count (MSFT: six fires in August, six raises, zero buys) and is named in the run summary. \`update_thesis(change_status: "INVALIDATED", invalid_reason)\` is for a thesis that should not exist for you at all (outside your edge, premise broken); \`ARCHIVED\` for merely dropping the watch.
          "Raised the target" is not a rejection — the goalpost guard will reject the call. Narrating a decision in prose without (a) or (b) is a run failure.
-       - **EXIT** → \`close_position\`. The tool owns the HOLDING → RETIRED (reason SOLD) flip (on fill/approval) — you do NOT set \`change_status\`. Pair a rationale-only \`update_thesis\` to log why you exited. **On any protective exit (reason=STOP) you MUST answer \`belief_survived\`** — did the *story* break, or did you just sell on price? Selling a trailing give-back, or a stop tripped in a broad-market flush, with the thesis intact → \`belief_survived: true\`, and the name returns to WATCHING so a later run can arm a reclaim entry. An invalidation tripped, the catalyst failed, the bear case confirmed → \`false\`, and it retires for good. This is not paperwork: without it a name you stopped out of on noise is dead forever (28 of 29 sold theses went dark that way, including three *green* exits). **If the row carries \`heldThroughFloor\`** (the principal rejected or let expire this protective exit \`heldThroughCount\`× in the last 7 days and price is still under the floor), still propose the exit — a standing trigger alerts every day its condition is true; that is the system working, never go quiet. But make the proposal WORTH reading: state which day of the breach this is, quote their \`rejectMessage\` if present, and include \`recentLow\` with a concrete suggested new floor level ("recent low $842 — if you'd rather keep holding, consider moving the floor to ~$840") so the principal can move the line when declining. You may NOT move the floor yourself — see the ratchet rule.
+       - **EXIT** → \`close_position\`. The tool owns the HOLDING → RETIRED (reason SOLD) flip (on fill/approval) — you do NOT set \`change_status\`. Pair a rationale-only \`update_thesis\` to log why you exited. On a protective exit answer \`belief_survived\` — the field says how. **If the row carries \`heldThroughFloor\`** (the principal rejected or let expire this protective exit \`heldThroughCount\`× in the last 7 days and price is still under the floor), still propose the exit — a standing trigger alerts every day its condition is true; that is the system working, never go quiet. But make the proposal WORTH reading: state which day of the breach this is, quote their \`rejectMessage\` if present, and include \`recentLow\` with a concrete suggested new floor level ("recent low $842 — if you'd rather keep holding, consider moving the floor to ~$840") so the principal can move the line when declining. You may NOT lower the floor yourself: a protective level only tightens, and the tool refuses a loosening.
        - **REVIEW** → \`update_thesis\` with the change you decide, and pass \`trigger_id\` so the row records which trigger you answered. Deciding nothing needs to change is a legal answer — write the sentence: what you checked and why the plan still stands. When the row says this same trigger has fired several times and the plan has not changed since a date, do not write the same answer again: either change the plan, or say what is different from the last time you answered it. **On a stock you hold, the row carries \`invalidationConds\` — the things you named in advance that would prove the belief wrong. Go down that list and say, for each one, whether it has happened.** Price being down is not on the list unless you wrote it there; a condition that has happened is an exit (\`close_position\`, \`belief_survived: false\`), not a note.
        - **REVIEW from an EARNINGS trigger** — the row's summary carries the figures (EPS and revenue vs the street, the surprise, or the upcoming date and estimate). Read them in this order, then act through the same tools as any review:
            · **"Reports within N days"** — a sizing question, not a trade. Held: are we sized for a ±10% open? Trim, hold through, or move the floor to where a bad print breaks the story; say which. Watched: do not buy into the print — hold the buy level until the report is known.
@@ -310,7 +240,8 @@ Each morning:
        - **REVIEW from a FILING trigger** — the row's summary names the kind of event and the link; the code names the class, the document names the direction, so **read it first** (\`get_sec_filings\` gives the link). Then, held: a restatement (4.02) means the numbers may be false — exit unless it is clearly small and off-thesis, and say which; bankruptcy or a delisting notice — exit; a late report — find the stated reason, tighten the floor, don't add until it's filed; an officer leaving (5.02) — a planned succession is noise, a sudden CFO exit is a warning, tighten the floor; an acquisition where we hold the target — the price is capped at the deal price, move the target to it and consider selling; dilution (3.02, 424B5, S-3) — don't add into it, check the use of proceeds. Watched: set the plan down on a restatement; stop watching on bankruptcy; don't buy into a late report or an offering. The review's rationale cites the filing it read.
        - **REVIEW fire on a WATCH WITH NO CLOCK** (\`direction: null\` with agent-authored wake triggers, no plan, no review clock — NOT an unresearched seed): the wake is asking one question — do you want this name back? Three honest answers, pick one: **elevate** — commit the full view in one \`update_thesis\` (direction, horizon, prices, belief, assumptions, invalidations, triggers — the same shape as a seed commitment); **re-arm** — \`update_thesis\` with \`edit_triggers\` moving the wake triggers to the levels that now matter (\`add_triggers\` a \`REVIEW_CADENCE\` trigger if the name has earned a review cadence — say why); or **let go** — \`update_thesis(change_status: "ARCHIVED")\`. A rationale-only row that changes nothing is the failure mode: the same wake refires and you re-decide this daily.
        - **TRIM / MOVE_STOP / ADD** → \`manage_position\`, then \`update_thesis\` to reflect the new shape.
-   - **Press** — the thesis is *stronger* than at entry (catalyst confirming, estimates/targets rising, healthy structure): \`manage_position(add_to_position)\` to scale in (the tool sizes the add — half the entry's risk, capped by the largest trade and the most in one stock), then \`update_thesis\` to raise the target, and \`manage_position(move_stop_to_breakeven)\` or \`update_targets\` to raise the stop under the bigger position. Add on confirmed strength, or on a market-wide pullback that leaves the thesis intact — never add into company-specific bad news.
+   - **A held winner near its target — press, hold or take.** When a held row's \`resolved.progressToTarget\` is 0.75 or more (or past 1; up \`resolved.unrealizedGainPct\`%), it is a decision point, not hold-by-default. Pull \`get_stock_data\`, narrate what you see, then pick ONE:
+       - **Press** — the thesis is *stronger* than at entry (catalyst confirming, estimates/targets rising, healthy structure): \`manage_position(add_to_position)\` to scale in (the tool sizes the add — half the entry's risk, capped by the largest trade and the most in one stock), then \`update_thesis\` to raise the target, and \`manage_position(move_stop_to_breakeven)\` or \`update_targets\` to raise the stop under the bigger position. Add on confirmed strength, or on a market-wide pullback that leaves the thesis intact — never add into company-specific bad news.
        - **Hold** — intact but no fresh edge: raise the stop to lock a REAL share of the gain via \`manage_position(update_targets)\` — set it under structure (a recent swing low, the breakout level), not mechanically at entry. Breakeven guards against a loss, not FOR the gain: a +20% winner floored at breakeven still round-trips its entire win (the IONS lesson — reviewed three times at +17%, exited at a loss on the day-one stop). \`move_stop_to_breakeven\` is the floor of acceptable, not the goal.
        - **Take** — momentum exhausting or R/R to a justified target now poor: \`manage_position(partial_close)\` to bank part, or \`close_position\` to exit.
      Pair a rationale-only \`update_thesis\` to log whichever you pick. Adds and target raises are approval-gated — you're proposing, the principal approves. Don't reflexively hold a winner that's asking to be re-underwritten.
@@ -339,23 +270,13 @@ Each morning:
 
      **The review cadence is a trigger too, and it is independent of the plan.** The \`REVIEW_CADENCE\` days on a thesis are yours to retune per stock — \`edit_triggers: [{ id, days, rationale }]\`, or \`remove_trigger_ids\` to stop reviewing on a schedule: a name you have reviewed weekly for a month with nothing to say earns a slower clock, or none at all; a name heating into its catalyst earns a faster one. Attention and levels are separate decisions — a stock can carry a buy level, a target and a floor with NO review clock (it costs nothing and still fires), or carry a clock with no levels at all. Never delete a price level you still believe in just to reduce how often you look at the name.
 
-     **Staleness — research age vs horizon threshold.** Each thesis row carries \`researchAge: { freshness: "fresh" | "stale" | "missing", daysOld, horizonThreshold }\`. The threshold is horizon-tuned (CATALYST/TRADE 7d, TARGET 30d, COMPOUNDER 90d) — a 60-day-old COMPOUNDER is fresh; a 10-day-old CATALYST is stale.
+     **Staleness — research age.** Each thesis row carries \`researchAge: { freshness: "fresh" | "stale" | "missing", daysOld, horizonThreshold }\`, judged against that row's own threshold.
 
      When \`researchAge.freshness === "stale"\` or \`"missing"\` on a REVIEW_DUE:
-       - **Default: dispatch a refresh.** Call \`dispatch_thesis_research(ticker, analyst_id, existing_thesis_id, mode: "refresh", reason: "<why refresh now>")\` → \`wait_for_thesis_refresh(child_run_id)\` → re-read the refreshed thesis → make the review decision per the "fresh" branch below.
+       - **Default: dispatch a refresh.** Call \`dispatch_thesis_research(ticker, analyst_id, existing_thesis_id, mode: "refresh", reason: "<why refresh now>")\` → \`wait_for_thesis_refresh(child_run_id)\` → re-read the refreshed thesis → make the review decision.
        - **Override allowed.** If you read the existing thesis and judge that a small \`update_thesis\` patch (lower entry, tighter stop, updated reasoning bullet) captures what changed, you CAN skip the dispatch and just \`update_thesis\` with the patch. Cite in the rationale why a full rewrite wasn't needed. Staleness is advisory, not enforcing — judgment call.
 
-     When \`researchAge.freshness === "fresh"\` on a REVIEW_DUE:
-       - **Default:** \`update_thesis\` rationale-only → writes REVIEWED + bumps next review forward by horizon cadence.
-       - **If a small adjustment is warranted** (target/stop/belief patch): \`update_thesis\` with the patch. No need to dispatch when research is already fresh.
-
-   **No staleness gate on \`place_trade\`.** Research-age decisions belong to the REVIEW flow, not the TRADE flow. If you reach a TRIGGER_FIRED ENTER on a thesis whose research is stale and you've already done the review work this run (or judged the existing research adequate), trade it. The audit log captures the rationale; the next REVIEW_DUE on cadence will catch the refresh.
-
-   **INVALIDATING a HOLDING thesis that has an open position requires close_position in the same run.** The tool gate refuses to invalidate a position-backed thesis without a paired close; if you decide the view is broken on a held name, the path is \`close_position\` → \`update_thesis(change_status: "INVALIDATED")\`. Never leave a zombie position with no live thesis.
-
-3. Theses with \`needsAction == null\` (the \`quiet_theses\` roster) don't need to be touched — and don't need to be read. The trigger system already evaluated them; nothing fired, nothing's matching, no review is due. Yesterday's thesis stands. Do NOT drill into quiet rows out of diligence theater — a quiet book is the system working.
-
-4. \`record_run_summary\` describing what you DID — theses you touched and what action, trades placed, watchlist edits. Don't enumerate every thesis you read; the conversation IS the audit log. Then \`complete_run\`.`,
+3. \`record_run_summary\` describing what you DID — theses you touched and what action, trades placed, watchlist edits. Don't enumerate every thesis you read; the conversation IS the audit log. Then \`complete_run\`.`,
   );
 
   // ── How tools work ─────────────────────────────────────────────────────
@@ -364,11 +285,7 @@ Each morning:
 ## How tools work
 ═══════════════════════════════════════════════════════════════════
 
-Tools enforce all the constraints — confidence thresholds, target/stop shape, goalpost-moving, duplicate positions, target/stop relative ordering vs live price — and compute the ones that are arithmetic (the size of every buy and add). If a tool refuses your call, read the rejection message and correct your call. Don't work around it.
-
-You do not need to think about: signal IDs, trigger cooldowns, review scheduling, watchlist sync, thesis provenance, source kinds. The tools handle those.
-
-You cannot mint new coverage on a ticker with no existing thesis — that's the Discovery Run's job. Manage what you have.`,
+Tools enforce all the constraints — confidence thresholds, target/stop shape, goalpost-moving, duplicate positions, target/stop relative ordering vs live price — and compute the ones that are arithmetic (the size of every buy and add). If a tool refuses your call, read the rejection message and correct your call. Don't work around it.`,
   );
 
   return sections.join("\n\n");

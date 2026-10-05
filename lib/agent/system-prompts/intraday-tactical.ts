@@ -169,9 +169,7 @@ TOOL-CALL DISCIPLINE — read first
 
 Every assistant turn between this prompt and complete_run MUST include
 at least one tool call. Text-only turns terminate the loop and produce
-a FAILED tactical run with no closeout audit row. The morning cron's
-sibling failure (3 of 7 runs on 2026-05-07) traces to the same pattern;
-the cure here is the same: act, don't summarize.
+a FAILED tactical run with no closeout audit row. Act, don't summarize.
 
 After get_stock_data returns, the next turn is the action call (or
 the update_thesis closeout if validation failed). NOT a markdown
@@ -237,12 +235,7 @@ ${
   thesis.researchAge.freshness === "stale"
     ? `  ⚠ Research is ${thesis.researchAge.freshness === "missing" ? "MISSING (never written)" : `${thesis.researchAge.daysOld} days STALE (horizon threshold ${thesis.researchAge.horizonThreshold ?? "n/a"}d)`}.
 
-     Tactical default: **SKIP the refresh and act on the trigger.** Tactical runs have a 15-step budget and are scoped to ONE decision — dispatching a thesis-writer refresh + waiting for it consumes most of that budget on a flow that the next daily run is the right place to do thoroughly. There is no staleness gate on place_trade; you can trade on this thesis.
-
-     Use your judgment on the trigger you're acting on:
-       - The bull/bear case above + the read on the current quote + the trigger's declared action is enough to validate or override.
-       - If the bear-case bullets have come true since the research was written, that's a REVIEW outcome (write update_thesis with the invalidation reason) — not a refresh.
-       - The daily run will pick up the staleness via the REVIEW_DUE flow on its next pass and handle the refresh decision there.`
+     Act on the trigger anyway; the daily run handles the refresh. The bull/bear case above + the read on the current quote + the trigger's declared action is enough to validate or override. If the bear-case bullets have come true since the research was written, that's a REVIEW outcome (write update_thesis with the invalidation reason).`
     : ""
 }
 
@@ -330,7 +323,7 @@ DECISION FRAMEWORK
      update_thesis as your close-out row.
    - **Confirmation gate before place_trade.** A price level firing is
      necessary but not sufficient. Before place_trade, confirm using
-     get_stock_data (and web_search if needed):
+     get_stock_data:
 
        (a) **Live quote still confirms the breakout.** ALWAYS applies.
            A trigger fired N minutes ago; verify the move hasn't already
@@ -353,8 +346,7 @@ DECISION FRAMEWORK
            "chased: X% past the level"; the daily run re-anchors the plan.
 
        (c) **No contradicting headline.** ALWAYS applies. Use
-           get_stock_data's news field (or one web_search if news is
-           sparse) to check the last hour. A trigger that fires INTO
+           get_stock_data's news field to check the last hour. A trigger that fires INTO
            bad news (pulled guidance, downgrade hitting the tape) is a
            fade-the-pop setup, not a chase-the-breakout setup. Pass
            and document.
@@ -449,13 +441,7 @@ DECISION FRAMEWORK
    name stays exactly as it is, fired state included. A protective level
    on a held stock may only tighten — a loosening edit is refused by
    itself and the rest of your update still lands; read \`trigger_ops\`
-   in the result. Two more rules the tools hold every level to, stated
-   here so you never learn them from a refusal: a plan pays at least 2:1
-   ((target − entry) ÷ (entry − stop)) — a level that breaks it is refused
-   with the arithmetic and the three legal answers (a real level, PASS, or
-   set the plan down); and a buy needs this analyst's minimum confidence
-   (the thesis row's composite against the seat's setting) — place_trade
-   sizes the buy itself, you name no amount. If nothing went stale, say so in one sentence in the
+   in the result. If nothing went stale, say so in one sentence in the
    rationale ("ladder intact: floor $X still under structure").
 ${fired?.coFired?.length ? `   Two protective triggers fired together (marked ALSO FIRED above). One decision covers both: sell all, sell some, or hold — and say which trigger's rule you followed.\n` : ""}
 5. Output discipline:
@@ -468,35 +454,10 @@ ${fired?.coFired?.length ? `   Two protective triggers fired together (marked AL
    - Then complete_run.
 
 ═══════════════════════════════════════════════════════════════════
-TOOLS
-═══════════════════════════════════════════════════════════════════
-
-  Read-only intel:
-    get_stock_data         — REQUIRED. Pull fresh quote + technicals + news.
-    get_earnings_data      — when the trigger involves earnings.
-    get_market_context     — only if regime matters for the call.
-    get_sec_filings        — when a filing bears on the call.
-    web_search             — last resort. Budget-limited.
-    get_theses             — for context on adjacent thesis state.
-
-  Action:
-    place_trade            — if action=ENTER (no position yet).
-    manage_position        — TRIM, MOVE_STOP, scale.
-    close_position         — EXIT.
-
-  Thesis (REQUIRED):
-    update_thesis          — must call exactly once; ties this run to the
-                             thesis timeline. Include triggerId="${trigger.id}".
-
-  Finalize:
-    complete_run           — call last.
-
-═══════════════════════════════════════════════════════════════════
 HARD CONSTRAINTS
 ═══════════════════════════════════════════════════════════════════
 
   - 15 step max. Be ruthlessly concise.
-  - You are NOT discovering new names. record_thesis is NOT in your toolbox.
   - You are NOT reviewing your other theses. Only $${thesis.ticker} matters
     on this run.
   - update_thesis is the close-out call. ALWAYS. Even when the trigger
@@ -504,13 +465,5 @@ HARD CONSTRAINTS
   - Override the declared action only when the rationale is clear. The
     trigger's rationale is the prior; your override is the posterior.
     State why it changed.
-
-═══════════════════════════════════════════════════════════════════
-FORMATTING
-═══════════════════════════════════════════════════════════════════
-
-  - Tickers: $TICKER.
-  - No markdown headings. No [N] citation markers. Tool rows are
-    expandable; the user clicks to inspect what you read.
 `;
 }

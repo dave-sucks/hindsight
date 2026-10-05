@@ -44,7 +44,12 @@ export interface Rule {
   says: string;
   /** Where the refusal comes from, and that its message names the fix. */
   refusal: string;
-  /** Text that must appear in each prompt that states the rule. */
+  /**
+   * Text that must appear in each prompt that states the rule. A prompt
+   * with no marker does not state it: the tool's refusal carries the rule
+   * (step 3 of docs/plans/AGENT_ARCHITECTURE.md deleted the restatements
+   * the code already enforces).
+   */
   markers: Partial<Record<PromptName, string>>;
 }
 
@@ -52,17 +57,17 @@ const RULE_DEFS = {
   RISK_REWARD_FLOOR: {
     says: "A plan pays at least 2:1: (target − entry) ÷ (entry − stop). Below it the plan is refused with the arithmetic and the three legal answers (a real level, PASS, or set the plan down).",
     refusal: "invalid_thesis_shape — names the ratio, the three levels, and the fix.",
-    markers: { daily: "2:1", tactical: "2:1", discovery: "2:1", chat: "2:1", writer: "2:1" },
+    markers: { daily: "2:1", discovery: "2:1", chat: "2:1", writer: "2:1" },
   },
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
     refusal: "protective_level_locked — names the level, the direction, and that the rest of the update lands.",
-    markers: { daily: "NEVER LOWER", tactical: "may only tighten", chat: "only tighten" },
+    markers: { daily: "only tightens", tactical: "may only tighten", chat: "only tighten" },
   },
   MIN_CONFIDENCE: {
     says: "A buy needs the analyst's minimum confidence (the composite score).",
     refusal: "place_trade / record_thesis — names the composite and the minimum.",
-    markers: { daily: "Min confidence", tactical: "minimum confidence", discovery: "Min confidence", chat: "minConfidence", writer: "minimum confidence" },
+    markers: { daily: "Min confidence", discovery: "Min confidence", chat: "minConfidence", writer: "minimum confidence" },
   },
   LEVEL_ORDER: {
     says: "Entry, target and stop sit in order against each other and the live price (long: stop < entry < target).",
