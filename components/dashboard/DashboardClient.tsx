@@ -1448,6 +1448,11 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
           <div className="lg:hidden">
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
+            {/* The after-close digest lives in the desktop rail, which is
+                hidden below lg — so on a phone the end-of-day summary was
+                not on the page at all. Same order as the rail: proposals
+                first (time-sensitive), then pinned, then the digest. */}
+            <DigestPreviewCard digest={digest} />
           </div>
 
           {/* Portfolio + Activity stacked section */}

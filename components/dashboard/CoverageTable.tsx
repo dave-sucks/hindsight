@@ -17,6 +17,7 @@ import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { cn } from "@/lib/utils";
 import { PriceChange } from "@/components/ui/price-change";
 import { PnlBadge } from "@/components/ui/pnl-badge";
+import { dayDollarMove } from "@/lib/portfolio/day-move";
 import {
   Tooltip,
   TooltipContent,
@@ -125,8 +126,20 @@ function NameCell({ row }: { row: CoverageRow }) {
 function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: MobileView }) {
   const isLifetime = mobileView === "lifetime";
   const pct = isLifetime ? row.sincePct : row.oneDayPct;
-  // Dollar gain only for lifetime on trades (1D has no dollar field)
-  const dollar = isLifetime && row.tradeState != null ? row.sinceDollar : null;
+  // Both tabs show dollars AND percent on a held name. The row carries the
+  // day's move as a percent only, so the 1D tab used to be half a column next
+  // to an All tab that had both — and on a phone those two tabs are the whole
+  // table. A watched name has no shares, so it stays percent-only on both.
+  const dollar =
+    row.tradeState == null
+      ? null
+      : isLifetime
+        ? row.sinceDollar
+        : dayDollarMove({
+            shares: row.shares,
+            currentPrice: row.currentPrice,
+            oneDayPct: row.oneDayPct,
+          });
 
   return (
     <div className="flex flex-col items-end gap-0.5">
