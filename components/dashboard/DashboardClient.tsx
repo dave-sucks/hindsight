@@ -89,6 +89,7 @@ import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
 import { formatCurrency, formatDateLabel } from '@/lib/format';
+import { realizedInWindow } from '@/lib/portfolio/range-realized';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -992,6 +993,22 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
     ? (portfolio.netContributed > 0 ? portfolio.netContributed : (equityRange[0]?.value ?? 0))
     : (equityRange[0]?.value ?? portfolio.netContributed);
   const rangePnlPct = rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
+
+  // The split BEHIND that number, over the SAME window. The header used to put
+  // the range's total next to ALL-TIME unrealized — two different clocks — so a
+  // month holding $1,337 of booked losses read "−$1,313" beside "+$5,204
+  // unrealized" and looked self-contradictory. These two sum to rangePnl.
+  //
+  // Realized is SUMMED from the closed trades in the window, not taken as a
+  // delta off the realized curve: that curve only has a point on days when
+  // something closed, so "last minus first inside the window" silently drops
+  // the first in-window sale. On this account over a month that read −$534.66
+  // instead of −$1,336.84 — exactly PBH's −$802.18, the earliest of the six.
+  const rangeRealized = useMemo(() => {
+    if (includesInception) return portfolio.realizedPnl;
+    return realizedInWindow(closedTrades, cutoffMs(range));
+  }, [closedTrades, range, includesInception, portfolio.realizedPnl]);
+  const rangeUnrealized = rangePnl - rangeRealized;
   const pnlPositive = rangePnl >= 0;
 
   const spyPct: number | null =
@@ -1121,7 +1138,10 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                       />
                       <span className="text-xs text-muted-foreground tabular-nums">
                         <span className="font-medium">{RANGE_PNL_LABEL[range]}</span>
-                        <span className="font-light"> ({portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized)</span>
+                        <span className="font-light">
+                          {' '}({rangeRealized >= 0 ? '+' : ''}{formatCurrency(rangeRealized)} sold
+                          {' · '}{rangeUnrealized >= 0 ? '+' : ''}{formatCurrency(rangeUnrealized)} held)
+                        </span>
                       </span>
                     </div>
                   </div>
