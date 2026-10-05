@@ -16,12 +16,18 @@
  *   - every one comes back as the same kind it was (round trip);
  *   - the cascade slots are the same classes as today's triggerBucket;
  *   - every one reads as a sentence and a pill.
+ *
+ * And that the catalog is the pattern: one entry per measure, and no code
+ * outside an entry branches on a measure.
  */
 
+import fs from "fs";
+import path from "path";
 import stored from "./__fixtures__/stored-triggers.json";
 import { triggerBucket } from "../bucket";
 import type { TriggerAction, TriggerPredicate } from "../types";
 import {
+  MEASURES,
   TRIGGER_TYPES,
   conditionProblem,
   conditionsOf,
@@ -31,6 +37,8 @@ import {
   toLegacy,
   triggerSentence,
   triggerSlot,
+  variableOptions,
+  withVariable,
   type Condition,
   type When,
 } from ".";
@@ -145,34 +153,77 @@ describe("the sentences people read", () => {
   });
 });
 
-describe("the dialog's tabs", () => {
-  /** A sample number for each tab, the way a person would fill it in. */
-  const SAMPLE: Record<string, number> = { "$": 248, "%": 7, volume: 1.5, rsi: 30, strength: 0, gap: 4, report: 3, result: 0, insiders: 3, repeat: 30, "from-date": 60 };
+describe("the catalog", () => {
+  /** A sample number for each measure, the way a person would fill it in. */
+  const SAMPLE: Record<string, number> = { price: 248, move: 7, volume: 1.5, rsi: 30, strength: 0, gap: 4, report: 3, surprise: 0, insiders: 3, repeat: 30, from_date: 60 };
+
+  it("has one entry per measure, each in one type of the Add trigger menu", () => {
+    const listed = TRIGGER_TYPES.flatMap((t) => t.measures.map((m) => m.id));
+    expect([...listed].sort()).toEqual(Object.keys(MEASURES).sort());
+    for (const [id, m] of Object.entries(MEASURES)) {
+      expect(m.id).toBe(id);
+      expect(m.fresh().watch).toBe(id);
+      // Two choices draw as buttons; one is a word in the input, never a lone button.
+      expect(m.buttons ? m.buttons.length > 1 && !m.word : !!m.word).toBe(true);
+    }
+  });
 
   for (const type of TRIGGER_TYPES) {
-    for (const tab of type.tabs) {
-      it(`${type.label} · ${tab.label}: a filled-in condition saves as today's kind`, () => {
-        const c: Condition = { ...tab.fresh(), ...(tab.value.none ? {} : { value: SAMPLE[tab.id] }) };
-        const level = tab.id === "$" ? "THESIS" : "ACCOUNT";
+    for (const m of type.measures) {
+      it(`${type.label} · ${m.label}: a filled-in condition saves as today's kind`, () => {
+        const c: Condition = { ...m.fresh(), ...(m.value.none ? {} : { value: SAMPLE[m.id] }) };
+        const level = m.id === "price" ? "THESIS" : "ACCOUNT";
         expect(conditionProblem(c, { level, held: true })).toBeNull();
         expect(toLegacy(c)).not.toBeNull();
       });
     }
   }
 
+  it("has no switch, and nothing outside a measure's entry names a measure", () => {
+    const dir = __dirname;
+    const files = [
+      ...fs.readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")),
+      ...fs.readdirSync(path.join(dir, "measures")).map((f) => path.join("measures", f)),
+    ];
+    for (const f of files) {
+      const src = fs.readFileSync(path.join(dir, f), "utf8");
+      expect({ f, switches: src.match(/switch \(/g)?.length ?? 0 }).toEqual({ f, switches: 0 });
+      if (!f.startsWith("measures")) expect({ f, named: src.match(/\.watch === "/g)?.length ?? 0 }).toEqual({ f, named: 0 });
+    }
+  });
+
   it("says what to fix instead of changing the form", () => {
-    expect(conditionProblem({ watch: "price", unit: "%", is: "below", value: 7 }, { level: "THESIS", held: true })).toBe(
+    expect(conditionProblem({ watch: "move", is: "below", value: 7 }, { level: "THESIS", held: true })).toBe(
       "Choose what the % is measured from.",
     );
-    expect(conditionProblem({ watch: "price", unit: "$", is: "below", value: 248 }, { level: "ANALYST", held: true })).toMatch(
+    expect(conditionProblem({ watch: "price", is: "below", value: 248 }, { level: "ANALYST", held: true })).toMatch(
       /typed price can't apply to every stock/,
     );
-    expect(
-      conditionProblem({ watch: "price", unit: "%", is: "below", value: 25, variable: "peak" }, { level: "THESIS", held: false }),
-    ).toMatch(/only once we own the stock/);
-    expect(conditionProblem({ watch: "schedule", is: "before", value: 10, variable: "buy" }, { level: "THESIS", held: true })).toBe(
+    expect(conditionProblem({ watch: "move", is: "below", value: 25, variable: "peak" }, { level: "THESIS", held: false })).toMatch(
+      /only once we own the stock/,
+    );
+    expect(conditionProblem({ watch: "from_date", is: "before", value: 10, variable: "buy" }, { level: "THESIS", held: true })).toBe(
       "The buy is already in the past. Pick After.",
     );
+    expect(conditionProblem({ watch: "price", is: "below", variable: "high52" }, { level: "THESIS", held: true })).toMatch(
+      /52-week high doesn't work with Below/,
+    );
+  });
+
+  it("offers only the variables that save with the button", () => {
+    const ids = (c: Condition, held = true) => variableOptions(c, { level: "THESIS", held }).map((o) => o.id);
+    expect(ids({ watch: "price", is: "below" })).toEqual(["sma20", "sma50", "sma150", "sma200"]);
+    expect(ids({ watch: "price", is: "above" })).toEqual(["sma20", "sma50", "sma150", "sma200", "high20", "high52"]);
+    expect(ids({ watch: "move", is: "below", value: 5 })).toEqual(["prev_close", "close_5d", "close_20d", "entry", "peak"]);
+    expect(ids({ watch: "move", is: "below", value: 5 }, false)).toEqual(["prev_close", "close_5d", "close_20d"]);
+    expect(ids({ watch: "from_date", is: "before", value: 5 })).toEqual(["event"]);
+  });
+
+  it("keeps a variable's own settings with it, and drops them when it goes", () => {
+    const trail = fromLegacy({ kind: "TRAILING_FROM_HIGH", pct: 25, armAtGainPct: 20 }) as Condition;
+    expect(trail.settings).toEqual({ startOnceUpPct: 20 });
+    expect(triggerSentence("EXIT", trail)).toBe("Sell when the price is down 25% from the high since we bought, once it has been up 20%.");
+    expect(withVariable(trail, "prev_close").settings).toBeUndefined();
   });
 });
 

@@ -1,94 +1,33 @@
 /**
- * The words: one sentence and one pill per condition, read from the shape.
- *
- * The line under the input, the pill on the sheet and (from PR 3) the Activity
- * line and the agent's fire payload all come from here, so a trigger reads the
- * same everywhere. docs/plans/TRIGGER_TYPES.md §6.
+ * The words: one sentence and one pill per condition. Each measure writes
+ * its own clause and pill (its catalog entry); settings that carry words
+ * add theirs. The line under the input, the pill on the sheet and (from PR
+ * 3) the Activity line and the agent's fire payload all come from here, so a
+ * trigger reads the same everywhere. docs/plans/TRIGGER_TYPES.md §6.
  *
  * Pure and client-safe.
  */
 
+import { measureOf, settingDefs } from "./catalog";
+import type { PillPart } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
-import { variableDef } from "./variables";
 
-const WHEN_CLOSE: Record<string, string> = { prev_close: "today", close_5d: "this week", close_20d: "this month" };
-const WINDOW_WORDS: Record<string, string> = { "1M": "1 month", "3M": "3 months", "6M": "6 months" };
+export { money } from "./words";
 
-export function money(n: number): string {
-  return `$${n % 1 === 0 ? n : n.toFixed(2)}`;
-}
-
-function pct(n: number): string {
-  return `${Math.round(n * 100) / 100}%`;
-}
-
-function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
-}
-
-function everyWords(c: Condition): string {
-  const n = c.value ?? 0;
-  return n === 1 ? "every day" : `every ${n} days`;
-}
-
-/** One condition as a clause: "the price falls below $248". `inGroup` words a schedule as a state. */
+/** One condition as a clause: "the price falls below $248". `inGroup` words a clock as a state. */
 export function conditionSentence(c: Condition, opts: { inGroup?: boolean } = {}): string {
-  const v = c.value ?? 0;
-  const p = c.params ?? {};
-  const close = p.onClose === true;
-  const words = c.variable ? variableDef(c.variable).words : "";
-  switch (c.watch) {
-    case "price": {
-      if (c.unit !== "%") {
-        const verb = close ? "closes" : c.is === "above" ? "rises" : "falls";
-        return `the price ${verb} ${c.is === "above" ? "above" : "below"} ${c.variable ? words : money(v)}`;
-      }
-      const is = close ? "closes" : "is";
-      let s: string;
-      if (c.is === "near") s = `the price ${is} within ${pct(v)} of ${words}`;
-      else if (c.variable && WHEN_CLOSE[c.variable]) s = `the price ${is} ${c.is === "above" ? "up" : "down"} ${pct(v)} ${WHEN_CLOSE[c.variable]}`;
-      else if (c.variable === "entry" || c.variable === "peak") s = `the price ${is} ${c.is === "above" ? "up" : "down"} ${pct(v)} from ${words}`;
-      else s = `the price ${is} ${pct(v)} ${c.is === "above" ? "above" : "below"} ${words}`;
-      if (p.startOnceUpPct != null) s += `, once it has been up ${pct(p.startOnceUpPct)}`;
-      if (p.widenAtr != null) s += ` (or ${p.widenAtr}× its daily range, if wider)`;
-      if (p.fastWinner) {
-        s += ` (not if it ran up ${pct(p.fastWinner.gainPct)}${p.fastWinner.withinDays != null ? ` within ${p.fastWinner.withinDays} days` : ""})`;
-      }
-      return s;
-    }
-    case "volume":
-      return `volume is at least ${v}× a normal day`;
-    case "rsi":
-      return `the ${p.period ?? 14}-day RSI is ${c.is === "above" ? "above" : "below"} ${v}`;
-    case "strength": {
-      const w = WINDOW_WORDS[p.window ?? "3M"];
-      if (v === 0) return `it is beating the S&P over ${w}`;
-      return v > 0 ? `it is beating the S&P by more than ${v} points over ${w}` : `it is no more than ${-v} points behind the S&P over ${w}`;
-    }
-    case "gap":
-      return `it gapped up ${pct(v)} or more on ${p.volume ?? 3}× volume in the last ${p.withinDays ?? 1} ${plural(p.withinDays ?? 1, "day", "days")}`;
-    case "report":
-      if (c.is === "before") return `earnings are ${v} ${plural(v, "day", "days")} away or less`;
-      return `it is within ${v} ${plural(v, "day", "days")} after earnings${p.fromDay === 1 ? ", counting from the day after" : ""}`;
-    case "surprise":
-      return `earnings ${c.is === "beat" ? "beat" : "miss"} the estimate${v > 0 ? ` by ${pct(v)} or more` : ""}`;
-    case "filing":
-      return `the company files ${words || "something with the SEC"}`;
-    case "insiders":
-      return `${v} or more insiders buy within ${p.days ?? 30} days`;
-    case "schedule":
-      if (c.is === "every") return opts.inGroup ? `a review is due (${everyWords(c)})` : everyWords(c);
-      if (c.variable === "buy") return opts.inGroup ? `it has been ${v} days since the buy` : `${v} days after the buy`;
-      if (c.is === "before") return opts.inGroup ? `the event date is ${v} days away or less` : `${v} days before the event date`;
-      return opts.inGroup ? `it is ${v} days past the event date` : `${v} days after the event date`;
-  }
+  const set = c.settings ?? {};
+  const extra = settingDefs(c)
+    .map((s) => (s.words && set[s.key] !== undefined ? s.words(set[s.key], set) : ""))
+    .join("");
+  return measureOf(c).sentence(c, opts) + extra;
 }
 
 /** The line under the input: "Fires when the price falls below $248." */
 export function fireLine(c: Condition): string {
   const s = conditionSentence(c);
-  return c.watch === "schedule" ? `Fires ${s}.` : `Fires when ${s}.`;
+  return measureOf(c).timed ? `Fires ${s}.` : `Fires when ${s}.`;
 }
 
 export function whenSentence(w: When): string {
@@ -96,77 +35,23 @@ export function whenSentence(w: When): string {
   return w.conditions.map(whenSentence).join(w.match === "all" ? " and " : " or ");
 }
 
+const VERB: Readonly<Record<string, string>> = { ENTER: "Buy", ADD: "Add", TRIM: "Trim", EXIT: "Sell", MOVE_STOP: "Move the stop" };
+
 /** The verb a trigger's action reads as. A sale on a stock we don't own takes the plan down. */
 export function actionVerb(action: string, held?: boolean): string {
-  switch (action) {
-    case "ENTER":
-      return "Buy";
-    case "ADD":
-      return "Add";
-    case "TRIM":
-      return "Trim";
-    case "EXIT":
-      return held === false ? "Take the plan down" : "Sell";
-    case "MOVE_STOP":
-      return "Move the stop";
-    default:
-      return "Review";
-  }
+  if (action === "EXIT" && held === false) return "Take the plan down";
+  return VERB[action] ?? "Review";
 }
 
 /** The whole trigger as one sentence: "Sell when the price falls below $248." */
 export function triggerSentence(action: string, w: When, held?: boolean): string {
   const verb = actionVerb(action, held);
-  if (!isGroup(w) && w.watch === "schedule") return `${verb} ${conditionSentence(w)}.`;
+  if (!isGroup(w) && measureOf(w).timed) return `${verb} ${conditionSentence(w)}.`;
   return `${verb} when ${whenSentence(w)}.`;
 }
 
-export interface PillPart {
-  /** The muted half: "below", "down from the high", "every". */
-  label: string;
-  /** The value half: "$248", "25%", "30 days". */
-  value?: string;
-  /** A variable, drawn as a chip instead of a plain value. */
-  chip?: string;
-}
-
 export function pillPart(c: Condition): PillPart {
-  const v = c.value ?? 0;
-  const p = c.params ?? {};
-  const chip = c.variable ? variableDef(c.variable).chip : undefined;
-  switch (c.watch) {
-    case "price": {
-      if (c.unit !== "%") {
-        const label = `${p.onClose ? "closes " : ""}${c.is === "above" ? "above" : "below"}`;
-        return c.variable ? { label, chip } : { label, value: money(v) };
-      }
-      if (c.is === "near") return { label: `within ${pct(v)} of`, chip };
-      if (c.variable && WHEN_CLOSE[c.variable]) return { label: `${c.is === "above" ? "up" : "down"} ${WHEN_CLOSE[c.variable]}`, value: pct(v) };
-      if (c.variable === "entry") return { label: `${c.is === "above" ? "up" : "down"} from entry`, value: pct(v) };
-      if (c.variable === "peak") return { label: "down from the high", value: pct(v) };
-      return { label: `${pct(v)} ${c.is === "above" ? "above" : "below"}`, chip };
-    }
-    case "volume":
-      return { label: `volume ${c.is === "above" ? "above" : "below"}`, value: `${v}×` };
-    case "rsi":
-      return { label: `RSI ${p.period ?? 14} ${c.is === "above" ? "above" : "below"}`, value: String(v) };
-    case "strength":
-      return { label: `vs. S&P ${p.window ?? "3M"} ${c.is === "above" ? "above" : "below"}`, value: `${v} pts` };
-    case "gap":
-      return { label: "gap up", value: `${pct(v)}+` };
-    case "report":
-      return { label: c.is === "before" ? "before earnings" : "after earnings", value: `${v} ${plural(v, "day", "days")}` };
-    case "surprise":
-      return { label: `earnings ${c.is === "beat" ? "beat" : "miss"}`, value: v > 0 ? `${pct(v)}+` : undefined };
-    case "filing":
-      if (c.variable?.startsWith("tier:")) return { label: "SEC filing", value: c.variable === "tier:RED" ? "red flag" : "material" };
-      return { label: "SEC filing", chip };
-    case "insiders":
-      return { label: "insiders buying", value: `${v}+ in ${p.days ?? 30}d` };
-    case "schedule":
-      if (c.is === "every") return { label: "every", value: `${v} ${plural(v, "day", "days")}` };
-      return { label: `${v} days ${c.is === "before" ? "before" : "after"}`, chip };
-  }
+  return measureOf(c).pill(c);
 }
 
 /** A trigger's pill: one part per condition, with "and" / "or" between them. */

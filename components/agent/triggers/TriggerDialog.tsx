@@ -18,6 +18,7 @@ import {
   TRIGGER_TYPES,
   allowedActions,
   canProposeDirectly,
+  measureOf,
   toLegacy,
   typeDef,
   whenProblem,
@@ -46,10 +47,20 @@ interface AddProps {
 }
 
 /** The menu of types. One for the first condition, and the same list for a second ("And also…"). */
-function TypeMenu({ label, types, onPick }: { label: string; types: readonly TriggerType[]; onPick: (t: TriggerType) => void }) {
+function TypeMenu({
+  label,
+  types,
+  onPick,
+  variant = "outline",
+}: {
+  label: string;
+  types: readonly TriggerType[];
+  onPick: (t: TriggerType) => void;
+  variant?: "outline" | "ghost";
+}) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+      <DropdownMenuTrigger render={<Button variant={variant} size="sm" />}>
         <Plus data-icon="inline-start" />
         {label}
       </DropdownMenuTrigger>
@@ -88,9 +99,10 @@ export function AddTrigger(props: AddProps) {
 }
 
 function freshDraft(type: TriggerType, level: Level, held: boolean): Draft {
-  const c = typeDef(type).tabs[0].fresh();
+  const t = typeDef(type);
+  const c = t.measures[0].fresh();
   const actions = allowedActions(c, { held, standing: level !== "THESIS" });
-  const preferred: TriggerAction = c.watch === "price" ? (held || level !== "THESIS" ? "EXIT" : "ENTER") : "REVIEW";
+  const preferred: TriggerAction = t.trades ? (held || level !== "THESIS" ? "EXIT" : "ENTER") : "REVIEW";
   const action = actions.includes(preferred) ? preferred : actions[0];
   return { action, conditions: [c], match: "all", fireMode: action === "EXIT" ? "DIRECT" : "TACTICAL" };
 }
@@ -138,7 +150,7 @@ function TriggerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Add {typeDef(type).label.toLowerCase()} trigger</DialogTitle>
         </DialogHeader>
@@ -189,12 +201,13 @@ function TriggerDialog({
               </div>
               <ConditionFields tabs condition={draft.conditions[1]} onChange={(c) => setCondition(1, c)} ctx={ctx} disabled={pending} />
             </div>
-          ) : draft.conditions[0].watch === "schedule" ? null : (
+          ) : measureOf(draft.conditions[0]).timed ? null : (
             // A schedule stands alone, so it is not offered as a second condition.
             <TypeMenu
+              variant="ghost"
               label="And also…"
-              types={TRIGGER_TYPES.map((t) => t.id).filter((t) => t !== "schedule")}
-              onPick={(t) => update({ conditions: [draft.conditions[0], typeDef(t).tabs[0].fresh()] })}
+              types={TRIGGER_TYPES.filter((t) => !t.measures.every((m) => m.timed)).map((t) => t.id)}
+              onPick={(t) => update({ conditions: [draft.conditions[0], typeDef(t).measures[0].fresh()] })}
             />
           )}
 

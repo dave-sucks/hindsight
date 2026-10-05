@@ -1,12 +1,12 @@
 /**
- * The condition shape: one fixed shape for every trigger condition, the
- * catalog the dialog renders from, and the translator to today's kinds.
- * docs/plans/TRIGGER_TYPES.md.
+ * The condition shape and its catalog: one fixed shape for every trigger,
+ * one entry per measure. docs/plans/TRIGGER_TYPES.md.
  *
- * Pure and client-safe: safe to import from a client component.
+ * Pure and client-safe.
  */
 
 export * from "./types";
+export * from "./measure";
 export * from "./variables";
 export * from "./catalog";
 export * from "./legacy";

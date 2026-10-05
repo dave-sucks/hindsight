@@ -317,49 +317,43 @@ quietly changed.
 ## 5. The schema
 
 ```ts
-// lib/agent/triggers/condition.ts
+// lib/agent/triggers/condition/types.ts
 type Condition = {
-  watch: Watch;            // the dialog's type + tab pick it
-  is: Direction;           // the button group
+  watch: Watch;            // the measure: one catalog entry each (§6)
+  is?: Direction;          // its button; a measure with one choice has none
   value?: number;          // what you type
-  variable?: VariableId;   // what you insert: in place of the value (a $ price, one filing event),
+  variable?: VariableId;   // what you insert: in place of the value (a $ price, a filing),
                            // or what a % or a day count is measured from
-  unit?: "$" | "%";        // price only: the $ / % tab
-  params?: Params;         // the watch's own settings: the one setting under the input, and More options
+  settings?: Settings;     // the measure's and the variable's own settings, declared on their entries
 };
 type Group = { match: "all" | "any"; conditions: (Condition | Group)[] };   // nests one level
 
-type Watch = "price" | "volume" | "rsi" | "strength" | "gap" | "report" | "surprise"
-  | "filing" | "insiders" | "schedule";
+type Watch = "price" | "move" | "volume" | "rsi" | "strength" | "gap" | "report" | "surprise"
+  | "filing" | "insiders" | "repeat" | "from_date";
 
-type Direction = "below" | "above" | "near" | "before" | "after" | "miss" | "beat"
-  | "material" | "red_flag" | "at_least" | "every";
+type Direction = "below" | "above" | "near" | "before" | "after" | "miss" | "beat";
 
 type VariableId =
   | "prev_close" | "close_5d" | "close_20d" | "entry" | "peak"
   | "sma20" | "sma50" | "sma150" | "sma200" | "high20" | "low20" | "high52" | "low52"   // prices
   | "buy" | "event"                                                                     // dates
-  | FilingEventId;   // every 8-K item and form in lib/market-data/sec-events.ts, e.g. "5.02", "S-3"
+  | "tier:MATERIAL" | "tier:RED" | `item:${string}` | `form:${string}`;                  // filings
 
-type Params = {
-  onClose?: boolean;                 // price, volume: read on the 16:20 close pass
-  period?: 2 | 14;                   // rsi
-  window?: "1M" | "3M" | "6M";       // strength
-  withinDays?: number; volume?: number;   // gap (playbook defaults: 3 days, 3×)
-  fromDay?: 0 | 1;                   // report, after: count from the report day or the day after
-  days?: 30 | 90;                    // insiders
-  every?: "days" | "weeks" | "months";    // schedule, repeat: the unit the number is in
-  startOnceUpPct?: number; widenAtr?: number;          // price, % from the high: the trailing-stop options
-  fastWinner?: { gainPct: number; withinDays?: number }; // price, % from entry, above: the big-winner switch
-};
+type Settings = Record<string, number | boolean | string>;
+// Declared where they belong: the RSI's length on RSI, the window on vs. S&P, "only on the
+// close" on $ Price, the look-back on insider buying; the trailing options on the variable
+// "high since we bought", the big-winner switch on "our entry". A declared setting with
+// options is a select above the input; one without is written by an agent and carried as is.
 ```
 
-**That is the whole condition type.** It has no union of kinds, and a reader
-never switches on a shape. Every condition is a watch, a direction, and a
-value or a variable, which is exactly what the dialog shows. Which
-directions, variables and params each watch accepts lives in the catalog,
-not in the type. Windows and periods are params, not part of the watch's
-name, so adding "RSI, 5-day" is one allowed value and not a new watch.
+**That is the whole condition type.** It has no union of kinds, and nothing
+outside a measure's catalog entry branches on a measure (a test in
+`condition.test.ts` fails on a `switch` or on code naming a measure). Every
+condition is a measure, a button, and a value or a variable, which is exactly
+what the dialog shows. Which buttons, variables and settings each measure
+accepts lives on its entry, not in the type. Windows and periods are settings,
+not part of the measure's name, so adding "RSI, 5-day" is one option and not a
+new measure.
 
 **The trigger keeps its field names** (`id`, `predicate`, `action`,
 `rationale`, `cooldownDays`, `fireMode`, `source`). Only what goes inside
@@ -385,7 +379,10 @@ assuming them.
 ## 6. One catalog, one checker
 
 ```ts
-// lib/agent/triggers/condition/catalog.ts: one entry per watch. Client-safe (no node imports).
+// lib/agent/triggers/condition/measures/*.ts: one entry per measure. Client-safe (no node imports).
+// PR 1 ships the entry below without needs / read / cooldownDays / readsPrice (those arrive with
+// the checker in PR 2) and with a `legacy` field instead: how the measure reads and writes
+// today's kinds until the cutover. See lib/agent/triggers/condition/measure.ts.
 interface WatchDef {
   watch: Watch;
   type: "price" | "indicator" | "earnings" | "filing" | "schedule";   // the Add trigger menu
@@ -627,7 +624,7 @@ it reads through the translator until PR 4.
 
 | PR | What | Proof Dave sees | Behaviour change |
 |---|---|---|---|
-| **1. The editor** | The condition shape, the catalog, its words and slots, the action table, `fromLegacy` / `toLegacy` (`lib/agent/triggers/condition/`); the type buttons on the sheet; one dialog for add, edit and an inherited rule's read-only view; pills drawn from the same words; the analyst and account settings on the same dialog. It saves today's kinds through `toLegacy`, so storage and the checker are untouched. Editing in place is one new `replace` op on the shared write path (same slot keeps the id and history; another slot is a new trigger). The add paths' kind lists move to `lib/agent/triggers/addable.ts` so the dialog offers exactly what the server accepts, and the report window (`EARNINGS_SINCE`) becomes addable by hand. Options only the new shape can express are held back with a message. Deletes `dialog-condition.ts`, the eight-tab form and the old popover. The variables' numbers for the line under the input arrive with the checker in PR 2. | The round-trip and slot tests over every stored trigger (487 distinct conditions behind 909 triggers); the replace-op tests; the full suite; a production build. | The dialog and pills only |
+| **1. The editor** | The condition shape and the measure catalog (`lib/agent/triggers/condition/`): one entry per measure holding its tab, buttons, input, settings, words, slot, actions and how it reads and writes today's kinds; no code outside an entry branches on a measure. Add trigger opens a menu of the five types; each opens the dialog for that type; every type fills the same layout. A pill opens a popover with the same form (no tabs): own triggers edit and delete there, inherited rules read locked. The analyst and account settings use the same pills, popover and dialog. It saves today's kinds through the measures' `legacy` field, so storage and the checker are untouched. The form offers only what the server accepts. Editing in place is one new `replace` op on the shared write path (same slot keeps the id and history; another slot is a new trigger). The add paths' kind lists move to `lib/agent/triggers/addable.ts`. Deletes `dialog-condition.ts`, the eight-tab form and the old popover. | The round-trip and slot tests over every stored trigger (487 distinct conditions behind 909 triggers); the no-branching test; the replace-op tests; the full suite; screenshots of every type's dialog and the popovers. | The dialog, popover and pills only |
 | **2. Alongside** | One checker over the catalog, plus a comparison on every pass that logs any disagreement. | The CI parity grid; three or more trading days of production logs with zero disagreements. | None (logging only) |
 | **3. Cutover** | Storage moves to the shape (dual read, then the backfill); every writer (`ops.ts`, `thesis-edit.ts`, the seeders, `setup-exits.ts`, `defaults.ts`, `setups.ts`); the new checker decides; fire history moves into `triggerState`; the agents' schemas and prompts; the new options shown; `MOVE_STOP` deleted; docs updated (`TRIGGERS.md`, `TRIGGER_MODEL.md`, `CLAUDE.md`, the `LANES.md` §2 checklist). The 20 kind names are deleted from all code except the translator. | A grep showing the kind names only in `condition/legacy.ts` and its tests; tool size before and after; the backfill dry-run diff; replay tests passing; a check after the backfill showing zero old rows. | Same fires; new options available |
 | **4. Cleanup** | After a week with zero old rows: the translator's read path and the comparison code go. | A grep showing zero kind names. | None |

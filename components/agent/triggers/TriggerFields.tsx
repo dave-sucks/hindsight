@@ -28,14 +28,15 @@ import {
   fromLegacy,
   isGroup,
   isRetired,
-  settingValue,
-  tabOfCondition,
+  measureOf,
+  settingDefs,
+  settingOf,
   typeDef,
-  typeOfCondition,
   variableDef,
   variableOptions,
   withDirection,
   withSetting,
+  withVariable,
   type CheckContext,
   type Condition,
   type SettingDef,
@@ -174,22 +175,22 @@ export function ConditionFields({
   /** The dialog shows the type's tabs; the popover keeps the one the trigger has. */
   tabs?: boolean;
 }) {
-  const tab = tabOfCondition(condition);
-  const type = typeDef(typeOfCondition(condition));
+  const m = measureOf(condition);
+  const type = typeDef(m.type);
   // A read-only rule says what it does; only a form being filled in says what to fix.
   const problem = disabled ? null : conditionProblem(condition, ctx);
   return (
     <div className="space-y-2">
-      {tabs && type.tabs.length > 1 ? (
+      {tabs && type.measures.length > 1 ? (
         <Tabs
-          value={tab.id}
+          value={m.id}
           onValueChange={(id) => {
-            const next = type.tabs.find((t) => t.id === id);
-            if (next && next.id !== tab.id) onChange(next.fresh());
+            const next = type.measures.find((t) => t.id === id);
+            if (next && next.id !== m.id) onChange(next.fresh());
           }}
         >
           <TabsList width="full">
-            {type.tabs.map((t) => (
+            {type.measures.map((t) => (
               <TabsTrigger key={t.id} value={t.id} disabled={disabled}>
                 {t.label}
               </TabsTrigger>
@@ -197,11 +198,16 @@ export function ConditionFields({
           </TabsList>
         </Tabs>
       ) : null}
-      {tab.setting ? <SettingSelect condition={condition} setting={tab.setting} onChange={onChange} disabled={disabled} /> : null}
-      <div className="flex gap-2">
-        {tab.buttons.length > 1 ? (
+      {settingDefs(condition)
+        .filter((s) => s.options)
+        .map((s) => (
+          <SettingSelect key={s.key} condition={condition} setting={s} onChange={onChange} disabled={disabled} />
+        ))}
+      {/* The buttons on the left, the input on the right; the input drops below them when the box is too narrow. */}
+      <div className="flex flex-wrap gap-2">
+        {m.buttons && m.buttons.length > 1 ? (
           <ButtonGroup>
-            {tab.buttons.map((b) => (
+            {m.buttons.map((b) => (
               <Button
                 key={b.is}
                 variant={condition.is === b.is ? "secondary" : "outline"}
@@ -214,7 +220,7 @@ export function ConditionFields({
             ))}
           </ButtonGroup>
         ) : null}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-fit flex-1">
           <ValueInput condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} />
         </div>
       </div>
@@ -234,15 +240,23 @@ function SettingSelect({
   onChange: (c: Condition) => void;
   disabled: boolean;
 }) {
-  const value = settingValue(condition, setting.key);
+  const options = setting.options ?? [];
+  const value = String(settingOf(condition, setting.key));
   return (
-    <Select value={value} onValueChange={(v) => typeof v === "string" && onChange(withSetting(condition, setting.key, v))} disabled={disabled}>
+    <Select
+      value={value}
+      onValueChange={(v) => {
+        const picked = options.find((o) => String(o.value) === v);
+        if (picked) onChange(withSetting(condition, setting.key, picked.value));
+      }}
+      disabled={disabled}
+    >
       <SelectTrigger width="full" aria-label={setting.label}>
-        <SelectValue>{setting.options.find((o) => o.value === value)?.label ?? value}</SelectValue>
+        <SelectValue>{options.find((o) => String(o.value) === value)?.label ?? value}</SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {setting.options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>
+        {options.map((o) => (
+          <SelectItem key={String(o.value)} value={String(o.value)}>
             {o.label}
           </SelectItem>
         ))}
@@ -264,9 +278,9 @@ function ValueInput({
   ctx: CheckContext;
   disabled: boolean;
 }) {
-  const tab = tabOfCondition(condition);
-  const v = tab.value;
-  const vars = tab.variables;
+  const m = measureOf(condition);
+  const v = m.value;
+  const vars = m.variables;
   const options = disabled ? [] : variableOptions(condition, ctx);
   const [text, setText] = useState(condition.value != null ? String(condition.value) : "");
   // Follow a value changed from outside (a tab switch, a reset) without fighting typing.
@@ -276,16 +290,15 @@ function ValueInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condition.value]);
 
-  // A tab with one button says it as a word: "Every", "At least", "Files".
-  const word = tab.buttons.length === 1 ? tab.buttons[0].label : null;
   const replaced = vars?.mode === "replace" && condition.variable != null;
-  const clear = disabled ? undefined : () => onChange({ ...condition, variable: undefined });
+  const clear = disabled ? undefined : () => onChange(withVariable(condition, undefined));
 
   return (
     <InputGroup>
-      {word ? (
+      {/* A measure with one choice says it as a word: "Every", "At least", "Files". */}
+      {m.word ? (
         <InputGroupAddon>
-          <InputGroupText>{word}</InputGroupText>
+          <InputGroupText>{m.word}</InputGroupText>
         </InputGroupAddon>
       ) : null}
       {v.prefix && !replaced ? (
@@ -302,12 +315,11 @@ function ValueInput({
         // No number to type: the chip is the value.
         <span className="min-w-0 flex-1 truncate px-2 text-sm text-muted-foreground">{replaced ? null : v.placeholder}</span>
       ) : (
+        // Text, not type="number": a number input won't shrink, and its arrows nudge a price by 1.
         <InputGroupInput
-          type="number"
-          inputMode="decimal"
-          step={v.integer ? 1 : "any"}
-          min={v.allowNegative ? undefined : (v.min ?? 0)}
-          max={v.max}
+          type="text"
+          inputMode={v.integer ? "numeric" : "decimal"}
+          size={6}
           value={text}
           placeholder={v.placeholder}
           aria-label="Value"
@@ -332,7 +344,7 @@ function ValueInput({
       ) : null}
       {vars && options.length > 0 ? (
         <InputGroupAddon align="inline-end">
-          <VariableMenu options={options} title={vars.title} onPick={(id) => onChange({ ...condition, variable: id })} />
+          <VariableMenu options={options} title={vars.title} onPick={(id) => onChange(withVariable(condition, id))} />
         </InputGroupAddon>
       ) : null}
     </InputGroup>

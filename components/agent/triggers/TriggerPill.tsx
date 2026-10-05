@@ -19,12 +19,12 @@ import {
   canProposeDirectly,
   conditionsOf,
   fromLegacy,
+  isGroup,
   isRetired,
+  measureOf,
   pillParts,
-  tabOfCondition,
   toLegacy,
   triggerSentence,
-  typeOfCondition,
   whenProblem,
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
@@ -71,7 +71,7 @@ export function TriggerPill(props: TriggerPillProps) {
             {i > 0 ? <span className="flex items-center border-l border-border px-1.5 text-muted-foreground">{joiner}</span> : null}
             <span className={cn("flex items-center gap-1 bg-muted/30 px-2 text-muted-foreground", i > 0 && "border-l border-border")}>
               {/* A schedule puts the agent on a clock: the same mark as Send to Agent. */}
-              {!isRetired(w) && conditionsOf(w)[i]?.watch === "schedule" ? <SendToAgentIcon className="size-3" /> : null}
+              {!isRetired(w) && conditionsOf(w)[i] && measureOf(conditionsOf(w)[i]).timed ? <SendToAgentIcon className="size-3" /> : null}
               {p.label}
             </span>
             {p.value || p.chip ? (
@@ -110,13 +110,13 @@ function TriggerPopover({ trigger, level, held, editable, endpointBase, analystI
   });
   const url = `${endpointBase}/${trigger.id}`;
   const first = draft ? draft.conditions[0] : null;
-  const Icon = first ? TYPE_ICON[typeOfCondition(first)] : null;
+  const Icon = first ? TYPE_ICON[measureOf(first).type] : null;
 
   const header = (
     <div className="flex items-center gap-1.5">
       {Icon ? <Icon className="size-3.5 text-muted-foreground" /> : null}
       <span className="font-medium">{actionLabel(trigger.action, sells)}</span>
-      {first ? <span className="text-muted-foreground">· {tabOfCondition(first).label}</span> : null}
+      {first ? <span className="text-muted-foreground">· {measureOf(first).label}</span> : null}
       {canEdit ? (
         <div className="ml-auto">
           <Button variant="ghost" size="icon-xs" aria-label="Delete trigger" disabled={pending} onClick={() => void send("DELETE", url)}>
@@ -161,7 +161,7 @@ function TriggerPopover({ trigger, level, held, editable, endpointBase, analystI
         <Fragment key={i}>
           {i > 0 ? (
             <p className="text-xs text-muted-foreground">
-              {draft.match === "all" ? "and" : "or"} · {tabOfCondition(c).label}
+              {draft.match === "all" ? "and" : "or"} · {measureOf(c).label}
             </p>
           ) : null}
           <ConditionFields condition={c} onChange={(n) => setCondition(i, n)} ctx={ctx} disabled={!canEdit || pending} />
@@ -191,6 +191,8 @@ function TriggerPopover({ trigger, level, held, editable, endpointBase, analystI
 function TriggerFacts({ trigger, analystId }: { trigger: Trigger; analystId?: string | null }) {
   const overrides = trigger.overrides ? fromLegacy(trigger.overrides.predicate) : null;
   const cooldown = trigger.cooldownDays ? flooredCooldownDays(trigger, trigger.cooldownDays) : null;
+  const stored = fromLegacy(trigger.predicate);
+  const timed = !isRetired(stored) && !isGroup(stored) && measureOf(stored).timed;
   const facts = [
     trigger.rationale || null,
     overrides && !isRetired(overrides)
@@ -199,7 +201,7 @@ function TriggerFacts({ trigger, analystId }: { trigger: Trigger; analystId?: st
     [
       trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}.` : null,
       // A schedule's rate limit is its own interval, so saying it again would repeat the number above.
-      cooldown && trigger.predicate.kind !== "REVIEW_CADENCE"
+      cooldown && !timed
         ? cooldown === 1
           ? "Fires at most once a day."
           : `Fires at most once every ${cooldown} days.`

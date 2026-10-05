@@ -1,22 +1,23 @@
 /**
  * The condition shape: one fixed shape for every trigger condition.
  *
- *   watch · is (the button) · value (what you type) or variable (what you insert)
+ *   watch (the measure) · is (its button) · value (what you type) or variable (what you insert) · settings
  *
- * The dialog and the pill's popover are this shape on screen: the type is
- * picked from the Add trigger menu, the tabs pick the watch, the button group
- * is `is`, and the value input takes a typed number or a variable chip.
- * docs/plans/TRIGGER_TYPES.md §3 and §5.
+ * Everything about a measure (its tab, buttons, input, settings, words,
+ * slot, the actions it can take, and how it is stored until the cutover)
+ * lives on its catalog entry in ./measures. Nothing else branches on a
+ * measure. docs/plans/TRIGGER_TYPES.md §3, §5 and §6.
  *
  * Pure and client-safe: types only.
  */
 
-/** The five types in the Add trigger menu. */
+/** The five types in the Add trigger menu. Each groups some measures. */
 export type TriggerType = "price" | "indicator" | "earnings" | "filing" | "schedule";
 
-/** What a condition watches. The dialog's type and tab pick it. */
+/** The measures: one catalog entry each (./measures). */
 export type Watch =
   | "price"
+  | "move"
   | "volume"
   | "rsi"
   | "strength"
@@ -25,10 +26,11 @@ export type Watch =
   | "surprise"
   | "filing"
   | "insiders"
-  | "schedule";
+  | "repeat"
+  | "from_date";
 
-/** The button group. Which ones a watch accepts lives in the catalog; a watch with one draws it as a word. */
-export type Direction = "below" | "above" | "near" | "before" | "after" | "miss" | "beat" | "files" | "every";
+/** A measure's buttons. A measure with one choice has no buttons and no `is`: its input says the word. */
+export type Direction = "below" | "above" | "near" | "before" | "after" | "miss" | "beat";
 
 /** A price a condition can be measured against instead of a typed number. */
 export type PriceVariable =
@@ -54,38 +56,33 @@ export type FilingVariable = "tier:MATERIAL" | "tier:RED" | `item:${string}` | `
 
 export type VariableId = PriceVariable | DateVariable | FilingVariable;
 
-/** A watch's own settings: the one setting above the input, and values only an agent writes. */
-export interface Params {
-  /** price, volume: read on the 16:20 close pass. */
-  onClose?: boolean;
-  /** rsi. */
-  period?: 2 | 14;
-  /** strength. */
-  window?: "1M" | "3M" | "6M";
-  /** gap: how many sessions back, and the volume multiple the gap day needed. */
-  withinDays?: number;
-  volume?: number;
-  /** report, after: 0 counts from the report day, 1 from the day after. */
-  fromDay?: number;
-  /** insiders: the look-back window. */
-  days?: number;
-  /** price, % from the high since we bought: the trailing-stop options. */
-  startOnceUpPct?: number;
-  widenAtr?: number;
-  /** price, % from our entry, above: the big-winner switch. */
-  fastWinner?: { gainPct: number; withinDays?: number };
+export type SettingValue = number | boolean | string;
+
+/** A condition's settings. Which keys it may carry is declared on its measure and its variable. */
+export type Settings = Readonly<Record<string, SettingValue>>;
+
+/** One setting, declared on the measure (the RSI's length) or the variable (the trailing options on the high since we bought). */
+export interface SettingDef {
+  key: string;
+  /** The select above the input. A setting with no options is one only an agent writes; the form carries it unchanged. */
+  options?: readonly { value: SettingValue; label: string }[];
+  /** The select's name, for screen readers. */
+  label?: string;
+  default?: SettingValue;
+  /** Part of the rule's identity: a 14-day and a 2-day RSI rule are two rules, not one at two values. */
+  identity?: boolean;
+  /** Added to the sentence when set: ", once it has been up 20%". */
+  words?: (v: SettingValue, s: Settings) => string;
 }
 
 export interface Condition {
   watch: Watch;
-  is: Direction;
+  is?: Direction;
   /** What you type. Absent when a variable stands in for it. */
   value?: number;
   /** What you insert: in place of the value, or what a % or a day count is measured from. */
   variable?: VariableId;
-  /** price only: the $ / % tab. */
-  unit?: "$" | "%";
-  params?: Params;
+  settings?: Settings;
 }
 
 export interface Group {
