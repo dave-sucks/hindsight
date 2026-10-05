@@ -3,7 +3,8 @@
  * Each measure declares how it reads and writes the kinds (its `legacy`
  * field); this file only walks groups and asks the measures.
  *
- *   fromLegacy: every stored kind → a condition (or a group of them).
+ *   fromLegacy: every stored kind → a condition (or a group of them); a
+ *               predicate already in the shape comes back as it is.
  *   toLegacy:   a condition → the kind that says the same thing, or null.
  *
  * Until the cutover the server stores and checks kinds, so the form builds a
@@ -28,7 +29,17 @@ const READERS: ReadonlyMap<string, Reader[]> = (() => {
   return out;
 })();
 
+/** A predicate already in the condition shape: a known measure, or a group of them. */
+export function isShape(p: unknown): p is When {
+  if (!p || typeof p !== "object") return false;
+  const { watch, match, conditions } = p as { watch?: unknown; match?: unknown; conditions?: unknown };
+  if (typeof watch === "string") return Object.hasOwn(MEASURES, watch);
+  return (match === "all" || match === "any") && Array.isArray(conditions) && conditions.length > 0 && conditions.every(isShape);
+}
+
 export function fromLegacy(p: unknown): When | Retired {
+  // Stored since the cutover: already the shape, read as it is.
+  if (isShape(p)) return p;
   if (!p || typeof p !== "object" || typeof (p as { kind?: unknown }).kind !== "string") return { retired: true, was: p };
   const q = p as TriggerPredicate;
   if (q.kind === "AND" || q.kind === "OR") {

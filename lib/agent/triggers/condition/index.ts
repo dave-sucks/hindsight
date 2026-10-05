@@ -15,3 +15,4 @@ export * from "./check";
 export * from "./actions";
 export * from "./slot";
 export * from "./rules";
+export * from "./stored";

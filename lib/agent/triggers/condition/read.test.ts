@@ -9,7 +9,7 @@
  * two checkers must agree on whether it holds, whether it reads the price and
  * whether it reads the next report, and the whole fire decision (crossing,
  * stale quote, cooldown, re-arm, a report it already fired for) must come out
- * the same. docs/plans/TRIGGER_TYPES.md, PR 2.
+ * the same, for the trigger stored as a kind and stored as the shape. docs/plans/TRIGGER_TYPES.md, PR 2.
  */
 
 import stored from "./__fixtures__/stored-triggers.json";
@@ -20,6 +20,7 @@ import type { Trigger, TriggerAction, TriggerPredicate } from "../types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import type { SecFiling } from "@/lib/market-data/sec-events";
 import { SHAPE_CHECKER } from "./read";
+import { toStoredPredicate } from "./stored";
 
 type Row = { action: TriggerAction; predicate: TriggerPredicate; scopes: string[]; count: number };
 
@@ -145,6 +146,9 @@ describe("the checker agrees with the one it replaced on every stored trigger", 
         const a = shouldFire(t, ctx, KIND_CHECKER);
         const b = shouldFire(t, ctx);
         if (a.fires !== b.fires || a.reason !== b.reason) disagree.push({ p, i, a, b, on: "shouldFire" });
+        // Stored in the condition shape since the cutover: the same decision.
+        const c = shouldFire({ ...t, predicate: toStoredPredicate(t.predicate) as TriggerPredicate }, ctx);
+        if (c.fires !== b.fires || c.reason !== b.reason) disagree.push({ p, i, b, c, on: "stored as the shape" });
         if (disagree.length > 5) break;
       }
       if (disagree.length > 5) break;

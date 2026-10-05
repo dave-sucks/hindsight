@@ -39,6 +39,7 @@ import type { ResolvedTrigger } from "./levels";
 import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
 import { isDirectEligiblePredicate } from "./types";
 import { triggerBucket } from "./bucket";
+import { samePredicate } from "./condition/stored";
 import { predicateSentence } from "./format";
 import { applyTriggerCooldownDefaults } from "./defaults";
 import { stampWrittenPrice } from "./written-price";
@@ -479,7 +480,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const above = inheritedByBucket.get(triggerBucket(trigger));
     if (
       above &&
-      JSON.stringify(above.predicate) === JSON.stringify(trigger.predicate) &&
+      samePredicate(above.predicate, trigger.predicate) &&
       (above.fireMode ?? "TACTICAL") === (trigger.fireMode ?? "TACTICAL")
     ) {
       return refuse(
@@ -509,7 +510,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     if (
       sameSlot &&
-      JSON.stringify(target.predicate) === JSON.stringify(trigger.predicate) &&
+      samePredicate(target.predicate, trigger.predicate) &&
       target.action === trigger.action &&
       (target.fireMode ?? "TACTICAL") === (trigger.fireMode ?? "TACTICAL")
     ) {
