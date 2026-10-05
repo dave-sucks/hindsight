@@ -359,17 +359,29 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     maxSteps: 15,
     toolAllowlist: [
       // Read-only intel for validation. get_catalyst_calendar, web_search,
-      // get_theses and the two writer tools left 2026-10-03: not one call
-      // in 69 runs. get_sec_filings stays while the filing reader (#753)
-      // is measured.
+      // get_theses and the two writer tools were not called once in 69 runs,
+      // and they stay: on the NVDA declined-sale case, taking them off the
+      // list took the run from 12 of 12 re-proposing the sale to 2 of 12, with
+      // 9 runs trying to delete the principal's trailing stop (2026-10-05,
+      // four independent samples each). Their presence changes the answer.
       "get_stock_data",
       "get_earnings_data",
       "get_market_context",
       "get_sec_filings",
+      "get_catalyst_calendar",
+      "web_search",
+      "get_theses",
       // Action
       "place_trade",
       "close_position",
       "manage_position",
+      // Refresh stale research before acting. Phase 2 of
+      // THESIS_LIFECYCLE_FIX: a tactical run firing on a thesis with
+      // research > STALE_DAYS old can dispatch + wait for a refresh
+      // before executing the declared action. Without this, the
+      // place_trade staleness gate refuses and the agent is stuck.
+      "dispatch_thesis_research",
+      "wait_for_thesis_refresh",
       // Thesis (REQUIRED close-out)
       "update_thesis",
       // Finalize

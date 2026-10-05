@@ -37,7 +37,7 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
  */
 const RECORDED_TOOLS: Record<string, number> = {
   "research-run": 52_043,
-  tactical: 38_782,
+  tactical: 49_128,
   discovery: 53_690,
   principal: 98_284,
 };
