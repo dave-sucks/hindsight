@@ -7,7 +7,8 @@
  * triggers included — were discarded on every read. No error, no alert.
  */
 
-import { parseTriggersResilient, triggerPredicateSchema, triggersArraySchema } from "./schema";
+import { zodSchema } from "ai";
+import { parseTriggersResilient, predicateInputSchema, triggerPredicateSchema, triggersArraySchema } from "./schema";
 
 const good = {
   id: "t1",
@@ -82,5 +83,21 @@ describe("REVIEW_CADENCE keeps its counting-from choice through the schema", () 
   });
   it("a plain review clock parses as before", () => {
     expect(triggerPredicateSchema.parse({ watch: "repeat", value: 7 })).toEqual({ watch: "repeat", value: 7 });
+  });
+});
+
+describe("the condition a model writes", () => {
+  // The SDK writes a record as an object that allows no keys, so a model
+  // reading the tool definition could never say "on the close".
+  it("lists every setting it can send, and keeps the one it sent", () => {
+    const schema = predicateInputSchema();
+    const json = JSON.stringify(zodSchema(schema as never).jsonSchema);
+    for (const key of ["close", "startOnceUpPct", "widenAtr", "fastWinnerPct", "period", "window", "fromDay"]) expect(json).toContain(`"${key}":`);
+    expect(schema.parse({ watch: "price", is: "above", value: 183, settings: { close: true } })).toEqual({ watch: "price", is: "above", value: 183, settings: { close: true } });
+  });
+
+  it("names the measures once, not once per level of nesting", () => {
+    const json = JSON.stringify(zodSchema(predicateInputSchema() as never).jsonSchema);
+    expect(json.split("Measures: price").length - 1).toBe(1);
   });
 });

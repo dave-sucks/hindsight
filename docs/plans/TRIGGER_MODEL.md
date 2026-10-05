@@ -16,7 +16,7 @@ Every trigger is four fields:
 
 | Field | Meaning | Today's implementation |
 |---|---|---|
-| **condition** | The IF — a machine-evaluable predicate over price, position P&L, time, or an external event | `TriggerPredicate` union (incl. `GAIN_FROM_ENTRY`, `TRAILING_FROM_HIGH`) |
+| **condition** | The IF — a machine-evaluable condition over price, position P&L, time, or an external event | One shape, `{ watch, is?, value?, variable?, settings? }` or `{ match, conditions }`, one catalog entry per measure (`lib/agent/triggers/condition/`) — incl. the move from our entry and the trail off the high |
 | **action** | The THEN — ENTER / ADD / TRIM / EXIT / REVIEW | `TriggerAction` |
 | **mode** | **Instant** (action fully pre-specified; stage it deterministically — still approval-gated) vs **Agent** (wake judgment to validate/decide) | `fireMode: DIRECT \| TACTICAL` — but DIRECT is currently EXIT-only (gap, see §5) |
 | **timing** | Agent-mode only: **now** (tactical run, ~5 min) vs **batched** (next daily run) | Hard-wired by action today: REVIEW batches, everything else is now (gap: not yet a per-trigger choice) |
@@ -53,8 +53,8 @@ The current `needsAction` enum blurs three genuinely different things:
    state machine, never to the trigger array.
 
 **Classification of today's flags:**
-- `REVIEW_DUE` → already a trigger in disguise (`REVIEW_DATE_HIT` /
-  `REVIEW_CADENCE`). ✅ correct shape. ("Add every 30 days" is the same shape
+- `REVIEW_DUE` → already a trigger in disguise (the review clock,
+  `{ watch: "repeat" }`). ✅ correct shape. ("Add every 30 days" is the same shape
   with action=ADD — legal today.)
 - `RUNNING_WINNER` → a pure position predicate (`progress ≥ 0.75 OR gain ≥
   12% → REVIEW, batched`). **Should eventually be a visible trigger**, not an

@@ -27,30 +27,34 @@ these. There is no fourth path (no inbox, no routed "signal" rows, no
 summary sentence stored for later — that was the machinery deleted in
 September).
 
-### Door 1 — a trigger kind (the ladder)
+### Door 1 — a measure (the ladder)
 
 The Signals lane adds a condition the five-minute check can evaluate.
 
-- **Ships whole in one PR:** the predicate in `lib/agent/triggers/types.ts`
-  and `schema.ts`; evaluation in `evaluate.ts` (and the evaluator's data
-  load); a plain sentence in `format.ts`; add/edit support in the existing
-  trigger popover (`editable.ts`, `AddTriggerDialog`); tests including one
-  replayed from a real production case. A kind that can't fire today is
-  not merged (that's how three dead kinds sat on 119 theses until deleted).
+- **Ships whole in one PR:** one catalog entry in
+  `lib/agent/triggers/condition/measures/` (its words, its number, its
+  variables and settings, the actions it allows, its default cooldown, and
+  `reads`: what the check must load for it), its check in
+  `condition/read.ts` (`READERS`), the evaluator's data load if `reads` names
+  a new source, the numbers a fire names in `condition/facts.ts`, and tests
+  including one replayed from a real production case. The dialog, the pill,
+  the sentence and the agents' tool definitions read the catalog, so nothing
+  else changes. A measure that can't fire today is not merged (that's how
+  three dead kinds sat on 119 theses until deleted).
 - **Reads the vendor live or the morning snapshot.** Nothing is stored
   except the fire itself.
 - **A fire writes one Activity line with the numbers in it** ("Reported
   after close: EPS $2.22 vs $2.14 est, beat 3.8%").
-- **Signal kinds never trade by themselves.** They wake a tactical run or
+- **Signal measures never trade by themselves.** They wake a tactical run or
   batch to the next review; the no-agent close path is refused for them.
 - **Age travels with the data.** If the source failed or is stale, the
   fire does not happen and the evaluator logs why; an agent-facing result
   says so in words.
 
-Live today: `EARNINGS_BEAT`, `EARNINGS_MISS`, `EARNINGS_WITHIN`,
-`EARNINGS_SINCE`, `INSIDER_CLUSTER`. The old `FILING`, `GUIDANCE_CHANGE`
-and `SIGNAL_TYPE` kinds were deleted because nothing could fire them; SEC
-filings come back only as a new kind that does.
+Live today: `surprise` (earnings beat or miss), `report` (before or after a
+report), `filing` (an 8-K item, a form or a tier, off EDGAR) and `insiders`
+(insider buying). The old filing, guidance-change and signal-type kinds were
+deleted because nothing could fire them.
 
 ### Door 2 — a data field (what an agent reads)
 
@@ -73,11 +77,11 @@ lane accepts, edits the catalog and prompts, and says so on the ticket.
 
 | Situation | Written as | Door | Owner of the kind | Owner of the use |
 |---|---|---|---|---|
-| Post-earnings drift entry | `AND[EARNINGS_SINCE 1..3, PRICE_ABOVE gap-day low]` | 1 + 3 | Signals | Agents (D4) |
-| Heads-up before a print on a held name | `EARNINGS_WITHIN 3` → review | 1 + 3 | Signals | Agents (held review) |
-| A beat the market sold | `AND[EARNINGS_BEAT, PRICE_MOVE_PCT DOWN ≥ 3]` → review | 1 + 3 | Signals + Agents | Agents |
-| Insiders buying into a base | `INSIDER_CLUSTER` + a chart entry | 1 + 3 | Signals | Agents (D9) |
-| A dilutive offering on a held name | a filing kind for S-3 / 424B → review | 1 + 3 | Signals (to build) | Agents |
+| Post-earnings drift entry | 1–3 days after earnings **and** above the gap-day low | 1 + 3 | Signals | Agents (D4) |
+| Heads-up before a print on a held name | within 3 days before earnings → review | 1 + 3 | Signals | Agents (held review) |
+| A beat the market sold | earnings beat **and** below 3% from yesterday's close → review | 1 + 3 | Signals + Agents | Agents |
+| Insiders buying into a base | insider buying + a chart entry | 1 + 3 | Signals | Agents (D9) |
+| A dilutive offering on a held name | files an S-3 / 424B → review | 1 + 3 | Signals | Agents |
 | "Reported 3 days ago, beat on both lines, held the gap" as a discovery list | a screen over the calendar + the chart | 2 + 3 | Signals (calendar), Agents (chart) | Agents (chat triage) |
 
 ## 3. Laws for both lanes

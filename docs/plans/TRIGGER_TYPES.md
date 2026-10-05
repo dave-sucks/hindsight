@@ -654,6 +654,30 @@ catalog at the entry point the app calls:
    writes triggers run 12 times each, in the same hour, before and after.
 5. Tests and docs.
 
+**As built (stages 4 and 5).**
+
+- The agents' tools take the shape. The measures, their directions,
+  variables and settings are listed once, on `predicate`, from the catalog.
+  `settings` lists its keys, because the AI SDK writes a record as an object
+  that allows none; a model reading the old definition could not have said
+  "on the close". An edit is `{ id, value, variable, … }`; a model that still
+  sends `level`, `pct` or `days` has it read as the value, and the old
+  unit check stands (a dollar figure on a % trigger is refused).
+- Every trigger reads as one sentence from `describe.ts`, in the variables'
+  own words: "Sell if below 25% from the high since we bought", "Review every
+  30 days", "Review if within 2 days after earnings". Activity, needs-action,
+  the tactical kickoff and ladder, the fired-trigger list and the setup
+  catalog all use it.
+- The read view is gone: storage reads and writes the shape, and the kinds'
+  spelling exists only for the down script.
+- The kind names are gone from app code. What remains under those names is
+  another vocabulary: signal and aggregate types (`EARNINGS_BEAT` as a
+  signal, `GAP_UP` in an archetype's signal list), the `INSIDER_CLUSTER`
+  setup id, and the translator with its fixtures and tests.
+- Not done here, from the PR 3 row above: deleting the `MOVE_STOP` action
+  (no stored trigger carries it; 34 references) and moving fire history into
+  `triggerState`. Both are follow-ups; neither touches the shape.
+
 **Lanes.** This crosses both lanes' columns and every shared file in
 `LANES.md` §4. One owner runs it end to end. While PR 2 or PR 3 is open,
 neither lane opens a PR on `lib/agent/triggers/` without saying so in its
