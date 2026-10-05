@@ -12,6 +12,8 @@ export const repeat: MeasureDef = {
   value: { suffix: "days", placeholder: "30", integer: true, min: 1 },
   actions: ["REVIEW"],
   timed: true,
+  // The cadence is the interval.
+  cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "repeat" }),
   // Counted from the last review.
   legacy: {
@@ -32,6 +34,7 @@ export const fromDate: MeasureDef = {
   variables: { mode: "from", options: DATE_VARIABLES, title: "Counted from", word: () => "from", required: "Choose what to count from." },
   actions: ["TRIM", "EXIT", "REVIEW"],
   timed: true,
+  cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "from_date", is: "after", variable: "buy" }),
   check: (c) => (c.variable === "buy" && c.is === "before" ? "The buy is already in the past. Pick After." : null),
   legacy: {

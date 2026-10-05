@@ -13,6 +13,7 @@ export const volume: MeasureDef = {
   label: "Volume",
   word: "At least",
   value: { suffix: "× normal volume", placeholder: "2", min: 0 },
+  cooldownDays: () => 1,
   fresh: () => ({ watch: "volume" }),
   legacy: {
     from: { VOLUME_RATIO: (p) => ({ watch: "volume", value: p.min }) },
@@ -38,6 +39,7 @@ export const rsi: MeasureDef = {
       ],
     },
   ],
+  cooldownDays: () => 1,
   fresh: () => ({ watch: "rsi", is: "below" }),
   legacy: {
     from: {
@@ -70,6 +72,9 @@ export const strength: MeasureDef = {
       ],
     },
   ],
+  // A daily number that stays true for weeks: once a week.
+  cooldownDays: () => 7,
+  state: () => true,
   fresh: () => ({ watch: "strength", settings: { window: "3M" } }),
   legacy: {
     from: { RS_VS_SPY: (p) => ({ watch: "strength", value: p.min, settings: { window: p.window } }) },
@@ -92,6 +97,8 @@ export const gap: MeasureDef = {
     { key: "volume", default: 3 },
     { key: "withinDays", default: 1 },
   ],
+  // A gap stays "within the last N sessions" for N days: one fire per gap.
+  cooldownDays: (c) => Math.max(1, num(c.settings?.withinDays) ?? 1),
   fresh: () => ({ watch: "gap", settings: { volume: 3, withinDays: 3 } }),
   legacy: {
     from: { GAP_UP: (p) => withSettings({ watch: "gap", value: p.minPct }, { volume: p.minVolRatio, withinDays: p.withinDays }) },

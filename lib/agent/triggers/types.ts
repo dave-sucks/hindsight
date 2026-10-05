@@ -28,6 +28,10 @@
 
 // ── Signal-side enums (mirrors of Signal table columns the router has) ──
 
+import { fromLegacy, toLegacy } from "./condition/legacy";
+import { isDirectEligible, isLevel, onTheClose, protectiveCloseReason } from "./condition/rules";
+import { isRetired, type Condition, type When } from "./condition/types";
+
 export type SignalType =
   | "NEWS"
   | "EARNINGS"
@@ -330,80 +334,53 @@ export type Trigger = {
  */
 export type ThesisTriggers = Trigger[];
 
-/**
- * Predicate kinds whose EXIT is deterministic enough to close DIRECT (no
- * agent): the absolute price levels + the trailing stop. Everything else
- * (earnings, signals, RSI, time, composites) needs judgment, so a DIRECT
- * fire mode is refused on them — they always wake a tactical run.
- *
- * Single source for the gate, shared by the UI control, the
- * applyTriggerFireModeChange backend, and the tactical-run short-circuit.
- * Takes a plain string so the client-side (loosely-typed) trigger shape can
- * call it without a cast.
- */
-export const DIRECT_ELIGIBLE_PREDICATE_KINDS: readonly string[] = [
-  "PRICE_ABOVE",
-  "PRICE_BELOW",
-  "PRICE_MOVE_PCT",
-  "GAIN_FROM_ENTRY",
-  "TRAILING_FROM_HIGH",
-];
-
-export function isDirectEligiblePredicate(kind: string): boolean {
-  return DIRECT_ELIGIBLE_PREDICATE_KINDS.includes(kind);
+/** A stored predicate as the condition shape, or null for a removed kind. (Until storage moves to the shape.) */
+function asShape(p: unknown): When | null {
+  const w = fromLegacy(p);
+  return isRetired(w) ? null : w;
 }
 
 /**
- * Map a protective/price EXIT predicate to the STOP/TARGET close reason it
- * should carry — the single source of truth for "what tag does a
- * price-level protective exit close with." Returns null for any predicate
- * that isn't a deterministic price/gain protective kind (earnings, signals,
- * RSI, time, composites) — those are judgment exits the agent tags itself.
+ * A sale deterministic enough to close DIRECT (no agent): a typed price, or a
+ * % from a close, our entry or the high. Everything else (earnings, filings,
+ * RSI, time, composites) needs judgment, so a DIRECT fire mode is refused on
+ * it — it always wakes a tactical run. Each measure says which of its
+ * conditions qualify (./condition/measures).
+ *
+ * Single source for the gate, shared by the UI control, the
+ * applyTriggerFireModeChange backend, and the tactical-run short-circuit.
+ */
+export function isDirectEligiblePredicate(predicate: unknown): boolean {
+  const w = asShape(predicate);
+  return w != null && isDirectEligible(w);
+}
+
+/**
+ * The STOP/TARGET close reason a protective/price EXIT carries — the single
+ * source of truth for "what tag does a price-level protective exit close
+ * with." Null for a judgment exit (earnings, filings, RSI, time, composites)
+ * the agent tags itself.
  *
  * Why this exists: a price-level protective exit (trail-from-high give-back,
  * gain-from-entry lock, absolute stop/target, daily-% move) is a MATERIAL
  * risk event, not a discretionary re-pitch. The P1-28 unapproved-exit
  * cooldown (lib/proposals/maybe-await-approval.ts) exempts closes tagged
  * STOP/TARGET so a rejected protective exit still re-fires when price
- * re-crosses the level — exactly the re-alert the principal asked for. Both
- * close paths use this mapping so the tag is deterministic and never depends
- * on the LLM remembering to pick STOP:
+ * re-crosses the level. Both close paths use this mapping so the tag never
+ * depends on the LLM remembering to pick STOP:
  *   • DIRECT fire  → directExitReason() (tactical-run.ts) delegates here.
- *   • agent (TACTICAL) fire → the reason is precomputed here and threaded
- *     into the tool context (ToolContext.protectiveExitReason); close_position
- *     uses it in place of the model-chosen reason.
+ *   • agent (TACTICAL) fire → precomputed here and threaded into the tool
+ *     context (ToolContext.protectiveExitReason).
  *
- * STOP vs TARGET: adverse-direction move → STOP; favorable-direction → TARGET.
- * Both are cooldown-exempt; the split only affects the audit label. Trail /
- * gain-lock exits are protective give-backs → STOP.
+ * STOP vs TARGET: adverse move → STOP; favourable → TARGET; a give-back from
+ * our entry or the high → STOP. Each measure says which (./condition/measures).
  */
 export function protectiveExitCloseReason(
   predicate: TriggerPredicate,
   direction: string | null,
 ): "STOP" | "TARGET" | null {
-  if (!isDirectEligiblePredicate(predicate.kind)) return null;
-  const isLong = direction !== "SHORT";
-  switch (predicate.kind) {
-    case "PRICE_BELOW":
-      return isLong ? "STOP" : "TARGET";
-    case "PRICE_ABOVE":
-      return isLong ? "TARGET" : "STOP";
-    case "PRICE_MOVE_PCT": {
-      // Favorable (TARGET) when the move is WITH the position — LONG on an
-      // up day, SHORT on a down day — adverse (STOP) otherwise.
-      const up = predicate.direction === "UP";
-      const favorable = isLong ? up : !up;
-      return favorable ? "TARGET" : "STOP";
-    }
-    // GAIN_FROM_ENTRY (gain-lock) and TRAILING_FROM_HIGH (give-back) are
-    // protective ratchets — treat as STOP so the gain is protected as a
-    // material risk exit.
-    case "GAIN_FROM_ENTRY":
-    case "TRAILING_FROM_HIGH":
-      return "STOP";
-    default:
-      return "STOP";
-  }
+  const w = asShape(predicate);
+  return w == null ? null : protectiveCloseReason(w, direction);
 }
 
 /**
@@ -442,9 +419,6 @@ export function effectiveTriggerAction(
 ): TriggerAction {
   if (state.status === "HOLDING") return trigger.action;
 
-  const kind = trigger.predicate.kind;
-  const isPriceLevel = kind === "PRICE_ABOVE" || kind === "PRICE_BELOW";
-
   // A sell on something we don't own can only mean the plan is wrong. This
   // covers judgment exits (earnings, signals) too — on an un-held thesis
   // those say the same thing.
@@ -454,9 +428,10 @@ export function effectiveTriggerAction(
   // without us, so the priced plan is stale. Housekeeping REVIEWs (earnings,
   // review cadence, news) are untouched — they still just want a look. With
   // no buy there is no priced plan to go stale: the level is a wake.
-  if (trigger.action === "REVIEW" && isPriceLevel && state.hasBuy !== false) {
-    const isLong = state.direction !== "SHORT";
-    const favourable = isLong ? kind === "PRICE_ABOVE" : kind === "PRICE_BELOW";
+  const w = asShape(trigger.predicate);
+  if (trigger.action === "REVIEW" && w != null && isLevel(w) && state.hasBuy !== false) {
+    const above = (w as Condition).is === "above";
+    const favourable = state.direction !== "SHORT" ? above : !above;
     if (favourable) return "DEMOTE";
   }
 
@@ -473,28 +448,20 @@ export function effectiveTriggerAction(
  * traded back to $363.83 that morning, and its plan was gone at 09:30. In
  * the 30 days to that day, three of six floor set-downs were dips like it.
  *
- * So on a thesis we don't hold, a sell trigger's price level reads the day's
- * close (the 16:20 pass). On a stock we hold the floor is a sale and keeps
- * its own timing. Resolved where triggers are read, never stored, so a buy
- * never has to rewrite it. The five-minute check, the morning run's snapshot
- * and the thesis sheet all call this one function. Pure.
+ * So on a thesis we don't hold, a sell trigger's typed price levels read the
+ * day's close (the 16:20 pass). On a stock we hold the floor is a sale and
+ * keeps its own timing. Resolved where triggers are read, never stored, so a
+ * buy never has to rewrite it. The five-minute check, the morning run's
+ * snapshot and the thesis sheet all call this one function. Pure.
  */
-export function watchedFloorOnClose<T extends { action: string; predicate: TimedPredicate }>(
+export function watchedFloorOnClose<T extends { action: string; predicate: unknown }>(
   trigger: T,
   state: { status?: string | null },
 ): T {
   if (state.status === "HOLDING" || trigger.action !== "EXIT") return trigger;
-  const onClose = (p: TimedPredicate): TimedPredicate =>
-    p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW"
-      ? { ...p, basis: "close" }
-      : (p.kind === "AND" || p.kind === "OR") && p.predicates
-        ? { ...p, predicates: p.predicates.map(onClose) }
-        : p;
-  const predicate = onClose(trigger.predicate);
-  return JSON.stringify(predicate) === JSON.stringify(trigger.predicate)
-    ? trigger
-    : ({ ...trigger, predicate } as T);
+  const w = asShape(trigger.predicate);
+  if (w == null) return trigger;
+  const closed = onTheClose(w);
+  if (closed === w) return trigger;
+  return { ...trigger, predicate: toLegacy(closed) ?? trigger.predicate } as T;
 }
-
-/** What `watchedFloorOnClose` reads — the server's predicates and the sheet's both have it. */
-type TimedPredicate = { kind: string; basis?: string; predicates?: TimedPredicate[] };

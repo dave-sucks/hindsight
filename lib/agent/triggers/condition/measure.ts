@@ -80,8 +80,19 @@ export interface MeasureDef {
   direct?: (c: Condition) => boolean;
   /** A clock, not a condition: "Review every 30 days." It stands alone. */
   timed?: boolean;
-  /** A buy on this condition is one rule whichever way it is set: the price you'd start the position at. */
-  oneEnter?: (c: Condition) => boolean;
+  /**
+   * A typed price level: a floor or a target. A buy on one is one rule
+   * whichever way it is set (the price you'd start at); on a stock we don't
+   * own, a sale on one sets the plan down and waits for the close; a review
+   * reached before the buy says the plan is stale.
+   */
+  level?: (c: Condition) => boolean;
+  /** The label a direct sale on it closes with: STOP for a protective give-back, TARGET for a favourable level. */
+  closeReason?: (c: Condition, isLong: boolean) => "STOP" | "TARGET";
+  /** Days between fires when the trigger names none. */
+  cooldownDays: (c: Condition, action: string) => number;
+  /** Somewhere the stock is for weeks (below the 200-day), not a moment: a review on it asks at most weekly. */
+  state?: (c: Condition) => boolean;
   /** What a new condition on this tab starts as. */
   fresh: () => Condition;
   /** What's wrong beyond the number and the variable, in one sentence, or null. */

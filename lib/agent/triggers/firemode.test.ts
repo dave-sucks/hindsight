@@ -65,24 +65,29 @@ describe("defaultFireModeForAction", () => {
 });
 
 describe("isDirectEligiblePredicate — only deterministic price/% exits", () => {
-  it.each(["PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT"])(
-    "%s is DIRECT-eligible",
-    (kind) => {
-      expect(isDirectEligiblePredicate(kind)).toBe(true);
-    },
-  );
+  it.each([
+    { kind: "PRICE_ABOVE", level: 100 },
+    { kind: "PRICE_BELOW", level: 100 },
+    { kind: "PRICE_MOVE_PCT", pct: 5, direction: "DOWN", window: "1D" },
+    { kind: "PRICE_MOVE_PCT", pct: 5, direction: "DOWN", window: "20D" },
+    { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "DOWN" },
+    { kind: "TRAILING_FROM_HIGH", pct: 15 },
+  ])("%j is DIRECT-eligible", (predicate) => {
+    expect(isDirectEligiblePredicate(predicate)).toBe(true);
+  });
 
   it.each([
-    "EARNINGS_MISS",
-    "EARNINGS_BEAT",
-    "RSI",
-    "NEAR_SMA",
-    "VOLUME_RATIO",
-    "TRAILING_STOP",
-    "AND",
-    "OR",
-  ])("%s is NOT DIRECT-eligible (judgment-bearing → tactical)", (kind) => {
-    expect(isDirectEligiblePredicate(kind)).toBe(false);
+    { kind: "EARNINGS_MISS" },
+    { kind: "EARNINGS_BEAT" },
+    { kind: "RSI", threshold: 30, direction: "BELOW" },
+    { kind: "NEAR_SMA", period: 50, withinPct: 2 },
+    { kind: "VS_SMA", period: 200, direction: "BELOW" },
+    { kind: "VOLUME_RATIO", min: 2 },
+    { kind: "TRAILING_STOP", pct: 10 },
+    { kind: "AND", predicates: [{ kind: "PRICE_BELOW", level: 100 }, { kind: "VOLUME_RATIO", min: 2 }] },
+    { kind: "OR", predicates: [{ kind: "PRICE_BELOW", level: 100 }, { kind: "PRICE_BELOW", level: 90 }] },
+  ])("%j is NOT DIRECT-eligible (judgment-bearing → tactical)", (predicate) => {
+    expect(isDirectEligiblePredicate(predicate)).toBe(false);
   });
 });
 

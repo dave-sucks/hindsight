@@ -18,6 +18,8 @@ export const filing: MeasureDef = {
   value: { none: true, placeholder: "Choose a filing" },
   variables: { mode: "replace", options: FILING_VARIABLES, title: "Choose a filing", required: "Choose a filing." },
   actions: ["REVIEW"],
+  // One fire per filing (firedFilings), and filings cluster: no cooldown.
+  cooldownDays: () => 0,
   fresh: () => ({ watch: "filing", variable: "tier:MATERIAL" }),
   legacy: {
     from: {
@@ -75,6 +77,7 @@ export const insiders: MeasureDef = {
     },
   ],
   actions: ["REVIEW"],
+  cooldownDays: () => 30,
   fresh: () => ({ watch: "insiders" }),
   legacy: {
     from: { INSIDER_CLUSTER: (p) => ({ watch: "insiders", value: p.minBuyers, settings: { days: p.days } }) },

@@ -538,7 +538,7 @@ export const tacticalRun = inngest.createFunction(
     if (
       trigger.fireMode === "DIRECT" &&
       trigger.action === "EXIT" &&
-      isDirectEligiblePredicate(trigger.predicate.kind) &&
+      isDirectEligiblePredicate(trigger.predicate) &&
       position
     ) {
       const direct = await step.run("direct-close", async () => {

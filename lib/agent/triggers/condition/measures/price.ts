@@ -34,7 +34,11 @@ export const price: MeasureDef = {
     },
   ],
   direct: (c) => !c.variable,
-  oneEnter: (c) => !c.variable,
+  level: (c) => !c.variable,
+  closeReason: (c, isLong) => ((c.is === "below") === isLong ? "STOP" : "TARGET"),
+  // A price line: one nudge a day. Under an average is a state a review asks about weekly (a buy fires on its crossing, a sale is a standing order).
+  cooldownDays: (c, action) => (c.variable && SMA_PERIOD[c.variable] && action === "REVIEW" ? 7 : 1),
+  state: (c) => c.variable != null && SMA_PERIOD[c.variable] != null,
   fresh: () => ({ watch: "price", is: "below" }),
   check: (c, ctx) => {
     if (!c.variable && c.value === 0) return "Enter a price, or use a price variable.";
@@ -86,6 +90,11 @@ export const move: MeasureDef = {
     required: "Choose what the % is measured from.",
   },
   direct: (c) => c.variable != null && variableDef(c.variable).direct === true,
+  // A give-back from our entry or the high protects a gain (STOP); a day's move with the position is a TARGET.
+  closeReason: (c, isLong) => (variableDef(c.variable ?? "prev_close").position ? "STOP" : (c.is === "above") === isLong ? "TARGET" : "STOP"),
+  // A gain milestone latches (up 10% stays up 10%), so a week; near the 52-week high is a state a review asks weekly; the rest daily.
+  cooldownDays: (c, action) => (c.variable === "entry" ? 7 : c.is === "near" && c.variable === "high52" && action === "REVIEW" ? 7 : 1),
+  state: (c) => c.is === "near" && c.variable === "high52",
   fresh: () => ({ watch: "move", is: "below", variable: "prev_close" }),
   check: (c) => {
     if (c.is === "near" && (c.value ?? 0) === 0) return "Within needs a distance, such as 2%.";

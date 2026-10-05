@@ -344,7 +344,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     if (
       op.fireMode === "DIRECT" &&
-      ((op.action ?? target.action) !== "EXIT" || !held || !isDirectEligiblePredicate(target.predicate.kind))
+      ((op.action ?? target.action) !== "EXIT" || !held || !isDirectEligiblePredicate(target.predicate))
     ) {
       return refuse(
         "edit",

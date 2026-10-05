@@ -22,6 +22,9 @@
  * trigger so cooldown stamps survive subsequent merges.
  */
 
+import { fromLegacy } from "./condition/legacy";
+import { defaultCooldownDays } from "./condition/rules";
+import { isRetired } from "./condition/types";
 import { randomUUID } from "node:crypto";
 import type { Trigger, TriggerPredicate } from "./types";
 import { triggerBucket } from "./bucket";
@@ -626,81 +629,13 @@ export function defaultCooldownDaysForPredicate(
   p: TriggerPredicate,
   action?: Trigger["action"],
 ): number {
-  switch (p.kind) {
-    case "SEC_EVENT":
-      // No cooldown: one fire per FILING (firedFilings), and filings cluster —
-      // NVDA filed three 8-Ks in 17 days; a cooldown would swallow two.
-      return 0;
-    case "EARNINGS_BEAT":
-    case "EARNINGS_MISS":
-      return 7;
-    case "EARNINGS_WITHIN":
-    case "EARNINGS_SINCE":
-    case "INSIDER_CLUSTER":
-      // "Reports within N days" is true every day of the approach, so the
-      // cooldown is what makes it fire once. 30 clears any legal window
-      // (≤14) with room and is well short of a quarter, so the next
-      // report still fires.
-      return 30;
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-    case "PRICE_MOVE_PCT":
-    case "NEAR_SMA":
-    case "VOLUME_RATIO":
-    case "NEW_HIGH":
-    case "RSI":
-      // Price and chart conditions: one nudge per day at most.
-      return 1;
-    case "RS_VS_SPY":
-      // A daily-resolution number that stays true for weeks: once a week, not
-      // a daily re-ask (it can't "cross" — it doesn't read the price).
-      return 7;
-    case "VS_SMA":
-    case "PCT_FROM_52W_HIGH":
-      // DAV-329. On a review, a trim or a sale, "below the 200-day" is a
-      // STATE the rung asks about every day it holds: ABT sat under its
-      // 200-day from 09-15 to 09-25 and the Compounder's review rule fired
-      // all nine trading days, five of the six runs that received it writing
-      // no change at all. A condition that is true for a fortnight should
-      // ask twice, not fourteen times.
-      //
-      // Only the REVIEW slows down. A BUY reads the price, so an ENTER on
-      // these fires on the crossing, once, by itself (`shouldFire`); a
-      // week's cooldown there would not quiet a nag, it would swallow the
-      // second crossing (GD, GEV and SYK buy on "back above the 50-day").
-      // A SALE keeps DAV-229: a protective rung is a standing order and
-      // asks every day its condition holds. #719 shipped this as
-      // `ENTER ? 1 : 7`, which quietly put an EXIT on a weekly clock too.
-      // See `effectiveCooldownDays` below — same rule, enforced as a floor
-      // so a written `cooldownDays: 1` can't defeat it.
-      return action === "REVIEW" ? 7 : 1;
-    case "GAP_UP":
-      // A gap stays "within the last N sessions" for N days; one fire per gap.
-      return Math.max(1, p.withinDays ?? 1);
-    case "GAIN_FROM_ENTRY":
-      // A gain milestone LATCHES (up 10% stays up 10%): the acting agent
-      // is expected to replace the fired rung with the next checkpoint;
-      // 7d stops a same-week re-fire if it doesn't.
-      return 7;
-    case "TRAILING_FROM_HIGH":
-      // Also latches while price sits below the trail. EXIT is terminal
-      // anyway; REVIEW/TRIM rungs get one nudge per day, matching the
-      // other price predicates.
-      return 1;
-    case "REVIEW_CADENCE":
-      // The cadence IS the interval. A clock allowed to re-fire sooner than
-      // its own schedule is just a faster clock; the flat 7 that used to sit
-      // here made a 30-day review nag weekly once it latched.
-      return p.days;
-    case "AND":
-    case "OR":
-      // Composite: pick the max child cooldown. If a composite contains
-      // an EARNINGS_BEAT, use 7 — the more conservative default wins.
-      return Math.max(
-        1,
-        ...p.predicates.map((child) => defaultCooldownDaysForPredicate(child, action)),
-      );
-  }
+  // Each measure carries its own default (./condition/measures): no cooldown
+  // on a filing (one fire per filing), 7 on a beat/miss, 30 on a report
+  // window or an insider cluster, a day on price and chart lines, a week on a
+  // state a review asks about (DAV-329), a week on a gain milestone (it
+  // latches), one fire per gap, and a schedule's own interval.
+  const w = fromLegacy(p);
+  return isRetired(w) ? 1 : defaultCooldownDays(w, action ?? "");
 }
 
 /**

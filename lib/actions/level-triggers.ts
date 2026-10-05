@@ -171,7 +171,7 @@ export async function addLevelTrigger(
     ...input,
     defaultRationale: `${predicateSentence(input.predicate)} — standing rule set by the principal.`,
     allowDirect:
-      input.action === "EXIT" && isDirectEligiblePredicate(input.predicate.kind),
+      input.action === "EXIT" && isDirectEligiblePredicate(input.predicate),
   });
 
   const next = [...existing, created];
@@ -212,7 +212,7 @@ export async function replaceLevelTrigger(
   const built = buildPrincipalTrigger({
     ...input,
     defaultRationale: `${predicateSentence(input.predicate)} — standing rule set by the principal.`,
-    allowDirect: input.action === "EXIT" && isDirectEligiblePredicate(input.predicate.kind),
+    allowDirect: input.action === "EXIT" && isDirectEligiblePredicate(input.predicate),
   });
   const sameSlot = triggerBucket(found) === bucket;
   const updated: Trigger = sameSlot
@@ -274,7 +274,7 @@ export async function setLevelTriggerFireMode(
   }
   if (
     fireMode === "DIRECT" &&
-    (found.action !== "EXIT" || !isDirectEligiblePredicate(found.predicate.kind))
+    (found.action !== "EXIT" || !isDirectEligiblePredicate(found.predicate))
   ) {
     throw new ThesisEditError(
       "INVALID",

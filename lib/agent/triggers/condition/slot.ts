@@ -32,6 +32,6 @@ export function whenSlot(w: When): string {
 
 /** `(slot, action)`. */
 export function triggerSlot(w: When, action: TriggerAction): string {
-  if (action === "ENTER" && !isGroup(w) && measureOf(w).oneEnter?.(w)) return `${w.watch}:enter::ENTER`;
+  if (action === "ENTER" && !isGroup(w) && measureOf(w).level?.(w)) return `${w.watch}:enter::ENTER`;
   return `${whenSlot(w)}::${action}`;
 }

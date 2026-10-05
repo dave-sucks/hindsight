@@ -5,8 +5,12 @@
  * would say "once a day" on a rule that asks once a week.
  */
 
+import { fromLegacy } from "./condition/legacy";
+import { isState } from "./condition/rules";
+import { isRetired } from "./condition/types";
+
 /** Loose on purpose: the evaluator's strict predicate and the sheet's wire type both fit. */
-type PredicateLike = { kind: string; predicates?: readonly PredicateLike[] };
+type PredicateLike = { kind: string };
 
 /**
  * Predicates that describe a STATE rather than a moment.
@@ -20,19 +24,9 @@ type PredicateLike = { kind: string; predicates?: readonly PredicateLike[] };
  * price line keeps the faster clock.
  */
 export function isStatePredicate(p: PredicateLike): boolean {
-  switch (p.kind) {
-    case "VS_SMA":
-    case "PCT_FROM_52W_HIGH":
-    case "RS_VS_SPY":
-      return true;
-    case "AND":
-    case "OR": {
-      const children = p.predicates ?? [];
-      return children.length > 0 && children.every(isStatePredicate);
-    }
-    default:
-      return false;
-  }
+  // Each measure says whether it is a state (./condition/measures).
+  const w = fromLegacy(p);
+  return !isRetired(w) && isState(w);
 }
 
 /** A state rung that is a review asks once a week, not once a day. */

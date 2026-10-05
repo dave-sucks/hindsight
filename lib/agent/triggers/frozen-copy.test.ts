@@ -121,7 +121,7 @@ describe("DAV-322 — the copies come off", () => {
 
   it("2. the 25% sale goes because it is the Compounder's number, not ABT's", () => {
     const copies = frozenCopies({ own: ABT, analyst: COMPOUNDER, account: ACCOUNT, sharedRationales: shared });
-    const trail = copies.find((c) => c.bucket === "TRAILING_FROM_HIGH::EXIT");
+    const trail = copies.find((c) => c.bucket === triggerBucket({ predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 }, action: "EXIT" }));
     expect(trail?.reason).toBe("SAME_RUNG_SAME_NUMBER");
     expect(trail?.governedBy).toBe("ANALYST");
   });
