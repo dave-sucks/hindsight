@@ -40,6 +40,7 @@ import { prisma } from "@/lib/prisma";
 import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
+import { compareWithShape, type Disagreement } from "@/lib/agent/triggers/condition/read";
 import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
@@ -349,17 +350,26 @@ interface FiringEvent {
  * For one thesis × triggers[] × context, return all triggers that fire +
  * the updated triggers array with lastFiredAt stamped on the firing ones.
  * Pure read of `now`/`ctx` — no side effects.
+ *
+ * Every decision is also made by the condition shape's checker, and any
+ * disagreement is returned for the pass to log. Nothing reads it: the fires
+ * are today's (docs/plans/TRIGGER_TYPES.md PR 2, until the cutover).
  */
 function evaluateThesisTriggers<T extends Trigger>(args: {
   thesisId: string;
   triggers: T[];
   ctx: EvaluationContext;
   predicateFilter?: (p: TriggerPredicate) => boolean;
-}): { fires: T[]; updatedTriggers: T[] } {
+}): { fires: T[]; updatedTriggers: T[]; compared: number; disagreements: Disagreement[] } {
   const fires: T[] = [];
+  const disagreements: Disagreement[] = [];
+  let compared = 0;
   const updatedTriggers = args.triggers.map((t) => {
     if (args.predicateFilter && !args.predicateFilter(t.predicate)) return t;
     const result = shouldFire(t, args.ctx);
+    compared++;
+    const disagreement = compareWithShape(t, args.ctx, result);
+    if (disagreement) disagreements.push(disagreement);
     if (!result.fires) return t;
     fires.push(t);
     return {
@@ -367,7 +377,7 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
       lastFiredAt: args.ctx.now.toISOString(),
     };
   });
-  return { fires, updatedTriggers };
+  return { fires, updatedTriggers, compared, disagreements };
 }
 
 /**
@@ -491,6 +501,8 @@ export const triggerEvaluator = inngest.createFunction(
       // theses with PRICE_ABOVE/PRICE_BELOW entry triggers; without
       // cron-path evaluation those triggers would never fire intraday.
       // The 200-ticker cap below still bounds the loop.
+      // What the condition shape's checker said beside today's, this pass.
+      const shadow = { compared: 0, disagreements: [] as Array<Disagreement & { ticker: string; thesisId: string }> };
       const theses = await prisma.thesis.findMany({
         where: {
           // enabled:true — kill the zombie: a disabled analyst's HOLDING/
@@ -736,12 +748,14 @@ export const triggerEvaluator = inngest.createFunction(
           now,
         };
 
-        const { fires } = evaluateThesisTriggers({
+        const { fires, compared, disagreements } = evaluateThesisTriggers({
           thesisId: thesis.id,
           triggers,
           ctx,
           predicateFilter: isPriceSidePredicate,
         });
+        shadow.compared += compared;
+        for (const d of disagreements) shadow.disagreements.push({ ticker: thesis.ticker, thesisId: thesis.id, ...d });
 
         if (fires.length === 0) continue;
         // The filings behind each filing fire, read before the stamp
@@ -892,6 +906,11 @@ export const triggerEvaluator = inngest.createFunction(
           });
         }
       }
+      // The condition shape's checker beside today's: one line a pass, and one
+      // per disagreement. Zero for three trading days is the cutover's proof.
+      console.log(`[trigger-shadow] ${session} pass: ${shadow.compared} decisions compared, ${shadow.disagreements.length} disagreements`);
+      for (const d of shadow.disagreements.slice(0, 25)) console.warn("[trigger-shadow] disagreement", JSON.stringify(d));
+
       // Two protective fires on one thesis in one pass → one run (DAV-254).
       return collapseProtectiveFires(events, (e) => e.sentence ?? e.predicateKind);
     });

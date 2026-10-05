@@ -186,4 +186,22 @@ describe("TRV 2026-09-29 — a watched plan and a floor just under the price", (
     expect(trv(t)).toMatchObject({ status: "HOLDING", stopLoss: 359.87 });
     expect(audit(t)).toEqual([]);
   });
+
+  it("the condition shape's checker, run beside today's on every tick, agrees and changes nothing", async () => {
+    const log = jest.spyOn(console, "log").mockImplementation(() => {});
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await tick(TICK_0930, fx.setDown.price);
+      await tick(CLOSE_PASS, 362.34);
+      await tick(CLOSE_PASS, 358.9);
+      await tick(TICK_0930, fx.setDown.price, { held: true });
+      const lines = log.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[trigger-shadow]"));
+      expect(lines).toHaveLength(4);
+      for (const l of lines) expect(l).toMatch(/pass: [1-9]\d* decisions compared, 0 disagreements$/);
+      expect(warn.mock.calls.filter((c) => String(c[0]).startsWith("[trigger-shadow]"))).toEqual([]);
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
+    }
+  });
 });
