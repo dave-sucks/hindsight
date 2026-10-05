@@ -119,9 +119,22 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
   return shapeOf(p) != null;
 }
 
+/**
+ * The condition, for the questions asked of the whole book before the check
+ * (what to load, which pass). One that can't be read is left out here; the
+ * check reports it, with its stock, when it reaches it.
+ */
+function shapeForLoading(p: TriggerPredicate) {
+  try {
+    return shapeOf(p);
+  } catch {
+    return null;
+  }
+}
+
 /** Does the pass load `source` for it: the snapshot, today's volume, the earnings calendar, filings. */
 function reads(p: TriggerPredicate, source: Source): boolean {
-  const w = shapeOf(p);
+  const w = shapeForLoading(p);
   return w != null && readsSource(w, source);
 }
 
@@ -138,7 +151,7 @@ const needsTodayVolume = (p: TriggerPredicate) => reads(p, "volume");
 
 /** Does this predicate wait for the close? Selects the rungs of the close pass. */
 function hasCloseBasis(p: TriggerPredicate): boolean {
-  const w = shapeOf(p);
+  const w = shapeForLoading(p);
   return w != null && waitsForClose(w);
 }
 
@@ -276,17 +289,30 @@ interface FiringEvent {
  * For one thesis × triggers[] × context, return all triggers that fire +
  * the updated triggers array with lastFiredAt stamped on the firing ones.
  * Pure read of `now`/`ctx` — no side effects.
+ *
+ * A trigger that can't be checked (an error reading it or its numbers) is
+ * logged with its id and stock and skipped for this pass; every other
+ * trigger, on this stock and the rest, is still checked.
  */
 function evaluateThesisTriggers<T extends Trigger>(args: {
   thesisId: string;
+  ticker: string;
   triggers: T[];
   ctx: EvaluationContext;
   predicateFilter?: (p: TriggerPredicate) => boolean;
 }): { fires: T[]; updatedTriggers: T[] } {
   const fires: T[] = [];
   const updatedTriggers = args.triggers.map((t) => {
-    if (args.predicateFilter && !args.predicateFilter(t.predicate)) return t;
-    const result = shouldFire(t, args.ctx);
+    let result: ReturnType<typeof shouldFire>;
+    try {
+      if (args.predicateFilter && !args.predicateFilter(t.predicate)) return t;
+      result = shouldFire(t, args.ctx);
+    } catch (e) {
+      console.error(
+        `[trigger-evaluator] CHECK FAILED on ${args.ticker}: trigger ${t.id} (thesis ${args.thesisId}) was not checked this pass; the rest of the pass goes on. ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
+      );
+      return t;
+    }
     if (!result.fires) return t;
     fires.push(t);
     return {
@@ -665,6 +691,7 @@ export const triggerEvaluator = inngest.createFunction(
 
         const { fires } = evaluateThesisTriggers({
           thesisId: thesis.id,
+          ticker: thesis.ticker,
           triggers,
           ctx,
           predicateFilter: isPriceSidePredicate,
