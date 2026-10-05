@@ -185,7 +185,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
   update_thesis: [
     f("thesis_id", "IDENTITY"),
     f("rationale", "TEXT"),
-    f("structural_unchanged_reason", "TEXT", { note: "Optional line on the row since #712; nothing is refused without it." }),
     f("signal_ids", "IDENTITY"),
     f("trigger_id", "IDENTITY"),
     f("trade_id", "IDENTITY"),

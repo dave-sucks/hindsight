@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { describeRefusalTool } from "@/lib/agent/gate-rejections";
-import { attemptOutcomes, TRADE_TOOLS } from "@/lib/portfolio/attempt-outcomes";
+import { attemptOutcomes, blockedReason, TRADE_TOOLS } from "@/lib/portfolio/attempt-outcomes";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
@@ -1397,7 +1397,7 @@ export async function getDashboardData(
       },
       orderBy: { createdAt: "desc" },
       take: 20,
-      select: { id: true, tool: true, ticker: true, summary: true, detail: true, analystId: true, createdAt: true },
+      select: { id: true, tool: true, gateCode: true, ticker: true, summary: true, detail: true, analystId: true, createdAt: true },
     });
     for (const b of blocked) {
       if (!b.ticker) continue;
@@ -1410,7 +1410,7 @@ export async function getDashboardData(
         timestamp: b.createdAt.toISOString(),
         label: `${describeRefusalTool(b.tool)} blocked`,
         source: "agent",
-        reason: b.detail ?? b.summary,
+        reason: blockedReason(b),
         pnl: null,
         pnlPct: null,
         outcome: null,

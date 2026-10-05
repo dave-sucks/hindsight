@@ -18,6 +18,7 @@
 import type { RunInput } from "./run-input";
 import { capacityLine, isFull } from "@/lib/agent/capacity";
 import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
+import { VOICE_RULES } from "@/lib/agent/voice";
 
 // ─── Config type (shared with consumers) ─────────────────────────────────────
 
@@ -104,6 +105,9 @@ export function buildDailyRunSystemPromptV2(
     ].join("\n"),
   );
 
+  // ── How you write (lib/agent/voice.ts, the same in every agent) ────────
+  sections.push(`## How you write\n\n${VOICE_RULES}`);
+
   // ── Earnings on the book this week (live off the calendar) ─────────────
   const soon = runInput.earnings?.reportingSoon ?? [];
   const justReported = runInput.earnings?.justReported ?? [];
@@ -162,8 +166,8 @@ export function buildDailyRunSystemPromptV2(
         "## Regime and cash",
         ...(room ? [room] : []),
         `Cash is $${Math.round(cash).toLocaleString()}${cashPct != null ? ` (${cashPct}% of equity)` : ""}. \`get_portfolio_context\` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.`,
-        "- **RISK_ON:** full size. **CAUTION** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this regime — say so on the row rather than buying one. **RISK_OFF** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
-        `- **Cash duty.** Cash above 25% of equity, a watch name at its buy level${atBuy.length ? ` (today: ${atBuy.join(", ")})` : ""}, and RISK_ON: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`,
+        "- **Risk-on:** full size. **Cautious** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this market — say so on the row rather than buying one. **Risk-off** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
+        `- **Cash duty.** Cash above 25% of equity, a watch name at its buy level${atBuy.length ? ` (today: ${atBuy.join(", ")})` : ""}, and a risk-on market: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`,
         ...(isFull(capacity)
           ? [
               "- **This analyst is full.** A buy that fired or is live cannot be bought, and place_trade will refuse it — do not call it. A row carrying `buyBlockedByFull` is a portfolio decision, not a quiet day: on that row's `update_thesis`, name which held stock it would replace and why it is the better use of the slot, or write \"full — waiting\" with the reason. Say it once in the run summary too (\"$ETN wants in; the analyst is full\"). Replacing a holding is the principal's decision; your job is to put the comparison in front of them.",

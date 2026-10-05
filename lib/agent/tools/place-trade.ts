@@ -10,7 +10,7 @@ import { isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowledge/setups
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
-import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
+import { shownToDave } from "@/lib/agent/voice";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
@@ -85,8 +85,8 @@ const placeTradeSchema = z.object({
       .string()
       .optional()
       .describe(
-        "REQUIRED on every buy proposal — trigger-fired tactical entries AND daily-run direct entries. Your live entry-decision reasoning at proposal time — the validation you ran (price level, structure, volume, contradicting headlines), why this is the trade NOW. Surfaced as Order.rationale on the proposal so the principal reads the entry decision, not the prior WATCHING-side 'not actionable yet' snapshot text. Skip only for principal-chat one-shot entries, where the thesis snapshot you just wrote IS the fresh entry rationale." +
-          PROPOSAL_RATIONALE_VOICE,
+        "REQUIRED on every buy proposal, from a trigger run or the daily run: why you're buying now. The buy and the price first, then the reason in a sentence or two, then the target and the stop. Skip only for a one-shot buy in the chat, where the thesis you just wrote is the reason." +
+          shownToDave("on the proposal and in the approval email"),
       ),
     analyst_id: z
       .string()

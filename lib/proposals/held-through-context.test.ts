@@ -32,10 +32,10 @@ describe("buildHeldThroughNote", () => {
       recentExtreme: 921.5,
       direction: "LONG",
     });
-    expect(note).toContain("3 declines");
+    expect(note).toContain("Fourth ask: you declined it or let it expire 3 times in the last 7 days");
     expect(note).toContain('"holding through earnings, story intact"');
     expect(note).toContain("$921.50");
-    expect(note).toContain("just below");
+    expect(note).toContain("move the line just under it");
   });
 
   it("uses singular wording for one prior decline", () => {
@@ -45,8 +45,7 @@ describe("buildHeldThroughNote", () => {
       recentExtreme: null,
       direction: "LONG",
     });
-    expect(note).toContain("1 decline or expiry");
-    expect(note).not.toContain("declines");
+    expect(note).toContain("Second ask: you declined it or let it expire once");
   });
 
   it("suggests above the recent high for SHORT positions", () => {
@@ -56,8 +55,8 @@ describe("buildHeldThroughNote", () => {
       recentExtreme: 55.25,
       direction: "SHORT",
     });
-    expect(note).toContain("Recent high $55.25");
-    expect(note).toContain("just above");
+    expect(note).toContain("The recent high is $55.25");
+    expect(note).toContain("move the line just over it");
   });
 
   it("omits the level suggestion when bars were unavailable", () => {
@@ -67,8 +66,8 @@ describe("buildHeldThroughNote", () => {
       recentExtreme: null,
       direction: "LONG",
     });
-    expect(note).not.toContain("Recent low");
-    expect(note).toContain("2 declines");
+    expect(note).not.toContain("recent low");
+    expect(note).toContain("Third ask: you declined it or let it expire twice");
   });
 
   it("truncates very long reject notes", () => {

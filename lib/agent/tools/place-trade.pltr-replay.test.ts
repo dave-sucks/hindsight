@@ -78,7 +78,7 @@ describe("PLTR 2026-09-25 — the fired buy the size refusal killed", () => {
     expect(shares * 192.89).toBeLessThanOrEqual(10000);
     const sizing = (result.data?.sizing as string[]).join(" ");
     expect(sizing).not.toMatch(/Sized by (you|the analyst)/);
-    expect(sizing).toMatch(/Sized by risk|Sized from the analyst's band/);
+    expect(sizing).toMatch(/sized by risk|Sized from the analyst's band/);
   });
 
   it("in the principal's chat, $11,222 is honored and the line says it is above the largest trade", async () => {

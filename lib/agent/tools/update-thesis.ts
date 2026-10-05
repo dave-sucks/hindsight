@@ -27,6 +27,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { shownToDave } from "@/lib/agent/voice";
 import { prisma } from "@/lib/prisma";
 import {
   parseTriggersResilient,
@@ -111,13 +112,8 @@ const updateSchema = z.object({
     .string()
     .min(10)
     .describe(
-      "Why you're updating this thesis. Required — every update writes a timeline row and the rationale is what the user (or future you) reads to understand the change.",
-    ),
-  structural_unchanged_reason: z
-    .string()
-    .optional()
-    .describe(
-      "Optional. When you move a level without changing the belief, one line on why the belief still holds — it is appended to the activity row. Nothing is refused without it.",
+      "Required. What you did on this stock and why: every update writes one Activity line, and the newest one heads the stock's page. When you move a level and the belief still holds, say why in one sentence here." +
+        shownToDave("on the stock's Activity and at the top of the stock's page"),
     ),
   trigger_id: z
     .string()
@@ -136,16 +132,13 @@ const updateSchema = z.object({
   // ── Patchable fields ──────────────────────────────────────────────────
   // Every field is optional. Whatever's passed gets written; whatever's
   // omitted is left unchanged.
-  // The three "structural belief" fields. Substantive non-belief patches
-  // (target/stop/confidence) without touching at least one of these are
-  // rejected at the discipline gate below — the agent must either update
-  // the belief OR pass `structural_unchanged_reason` explaining why the
-  // underlying claim still holds. Closes P0-1.
+  // The three "structural belief" fields. Their discipline gate (P0-1) is
+  // gone; a level move with the belief unchanged says why in `rationale`.
   core_belief: z
     .string()
     .optional()
     .describe(
-      "The durable claim — one sentence that captures WHAT you believe will happen and why. The snapshot is the current-state framing (refreshed often); this is the underlying claim (rarely changes). Touch this when the actual belief has shifted. If you're moving a level and the belief is unchanged, leave this alone (and say why in the rationale, or in `structural_unchanged_reason`).",
+      "The durable claim — one sentence that captures WHAT you believe will happen and why. The snapshot is the current-state framing (refreshed often); this is the underlying claim (rarely changes). Touch this when the actual belief has shifted. If you're moving a level and the belief is unchanged, leave this alone and say why in the rationale.",
     ),
   key_assumptions: z
     .array(z.string())
@@ -1555,12 +1548,10 @@ export const updateThesis = defineTool({
     // triggers, and each run got past it by copying its rationale into
     // `structural_unchanged_reason`. A gate satisfied by repeating the
     // sentence next to it is not a gate. A level change already carries
-    // its rationale; that is the record.
-    // The optional `structural_unchanged_reason` still lands on the audit
-    // row when the model sends one.
-    const hasUnchangedReason =
-      typeof args.structural_unchanged_reason === "string" &&
-      args.structural_unchanged_reason.trim().length >= 10;
+    // its rationale; that is the record. The optional reason field that
+    // outlived the gate printed "[Belief unchanged: …]" under 94 of 274
+    // Activity notes in the ten days to 2026-10-05, often the note again
+    // word for word; it went with the voice rules (lib/agent/voice.ts).
 
     // Check-only call: every refusal above has had its chance.
     if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults);
@@ -1694,19 +1685,11 @@ export const updateThesis = defineTool({
     // morning-research coverage gate both query ThesisUpdate the moment
     // the agent finishes; fire-and-forget races dropped the row past
     // the gate's read horizon and false-failed legitimate runs.
-    //
-    // structural_unchanged_reason is appended to the timeline rationale
-    // when supplied so the discipline justification is preserved alongside
-    // the change explanation — otherwise it'd be visible only in agent
-    // logs, not in the user-facing thesis timeline.
-    const persistedRationale = hasUnchangedReason
-      ? `${args.rationale}\n\n[Belief unchanged: ${args.structural_unchanged_reason!.trim()}]`
-      : args.rationale;
     await writeThesisUpdate({
       thesisId: existing.id,
       type: updateType,
       summary,
-      rationale: persistedRationale,
+      rationale: args.rationale,
       fieldChanges,
       runId: ctx.runId,
       triggerId: args.trigger_id,

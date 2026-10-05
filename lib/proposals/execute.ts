@@ -44,6 +44,7 @@ import {
   lockPositionSales,
 } from "@/lib/proposals/position-lock";
 import { positionTotalCap } from "@/lib/agent/position-sizing";
+import { PROPOSAL_NOUN } from "@/lib/trade-status";
 
 export interface ProposalApprovalResult {
   ok: true;
@@ -495,7 +496,10 @@ export async function approveProposal(
       thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
       type: "PROPOSAL_APPROVED",
       summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""}${resized ? ` (${effectiveQty}→${submitQty} sh — ${resizeNote})` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
-      rationale: `User approved the ${intent} proposal${qtyEdited ? `, resizing ${order.quantity}→${effectiveQty} shares` : ""}${resized ? `; ${isSale ? "sold" : "bought"} ${submitQty} of the ${effectiveQty} shares proposed — ${resizeNote} at approval` : ""}. Alpaca order id ${alpacaOrderId}.`,
+      // In words (lib/agent/voice.ts): this line is the Activity row Dave reads.
+      rationale:
+        `You approved the ${PROPOSAL_NOUN[intent] ?? "trade"} of ${qtyEdited ? `${effectiveQty} shares, changed from ${order.quantity}` : `${effectiveQty} shares`}` +
+        `${resized ? `; ${isSale ? "sold" : "bought"} ${submitQty} of them, ${resizeNote} at approval` : ""}. Sent to Alpaca as order ${alpacaOrderId}.`,
       fieldChanges: {
         proposal: {
           from: { orderId, status: "AWAITING_APPROVAL", quantity: order.quantity },

@@ -47,8 +47,11 @@ export function buildHeldThroughNote(args: {
   const { declineCount, rejectMessage, recentExtreme, direction } = args;
   if (declineCount <= 0) return null;
   const isLong = direction !== "SHORT";
+  // In words (lib/agent/voice.ts): Dave reads this on the proposal.
+  const times = declineCount === 1 ? "once" : declineCount === 2 ? "twice" : `${declineCount} times`;
+  const nth = ["Second", "Third", "Fourth", "Fifth"][declineCount - 1];
   const parts: string[] = [
-    `You've seen this ask before — ${declineCount} decline${declineCount === 1 ? "" : "s"} or expir${declineCount === 1 ? "y" : "ies"} in the last ${HELD_THROUGH_WINDOW_DAYS} days, and the price is still past the line.`,
+    `${nth ? `${nth} ask` : `Ask ${declineCount + 1}`}: you declined it or let it expire ${times} in the last ${HELD_THROUGH_WINDOW_DAYS} days, and it's still ${isLong ? "below" : "above"} the line.`,
   ];
   if (rejectMessage) {
     parts.push(`Your last note: "${rejectMessage.slice(0, 200)}".`);
@@ -56,8 +59,8 @@ export function buildHeldThroughNote(args: {
   if (recentExtreme != null && recentExtreme > 0) {
     parts.push(
       isLong
-        ? `Recent low $${recentExtreme.toFixed(2)} — if you'd rather keep holding, consider moving the line just below it when you decline.`
-        : `Recent high $${recentExtreme.toFixed(2)} — if you'd rather keep holding, consider moving the line just above it when you decline.`,
+        ? `The recent low is $${recentExtreme.toFixed(2)}; to keep holding, decline and move the line just under it.`
+        : `The recent high is $${recentExtreme.toFixed(2)}; to keep holding, decline and move the line just over it.`,
     );
   }
   return parts.join(" ");

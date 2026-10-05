@@ -235,7 +235,10 @@ export async function armHeldLadderOnFill(opts: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
-        rationale: `Entry filled at $${opts.fillPrice.toFixed(2)} — the watchlist row is now a live position. The buy trigger is gone; the analyst's other triggers stay, and the analyst's own sell rules apply.`,
+        // On an approval this is the proposal's price, not the fill: the
+        // fill lands later with its own line (reconcile-orders.ts). V,
+        // 2026-10-05: "filled at $368.90", then filled at $369.25.
+        rationale: `${opts.via === "approved proposal" ? `Bought on your approval at the proposed $${opts.fillPrice.toFixed(2)}` : `Bought at $${opts.fillPrice.toFixed(2)}`}; it moves from the watchlist to the stocks we hold. The buy trigger is gone; the other triggers stay, and the analyst's own sell rules apply.`,
         fieldChanges: {
           status: { from: "WATCHING", to: "HOLDING" },
           triggerOps: { from: null, to: acceptedOps(applied.results) },

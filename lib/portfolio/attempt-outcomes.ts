@@ -232,6 +232,43 @@ export function refusalReason(r: { summary: string; detail: string | null }): st
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+/** The first sentence, split where passReason splits. */
+function firstSentence(text: string): string {
+  return text.split(/(?<=[.!?])\s+(?=[A-Z"'“$])/)[0]?.trim() ?? "";
+}
+
+/** A tool field, a trigger id or an all-caps code: words written for the analyst. */
+const ANALYST_WORDS = /`|\b[a-z]+_[a-z_]+\b|\b[A-Z]{2,}_[A-Z_]+\b|\b[0-9a-f]{8}-[0-9a-f]{4}-/;
+
+const money = (s: string) => {
+  const n = Number(s);
+  return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+};
+
+/**
+ * A refused save or a failed research run, as the dashboard's Blocked line
+ * says it (lib/agent/voice.ts). The stored refusal is written for the
+ * analyst: on 2026-10-05 NOW's line read "…remove_trigger_ids:
+ * ["c4d1952a-…"]", and since 09-29 Visa, Travelers and Apple showed
+ * Anthropic's billing error word for word. The analyst still gets the full
+ * text; this is only what the dashboard prints.
+ */
+export function blockedReason(r: { tool: string; gateCode: string | null; summary: string; detail: string | null }): string {
+  const detail = (r.detail ?? "").replace(/\s+/g, " ").trim();
+  if (r.tool === "thesis_writer") {
+    if (/credit balance is too low/i.test(detail)) return "The research couldn't run: the Anthropic account was out of credit.";
+    const why = firstSentence(detail);
+    return why && !ANALYST_WORDS.test(why) ? `The research couldn't run: ${why}` : "The research couldn't run.";
+  }
+  const rr = /R\/R floor: ([\d.]+):1 is below the mandatory ([\d.]+):1 minimum .*?entry=\$([\d.]+), target=\$([\d.]+), stop=\$([\d.]+)/.exec(detail);
+  if (rr) {
+    return `The plan was refused: the target pays ${rr[1]} times what the stop risks, under the ${rr[2]}-to-1 minimum (buy ${money(rr[3])}, target ${money(rr[4])}, stop ${money(rr[5])}).`;
+  }
+  const why = firstSentence(detail);
+  if (why && !ANALYST_WORDS.test(why)) return why;
+  return r.summary.replace(/\s*\([a-z_]+\)\.?$/, ".").replace(/^Refused update on \$?([A-Z.]+) — /, "The save was refused: ");
+}
+
 export function attemptOutcomes(input: {
   runs: AttemptRun[];
   orders: AttemptOrder[];

@@ -226,20 +226,29 @@ export function sizeByRisk(input: RiskSizingInput): RiskSizing | null {
   const riskDollars = shares * perShare;
   const riskPctOfEquity = (riskDollars / equity) * 100;
 
-  const factors = [
-    `${riskPct}% of ${$(equity)}`,
-    `× ${convictionMult} (${conviction})`,
-    ...(input.binary ? [`× ${BINARY_RISK_MULTIPLIER} (binary catalyst)`] : []),
-    ...(input.regime === "CAUTION" ? [`× ${CAUTION_SIZE_MULTIPLIER} (CAUTION market)`] : []),
-  ].join(" ");
-  let line =
-    `Sized by risk: ${factors} = ${$(targetRisk)} at risk over a $${perShare.toFixed(2)} stop distance ` +
-    `→ ${formulaShares} shares (${$(formulaNotional)}).`;
+  // In words Dave reads on every buy (lib/agent/voice.ts): the shares and
+  // dollars first, then the arithmetic, every number kept.
+  const word = conviction.toLowerCase();
+  const math =
+    `${riskPct}% of the ${$(equity)} account` +
+    (convictionMult === 1 ? ` at ${word} conviction` : ` × ${convictionMult} for ${word} conviction`) +
+    (input.binary ? ` × ${BINARY_RISK_MULTIPLIER} for an all-or-nothing event` : "") +
+    (input.regime === "CAUTION" ? ` × ${CAUTION_SIZE_MULTIPLIER} for a cautious market` : "") +
+    ` = ${$(targetRisk)} at risk, over $${perShare.toFixed(2)} to the stop`;
+  const atStop = `At the stop this loses ${$(riskDollars)}, ${riskPctOfEquity.toFixed(2)}% of the account`;
+  let line: string;
   if (clampedBy === "LARGEST_TRADE") {
-    line += ` Capped at the largest trade: ${shares} shares (${$(notional)}), ${$(riskDollars)} at risk (${riskPctOfEquity.toFixed(2)}% of equity).`;
+    line =
+      `${shares} shares, ${$(notional)}, capped at this analyst's largest trade. ` +
+      `Risk alone said ${formulaShares} shares (${$(formulaNotional)}): ${math}. ${atStop}.`;
   } else if (clampedBy === "SMALLEST_TRADE") {
     const targetPct = (targetRisk / equity) * 100;
-    line += ` Raised to the smallest trade: ${shares} shares (${$(notional)}), ${$(riskDollars)} at risk — ${riskPctOfEquity.toFixed(2)}% of equity, above this trade's ${targetPct.toFixed(2)}% target because the stop is wide for this seat's minimum.`;
+    line =
+      `${shares} shares, ${$(notional)}, raised to this analyst's smallest trade. ` +
+      `Risk alone said ${formulaShares} shares (${$(formulaNotional)}): ${math}. ` +
+      `${atStop}, above the ${targetPct.toFixed(2)}% this trade aims for because the stop is wide.`;
+  } else {
+    line = `${shares} shares, ${$(notional)}, sized by risk: ${math}.`;
   }
   return { shares, notional, riskDollars, riskPctOfEquity, formulaNotional, clampedBy, line };
 }

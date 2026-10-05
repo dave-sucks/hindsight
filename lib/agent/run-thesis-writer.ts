@@ -77,6 +77,7 @@ import { updateThesis } from "@/lib/agent/tools/update-thesis";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { describeTrigger } from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { VOICE_RULES } from "@/lib/agent/voice";
 
 // ── Phase budgets ───────────────────────────────────────────────────────
 // V1's inner synthesis abort was 180s against an observed 187-192s EVERY
@@ -622,6 +623,13 @@ every field; the judgment rules:
 ${triggerBlock}
 ${earningsTriggerBlock}
 ${priorExitBlock}
+═══════════════════════════════════════════════════════════════════
+HOW YOU WRITE — your decision rationale and each trigger's note
+═══════════════════════════════════════════════════════════════════
+The research note in STEP 1 keeps its sections and its citations; these
+rules cover what you put in submit_thesis for Dave to read.
+${VOICE_RULES}
+
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns
 accepted, STOP. Do not write anything after acceptance.`;
@@ -1343,10 +1351,6 @@ export function buildWriterSaveCall(
     toolArgs: {
       thesis_id: args.existingThesisId,
       rationale: `${rationale}${directionFlag}`,
-      // Always supplied: the P0-1 gate refuses price moves when the belief
-      // text happens to be unchanged; the writer's judgment on why lives in
-      // the decision rationale.
-      structural_unchanged_reason: d.rationale,
       entry_price: pass || held ? undefined : d.entry_price,
       target_price: pass ? undefined : d.target_price,
       stop_loss: pass ? undefined : d.stop_loss,

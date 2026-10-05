@@ -32,12 +32,12 @@ describe("openRisk", () => {
 describe("heatLine / industryLine", () => {
   const r = openRisk(holdings, 100_000);
   it("reports open risk after the buy against the 6% cap", () => {
-    expect(heatLine(r, 100_000, 5_000)).toMatch(/^Open risk after this buy: 6\.5% of equity \(cap 6%\) — OVER the cap; largest: NVDA \$985/);
-    expect(heatLine(r, 100_000)).toMatch(/no stop, not counted: XYZ/);
+    expect(heatLine(r, 100_000, 5_000)).toMatch(/^If every open stop hit after this buy, the account would lose 6\.5%, over the 6% limit\. Biggest: NVDA \$985/);
+    expect(heatLine(r, 100_000)).toMatch(/Not counted, no stop: XYZ\./);
   });
   it("flags a third name in one industry", () => {
     expect(industryLine(r, "Semiconductors", "AMD")).toBe(
-      "This would be name 3 in Semiconductors (MU, NVDA) — the playbook's limit is 2; they move as one bet.",
+      "This would be stock 3 in Semiconductors, with MU, NVDA; the limit is 2 because they move as one bet.",
     );
     expect(industryLine(r, "Biotechnology", "XBIO")).toBeNull();
     expect(industryLine(r, "Semiconductors", "MU")).toBeNull();
@@ -66,7 +66,7 @@ describe("computeRegime", () => {
   it("CAUTION more than 1% under the 50-day, above the 200-day", () => {
     const r = computeRegime(snap(570, 580, 550), [])!;
     expect(r.regime).toBe("CAUTION");
-    expect(r.line).toContain("half size on new entries");
+    expect(r.line).toContain("Market cautious: SPY $570.00, below its 50-day ($580.00) and above its 200-day ($550.00), so half size on new buys");
   });
   it("RISK_OFF more than 1% under the 200-day", () => {
     expect(computeRegime(snap(540, 580, 550), [])!.regime).toBe("RISK_OFF");
@@ -76,7 +76,7 @@ describe("computeRegime", () => {
     const book = [snap(10, 9, 8), snap(10, 11, 8), snap(10, 12, 8)];
     const r = computeRegime(snap(600, 580, 550), book)!;
     expect(r.breadthPct).toBe(33);
-    expect(r.line).toContain("33% of the book is above its 50-day (under 60% — thin leadership)");
+    expect(r.line).toContain("33% of our stocks are above their 50-day (under 60%: few are leading)");
   });
   it("null without a SPY snapshot", () => {
     expect(computeRegime(null, [])).toBeNull();
