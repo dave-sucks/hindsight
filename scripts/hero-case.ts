@@ -76,13 +76,13 @@ function describedTools(c: HeroCase): ToolSet {
   }
   const all = createResearchTools({
     runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
-  } as never) as Record<string, { description?: string; inputSchema: unknown }>;
+  } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
   const allowed = MODES[c.mode].toolAllowlist ?? Object.keys(all);
   const scoped = c.mode !== "principal" || c.toolCtx.analystId != null;
   return Object.fromEntries(
     allowed
       .filter((name) => all[name] && (scoped || !UNSCOPED_BLOCKED.includes(name)))
-      .map((name) => [name, { description: all[name].description, inputSchema: all[name].inputSchema }]),
+      .map((name) => [name, { description: all[name].description, inputSchema: all[name].inputSchema, toModelOutput: all[name].toModelOutput }]),
   ) as ToolSet;
 }
 
@@ -174,6 +174,23 @@ async function runCase(name: string, runs: number): Promise<{ name: string; pass
   const mode = MODES[c.mode];
   const system = systemFor(c);
   const tools = describedTools(c);
+  // A recorded tool result is what the model read on the day. Where a tool
+  // now hands the model less than the screen (`forModel`), the replay reads
+  // what today's model would read — the same as a live run.
+  c.messages = await Promise.all(
+    c.messages.map(async (m) => {
+      if (m.role !== "tool" || !Array.isArray(m.content)) return m;
+      const content = await Promise.all(
+        m.content.map(async (p) => {
+          const hook = p.type === "tool-result" ? (tools[p.toolName] as { toModelOutput?: (o: { toolCallId: string; input: unknown; output: unknown }) => unknown })?.toModelOutput : undefined;
+          if (!hook || p.type !== "tool-result") return p;
+          const raw = p.output && typeof p.output === "object" && "value" in p.output ? (p.output as { value: unknown }).value : p.output;
+          return { ...p, output: (await hook({ toolCallId: p.toolCallId, input: undefined, output: raw })) as typeof p.output };
+        }),
+      );
+      return { ...m, content } as typeof m;
+    }),
+  );
   const model = mode.provider === "anthropic" ? anthropic(mode.model) : c.mode === "research-run" ? openai.chat(mode.model) : openai(mode.model);
 
   console.log(`\n# ${name} — ${mode.model}, ${runs} run${runs === 1 ? "" : "s"}, prompt ${system.length.toLocaleString("en-US")} characters, conversation ${JSON.stringify(c.messages).length.toLocaleString("en-US")}`);

@@ -46,6 +46,14 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
    * still receives `z.infer<TSchema>`; an omitted field is simply absent.
    */
   schemaFor?: (ctx: ToolContext) => z.ZodTypeAny;
+  /**
+   * What the model reads of the result, when it differs from what the
+   * screen gets. The full result still streams to the chat and is what a
+   * saved run replays (`withScreenOutputs`); the model gets this. For copy
+   * that exists only to render a card — the model never needs it, and it is
+   * re-sent on every step that follows.
+   */
+  forModel?: (result: ToolResult<TData>) => unknown;
   /** Which UI renderer handles this tool's result */
   ui: ToolUI;
   /** Optional phase key — tools with the same groupId collapse in the UI */
@@ -108,6 +116,15 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
       description: options.description,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       inputSchema: (options.schemaFor ? options.schemaFor(ctx) : options.schema) as any,
+      ...(options.forModel
+        ? {
+            toModelOutput: ({ output }: { output: ToolResult<TData> }) => ({
+              type: "json" as const,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              value: options.forModel!(output) as any,
+            }),
+          }
+        : {}),
       execute: async (args): Promise<ToolResult<TData>> => {
         const t0 = Date.now();
         const resolvedGroupId = options.groupId

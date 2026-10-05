@@ -154,6 +154,18 @@ export const getTheses = defineTool({
     "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
+  // The cards are the "Read theses" carousel: the same rows again in the
+  // renderer's shape, with the research text a second time. 14–26% of the
+  // read in the recorded cases, re-sent on every later step. The screen
+  // keeps them; the model reads the rows.
+  forModel: (result) => {
+    if (!result.ok) return result;
+    const data = result.data as Record<string, unknown> | undefined;
+    if (!data || !("cards" in data)) return result;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { cards, ...rest } = data;
+    return { ...result, data: rest };
+  },
 
   progressLabel: (args) => {
     if (args.tickers && args.tickers.length === 1) {
