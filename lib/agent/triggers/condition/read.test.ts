@@ -1,9 +1,9 @@
 /**
  * The condition shape's checker against today's, over every stored trigger.
  *
- * Each of the 487 distinct stored conditions (909 triggers), plus the kinds and
- * options nothing stores yet, is checked in 300
- * seeded random market situations: prices around its own level, a snapshot,
+ * Each distinct stored condition (the fixture condition.test.ts describes), plus
+ * the kinds and options nothing stores yet, is checked in 300 seeded random
+ * market situations: prices around its own level, a snapshot,
  * a position, a report, filings, dates, a stale quote, the close pass. The
  * two checkers must agree on whether it holds, whether it reads the price and
  * whether it reads the next report, and the whole fire decision (crossing,

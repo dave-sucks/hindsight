@@ -21,6 +21,7 @@ import {
 } from "@/lib/agent/triggers/frozen-copy";
 import { parseLevelTriggers } from "@/lib/agent/triggers/load-levels";
 import { applyTriggerDelete } from "@/lib/actions/thesis-edit";
+import { describeTrigger } from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const ACCOUNT = "34f5c589-e216-4afe-9ee8-613c13f300e7";
@@ -65,6 +66,7 @@ async function main() {
       id: true,
       ticker: true,
       status: true,
+      direction: true,
       triggers: true,
       researchRun: { select: { agentConfigId: true } },
     },
@@ -102,7 +104,8 @@ async function main() {
       after: own.length - copies.length,
     });
     for (const c of copies) {
-      console.log(`  ${t.ticker.padEnd(5)} ${c.bucket.padEnd(32)} ${frozenCopyLine(c)}`);
+      // The rule in the Activity feed's words; the bucket is a comparison key, never shown.
+      console.log(`  ${t.ticker.padEnd(5)} ${describeTrigger(c.trigger, t.direction).padEnd(40)} ${frozenCopyLine(c)}`);
       if (APPLY) {
         await applyTriggerDelete(
           t.id,

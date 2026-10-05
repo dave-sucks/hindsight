@@ -1,9 +1,10 @@
 /**
  * The condition shape against every trigger stored in production.
  *
- * The fixture is every distinct (predicate, action) on 2026-10-04: 487 of
- * them, behind 909 stored triggers (thesis triggers live and retired, analyst
- * rules, account rules). Regenerate it with:
+ * The fixture is every distinct (predicate, action) stored on 2026-10-04
+ * (487, behind 909 triggers: thesis triggers live and retired, analyst rules,
+ * account rules) plus the four first stored on 2026-10-05. To refresh it, add
+ * the rows this returns that aren't there yet, and never remove one:
  *
  *   select trig->'predicate', trig->>'action', count(*) from (
  *     select x as trig from "Thesis", jsonb_array_elements(triggers) x
@@ -14,8 +15,13 @@
  * What it proves (docs/plans/TRIGGER_TYPES.md §9):
  *   - every stored kind translates, and only the deleted REVIEW_DATE_HIT is retired;
  *   - every one comes back as the same kind it was (round trip);
- *   - the cascade slots are the same classes as today's triggerBucket;
- *   - every one reads in the form's words, with no blanks.
+ *   - every one reads in the form's words, with no blanks;
+ *   - the rules the kinds used to answer (the cascade slot, the default
+ *     cooldown, the weekly floor on a state review, which sales propose
+ *     directly and the label they close with, what a trigger does on a stock
+ *     we don't hold, a watched floor read on the close) give the same answer
+ *     from the catalog, for every stored condition under every action. The old
+ *     answers are frozen in ./__fixtures__/kind-rules.ts.
  *
  * And that the catalog is the pattern: one entry per measure, and no code
  * outside an entry branches on a measure.
@@ -24,8 +30,18 @@
 import fs from "fs";
 import path from "path";
 import stored from "./__fixtures__/stored-triggers.json";
+import * as kinds from "./__fixtures__/kind-rules";
 import { triggerBucket } from "../bucket";
-import type { TriggerAction, TriggerPredicate } from "../types";
+import { defaultCooldownDaysForPredicate } from "../defaults";
+import { flooredCooldownDays, isStatePredicate } from "../state-cooldown";
+import {
+  effectiveTriggerAction,
+  isDirectEligiblePredicate,
+  protectiveExitCloseReason,
+  watchedFloorOnClose,
+  type TriggerAction,
+  type TriggerPredicate,
+} from "../types";
 import {
   MEASURES,
   TRIGGER_TYPES,
@@ -36,7 +52,6 @@ import {
   pillParts,
   toLegacy,
   triggerText,
-  triggerSlot,
   variableOptions,
   withVariable,
   type Condition,
@@ -70,9 +85,9 @@ function normalise(p: unknown): unknown {
 }
 
 describe("every stored trigger", () => {
-  it("covers the book: 487 distinct conditions behind 909 triggers", () => {
-    expect(rows.length).toBe(487);
-    expect(rows.reduce((a, r) => a + r.count, 0)).toBe(909);
+  it("covers the book: 491 distinct conditions behind 913 triggers", () => {
+    expect(rows.length).toBe(491);
+    expect(rows.reduce((a, r) => a + r.count, 0)).toBe(913);
   });
 
   it("translates, and only the kind deleted in August is retired", () => {
@@ -89,21 +104,6 @@ describe("every stored trigger", () => {
     expect(mismatches).toEqual([]);
   });
 
-  it("keeps today's cascade: two triggers share a slot exactly when they share a bucket", () => {
-    const live = rows.filter((r) => !isRetired(fromLegacy(r.predicate)));
-    const bucketToSlots = new Map<string, Set<string>>();
-    const slotToBuckets = new Map<string, Set<string>>();
-    for (const r of live) {
-      const bucket = triggerBucket({ predicate: r.predicate, action: r.action });
-      const slot = triggerSlot(fromLegacy(r.predicate) as When, r.action);
-      (bucketToSlots.get(bucket) ?? bucketToSlots.set(bucket, new Set()).get(bucket)!).add(slot);
-      (slotToBuckets.get(slot) ?? slotToBuckets.set(slot, new Set()).get(slot)!).add(bucket);
-    }
-    const split = [...bucketToSlots].filter(([, s]) => s.size > 1).map(([b, s]) => ({ bucket: b, slots: [...s] }));
-    const merged = [...slotToBuckets].filter(([, b]) => b.size > 1).map(([s, b]) => ({ slot: s, buckets: [...b] }));
-    expect({ split, merged }).toEqual({ split: [], merged: [] });
-  });
-
   it("reads in the form's words, with no blanks", () => {
     for (const r of rows) {
       const w = fromLegacy(r.predicate);
@@ -114,6 +114,98 @@ describe("every stored trigger", () => {
         expect(part.value ?? "").not.toMatch(/undefined|NaN/);
       }
     }
+  });
+});
+
+/**
+ * The rules the kinds used to answer, from the catalog: each stored condition
+ * under every action, both directions and none, held and watched, with a buy
+ * and without, against the kinds' answer frozen in ./__fixtures__/kind-rules.ts.
+ * The removed kind is left out: the kinds had no answer for it, it sits only on
+ * retired theses, and it never fires.
+ */
+describe("the rules the kinds answered, from the catalog", () => {
+  const ACTIONS: TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW", "MOVE_STOP", "DEMOTE"];
+  const DIRECTIONS = ["LONG", "SHORT", null];
+  const live = rows.filter((r) => !isRetired(fromLegacy(r.predicate)));
+  const grid = live.flatMap((r) => ACTIONS.map((action) => ({ predicate: r.predicate, action })));
+
+  /** Where the frozen answer and today's differ: none, or the count and the first few. */
+  function disagree<C>(cases: C[], then: (c: C) => unknown, now: (c: C) => unknown) {
+    const out = cases.flatMap((c) => {
+      const was = JSON.stringify(then(c));
+      const is = JSON.stringify(now(c));
+      return was === is ? [] : [{ case: c, was, is }];
+    });
+    return { count: out.length, first: out.slice(0, 5) };
+  }
+  const agree = { count: 0, first: [] };
+  /** How many different answers the frozen rule gives: one answer everywhere would prove nothing. */
+  const answers = <C,>(cases: C[], then: (c: C) => unknown) => new Set(cases.map((c) => JSON.stringify(then(c)))).size;
+
+  it("covers every stored condition under every action", () => {
+    expect(live.length).toBe(rows.length - 1);
+    expect(grid.length).toBe(live.length * ACTIONS.length);
+  });
+
+  it("the cascade: two triggers share a slot exactly when they shared a bucket", () => {
+    const slotsOf = new Map<string, Set<string>>();
+    const bucketsOf = new Map<string, Set<string>>();
+    for (const t of grid) {
+      const bucket = kinds.triggerBucket(t);
+      const slot = triggerBucket(t);
+      (slotsOf.get(bucket) ?? slotsOf.set(bucket, new Set()).get(bucket)!).add(slot);
+      (bucketsOf.get(slot) ?? bucketsOf.set(slot, new Set()).get(slot)!).add(bucket);
+    }
+    const split = [...slotsOf].filter(([, s]) => s.size > 1).map(([bucket, s]) => ({ bucket, slots: [...s] }));
+    const merged = [...bucketsOf].filter(([, b]) => b.size > 1).map(([slot, b]) => ({ slot, buckets: [...b] }));
+    expect({ split, merged }).toEqual({ split: [], merged: [] });
+    expect(slotsOf.size).toBeGreaterThan(100);
+  });
+
+  it("the default cooldown", () => {
+    const cases = [...grid, ...live.map((r) => ({ predicate: r.predicate, action: undefined }))];
+    const then = (t: (typeof cases)[number]) => kinds.defaultCooldownDaysForPredicate(t.predicate, t.action);
+    expect(disagree(cases, then, (t) => defaultCooldownDaysForPredicate(t.predicate, t.action))).toEqual(agree);
+    expect(answers(cases, then)).toBeGreaterThan(5);
+  });
+
+  it("the weekly floor on a state review", () => {
+    const state = (t: (typeof grid)[number]) => kinds.isStatePredicate(t.predicate);
+    expect(disagree(grid, state, (t) => isStatePredicate(t.predicate))).toEqual(agree);
+    expect(answers(grid, state)).toBe(2);
+    const cases = grid.flatMap((t) => [0, 1, 3, 7, 30].map((days) => ({ ...t, days })));
+    expect(disagree(cases, (c) => kinds.flooredCooldownDays(c, c.days), (c) => flooredCooldownDays(c, c.days))).toEqual(agree);
+  });
+
+  it("which sales propose directly, and the label they close with", () => {
+    const direct = (r: Row) => kinds.isDirectEligiblePredicate(r.predicate.kind);
+    expect(disagree(live, direct, (r) => isDirectEligiblePredicate(r.predicate))).toEqual(agree);
+    expect(answers(live, direct)).toBe(2);
+    const cases = live.flatMap((r) => DIRECTIONS.map((direction) => ({ predicate: r.predicate, direction })));
+    const then = (c: (typeof cases)[number]) => kinds.protectiveExitCloseReason(c.predicate, c.direction);
+    expect(disagree(cases, then, (c) => protectiveExitCloseReason(c.predicate, c.direction))).toEqual(agree);
+    expect(answers(cases, then)).toBe(3);
+  });
+
+  it("what a trigger does on a stock we don't hold", () => {
+    const cases = grid.flatMap((t) =>
+      ["HOLDING", "WATCHING", "PROMOTED", null].flatMap((status) =>
+        DIRECTIONS.flatMap((direction) => [true, false, undefined].map((hasBuy) => ({ t, state: { status, direction, hasBuy } }))),
+      ),
+    );
+    const then = (c: (typeof cases)[number]) => kinds.effectiveTriggerAction(c.t, c.state);
+    expect(disagree(cases, then, (c) => effectiveTriggerAction(c.t, c.state))).toEqual(agree);
+    expect(answers(cases, then)).toBe(ACTIONS.length);
+  });
+
+  it("a watched stock's floor reads the close", () => {
+    const cases = grid.flatMap((t) => ["HOLDING", "WATCHING", null].map((status) => ({ t, status })));
+    /** The same object back, or the predicate it changed to, in the spelling the checker reads. */
+    const read = <T extends { predicate: unknown }>(out: T, t: T) => (out === t ? "unchanged" : sortKeys(normalise(out.predicate)));
+    const then = (c: (typeof cases)[number]) => read(kinds.watchedFloorOnClose(c.t, { status: c.status }), c.t);
+    expect(disagree(cases, then, (c) => read(watchedFloorOnClose(c.t, { status: c.status }), c.t))).toEqual(agree);
+    expect(answers(cases, then)).toBeGreaterThan(10);
   });
 });
 

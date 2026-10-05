@@ -5,8 +5,10 @@
  * the account's. The slot is the measure, its button, its variable and the
  * settings its entry marks as identity (the RSI's length), never the typed
  * value, so "$248" and "$256" are the same floor. It gives the same classes
- * as today's `triggerBucket` (../bucket), which condition.test.ts proves
- * over every stored trigger. docs/plans/TRIGGER_TYPES.md §6.
+ * as the kinds' bucket did (frozen in ./__fixtures__/kind-rules.ts), which
+ * condition.test.ts proves over every stored trigger under every action.
+ * The text is a comparison key: nothing stores it or shows it, so only the
+ * classes are held fixed. docs/plans/TRIGGER_TYPES.md §6.
  *
  * Pure and client-safe.
  */
