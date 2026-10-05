@@ -1235,7 +1235,7 @@ export const getTheses = defineTool({
         t.status === "PROMOTED" ||
         (needsActionByThesisId.get(t.id) ?? null) !== null ||
         ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "") ||
-        (resolvedByThesisId.get(t.id)?.planSanity?.length ?? 0) > 0 ||
+        listsTheStock(resolvedByThesisId.get(t.id)?.planSanity ?? null) ||
         // A floor that would lose too much of the account is work even when
         // a fired sale holds the needsAction slot (DAV-344).
         resolvedByThesisId.get(t.id)?.floorRisk != null ||
@@ -1634,4 +1634,18 @@ export function rowForModel(row: Record<string, unknown>, named: boolean): Recor
     }
   }
   return out;
+}
+
+/**
+ * Whether a stock's plan flags put it on the morning run's work list by
+ * themselves (decision 4 in docs/plans/AGENT_ARCHITECTURE.md, approved
+ * 2026-10-02). "No buy level" and "score under the minimum" do not: a stock
+ * with no buy price comes onto the list on its review clock or when a
+ * trigger fires, as the 2026-09-08 ruling has it, and both flags still show
+ * on the row whenever it is opened. Every other flag lists it, including
+ * "nothing can wake it" — the one case where nothing else ever would.
+ */
+const FLAGS_THAT_DO_NOT_LIST = new Set(["NO_BUY_LEVEL", "COMPOSITE_BELOW_MINIMUM"]);
+export function listsTheStock(flags: ReadonlyArray<{ kind: string }> | null): boolean {
+  return (flags ?? []).some((f) => !FLAGS_THAT_DO_NOT_LIST.has(f.kind));
 }

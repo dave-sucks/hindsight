@@ -401,11 +401,15 @@ export function computePlanSanity(args: {
   // never fill — and the agent found that out at the crossing (VST
   // 2026-09-08: 5/10 against a 78% bar, then moved the buy level instead
   // of the score). Say it on the row, before the crossing.
+  // Only where there is a buy to refuse (decision 4, 2026-10-02): on a
+  // stock with no buy level the warning describes a buy that does not exist,
+  // and 17 of the 20 reviews this flag caused alone in September were that.
   if (
     composite != null &&
     minConfidence != null &&
     minConfidence > 0 &&
-    composite * 10 < minConfidence
+    composite * 10 < minConfidence &&
+    (args.hasEnterTrigger === true || entryPrice != null)
   ) {
     flags.push({
       kind: "COMPOSITE_BELOW_MINIMUM",
