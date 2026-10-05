@@ -71,6 +71,8 @@ export interface SettingDef {
   default?: SettingValue;
   /** Part of the rule's identity: a 14-day and a 2-day RSI rule are two rules, not one at two values. */
   identity?: boolean;
+  /** When set, the check reads the daily indicator snapshot for it (the trail's daily range). */
+  snapshot?: boolean;
   /** Added to the sentence when set: ", once it has been up 20%". */
   words?: (v: SettingValue, s: Settings) => string;
 }

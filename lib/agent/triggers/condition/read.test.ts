@@ -1,5 +1,6 @@
 /**
- * The condition shape's checker against today's, over every stored trigger.
+ * The trigger checker against the one it replaced (frozen in
+ * ./__fixtures__/kind-checker.ts), over every stored trigger.
  *
  * Each distinct stored condition (the fixture condition.test.ts describes), plus
  * the kinds and options nothing stores yet, is checked in 300 seeded random
@@ -13,11 +14,12 @@
 
 import stored from "./__fixtures__/stored-triggers.json";
 import { UNSTORED } from "./__fixtures__/unstored-triggers";
-import { KIND_CHECKER, shouldFire, type EvaluationContext } from "../evaluate";
+import { shouldFire, type EvaluationContext } from "../evaluate";
+import { KIND_CHECKER } from "./__fixtures__/kind-checker";
 import type { Trigger, TriggerAction, TriggerPredicate } from "../types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import type { SecFiling } from "@/lib/market-data/sec-events";
-import { READERS, SHAPE_CHECKER, compareWithShape } from "./read";
+import { SHAPE_CHECKER } from "./read";
 
 type Row = { action: TriggerAction; predicate: TriggerPredicate; scopes: string[]; count: number };
 
@@ -125,7 +127,7 @@ function triggerState(row: Row, ctx: EvaluationContext, rand: () => number): Tri
 
 const SITUATIONS = 300;
 
-describe("the condition shape's checker agrees with today's on every stored trigger", () => {
+describe("the checker agrees with the one it replaced on every stored trigger", () => {
   it(`agrees on ${rows.length} conditions × ${SITUATIONS} situations`, () => {
     const rand = prng(20261005);
     const disagree: unknown[] = [];
@@ -140,8 +142,8 @@ describe("the condition shape's checker agrees with today's on every stored trig
         if (kinds) holds++;
         if (SHAPE_CHECKER.holds(p, ctx) !== kinds) disagree.push({ p, i, kinds, on: "holds" });
         const t = triggerState(row, ctx, rand);
-        const a = shouldFire(t, ctx);
-        const b = shouldFire(t, ctx, SHAPE_CHECKER);
+        const a = shouldFire(t, ctx, KIND_CHECKER);
+        const b = shouldFire(t, ctx);
         if (a.fires !== b.fires || a.reason !== b.reason) disagree.push({ p, i, a, b, on: "shouldFire" });
         if (disagree.length > 5) break;
       }
@@ -150,21 +152,5 @@ describe("the condition shape's checker agrees with today's on every stored trig
     expect(disagree).toEqual([]);
     // The grid is only proof if it lands on both sides: a fair share of situations must hold.
     expect(holds / (rows.length * SITUATIONS)).toBeGreaterThan(0.15);
-  });
-
-  it("names the disagreement, and never throws, when the new checker fails", () => {
-    const original = READERS.price.holds;
-    (READERS.price as { holds: typeof original }).holds = () => {
-      throw new Error("boom");
-    };
-    try {
-      const rand = prng(7);
-      const t: Trigger = { id: "floor", predicate: { kind: "PRICE_BELOW", level: 100 }, action: "EXIT", rationale: "" };
-      const ctx = situation(t.predicate, rand);
-      const d = compareWithShape(t, ctx, shouldFire(t, ctx));
-      expect(d).toEqual(expect.objectContaining({ triggerId: "floor", kind: "PRICE_BELOW", shape: expect.objectContaining({ reason: "error", error: "boom" }) }));
-    } finally {
-      (READERS.price as { holds: typeof original }).holds = original;
-    }
   });
 });

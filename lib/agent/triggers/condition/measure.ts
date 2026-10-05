@@ -62,6 +62,9 @@ type Kind = TriggerPredicate["kind"];
 /** Until the cutover: how a measure reads the stored kinds, one reader per kind. A reader returns null for a predicate another measure owns. */
 export type LegacyReaders = { [K in Kind]?: (p: Extract<TriggerPredicate, { kind: K }>) => When | null };
 
+/** What the trigger check loads for a condition beyond the live quote. */
+export type Source = "snapshot" | "volume" | "earnings" | "filings";
+
 export interface MeasureDef {
   id: Watch;
   type: TriggerType;
@@ -91,6 +94,8 @@ export interface MeasureDef {
   closeReason?: (c: Condition, isLong: boolean) => "STOP" | "TARGET";
   /** Days between fires when the trigger names none. */
   cooldownDays: (c: Condition, action: string) => number;
+  /** What the trigger check loads for it beyond the live quote. A variable or setting read off the snapshot adds it (./variables). */
+  reads?: readonly Source[];
   /** Somewhere the stock is for weeks (below the 200-day), not a moment: a review on it asks at most weekly. */
   state?: (c: Condition) => boolean;
   /** For "any of" this measure's own conditions that is one rule: the condition whose cascade slot it takes. */

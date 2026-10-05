@@ -6,6 +6,7 @@ import { num } from "../words";
 
 export const report: MeasureDef = {
   id: "report",
+  reads: ["earnings"],
   type: "earnings",
   label: "Report date",
   buttons: [
@@ -35,6 +36,7 @@ export const report: MeasureDef = {
 
 export const surprise: MeasureDef = {
   id: "surprise",
+  reads: ["earnings"],
   type: "earnings",
   label: "Result",
   buttons: [

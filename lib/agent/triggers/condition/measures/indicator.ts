@@ -9,6 +9,7 @@ const window = (c: Condition) => (typeof c.settings?.window === "string" ? c.set
 
 export const volume: MeasureDef = {
   id: "volume",
+  reads: ["snapshot", "volume"],
   type: "indicator",
   label: "Volume",
   word: "At least",
@@ -23,6 +24,7 @@ export const volume: MeasureDef = {
 
 export const rsi: MeasureDef = {
   id: "rsi",
+  reads: ["snapshot"],
   type: "indicator",
   label: "RSI",
   buttons: BELOW_ABOVE,
@@ -55,6 +57,7 @@ export const rsi: MeasureDef = {
 
 export const strength: MeasureDef = {
   id: "strength",
+  reads: ["snapshot"],
   type: "indicator",
   label: "vs. S&P",
   word: "At least",
@@ -88,6 +91,7 @@ export const strength: MeasureDef = {
 
 export const gap: MeasureDef = {
   id: "gap",
+  reads: ["snapshot", "volume"],
   type: "indicator",
   label: "Gap up",
   word: "At least",

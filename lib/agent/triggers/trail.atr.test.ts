@@ -17,6 +17,9 @@
  * evaluator (which sells), ladder health (which the agents read), and the
  * thesis columns (which the sheet draws).
  */
+jest.mock("@/lib/prisma", () => ({ prisma: {} }));
+jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})) } }));
+
 import { effectiveTrailPct, trailFireLevel, trailWidenedByRange } from "./trail";
 import { evaluateTrigger } from "./evaluate";
 import { canonicalLevels } from "./price-levels";
@@ -139,13 +142,13 @@ describe("the ratchet counts the range multiple", () => {
  */
 describe("the evaluator loads the snapshot for a range-widened trail", () => {
   it("a trail with a multiple needs indicators; a plain one does not", async () => {
-    const { needsIndicators } = await import("./indicator-needs");
+    const { needsIndicators } = (await import("@/lib/inngest/functions/trigger-evaluator")).__test__;
     expect(needsIndicators(PEAD_TRAIL)).toBe(true);
     expect(needsIndicators({ kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 10 })).toBe(false);
   });
 
   it("MU's ladder asks for a snapshot even though the trail is its only chart rung", async () => {
-    const { needsIndicators } = await import("./indicator-needs");
+    const { needsIndicators } = (await import("@/lib/inngest/functions/trigger-evaluator")).__test__;
     const MU_LADDER = [
       { kind: "PRICE_BELOW", level: 969 },
       { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },

@@ -8,6 +8,9 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})) } }));
 
 import { __test__ } from "./trigger-evaluator";
+import stored from "@/lib/agent/triggers/condition/__fixtures__/stored-triggers.json";
+import { UNSTORED } from "@/lib/agent/triggers/condition/__fixtures__/unstored-triggers";
+import * as kinds from "@/lib/agent/triggers/condition/__fixtures__/kind-rules";
 import type { TriggerPredicate } from "@/lib/agent/triggers/types";
 
 const { hasCloseBasis, needsIndicators, needsTodayVolume, isClosePassTick, isPriceSidePredicate } = __test__;
@@ -75,5 +78,28 @@ describe("isClosePassTick", () => {
   });
   it("not on a weekend", () => {
     expect(isClosePassTick(new Date("2026-09-12T20:20:00Z"))).toBe(false);
+  });
+});
+
+/**
+ * What the pass loads for a trigger and which pass checks it, read off the
+ * measure catalog, against the kinds' answers frozen in
+ * lib/agent/triggers/condition/__fixtures__/kind-rules.ts: every stored
+ * condition and the ones the book lacks.
+ */
+describe("what the pass loads, against the kinds' answers", () => {
+  const all = [...(stored as { rows: { predicate: TriggerPredicate }[] }).rows.map((r) => r.predicate), ...UNSTORED];
+  it.each([
+    ["checked on the cron path", kinds.isPriceSidePredicate, __test__.isPriceSidePredicate],
+    ["the earnings calendar", kinds.needsEarningsData, __test__.needsEarningsData],
+    ["the next report", kinds.needsUpcomingEarnings, __test__.needsUpcomingEarnings],
+    ["SEC filings", kinds.needsFilings, __test__.needsFilings],
+    ["the snapshot", kinds.needsIndicators, __test__.needsIndicators],
+    ["today's volume", kinds.needsTodayVolume, __test__.needsTodayVolume],
+    ["the close pass", kinds.hasCloseBasis, __test__.hasCloseBasis],
+  ] as const)("%s", (_, then, now) => {
+    const differ = all.filter((p) => then(p) !== now(p));
+    expect(differ).toEqual([]);
+    expect(new Set(all.map(then)).size).toBe(2);
   });
 });

@@ -1,8 +1,8 @@
 /**
  * How each measure is read: does a condition hold against the evaluation
- * context. This is the checker beside today's (docs/plans/TRIGGER_TYPES.md,
- * PR 2): the trigger check runs both and logs any disagreement; after the
- * cutover it is the only one. One reader per measure, keyed like the catalog.
+ * context. This is the trigger checker (`shouldFire` asks it); the checker it
+ * replaced is frozen in ./__fixtures__/kind-checker.ts, and read.test.ts holds
+ * the two to the same answers. One reader per measure, keyed like the catalog.
  *
  * Server-only: the earnings and insider helpers it reads sit next to their
  * vendor calls. The client half of each measure is ./measures, and the
@@ -10,10 +10,8 @@
  */
 
 import type { Checker, EvaluationContext } from "../evaluate";
-import { shouldFire } from "../evaluate";
 import { daysUntilReport } from "../earnings";
 import { trailFireLevel } from "../trail";
-import type { Trigger } from "../types";
 import { liveRsi, movePctOverSessions, volumeRatio, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { insiderCluster } from "@/lib/market-data/insider-cluster";
 import { unfiredMatches } from "@/lib/market-data/sec-events";
@@ -268,25 +266,3 @@ export const SHAPE_CHECKER: Checker = {
     return !isRetired(w) && conditionsOf(w).some((c) => READERS[c.watch].readsReport?.(c) === true);
   },
 };
-
-export interface Disagreement {
-  triggerId: string;
-  kind: string;
-  kinds: ReturnType<typeof shouldFire>;
-  shape: ReturnType<typeof shouldFire> | { fires: false; reason: "error"; error: string };
-}
-
-/**
- * The same fire decision through the condition shape, compared with the one
- * the check acted on. Null when they agree. Never throws: an error in the new
- * checker is a disagreement, logged, and the check carries on with today's.
- */
-export function compareWithShape(trigger: Trigger, ctx: EvaluationContext, kinds: ReturnType<typeof shouldFire>): Disagreement | null {
-  try {
-    const shape = shouldFire(trigger, ctx, SHAPE_CHECKER);
-    if (shape.fires === kinds.fires && shape.reason === kinds.reason) return null;
-    return { triggerId: trigger.id, kind: trigger.predicate.kind, kinds, shape };
-  } catch (e) {
-    return { triggerId: trigger.id, kind: trigger.predicate.kind, kinds, shape: { fires: false, reason: "error", error: e instanceof Error ? e.message : String(e) } };
-  }
-}

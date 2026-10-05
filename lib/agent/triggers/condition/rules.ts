@@ -2,15 +2,18 @@
  * The trigger rules every measure answers on its catalog entry, combined for
  * a whole condition or group: the default cooldown, the weekly floor on a
  * state review, whether a sale can go straight to a proposal and the label
- * it closes with, and the close-only reading of a watched stock's floor.
+ * it closes with, the close-only reading of a watched stock's floor, and what
+ * the trigger check loads for it.
  * docs/plans/TRIGGER_TYPES.md §6.1.
  *
  * Pure and client-safe.
  */
 
-import { measureOf } from "./catalog";
+import { measureOf, settingDefs } from "./catalog";
+import type { Source } from "./measure";
 import type { When } from "./types";
-import { isGroup } from "./types";
+import { conditionsOf, isGroup } from "./types";
+import { variableDef } from "./variables";
 
 /**
  * Days between fires when the trigger names none. A group of one measure's
@@ -55,4 +58,20 @@ export function onTheClose(w: When): When {
   }
   if (!isLevel(w) || w.settings?.close === true) return w;
   return { ...w, settings: { ...w.settings, close: true } };
+}
+
+/** Whether the trigger check must load `source` for it: its measure reads it, or (the snapshot) a variable or setting it uses does. */
+export function readsSource(w: When, source: Source): boolean {
+  return conditionsOf(w).some(
+    (c) =>
+      measureOf(c).reads?.includes(source) === true ||
+      (source === "snapshot" &&
+        ((c.variable != null && variableDef(c.variable).snapshot === true) ||
+          settingDefs(c).some((s) => s.snapshot === true && c.settings?.[s.key] != null))),
+  );
+}
+
+/** Waits for the day's close: it is checked on the close pass. */
+export function waitsForClose(w: When): boolean {
+  return conditionsOf(w).some((c) => c.settings?.close === true);
 }

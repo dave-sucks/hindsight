@@ -185,3 +185,125 @@ export function watchedFloorOnClose<T extends { action: string; predicate: Timed
   const predicate = onClose(trigger.predicate);
   return JSON.stringify(predicate) === JSON.stringify(trigger.predicate) ? trigger : ({ ...trigger, predicate } as T);
 }
+
+// ── What the trigger check loaded for a trigger (trigger-evaluator.ts, and indicator-needs.ts, deleted) ──
+
+export function isPriceSidePredicate(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+    case "PRICE_BELOW":
+    case "PRICE_MOVE_PCT":
+    case "GAIN_FROM_ENTRY":
+    case "TRAILING_FROM_HIGH":
+    case "VS_SMA":
+    case "NEAR_SMA":
+    case "VOLUME_RATIO":
+    case "NEW_HIGH":
+    case "PCT_FROM_52W_HIGH":
+    case "RS_VS_SPY":
+    case "GAP_UP":
+    case "RSI":
+    case "INSIDER_CLUSTER":
+    case "REVIEW_CADENCE":
+    case "EARNINGS_BEAT":
+    case "EARNINGS_MISS":
+    case "EARNINGS_WITHIN":
+    case "EARNINGS_SINCE":
+    case "SEC_EVENT":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.every(isPriceSidePredicate);
+    default:
+      return false;
+  }
+}
+
+export function needsEarningsData(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "EARNINGS_BEAT":
+    case "EARNINGS_MISS":
+    case "EARNINGS_WITHIN":
+    case "EARNINGS_SINCE":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.some(needsEarningsData);
+    default:
+      return false;
+  }
+}
+
+export function needsUpcomingEarnings(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "EARNINGS_WITHIN":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.some(needsUpcomingEarnings);
+    default:
+      return false;
+  }
+}
+
+export function needsTodayVolume(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "VOLUME_RATIO":
+    case "GAP_UP":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.some(needsTodayVolume);
+    default:
+      return false;
+  }
+}
+
+export function hasCloseBasis(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+    case "PRICE_BELOW":
+      return p.basis === "close";
+    case "AND":
+    case "OR":
+      return p.predicates.some(hasCloseBasis);
+    default:
+      return false;
+  }
+}
+
+export function needsFilings(p: TriggerPredicate): boolean {
+  return secEventLeaves(p).length > 0;
+}
+
+function secEventLeaves(p: TriggerPredicate): TriggerPredicate[] {
+  if (p.kind === "SEC_EVENT") return [p];
+  if (p.kind === "AND" || p.kind === "OR") return p.predicates.flatMap(secEventLeaves);
+  return [];
+}
+
+export function needsIndicators(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "VS_SMA":
+    case "NEAR_SMA":
+    case "VOLUME_RATIO":
+    case "NEW_HIGH":
+    case "PCT_FROM_52W_HIGH":
+    case "RS_VS_SPY":
+    case "GAP_UP":
+    case "RSI":
+    case "INSIDER_CLUSTER":
+      return true;
+    case "PRICE_MOVE_PCT":
+      return p.window !== "1D";
+    case "TRAILING_FROM_HIGH":
+      // A trail whose give-back widens with the stock's range reads ATR(14)
+      // off the snapshot. A plain trail needs nothing and costs nothing.
+      return p.atrMultiple != null;
+    case "AND":
+    case "OR":
+      return p.predicates.some(needsIndicators);
+    default:
+      return false;
+  }
+}

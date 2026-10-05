@@ -40,7 +40,8 @@ import { prisma } from "@/lib/prisma";
 import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
-import { compareWithShape, type Disagreement } from "@/lib/agent/triggers/condition/read";
+import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
+import { fromLegacy, isRetired, readsSource, waitsForClose, type Source, type When } from "@/lib/agent/triggers/condition";
 import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
@@ -68,7 +69,6 @@ import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
 import { describeChartFire } from "@/lib/agent/triggers/chart-context";
-import { needsIndicators } from "@/lib/agent/triggers/indicator-needs";
 import { describeCluster, insiderCluster } from "@/lib/market-data/insider-cluster";
 import { fetchBookFilings, type BookFilings } from "@/lib/market-data/sec-filings";
 import {
@@ -76,7 +76,6 @@ import {
   filingNeedsSameDayLook,
   filingsBehindFire,
   rememberFired,
-  secEventLeaves,
 } from "@/lib/market-data/sec-events";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -109,111 +108,44 @@ function parseTriggers(raw: unknown, thesisId: string): Trigger[] {
   });
 }
 
+/** A stored predicate as the condition shape; null for a removed kind, which nothing reads. */
+function shapeOf(p: TriggerPredicate): When | null {
+  const w = fromLegacy(p);
+  return isRetired(w) ? null : w;
+}
+
 /**
- * Predicate kinds the cron path can evaluate — everything that needs no
- * Signal.
- *
- * EARNINGS_BEAT / EARNINGS_MISS joined this set on 2026-09-02. They read
- * the published earnings calendar (reported EPS vs estimate) off
- * `ctx.earnings`, which the cron path fetches for the whole firm in one
- * call — no producer, no router. Before that they lived only on the signal
- * path, which has been down since 2026-05-31 and never carried a surprise
- * figure even when it was up: 57 earnings triggers across 30 names, zero
- * fires, ever. See lib/agent/triggers/earnings.ts.
+ * Every condition a measure reads is evaluated on the cron path, the
+ * earnings ones included (they read the published calendar off
+ * `ctx.earnings`, fetched for the whole firm in one call; before 2026-09-02
+ * they lived only on the signal path and never fired). Only a removed kind
+ * is skipped.
  */
 function isPriceSidePredicate(p: TriggerPredicate): boolean {
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-    case "PRICE_MOVE_PCT":
-    case "GAIN_FROM_ENTRY":
-    case "TRAILING_FROM_HIGH":
-    case "VS_SMA":
-    case "NEAR_SMA":
-    case "VOLUME_RATIO":
-    case "NEW_HIGH":
-    case "PCT_FROM_52W_HIGH":
-    case "RS_VS_SPY":
-    case "GAP_UP":
-    case "RSI":
-    case "INSIDER_CLUSTER":
-    case "REVIEW_CADENCE":
-    case "EARNINGS_BEAT":
-    case "EARNINGS_MISS":
-    case "EARNINGS_WITHIN":
-    case "EARNINGS_SINCE":
-    case "SEC_EVENT":
-      return true;
-    case "AND":
-    case "OR":
-      return p.predicates.every(isPriceSidePredicate);
-    default:
-      return false;
-  }
+  return shapeOf(p) != null;
+}
+
+/** Does the pass load `source` for it: the snapshot, today's volume, the earnings calendar, filings. */
+function reads(p: TriggerPredicate, source: Source): boolean {
+  const w = shapeOf(p);
+  return w != null && readsSource(w, source);
 }
 
 /** Does this predicate read the earnings calendar at all? Drives the fetch. */
-function needsEarningsData(p: TriggerPredicate): boolean {
-  switch (p.kind) {
-    case "EARNINGS_BEAT":
-    case "EARNINGS_MISS":
-    case "EARNINGS_WITHIN":
-    case "EARNINGS_SINCE":
-      return true;
-    case "AND":
-    case "OR":
-      return p.predicates.some(needsEarningsData);
-    default:
-      return false;
-  }
-}
-
+const needsEarningsData = (p: TriggerPredicate) => reads(p, "earnings");
 /** Does this predicate ask about a report that hasn't happened yet? Drives the lookahead. */
-function needsUpcomingEarnings(p: TriggerPredicate): boolean {
-  switch (p.kind) {
-    case "EARNINGS_WITHIN":
-      return true;
-    case "AND":
-    case "OR":
-      return p.predicates.some(needsUpcomingEarnings);
-    default:
-      return false;
-  }
-}
-
+const needsUpcomingEarnings = (p: TriggerPredicate) => SHAPE_CHECKER.readsUpcomingReport(p);
 /** Does this predicate read SEC filings? Drives the one EDGAR call. */
-function needsFilings(p: TriggerPredicate): boolean {
-  return secEventLeaves(p).length > 0;
-}
-
+const needsFilings = (p: TriggerPredicate) => reads(p, "filings");
 /** Does this predicate read the daily indicator snapshot? Drives the load. */
-
+const needsIndicators = (p: TriggerPredicate) => reads(p, "snapshot");
 /** Does this predicate read today's session volume? Drives the Alpaca call. */
-function needsTodayVolume(p: TriggerPredicate): boolean {
-  switch (p.kind) {
-    case "VOLUME_RATIO":
-    case "GAP_UP":
-      return true;
-    case "AND":
-    case "OR":
-      return p.predicates.some(needsTodayVolume);
-    default:
-      return false;
-  }
-}
+const needsTodayVolume = (p: TriggerPredicate) => reads(p, "volume");
 
 /** Does this predicate wait for the close? Selects the rungs of the close pass. */
 function hasCloseBasis(p: TriggerPredicate): boolean {
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-      return p.basis === "close";
-    case "AND":
-    case "OR":
-      return p.predicates.some(hasCloseBasis);
-    default:
-      return false;
-  }
+  const w = shapeOf(p);
+  return w != null && waitsForClose(w);
 }
 
 /** 16:20–16:34 ET on a trading day: the pass that reads the day's close. */
@@ -346,50 +278,21 @@ interface FiringEvent {
   firedContext?: string | null;
 }
 
-/** Add one pass to today's TriggerShadowDay row (New York date). Never throws. */
-async function recordShadowDay(now: Date, compared: number, disagreements: unknown[]): Promise<void> {
-  const day = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  const samples = JSON.parse(JSON.stringify(disagreements.slice(0, 25)));
-  try {
-    await prisma.triggerShadowDay.upsert({
-      where: { day },
-      create: { day, passes: 1, compared, disagreements: disagreements.length, samples },
-      update: {
-        passes: { increment: 1 },
-        compared: { increment: compared },
-        disagreements: { increment: disagreements.length },
-        ...(disagreements.length ? { samples } : {}),
-      },
-    });
-  } catch (e) {
-    console.error("[trigger-shadow] couldn't record the day's counts:", e instanceof Error ? e.message : e);
-  }
-}
-
 /**
  * For one thesis × triggers[] × context, return all triggers that fire +
  * the updated triggers array with lastFiredAt stamped on the firing ones.
  * Pure read of `now`/`ctx` — no side effects.
- *
- * Every decision is also made by the condition shape's checker, and any
- * disagreement is returned for the pass to log. Nothing reads it: the fires
- * are today's (docs/plans/TRIGGER_TYPES.md PR 2, until the cutover).
  */
 function evaluateThesisTriggers<T extends Trigger>(args: {
   thesisId: string;
   triggers: T[];
   ctx: EvaluationContext;
   predicateFilter?: (p: TriggerPredicate) => boolean;
-}): { fires: T[]; updatedTriggers: T[]; compared: number; disagreements: Disagreement[] } {
+}): { fires: T[]; updatedTriggers: T[] } {
   const fires: T[] = [];
-  const disagreements: Disagreement[] = [];
-  let compared = 0;
   const updatedTriggers = args.triggers.map((t) => {
     if (args.predicateFilter && !args.predicateFilter(t.predicate)) return t;
     const result = shouldFire(t, args.ctx);
-    compared++;
-    const disagreement = compareWithShape(t, args.ctx, result);
-    if (disagreement) disagreements.push(disagreement);
     if (!result.fires) return t;
     fires.push(t);
     return {
@@ -397,7 +300,7 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
       lastFiredAt: args.ctx.now.toISOString(),
     };
   });
-  return { fires, updatedTriggers, compared, disagreements };
+  return { fires, updatedTriggers };
 }
 
 /**
@@ -521,8 +424,6 @@ export const triggerEvaluator = inngest.createFunction(
       // theses with PRICE_ABOVE/PRICE_BELOW entry triggers; without
       // cron-path evaluation those triggers would never fire intraday.
       // The 200-ticker cap below still bounds the loop.
-      // What the condition shape's checker said beside today's, this pass.
-      const shadow = { compared: 0, disagreements: [] as Array<Disagreement & { ticker: string; thesisId: string }> };
       const theses = await prisma.thesis.findMany({
         where: {
           // enabled:true — kill the zombie: a disabled analyst's HOLDING/
@@ -768,14 +669,12 @@ export const triggerEvaluator = inngest.createFunction(
           now,
         };
 
-        const { fires, compared, disagreements } = evaluateThesisTriggers({
+        const { fires } = evaluateThesisTriggers({
           thesisId: thesis.id,
           triggers,
           ctx,
           predicateFilter: isPriceSidePredicate,
         });
-        shadow.compared += compared;
-        for (const d of disagreements) shadow.disagreements.push({ ticker: thesis.ticker, thesisId: thesis.id, ...d });
 
         if (fires.length === 0) continue;
         // The filings behind each filing fire, read before the stamp
@@ -926,13 +825,6 @@ export const triggerEvaluator = inngest.createFunction(
           });
         }
       }
-      // The condition shape's checker beside today's: one line a pass, and one
-      // per disagreement. Zero for three trading days is the cutover's proof.
-      console.log(`[trigger-shadow] ${session} pass: ${shadow.compared} decisions compared, ${shadow.disagreements.length} disagreements`);
-      for (const d of shadow.disagreements.slice(0, 25)) console.warn("[trigger-shadow] disagreement", JSON.stringify(d));
-      // The same counts, kept: one row a trading day. A failed write is logged and the pass goes on.
-      await recordShadowDay(now, shadow.compared, shadow.disagreements);
-
       // Two protective fires on one thesis in one pass → one run (DAV-254).
       return collapseProtectiveFires(events, (e) => e.sentence ?? e.predicateKind);
     });

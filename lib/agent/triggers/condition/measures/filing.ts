@@ -12,6 +12,7 @@ function tierOf(v: string | undefined): "RED" | "MATERIAL" | undefined {
 
 export const filing: MeasureDef = {
   id: "filing",
+  reads: ["filings"],
   type: "filing",
   label: "SEC filing",
   word: "Files",
@@ -64,6 +65,7 @@ function fold(cs: Condition[]): TriggerPredicate | null {
 
 export const insiders: MeasureDef = {
   id: "insiders",
+  reads: ["snapshot"],
   type: "filing",
   label: "Insider buying",
   word: "At least",
