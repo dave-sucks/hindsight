@@ -413,7 +413,7 @@ DECISION FRAMEWORK
 
 3. If validation FAILS:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
-     patch) and a rationale that says why in plain words: "Not buying
+     patch) and a rationale that says why in plain words: "Not acting
      yet: <reason>."
    - If validation reveals the thesis itself is no longer applicable
      (ticker fell outside this analyst's edge/universe, the original
