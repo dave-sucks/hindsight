@@ -346,6 +346,26 @@ interface FiringEvent {
   firedContext?: string | null;
 }
 
+/** Add one pass to today's TriggerShadowDay row (New York date). Never throws. */
+async function recordShadowDay(now: Date, compared: number, disagreements: unknown[]): Promise<void> {
+  const day = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const samples = JSON.parse(JSON.stringify(disagreements.slice(0, 25)));
+  try {
+    await prisma.triggerShadowDay.upsert({
+      where: { day },
+      create: { day, passes: 1, compared, disagreements: disagreements.length, samples },
+      update: {
+        passes: { increment: 1 },
+        compared: { increment: compared },
+        disagreements: { increment: disagreements.length },
+        ...(disagreements.length ? { samples } : {}),
+      },
+    });
+  } catch (e) {
+    console.error("[trigger-shadow] couldn't record the day's counts:", e instanceof Error ? e.message : e);
+  }
+}
+
 /**
  * For one thesis × triggers[] × context, return all triggers that fire +
  * the updated triggers array with lastFiredAt stamped on the firing ones.
@@ -910,6 +930,8 @@ export const triggerEvaluator = inngest.createFunction(
       // per disagreement. Zero for three trading days is the cutover's proof.
       console.log(`[trigger-shadow] ${session} pass: ${shadow.compared} decisions compared, ${shadow.disagreements.length} disagreements`);
       for (const d of shadow.disagreements.slice(0, 25)) console.warn("[trigger-shadow] disagreement", JSON.stringify(d));
+      // The same counts, kept: one row a trading day. A failed write is logged and the pass goes on.
+      await recordShadowDay(now, shadow.compared, shadow.disagreements);
 
       // Two protective fires on one thesis in one pass → one run (DAV-254).
       return collapseProtectiveFires(events, (e) => e.sentence ?? e.predicateKind);
