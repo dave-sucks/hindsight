@@ -7,6 +7,7 @@
  * which level it's editing:
  *   { value: number }                   → edit the value
  *   { fireMode: "TACTICAL" | "DIRECT" } → change how it fires
+ *   { replace: { action, predicate, fireMode? } } → the trigger dialog's Save
  */
 
 import { createClient } from "@/lib/supabase/server";
@@ -14,6 +15,8 @@ import { getAccountId, getUserRole } from "@/lib/auth/account";
 import {
   deleteLevelTrigger,
   editLevelTriggerValue,
+  replaceLevelTrigger,
+  type LevelTriggerAddInput,
   setLevelTriggerFireMode,
   type WritableLevel,
 } from "@/lib/actions/level-triggers";
@@ -52,7 +55,12 @@ export async function PATCH(
   const auth = await authorize(level);
   if (auth.error) return auth.error;
 
-  let body: { value?: unknown; fireMode?: unknown; part?: unknown };
+  let body: {
+    value?: unknown;
+    fireMode?: unknown;
+    part?: unknown;
+    replace?: { action?: unknown; predicate?: unknown; fireMode?: unknown };
+  };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -64,6 +72,28 @@ export async function PATCH(
 
   const ctx = { accountId: auth.accountId, actorUserId: auth.user.id };
   try {
+    if (body.replace != null) {
+      const r = body.replace;
+      if (typeof r !== "object" || typeof r.action !== "string" || r.predicate == null || typeof r.predicate !== "object") {
+        return new Response("`replace` must carry an `action` string and a `predicate` object.", { status: 400 });
+      }
+      if (r.fireMode != null && r.fireMode !== "TACTICAL" && r.fireMode !== "DIRECT") {
+        return new Response('`fireMode` must be "TACTICAL" or "DIRECT".', { status: 400 });
+      }
+      const trigger = await replaceLevelTrigger(
+        auth.level,
+        ownerId,
+        triggerId,
+        {
+          action: r.action as LevelTriggerAddInput["action"],
+          predicate: r.predicate as LevelTriggerAddInput["predicate"],
+          fireMode: (r.fireMode ?? undefined) as LevelTriggerAddInput["fireMode"],
+        },
+        ctx,
+      );
+      return Response.json({ ok: true, trigger });
+    }
+
     if (typeof body.fireMode === "string") {
       if (body.fireMode !== "TACTICAL" && body.fireMode !== "DIRECT") {
         return new Response('`fireMode` must be "TACTICAL" or "DIRECT".', { status: 400 });

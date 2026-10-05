@@ -15,6 +15,7 @@
  * whose `fieldChanges.triggerOps` IS the change. No Alpaca, no approval.
  */
 
+import { POSITION_SCOPED_KINDS, THESIS_ADDABLE_KINDS } from "@/lib/agent/triggers/addable";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
@@ -251,7 +252,8 @@ async function runPrincipalOp(
       : op.op === "add"
         ? op.trigger.action === "ENTER"
         : thesis.triggers.some((t) => t.id === op.id && t.action === "ENTER") ||
-          (op.op === "edit" && op.action === "ENTER");
+          (op.op === "edit" && op.action === "ENTER") ||
+          (op.op === "replace" && op.trigger.action === "ENTER");
   let writtenPrice: number | null = null;
   if (touchesBuy) {
     writtenPrice = freshQuotePrice(await getStockQuote(thesis.ticker).catch(() => null), new Date());
@@ -409,50 +411,14 @@ export async function applyTriggerValueEdit(
 
 // ── Add / delete / fire-mode ────────────────────────────────────────────
 
-/** Predicate kinds the UI add-form can mint: a fixed price level (Target
- *  Price), a directional daily % move (Movement Amount), a cumulative % vs
- *  the position's entry (Gain from entry), or a give-back % off the tracked
- *  high (Trailing from high). The last two are position-scoped (they read
- *  avgCost / peakPrice), so the add path additionally requires an open
- *  position for them. */
-export const ADDABLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"]> = new Set<TriggerPredicate["kind"]>([
-  "PRICE_ABOVE",
-  "PRICE_BELOW",
-  "PRICE_MOVE_PCT",
-  "GAIN_FROM_ENTRY",
-  "TRAILING_FROM_HIGH",
-  // The review clock — the one rung that decides whether an analyst looks at
-  // this name at all, so the principal must be able to put one on and off.
-  "REVIEW_CADENCE",
-  // The earnings heads-up — "this reports within N days." Reads the calendar,
-  // no position needed, so it's legal on a watch as well as a holding.
-  "EARNINGS_WITHIN",
-  // A beat or a miss at the report — the playbook's "a beat the market sold"
-  // is a beat AND down 3% on the day, so a hand has to be able to write one.
-  "EARNINGS_BEAT",
-  "EARNINGS_MISS",
-  // The chart kinds (DAV-247) — read the daily snapshot, legal on a watch
-  // or a holding.
-  "VS_SMA",
-  "NEAR_SMA",
-  "VOLUME_RATIO",
-  "NEW_HIGH",
-  "PCT_FROM_52W_HIGH",
-  "RS_VS_SPY",
-  "GAP_UP",
-  "RSI",
-  "INSIDER_CLUSTER",
-  // A filing — reads EDGAR, no position needed, legal on a watch or a holding.
-  "SEC_EVENT",
-]);
+/** Predicate kinds the add path accepts on a stock. The one list lives in
+ *  lib/agent/triggers/addable so the trigger dialog offers exactly these. */
+export const ADDABLE_PREDICATE_KINDS = THESIS_ADDABLE_KINDS;
 
 /** Kinds that evaluate off the open position (avgCost / peakPrice). With no
  *  position they return false forever — a silent missed-trigger footgun —
  *  so the add path refuses to mint them on an un-held thesis. */
-const POSITION_SCOPED_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
-  "GAIN_FROM_ENTRY",
-  "TRAILING_FROM_HIGH",
-]);
+const POSITION_SCOPED_PREDICATE_KINDS = POSITION_SCOPED_KINDS;
 
 export interface TriggerAddInput {
   action: TriggerAction;
@@ -560,6 +526,52 @@ export async function applyTriggerAdd(
       // fire mode on it would claim a tactical wake that never happens
       // (DAV-226).
       rationale: `[USER] Added a "${input.action}" trigger (${predicateSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
+    }),
+  );
+  const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
+  return { ok: true, thesisId: outcome.thesis.id, trigger, synced: outcome.synced };
+}
+
+/**
+ * applyTriggerReplace — the trigger dialog's Save on a trigger that exists.
+ * Swaps its condition, action and fire mode in one write. Kept in the same
+ * slot it keeps its id and history; moved to another slot it becomes a new
+ * trigger (ops.ts `replace`). Validated exactly like an add.
+ */
+export async function applyTriggerReplace(
+  thesisId: string,
+  triggerId: string,
+  input: TriggerAddInput,
+  ctx: ThesisEditContext,
+): Promise<TriggerAddResult> {
+  const problem = addablePredicateProblem(input.predicate, (k) => ADDABLE_PREDICATE_KINDS.has(k));
+  if (problem) throw new ThesisEditError("INVALID", problem);
+  let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
+  const outcome = await runPrincipalOp(
+    thesisId,
+    ctx,
+    (thesis) => {
+      if (plainConditions(input.predicate).some((c) => POSITION_SCOPED_PREDICATE_KINDS.has(c.kind)) && !thesis.position) {
+        throw new ThesisEditError(
+          "INVALID",
+          "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be set on a held (HOLDING) thesis.",
+        );
+      }
+      if (fireMode === "DIRECT" && (input.action !== "EXIT" || !thesis.position)) fireMode = "TACTICAL";
+      return {
+        op: "replace",
+        id: triggerId,
+        trigger: buildPrincipalTrigger({
+          ...input,
+          fireMode,
+          defaultRationale: addedTriggerRationale(input.action, input.predicate),
+          allowDirect: fireMode === "DIRECT",
+        }),
+      };
+    },
+    (thesis) => ({
+      summary: `Principal changed ${thesis.ticker} trigger — ${predicateSentence(input.predicate)} → ${input.action.toLowerCase()}`,
+      rationale: `[USER] Changed a trigger to "${input.action}" (${predicateSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;

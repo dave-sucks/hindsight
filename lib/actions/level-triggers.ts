@@ -18,6 +18,7 @@
  * rather than in the UI so a hand-rolled request can't bypass it.
  */
 
+import { LEVEL_ELIGIBLE_KINDS } from "@/lib/agent/triggers/addable";
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { editableTriggerParts, withEditedValue } from "@/lib/agent/triggers/editable";
@@ -35,53 +36,9 @@ import { ThesisEditError, buildPrincipalTrigger } from "@/lib/actions/thesis-edi
 /** The two levels this module writes. THESIS goes through ./thesis-edit. */
 export type WritableLevel = "ACCOUNT" | "ANALYST";
 
-/**
- * Predicate kinds whose meaning is independent of any one thesis, and so
- * can be expressed as a standing rule.
- *
- * Excluded on purpose:
- *   • PRICE_ABOVE / PRICE_BELOW — an absolute dollar level is meaningless
- *     across tickers.
- *   • REVIEW_DATE_HIT — legacy per-thesis review-date predicate.
- *   • AND / OR — composites of the above; allow once there's a UI that
- *     can build them, not before.
- *   • EARNINGS_* — the account earnings rules are seeded by code
- *     (seed-account.ts), not authored here.
- *
- * GAIN_FROM_ENTRY and TRAILING_FROM_HIGH ARE allowed even though they're
- * position-scoped: they evaluate false with no open position rather than
- * erroring, and "every holding trails 6%" is the single most valuable
- * thing an account-level rule can say.
- */
-export const LEVEL_ELIGIBLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"]> =
-  new Set([
-    "PRICE_MOVE_PCT",
-    "GAIN_FROM_ENTRY",
-    "TRAILING_FROM_HIGH",
-    "VS_SMA",
-    "RSI",
-    // The chart kinds (DAV-247) mean the same thing on every ticker —
-    // "within 2% of the 50-day", "a new 52-week high" — so they can be
-    // standing rules.
-    "NEAR_SMA",
-    "VOLUME_RATIO",
-    "NEW_HIGH",
-    "PCT_FROM_52W_HIGH",
-    "RS_VS_SPY",
-    "GAP_UP",
-    "INSIDER_CLUSTER",
-    // "A material SEC filing" means the same on every ticker; a biotech
-    // analyst's "other events (8.01)" rule is a standing rule too.
-    "SEC_EVENT",
-    // A beat or a miss means the same on every ticker — and "a beat the
-    // market sold" (beat AND down 3% on the day) is a standing rule.
-    "EARNINGS_BEAT",
-    "EARNINGS_MISS",
-    // A day count means the same on every stock: "review 10 days before
-    // the event date", "sell 30 days after the buy if still held". The
-    // Catalyst seat's rules are written this way (DAV-279).
-    "REVIEW_CADENCE",
-  ]);
+/** Predicate kinds a standing rule may use. The one list, and why each is in
+ * it, lives in lib/agent/triggers/addable so the trigger dialog offers exactly these. */
+export const LEVEL_ELIGIBLE_PREDICATE_KINDS = LEVEL_ELIGIBLE_KINDS;
 
 export interface LevelTriggerContext {
   accountId: string;
@@ -223,6 +180,50 @@ export async function addLevelTrigger(
   }
   await target.write(next);
   return created;
+}
+
+/**
+ * The trigger dialog's Save on a standing rule that exists. Kept in the same
+ * slot, the rule keeps its id (and with it each stock's fire history, which
+ * is stored per stock under that id); moved to another slot it is a new rule
+ * with a new id, so no stock inherits the old rule's cooldown.
+ */
+export async function replaceLevelTrigger(
+  level: WritableLevel,
+  ownerId: string,
+  triggerId: string,
+  input: LevelTriggerAddInput,
+  ctx: LevelTriggerContext,
+): Promise<Trigger> {
+  assertLevelEligible(input.predicate);
+  const target = await resolveTarget(level, ownerId, ctx);
+  const existing = await target.read();
+  const found = existing.find((t) => t.id === triggerId);
+  if (!found) {
+    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found at this level.`);
+  }
+  const bucket = triggerBucket({ predicate: input.predicate, action: input.action });
+  if (existing.some((t) => t.id !== triggerId && triggerBucket(t) === bucket)) {
+    throw new ThesisEditError(
+      "INVALID",
+      `A "${predicateSentence(input.predicate)}" rule already exists at this level — edit that one instead.`,
+    );
+  }
+  const built = buildPrincipalTrigger({
+    ...input,
+    defaultRationale: `${predicateSentence(input.predicate)} — standing rule set by the principal.`,
+    allowDirect: input.action === "EXIT" && isDirectEligiblePredicate(input.predicate.kind),
+  });
+  const sameSlot = triggerBucket(found) === bucket;
+  const updated: Trigger = sameSlot
+    ? { ...found, predicate: built.predicate, action: built.action, fireMode: built.fireMode, source: built.source }
+    : built;
+  const next = existing.map((t) => (t.id === triggerId ? updated : t));
+  if (!triggersArraySchema.safeParse(next).success) {
+    throw new ThesisEditError("INVALID", "That trigger isn't valid at this level.");
+  }
+  await target.write(next);
+  return updated;
 }
 
 export async function editLevelTriggerValue(

@@ -1099,7 +1099,7 @@ export const updateThesis = defineTool({
       if (isTerminalTransition) {
         opResults.push(
           ...triggerOps.map((o) => ({
-            op: o.op === "level" ? ("edit" as const) : o.op,
+            op: o.op === "level" || o.op === "replace" ? ("edit" as const) : o.op,
             id: "id" in o ? o.id : "",
             ok: false,
             text: "Trigger change",
@@ -1111,7 +1111,7 @@ export const updateThesis = defineTool({
         // that would silently delete a stop. Say so; nothing changes.
         opResults.push(
           ...triggerOps.map((o) => ({
-            op: o.op === "level" ? ("edit" as const) : o.op,
+            op: o.op === "level" || o.op === "replace" ? ("edit" as const) : o.op,
             id: "id" in o ? o.id : "",
             ok: false,
             text: "Trigger change",
