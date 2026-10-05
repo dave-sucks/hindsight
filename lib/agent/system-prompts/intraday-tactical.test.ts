@@ -181,3 +181,22 @@ describe("buildTacticalSystemPrompt — a full analyst can still add to what it 
     expect(prompt).toContain("Adding to a stock it already holds is not capped");
   });
 });
+
+// A declined protective sale is a standing order (the 2026-08-16 ruling):
+// it is proposed again every day its condition holds. A sentence added
+// 2026-09-30 told every trigger run to "say so and pass" after a decline,
+// whatever fired. On the NVDA case (scripts/hero-cases/nvda-declined-sale)
+// twelve runs each, same hour: with it 1 of 12 proposed the sale and 8 tried
+// to delete the trailing stop; without it 11 of 12 proposed the sale.
+describe("buildTacticalSystemPrompt — a declined sale is asked again", () => {
+  const PASS = "say so and pass";
+  it("a protective sale fire carries no pass-after-decline line", () => {
+    expect(buildTacticalSystemPrompt(makeArgs())).not.toContain(PASS);
+  });
+  it("a buy or add fire keeps it: a declined buy is not re-proposed unchanged", () => {
+    const enter: Trigger = { id: "trig_buy", predicate: { kind: "PRICE_ABOVE", level: 60 }, action: "ENTER", rationale: "Buy the breakout." };
+    const add: Trigger = { ...enter, id: "trig_add", action: "ADD" };
+    expect(buildTacticalSystemPrompt(makeArgs({ trigger: enter, position: null }))).toContain(PASS);
+    expect(buildTacticalSystemPrompt(makeArgs({ trigger: add }))).toContain(PASS);
+  });
+});
