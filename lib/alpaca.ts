@@ -547,15 +547,26 @@ export async function getLatestPricesWithMeta(
 // ─── Portfolio history ────────────────────────────────────────────────────────
 
 export interface PortfolioHistoryPoint {
-  date: string; // YYYY-MM-DD
+  /**
+   * The point's x key. `YYYY-MM-DD` on a daily series; a full ISO timestamp on
+   * an intraday one, because a day's worth of 15-minute points all share a
+   * date and would collapse onto each other.
+   */
+  date: string;
   equity: number; // Total portfolio value including unrealized P&L
   profitLoss: number; // P&L for this data point
 }
 
 /**
- * Returns daily portfolio history from Alpaca's Portfolio History API.
- * equity[] = total account value including both realized and unrealized P&L.
- * This is the most accurate source for the equity curve — one call, server-side.
+ * Portfolio history from Alpaca. `equity[]` is total account value including
+ * realized and unrealized P&L — the most accurate source for the curve.
+ *
+ * `timeframe` can be intraday (`5Min`, `15Min`, `1H`), and then each point
+ * keeps its full timestamp instead of being flattened to a date. Probed on
+ * this account 2026-10-04: `1D`+`5Min` → 79 points, `1W`+`15Min` → 162,
+ * `1W`+`1D` → 4. Alpaca refuses intraday past about a week (`1M`+`15Min`
+ * comes back empty), which is why the daily series is still fetched for the
+ * longer ranges.
  */
 export async function getPortfolioHistory(
   options: { period?: string; timeframe?: string } = {},
@@ -565,9 +576,11 @@ export async function getPortfolioHistory(
   const keyId = creds?.keyId || process.env.ALPACA_API_KEY!;
   const secretKey = creds?.secretKey || process.env.ALPACA_API_SECRET!;
 
+  const timeframe = options.timeframe ?? "1D";
+  const intraday = timeframe !== "1D";
   const params = new URLSearchParams({
     period: options.period ?? "5A",
-    timeframe: options.timeframe ?? "1D",
+    timeframe,
   });
 
   const url = `${baseUrl}/v2/account/portfolio/history?${params}`;
@@ -601,8 +614,11 @@ export async function getPortfolioHistory(
   for (let i = 0; i < raw.timestamp.length; i++) {
     const equity = raw.equity[i];
     if (equity == null || !Number.isFinite(equity) || equity <= 0) continue;
+    const at = new Date(raw.timestamp[i] * 1000).toISOString();
     points.push({
-      date: new Date(raw.timestamp[i] * 1000).toISOString().slice(0, 10),
+      // A daily series keeps its date key — the deposit math and every
+      // existing consumer join on it. An intraday one keeps the clock.
+      date: intraday ? at : at.slice(0, 10),
       equity,
       profitLoss: raw.profit_loss?.[i] ?? 0,
     });

@@ -6,8 +6,8 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { StockLogo } from "@/components/StockLogo";
-import { PnlBadge } from "@/components/ui/pnl-badge";
-import { cn, pnlColor } from "@/lib/utils";
+import { TradeRowShell, GainPair } from "@/components/ui/trade-row";
+import { cn } from "@/lib/utils";
 import { useEffect, useState, memo } from "react";
 import {
   fetchQuote,
@@ -25,48 +25,6 @@ export { usePrefetchTickers };
 function formatPrice(price: number): string {
   if (price >= 1000) return price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return price.toFixed(2);
-}
-
-// ─── Day range gauge — 10 small rectangles ───────────────────────────────────
-
-function DayRangeGauge({
-  prevClose,
-  current,
-}: {
-  prevClose: number;
-  current: number;
-}) {
-  const changePct = prevClose > 0 ? ((current - prevClose) / prevClose) * 100 : 0;
-  // Map change percentage to filled blocks (0-10)
-  // Each block ≈ 1% move. Center is 5 blocks (0% change).
-  const filled = Math.min(10, Math.max(0, Math.round(5 + changePct * 2)));
-  const isPositive = changePct >= 0;
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span className="tabular-nums">${formatPrice(prevClose)}</span>
-        <span className={cn("tabular-nums", isPositive ? "text-positive" : "text-negative")}>
-          ${formatPrice(current)}
-        </span>
-      </div>
-      <div className="flex gap-0.5">
-        {Array.from({ length: 10 }, (_, i) => (
-          <div
-            key={i}
-            className={cn(
-              "h-1 flex-1 rounded-[1px]",
-              i < filled
-                ? isPositive
-                  ? "bg-positive/60"
-                  : "bg-negative/60"
-                : "bg-muted",
-            )}
-          />
-        ))}
-      </div>
-    </div>
-  );
 }
 
 // ─── Inline TickerChip — Perplexity-style inline text with hover card ────────
@@ -123,46 +81,26 @@ export const TickerChip = memo(function TickerChip({
           {isPositive ? "↗" : "↘"} {isPositive ? "+" : ""}{quote.changePct.toFixed(2)}%
         </span>
       </HoverCardTrigger>
-      <HoverCardContent side="top" className="w-64 p-0 overflow-hidden">
-        {/* Main row: logo + name/ticker + price */}
-        <div className="flex items-center gap-3 px-3 py-2.5">
-          <StockLogo ticker={sym} size="md" className="rounded-md" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{sym}</p>
-              </div>
-              <span className="text-sm font-medium tabular-nums shrink-0">
-                ${formatPrice(quote.price)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[10px] text-muted-foreground font-mono">${sym}</span>
-              <div className="flex items-center gap-1.5">
-                <span className={cn("text-xs tabular-nums", pnlColor(quote.change))}>
-                  {quote.change >= 0 ? "+" : ""}{quote.change.toFixed(2)}
-                </span>
-                <PnlBadge value={quote.changePct} format="percent" className="text-[10px]" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Day range gauge */}
-        <div className="px-3 pb-2.5">
-          <DayRangeGauge prevClose={quote.prevClose} current={quote.price} />
-        </div>
-
-        {/* Footer */}
-        <div className="px-3 py-1.5 border-t bg-muted/20 flex items-center justify-between">
-          <span className="text-[10px] text-muted-foreground">via Finnhub</span>
-          <a
-            href={`/stocks?symbol=${sym}`}
-            className="text-[10px] text-primary hover:underline"
-          >
-            View in Hindsight →
-          </a>
-        </div>
+      {/* The card IS the app's stock row — the same TradeRowShell + GainPair
+          the dashboard's pinned list and the coverage table use, so a stock
+          looks the same wherever it appears. It used to be a bespoke layout
+          with its own type scale, a "day range" gauge that was not a day range
+          (it mapped the percent move onto ten blocks at roughly 1% each), and
+          a "via Finnhub" footer that stopped being true when live prices moved
+          to Alpaca. The row links to the stock, so the footer's link is gone
+          with it. */}
+      <HoverCardContent side="top" className="w-72 p-1">
+        <TradeRowShell
+          href={`/stocks/${sym}`}
+          leading={<StockLogo ticker={sym} size="md" className="rounded-md" />}
+          primary={<span className="text-sm font-medium">{sym}</span>}
+          trailingTop={
+            <span className="inline-flex items-center gap-1 text-sm tabular-nums font-light">
+              ${formatPrice(quote.price)}
+            </span>
+          }
+          trailingBottom={<GainPair dollar={quote.change} pct={quote.changePct} />}
+        />
       </HoverCardContent>
     </HoverCard>
   );

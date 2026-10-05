@@ -207,6 +207,9 @@ export interface DashboardData {
   portfolio: PortfolioStats;
   /** Total equity curve from Alpaca Portfolio History API (realized + unrealized). Falls back to realizedCurve. */
   equityCurve: { date: string; value: number }[];
+  /** The 1D/1W curves at 15-minute resolution. Empty when the vendor had none. */
+  intradayEquityCurve: { date: string; value: number }[];
+  intradayPnlCurve: { date: string; value: number }[];
   /**
    * Deposit-adjusted cumulative P&L curve: `equity − cumulative net
    * contributions` at each date. Flat across deposits (no cliff), so the
@@ -336,6 +339,8 @@ export async function getDashboardData(
       activityFeed: [],
       portfolio: emptyPortfolio,
       equityCurve: [],
+      intradayEquityCurve: [],
+      intradayPnlCurve: [],
       pnlCurve: [],
       realizedCurve: [],
       agentConfigs: [],
@@ -367,6 +372,8 @@ export async function getDashboardData(
       activityFeed: [],
       portfolio: emptyPortfolio,
       equityCurve: [],
+      intradayEquityCurve: [],
+      intradayPnlCurve: [],
       pnlCurve: [],
       realizedCurve: [],
       agentConfigs: [],
@@ -625,7 +632,7 @@ export async function getDashboardData(
     return ((end - start) / start) * 100;
   }
 
-  const [priceLookup, nameMap, spyCandles, portfolioHistory, alpacaAccount, fundingEvents] = await Promise.all([
+  const [priceLookup, nameMap, spyCandles, portfolioHistory, intradayHistory, alpacaAccount, fundingEvents] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -667,6 +674,17 @@ export async function getDashboardData(
     alpacaCreds
       ? getPortfolioHistory({}, alpacaCreds).catch((err) => {
           console.warn(`[portfolio] getPortfolioHistory failed: ${err instanceof Error ? err.message : err}`);
+          return [] as import("@/lib/alpaca").PortfolioHistoryPoint[];
+        })
+      : Promise.resolve([] as import("@/lib/alpaca").PortfolioHistoryPoint[]),
+    // The same curve at 15 minutes, for the 1D and 1W ranges. The daily series
+    // has ONE point per day, so 1D had nothing to draw and fell back to the
+    // last two days — a straight line between yesterday and today. Alpaca
+    // refuses intraday past about a week, so the longer ranges keep the daily
+    // series above.
+    alpacaCreds
+      ? getPortfolioHistory({ period: "1W", timeframe: "15Min" }, alpacaCreds).catch((err) => {
+          console.warn(`[portfolio] getPortfolioHistory(intraday) failed: ${err instanceof Error ? err.message : err}`);
           return [] as import("@/lib/alpaca").PortfolioHistoryPoint[];
         })
       : Promise.resolve([] as import("@/lib/alpaca").PortfolioHistoryPoint[]),
@@ -954,6 +972,23 @@ export async function getDashboardData(
           fundingEvents,
         )
       : equityCurve;
+
+  // The same two curves at 15 minutes, for 1D and 1W. Empty when the vendor
+  // had nothing (a brand-new account, or a call that failed) — the client
+  // falls back to the daily series, which is what it used to do always.
+  // `depositAdjustedPnlCurve` reads the DATE out of each key, so an ISO
+  // timestamp works unchanged: a deposit still lands on its day.
+  const intradayEquityCurve: { date: string; value: number }[] =
+    intradayHistory.length >= 2
+      ? intradayHistory.map((p) => ({ date: p.date, value: p.equity }))
+      : [];
+  const intradayPnlCurve: { date: string; value: number }[] =
+    intradayHistory.length >= 2
+      ? depositAdjustedPnlCurve(
+          intradayHistory.map((p) => ({ date: p.date, equity: p.equity })),
+          fundingEvents,
+        )
+      : [];
 
   // ── 7b. Per-analyst equity curves (cumulative P&L, starting from 0) ────────
   const analystEquityCurves: Record<string, { date: string; value: number }[]> = {};
@@ -1418,6 +1453,8 @@ export async function getDashboardData(
       dayPnlPct,
     },
     equityCurve,
+    intradayEquityCurve,
+    intradayPnlCurve,
     pnlCurve,
     realizedCurve,
     agentConfigs,

@@ -24,6 +24,8 @@ import { useMessage } from "@assistant-ui/react";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { ThesisCarousel } from "@/components/domain/thesis-carousel";
 import { ReadThesesTable } from "@/components/domain/read-theses-table";
+import { WritingThesesTable } from "@/components/domain/writing-theses-table";
+import { collectDispatched } from "@/lib/chat/dispatched-writers";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -38,6 +40,8 @@ interface Props {
 }
 
 const READ_TOOLS = new Set(["get_theses"]);
+/** A dispatched writer is a thesis being written — its own section. */
+const DISPATCH_TOOLS = new Set(["dispatch_thesis_research"]);
 const WRITE_TOOLS = new Set(["record_thesis", "show_thesis", "update_thesis"]);
 
 export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
@@ -45,23 +49,25 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
   const [openThesis, setOpenThesis] = useState<ThesisCardData | null>(null);
 
   // Split tool-call parts in this message into Read / Write buckets.
-  const { readParts, writeParts } = useMemo(() => {
+  const { readParts, writeParts, dispatchParts } = useMemo(() => {
     const all = (content as unknown[])
       .map((p) => p as Record<string, unknown>)
       .filter((p) => p?.type === "tool-call");
     return {
       readParts: all.filter((p) => READ_TOOLS.has(p.toolName as string)),
       writeParts: all.filter((p) => WRITE_TOOLS.has(p.toolName as string)),
+      dispatchParts: all.filter((p) => DISPATCH_TOOLS.has(p.toolName as string)),
     };
   }, [content]);
 
   const isRead = READ_TOOLS.has(toolName);
   const isWrite = WRITE_TOOLS.has(toolName);
+  const isDispatch = DISPATCH_TOOLS.has(toolName);
 
   // Each call instance renders only when it's the first call of its kind
   // in the message. Subsequent calls of the same kind collapse into the
   // already-rendered surface (table for reads, carousel for writes).
-  const myParts = isRead ? readParts : writeParts;
+  const myParts = isRead ? readParts : isDispatch ? dispatchParts : writeParts;
   const myIndex = myParts.findIndex((p) => p.toolCallId === toolCallId);
   if (myIndex > 0) return null;
 
@@ -98,6 +104,23 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
           />
         ) : null}
       </>
+    );
+  }
+
+  // Every writer this message dispatched, in one table — three tickers sent
+  // off together are one thing happening, not three paragraphs.
+  if (isDispatch) {
+    const writers = collectDispatched(dispatchParts);
+    if (writers.length === 0) return null;
+    const noun = writers.length === 1 ? "thesis" : "theses";
+    return (
+      <div className="my-3 space-y-1">
+        <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+          <HugeiconsIcon icon={QuillWrite01Icon} className="size-3.5 shrink-0" />
+          <span>{`Writing ${writers.length} ${noun}`}</span>
+        </div>
+        <WritingThesesTable writers={writers} />
+      </div>
     );
   }
 

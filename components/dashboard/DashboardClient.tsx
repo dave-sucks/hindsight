@@ -51,7 +51,6 @@ import {
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import CoverageTable from '@/components/dashboard/CoverageTable';
 import PinnedPanel from '@/components/dashboard/PinnedPanel';
-import MoversPanel from '@/components/dashboard/MoversPanel';
 import type { CoverageData } from '@/lib/actions/coverage.actions';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
@@ -146,9 +145,47 @@ function cutoffMs(range: Range) {
   return Date.now() - RANGE_DAYS[range] * 86_400_000;
 }
 
+/**
+ * A point's key is either `YYYY-MM-DD` (daily series) or a full ISO timestamp
+ * (the 15-minute series). A bare date is read at midday so a day isn't
+ * dropped by the hour the page happens to load.
+ */
+function keyMs(date: string): number {
+  return new Date(date.length <= 10 ? `${date}T12:00:00` : date).getTime();
+}
+
+/**
+ * The x label for a point, which now depends on the range: a 15-minute series
+ * over one day wants clock times, the same series over a week wants days —
+ * seven days of "2:30 PM" says nothing about which day. Anything longer is
+ * already a date.
+ */
+function axisLabel(v: string, range: Range): string {
+  if (range === '1W' && v.includes('T')) {
+    return new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  return formatDateLabel(v);
+}
+
+/** The tooltip says the day AND the time whenever the point carries one. */
+function pointLabel(v: string): string {
+  if (!v.includes('T')) return formatDateLabel(v);
+  const dt = new Date(v);
+  return `${dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+}
+
 function filterByRange<T extends { date: string }>(data: T[], range: Range): T[] {
+  // 1D means the last SESSION, not the last 24 hours. On a Sunday the newest
+  // point is Friday afternoon, so a rolling day window is empty and the chart
+  // fell back to two points — a straight line. Take the newest day present in
+  // the data and keep everything on it.
+  if (range === '1D' && data.length > 0) {
+    const newestDay = data[data.length - 1].date.slice(0, 10);
+    const session = data.filter((d) => d.date.slice(0, 10) === newestDay);
+    if (session.length > 1) return session;
+  }
   const ms = cutoffMs(range);
-  const filtered = data.filter((d) => new Date(d.date + 'T12:00:00').getTime() >= ms);
+  const filtered = data.filter((d) => keyMs(d.date) >= ms);
   return filtered.length > 1 ? filtered : data.slice(-2);
 }
 
@@ -841,12 +878,27 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
   const spyCandles = data?.spyCandles ?? [];
   const recentPicks = data?.recentPicks ?? [];
 
-  const rawEquity = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
+  // 1D and 1W read the 15-minute series; everything longer reads the daily
+  // one, because Alpaca refuses intraday past about a week. The daily series
+  // has one point per day, so 1D used to filter down to nothing and fall back
+  // to the last two days — one straight line from yesterday to today.
+  const intraday = range === '1D' || range === '1W';
+  const rawEquity =
+    intraday && data && data.intradayEquityCurve.length > 0
+      ? data.intradayEquityCurve
+      : data && data.equityCurve.length > 0
+        ? data.equityCurve
+        : mockEquityCurve;
   const rawRealizedCurve = data?.realizedCurve ?? rawEquity;
   // Deposit-adjusted cumulative P&L (equity − net contributions). Drives the
   // default "Total" view + the header delta so a deposit isn't read as a gain.
   // Equals rawEquity when there are no funding events (paper / mock).
-  const rawPnlCurve = data && data.pnlCurve.length > 0 ? data.pnlCurve : rawEquity;
+  const rawPnlCurve =
+    intraday && data && data.intradayPnlCurve.length > 0
+      ? data.intradayPnlCurve
+      : data && data.pnlCurve.length > 0
+        ? data.pnlCurve
+        : rawEquity;
 
   // Derive the active curve based on showMode. 'equity' plots the raw account
   // value (real money, deposits included) — the default; the other modes are
@@ -1189,7 +1241,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                         tick={TICK_STYLE}
                         tickLine={false}
                         axisLine={false}
-                        tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
+                        tickFormatter={(v) => axisLabel(v, range).toUpperCase()}
                         interval={Math.max(1, Math.floor(activePortfolioData.length / 6))}
                         padding={{ left: 0, right: 0 }}
                       />
@@ -1213,7 +1265,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                             : `$${Number(v).toLocaleString()}`,
                           'Portfolio',
                         ]}
-                        labelFormatter={(l: unknown) => formatDateLabel(String(l))}
+                        labelFormatter={(l: unknown) => pointLabel(String(l))}
                         labelStyle={{ color: 'var(--muted-foreground)' }}
                         itemStyle={{ color: 'var(--foreground)' }}
                       />
@@ -1244,7 +1296,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                         tick={TICK_STYLE}
                         tickLine={false}
                         axisLine={false}
-                        tickFormatter={(v) => formatDateLabel(String(v)).toUpperCase()}
+                        tickFormatter={(v) => axisLabel(String(v), range).toUpperCase()}
                         interval={Math.max(1, Math.floor(analystCompareData.length / 6))}
                         padding={{ left: 8, right: 8 }}
                       />
@@ -1261,7 +1313,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                           if (!active || !payload?.length) return null;
                           return (
                             <div style={TOOLTIP_STYLE} className="grid min-w-36 gap-1 rounded-lg px-2.5 py-1.5">
-                              <p className="text-xs text-muted-foreground">{formatDateLabel(String(label))}</p>
+                              <p className="text-xs text-muted-foreground">{pointLabel(String(label))}</p>
                               {payload.map((item) => {
                                 const key = item.dataKey as string;
                                 const name = (analystChartConfig[key]?.label as string) ?? key;
@@ -1327,7 +1379,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                         tick={TICK_STYLE}
                         tickLine={false}
                         axisLine={false}
-                        tickFormatter={(v) => formatDateLabel(String(v)).toUpperCase()}
+                        tickFormatter={(v) => axisLabel(String(v), range).toUpperCase()}
                         interval={Math.max(1, Math.floor(spyCompareData.length / 6))}
                         padding={{ left: 8, right: 8 }}
                       />
@@ -1344,7 +1396,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                           if (!active || !payload?.length) return null;
                           return (
                             <div style={TOOLTIP_STYLE} className="grid min-w-32 gap-1 rounded-lg px-2.5 py-1.5">
-                              <p className="text-xs text-muted-foreground">{formatDateLabel(String(label))}</p>
+                              <p className="text-xs text-muted-foreground">{pointLabel(String(label))}</p>
                               {payload.map((item) => {
                                 const pct = Number(item.value);
                                 const name = item.dataKey === 'portfolio' ? 'Portfolio' : 'S&P 500';
@@ -1395,6 +1447,11 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
           <div className="lg:hidden">
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
+            {/* The after-close digest lives in the desktop rail, which is
+                hidden below lg — so on a phone the end-of-day summary was
+                not on the page at all. Same order as the rail: proposals
+                first (time-sensitive), then pinned, then the digest. */}
+            <DigestPreviewCard digest={digest} />
           </div>
 
           {/* Portfolio + Activity stacked section */}
@@ -1440,8 +1497,6 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                 regardless of what the agents proposed today. Below proposals
                 (those are time-sensitive), above the digest. */}
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
-            {/* Today's movers — below your own names, above the digest. */}
-            <MoversPanel />
             <DigestPreviewCard digest={digest} />
           </div>
 

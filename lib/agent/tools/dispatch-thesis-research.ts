@@ -96,7 +96,7 @@ export const dispatchThesisResearch = defineTool({
           "Decision Fields block around RE-ENTER / DOWNGRADE / INVALIDATE.",
       ),
   }),
-  ui: "tool-ui" as const,
+  ui: "thesis-card" as const,
   groupId: "thesis-dispatch",
 
   progressLabel: ({ ticker, mode }) =>
@@ -432,39 +432,23 @@ export const dispatchThesisResearch = defineTool({
       },
     });
 
-    const tag = effectivePromotionContext
-      ? "promotion refresh dispatched"
-      : args.mode === "refresh"
-        ? "refresh dispatched"
-        : "mint dispatched";
-
     return {
       summary: `Dispatched thesis-writer for $${T} (${args.mode}) — child run ${childRun.id}`,
       data: {
         childRunId: childRun.id,
         ticker: T,
         mode: args.mode,
-        analystName: analyst.name,
         // V2 writer typical wall time (~200-250s observed target; see
         // docs/plans/THESIS_WRITER_V2.md). The old 90_000 was copied from
         // the V1 synthesis sub-call's budget and was fiction for the
         // pipeline as a whole.
         estimatedDurationMs: 240_000,
-        items: [
-          {
-            kind: "ticker" as const,
-            ticker: T,
-            tag,
-            text: `Worker spawned for ${analyst.name} · child run ${childRun.id.slice(0, 8)}…`,
-          },
-          ...(redFlag ? [{ kind: "generic" as const, text: redFlag }] : []),
-          {
-            kind: "generic" as const,
-            text:
-              `Watch progress at /runs/${childRun.id}. ETA ~3-4 min. ` +
-              `Result lands as a Thesis with researchData + researchSections populated.`,
-          },
-        ],
+        // No `items`: this renders as a row in the Writing-theses table (the
+        // same table the read-theses list uses), not as prose. It used to
+        // print the raw child run id, an ETA and two internal field names,
+        // and never changed while the writer worked.
+        analystName: analyst.name,
+        ...(redFlag ? { redFlag } : {}),
       },
       sources: [],
     };
