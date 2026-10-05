@@ -68,8 +68,8 @@ export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] =
     position: true,
     direct: true,
     settings: [
-      { key: "startOnceUpPct", words: (v) => `, once it has been up ${pct(Number(v))}` },
-      { key: "widenAtr", snapshot: true, words: (v) => ` (or ${v}× its daily range, if wider)` },
+      { key: "startOnceUpPct", looser: true, words: (v) => `, once it has been up ${pct(Number(v))}` },
+      { key: "widenAtr", looser: true, snapshot: true, words: (v) => ` (or ${v}× its daily range, if wider)` },
     ],
   },
   { id: "sma20", label: "20-day average", group: "Averages", chip: "20-day average", words: "the 20-day average", snapshot: true },

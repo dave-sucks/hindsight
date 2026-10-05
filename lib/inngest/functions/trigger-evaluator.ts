@@ -41,7 +41,7 @@ import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
-import { fromLegacy, isRetired, readsSource, waitsForClose, type Source, type When } from "@/lib/agent/triggers/condition";
+import { levelOf, readsSource, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
 import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
@@ -106,12 +106,6 @@ function parseTriggers(raw: unknown, thesisId: string): Trigger[] {
     );
     return { ...t, id } as Trigger;
   });
-}
-
-/** A stored predicate as the condition shape; null for a removed kind, which nothing reads. */
-function shapeOf(p: TriggerPredicate): When | null {
-  const w = fromLegacy(p);
-  return isRetired(w) ? null : w;
 }
 
 /**
@@ -746,10 +740,9 @@ export const triggerEvaluator = inngest.createFunction(
           // are 19 watchlist rows carrying a floor.
           if (action === "DEMOTE") {
             const short = thesis.direction === "SHORT";
-            const floor =
-              t.predicate.kind === (short ? "PRICE_ABOVE" : "PRICE_BELOW")
-                ? (t.predicate as { level: number }).level
-                : null;
+            const typed = shapeOf(t.predicate);
+            const level = typed == null ? null : levelOf(typed);
+            const floor = level != null && level.above === short ? level.value : null;
             const outcome = await demoteThesisPlan({
               thesisId: thesis.id,
               reason:

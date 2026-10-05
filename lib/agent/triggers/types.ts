@@ -28,9 +28,9 @@
 
 // ── Signal-side enums (mirrors of Signal table columns the router has) ──
 
-import { fromLegacy, toLegacy } from "./condition/legacy";
+import { shapeOf, toLegacy } from "./condition/legacy";
 import { isDirectEligible, isLevel, onTheClose, protectiveCloseReason } from "./condition/rules";
-import { isRetired, type Condition, type When } from "./condition/types";
+import type { Condition } from "./condition/types";
 
 export type SignalType =
   | "NEWS"
@@ -334,12 +334,6 @@ export type Trigger = {
  */
 export type ThesisTriggers = Trigger[];
 
-/** A stored predicate as the condition shape, or null for a removed kind. (Until storage moves to the shape.) */
-function asShape(p: unknown): When | null {
-  const w = fromLegacy(p);
-  return isRetired(w) ? null : w;
-}
-
 /**
  * A sale deterministic enough to close DIRECT (no agent): a typed price, or a
  * % from a close, our entry or the high. Everything else (earnings, filings,
@@ -351,7 +345,7 @@ function asShape(p: unknown): When | null {
  * applyTriggerFireModeChange backend, and the tactical-run short-circuit.
  */
 export function isDirectEligiblePredicate(predicate: unknown): boolean {
-  const w = asShape(predicate);
+  const w = shapeOf(predicate);
   return w != null && isDirectEligible(w);
 }
 
@@ -379,7 +373,7 @@ export function protectiveExitCloseReason(
   predicate: TriggerPredicate,
   direction: string | null,
 ): "STOP" | "TARGET" | null {
-  const w = asShape(predicate);
+  const w = shapeOf(predicate);
   return w == null ? null : protectiveCloseReason(w, direction);
 }
 
@@ -428,7 +422,7 @@ export function effectiveTriggerAction(
   // without us, so the priced plan is stale. Housekeeping REVIEWs (earnings,
   // review cadence, news) are untouched — they still just want a look. With
   // no buy there is no priced plan to go stale: the level is a wake.
-  const w = asShape(trigger.predicate);
+  const w = shapeOf(trigger.predicate);
   if (trigger.action === "REVIEW" && w != null && isLevel(w) && state.hasBuy !== false) {
     const above = (w as Condition).is === "above";
     const favourable = state.direction !== "SHORT" ? above : !above;
@@ -459,7 +453,7 @@ export function watchedFloorOnClose<T extends { action: string; predicate: unkno
   state: { status?: string | null },
 ): T {
   if (state.status === "HOLDING" || trigger.action !== "EXIT") return trigger;
-  const w = asShape(trigger.predicate);
+  const w = shapeOf(trigger.predicate);
   if (w == null) return trigger;
   const closed = onTheClose(w);
   if (closed === w) return trigger;

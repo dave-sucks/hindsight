@@ -86,6 +86,7 @@ import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import { floorTooFar, type FloorStructure } from "@/lib/agent/floor-risk";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import { readsTheTape, reviewClockDays, shapeOf } from "@/lib/agent/triggers/condition";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
 import { fireStreak, type FireStreakUpdate } from "@/lib/agent/fire-streak";
@@ -246,33 +247,13 @@ export type NeedsAction =
 // can't evaluate them inline at run-start. (Signal-side fires already
 // arrive via the TRIGGER_FIRED audit row path.)
 
-const PRICE_OR_TIME_KINDS = new Set([
-  "PRICE_ABOVE",
-  "PRICE_BELOW",
-  "PRICE_MOVE_PCT",
-  "GAIN_FROM_ENTRY",
-  "TRAILING_FROM_HIGH",
-  "VS_SMA",
-  "NEAR_SMA",
-  "VOLUME_RATIO",
-  "NEW_HIGH",
-  "PCT_FROM_52W_HIGH",
-  "RS_VS_SPY",
-  "GAP_UP",
-  "RSI",
-  "INSIDER_CLUSTER",
-  // REVIEW_CADENCE is deliberately NOT here: it has its own needsAction
-  // kind (REVIEW_DUE) with a 24h look-ahead the generic loop can't express,
-  // and routing it through TRIGGER_MATCHING_NOW would relabel every routine
-  // review as an urgent trigger fire.
-]);
-
+// The review clock is deliberately not here (it is a schedule): it has its
+// own needsAction kind (REVIEW_DUE) with a 24h look-ahead the generic loop
+// can't express, and routing it through TRIGGER_MATCHING_NOW would relabel
+// every routine review as an urgent trigger fire.
 function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
-  if (PRICE_OR_TIME_KINDS.has(p.kind)) return true;
-  if (p.kind === "AND" || p.kind === "OR") {
-    return p.predicates.every(isPriceOrTimePredicate);
-  }
-  return false;
+  const w = shapeOf(p);
+  return w != null && readsTheTape(w);
 }
 
 // ─── Predicate description (compact one-liner for the prompt) ───────────────
@@ -699,14 +680,13 @@ export function computeNeedsAction(
   // Only the review clock decides REVIEW_DUE. A day count from the buy or
   // the event date is an ordinary trigger: it fires through the evaluator
   // and arrives as TRIGGER_FIRED.
-  const cadence = thesis.triggers.find(
-    (t) =>
-      t.predicate.kind === "REVIEW_CADENCE" &&
-      (t.predicate.from ?? "LAST_REVIEW") === "LAST_REVIEW",
-  );
-  if (cadence?.predicate.kind === "REVIEW_CADENCE") {
+  const clockDays = thesis.triggers
+    .map((t) => shapeOf(t.predicate))
+    .map((w) => (w == null ? null : reviewClockDays(w)))
+    .find((d) => d != null);
+  if (clockDays != null) {
     const lastLooked = thesis.lastReviewedAt ?? thesis.createdAt;
-    const dueAt = lastLooked.getTime() + cadence.predicate.days * 86_400_000;
+    const dueAt = lastLooked.getTime() + clockDays * 86_400_000;
     if (dueAt <= now.getTime() + REVIEW_DUE_LOOKAHEAD_MS) {
       // Clamp negative ("due later today") to 0 so the UI reads "due today"
       // rather than "-1 days overdue".

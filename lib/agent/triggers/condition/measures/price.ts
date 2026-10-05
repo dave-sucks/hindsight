@@ -9,6 +9,7 @@ import type { TriggerPredicate } from "../../types";
 import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
 import { PRICE_VARIABLES, variableDef } from "../variables";
 import { num } from "../words";
+import { trailFireLevel } from "../../trail";
 
 const SMA_VARIABLE = { 20: "sma20", 50: "sma50", 150: "sma150", 200: "sma200" } as const;
 const SMA_PERIOD: Readonly<Record<string, 20 | 50 | 150 | 200>> = { sma20: 20, sma50: 50, sma150: 150, sma200: 200 };
@@ -26,6 +27,8 @@ export const price: MeasureDef = {
     {
       key: "close",
       label: "When it is checked",
+      // A line that waits for the close lets the stock trade under it all day.
+      looser: true,
       default: false,
       options: [
         { value: false, label: "Any time in the day" },
@@ -35,6 +38,11 @@ export const price: MeasureDef = {
   ],
   direct: (c) => !c.variable,
   level: (c) => !c.variable,
+  // A typed price is a line at that price; with a variable (an average, a high) it has no one price.
+  line: (c, ctx) =>
+    !c.variable && c.value != null && (c.is === "above" || c.is === "below")
+      ? { price: c.value, side: (c.is === "above") === ctx.isLong ? "UPSIDE" : "DOWNSIDE", projected: false }
+      : null,
   closeReason: (c, isLong) => ((c.is === "below") === isLong ? "STOP" : "TARGET"),
   // A price line: one nudge a day. Under an average is a state a review asks about weekly (a buy fires on its crossing, a sale is a standing order).
   cooldownDays: (c, action) => (c.variable && SMA_PERIOD[c.variable] && action === "REVIEW" ? 7 : 1),
@@ -90,6 +98,20 @@ export const move: MeasureDef = {
     required: "Choose what the % is measured from.",
   },
   direct: (c) => c.variable != null && variableDef(c.variable).direct === true,
+  // A % from our position is a line that moves with it: a give-back off the high (null until armed), a gain or loss off our entry.
+  line: (c, ctx) => {
+    if (c.value == null || (c.is !== "above" && c.is !== "below")) return null;
+    const side = c.is === "above" ? "UPSIDE" : "DOWNSIDE";
+    if (c.variable === "peak") {
+      const trail = { pct: c.value, armAtGainPct: num(c.settings?.startOnceUpPct), atrMultiple: num(c.settings?.widenAtr) };
+      return { price: trailFireLevel(trail, { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: ctx.isLong, atr: ctx.atr14 }), side, projected: true };
+    }
+    if (c.variable !== "entry") return null;
+    const avg = ctx.avgCost;
+    if (avg == null || avg <= 0) return { price: null, side, projected: true };
+    const favourable = (c.is === "above") === ctx.isLong;
+    return { price: favourable ? avg * (1 + c.value / 100) : avg * (1 - c.value / 100), side, projected: true };
+  },
   // A give-back from our entry or the high protects a gain (STOP); a day's move with the position is a TARGET.
   closeReason: (c, isLong) => (variableDef(c.variable ?? "prev_close").position ? "STOP" : (c.is === "above") === isLong ? "TARGET" : "STOP"),
   // A gain milestone latches (up 10% stays up 10%), so a week; near the 52-week high is a state a review asks weekly; the rest daily.

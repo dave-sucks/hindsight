@@ -29,7 +29,7 @@
  * Pure — no DB, no clock, no fetches.
  */
 
-import { trailFireLevel } from "./trail";
+import { levelOf, lineOf, shapeOf } from "./condition";
 import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
 import type { ResolvedTrigger, TriggerLevel } from "./levels";
 
@@ -54,7 +54,6 @@ export interface PriceLevel {
    * kept out of the cached columns.
    */
   projected: boolean;
-  predicateKind: TriggerPredicate["kind"];
 }
 
 export interface CanonicalLevels {
@@ -107,13 +106,14 @@ export interface LevelInputs {
   atr14?: number | null;
 }
 
-const ABSOLUTE = new Set<TriggerPredicate["kind"]>(["PRICE_ABOVE", "PRICE_BELOW"]);
-const PROJECTED = new Set<TriggerPredicate["kind"]>([
-  "TRAILING_FROM_HIGH",
-  "GAIN_FROM_ENTRY",
-]);
-
 const isLong = (d: string | null | undefined) => d !== "SHORT";
+
+/** A typed price level's number and side of the trade, or null when the trigger isn't one. */
+function typedLevel(t: Pick<Trigger, "predicate">, direction: string | null) {
+  const w = shapeOf(t.predicate);
+  const level = w == null ? null : levelOf(w);
+  return level ? { ...level, side: level.above === isLong(direction) ? ("UPSIDE" as const) : ("DOWNSIDE" as const) } : null;
+}
 
 // ── Read ───────────────────────────────────────────────────────────────
 
@@ -135,24 +135,20 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
 
   const all: PriceLevel[] = [];
   for (const t of triggers) {
-    const kind = t.predicate.kind;
-    const absolute = ABSOLUTE.has(kind);
-    if (!absolute && !PROJECTED.has(kind)) continue;
-    const side = levelSide(t.predicate, direction);
-    if (side == null) continue;
-    const price = predicatePrice(t.predicate, { direction, avgCost, peakPrice, atr14 });
+    // A typed level, or a % from our position (./condition: each measure's `line`).
+    const w = shapeOf(t.predicate);
+    const line = w == null ? null : lineOf(w, { isLong: long, avgCost, peakPrice, atr14 });
     // A projected level with no position state genuinely is not at a price.
-    if (price == null || !Number.isFinite(price) || price <= 0) continue;
+    if (line?.price == null || !Number.isFinite(line.price) || line.price <= 0) continue;
     all.push({
       slot: null,
-      price,
-      side,
+      price: line.price,
+      side: line.side,
       action: t.action,
       triggerId: t.id,
       storedAt: t.level,
       inherited: t.inherited,
-      projected: !absolute,
-      predicateKind: kind,
+      projected: line.projected,
     });
   }
   all.sort((a, b) => a.price - b.price);
@@ -169,7 +165,6 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
       storedAt: "THESIS",
       inherited: false,
       projected: false,
-      predicateKind: "PRICE_ABOVE",
     };
   } else {
     const e = all.find((l) => l.action === "ENTER");
@@ -311,10 +306,10 @@ function isDirectional(direction: string | null): boolean {
  * REVIEW). One trigger per slot is the rule every write path keeps.
  */
 export function levelSlotOf(t: Trigger, direction: string | null): LevelSlot | null {
-  if (!ABSOLUTE.has(t.predicate.kind)) return null;
+  const level = typedLevel(t, direction);
+  if (!level) return null;
   if (t.action === "ENTER") return "ENTRY";
-  const side = levelSide(t.predicate, direction);
-  if (side === "DOWNSIDE") return t.action === "EXIT" ? "FLOOR" : null;
+  if (level.side === "DOWNSIDE") return t.action === "EXIT" ? "FLOOR" : null;
   return t.action === "EXIT" || t.action === "REVIEW" ? "TARGET" : null;
 }
 
@@ -473,10 +468,11 @@ export function levelLabelState(
  * rather than a plan level, so it stays too.
  */
 export function isPlanLevel(t: Trigger, direction: string | null): boolean {
-  if (!ABSOLUTE.has(t.predicate.kind)) return false;
+  const level = typedLevel(t, direction);
+  if (!level) return false;
   if (t.action === "ENTER" || t.action === "EXIT") return true;
   if (t.action !== "REVIEW") return false;
-  return levelSide(t.predicate, direction) === "UPSIDE";
+  return level.side === "UPSIDE";
 }
 
 /**
@@ -498,56 +494,6 @@ export function isPlanLevelOnList(
 }
 
 // ── Internals ──────────────────────────────────────────────────────────
-
-/** Which side of the trade a price predicate sits on. Null if not a level. */
-function levelSide(
-  p: TriggerPredicate,
-  direction: string | null,
-): "UPSIDE" | "DOWNSIDE" | null {
-  const long = isLong(direction);
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-      return long ? "UPSIDE" : "DOWNSIDE";
-    case "PRICE_BELOW":
-      return long ? "DOWNSIDE" : "UPSIDE";
-    case "TRAILING_FROM_HIGH":
-      return "DOWNSIDE"; // a give-back is always the losing side
-    case "GAIN_FROM_ENTRY":
-      return p.direction === "UP" ? "UPSIDE" : "DOWNSIDE";
-    default:
-      return null;
-  }
-}
-
-/** The dollar price a predicate currently sits at, or null. */
-function predicatePrice(
-  p: TriggerPredicate,
-  ctx: {
-    direction: string | null;
-    avgCost?: number | null;
-    peakPrice?: number | null;
-    atr14?: number | null;
-  },
-): number | null {
-  const long = isLong(ctx.direction);
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-      return p.level;
-    case "TRAILING_FROM_HIGH":
-      // Null until armed — an unarmed trail has no live line to draw.
-      return trailFireLevel(p, { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: long, atr: ctx.atr14 });
-    case "GAIN_FROM_ENTRY": {
-      const avg = ctx.avgCost;
-      if (avg == null || avg <= 0) return null;
-      const up = p.direction === "UP";
-      const favourable = long ? up : !up;
-      return favourable ? avg * (1 + p.pct / 100) : avg * (1 - p.pct / 100);
-    }
-    default:
-      return null;
-  }
-}
 
 /**
  * Which side of the tape a buy level sits on says which shape the analyst
@@ -666,9 +612,7 @@ function furthest(levels: PriceLevel[], long: boolean): PriceLevel | null {
 }
 
 function priceOf(t: Trigger): number | null {
-  return t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW"
-    ? t.predicate.level
-    : null;
+  return typedLevel(t, null)?.value ?? null;
 }
 
 /**

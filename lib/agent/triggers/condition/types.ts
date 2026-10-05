@@ -71,6 +71,8 @@ export interface SettingDef {
   default?: SettingValue;
   /** Part of the rule's identity: a 14-day and a 2-day RSI rule are two rules, not one at two values. */
   identity?: boolean;
+  /** Raising it, or turning it on, protects less: on a sale it counts as loosening the stop. */
+  looser?: boolean;
   /** When set, the check reads the daily indicator snapshot for it (the trail's daily range). */
   snapshot?: boolean;
   /** Added to the sentence when set: ", once it has been up 20%". */

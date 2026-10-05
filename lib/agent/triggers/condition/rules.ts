@@ -10,8 +10,8 @@
  */
 
 import { measureOf, settingDefs } from "./catalog";
-import type { Source } from "./measure";
-import type { When } from "./types";
+import type { Line, LineContext, Source } from "./measure";
+import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
 import { variableDef } from "./variables";
 
@@ -74,4 +74,66 @@ export function readsSource(w: When, source: Source): boolean {
 /** Waits for the day's close: it is checked on the close pass. */
 export function waitsForClose(w: When): boolean {
   return conditionsOf(w).some((c) => c.settings?.close === true);
+}
+
+/** A typed price level as its number and side, and whether it waits for the close; null for anything else. */
+export function levelOf(w: When): { value: number; above: boolean; close: boolean } | null {
+  if (!isLevel(w)) return null;
+  const c = w as Condition;
+  if (c.value == null || (c.is !== "above" && c.is !== "below")) return null;
+  return { value: c.value, above: c.is === "above", close: c.settings?.close === true };
+}
+
+/** Where it sits on the chart (a typed level, a % from our position), or null. */
+export function lineOf(w: When, ctx: LineContext): Line | null {
+  return isGroup(w) ? null : (measureOf(w).line?.(w, ctx) ?? null);
+}
+
+/** One condition measured from our position (our entry, the high since we bought): inert until we own the stock. */
+export function fromPosition(w: When): boolean {
+  return !isGroup(w) && w.variable != null && variableDef(w.variable).position === true;
+}
+
+/** The review clock's days (counted from the last review), or null when it isn't the clock. */
+export function reviewClockDays(w: When): number | null {
+  return !isGroup(w) && measureOf(w).clock === true && w.value != null ? w.value : null;
+}
+
+/** Read off the quote, the position and the daily snapshot alone: no earnings calendar, no filings, no schedule. A group only when every condition is. */
+export function readsTheTape(w: When): boolean {
+  return conditionsOf(w).every((c) => measureOf(c).timed !== true && !readsSource(c, "earnings") && !readsSource(c, "filings"));
+}
+
+/** How soon a protective sale fires, lower first: a typed floor nearer the price, a smaller %. Null when it has no number. */
+export function tightness(w: When, isLong: boolean): number | null {
+  if (isGroup(w) || w.value == null) return null;
+  const level = levelOf(w);
+  if (level) return level.above === isLong ? level.value : -level.value;
+  return w.value;
+}
+
+/**
+ * Does `next` protect less than `prev`, the same rule at a new value? A typed
+ * line moved away from the price, a bigger %, or a setting that loosens
+ * raised or turned on (waiting for the close, arming later, a wider range).
+ */
+export function loosens(prev: When, next: When): boolean {
+  if (isGroup(prev) || isGroup(next)) return false;
+  if (prev.watch !== next.watch || prev.is !== next.is || prev.variable !== next.variable) return false;
+  const level = levelOf(prev);
+  const a = prev.value ?? 0;
+  const b = next.value ?? 0;
+  if (level ? (level.above ? b > a : b < a) : b > a) return true;
+  const n = (v: unknown) => (typeof v === "number" ? v : v === true ? 1 : 0);
+  return settingDefs(next).some((s) => s.looser === true && n(next.settings?.[s.key]) > n(prev.settings?.[s.key]));
+}
+
+/** A review schedule's days (every N days, or N days from the buy or the event date), or null. */
+export function scheduleDays(w: When | null): number | null {
+  return w != null && !isGroup(w) && measureOf(w).timed === true && w.value != null ? w.value : null;
+}
+
+/** A protective line: a typed price, or a % from our position (a floor, a trail, a gain or drawdown off our entry). */
+export function isProtectiveLine(w: When): boolean {
+  return isLevel(w) || fromPosition(w);
 }

@@ -12,6 +12,7 @@ export const repeat: MeasureDef = {
   value: { suffix: "days", placeholder: "30", integer: true, min: 1 },
   actions: ["REVIEW"],
   timed: true,
+  clock: true,
   // The cadence is the interval.
   cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "repeat" }),

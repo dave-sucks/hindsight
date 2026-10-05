@@ -62,6 +62,21 @@ type Kind = TriggerPredicate["kind"];
 /** Until the cutover: how a measure reads the stored kinds, one reader per kind. A reader returns null for a predicate another measure owns. */
 export type LegacyReaders = { [K in Kind]?: (p: Extract<TriggerPredicate, { kind: K }>) => When | null };
 
+/** Where a condition sits on the chart: its price now (null until it has one), which side of the trade, and whether the price moves. */
+export interface Line {
+  price: number | null;
+  side: "UPSIDE" | "DOWNSIDE";
+  /** It moves with the position: a give-back off the high, a gain off our entry. */
+  projected: boolean;
+}
+
+export interface LineContext {
+  isLong: boolean;
+  avgCost?: number | null;
+  peakPrice?: number | null;
+  atr14?: number | null;
+}
+
 /** What the trigger check loads for a condition beyond the live quote. */
 export type Source = "snapshot" | "volume" | "earnings" | "filings";
 
@@ -92,6 +107,10 @@ export interface MeasureDef {
   level?: (c: Condition) => boolean;
   /** The label a direct sale on it closes with: STOP for a protective give-back, TARGET for a favourable level. */
   closeReason?: (c: Condition, isLong: boolean) => "STOP" | "TARGET";
+  /** Where it sits on the chart, when it has one price: a typed level, a % from our position. Absent or null: no line. */
+  line?: (c: Condition, ctx: LineContext) => Line | null;
+  /** The review clock: counted from the last review. The one schedule a watched stock opts into, and what "review due" reads. */
+  clock?: boolean;
   /** Days between fires when the trigger names none. */
   cooldownDays: (c: Condition, action: string) => number;
   /** What the trigger check loads for it beyond the live quote. A variable or setting read off the snapshot adds it (./variables). */

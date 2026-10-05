@@ -90,16 +90,16 @@ export function ThesisChart({
   // Prefer the resolved levels; fall back to the cached columns for callers
   // that don't have them yet. `asCardLevel` marks a column-sourced number as
   // un-projected, which is right — a typed column never moves.
-  const asCardLevel = (p: number | null, kind: string): CardLevel | null =>
-    p == null ? null : { price: p, projected: false, predicateKind: kind };
+  const asCardLevel = (p: number | null): CardLevel | null =>
+    p == null ? null : { price: p, projected: false };
   const floorLevel: CardLevel | null =
     levels !== undefined
       ? levels?.floor ?? null
-      : asCardLevel(stopLoss, dir === 'LONG' ? 'PRICE_BELOW' : 'PRICE_ABOVE');
+      : asCardLevel(stopLoss);
   const targetLevel: CardLevel | null =
     levels !== undefined
       ? levels?.target ?? null
-      : asCardLevel(targetPrice, dir === 'LONG' ? 'PRICE_ABOVE' : 'PRICE_BELOW');
+      : asCardLevel(targetPrice);
   const hasLevels =
     entry != null && (targetLevel != null || floorLevel != null);
 

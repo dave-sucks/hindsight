@@ -8,6 +8,7 @@
  * a refactor.
  */
 
+import { trailFireLevel } from "../../trail";
 import type { TriggerAction, TriggerPredicate } from "../../types";
 
 /** The cascade bucket's predicate half (bucket.ts). */
@@ -306,4 +307,208 @@ export function needsIndicators(p: TriggerPredicate): boolean {
     default:
       return false;
   }
+}
+
+// ── Levels, the cascade's gates, and the protective rules (levels.ts, ratchet.ts, price-levels.ts) ──
+
+/** levels.ts: inert without a position (the top-level kind only). */
+export function isPositionScoped(p: TriggerPredicate): boolean {
+  return new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH"]).has(p.kind);
+}
+
+/** levels.ts: the review clock a watched stock drops when inherited. */
+export function isInheritedClock(p: TriggerPredicate): boolean {
+  return p.kind === "REVIEW_CADENCE" && (p.from ?? "LAST_REVIEW") === "LAST_REVIEW";
+}
+
+/** levels.ts `protectiveTightestFirst`: the rank of a protective EXIT, lower kept first. */
+export function protectiveRank(t: { action: string; predicate: TriggerPredicate }, direction: string | null): number | null {
+  const isLong = direction !== "SHORT";
+  if (t.action !== "EXIT") return null;
+  if (protectiveExitCloseReason(t.predicate, direction ?? null) !== "STOP") {
+    return null;
+  }
+  switch (t.predicate.kind) {
+    case "PRICE_BELOW":
+      return isLong ? -t.predicate.level : t.predicate.level;
+    case "PRICE_ABOVE":
+      return isLong ? t.predicate.level : -t.predicate.level;
+    case "TRAILING_FROM_HIGH":
+    case "GAIN_FROM_ENTRY":
+    case "PRICE_MOVE_PCT":
+      return t.predicate.pct;
+    default:
+      return null;
+  }
+}
+
+/** ratchet.ts: does `next` protect less than `prev`. */
+export function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean {
+  if (prev.kind !== next.kind) return false;
+  const toCloseBasis = (p: TriggerPredicate, n: TriggerPredicate) =>
+    (p as { basis?: string }).basis !== "close" && (n as { basis?: string }).basis === "close";
+  switch (prev.kind) {
+    case "PRICE_BELOW":
+      return (next as { level: number }).level < prev.level || toCloseBasis(prev, next);
+    case "PRICE_ABOVE":
+      return (next as { level: number }).level > prev.level || toCloseBasis(prev, next);
+    case "TRAILING_FROM_HIGH": {
+      const n = next as { pct: number; armAtGainPct?: number; atrMultiple?: number };
+      const p = prev as { pct: number; armAtGainPct?: number; atrMultiple?: number };
+      return (
+        n.pct > p.pct ||
+        (n.armAtGainPct ?? 0) > (p.armAtGainPct ?? 0) ||
+        (n.atrMultiple ?? 0) > (p.atrMultiple ?? 0)
+      );
+    }
+    case "PRICE_MOVE_PCT":
+    case "GAIN_FROM_ENTRY":
+      return (next as { pct: number }).pct > prev.pct;
+    default:
+      return false;
+  }
+}
+
+/** live-evaluate.ts and needs-action.ts: evaluable against a quote alone. */
+export function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
+  const PRICE_OR_TIME_KINDS = new Set([
+    "PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT", "GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "VS_SMA", "NEAR_SMA",
+    "VOLUME_RATIO", "NEW_HIGH", "PCT_FROM_52W_HIGH", "RS_VS_SPY", "GAP_UP", "RSI", "INSIDER_CLUSTER",
+  ]);
+  if (PRICE_OR_TIME_KINDS.has(p.kind)) return true;
+  if (p.kind === "AND" || p.kind === "OR") {
+    return p.predicates.every(isPriceOrTimePredicate);
+  }
+  return false;
+}
+
+const ABSOLUTE = new Set<TriggerPredicate["kind"]>(["PRICE_ABOVE", "PRICE_BELOW"]);
+const PROJECTED = new Set<TriggerPredicate["kind"]>(["TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"]);
+const isLongOf = (d: string | null | undefined) => d !== "SHORT";
+
+/** price-levels.ts: a level on the chart, as `canonicalLevels` read one (null when it is none). */
+export function chartLevel(
+  p: TriggerPredicate,
+  ctx: { direction: string | null; avgCost?: number | null; peakPrice?: number | null; atr14?: number | null },
+): { price: number; side: "UPSIDE" | "DOWNSIDE"; projected: boolean } | null {
+  const absolute = ABSOLUTE.has(p.kind);
+  if (!absolute && !PROJECTED.has(p.kind)) return null;
+  const side = levelSide(p, ctx.direction);
+  if (side == null) return null;
+  const price = predicatePrice(p, ctx);
+  if (price == null || !Number.isFinite(price) || price <= 0) return null;
+  return { price, side, projected: !absolute };
+}
+
+/** price-levels.ts `levelSlotOf`. */
+export function levelSlotOf(t: { action: string; predicate: TriggerPredicate }, direction: string | null): "ENTRY" | "FLOOR" | "TARGET" | null {
+  if (!ABSOLUTE.has(t.predicate.kind)) return null;
+  if (t.action === "ENTER") return "ENTRY";
+  const side = levelSide(t.predicate, direction);
+  if (side === "DOWNSIDE") return t.action === "EXIT" ? "FLOOR" : null;
+  return t.action === "EXIT" || t.action === "REVIEW" ? "TARGET" : null;
+}
+
+/** price-levels.ts `isPlanLevel`. */
+export function isPlanLevel(t: { action: string; predicate: TriggerPredicate }, direction: string | null): boolean {
+  if (!ABSOLUTE.has(t.predicate.kind)) return false;
+  if (t.action === "ENTER" || t.action === "EXIT") return true;
+  if (t.action !== "REVIEW") return false;
+  return levelSide(t.predicate, direction) === "UPSIDE";
+}
+
+/** price-levels.ts `priceOf`; demote.ts reads the same number (0 for none). */
+export function priceOf(p: TriggerPredicate): number | null {
+  return p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW" ? p.level : null;
+}
+
+function levelSide(p: TriggerPredicate, direction: string | null): "UPSIDE" | "DOWNSIDE" | null {
+  const long = isLongOf(direction);
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+      return long ? "UPSIDE" : "DOWNSIDE";
+    case "PRICE_BELOW":
+      return long ? "DOWNSIDE" : "UPSIDE";
+    case "TRAILING_FROM_HIGH":
+      return "DOWNSIDE";
+    case "GAIN_FROM_ENTRY":
+      return p.direction === "UP" ? "UPSIDE" : "DOWNSIDE";
+    default:
+      return null;
+  }
+}
+
+function predicatePrice(
+  p: TriggerPredicate,
+  ctx: { direction: string | null; avgCost?: number | null; peakPrice?: number | null; atr14?: number | null },
+): number | null {
+  const long = isLongOf(ctx.direction);
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+    case "PRICE_BELOW":
+      return p.level;
+    case "TRAILING_FROM_HIGH":
+      return trailFireLevel(p, { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: long, atr: ctx.atr14 });
+    case "GAIN_FROM_ENTRY": {
+      const avg = ctx.avgCost;
+      if (avg == null || avg <= 0) return null;
+      const up = p.direction === "UP";
+      const favourable = long ? up : !up;
+      return favourable ? avg * (1 + p.pct / 100) : avg * (1 - p.pct / 100);
+    }
+    default:
+      return null;
+  }
+}
+
+// ── The small readers of a typed price (rearm.ts, buy-crossing.ts, declined-sale.ts, trigger-evaluator.ts, complete-run.ts, agent-watch.ts) ──
+
+/** rearm.ts `isIntradayPriceBuy`, and the comparison it re-arms on. */
+export function isIntradayPriceBuy(t: { action: string; predicate: TriggerPredicate }): boolean {
+  const p = t.predicate;
+  return t.action === "ENTER" && (p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW") && p.basis !== "close";
+}
+export function levelStillHeld(p: TriggerPredicate, price: number): boolean | null {
+  if (p.kind !== "PRICE_ABOVE" && p.kind !== "PRICE_BELOW") return null;
+  return p.kind === "PRICE_ABOVE" ? price > p.level : price < p.level;
+}
+
+/** buy-crossing.ts `crossingLevel`. */
+export function crossingLevel(p: TriggerPredicate | null | undefined): { level: number; crossing: "ABOVE" | "BELOW" } | null {
+  if (!p) return null;
+  if (p.kind === "PRICE_ABOVE" && typeof p.level === "number" && p.level > 0) {
+    return { level: p.level, crossing: "ABOVE" };
+  }
+  if (p.kind === "PRICE_BELOW" && typeof p.level === "number" && p.level > 0) {
+    return { level: p.level, crossing: "BELOW" };
+  }
+  return null;
+}
+
+/** declined-sale.ts: the absolute floor on the side this direction is protected from, as a number. */
+export function protectedFloor(p: TriggerPredicate, direction: string | null): number | null {
+  const isLong = direction !== "SHORT";
+  const wanted = isLong ? "PRICE_BELOW" : "PRICE_ABOVE";
+  if (p.kind !== wanted) return null;
+  const level = (p as { level?: unknown }).level;
+  if (typeof level !== "number" || !(level > 0)) return null;
+  return level;
+}
+
+/** trigger-evaluator.ts: the floor a DEMOTE names. */
+export function demoteFloor(p: TriggerPredicate, direction: string | null): number | null {
+  const short = direction === "SHORT";
+  return p.kind === (short ? "PRICE_ABOVE" : "PRICE_BELOW") ? (p as { level: number }).level : null;
+}
+
+/** complete-run.ts: an EXIT on one of these is a protective rung (a floor or a trail). */
+export function isProtectiveExitKind(p: TriggerPredicate): boolean {
+  return ["PRICE_BELOW", "PRICE_ABOVE", "TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"].includes(p.kind);
+}
+
+/** agent-watch.ts: a review schedule's days. */
+export function scheduleDays(p: TriggerPredicate): number | null {
+  const q = p as { kind?: string; days?: unknown };
+  if (q?.kind !== "REVIEW_CADENCE") return null;
+  return typeof q.days === "number" && q.days > 0 ? q.days : null;
 }

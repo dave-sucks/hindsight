@@ -41,6 +41,7 @@
  */
 
 import { triggerBucket } from "./bucket";
+import { fromPosition, reviewClockDays, shapeOf, tightness } from "./condition";
 import { protectiveExitCloseReason } from "./types";
 import type { Trigger } from "./types";
 
@@ -158,8 +159,17 @@ export interface LadderLevels {
   direction?: string | null;
 }
 
-/** Predicates that measure off an open position and are inert without one. */
-const POSITION_SCOPED_KINDS = new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH"]);
+/** The review clock, counted from the last review. */
+function isReviewClock(t: Trigger): boolean {
+  const w = shapeOf(t.predicate);
+  return w != null && reviewClockDays(w) != null;
+}
+
+/** A condition measured from an open position (our entry, the high since we bought) is inert without one. */
+function measuresOffPosition(t: Trigger): boolean {
+  const w = shapeOf(t.predicate);
+  return w != null && fromPosition(w);
+}
 // Actions that operate on a position. A rung with one of these on a thesis
 // we don't hold is not a plan, it is a spawn: the account's ±7% scale-in
 // rules are PRICE_MOVE_PCT, so the predicate gate above let them through
@@ -198,20 +208,9 @@ function protectiveTightestFirst(
     if (protectiveExitCloseReason(t.predicate, direction ?? null) !== "STOP") {
       return null;
     }
-    switch (t.predicate.kind) {
-      // A higher floor on a long (lower ceiling on a short) is hit sooner.
-      case "PRICE_BELOW":
-        return isLong ? -t.predicate.level : t.predicate.level;
-      case "PRICE_ABOVE":
-        return isLong ? t.predicate.level : -t.predicate.level;
-      // A smaller give-back / drawdown fires sooner.
-      case "TRAILING_FROM_HIGH":
-      case "GAIN_FROM_ENTRY":
-      case "PRICE_MOVE_PCT":
-        return t.predicate.pct;
-      default:
-        return null;
-    }
+    // A higher floor on a long (lower ceiling on a short) is hit sooner; so is a smaller give-back.
+    const w = shapeOf(t.predicate);
+    return w == null ? null : tightness(w, isLong);
   };
 
   // Reorder WITHIN each bucket only, and leave the buckets themselves in
@@ -290,8 +289,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
     for (const t of byLevel[level]) {
       if (
         dropPositionScoped &&
-        (POSITION_SCOPED_KINDS.has(t.predicate.kind) ||
-          POSITION_SCOPED_ACTIONS.has(t.action))
+        (measuresOffPosition(t) || POSITION_SCOPED_ACTIONS.has(t.action))
       ) {
         continue;
       }
@@ -302,8 +300,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
       // buy is false with no position, so it is harmless either way.
       if (
         dropInheritedCadence &&
-        t.predicate.kind === "REVIEW_CADENCE" &&
-        (t.predicate.from ?? "LAST_REVIEW") === "LAST_REVIEW" &&
+        isReviewClock(t) &&
         level !== "THESIS"
       ) {
         continue;

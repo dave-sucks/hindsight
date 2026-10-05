@@ -28,38 +28,16 @@ import { isMarketOpen } from "@/lib/market-hours";
 import { describePredicate } from "@/lib/agent/needs-action";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
+import { readsTheTape, shapeOf } from "@/lib/agent/triggers/condition";
 import type {
   Trigger,
   TriggerPredicate,
 } from "@/lib/agent/triggers/types";
 
-// Predicate kinds that don't need a signal payload — these can be
-// evaluated against a fresh quote alone. Time-based predicates also
-// included since they evaluate against thesis.createdAt + now.
-const PRICE_OR_TIME_KINDS = new Set([
-  "PRICE_ABOVE",
-  "PRICE_BELOW",
-  "PRICE_MOVE_PCT",
-  "GAIN_FROM_ENTRY",
-  "TRAILING_FROM_HIGH",
-  "VS_SMA",
-  "NEAR_SMA",
-  "VOLUME_RATIO",
-  "NEW_HIGH",
-  "PCT_FROM_52W_HIGH",
-  "RS_VS_SPY",
-  "GAP_UP",
-  "RSI",
-  "INSIDER_CLUSTER",
-]);
-
+/** Evaluable against a fresh quote and the daily snapshot alone: no earnings calendar, no filings, no schedule. */
 function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
-  if (PRICE_OR_TIME_KINDS.has(p.kind)) return true;
-  // AND/OR composites: only descend if every leaf is price/time-side.
-  if (p.kind === "AND" || p.kind === "OR") {
-    return p.predicates.every(isPriceOrTimePredicate);
-  }
-  return false;
+  const w = shapeOf(p);
+  return w != null && readsTheTape(w);
 }
 
 export interface LiveMatch {

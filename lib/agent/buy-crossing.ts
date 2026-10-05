@@ -41,6 +41,7 @@
 
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 
 export interface SpentBuyCrossing {
   /** The level the buy trigger actually fires on, and the price has left behind. */
@@ -75,13 +76,10 @@ function crossingLevel(
   p: TriggerPredicate | null | undefined,
 ): { level: number; crossing: "ABOVE" | "BELOW" } | null {
   if (!p) return null;
-  if (p.kind === "PRICE_ABOVE" && typeof p.level === "number" && p.level > 0) {
-    return { level: p.level, crossing: "ABOVE" };
-  }
-  if (p.kind === "PRICE_BELOW" && typeof p.level === "number" && p.level > 0) {
-    return { level: p.level, crossing: "BELOW" };
-  }
-  return null;
+  const w = shapeOf(p);
+  const level = w == null ? null : levelOf(w);
+  if (level == null || !(level.value > 0)) return null;
+  return { level: level.value, crossing: level.above ? "ABOVE" : "BELOW" };
 }
 
 export function spentBuyCrossing(input: {

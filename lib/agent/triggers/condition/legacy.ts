@@ -43,6 +43,12 @@ export function fromLegacy(p: unknown): When | Retired {
   return { retired: true, was: p };
 }
 
+/** A stored predicate as the condition shape, or null for a removed kind (nothing reads one). */
+export function shapeOf(p: unknown): When | null {
+  const w = fromLegacy(p);
+  return isRetired(w) ? null : w;
+}
+
 export function toLegacy(w: When): TriggerPredicate | null {
   if (!isGroup(w)) return MEASURES[w.watch].legacy.to(w);
   // "Any of" one measure's conditions may be one kind (several filing events).

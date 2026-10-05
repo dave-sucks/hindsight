@@ -99,7 +99,7 @@ export async function loadLevelSources(
 /**
  * The thesis-state axis the default templates key off. `HELD` is the only
  * state that carries position-scoped rungs (gain-from-entry, trail,
- * scale-ins) — see `POSITION_SCOPED_KINDS` in ./levels.
+ * scale-ins) — see `measuresOffPosition` in ./levels.
  */
 export function thesisStateFor(status: string | null): ThesisState {
   if (status === "HOLDING") return "HELD";

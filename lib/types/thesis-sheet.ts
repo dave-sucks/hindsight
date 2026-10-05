@@ -407,7 +407,6 @@ export interface ThesisStateLevel {
   inherited: boolean;
   /** True when the price moves (a trail off the high, a gain off entry). */
   projected: boolean;
-  predicateKind: string;
 }
 
 /** The canonical levels plus every price level, for the chart. */

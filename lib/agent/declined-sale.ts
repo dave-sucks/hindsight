@@ -59,6 +59,7 @@
  */
 
 import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 
 /**
  * Rejection messages the SYSTEM wrote (the retired duplicate-close fold, the
@@ -257,10 +258,10 @@ export function declineReplanAllows(input: {
   if (!p) return false;
   const isLong = input.direction !== "SHORT";
   // An absolute floor, on the side this direction is protected from.
-  const wanted = isLong ? "PRICE_BELOW" : "PRICE_ABOVE";
-  if (p.kind !== wanted) return false;
-  const level = (p as { level?: unknown }).level;
-  if (typeof level !== "number" || !(level > 0)) return false;
+  const w = shapeOf(p);
+  const floor = w == null ? null : levelOf(w);
+  if (floor == null || floor.above === isLong || !(floor.value > 0)) return false;
+  const level = floor.value;
   const bound = replanFloorBound(input.declinedFloor, input.direction);
   return isLong ? level >= bound : level <= bound;
 }
