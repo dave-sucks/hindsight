@@ -110,7 +110,10 @@ function matchField(actual: unknown, expected: unknown): boolean {
   // A nested relation filter — rows carry relations inline, so recurse.
   const opKeys = ["equals", "in", "notIn", "not", "gt", "gte", "lt", "lte", "contains", "startsWith", "mode"];
   const keys = Object.keys(expected);
-  const isOperator = keys.some((k) => opKeys.includes(k));
+  // `mode` is Prisma's case-insensitivity flag only beside a string filter
+  // ("insensitive" / "default"); on a relation it is a field (a run's mode).
+  const ex = expected as Record<string, unknown>;
+  const isOperator = keys.some((k) => opKeys.includes(k) && (k !== "mode" || ex.mode === "insensitive" || ex.mode === "default"));
   if (!isOperator) {
     if (actual == null) return false;
     if (!isPlainObject(actual)) return unsupported("relation filter against non-object", actual);

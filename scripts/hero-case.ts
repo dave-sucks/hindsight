@@ -207,6 +207,11 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
   // A recorded tool result is what the model read on the day. Where a tool
   // now hands the model less than the screen (`forModel`), the replay reads
   // what today's model would read — the same as a live run.
+  const inputs = new Map<string, unknown>();
+  for (const m of c.messages) {
+    if (m.role !== "assistant" || !Array.isArray(m.content)) continue;
+    for (const p of m.content) if (p.type === "tool-call") inputs.set(p.toolCallId, p.input);
+  }
   c.messages = await Promise.all(
     c.messages.map(async (m) => {
       if (m.role !== "tool" || !Array.isArray(m.content)) return m;
@@ -215,7 +220,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
           const hook = p.type === "tool-result" ? (tools[p.toolName] as { toModelOutput?: (o: { toolCallId: string; input: unknown; output: unknown }) => unknown })?.toModelOutput : undefined;
           if (!hook || p.type !== "tool-result") return p;
           const raw = p.output && typeof p.output === "object" && "value" in p.output ? (p.output as { value: unknown }).value : p.output;
-          return { ...p, output: (await hook({ toolCallId: p.toolCallId, input: undefined, output: raw })) as typeof p.output };
+          return { ...p, output: (await hook({ toolCallId: p.toolCallId, input: inputs.get(p.toolCallId), output: raw })) as typeof p.output };
         }),
       );
       return { ...m, content } as typeof m;

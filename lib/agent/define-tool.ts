@@ -51,9 +51,10 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
    * screen gets. The full result still streams to the chat and is what a
    * saved run replays (`withScreenOutputs`); the model gets this. For copy
    * that exists only to render a card — the model never needs it, and it is
-   * re-sent on every step that follows.
+   * re-sent on every step that follows. `input` is the call's arguments, so
+   * what the model reads can depend on what it asked for.
    */
-  forModel?: (result: ToolResult<TData>) => unknown;
+  forModel?: (result: ToolResult<TData>, input: z.infer<TSchema> | undefined) => unknown;
   /** Which UI renderer handles this tool's result */
   ui: ToolUI;
   /** Optional phase key — tools with the same groupId collapse in the UI */
@@ -118,10 +119,10 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
       inputSchema: (options.schemaFor ? options.schemaFor(ctx) : options.schema) as any,
       ...(options.forModel
         ? {
-            toModelOutput: ({ output }: { output: ToolResult<TData> }) => ({
+            toModelOutput: ({ output, input }: { output: ToolResult<TData>; input: unknown }) => ({
               type: "json" as const,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              value: options.forModel!(output) as any,
+              value: options.forModel!(output, input as z.infer<TSchema> | undefined) as any,
             }),
           }
         : {}),
