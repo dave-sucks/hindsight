@@ -148,7 +148,7 @@ const updateSchema = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "What would prove this thesis wrong. Concrete: 'guidance cut next quarter', 'CFO departure', 'gross margin below 35% on next print'. Generic 'market downturn' is insufficient. Used by the trade evaluator to grade exits and by the daily run to decide when a signal counts as thesis-breaking. On PASS theses, these double as re-entry criteria — if any flips the other way the PASS becomes a candidate to flip to LONG/SHORT.",
+      "What would prove this thesis wrong. Concrete: 'guidance cut next quarter', 'CFO departure', 'gross margin below 35% on next print'. Generic 'market downturn' is insufficient. Used by the trade evaluator to grade exits. On PASS theses, these double as re-entry criteria — if any flips the other way the PASS becomes a candidate to flip to LONG/SHORT.",
     ),
   // PR-9: signal_types / confidence_score columns dropped. Conviction
   // moves through `scoring` (the 4-dim setup grade, single conviction
@@ -162,7 +162,7 @@ const updateSchema = z.object({
     })
     .optional()
     .describe(
-      "Update the 4-dim composite scoring. Pass all four dims (with `composite` computed by the tool) to fully replace; pass a subset to merge with the existing scoring. composite ≥ 7 = ADD/ROTATE eligible; < 7 = WATCH or PASS.",
+      "Update the 4-dim composite scoring. Pass all four dims (the tool computes `composite`) to fully replace; pass a subset to merge with the existing scoring. A buy is refused when the composite is under this analyst's minimum confidence.",
     ),
   target_price: z.number().nullable().optional()
     .describe("The target — edits the target trigger (adds one if none, null removes it). One change, one activity line."),
@@ -194,7 +194,7 @@ const updateSchema = z.object({
     .optional()
     .describe(
       "YOUR REAL VIEW after this review. STRONG = top calls (urgent buy, real money). HIGH = solid conviction, want it in size. MEDIUM = honest middle, probably works. LOW = tracking but not enthusiastic. " +
-        "Independent of composite. Patch when the picture has materially changed (new evidence validated the variantView → upgrade; consensus caught up to your view → downgrade). When you patch this, you MUST also patch conviction_rationale. STRONG/HIGH require variant_view (patched in this call OR already on the row).",
+        "Independent of composite. Patch when the picture has materially changed (new evidence validated the variantView → upgrade; consensus caught up to your view → downgrade). When you patch this, you MUST also patch conviction_rationale. STRONG/HIGH with no variant view (in this call or on the row) is stored as MEDIUM.",
     ),
   conviction_rationale: z
     .string()
@@ -297,12 +297,10 @@ const updateSchema = z.object({
     .enum(["INVALIDATED", "ARCHIVED", "WATCHING"])
     .optional()
     .describe(
-      "Deliberate status transition — the BELIEF/lifecycle changes the analyst owns. " +
-        "Holding and sold are NOT settable here — they're tool-owned account facts. WATCHING → HOLDING happens automatically when your buy fills (place_trade); HOLDING → retired-sold when your sell fills (close_position) — on the fill, or on the user's approval for a live proposal. Call those tools; the thesis status flips itself. " +
-        "WATCHING = PROMOTED → WATCHING only. The legal opt-out path when you decide not to re-enter a just-promoted thesis on the first live run. The conviction stays in the library; the analyst will re-evaluate on subsequent runs. " +
-        "INVALIDATED = the belief broke; we no longer believe the thesis (use this when concrete evidence disproves the view — it retires the thesis with reason INVALIDATED). Not allowed on PROMOTED — use WATCHING. " +
-        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist — it retires the thesis with reason DROPPED). Off the watchlist; visible on the stock page as institutional memory. Use it ONLY when you never want this name back. To stop paying for a name, or to shelve a plan that does not work, keep it WATCHING and set the plan down — remove the buy, floor and target by id with remove_trigger_ids (and the review cadence too, if it should have no clock) — that costs nothing and the name stays in view. (A researched-and-declined PASS is NOT this — pass direction: \"PASS\", which lands status=PASSED.) " +
-        "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
+      "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
+        "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead. " +
+        "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). " +
+        "Holding and sold are not set here: place_trade and close_position flip them when the order fills. A researched decline is direction: \"PASS\"; a direction flip goes through record_thesis with parent_thesis_id.",
     ),
 
   // ── Deep-research artifact passthrough (THESIS_RESEARCH_V2 refresh) ───

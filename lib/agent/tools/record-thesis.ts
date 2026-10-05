@@ -217,7 +217,7 @@ const thesisFields = z.object({
     })
     .optional()
     .describe(
-      "Required composite scoring: trendStrength (0-3) + relativeStrength (0-3) + entryQuality (0-2) + catalystFreshness (0-2) = composite /10. Composite ≥ 7 is required for ADD/ROTATE eligibility. Below 7 must be PASS or WATCH. R/R and portfolio fit are separate quality-bar gates, NOT scoring components — apply them in the workflow."
+      "Required composite scoring: trendStrength (0-3) + relativeStrength (0-3) + entryQuality (0-2) + catalystFreshness (0-2) = composite /10. A buy is refused when the composite is under this analyst's minimum confidence. R/R and portfolio fit are separate quality-bar gates, NOT scoring components — apply them in the workflow."
     ),
 
   // ── Thesis Durable State (PR 1 + cleanup PR) ──────────────────────────
@@ -291,8 +291,7 @@ const thesisFields = z.object({
     .optional()
     .describe(
       "One sentence stating the writer's contrarian take: 'consensus expects X, I think Y, here's the falsifiable reason.' " +
-        "REQUIRED when conviction is STRONG or HIGH (Layer-1) — every buy-side pitch framework requires a variant view for top-tier conviction. Optional on MEDIUM/LOW where consensus alignment is acceptable. " +
-        "If you can't articulate a variant view for a STRONG/HIGH call, your tier is MEDIUM at best — don't claim STRONG/HIGH without one. " +
+        "A STRONG or HIGH call without one is stored as MEDIUM. Optional on MEDIUM/LOW. " +
         "Example: 'Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 program is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus.'",
     ),
   triggers: triggersInputArraySchema
