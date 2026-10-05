@@ -6,10 +6,7 @@
  * catalog (lib/agent/triggers/condition/measures):
  *
  *   tabs · setting · [ Below ▾ | value: a number or a variable chip   {x} ]
- *   one line: what fires, or what to fix
- *
- * On a trigger that is already set (the popover) only the value can change:
- * no tabs, no setting, and the direction is a word in the input.
+ *   a line saying what to fix, while something is missing
  *
  * docs/plans/TRIGGER_TYPES.md §7.
  */
@@ -24,7 +21,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   conditionProblem,
   conditionsOf,
-  fireLine,
   fromLegacy,
   isGroup,
   isRetired,
@@ -80,21 +76,6 @@ export function draftOf(t: Trigger): Draft | null {
     match: isGroup(w) ? w.match : "all",
     fireMode: t.fireMode ?? "TACTICAL",
   };
-}
-
-export function actionLabel(a: TriggerAction | string, sells: boolean): string {
-  switch (a) {
-    case "ENTER":
-      return "Buy if";
-    case "ADD":
-      return "Add if";
-    case "TRIM":
-      return "Trim if";
-    case "EXIT":
-      return sells ? "Sell if" : "Take the plan down if";
-    default:
-      return "Review if";
-  }
 }
 
 export function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -166,23 +147,19 @@ export function ConditionFields({
   onChange,
   ctx,
   disabled,
-  set = false,
 }: {
   condition: Condition;
   onChange: (c: Condition) => void;
   ctx: CheckContext;
   disabled: boolean;
-  /** A trigger that is already set: only its value can change. */
-  set?: boolean;
 }) {
   const m = measureOf(condition);
   const type = typeDef(m.type);
-  // A locked rule says what it does; only a form being filled in says what to fix.
   const problem = disabled ? null : conditionProblem(condition, ctx);
-  const choosesDirection = !set && m.buttons != null && m.buttons.length > 1;
+  const choosesDirection = m.buttons != null && m.buttons.length > 1;
   return (
     <div className="space-y-2">
-      {!set && type.measures.length > 1 ? (
+      {type.measures.length > 1 ? (
         <Tabs
           value={m.id}
           onValueChange={(id) => {
@@ -199,11 +176,11 @@ export function ConditionFields({
           </TabsList>
         </Tabs>
       ) : null}
-      {set
-        ? null
-        : settingDefs(condition)
-            .filter((s) => s.options)
-            .map((s) => <SettingSelect key={s.key} condition={condition} setting={s} onChange={onChange} disabled={disabled} />)}
+      {settingDefs(condition)
+        .filter((s) => s.options)
+        .map((s) => (
+          <SettingSelect key={s.key} condition={condition} setting={s} onChange={onChange} disabled={disabled} />
+        ))}
       {/* One control: the direction on the left, the value on the right. */}
       <ButtonGroup width="full">
         {choosesDirection && m.buttons ? (
@@ -227,9 +204,9 @@ export function ConditionFields({
             </SelectContent>
           </Select>
         ) : null}
-        <ValueInput condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} set={set} />
+        <ValueInput condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} />
       </ButtonGroup>
-      <p className="text-xs text-muted-foreground">{problem ?? fireLine(condition)}</p>
+      {problem ? <p className="text-xs text-muted-foreground">{problem}</p> : null}
     </div>
   );
 }
@@ -277,20 +254,16 @@ function ValueInput({
   onChange,
   ctx,
   disabled,
-  set,
 }: {
   condition: Condition;
   onChange: (c: Condition) => void;
   ctx: CheckContext;
   disabled: boolean;
-  set: boolean;
 }) {
   const m = measureOf(condition);
   const v = m.value;
   const vars = m.variables;
-  // What a "from" variable a set trigger is measured from is part of the rule, not its value.
-  const canPick = !disabled && vars != null && !(set && vars.mode === "from");
-  const options = canPick ? variableOptions(condition, ctx) : [];
+  const options = disabled ? [] : variableOptions(condition, ctx);
   const [text, setText] = useState(condition.value != null ? String(condition.value) : "");
   // Follow a value changed from outside (a tab switch, a reset) without fighting typing.
   useEffect(() => {
@@ -299,11 +272,10 @@ function ValueInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condition.value]);
 
-  // A measure with one choice, or a set trigger's direction, reads as a word: "Every", "At least", "Below".
-  const word = m.word ?? (set ? m.buttons?.find((b) => b.is === condition.is)?.label : undefined);
+  // A measure with one choice says it as a word: "Every", "At least", "Files".
+  const word = m.word;
   const replaced = vars?.mode === "replace" && condition.variable != null;
-  const removable = canPick && (vars?.mode === "replace" || !set);
-  const clear = removable ? () => onChange(withVariable(condition, undefined)) : undefined;
+  const clear = disabled ? undefined : () => onChange(withVariable(condition, undefined));
 
   return (
     <InputGroup>

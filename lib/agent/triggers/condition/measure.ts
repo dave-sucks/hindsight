@@ -1,7 +1,8 @@
 /**
  * What a measure's catalog entry holds. One entry per measure (./measures);
- * the dialog, the popover, the words, the slot, the checks and the
- * translator all read it. Adding a measure is one entry and a test.
+ * the dialog, the pill, the popover, the slot, the checks and the translator
+ * all read it. Its words are its form's words: the button labels, the
+ * input's prefix and suffix, and the variables' names. Adding a measure is one entry and a test.
  * docs/plans/TRIGGER_TYPES.md §6.
  *
  * Pure and client-safe.
@@ -27,6 +28,8 @@ export interface ValueDef {
   allowNegative?: boolean;
   /** What the line under the input says while the number is missing. */
   missing?: string;
+  /** How 0 reads ("any amount" for a beat of 0%). */
+  zero?: string;
 }
 
 export interface VariablesDef {
@@ -48,13 +51,10 @@ export interface CheckContext {
   held: boolean;
 }
 
+/** A condition in words: the direction and the value, the same two halves as the form ("below" · "$248"). */
 export interface PillPart {
-  /** The muted half: "below", "down from the high", "every". */
   label: string;
-  /** The value half: "$248", "25%", "30 days". */
   value?: string;
-  /** A variable, drawn as a chip instead of a plain value. */
-  chip?: string;
 }
 
 type Kind = TriggerPredicate["kind"];
@@ -84,9 +84,6 @@ export interface MeasureDef {
   oneEnter?: (c: Condition) => boolean;
   /** What a new condition on this tab starts as. */
   fresh: () => Condition;
-  /** One clause: "the price falls below $248". `inGroup` words a clock as a state. */
-  sentence: (c: Condition, opts: { inGroup?: boolean }) => string;
-  pill: (c: Condition) => PillPart;
   /** What's wrong beyond the number and the variable, in one sentence, or null. */
   check?: (c: Condition, ctx: CheckContext) => string | null;
   /** Until the cutover the server stores today's kinds: how this measure reads and writes them. */

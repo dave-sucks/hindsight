@@ -61,7 +61,7 @@ export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] =
     id: "peak",
     label: "High since we bought",
     group: "Our position",
-    chip: "high since we bought",
+    chip: "the high",
     words: "the high since we bought",
     position: true,
     direct: true,

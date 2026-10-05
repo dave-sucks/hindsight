@@ -2,11 +2,7 @@
 
 import type { TriggerPredicate } from "../../types";
 import type { MeasureDef } from "../measure";
-import type { Condition } from "../types";
-import { DATE_VARIABLES, variableDef } from "../variables";
-import { days } from "../words";
-
-const every = (c: Condition) => ((c.value ?? 0) === 1 ? "every day" : `every ${c.value ?? 0} days`);
+import { DATE_VARIABLES } from "../variables";
 
 export const repeat: MeasureDef = {
   id: "repeat",
@@ -18,8 +14,6 @@ export const repeat: MeasureDef = {
   timed: true,
   fresh: () => ({ watch: "repeat" }),
   // Counted from the last review.
-  sentence: (c, { inGroup }) => (inGroup ? `a review is due (${every(c)})` : every(c)),
-  pill: (c) => ({ label: "every", value: days(c.value ?? 0) }),
   legacy: {
     from: { REVIEW_CADENCE: (p) => ((p.from ?? "LAST_REVIEW") === "LAST_REVIEW" ? { watch: "repeat", value: p.days } : null) },
     to: (c): TriggerPredicate | null => (c.value != null ? { kind: "REVIEW_CADENCE", days: c.value } : null),
@@ -39,13 +33,6 @@ export const fromDate: MeasureDef = {
   actions: ["TRIM", "EXIT", "REVIEW"],
   timed: true,
   fresh: () => ({ watch: "from_date", is: "after", variable: "buy" }),
-  sentence: (c, { inGroup }) => {
-    const n = c.value ?? 0;
-    const date = c.variable ? variableDef(c.variable).words : "the date";
-    if (c.is === "before") return inGroup ? `${date} is ${days(n)} away or less` : `${days(n)} before ${date}`;
-    return inGroup ? `it has been ${days(n)} since ${date}` : `${days(n)} after ${date}`;
-  },
-  pill: (c) => ({ label: `${days(c.value ?? 0)} ${c.is === "before" ? "before" : "after"}`, chip: c.variable ? variableDef(c.variable).chip : undefined }),
   check: (c) => (c.variable === "buy" && c.is === "before" ? "The buy is already in the past. Pick After." : null),
   legacy: {
     from: {

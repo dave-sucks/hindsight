@@ -3,7 +3,7 @@
 import type { TriggerPredicate } from "../../types";
 import type { MeasureDef } from "../measure";
 import type { Condition, FilingVariable } from "../types";
-import { FILING_VARIABLES, variableDef } from "../variables";
+import { FILING_VARIABLES } from "../variables";
 import { num } from "../words";
 
 function tierOf(v: string | undefined): "RED" | "MATERIAL" | undefined {
@@ -19,12 +19,6 @@ export const filing: MeasureDef = {
   variables: { mode: "replace", options: FILING_VARIABLES, title: "Choose a filing", required: "Choose a filing." },
   actions: ["REVIEW"],
   fresh: () => ({ watch: "filing", variable: "tier:MATERIAL" }),
-  sentence: (c) => `the company files ${c.variable ? variableDef(c.variable).words : "something with the SEC"}`,
-  pill: (c) => {
-    const tier = tierOf(c.variable);
-    if (tier) return { label: "SEC filing", value: tier === "RED" ? "red flag" : "material" };
-    return { label: "SEC filing", chip: c.variable ? variableDef(c.variable).chip : undefined };
-  },
   legacy: {
     from: {
       SEC_EVENT: (p) => {
@@ -68,7 +62,7 @@ export const insiders: MeasureDef = {
   type: "filing",
   label: "Insider buying",
   word: "At least",
-  value: { suffix: "insiders", placeholder: "3", integer: true, min: 1 },
+  value: { suffix: "insiders buying", placeholder: "3", integer: true, min: 1 },
   settings: [
     {
       key: "days",
@@ -82,8 +76,6 @@ export const insiders: MeasureDef = {
   ],
   actions: ["REVIEW"],
   fresh: () => ({ watch: "insiders" }),
-  sentence: (c) => `${c.value ?? 0} or more insiders buy within ${num(c.settings?.days) ?? 30} days`,
-  pill: (c) => ({ label: "insiders buying", value: `${c.value ?? 0}+ in ${num(c.settings?.days) ?? 30}d` }),
   legacy: {
     from: { INSIDER_CLUSTER: (p) => ({ watch: "insiders", value: p.minBuyers, settings: { days: p.days } }) },
     to: (c): TriggerPredicate | null => (c.value != null ? { kind: "INSIDER_CLUSTER", minBuyers: c.value, days: num(c.settings?.days) ?? 30 } : null),

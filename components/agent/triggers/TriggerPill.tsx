@@ -1,26 +1,22 @@
 "use client";
 
 /**
- * A trigger on the sheet: the pill, and the popover it opens. Every popover
- * is the same four parts:
- *
- *   header   action · measure, and one action: delete (the stock's own
- *            trigger) or a link to where an inherited rule lives
- *   form     the Add trigger dialog's fields without the tabs
- *            (./TriggerFields), locked on an inherited rule
- *   notes    the rationale, what it overrides, and one line of facts
- *   footer   Cancel / Save, once something changed
- *
+ * A trigger on the sheet: the pill, and the popover it opens. Both read the
+ * trigger the way the form is built, direction · value ("below · $868").
+ * The popover is the read version: the trigger, the analyst's note, one line
+ * of facts, and its actions (Edit opens the Add trigger dialog filled in;
+ * Delete; or, for an inherited rule, a link to where it lives).
  * docs/plans/TRIGGER_TYPES.md §7.
  */
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Loader2, Trash2 } from "lucide-react";
+import { ArrowUpRight, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SendToAgentIcon } from "@/components/ui/send-to-agent-icon";
 import {
+  actionLabel,
   canProposeDirectly,
   conditionsOf,
   fromLegacy,
@@ -28,16 +24,16 @@ import {
   isRetired,
   measureOf,
   pillParts,
-  toLegacy,
-  triggerSentence,
-  whenProblem,
+  triggerText,
+  type PillPart,
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
 import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
-import { watchedFloorOnClose, type TriggerPredicate } from "@/lib/agent/triggers/types";
+import { watchedFloorOnClose, type TriggerAction, type TriggerPredicate } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { cn } from "@/lib/utils";
-import { ConditionFields, OnFireSelect, actionLabel, draftOf, useTriggerRequest, whenOf, type Level } from "./TriggerFields";
+import { TriggerDialog } from "./TriggerDialog";
+import { draftOf, useTriggerRequest, type Level } from "./TriggerFields";
 
 export interface TriggerPillProps {
   trigger: Trigger;
@@ -51,77 +47,142 @@ export interface TriggerPillProps {
   onChanged?: () => void;
 }
 
-export function TriggerPill(props: TriggerPillProps) {
-  const { trigger, held } = props;
-  const [open, setOpen] = useState(false);
+/** What the pill and the popover show: the parts, the joiner, and which parts are a clock. */
+function readTrigger(trigger: Trigger, held: boolean) {
   // A watched stock's floor reads the close; the pill says what the check reads.
   const shown = watchedFloorOnClose(trigger, { status: held ? "HOLDING" : "WATCHING" }).predicate as TriggerPredicate;
   const w = fromLegacy(shown);
-  const { parts, joiner } = isRetired(w) ? { parts: [{ label: "a removed condition" }], joiner: "and" as const } : pillParts(w);
+  if (isRetired(w)) return { parts: [{ label: "a removed condition" }] as PillPart[], joiner: "and" as const, timed: [false], w: null };
+  return { ...pillParts(w), timed: conditionsOf(w).map((c) => measureOf(c).timed === true), w };
+}
+
+export function TriggerPill(props: TriggerPillProps) {
+  const { trigger, held, level } = props;
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const { parts, joiner, timed } = readTrigger(trigger, held);
+  const draft = draftOf(trigger);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              "inline-flex h-7 cursor-pointer items-stretch overflow-hidden rounded-md border text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              trigger.inherited ? "border-dashed border-muted-foreground/40" : "border-border",
-            )}
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={
+            <button
+              type="button"
+              className={cn(
+                "inline-flex h-7 cursor-pointer items-stretch overflow-hidden rounded-md border text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                trigger.inherited ? "border-dashed border-muted-foreground/40" : "border-border",
+              )}
+            />
+          }
+        >
+          {parts.map((p, i) => (
+            <Fragment key={i}>
+              {i > 0 ? <span className="flex items-center border-l border-border px-1.5 text-muted-foreground">{joiner}</span> : null}
+              <span className={cn("flex items-center gap-1 bg-muted/30 px-2 text-muted-foreground", i > 0 && "border-l border-border")}>
+                {/* A schedule puts the agent on a clock: the same mark as Send to Agent. */}
+                {timed[i] ? <SendToAgentIcon className="size-3" /> : null}
+                {p.label}
+              </span>
+              {p.value ? <span className="flex items-center border-l border-border px-2 text-foreground tabular-nums">{p.value}</span> : null}
+            </Fragment>
+          ))}
+        </PopoverTrigger>
+        <PopoverContent align="start" size="lg">
+          <TriggerCard
+            {...props}
+            onEdit={
+              draft
+                ? () => {
+                    setOpen(false);
+                    setEditing(true);
+                  }
+                : undefined
+            }
+            onDone={() => setOpen(false)}
           />
-        }
-      >
-        {parts.map((p, i) => (
-          <Fragment key={i}>
-            {i > 0 ? <span className="flex items-center border-l border-border px-1.5 text-muted-foreground">{joiner}</span> : null}
-            <span className={cn("flex items-center gap-1 bg-muted/30 px-2 text-muted-foreground", i > 0 && "border-l border-border")}>
-              {/* A schedule puts the agent on a clock: the same mark as Send to Agent. */}
-              {!isRetired(w) && conditionsOf(w)[i] && measureOf(conditionsOf(w)[i]).timed ? <SendToAgentIcon className="size-3" /> : null}
-              {p.label}
-            </span>
-            {/* A variable reads as plain text here; it is a chip only in the form. */}
-            {p.value || p.chip ? (
-              <span className="flex items-center border-l border-border px-2 text-foreground tabular-nums">{p.value ?? p.chip}</span>
-            ) : null}
-          </Fragment>
-        ))}
-      </PopoverTrigger>
-      <PopoverContent align="start" size="lg">
-        <TriggerPopover {...props} onDone={() => setOpen(false)} />
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+      {editing && draft ? (
+        <TriggerDialog
+          open
+          onOpenChange={setEditing}
+          type={measureOf(draft.conditions[0]).type}
+          trigger={trigger}
+          level={level}
+          held={held}
+          endpointBase={props.endpointBase}
+          onChanged={props.onChanged}
+        />
+      ) : null}
+    </>
   );
 }
 
-/** Mounted each time the popover opens, so it starts from the stored trigger. */
-function TriggerPopover({ trigger, level, held, editable, endpointBase, analystId, onChanged, onDone }: TriggerPillProps & { onDone: () => void }) {
-  const ctx = { level, held };
+/** The read version: the trigger as the pill says it, why, and what happened. */
+function TriggerCard({
+  trigger,
+  level,
+  held,
+  editable,
+  endpointBase,
+  analystId,
+  onChanged,
+  onEdit,
+  onDone,
+}: TriggerPillProps & { onEdit?: () => void; onDone: () => void }) {
   const sells = held || level !== "THESIS";
-  // An inherited rule is changed where it lives, so one edit can't silently
-  // mean different things on different stocks.
+  // An inherited rule is changed where it lives, so one edit can't mean different things on different stocks.
   const canEdit = editable && !trigger.inherited;
-  const initial = useMemo(() => draftOf(trigger), [trigger]);
-  const [draft, setDraft] = useState(initial);
+  const { parts, joiner, w } = readTrigger(trigger, held);
   const { pending, err, send } = useTriggerRequest(() => {
     onChanged?.();
     onDone();
   });
-  const url = `${endpointBase}/${trigger.id}`;
-  const first = draft ? draft.conditions[0] : null;
   const home =
     trigger.level === "ANALYST" && analystId ? `/analysts/${analystId}` : trigger.level === "ACCOUNT" ? "/settings/triggers" : null;
+  const overrides = trigger.overrides ? fromLegacy(trigger.overrides.predicate) : null;
+  const cooldown = trigger.cooldownDays ? flooredCooldownDays(trigger, trigger.cooldownDays) : null;
+  const timed = w != null && !isGroup(w) && measureOf(w).timed === true;
+  const facts = [
+    trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : null,
+    // A schedule's rate limit is its own interval, so saying it again would repeat the number.
+    cooldown && !timed ? (cooldown === 1 ? "At most once a day" : `At most once every ${cooldown} days`) : null,
+    w && canProposeDirectly(w, trigger.action as TriggerAction) && sells && trigger.fireMode === "DIRECT" ? "Proposes the sale right away" : null,
+  ].filter(Boolean);
 
-  const header = (
-    <div className="flex items-center gap-1.5">
-      <span className="font-medium">{actionLabel(trigger.action, sells)}</span>
-      {first ? <span className="text-muted-foreground">· {measureOf(first).label}</span> : null}
-      <div className="ml-auto">
+  return (
+    <>
+      <div className="flex items-start gap-2">
+        {/* The same two halves as the pill: the muted direction, then the value. */}
+        <p className="min-w-0 flex-1 text-sm">
+          <span className="text-muted-foreground">{actionLabel(trigger.action, sells)} </span>
+          {parts.map((p, i) => (
+            <Fragment key={i}>
+              {i > 0 ? <span className="text-muted-foreground"> {joiner} </span> : null}
+              <span className="text-muted-foreground">{p.label} </span>
+              <span className="font-medium tabular-nums">{p.value}</span>
+            </Fragment>
+          ))}
+        </p>
         {canEdit ? (
-          <Button variant="ghost" size="icon-xs" aria-label="Delete trigger" disabled={pending} onClick={() => void send("DELETE", url)}>
-            <Trash2 />
-          </Button>
+          <div className="flex shrink-0 items-center">
+            {onEdit ? (
+              <Button variant="ghost" size="icon-xs" aria-label="Edit trigger" disabled={pending} onClick={onEdit}>
+                <Pencil />
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Delete trigger"
+              disabled={pending}
+              onClick={() => void send("DELETE", `${endpointBase}/${trigger.id}`)}
+            >
+              <Trash2 />
+            </Button>
+          </div>
         ) : trigger.inherited && home ? (
-          // Changed where it lives, so one edit can't mean different things on different stocks.
           <Button
             variant="ghost"
             size="xs"
@@ -132,94 +193,18 @@ function TriggerPopover({ trigger, level, held, editable, endpointBase, analystI
             <ArrowUpRight data-icon="inline-end" />
           </Button>
         ) : trigger.inherited ? (
-          <span className="text-xs text-muted-foreground">{levelBadgeLabel(trigger.level)} rule</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{levelBadgeLabel(trigger.level)} rule</span>
         ) : null}
       </div>
-    </div>
-  );
-
-  if (!draft || !initial) {
-    const stored = fromLegacy(trigger.predicate);
-    return (
-      <>
-        {header}
-        <p>
-          {isRetired(stored) ? "A condition removed in August 2026. It never fires." : triggerSentence(trigger.action, stored, sells ? undefined : false)}
-        </p>
-        <TriggerNotes trigger={trigger} />
-        {err ? <p className="text-xs text-destructive">{err}</p> : null}
-      </>
-    );
-  }
-
-  const w = whenOf(draft);
-  const problem = whenProblem(w, ctx);
-  const showOnFire = canProposeDirectly(w, draft.action) && sells;
-  const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
-  const setCondition = (i: number, c: (typeof draft.conditions)[number]) =>
-    setDraft((d) => (d ? { ...d, conditions: d.conditions.map((x, j) => (j === i ? c : x)) } : d));
-
-  function save() {
-    const predicate = draft && !problem ? toLegacy(w) : null;
-    if (!draft || !predicate) return;
-    void send("PATCH", url, { replace: { action: draft.action, predicate, fireMode: showOnFire ? draft.fireMode : undefined } });
-  }
-
-  return (
-    <>
-      {header}
-      {draft.conditions.map((c, i) => (
-        <Fragment key={i}>
-          {i > 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {draft.match === "all" ? "and" : "or"} · {measureOf(c).label}
-            </p>
-          ) : null}
-          <ConditionFields set condition={c} onChange={(n) => setCondition(i, n)} ctx={ctx} disabled={!canEdit || pending} />
-        </Fragment>
-      ))}
-      {showOnFire && canEdit ? (
-        <OnFireSelect value={draft.fireMode} onChange={(fireMode) => setDraft({ ...draft, fireMode })} disabled={pending} />
-      ) : null}
-      <TriggerNotes trigger={trigger} direct={showOnFire && !canEdit && draft.fireMode === "DIRECT"} />
-      {err ? <p className="text-xs text-destructive">{err}</p> : null}
-      {dirty ? (
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" disabled={pending} onClick={() => setDraft(initial)}>
-            Cancel
-          </Button>
-          <Button size="sm" disabled={pending || problem != null} onClick={save}>
-            {pending ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
-            Save
-          </Button>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-/** The notes: why it's there, what it overrides, and one line of facts. */
-function TriggerNotes({ trigger, direct = false }: { trigger: Trigger; direct?: boolean }) {
-  const overrides = trigger.overrides ? fromLegacy(trigger.overrides.predicate) : null;
-  const cooldown = trigger.cooldownDays ? flooredCooldownDays(trigger, trigger.cooldownDays) : null;
-  const stored = fromLegacy(trigger.predicate);
-  const timed = !isRetired(stored) && !isGroup(stored) && measureOf(stored).timed;
-  const facts = [
-    trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : null,
-    // A schedule's rate limit is its own interval, so saying it again would repeat the number above.
-    cooldown && !timed ? (cooldown === 1 ? "At most once a day" : `At most once every ${cooldown} days`) : null,
-    direct ? "Proposes the sale right away" : null,
-  ].filter(Boolean);
-  return (
-    <>
+      {w == null ? <p className="text-xs text-muted-foreground">A condition removed in August 2026. It never fires.</p> : null}
       {trigger.rationale ? <p className="text-xs text-muted-foreground">{trigger.rationale}</p> : null}
       {overrides && !isRetired(overrides) ? (
         <p className="text-xs text-muted-foreground">
-          Overrides the {trigger.overrides!.level === "ACCOUNT" ? "account" : "analyst"} rule:{" "}
-          {triggerSentence(trigger.action, overrides).toLowerCase()}
+          Overrides the {trigger.overrides!.level === "ACCOUNT" ? "account" : "analyst"} rule: {triggerText(trigger.action, overrides, sells)}
         </p>
       ) : null}
       {facts.length ? <p className="text-xs text-muted-foreground">{facts.join(" · ")}</p> : null}
+      {err ? <p className="text-xs text-destructive">{err}</p> : null}
     </>
   );
 }

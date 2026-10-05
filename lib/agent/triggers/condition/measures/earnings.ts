@@ -2,23 +2,20 @@
 
 import type { TriggerPredicate } from "../../types";
 import { withSettings, type MeasureDef } from "../measure";
-import { days, num, pct } from "../words";
+import { num } from "../words";
 
 export const report: MeasureDef = {
   id: "report",
   type: "earnings",
   label: "Report date",
   buttons: [
-    { is: "before", label: "Before" },
-    { is: "after", label: "After" },
+    { is: "before", label: "Before earnings" },
+    { is: "after", label: "After earnings" },
   ],
   value: { suffix: "days", placeholder: "3", integer: true, min: 0 },
   settings: [{ key: "fromDay", default: 0, words: (v) => (v === 1 ? ", counting from the day after" : "") }],
   actions: ["REVIEW"],
   fresh: () => ({ watch: "report", is: "before" }),
-  sentence: (c) =>
-    c.is === "before" ? `earnings are ${days(c.value ?? 0)} away or less` : `it is within ${days(c.value ?? 0)} after earnings`,
-  pill: (c) => ({ label: c.is === "before" ? "before earnings" : "after earnings", value: days(c.value ?? 0) }),
   check: (c) => (c.is === "before" && (c.value ?? 0) > 14 ? "The earnings calendar looks 14 days ahead." : null),
   legacy: {
     from: {
@@ -39,20 +36,12 @@ export const surprise: MeasureDef = {
   type: "earnings",
   label: "Result",
   buttons: [
-    { is: "miss", label: "Miss" },
-    { is: "beat", label: "Beat" },
+    { is: "miss", label: "Earnings miss" },
+    { is: "beat", label: "Earnings beat" },
   ],
-  value: { suffix: "% vs. the estimate", placeholder: "0", min: 0 },
+  value: { suffix: "% or more", placeholder: "0", min: 0, zero: "any amount" },
   actions: ["REVIEW"],
   fresh: () => ({ watch: "surprise", is: "beat", value: 0 }),
-  sentence: (c) => {
-    const v = c.value ?? 0;
-    return `earnings ${c.is === "beat" ? "beat" : "miss"} the estimate${v > 0 ? ` by ${pct(v)} or more` : ""}`;
-  },
-  pill: (c) => {
-    const v = c.value ?? 0;
-    return { label: `earnings ${c.is === "beat" ? "beat" : "miss"}`, value: v > 0 ? `${pct(v)}+` : undefined };
-  },
   legacy: {
     // A negative minimum is ignored by today's checker (any beat or miss
     // fires), so it reads as 0. Two retired rows carry one.

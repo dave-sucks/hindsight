@@ -15,7 +15,7 @@
  *   - every stored kind translates, and only the deleted REVIEW_DATE_HIT is retired;
  *   - every one comes back as the same kind it was (round trip);
  *   - the cascade slots are the same classes as today's triggerBucket;
- *   - every one reads as a sentence and a pill.
+ *   - every one reads in the form's words, with no blanks.
  *
  * And that the catalog is the pattern: one entry per measure, and no code
  * outside an entry branches on a measure.
@@ -35,7 +35,7 @@ import {
   isRetired,
   pillParts,
   toLegacy,
-  triggerSentence,
+  triggerText,
   triggerSlot,
   variableOptions,
   withVariable,
@@ -104,45 +104,43 @@ describe("every stored trigger", () => {
     expect({ split, merged }).toEqual({ split: [], merged: [] });
   });
 
-  it("reads as a sentence and a pill, with no blanks", () => {
+  it("reads in the form's words, with no blanks", () => {
     for (const r of rows) {
       const w = fromLegacy(r.predicate);
       if (isRetired(w)) continue;
-      const sentence = triggerSentence(r.action, w, r.scopes.includes("live") ? undefined : true);
-      expect(sentence).not.toMatch(/undefined|NaN|null/);
-      expect(sentence).toMatch(/^[A-Z].+\.$/);
+      expect(triggerText(r.action, w)).not.toMatch(/undefined|NaN|null|  /);
       for (const part of pillParts(w).parts) {
-        expect(part.label).not.toMatch(/undefined|NaN/);
-        expect(`${part.value ?? ""}${part.chip ?? ""}`).not.toMatch(/undefined|NaN/);
+        expect(part.label).toMatch(/^[a-z]/);
+        expect(part.value ?? "").not.toMatch(/undefined|NaN/);
       }
     }
   });
 });
 
-describe("the sentences people read", () => {
-  const say = (action: TriggerAction, p: TriggerPredicate) => triggerSentence(action, fromLegacy(p) as When);
+describe("what people read: the form's words, direction · value", () => {
+  const say = (action: TriggerAction, p: TriggerPredicate) => triggerText(action, fromLegacy(p) as When);
   it.each([
-    ["EXIT", { kind: "PRICE_BELOW", level: 248 }, "Sell when the price falls below $248."],
-    ["EXIT", { kind: "TRAILING_FROM_HIGH", pct: 25 }, "Sell when the price is down 25% from the high since we bought."],
-    ["REVIEW", { kind: "VS_SMA", period: 200, direction: "BELOW" }, "Review when the price falls below the 200-day average."],
-    ["ADD", { kind: "PRICE_MOVE_PCT", pct: 7, direction: "DOWN", window: "1D" }, "Add when the price is down 7% today."],
-    ["ENTER", { kind: "NEAR_SMA", period: 50, withinPct: 2 }, "Buy when the price is within 2% of the 50-day average."],
-    ["REVIEW", { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" }, "Review when the price is up 15% from our entry."],
-    ["ENTER", { kind: "PRICE_ABOVE", level: 183, basis: "close" }, "Buy when the price closes above $183."],
-    ["REVIEW", { kind: "REVIEW_CADENCE", days: 30 }, "Review every 30 days."],
-    ["EXIT", { kind: "REVIEW_CADENCE", days: 60, from: "BUY" }, "Sell 60 days after the buy."],
-    ["REVIEW", { kind: "EARNINGS_WITHIN", days: 5 }, "Review when earnings are 5 days away or less."],
-    ["REVIEW", { kind: "EARNINGS_BEAT" }, "Review when earnings beat the estimate."],
-    ["REVIEW", { kind: "SEC_EVENT", tier: "MATERIAL" }, "Review when the company files something material with the SEC."],
-    ["REVIEW", { kind: "RS_VS_SPY", window: "6M", min: 0 }, "Review when it is beating the S&P over 6 months."],
+    ["EXIT", { kind: "PRICE_BELOW", level: 248 }, "Sell if below $248"],
+    ["EXIT", { kind: "TRAILING_FROM_HIGH", pct: 25 }, "Sell if below 25% from the high"],
+    ["REVIEW", { kind: "VS_SMA", period: 200, direction: "BELOW" }, "Review if below 200-day average"],
+    ["ADD", { kind: "PRICE_MOVE_PCT", pct: 7, direction: "DOWN", window: "1D" }, "Add if below 7% from yesterday's close"],
+    ["ENTER", { kind: "NEAR_SMA", period: 50, withinPct: 2 }, "Buy if within 2% of 50-day average"],
+    ["REVIEW", { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" }, "Review if above 15% from our entry"],
+    ["ENTER", { kind: "PRICE_ABOVE", level: 183, basis: "close" }, "Buy if above $183 · only on the close"],
+    ["REVIEW", { kind: "REVIEW_CADENCE", days: 30 }, "Review if every 30 days"],
+    ["EXIT", { kind: "REVIEW_CADENCE", days: 60, from: "BUY" }, "Sell if after 60 days from the buy"],
+    ["REVIEW", { kind: "EARNINGS_WITHIN", days: 5 }, "Review if before earnings 5 days"],
+    ["REVIEW", { kind: "EARNINGS_BEAT" }, "Review if earnings beat any amount"],
+    ["REVIEW", { kind: "EARNINGS_MISS", minSurprisePct: 3 }, "Review if earnings miss 3% or more"],
+    ["REVIEW", { kind: "SEC_EVENT", tier: "MATERIAL" }, "Review if files anything material"],
+    ["REVIEW", { kind: "RS_VS_SPY", window: "6M", min: 0 }, "Review if at least 0 points ahead of the S&P · over 6 months"],
+    ["REVIEW", { kind: "RSI", threshold: 30, direction: "BELOW" }, "Review if below RSI 30"],
   ] as [TriggerAction, TriggerPredicate, string][])("%s %j", (action, p, expected) => {
     expect(say(action, p)).toBe(expected);
   });
 
   it("names the plan coming down on a stock we don't own", () => {
-    expect(triggerSentence("EXIT", fromLegacy({ kind: "PRICE_BELOW", level: 225 }) as When, false)).toBe(
-      "Take the plan down when the price falls below $225.",
-    );
+    expect(triggerText("EXIT", fromLegacy({ kind: "PRICE_BELOW", level: 225 }) as When, false)).toBe("Take the plan down if below $225");
   });
 
   it("folds a rule naming two filing events back into one kind", () => {
@@ -222,7 +220,7 @@ describe("the catalog", () => {
   it("keeps a variable's own settings with it, and drops them when it goes", () => {
     const trail = fromLegacy({ kind: "TRAILING_FROM_HIGH", pct: 25, armAtGainPct: 20 }) as Condition;
     expect(trail.settings).toEqual({ startOnceUpPct: 20 });
-    expect(triggerSentence("EXIT", trail)).toBe("Sell when the price is down 25% from the high since we bought, once it has been up 20%.");
+    expect(triggerText("EXIT", trail)).toBe("Sell if below 25% from the high, once it has been up 20%");
     expect(withVariable(trail, "prev_close").settings).toBeUndefined();
   });
 });

@@ -2,7 +2,8 @@
 
 /**
  * Add trigger: a menu of the five types, then the dialog for the one picked.
- * Every type fills the same form (./TriggerFields). docs/plans/TRIGGER_TYPES.md §7.
+ * Editing a trigger opens the same dialog, filled in. Every type fills the
+ * same form (./TriggerFields). docs/plans/TRIGGER_TYPES.md §7.
  *
  * Until the cutover the server stores today's kinds, so the dialog builds a
  * condition and saves `toLegacy(condition)`.
@@ -16,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   TRIGGER_TYPES,
+  actionLabel,
   allowedActions,
   canProposeDirectly,
   measureOf,
@@ -25,17 +27,8 @@ import {
   type TriggerType,
 } from "@/lib/agent/triggers/condition";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
-import {
-  ConditionFields,
-  FieldLabel,
-  OnFireSelect,
-  TYPE_ICON,
-  actionLabel,
-  useTriggerRequest,
-  whenOf,
-  type Draft,
-  type Level,
-} from "./TriggerFields";
+import type { Trigger } from "@/lib/types/thesis-sheet";
+import { ConditionFields, FieldLabel, OnFireSelect, TYPE_ICON, draftOf, useTriggerRequest, whenOf, type Draft, type Level } from "./TriggerFields";
 
 interface AddProps {
   level: Level;
@@ -107,19 +100,22 @@ function freshDraft(type: TriggerType, level: Level, held: boolean): Draft {
   return { action, conditions: [c], match: "all", fireMode: action === "EXIT" ? "DIRECT" : "TACTICAL" };
 }
 
-function TriggerDialog({
+/** The dialog: a new trigger of `type`, or `trigger` to change. */
+export function TriggerDialog({
   open,
   onOpenChange,
   type,
+  trigger,
   level,
   held,
   endpointBase,
   onChanged,
-}: AddProps & { open: boolean; onOpenChange: (open: boolean) => void; type: TriggerType }) {
+}: AddProps & { open: boolean; onOpenChange: (open: boolean) => void; type: TriggerType; trigger?: Trigger }) {
   const standing = level !== "THESIS";
   const ctx = { level, held };
   const sells = held || standing;
-  const [draft, setDraft] = useState<Draft>(() => freshDraft(type, level, held));
+  const first = () => (trigger ? draftOf(trigger) : null) ?? freshDraft(type, level, held);
+  const [draft, setDraft] = useState<Draft>(first);
   const { pending, err, setErr, send } = useTriggerRequest(() => {
     onChanged?.();
     onOpenChange(false);
@@ -128,10 +124,10 @@ function TriggerDialog({
   // A fresh form each time it opens.
   useEffect(() => {
     if (!open) return;
-    setDraft(freshDraft(type, level, held));
+    setDraft(first());
     setErr(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, type]);
+  }, [open, type, trigger?.id]);
 
   const w = whenOf(draft);
   const actions = allowedActions(w, { held, standing });
@@ -145,14 +141,16 @@ function TriggerDialog({
   function save() {
     const predicate = problem ? null : toLegacy(w);
     if (!predicate) return;
-    void send("POST", endpointBase, { action, predicate, fireMode: showOnFire ? draft.fireMode : undefined });
+    const body = { action, predicate, fireMode: showOnFire ? draft.fireMode : undefined };
+    if (trigger) void send("PATCH", `${endpointBase}/${trigger.id}`, { replace: body });
+    else void send("POST", endpointBase, body);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>Add {typeDef(type).label.toLowerCase()} trigger</DialogTitle>
+          <DialogTitle>{trigger ? "Edit trigger" : `Add ${typeDef(type).label.toLowerCase()} trigger`}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -221,7 +219,7 @@ function TriggerDialog({
           </Button>
           <Button size="sm" disabled={pending || problem != null} onClick={save}>
             {pending ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
-            Add
+            {trigger ? "Save" : "Add"}
           </Button>
         </DialogFooter>
       </DialogContent>

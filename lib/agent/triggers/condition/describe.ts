@@ -1,9 +1,12 @@
 /**
- * The words: one sentence and one pill per condition. Each measure writes
- * its own clause and pill (its catalog entry); settings that carry words
- * add theirs. The line under the input, the pill on the sheet and (from PR
- * 3) the Activity line and the agent's fire payload all come from here, so a
- * trigger reads the same everywhere. docs/plans/TRIGGER_TYPES.md §6.
+ * The words. A condition reads as its form's two halves: the direction (the
+ * button's label, or the measure's one word) and the value (what the input
+ * holds, what it is measured from, and any setting that isn't the default):
+ *
+ *   below · $868        below · 15% from the high        every · 30 days
+ *
+ * The pill, the popover and the dialog all say it this way; there is no
+ * second vocabulary to keep in step. docs/plans/TRIGGER_TYPES.md §6.
  *
  * Pure and client-safe.
  */
@@ -12,49 +15,69 @@ import { measureOf, settingDefs } from "./catalog";
 import type { PillPart } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
+import { variableDef } from "./variables";
+import { money } from "./words";
 
 export { money } from "./words";
 
-/** One condition as a clause: "the price falls below $248". `inGroup` words a clock as a state. */
-export function conditionSentence(c: Condition, opts: { inGroup?: boolean } = {}): string {
+const ACTION_LABEL: Readonly<Record<string, string>> = { ENTER: "Buy if", ADD: "Add if", TRIM: "Trim if", EXIT: "Sell if", MOVE_STOP: "Move the stop if" };
+
+/** "Sell if", "Review if". A sale on a stock we don't own takes the plan down. */
+export function actionLabel(action: string, sells = true): string {
+  if (action === "EXIT" && !sells) return "Take the plan down if";
+  return ACTION_LABEL[action] ?? "Review if";
+}
+
+/** The two halves: "below" and "$868". */
+export function conditionParts(c: Condition): PillPart {
+  const m = measureOf(c);
+  const label = (m.buttons?.find((b) => b.is === c.is)?.label ?? m.word ?? "").toLowerCase();
+  return { label, value: valueText(c) };
+}
+
+function valueText(c: Condition): string {
+  const m = measureOf(c);
+  const v = m.value;
+  const vars = m.variables;
+  const chip = c.variable ? variableDef(c.variable).chip : undefined;
+  let text: string;
+  if (vars?.mode === "replace" && chip) text = chip;
+  else if (v.none) text = chip ?? v.placeholder;
+  else if ((c.value ?? 0) === 0 && v.zero) text = v.zero;
+  else {
+    const n = c.value ?? 0;
+    const number = v.prefix === "$" ? money(n) : `${v.prefix ? `${v.prefix} ` : ""}${n}`;
+    text = number + (v.suffix ? (/^[%×]/.test(v.suffix) ? v.suffix : ` ${v.suffix}`) : "");
+  }
+  if (vars?.mode === "from" && chip) text += ` ${vars.word ? vars.word(c) : "from"} ${chip}`;
+  // A setting shows only when it isn't the default: "· only on the close", ", once it has been up 20%".
   const set = c.settings ?? {};
-  const extra = settingDefs(c)
-    .map((s) => (s.words && set[s.key] !== undefined ? s.words(set[s.key], set) : ""))
-    .join("");
-  return measureOf(c).sentence(c, opts) + extra;
+  for (const s of settingDefs(c)) {
+    const value = set[s.key];
+    if (value === undefined || value === s.default) continue;
+    const option = s.options?.find((o) => o.value === value);
+    if (option) text += ` · ${option.label.toLowerCase()}`;
+    else if (s.words) text += s.words(value, set);
+  }
+  return text;
 }
 
-/** The line under the input: "Fires when the price falls below $248." */
-export function fireLine(c: Condition): string {
-  const s = conditionSentence(c);
-  return measureOf(c).timed ? `Fires ${s}.` : `Fires when ${s}.`;
+export function conditionText(c: Condition): string {
+  const p = conditionParts(c);
+  return `${p.label} ${p.value}`.trim();
 }
 
-export function whenSentence(w: When): string {
-  if (!isGroup(w)) return conditionSentence(w, { inGroup: true });
-  return w.conditions.map(whenSentence).join(w.match === "all" ? " and " : " or ");
+export function whenText(w: When): string {
+  if (!isGroup(w)) return conditionText(w);
+  return w.conditions.map(whenText).join(w.match === "all" ? " and " : " or ");
 }
 
-const VERB: Readonly<Record<string, string>> = { ENTER: "Buy", ADD: "Add", TRIM: "Trim", EXIT: "Sell", MOVE_STOP: "Move the stop" };
-
-/** The verb a trigger's action reads as. A sale on a stock we don't own takes the plan down. */
-export function actionVerb(action: string, held?: boolean): string {
-  if (action === "EXIT" && held === false) return "Take the plan down";
-  return VERB[action] ?? "Review";
+/** The whole trigger: "Sell if below $868". */
+export function triggerText(action: string, w: When, sells = true): string {
+  return `${actionLabel(action, sells)} ${whenText(w)}`;
 }
 
-/** The whole trigger as one sentence: "Sell when the price falls below $248." */
-export function triggerSentence(action: string, w: When, held?: boolean): string {
-  const verb = actionVerb(action, held);
-  if (!isGroup(w) && measureOf(w).timed) return `${verb} ${conditionSentence(w)}.`;
-  return `${verb} when ${whenSentence(w)}.`;
-}
-
-export function pillPart(c: Condition): PillPart {
-  return measureOf(c).pill(c);
-}
-
-/** A trigger's pill: one part per condition, with "and" / "or" between them. */
+/** A trigger's pill: two halves per condition, with "and" / "or" between conditions. */
 export function pillParts(w: When): { parts: PillPart[]; joiner: "and" | "or" } {
-  return { parts: conditionsOf(w).map(pillPart), joiner: isGroup(w) && w.match === "any" ? "or" : "and" };
+  return { parts: conditionsOf(w).map(conditionParts), joiner: isGroup(w) && w.match === "any" ? "or" : "and" };
 }
