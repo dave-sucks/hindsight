@@ -1,167 +1,14 @@
 /**
- * Human-readable formatters for trigger predicates and actions.
+ * Where a trigger lives, in words, for the popover of an inherited rule. The
+ * trigger itself reads off the measure catalog (condition/describe.ts:
+ * `sentenceOf`, "Sell if below $868"), the same words on the pill, in the
+ * Activity feed and in what the agents read.
  *
- * Used by:
- *  - lib/inngest/functions/tactical-run.ts — writes the TRIGGER_FIRED
- *    audit row's `summary` field at fire time, so persisted text is
- *    already English (not SCREAMING_SNAKE_CASE).
- *  - components/agent/sheets/ThesisSheet.tsx — renders the
- *    "most recent trigger" banner. Composes condition + action.
- *  - components/agent/sheets/ThesisTriggersSection.tsx — re-exports
- *    these so the trigger pills, popover descriptions, and banner all
- *    share one source.
- *
- * Pure functions, no React, safe to import server-side.
+ * Pure, safe to import anywhere.
  */
 
-import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
-import { FORM_NAMES, ITEM_NAMES } from "@/lib/market-data/sec-events";
+import { sentenceOf } from "./condition/describe";
 
-/**
- * One sentence describing what the predicate evaluates. Used in pills
- * and as the leading clause of the trigger-fired banner.
- *
- *   PRICE_BELOW $5.92            → "Price below $5.92"
- *   EARNINGS_BEAT ≥3%            → "Earnings beat ≥3%"
- *   NEAR_SMA 50 2%               → "Within 2% of the 50-day"
- */
-const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-
-export function predicateSentence(p: TriggerPredicate): string {
-  switch (p.kind) {
-    case "PRICE_BELOW":
-      return p.basis === "close" ? `Closes below $${p.level}` : `Price below $${p.level}`;
-    case "PRICE_ABOVE":
-      return p.basis === "close" ? `Closes above $${p.level}` : `Price above $${p.level}`;
-    case "PRICE_MOVE_PCT":
-      return p.window === "1D"
-        ? `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% today`
-        : `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% over ${p.window === "5D" ? "5 sessions" : "20 sessions"}`;
-    case "GAIN_FROM_ENTRY":
-      return (
-        (p.direction === "UP" ? `Up ${p.pct}% from entry` : `Down ${p.pct}% from entry`) +
-        (p.skipIfPeakGainPct
-          ? p.skipIfPeakWithinDays
-            ? ` (off once it has run ${p.skipIfPeakGainPct}% within ${p.skipIfPeakWithinDays} days)`
-            : ` (off once it has run ${p.skipIfPeakGainPct}%)`
-          : "")
-      );
-    case "TRAILING_FROM_HIGH":
-      // Same vocabulary as the trigger editor ("Trailing from high") — the
-      // feed once said "Gives back X% from the high" and read as a trigger
-      // type that doesn't exist in the builder.
-      return (
-        `Trailing ${p.pct}% from high` +
-        (p.atrMultiple ? ` or ${p.atrMultiple} ATR, whichever is wider` : "") +
-        (p.armAtGainPct ? ` (once up ${p.armAtGainPct}%)` : "")
-      );
-    case "VS_SMA":
-      return `Price ${p.direction.toLowerCase()} the ${p.period}-day`;
-    case "NEAR_SMA":
-      return `Within ${p.withinPct}% of the ${p.period}-day`;
-    case "VOLUME_RATIO":
-      return `Volume ${p.min}× average`;
-    case "NEW_HIGH":
-      return p.window === "20D" ? "New 20-day high" : "New 52-week high";
-    case "PCT_FROM_52W_HIGH":
-      return `Within ${p.max}% of the 52-week high`;
-    case "RS_VS_SPY":
-      return `${p.window} vs SPY ${p.min >= 0 ? "+" : ""}${p.min} pts or better`;
-    case "GAP_UP":
-      return `Gap up ${p.minPct}%+ on ${p.minVolRatio}× volume${(p.withinDays ?? 1) > 1 ? ` (last ${p.withinDays} sessions)` : ""}`;
-    case "RSI":
-      return `RSI(${p.period ?? 14}) ${p.direction.toLowerCase()} ${p.threshold}`;
-    case "INSIDER_CLUSTER":
-      return `${p.minBuyers}+ insiders buying in ${p.days} days`;
-    case "EARNINGS_BEAT":
-      return p.minSurprisePct
-        ? `Earnings beat ≥${p.minSurprisePct}%`
-        : "Any earnings beat";
-    case "EARNINGS_MISS":
-      return p.minSurprisePct
-        ? `Earnings miss ≥${p.minSurprisePct}%`
-        : "Any earnings miss";
-    case "EARNINGS_WITHIN":
-      return `Reports within ${p.days} day${p.days === 1 ? "" : "s"}`;
-    case "EARNINGS_SINCE":
-      return p.min === p.max
-        ? `${p.min} day${p.min === 1 ? "" : "s"} after the report`
-        : `${p.min}–${p.max} days after the report`;
-    case "SEC_EVENT":
-      return secEventSentence(p);
-    case "REVIEW_CADENCE":
-      return (p.from ?? "LAST_REVIEW") === "BUY"
-        ? `${p.days} day${p.days === 1 ? "" : "s"} after the buy`
-        : p.from === "EVENT"
-          ? `${p.days} day${p.days === 1 ? "" : "s"} ${(p.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event date`
-          : `Every ${p.days} days since the last review`;
-    // Say the conditions, not how many there are — "Any earnings beat and
-    // price down 3% today" is a rule someone can read on Settings.
-    case "AND":
-      return p.predicates.map((x, i) => (i ? lowerFirst(predicateSentence(x)) : predicateSentence(x))).join(" and ");
-    case "OR":
-      return p.predicates.map((x, i) => (i ? lowerFirst(predicateSentence(x)) : predicateSentence(x))).join(" or ");
-  }
-}
-
-/**
- * Imperative phrase for what the agent should DO when the trigger fires.
- *
- *   EXIT       → "exit position"
- *   ADD        → "scale in"
- *   TRIM       → "trim position"
- *   MOVE_STOP  → "move stop"
- *   REVIEW     → "review"
- *
- * `held` (pass false for a thesis we don't own) makes EXIT honest: on an
- * un-held thesis a floor break can't sell anything — `effectiveTriggerAction`
- * resolves it to DEMOTE, so the label says what actually happens. Omitted ⇒
- * the historical held-side wording, so no caller changes by accident.
- */
-export function actionLabel(action: string, held?: boolean): string {
-  if (action === "EXIT" && held === false) return "take the plan down";
-  switch (action) {
-    case "EXIT":
-      return "exit position";
-    case "ENTER":
-      return "consider entry";
-    case "ADD":
-      return "scale in";
-    case "TRIM":
-      return "trim position";
-    case "MOVE_STOP":
-      return "move stop";
-    case "REVIEW":
-    default:
-      return "review";
-  }
-}
-
-/**
- * Single-sentence summary suitable for the TRIGGER_FIRED audit row's
- * `summary` field and for the sheet's banner: "{condition} — {action}".
- *
- *   PRICE_BELOW $5.92 + REVIEW → "Price below $5.92 — review"
- *   EARNINGS_BEAT ≥3% + ADD    → "Earnings beat ≥3% — scale in"
- */
-export function describeTriggerFire(trigger: Trigger, held?: boolean): string {
-  return `${predicateSentence(trigger.predicate)} — ${actionLabel(trigger.action, held)}`;
-}
-
-/**
- * Group-header label for the sheet's Triggers section. One label per
- * TriggerAction — each action gets its own group instead of the previous
- * 3-bucket collapse (which conflated ADD with ENTER and TRIM with EXIT
- * and dropped MOVE_STOP into REVIEW). Pairs with the new popover title
- * "{ActionVerb} if {predicate}".
- *
- *   ENTER     → "Buy if"
- *   ADD       → "Add if"
- *   TRIM      → "Trim if"
- *   MOVE_STOP → "Move stop if"
- *   EXIT      → "Sell if"
- *   REVIEW    → "Review if"
- */
 /**
  * Where a rung lives, in the second person. Shown in the popover of an
  * inherited (dotted) rung so "why can't I edit this here?" answers itself.
@@ -205,36 +52,22 @@ export function levelBadgeLabel(
   }
 }
 
-export function actionGroupLabel(action: string, held?: boolean): string {
-  // Same honesty rule as actionLabel: a floor/target EXIT on a thesis we
-  // don't own resolves to DEMOTE at fire time — the plan comes down,
-  // nothing is sold. Omitted `held` reads as a sale.
-  if (action === "EXIT" && held === false) return "Take the plan down if";
-  switch (action) {
-    case "ENTER":
-      return "Buy if";
-    case "ADD":
-      return "Add if";
-    case "TRIM":
-      return "Trim if";
-    case "MOVE_STOP":
-      return "Move stop if";
-    case "EXIT":
-      return "Sell if";
-    case "REVIEW":
-    default:
-      return "Review if";
-  }
-}
-
-/** "A serious SEC filing" / "An SEC filing: acquisition or sale completed (2.01)". */
-function secEventSentence(p: Extract<TriggerPredicate, { kind: "SEC_EVENT" }>): string {
-  const named = [
-    ...(p.items ?? []).map((i) => `${ITEM_NAMES[i] ?? "item"} (${i})`),
-    ...(p.forms ?? []).map((f) => FORM_NAMES[f] ?? f),
-  ];
-  const tier = p.tier === "RED" ? "A serious SEC filing" : p.tier === "MATERIAL" ? "A material SEC filing" : null;
-  if (tier && named.length) return `${tier}, or ${named.join(" or ")}`;
-  if (tier) return tier;
-  return `An SEC filing: ${named.join(" or ")}`;
+/**
+ * A trigger as the agents read it: its id (what an edit names) and the
+ * sentence on its pill, with why it was set and how it fires. The condition
+ * itself is never sent as data: the sentence is the one vocabulary.
+ */
+export function triggerForAgent(
+  t: { id: string; action: string; predicate: unknown; rationale?: string; fireMode?: string; lastFiredAt?: string; source?: string; cooldownDays?: number },
+  sells: boolean,
+) {
+  return {
+    id: t.id,
+    says: sentenceOf(t, sells),
+    ...(t.rationale ? { rationale: t.rationale } : {}),
+    ...(t.fireMode === "DIRECT" ? { firesDirectly: true } : {}),
+    ...(t.cooldownDays != null ? { cooldownDays: t.cooldownDays } : {}),
+    ...(t.lastFiredAt ? { lastFiredAt: t.lastFiredAt } : {}),
+    ...(t.source ? { setBy: t.source } : {}),
+  };
 }

@@ -851,7 +851,7 @@ export async function getDailyBars(
 /**
  * Today's session bar for many symbols in one call — consolidated (SIP)
  * volume to the minute, and at 16:20 ET the day's close. Read by the
- * trigger evaluator for VOLUME_RATIO / GAP_UP and by its close pass
+ * trigger evaluator for volume and gap and by its close pass
  * (DAV-247). IEX volume is ~2% of the tape. Until 2026-09-25 the plan
  * refused SIP bars newer than 15 minutes, so this ended 16 minutes ago.
  *

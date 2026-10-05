@@ -5,7 +5,7 @@
  *
  * Since the cutover every write stores the shape (lib/prisma.ts) and every
  * read accepts both, so rows written before it still hold kinds. This turns
- * them into the shape. A removed kind (REVIEW_DATE_HIT) is kept verbatim.
+ * them into the shape. A removed kind (old review-date) is kept verbatim.
  * Fire history, ids, rationales and every other field are untouched: only
  * each trigger's `predicate` changes.
  *

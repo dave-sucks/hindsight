@@ -8,8 +8,6 @@
  * Pure and client-safe.
  */
 
-import { LEVEL_ELIGIBLE_KINDS, THESIS_ADDABLE_KINDS } from "../addable";
-import type { TriggerPredicate } from "../types";
 import { measureOf } from "./catalog";
 import { toLegacy } from "./legacy";
 import type { CheckContext } from "./measure";
@@ -17,6 +15,7 @@ import type { Condition, Direction, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
 import { variableDef, type VariableDef } from "./variables";
 import { capitalise } from "./words";
+import { isLevel } from "./rules";
 
 export type { CheckContext } from "./measure";
 
@@ -30,8 +29,8 @@ export function variableOptions(c: Condition, ctx: CheckContext): readonly Varia
   if (!vars) return [];
   return vars.options.filter((o) => {
     if (o.position && ctx.level === "THESIS" && !ctx.held) return false;
-    const legacy = toLegacy({ ...c, variable: o.id, value: c.value ?? 1, settings: undefined });
-    return legacy != null && kindProblem(legacy, ctx) == null;
+    const option: Condition = { ...c, variable: o.id, value: c.value ?? 1, settings: undefined };
+    return toLegacy(option) != null && levelProblem(option, ctx) == null;
   });
 }
 
@@ -67,7 +66,7 @@ export function conditionProblem(c: Condition, ctx: CheckContext): string | null
   }
   const legacy = toLegacy(c);
   if (!legacy) return "This can't be saved yet.";
-  return kindProblem(legacy, ctx);
+  return levelProblem(c, ctx);
 }
 
 /** The first problem in a trigger's condition(s), including the rules for two. */
@@ -83,10 +82,22 @@ export function whenProblem(w: When, ctx: CheckContext): string | null {
   return null;
 }
 
-function kindProblem(p: TriggerPredicate, ctx: CheckContext): string | null {
-  const allowed = ctx.level === "THESIS" ? THESIS_ADDABLE_KINDS : LEVEL_ELIGIBLE_KINDS;
-  if (allowed.has(p.kind)) return null;
-  return ctx.level === "THESIS"
-    ? "That can't be added to a stock by hand."
-    : "That can't be a standing rule: it has to mean the same thing on every stock.";
+/** At an analyst or the account a rule has to mean the same thing on every stock, so it can't hold a typed price. */
+function levelProblem(w: When, ctx: CheckContext): string | null {
+  if (ctx.level === "THESIS" || !conditionsOf(w).some(isLevel)) return null;
+  return "That can't be a standing rule: it has to mean the same thing on every stock.";
+}
+
+/**
+ * What the add paths refuse, at the server: a trigger built by hand is one
+ * condition or two plain ones, a schedule stands alone, and a standing rule
+ * can't hold a typed price. (The form's own checks above are the dialog's.)
+ */
+export function addProblem(w: When, level: CheckContext["level"]): string | null {
+  if (isGroup(w)) {
+    if (w.conditions.length !== 2) return "A trigger built by hand takes two conditions.";
+    if (w.conditions.some(isGroup)) return "A condition can't itself be two conditions.";
+    if (conditionsOf(w).some((c) => measureOf(c).timed)) return "A day count is a schedule, not a condition — add it as its own trigger.";
+  }
+  return levelProblem(w, { level, held: true });
 }

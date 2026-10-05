@@ -32,6 +32,7 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 import fixture from "@/lib/market-data/__fixtures__/edgar-search-2026-09.json";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { parseSearchHits } from "@/lib/market-data/sec-filings";
 import { filingNeedsSameDayLook, filingsBehindFire } from "@/lib/market-data/sec-events";
 import { resolveThesisLadder } from "./load-levels";
@@ -68,7 +69,7 @@ describe("MU 8-K 5.02, 2026-08-26 — held, under the account's filing rule", ()
   });
 
   it("wakes a review once, names the filing, and waits for the morning", async () => {
-    const rule = ladder().find((t) => t.predicate.kind === "SEC_EVENT")!;
+    const rule = ladder().find((t) => kindOf(t.predicate) === "SEC_EVENT")!;
     expect(rule).toMatchObject({ inherited: true, action: "REVIEW" });
     expect(shouldFire(rule, ctx())).toEqual({ fires: true, reason: "match" });
 
@@ -88,21 +89,21 @@ describe("MU 8-K 5.02, 2026-08-26 — held, under the account's filing rule", ()
     });
 
     // The next pass, five minutes later, reads the same filing: no second fire.
-    const again = ladder().find((t) => t.predicate.kind === "SEC_EVENT")!;
+    const again = ladder().find((t) => kindOf(t.predicate) === "SEC_EVENT")!;
     expect(again.firedFilings).toEqual(["0001104659-26-101067"]);
     expect(shouldFire(again, { ...ctx(), now: new Date(now.getTime() + 300_000) }).fires).toBe(false);
   });
 
   it("a new filing the next day fires again — no cooldown", async () => {
     stored.triggerState = { "acct-sec": { firedAt: now.toISOString(), firedFilings: ["0001104659-26-101067"] } };
-    const rule = ladder().find((t) => t.predicate.kind === "SEC_EVENT")!;
+    const rule = ladder().find((t) => kindOf(t.predicate) === "SEC_EVENT")!;
     const nextDay = { ...mu[0], accession: "0001104659-26-101999", filedDate: "2026-08-27" };
     expect(shouldFire(rule, { ...ctx([nextDay, ...mu]), now: new Date(now.getTime() + 3_600_000) }).fires).toBe(true);
     expect(filingsBehindFire(rule, [nextDay, ...mu]).map((f) => f.accession)).toEqual(["0001104659-26-101999"]);
   });
 
   it("a thesis rule for its own filing is stamped on the thesis and never silences the account's", async () => {
-    const own: Trigger = { id: "own-502", predicate: { kind: "SEC_EVENT", items: ["5.02"] }, action: "REVIEW", rationale: "New CEO is the thesis." };
+    const own: Trigger = { id: "own-502", predicate: { watch: "filing", variable: "item:5.02" }, action: "REVIEW", rationale: "New CEO is the thesis." };
     stored.triggers = [own];
     expect(triggerBucket(own)).not.toBe(triggerBucket(account[0]));
     const fired = ladder().filter((t) => shouldFire(t, ctx()).fires);
@@ -119,15 +120,15 @@ describe("MU 8-K 5.02, 2026-08-26 — held, under the account's filing rule", ()
   });
 
   it("a serious filing on a stock we hold goes to a tactical run the same day", () => {
-    const rule = ladder().find((t) => t.predicate.kind === "SEC_EVENT")!;
+    const rule = ladder().find((t) => kindOf(t.predicate) === "SEC_EVENT")!;
     const behind = filingsBehindFire(rule, restatement);
     expect(behind[0].tier).toBe("RED");
     expect(filingNeedsSameDayLook(behind, "HOLDING")).toBe(true);
   });
 
   it("the evaluator loads filings only for a ladder with a filing trigger, and the cron path evaluates it", () => {
-    expect(__test__.needsFilings({ kind: "SEC_EVENT", tier: "MATERIAL" })).toBe(true);
-    expect(__test__.needsFilings({ kind: "EARNINGS_BEAT" })).toBe(false);
-    expect(__test__.isPriceSidePredicate({ kind: "SEC_EVENT", tier: "RED" })).toBe(true);
+    expect(__test__.needsFilings({ watch: "filing", variable: "tier:MATERIAL" })).toBe(true);
+    expect(__test__.needsFilings({ watch: "surprise", is: "beat", value: 0 })).toBe(false);
+    expect(__test__.isPriceSidePredicate({ watch: "filing", variable: "tier:RED" })).toBe(true);
   });
 });

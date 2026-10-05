@@ -13,7 +13,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import stored from "./__fixtures__/stored-triggers.json";
-import { UNSTORED } from "./__fixtures__/unstored-triggers";
+import { UNSTORED, type StoredRow } from "./__fixtures__/unstored-triggers";
 import * as kinds from "./__fixtures__/kind-rules";
 import { carriesNumber, fromPosition, isProtectiveLine, loosens, readsTheTape, reviewClockDays, shapeOf, tightness } from ".";
 import { resolveLadder } from "../levels";
@@ -23,16 +23,17 @@ import { agentWatchDays } from "../agent-watch";
 import { spentBuyCrossing } from "@/lib/agent/buy-crossing";
 import { declineReplanAllows, replanFloorBound } from "@/lib/agent/declined-sale";
 import { protectiveRatchetViolations } from "../ratchet";
-import type { Trigger, TriggerAction, TriggerPredicate } from "../types";
+import type { Trigger, TriggerAction } from "../types";
+import type { LegacyPredicate } from "./legacy-types";
 
 const ACTIONS: TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW", "MOVE_STOP", "DEMOTE"];
 const DIRECTIONS = ["LONG", "SHORT", null];
-const all = [...(stored as { rows: { predicate: TriggerPredicate }[] }).rows.map((r) => r.predicate), ...UNSTORED].filter(
+const all = ([...(stored as { rows: { predicate: LegacyPredicate }[] }).rows.map((r) => r.predicate), ...UNSTORED] as StoredRow[]).filter(
   (p) => shapeOf(p) != null,
 );
-const trigger = (predicate: TriggerPredicate, action: TriggerAction, id = "t"): Trigger => ({ id, predicate, action, rationale: "" });
+const trigger = (predicate: StoredRow, action: TriggerAction, id = "t"): Trigger & { predicate: StoredRow } => ({ id, predicate, action, rationale: "" });
 /** A price the predicate is about, so a grid lands on both sides of it. */
-const anchor = (p: TriggerPredicate): number => kinds.priceOf(p) ?? 100;
+const anchor = (p: LegacyPredicate): number => kinds.priceOf(p) ?? 100;
 
 function disagree<C>(cases: C[], then: (c: C) => unknown, now: (c: C) => unknown) {
   const out = cases.flatMap((c) => {
@@ -75,8 +76,8 @@ describe("the rules that read the kinds, against the kinds' answers", () => {
   it("the cascade drops what a watched stock can't use: rules off a position, and the inherited review clock", () => {
     // resolveLadder on a watched stock, one inherited rule at a time: does it survive?
     const cases = all.flatMap((p) => ["ENTER", "EXIT", "REVIEW"].map((action) => trigger(p, action as TriggerAction)));
-    const then = (t: Trigger) => !kinds.isPositionScoped(t.predicate) && !kinds.isInheritedClock(t.predicate);
-    const now = (t: Trigger) =>
+    const then = (t: ReturnType<typeof trigger>) => !kinds.isPositionScoped(t.predicate) && !kinds.isInheritedClock(t.predicate);
+    const now = (t: ReturnType<typeof trigger>) =>
       resolveLadder({ thesis: [], analyst: [t], account: [], state: "WATCHING" }).length === 1;
     expect(disagree(cases, then, now)).toEqual(agree);
     expect(answers(cases, then)).toBe(2);
@@ -95,7 +96,7 @@ describe("the rules that read the kinds, against the kinds' answers", () => {
     const pairs = all.flatMap((p) =>
       DIRECTIONS.map((direction) => {
         const looser = kinds.priceOf(p) != null ? { ...p, level: (p as { level: number }).level * (direction === "SHORT" ? 1.1 : 0.9) } : { ...p, pct: ((p as { pct?: number }).pct ?? 5) * 2 };
-        return { p, looser: looser as TriggerPredicate, direction };
+        return { p, looser: looser as StoredRow, direction };
       }),
     );
     const kept = (c: (typeof pairs)[number]) =>
@@ -110,12 +111,12 @@ describe("the rules that read the kinds, against the kinds' answers", () => {
 
   it("an edit that loosens a stop on a stock we own is refused", () => {
     // Each protective rule against itself moved both ways, waiting for the close, and its trail options raised.
-    const variants = (p: TriggerPredicate): TriggerPredicate[] => {
-      const q = p as Record<string, unknown>;
+    const variants = (p: StoredRow): StoredRow[] => {
+      const q = p as unknown as Record<string, unknown>;
       const out: Record<string, unknown>[] = [];
       for (const k of ["level", "pct"]) if (typeof q[k] === "number") out.push({ ...q, [k]: (q[k] as number) * 1.1 }, { ...q, [k]: (q[k] as number) * 0.9 });
       out.push({ ...q, basis: "close" }, { ...q, armAtGainPct: 30 }, { ...q, atrMultiple: 4 }, { ...q, skipIfPeakGainPct: 40 });
-      return out as TriggerPredicate[];
+      return out as unknown as StoredRow[];
     };
     const cases = all.flatMap((p) => variants(p).flatMap((next) => DIRECTIONS.map((direction) => ({ prev: p, next, direction }))));
     const then = (c: (typeof cases)[number]) => kinds.weakens(c.prev, c.next);

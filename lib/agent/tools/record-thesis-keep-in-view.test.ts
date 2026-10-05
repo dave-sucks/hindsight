@@ -47,6 +47,7 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 import { recordThesis } from "./record-thesis";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -63,7 +64,7 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
 
 const priceWake = (level: number, id = "wake-price"): Record<string, unknown> => ({
   id,
-  predicate: { kind: "PRICE_BELOW", level },
+  predicate: { watch: "price", is: "below", value: level },
   action: "REVIEW",
   rationale: `Interesting again if it comes in to $${level}.`,
 });
@@ -117,11 +118,11 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
     expect(row.entryPrice).toBeNull();
     expect(row.stopLoss).toBeNull();
 
-    const kinds = row.triggers.map((t) => `${t.action}:${t.predicate.kind}`);
+    const kinds = row.triggers.map((t) => `${t.action}:${kindOf(t.predicate)}`);
     expect(kinds).toEqual(["REVIEW:PRICE_BELOW"]);
     // No clock stamped — none was asked for, so the name costs no attention.
     expect(
-      row.triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      row.triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toBe(false);
   });
 
@@ -156,7 +157,7 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
     const row = createdRow();
     // Still no clock — a level on the row does not put it on a schedule.
     expect(
-      row.triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      row.triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toBe(false);
     // And CRITICALLY: the price does NOT become an armed buy. There is no
     // committed view on this row — an ENTER here would let the evaluator
@@ -172,7 +173,7 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
         triggers: [
           {
             id: "own-clock",
-            predicate: { kind: "REVIEW_CADENCE", days: 30 },
+            predicate: { watch: "repeat", value: 30 },
             action: "REVIEW",
             rationale: "Look monthly whether the cohort has moved.",
           },
@@ -181,7 +182,7 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
     );
     expect(result.ok).toBe(true);
     const row = createdRow();
-    expect(row.triggers.map((t) => t.predicate.kind)).toEqual(["REVIEW_CADENCE"]);
+    expect(row.triggers.map((t) => kindOf(t.predicate))).toEqual(["REVIEW_CADENCE"]);
   });
 
   it("redirects to update_thesis when the name is already covered", async () => {

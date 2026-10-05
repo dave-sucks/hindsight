@@ -1,13 +1,13 @@
 import { PrismaClient } from './generated/prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { toStoredTriggers, viewTriggers } from './agent/triggers/condition/stored'
+import { toStoredTriggers } from './agent/triggers/condition/stored'
 
 /**
  * Trigger lists are stored in the condition shape (docs/plans/TRIGGER_TYPES.md
  * §9). Every write of `triggers` on a thesis, an analyst or the account is
- * turned into it here, and every read comes back in the kinds' spelling the
- * app still speaks until the agents' tools and prompts move to the shape. One
- * place, so no write path can store a kind and no read can miss the view.
+ * turned into it here, and every read too, so a row from before the cutover
+ * (until the backfill rewrites it) reads as the shape. One place, so no write
+ * path can store a kind and no read can see one.
  */
 /** A write's args with every `triggers` value it carries stored in the condition shape. */
 export function storeTriggersIn<A>(args: A): A {
@@ -25,7 +25,7 @@ export function storeTriggersIn<A>(args: A): A {
 const WRITES: ReadonlySet<string> = new Set(['create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert'])
 
 export function storeAndViewTriggers(base: PrismaClient) {
-  const view = { triggers: { needs: { triggers: true }, compute: (row: { triggers: unknown }) => viewTriggers(row.triggers) } } as const
+  const view = { triggers: { needs: { triggers: true }, compute: (row: { triggers: unknown }) => toStoredTriggers(row.triggers) } } as const
   return base.$extends({
     query: {
       thesis: { $allOperations: ({ operation, args, query }) => query(WRITES.has(operation) ? storeTriggersIn(args) : args) },
@@ -46,7 +46,7 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: ReturnType<typeof storeAndViewTriggers>
 }
 
-/** The client without the trigger view: what is really stored. For the shape backfill and its down script only. */
+/** The client without the trigger conversion: what is really stored. For the shape backfill and its down script only. */
 export const prismaRaw = globalForPrisma.prismaRaw ?? makePrismaClient()
 
 export const prisma = globalForPrisma.prisma ?? storeAndViewTriggers(prismaRaw)

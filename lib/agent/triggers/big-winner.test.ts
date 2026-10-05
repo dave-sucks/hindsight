@@ -28,18 +28,13 @@ import {
   BIG_WINNER_PEAK_GAIN_PCT,
   BIG_WINNER_PEAK_WITHIN_DAYS,
 } from "@/lib/agent/knowledge/setups";
-import type { TriggerPredicate } from "./types";
+import type { When } from "@/lib/agent/triggers/condition";
 
-const PARTIAL: TriggerPredicate = {
-  kind: "GAIN_FROM_ENTRY",
-  pct: 12,
-  direction: "UP",
-  skipIfPeakGainPct: BIG_WINNER_PEAK_GAIN_PCT,
-  skipIfPeakWithinDays: BIG_WINNER_PEAK_WITHIN_DAYS,
-};
+
+const PARTIAL: When = { watch: "move", is: "above", value: 12, variable: "entry", settings: { fastWinnerPct: BIG_WINNER_PEAK_GAIN_PCT, fastWinnerDays: BIG_WINNER_PEAK_WITHIN_DAYS } };
 
 const fires = (
-  p: TriggerPredicate,
+  p: When,
   o: {
     price: number;
     avgCost: number;
@@ -125,7 +120,7 @@ describe("the partial at 2R, and the winner it lets run", () => {
   });
 
   it("no tracked peak, and no clock beside it, both leave the partial alone", () => {
-    const plain: TriggerPredicate = { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "UP" };
+    const plain: When = { watch: "move", is: "above", value: 12, variable: "entry" };
     expect(fires(plain, { ...SMMT, price: 18.0 })).toBe(true);
     expect(fires(PARTIAL, { ...SMMT, peak: null, price: 18.0 })).toBe(true);
     // A position the price monitor has never stamped: we can't show the run
@@ -153,14 +148,12 @@ describe("the partial at 2R, and the winner it lets run", () => {
   it("the fill writes both halves on a trade and a target, never on a compounder or a catalyst", () => {
     const written = (horizon: string) =>
       setupExitTriggers({ setup: getSetup("PEAD")!, horizon, entry: 100, stop: 94, mintId: () => "x" })
-        .find((t) => t.action === "TRIM")?.predicate as
-        | { skipIfPeakGainPct?: number; skipIfPeakWithinDays?: number }
-        | undefined;
-    expect(written("TARGET")?.skipIfPeakGainPct).toBe(BIG_WINNER_PEAK_GAIN_PCT);
-    expect(written("TARGET")?.skipIfPeakWithinDays).toBe(BIG_WINNER_PEAK_WITHIN_DAYS);
-    expect(written("TRADE")?.skipIfPeakWithinDays).toBe(BIG_WINNER_PEAK_WITHIN_DAYS);
-    expect(written("COMPOUNDER")?.skipIfPeakGainPct).toBeUndefined();
-    expect(written("COMPOUNDER")?.skipIfPeakWithinDays).toBeUndefined();
-    expect(written("CATALYST")?.skipIfPeakWithinDays).toBeUndefined();
+        .find((t) => t.action === "TRIM")?.predicate as { settings?: { fastWinnerPct?: number; fastWinnerDays?: number } } | undefined;
+    expect(written("TARGET")?.settings?.fastWinnerPct).toBe(BIG_WINNER_PEAK_GAIN_PCT);
+    expect(written("TARGET")?.settings?.fastWinnerDays).toBe(BIG_WINNER_PEAK_WITHIN_DAYS);
+    expect(written("TRADE")?.settings?.fastWinnerDays).toBe(BIG_WINNER_PEAK_WITHIN_DAYS);
+    expect(written("COMPOUNDER")?.settings?.fastWinnerPct).toBeUndefined();
+    expect(written("COMPOUNDER")?.settings?.fastWinnerDays).toBeUndefined();
+    expect(written("CATALYST")?.settings?.fastWinnerDays).toBeUndefined();
   });
 });

@@ -76,13 +76,13 @@ describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
     expect(msg).toContain("$7.91 (the rising 50-day)");
     expect(msg).not.toMatch(/7\.75/); // the 20-day is falling — not a level to buy
     expect(msg).toContain("1 ATR ($0.53)");
-    expect(msg).toMatch(/REVIEW_CADENCE/);
+    expect(msg).toContain('{watch:"repeat", value: days}');
   });
 
   it("the same view with a wake is accepted — an unpriced view is still legal", () => {
     const r = check({
       ...LUXE_SUBMIT,
-      triggers: [{ predicate: { kind: "PRICE_BELOW", level: 8.6 }, action: "REVIEW", rationale: "Back to the second gap day's low — price the drift entry here if it holds." }],
+      triggers: [{ predicate: { watch: "price", is: "below", value: 8.6 }, action: "REVIEW", rationale: "Back to the second gap day's low — price the drift entry here if it holds." }],
     } as ThesisDecisionInput);
     expect(r.errors.filter((e) => e.startsWith("levels:"))).toEqual([]);
   });

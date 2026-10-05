@@ -6,21 +6,21 @@
 import { applyTriggerOps } from "./ops";
 import { protectiveRatchetViolations } from "./ratchet";
 import { shouldFire } from "./evaluate";
-import { describeChartFire } from "./chart-context";
+import { describeChartFire } from "./condition/facts";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
 import type { Trigger } from "./types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 
 const closeBuy: Trigger = {
   id: "buy",
-  predicate: { kind: "PRICE_ABOVE", level: 517.88, basis: "close" },
+  predicate: { watch: "price", is: "above", value: 517.88, settings: { close: true } },
   action: "ENTER",
   rationale: "Buy on a close above the $517.88 pivot.",
   source: "AGENT",
 };
 const floor: Trigger = {
   id: "floor",
-  predicate: { kind: "PRICE_BELOW", level: 475 },
+  predicate: { watch: "price", is: "below", value: 475 },
   action: "EXIT",
   rationale: "Floor — sell below $475, the base low.",
   source: "AGENT",
@@ -38,20 +38,20 @@ describe("a level edit keeps WHEN the level fires", () => {
       mintId: () => "x",
     });
     expect(out.results[0].ok).toBe(true);
-    expect(out.triggers.find((t) => t.id === "buy")!.predicate).toEqual({ kind: "PRICE_ABOVE", level: 520, basis: "close" });
+    expect(out.triggers.find((t) => t.id === "buy")!.predicate).toEqual({ watch: "price", is: "above", value: 520, settings: { close: true } });
   });
 
   it("…and through an edit-by-id", () => {
     const out = applyTriggerOps({
       stored: [closeBuy, floor],
-      ops: [{ op: "edit", id: "buy", level: 522, rationale: "New pivot after the handle." }],
+      ops: [{ op: "edit", id: "buy", value: 522, rationale: "New pivot after the handle." }],
       direction: "LONG",
       status: "WATCHING",
       actor: "AGENT",
       currentPrice: 492.44,
       mintId: () => "x",
     });
-    expect(out.triggers.find((t) => t.id === "buy")!.predicate).toMatchObject({ level: 522, basis: "close" });
+    expect(out.triggers.find((t) => t.id === "buy")!.predicate).toEqual({ watch: "price", is: "above", value: 522, settings: { close: true } });
   });
 });
 
@@ -60,7 +60,7 @@ describe("the ratchet sees a stop moved to close-basis as a loosening", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
       before: [floor],
-      after: [{ ...floor, predicate: { kind: "PRICE_BELOW", level: 475, basis: "close" } }],
+      after: [{ ...floor, predicate: { watch: "price", is: "below", value: 475, settings: { close: true } } }],
       inherited: [],
     });
     expect(v.map((x) => x.reason)).toEqual(["LOWERED"]);
@@ -68,7 +68,7 @@ describe("the ratchet sees a stop moved to close-basis as a loosening", () => {
   it("close → intraday is a tightening, allowed", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
-      before: [{ ...floor, predicate: { kind: "PRICE_BELOW", level: 475, basis: "close" } }],
+      before: [{ ...floor, predicate: { watch: "price", is: "below", value: 475, settings: { close: true } } }],
       after: [floor],
       inherited: [],
     });
@@ -118,7 +118,7 @@ const snap: IndicatorSnapshot = {
 describe("a multi-day move ENTER fires on the crossing, like a price level", () => {
   const t: Trigger = {
     id: "m",
-    predicate: { kind: "PRICE_MOVE_PCT", pct: 5, direction: "UP", window: "5D" },
+    predicate: { watch: "move", is: "above", value: 5, variable: "close_5d" },
     action: "ENTER",
     rationale: "Momentum",
   };
@@ -139,14 +139,14 @@ describe("a multi-day move ENTER fires on the crossing, like a price level", () 
 
 describe("a chart fire carries its numbers", () => {
   it("names the average and the price", () => {
-    expect(describeChartFire({ kind: "NEAR_SMA", period: 50, withinPct: 2 }, snap, 455)).toBe(
+    expect(describeChartFire({ watch: "move", is: "near", value: 2, variable: "sma50" }, snap, 455)).toBe(
       "50-day $451.44; price $455.00 (+0.8% from it)",
     );
   });
   it("joins a composite's parts", () => {
     expect(
       describeChartFire(
-        { kind: "AND", predicates: [{ kind: "PRICE_ABOVE", level: 517.88, basis: "close" }, { kind: "VOLUME_RATIO", min: 1.5 }] },
+        { match: "all", conditions: [{ watch: "price", is: "above", value: 517.88, settings: { close: true } }, { watch: "volume", value: 1.5 }] },
         snap,
         520,
         { volume: 35_000_000 },
@@ -154,6 +154,6 @@ describe("a chart fire carries its numbers", () => {
     ).toBe("volume so far 35.00M = 1.59× the 20-day average");
   });
   it("says nothing without a snapshot", () => {
-    expect(describeChartFire({ kind: "VS_SMA", period: 50, direction: "ABOVE" }, null, 455)).toBeNull();
+    expect(describeChartFire({ watch: "price", is: "above", variable: "sma50" }, null, 455)).toBeNull();
   });
 });

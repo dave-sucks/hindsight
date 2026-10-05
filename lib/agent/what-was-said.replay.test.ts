@@ -149,8 +149,8 @@ describe("the 09-18 morning run's read of CEG, through get_theses", () => {
     expect(context).toContain("Last look: morning run, 09-16 08:07");
     expect(context).toContain("Since then, not yet answered:");
     expect(context).toContain(RAISE_THE_FLOOR); // the 15% review main never handed over
-    expect(context).toContain("price < $256.42 → review");
-    expect(context).toMatch(/below the 200-day → review — fired 2×/);
+    expect(context).toContain("Review if below $256.42 — 09-16 10:30");
+    expect(context).toMatch(/Review if below the 200-day average — fired 2×/);
     expect(context).not.toContain(DECLINE_ENDS);
     expect(Object.keys(full!)[0]).toBe("context");
     expect(full).not.toHaveProperty("principalDirective");
@@ -180,7 +180,7 @@ describe("the 09-14 trigger runs", () => {
       now: new Date(loadedAt),
       currentPrice: firedPrice,
     }).text;
-    const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, rationale: "Gave back 8% from the high." } as Trigger;
+    const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, rationale: "Gave back 8% from the high." } as Trigger;
     return buildTacticalSystemPrompt({
       analyst: { name: fl.analyst.name, mandate: null },
       thesis: {

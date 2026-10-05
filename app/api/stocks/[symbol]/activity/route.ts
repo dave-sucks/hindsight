@@ -2,7 +2,7 @@
  * GET /api/stocks/:symbol/activity
  *
  * Volume against its 20-day average, and open-market insider buying —
- * the two reads the VOLUME_RATIO and INSIDER_CLUSTER triggers fire on,
+ * the two reads the volume and insider-buying triggers fire on,
  * for any stock. The stock page renders the same function server-side.
  */
 

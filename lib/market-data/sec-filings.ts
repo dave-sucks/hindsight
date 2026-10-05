@@ -3,7 +3,7 @@
  *
  * The same shape as the earnings calendar (docs/plans/SEC_FILINGS.md):
  * nothing is stored, EDGAR is the database, and one reader feeds the
- * trigger evaluator (`SEC_EVENT`) and the agent tool (`get_sec_filings`).
+ * filing trigger and the agent tool (`get_sec_filings`).
  *
  * A filing is an event with a code. Every 8-K carries SEC item codes — a
  * fixed government list (`5.02` an officer leaving or joining, `4.02` past

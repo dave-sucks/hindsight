@@ -448,13 +448,13 @@ For each researched candidate, exactly one of these four actions:
   - \`ticker\` + \`reasoning_summary\`: what you saw, why not now
   - \`triggers\`: whatever wakes you want, or none. A wake answers
     "what brings this back to me?" — **a price level, a price move, an
-    earnings beat / miss, or "reports within N days"
-    (EARNINGS_WITHIN)**; those are the kinds that fire today. The
+    earnings beat / miss, or N days before the report**; those are
+    the conditions that fire today. The
     earnings ones read the published calendar, no news needed.
     A row with NO triggers at all is legal: it is a name on the list,
     visible on the watchlist screen, waiting for a person rather than
     the system. Choose that deliberately rather than by accident. Add
-    a \`REVIEW_CADENCE\` rung only if the name has earned scheduled
+    a review schedule ("every N days") only if the name has earned scheduled
     attention — it is the one thing that costs money.
   - PROVENANCE — same rules as the PASS block below.
 

@@ -97,7 +97,7 @@ export interface Group {
 export type When = Condition | Group;
 
 /**
- * A stored condition no current kind can read (REVIEW_DATE_HIT, deleted in
+ * A stored condition no current kind can read (old review-date, deleted in
  * August). Kept verbatim so nothing is lost; it never fires.
  */
 export interface Retired {

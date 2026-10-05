@@ -39,7 +39,7 @@ export function earningsStandingTriggers(): Trigger[] {
   return [
     {
       id: "seed:earnings-within",
-      predicate: { kind: "EARNINGS_WITHIN", days: 3 },
+      predicate: { watch: "report", is: "before", value: 3 },
       action: "REVIEW",
       rationale:
         "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
@@ -48,7 +48,7 @@ export function earningsStandingTriggers(): Trigger[] {
     },
     {
       id: "seed:earnings-beat",
-      predicate: { kind: "EARNINGS_BEAT" },
+      predicate: { watch: "surprise", is: "beat", value: 0 },
       action: "REVIEW",
       rationale:
         "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
@@ -57,7 +57,7 @@ export function earningsStandingTriggers(): Trigger[] {
     },
     {
       id: "seed:earnings-miss",
-      predicate: { kind: "EARNINGS_MISS" },
+      predicate: { watch: "surprise", is: "miss", value: 0 },
       action: "REVIEW",
       rationale:
         "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
@@ -79,7 +79,7 @@ export function secFilingStandingTriggers(): Trigger[] {
   return [
     {
       id: "seed:sec-material",
-      predicate: { kind: "SEC_EVENT", tier: "MATERIAL" },
+      predicate: { watch: "filing", variable: "tier:MATERIAL" },
       action: "REVIEW",
       rationale:
         "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",

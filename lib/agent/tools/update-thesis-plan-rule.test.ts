@@ -77,28 +77,28 @@ function pltr(overrides: Record<string, unknown> = {}) {
     triggers: [
       {
         id: "enter-1",
-        predicate: { kind: "PRICE_ABOVE", level: 183 },
+        predicate: { watch: "price", is: "above", value: 183 },
         action: "ENTER",
         rationale: "Reclaim.",
         source: "AGENT",
       },
       {
         id: "target-1",
-        predicate: { kind: "PRICE_ABOVE", level: 190 },
+        predicate: { watch: "price", is: "above", value: 190 },
         action: "REVIEW",
         rationale: "Target $190.00 — decide here.",
         source: "DEFAULT",
       },
       {
         id: "floor-1",
-        predicate: { kind: "PRICE_BELOW", level: 110 },
+        predicate: { watch: "price", is: "below", value: 110 },
         action: "EXIT",
         rationale: "Floor — sell if the price drops to $110.00.",
         source: "DEFAULT",
       },
       {
         id: "clock-1",
-        predicate: { kind: "REVIEW_CADENCE", days: 14 },
+        predicate: { watch: "repeat", value: 14 },
         action: "REVIEW",
         rationale: "Routine.",
         source: "AGENT",
@@ -157,8 +157,8 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
         stopLoss: 12,
         // A held ladder carries a floor, not a buy rung.
         triggers: [
-          { id: "floor-1", predicate: { kind: "PRICE_BELOW", level: 12 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
-          { id: "clock-1", predicate: { kind: "REVIEW_CADENCE", days: 1 }, action: "REVIEW", rationale: "Daily.", source: "AGENT" },
+          { id: "floor-1", predicate: { watch: "price", is: "below", value: 12 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
+          { id: "clock-1", predicate: { watch: "repeat", value: 1 }, action: "REVIEW", rationale: "Daily.", source: "AGENT" },
         ],
       }),
     );
@@ -174,8 +174,8 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
         status: "HOLDING",
         stopLoss: 170,
         triggers: [
-          { id: "floor-1", predicate: { kind: "PRICE_BELOW", level: 170 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
-          { id: "target-1", predicate: { kind: "PRICE_ABOVE", level: 190 }, action: "REVIEW", rationale: "Target.", source: "AGENT" },
+          { id: "floor-1", predicate: { watch: "price", is: "below", value: 170 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
+          { id: "target-1", predicate: { watch: "price", is: "above", value: 190 }, action: "REVIEW", rationale: "Target.", source: "AGENT" },
         ],
       }),
     );

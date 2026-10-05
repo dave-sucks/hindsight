@@ -25,17 +25,15 @@ import {
 } from "@/lib/agent/triggers/load-levels";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { isMarketOpen } from "@/lib/market-hours";
-import { describePredicate } from "@/lib/agent/needs-action";
+import { conditionSentence } from "@/lib/agent/triggers/condition";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import { readsTheTape, shapeOf } from "@/lib/agent/triggers/condition";
-import type {
-  Trigger,
-  TriggerPredicate,
-} from "@/lib/agent/triggers/types";
+import type { Trigger } from "@/lib/agent/triggers/types";
+import type { When } from "@/lib/agent/triggers/condition";
 
 /** Evaluable against a fresh quote and the daily snapshot alone: no earnings calendar, no filings, no schedule. */
-function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
+function isPriceOrTimePredicate(p: When): boolean {
   const w = shapeOf(p);
   return w != null && readsTheTape(w);
 }
@@ -165,8 +163,8 @@ export async function evaluateLiveTriggerMatches({
     const price = prices[thesis.ticker];
     // changePct from a single quote isn't available without a prior
     // close — we synthesize it as 0 for the evaluator's price-quote
-    // shape. The PRICE_MOVE_PCT predicate uses recentPrices instead,
-    // which we don't load here; PRICE_MOVE_PCT matches require the
+    // shape. The move-from-a-close predicate uses recentPrices instead,
+    // which we don't load here; move-from-a-close matches require the
     // full cron path with recent-prices data.
     const latestQuote =
       price != null ? { price, changePct: 0 } : undefined;
@@ -183,7 +181,7 @@ export async function evaluateLiveTriggerMatches({
         // A close-basis level isn't true mid-session — it waits for the close.
         session: isMarketOpen(now) ? "INTRADAY" : undefined,
         indicators: indicators.get(thesis.ticker) ?? null,
-        // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read entry cost + water
+        // the move from our entry and the trail read entry cost + water
         // mark from the open position; WATCHING rows get null → false.
         position: posInfo
           ? {
@@ -212,7 +210,7 @@ export async function evaluateLiveTriggerMatches({
           ticker: thesis.ticker,
           triggerId: trigger.id,
           action: trigger.action,
-          predicateSummary: describePredicate(trigger.predicate),
+          predicateSummary: conditionSentence(trigger.predicate),
           rationale: trigger.rationale,
           matchDetail,
         });

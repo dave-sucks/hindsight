@@ -5,11 +5,12 @@
  * these two measures with a variable, not kinds of their own.
  */
 
-import type { TriggerPredicate } from "../../types";
+
 import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
 import { PRICE_VARIABLES, variableDef } from "../variables";
 import { num } from "../words";
-import { trailFireLevel } from "../../trail";
+import { trailFireLevel, trailOf } from "../../trail";
+import type { LegacyPredicate } from "../legacy-types";
 
 const SMA_VARIABLE = { 20: "sma20", 50: "sma50", 150: "sma150", 200: "sma200" } as const;
 const SMA_PERIOD: Readonly<Record<string, 20 | 50 | 150 | 200>> = { sma20: 20, sma50: 50, sma150: 150, sma200: 200 };
@@ -63,7 +64,7 @@ export const price: MeasureDef = {
       VS_SMA: (p) => ({ watch: "price", is: p.direction === "ABOVE" ? "above" : "below", variable: SMA_VARIABLE[p.period] }),
       NEW_HIGH: (p) => ({ watch: "price", is: "above", variable: p.window === "20D" ? "high20" : "high52" }),
     },
-    to: (c): TriggerPredicate | null => {
+    to: (c): LegacyPredicate | null => {
       if (c.is !== "above" && c.is !== "below") return null;
       if (!c.variable) {
         if (c.value == null) return null;
@@ -103,8 +104,7 @@ export const move: MeasureDef = {
     if (c.value == null || (c.is !== "above" && c.is !== "below")) return null;
     const side = c.is === "above" ? "UPSIDE" : "DOWNSIDE";
     if (c.variable === "peak") {
-      const trail = { pct: c.value, armAtGainPct: num(c.settings?.startOnceUpPct), atrMultiple: num(c.settings?.widenAtr) };
-      return { price: trailFireLevel(trail, { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: ctx.isLong, atr: ctx.atr14 }), side, projected: true };
+      return { price: trailFireLevel(trailOf(c), { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: ctx.isLong, atr: ctx.atr14 }), side, projected: true };
     }
     if (c.variable !== "entry") return null;
     const avg = ctx.avgCost;
@@ -136,7 +136,7 @@ export const move: MeasureDef = {
       NEAR_SMA: (p) => ({ watch: "move", is: "near", value: p.withinPct, variable: SMA_VARIABLE[p.period] }),
       PCT_FROM_52W_HIGH: (p) => ({ watch: "move", is: "near", value: p.max, variable: "high52" }),
     },
-    to: (c): TriggerPredicate | null => {
+    to: (c): LegacyPredicate | null => {
       const v = c.value;
       const s = c.settings ?? {};
       if (!c.variable || v == null) return null;

@@ -5,6 +5,7 @@
  */
 
 import { applyLevelArgs } from "./price-levels";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { applyTriggerOps } from "./ops";
 import type { Trigger } from "./types";
 
@@ -23,12 +24,12 @@ describe("record_thesis path — applyLevelArgs", () => {
   it("the stop and target reasons become their triggers' sentences", () => {
     const t = mint({ notes: { floor: "under the base low $228.77, 2.3 ATR", target: "measured move: 13.3% base depth added to the pivot" } });
     expect(t.find((x) => x.action === "EXIT")!.rationale).toBe("under the base low $228.77, 2.3 ATR");
-    expect(t.find((x) => x.action === "REVIEW" && x.predicate.kind === "PRICE_ABOVE")!.rationale).toBe("measured move: 13.3% base depth added to the pivot");
+    expect(t.find((x) => x.action === "REVIEW" && kindOf(x.predicate) === "PRICE_ABOVE")!.rationale).toBe("measured move: 13.3% base depth added to the pivot");
   });
 
   it("entry_on_close makes the buy fire on the close only", () => {
     const t = mint({ entryBasis: "close" });
-    expect(t.find((x) => x.action === "ENTER")!.predicate).toEqual({ kind: "PRICE_ABOVE", level: 264.5, basis: "close" });
+    expect(t.find((x) => x.action === "ENTER")!.predicate).toEqual({ watch: "price", is: "above", value: 264.5, settings: { close: true } });
   });
 
   it("without reasons the template sentences stay", () => {
@@ -39,8 +40,8 @@ describe("record_thesis path — applyLevelArgs", () => {
 
 describe("update_thesis path — the level op", () => {
   const stored: Trigger[] = [
-    { id: "buy", predicate: { kind: "PRICE_ABOVE", level: 264.5 }, action: "ENTER", rationale: "Buy above $264.50.", source: "AGENT" },
-    { id: "floor", predicate: { kind: "PRICE_BELOW", level: 240 }, action: "EXIT", rationale: "Floor — sell below $240.", source: "AGENT" },
+    { id: "buy", predicate: { watch: "price", is: "above", value: 264.5 }, action: "ENTER", rationale: "Buy above $264.50.", source: "AGENT" },
+    { id: "floor", predicate: { watch: "price", is: "below", value: 240 }, action: "EXIT", rationale: "Floor — sell below $240.", source: "AGENT" },
   ];
   const run = (ops: Parameters<typeof applyTriggerOps>[0]["ops"]) =>
     applyTriggerOps({ stored, ops, direction: "LONG", status: "WATCHING", actor: "AGENT", currentPrice: 254, mintId: () => "new" });
@@ -53,6 +54,6 @@ describe("update_thesis path — the level op", () => {
   it("switching the buy to close-only at the same level is one edit", () => {
     const out = run([{ op: "level", slot: "ENTRY", price: 264.5, basis: "close" }]);
     expect(out.results[0]).toMatchObject({ ok: true, text: "Entry: fires on the close" });
-    expect(out.triggers.find((t) => t.id === "buy")!.predicate).toEqual({ kind: "PRICE_ABOVE", level: 264.5, basis: "close" });
+    expect(out.triggers.find((t) => t.id === "buy")!.predicate).toEqual({ watch: "price", is: "above", value: 264.5, settings: { close: true } });
   });
 });

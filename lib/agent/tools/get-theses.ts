@@ -23,6 +23,7 @@
  */
 
 import { z } from "zod";
+import { triggerForAgent } from "@/lib/agent/triggers/format";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
@@ -486,7 +487,7 @@ export const getTheses = defineTool({
     // null → no RUNNING_WINNER (graceful degradation).
     const avgCostByThesisId = new Map<string, number>();
     // Paired open-position water mark (high LONG / low SHORT, price-monitor-
-    // maintained) — feeds the TRAILING_FROM_HIGH floor math in the
+    // maintained) — feeds the trail floor math in the
     // ladder-health block + UNPROTECTED_GAIN flag (Game Plan PR-B). Missing →
     // ladder-health falls back to the current price.
     const peakPriceByThesisId = new Map<string, number>();
@@ -1078,7 +1079,7 @@ export const getTheses = defineTool({
         if (t.status !== "WATCHING") continue;
         // The stock's OWN buy trigger, parsed — its predicate decides both
         // the level and which way the price has to move to have left it
-        // behind (a LONG pullback buy is PRICE_BELOW). An inherited analyst
+        // behind (a LONG pullback buy is price-below). An inherited analyst
         // or account rule is not this stock's buy plan.
         const enter =
           (ladderByThesisId.get(t.id) ?? []).find(
@@ -1304,6 +1305,8 @@ export const getTheses = defineTool({
         // has been said in the lines this read reached.
         context: contextByThesisId.get(t.id)?.text ?? null,
         ...t,
+        // The stock's own triggers, each as its sentence and id.
+        triggers: (Array.isArray(t.triggers) ? (t.triggers as Trigger[]) : []).map((x) => triggerForAgent(x, t.status === "HOLDING")),
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,

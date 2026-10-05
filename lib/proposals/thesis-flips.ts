@@ -287,7 +287,7 @@ export function isProfitTakeReentry(closeReason: string): boolean {
  * the live book 2026-08-16: 28 of 29 SOLD theses since June 1 went terminal
  * via a non-TARGET close. ARQT (+$845), VRDN (+$445), XENE (+$966) all
  * vanished off every radar on protective exits where the belief may well have
- * been intact. The Game Plan makes this worse, not better: TRAILING_FROM_HIGH
+ * been intact. The Game Plan makes this worse, not better: trail
  * is *designed* to bank a give-back regardless of whether the thesis holds, so
  * a growing share of exits are "belief survived, we just protected the gain."
  *
@@ -394,7 +394,7 @@ export async function closeThesisForPosition(opts: {
       // Two flavors land here: a profit-take (TARGET), and a protective exit
       // the closing agent attested the belief survived (P1-35). They get the
       // same mechanism — held-side rungs cleared (no position, so they are
-      // meaningless) and a 1-day REVIEW_CADENCE stamped so the next daily
+      // meaningless) and a 1-day review-clock stamped so the next daily
       // run MUST resolve it: arm a reclaim entry trigger, or archive it.
       // The cadence trigger replaces the old due-date write (DAV-221) —
       // a bare `triggers: []` on a WATCHING row would leave it invisible

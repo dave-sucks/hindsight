@@ -778,7 +778,7 @@ function FilingsBlock({ data }: { data: FilingsResponse }) {
 // TradeStructureBlock (Status · Horizon · Next review · Size) was deleted
 // 2026-09-30. Dave: "For trade structure. No. lol. We just dont need it."
 // Next review was a row of derived restatements: the review clock is a
-// REVIEW_CADENCE trigger and shows in the trigger list, the horizon is on
+// review-clock trigger and shows in the trigger list, the horizon is on
 // the thesis body, and "Status" was an internal actionability enum nobody
 // could name. Nothing here had a reader.
 

@@ -43,7 +43,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
+import { applyLevelArgs, levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -74,7 +74,7 @@ async function main() {
     // A backfill must never be the thing that deletes a trigger: the parser
     // drops what it can't read (correctly — one bad rung must not take down a
     // ladder), but writing the parsed list back makes that drop permanent.
-    // Right now that would silently delete two live PRICE_MOVE_PCT rungs on
+    // Right now that would silently delete two live move-from-a-close rungs on
     // MU, casualties of removing the 5D window. They never fired and are
     // being cleaned up deliberately elsewhere; they do not die here.
     const rawArr: unknown[] = Array.isArray(t.triggers) ? t.triggers : [];
@@ -112,14 +112,7 @@ async function main() {
     // hand is intent, a column is a stale cache, and this script must never
     // move a number someone chose.
     const occupantSource = (slot: "FLOOR" | "TARGET") =>
-      stored.find(
-        (x) =>
-          (x.predicate.kind === "PRICE_BELOW" || x.predicate.kind === "PRICE_ABOVE") &&
-          (slot === "FLOOR"
-            ? x.action === "EXIT" && x.predicate.kind === (t.direction === "SHORT" ? "PRICE_ABOVE" : "PRICE_BELOW")
-            : (x.action === "EXIT" || x.action === "REVIEW") &&
-              x.predicate.kind === (t.direction === "SHORT" ? "PRICE_BELOW" : "PRICE_ABOVE")),
-      )?.source;
+      stored.find((x) => levelSlotOf(x, t.direction) === slot)?.source;
 
     const needs = (
       slot: "FLOOR" | "TARGET",

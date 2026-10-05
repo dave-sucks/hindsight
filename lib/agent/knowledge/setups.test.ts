@@ -8,7 +8,6 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import {
-  DELETED_KINDS,
   PLACEHOLDERS,
   setupsForAnalyst,
   SETUPS,
@@ -16,23 +15,19 @@ import {
   describeTemplate,
   getSetup,
   setupIndex,
-  templateKinds,
+  templateMeasures,
+  fillTemplate,
   templatePlaceholders,
   type TemplatePredicate,
 } from "./setups";
 import { STRATEGY_ARCHETYPES } from "./strategy-archetypes";
 import { triggerPredicateSchema } from "@/lib/agent/triggers/schema";
+import { MEASURES } from "@/lib/agent/triggers/condition";
 import { readKnowledgeLibrary } from "@/lib/agent/tools/read-knowledge-library";
 import { createToolContext } from "@/lib/agent/tool-context";
 
-/** A template with every `{placeholder}` level filled with a number. */
-function filled(p: TemplatePredicate): unknown {
-  if (p.kind === "AND" || p.kind === "OR") return { ...p, predicates: p.predicates.map(filled) };
-  if ((p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW") && typeof p.level === "string") {
-    return { ...p, level: 100 };
-  }
-  return p;
-}
+/** A template with every `{placeholder}` filled with a number. */
+const filled = (p: TemplatePredicate) => fillTemplate(p, () => 100);
 
 describe("the setup catalog", () => {
   it("has the twelve playbook setups, D1–D12, once each", () => {
@@ -92,9 +87,10 @@ describe("the setup catalog", () => {
     expect(triggerPredicateSchema.safeParse({ kind: "GUIDANCE_CHANGE", direction: "DOWN" }).success).toBe(false);
   });
 
-  it("no template names a kind PR 2 deletes", () => {
-    const used = SETUPS.flatMap((s) => templateKinds(s.entry.template));
-    for (const dead of DELETED_KINDS) expect(used).not.toContain(dead);
+  it("every template is built from the catalog's measures", () => {
+    const used = SETUPS.flatMap((s) => templateMeasures(s.entry.template));
+    for (const m of used) expect(Object.keys(MEASURES)).toContain(m);
+    expect(used.length).toBeGreaterThan(5);
   });
 
   it("every placeholder a template uses is defined", () => {
@@ -123,10 +119,10 @@ describe("the setup catalog", () => {
 
   it("describes a template in one line", () => {
     expect(describeTemplate(getSetup("BASE_BREAKOUT")!.entry.template)).toBe(
-      "AND[PRICE_ABOVE({pivot}, close), VOLUME_RATIO ≥ 1.5×, PRICE_BELOW({pivotChase})]",
+      "above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}",
     );
     expect(describeTemplate(getSetup("PEAD")!.entry.template)).toBe(
-      "AND[EARNINGS_SINCE(1–3 days), PRICE_ABOVE({gapDayLow})]",
+      "1–3 days after earnings and above {gapDayLow}",
     );
   });
 
@@ -152,7 +148,7 @@ describe("read_knowledge_library — topic 'setup'", () => {
     const r = await tool.execute({ topic: "setup", id: "PEAD" }, opts);
     expect(r.data.found).toBe(true);
     expect(String(r.data.content)).toContain("Post-earnings drift (D4)");
-    expect(String(r.data.content)).toContain("EARNINGS_SINCE(1–3 days)");
+    expect(String(r.data.content)).toContain("Condition: 1–3 days after earnings and above {gapDayLow}");
   });
 
   it("names the available setups on an unknown id", async () => {
@@ -167,7 +163,7 @@ describe("the pullback is a plan the writer can write (HPE 2026-09-15)", () => {
     const p = getSetup("MA_PULLBACK")!;
     expect(templatePlaceholders(p.entry.template)).toEqual([]);
     expect(describeTemplate(p.entry.template)).toBe(
-      "OR[NEAR_SMA(20-day, within 2%), NEAR_SMA(50-day, within 2%)]",
+      "within 2% of the 20-day average or within 2% of the 50-day average",
     );
     expect(Object.keys(PLACEHOLDERS)).not.toContain("{priorDayHigh}");
     for (const s of SETUPS) expect(templatePlaceholders(s.entry.template)).not.toContain("{priorDayHigh}");

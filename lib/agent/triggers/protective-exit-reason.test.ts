@@ -18,26 +18,24 @@
  * on cooldown — the anti-nag protection is preserved.
  */
 
-import {
-  protectiveExitCloseReason,
-  type TriggerPredicate,
-} from "./types";
+import { protectiveExitCloseReason } from "./types";
+import type { When } from "@/lib/agent/triggers/condition";
 
 describe("protectiveExitCloseReason — protective/price EXIT → STOP/TARGET tag", () => {
   it("tags a TRAILING_FROM_HIGH give-back exit STOP (the ARQT gain-lock)", () => {
-    const p: TriggerPredicate = { kind: "TRAILING_FROM_HIGH", pct: 8 };
+    const p: When = { watch: "move", is: "below", value: 8, variable: "peak" };
     expect(protectiveExitCloseReason(p, "LONG")).toBe("STOP");
     expect(protectiveExitCloseReason(p, "SHORT")).toBe("STOP");
   });
 
   it("tags a GAIN_FROM_ENTRY gain-lock exit STOP", () => {
-    const p: TriggerPredicate = { kind: "GAIN_FROM_ENTRY", pct: 21, direction: "UP" };
+    const p: When = { watch: "move", is: "above", value: 21, variable: "entry" };
     expect(protectiveExitCloseReason(p, "LONG")).toBe("STOP");
   });
 
   it("maps absolute price levels by side (LONG floor = STOP, LONG ceiling = TARGET)", () => {
-    const below: TriggerPredicate = { kind: "PRICE_BELOW", level: 26.5 };
-    const above: TriggerPredicate = { kind: "PRICE_ABOVE", level: 40 };
+    const below: When = { watch: "price", is: "below", value: 26.5 };
+    const above: When = { watch: "price", is: "above", value: 40 };
     // LONG: a break below the floor is adverse (STOP); a break above is the target.
     expect(protectiveExitCloseReason(below, "LONG")).toBe("STOP");
     expect(protectiveExitCloseReason(above, "LONG")).toBe("TARGET");
@@ -47,8 +45,8 @@ describe("protectiveExitCloseReason — protective/price EXIT → STOP/TARGET ta
   });
 
   it("maps a daily PRICE_MOVE_PCT by whether the move is with the position", () => {
-    const up: TriggerPredicate = { kind: "PRICE_MOVE_PCT", pct: 5, direction: "UP", window: "1D" };
-    const down: TriggerPredicate = { kind: "PRICE_MOVE_PCT", pct: 5, direction: "DOWN", window: "1D" };
+    const up: When = { watch: "move", is: "above", value: 5, variable: "prev_close" };
+    const down: When = { watch: "move", is: "below", value: 5, variable: "prev_close" };
     // LONG: up move = favorable (TARGET), down move = adverse (STOP).
     expect(protectiveExitCloseReason(up, "LONG")).toBe("TARGET");
     expect(protectiveExitCloseReason(down, "LONG")).toBe("STOP");
@@ -58,17 +56,17 @@ describe("protectiveExitCloseReason — protective/price EXIT → STOP/TARGET ta
   });
 
   it("treats null/unknown direction as LONG", () => {
-    const below: TriggerPredicate = { kind: "PRICE_BELOW", level: 10 };
+    const below: When = { watch: "price", is: "below", value: 10 };
     expect(protectiveExitCloseReason(below, null)).toBe("STOP");
   });
 
   it("returns null for judgment predicates (they keep the LLM's tag → cooldown applies)", () => {
-    const judgment: TriggerPredicate[] = [
-      { kind: "NEAR_SMA", period: 50, withinPct: 2 },
-      { kind: "EARNINGS_MISS" },
-      { kind: "RSI", threshold: 70, direction: "ABOVE" },
-      { kind: "REVIEW_CADENCE", days: 30 },
-      { kind: "REVIEW_CADENCE", days: 7 },
+    const judgment: When[] = [
+      { watch: "move", is: "near", value: 2, variable: "sma50" },
+      { watch: "surprise", is: "miss", value: 0 },
+      { watch: "rsi", is: "above", value: 70 },
+      { watch: "repeat", value: 30 },
+      { watch: "repeat", value: 7 },
     ];
     for (const p of judgment) {
       expect(protectiveExitCloseReason(p, "LONG")).toBeNull();

@@ -25,10 +25,11 @@
  */
 import { spentBuyCrossing } from "./buy-crossing";
 import { computePlanSanity } from "./plan-sanity";
-import type { TriggerPredicate } from "./triggers/types";
+import type { When } from "@/lib/agent/triggers/condition";
 
-const above = (level: number): TriggerPredicate => ({ kind: "PRICE_ABOVE", level });
-const below = (level: number): TriggerPredicate => ({ kind: "PRICE_BELOW", level });
+
+const above = (level: number): When => ({ watch: "price", is: "above", value: level });
+const below = (level: number): When => ({ watch: "price", is: "below", value: level });
 
 /** The two rationale-only rows ETN's plan actually got. */
 const ETN_ROWS = [
@@ -194,19 +195,13 @@ describe("only a plain price level can be read this way", () => {
   // GD, GEV and SYK all buy on a 50-day reclaim. There is no single number
   // the price can be "past", and inventing one is how a pullback entry gets
   // read backwards.
-  it.each<[string, TriggerPredicate]>([
-    ["VS_SMA (GD / GEV / SYK)", { kind: "VS_SMA", period: 50, direction: "ABOVE" }],
-    ["NEAR_SMA", { kind: "NEAR_SMA", period: 50, withinPct: 2 }],
-    ["VOLUME_RATIO", { kind: "VOLUME_RATIO", min: 1.5 }],
+  it.each<[string, When]>([
+    ["VS_SMA (GD / GEV / SYK)", { watch: "price", is: "above", variable: "sma50" }],
+    ["NEAR_SMA", { watch: "move", is: "near", value: 2, variable: "sma50" }],
+    ["VOLUME_RATIO", { watch: "volume", value: 1.5 }],
     [
       "a composite breakout",
-      {
-        kind: "AND",
-        predicates: [
-          { kind: "PRICE_ABOVE", level: 418, basis: "close" },
-          { kind: "VOLUME_RATIO", min: 1.5 },
-        ],
-      },
+      { match: "all", conditions: [{ watch: "price", is: "above", value: 418, settings: { close: true } }, { watch: "volume", value: 1.5 }] },
     ],
   ])("%s raises nothing", (_label, predicate) => {
     expect(spentBuyCrossing({ ...ETN, enter: { predicate, lastFiredAt: ETN.enter.lastFiredAt } })).toBeNull();

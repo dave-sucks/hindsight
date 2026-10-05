@@ -30,7 +30,7 @@ const floor = (id: string, level: number) => ({
   id,
   action: "EXIT",
   rationale: "The floor: below it the plan is wrong.",
-  predicate: { kind: "PRICE_BELOW", level },
+  predicate: { watch: "price", is: "below", value: level },
   fireMode: "TACTICAL",
 });
 
@@ -39,7 +39,7 @@ const trail = (id: string) => ({
   id,
   action: "EXIT",
   rationale: "Give back no more than a fifth from the high.",
-  predicate: { kind: "TRAILING_FROM_HIGH", pct: 20 },
+  predicate: { watch: "move", is: "below", value: 20, variable: "peak" },
   fireMode: "TACTICAL",
 });
 
@@ -89,8 +89,8 @@ async function pass() {
           ...actual,
           SHAPE_CHECKER: {
             ...actual.SHAPE_CHECKER,
-            holds: (p: { level?: number }, ctx: unknown) => {
-              if (p.level === BAD_LEVEL) throw new Error("cannot read this trigger");
+            holds: (p: { value?: number }, ctx: unknown) => {
+              if (p.value === BAD_LEVEL) throw new Error("cannot read this trigger");
               return actual.SHAPE_CHECKER.holds(p, ctx);
             },
           },

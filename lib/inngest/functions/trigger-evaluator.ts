@@ -5,7 +5,7 @@
 // call (lib/market-data/live-quote; Finnhub is the fallback) and
 // evaluates the ladder. Since 2026-09-02 it also pulls the firm-wide
 // earnings calendar (one call for the whole batch) and evaluates
-// EARNINGS_BEAT / EARNINGS_MISS off reported EPS vs estimate. See
+// earnings beat / miss off reported EPS vs estimate. See
 // lib/agent/triggers/earnings.ts and docs/plans/EARNINGS_AND_MOVERS.md.
 // (A second, signal-driven path consumed `app/signal.routed`; it went with
 // the signal router, 2026-09-15.)
@@ -15,11 +15,11 @@
 // rungs additionally fire only on the CROSSING of their level (price past
 // it now, not at the prior close) — see shouldFire, DAV-229.
 //
-// Chart kinds (DAV-247): VS_SMA, NEAR_SMA, VOLUME_RATIO, NEW_HIGH,
-// PCT_FROM_52W_HIGH, RS_VS_SPY, GAP_UP, RSI and the 5D/20D move read the
+// Chart kinds (DAV-247): vs-average, near-average, volume, new-high,
+// from-52-week-high, strength-vs-S&P, gap, RSI and the 5D/20D move read the
 // daily indicator snapshot (TickerIndicators, written 06:30 ET) next to the
 // quote — loaded once per pass, only when a ladder in the batch needs it.
-// VOLUME_RATIO / GAP_UP also read today's consolidated volume (one batched
+// volume and gap also read today's consolidated volume (one batched
 // Alpaca call, to the minute).
 //
 // The close pass: ticks from 16:20 to 16:34 ET on a trading day evaluate
@@ -41,7 +41,7 @@ import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
-import { levelOf, readsSource, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
+import { levelOf, readsSource, sentenceOf, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
 import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
@@ -55,9 +55,8 @@ import {
 import type { EarningsWindow } from "@/lib/agent/triggers/earnings";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { effectiveTriggerAction, watchedFloorOnClose } from "@/lib/agent/triggers/types";
-import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { demoteThesisPlan } from "@/lib/agent/triggers/demote";
-import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { splitFiresByLevel } from "@/lib/agent/triggers/levels";
 import {
   loadLevelSources,
@@ -68,8 +67,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
-import { describeChartFire } from "@/lib/agent/triggers/chart-context";
-import { describeCluster, insiderCluster } from "@/lib/market-data/insider-cluster";
+import { describeChartFire } from "@/lib/agent/triggers/condition/facts";
 import { fetchBookFilings, type BookFilings } from "@/lib/market-data/sec-filings";
 import {
   describeFiling,
@@ -77,6 +75,7 @@ import {
   filingsBehindFire,
   rememberFired,
 } from "@/lib/market-data/sec-events";
+import type { When } from "@/lib/agent/triggers/condition";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -115,7 +114,7 @@ function parseTriggers(raw: unknown, thesisId: string): Trigger[] {
  * they lived only on the signal path and never fired). Only a removed kind
  * is skipped.
  */
-function isPriceSidePredicate(p: TriggerPredicate): boolean {
+function isPriceSidePredicate(p: When): boolean {
   return shapeOf(p) != null;
 }
 
@@ -124,7 +123,7 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
  * (what to load, which pass). One that can't be read is left out here; the
  * check reports it, with its stock, when it reaches it.
  */
-function shapeForLoading(p: TriggerPredicate) {
+function shapeForLoading(p: When) {
   try {
     return shapeOf(p);
   } catch {
@@ -133,24 +132,24 @@ function shapeForLoading(p: TriggerPredicate) {
 }
 
 /** Does the pass load `source` for it: the snapshot, today's volume, the earnings calendar, filings. */
-function reads(p: TriggerPredicate, source: Source): boolean {
+function reads(p: When, source: Source): boolean {
   const w = shapeForLoading(p);
   return w != null && readsSource(w, source);
 }
 
 /** Does this predicate read the earnings calendar at all? Drives the fetch. */
-const needsEarningsData = (p: TriggerPredicate) => reads(p, "earnings");
+const needsEarningsData = (p: When) => reads(p, "earnings");
 /** Does this predicate ask about a report that hasn't happened yet? Drives the lookahead. */
-const needsUpcomingEarnings = (p: TriggerPredicate) => SHAPE_CHECKER.readsUpcomingReport(p);
+const needsUpcomingEarnings = (p: When) => SHAPE_CHECKER.readsUpcomingReport(p);
 /** Does this predicate read SEC filings? Drives the one EDGAR call. */
-const needsFilings = (p: TriggerPredicate) => reads(p, "filings");
+const needsFilings = (p: When) => reads(p, "filings");
 /** Does this predicate read the daily indicator snapshot? Drives the load. */
-const needsIndicators = (p: TriggerPredicate) => reads(p, "snapshot");
+const needsIndicators = (p: When) => reads(p, "snapshot");
 /** Does this predicate read today's session volume? Drives the Alpaca call. */
-const needsTodayVolume = (p: TriggerPredicate) => reads(p, "volume");
+const needsTodayVolume = (p: When) => reads(p, "volume");
 
 /** Does this predicate wait for the close? Selects the rungs of the close pass. */
-function hasCloseBasis(p: TriggerPredicate): boolean {
+function hasCloseBasis(p: When): boolean {
   const w = shapeForLoading(p);
   return w != null && waitsForClose(w);
 }
@@ -184,9 +183,9 @@ function isClosePassTick(now: Date): boolean {
  */
 interface PositionInfo {
   openedAt: Date;
-  /** For GAIN_FROM_ENTRY — entry economics of the open position. */
+  /** For move-from-entry — entry economics of the open position. */
   avgCost: number | null;
-  /** For TRAILING_FROM_HIGH — price-monitor-maintained water mark. */
+  /** For trail — price-monitor-maintained water mark. */
   peakPrice: number | null;
   /** When that water mark was set — the big-winner switch needs the clock. */
   peakAt: Date | null;
@@ -260,7 +259,6 @@ interface FiringEvent {
   analystId: string;
   ticker: string;
   action: Trigger["action"];
-  predicateKind: TriggerPredicate["kind"];
   /**
    * Other protective triggers on the same thesis that fired on this same
    * pass (a stop and a trail in the same minute). Folded into ONE run —
@@ -269,7 +267,7 @@ interface FiringEvent {
    */
   coFired?: CoFired[];
   /** The fire in words — what a co-fired trigger says on the run it folds into. */
-  sentence?: string;
+  sentence: string;
   /**
    * The quote that fired the predicate. Consumed by tactical-run to stamp
    * priceAtTime on the TRIGGER_FIRED audit row — without it those rows
@@ -299,7 +297,7 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
   ticker: string;
   triggers: T[];
   ctx: EvaluationContext;
-  predicateFilter?: (p: TriggerPredicate) => boolean;
+  predicateFilter?: (p: When) => boolean;
 }): { fires: T[]; updatedTriggers: T[] } {
   const fires: T[] = [];
   const updatedTriggers = args.triggers.map((t) => {
@@ -344,7 +342,7 @@ async function stampLastFiredAt(args: {
   firedTriggerIds: string[];
   /** Rungs inherited from a level above — stamped into `triggerState`. */
   firedInheritedTriggerIds: string[];
-  /** SEC_EVENT fires: trigger id → the filing IDs it just fired on. */
+  /** filing fires: trigger id → the filing IDs it just fired on. */
   firedFilings?: Map<string, string[]>;
   /** Heads-up fires: trigger id → the report date it just fired for. */
   firedReports?: Map<string, string>;
@@ -411,7 +409,7 @@ export const triggerEvaluator = inngest.createFunction(
   },
   [
     // Bumped from */15 to */5 on 2026-05-07 to support DAY analysts.
-    // Day-traders set absolute PRICE_ABOVE/PRICE_BELOW entry triggers on
+    // Day-traders set absolute price-level entry triggers on
     // intraday levels — at 15 min cadence the breakout has often failed
     // or run away by the time tactical-run spawns. 5 min is the floor for
     // "real-time enough to act on a breakout." Swing analysts unaffected
@@ -441,7 +439,7 @@ export const triggerEvaluator = inngest.createFunction(
       // ACTIVE + WATCHING. ACTIVE theses have positions at risk (stop /
       // target / trail). WATCHING theses carry promotion triggers — for
       // day-traders especially, the morning playbook mints WATCHING
-      // theses with PRICE_ABOVE/PRICE_BELOW entry triggers; without
+      // theses with price-level entry triggers; without
       // cron-path evaluation those triggers would never fire intraday.
       // The 200-ticker cap below still bounds the loop.
       const theses = await prisma.thesis.findMany({
@@ -547,7 +545,7 @@ export const triggerEvaluator = inngest.createFunction(
         // (DAV-229), and "crossed since the last close" is the cheapest
         // honest definition the cron can afford.
         const prevClose = q.pc ?? undefined;
-        // Today's regular-session open — GAP_UP reads it. A quote from an
+        // Today's regular-session open — gap reads it. A quote from an
         // earlier session carries that session's open, which is not today's.
         const etDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
         const open = etDay(new Date(q.t * 1000)) === etDay(now) ? q.o : null;
@@ -573,7 +571,7 @@ export const triggerEvaluator = inngest.createFunction(
           })
         : new Map();
 
-      // Today's consolidated bar: volume for VOLUME_RATIO / GAP_UP, and on
+      // Today's consolidated bar: volume for the volume and gap triggers, and on
       // the close pass the day's close itself.
       const wantsTodayBar =
         session === "CLOSE" ||
@@ -589,7 +587,7 @@ export const triggerEvaluator = inngest.createFunction(
       const wantsEarnings = candidates.some((c) =>
         c.ladder.some((t) => needsEarningsData(t.predicate)),
       );
-      // The forward half (scheduled reports) only when an EARNINGS_WITHIN
+      // The forward half (scheduled reports) only when a before-earnings
       // is armed somewhere — it triples the payload for nothing otherwise.
       const wantsUpcoming = candidates.some((c) =>
         c.ladder.some((t) => needsUpcomingEarnings(t.predicate)),
@@ -661,16 +659,16 @@ export const triggerEvaluator = inngest.createFunction(
           session,
           indicators: indicators.get(thesis.ticker) ?? null,
           today: { open: quote?.open ?? null, volume: todayBar?.volume ?? null },
-          // EARNINGS_BEAT / EARNINGS_MISS read this. Absent when the name
+          // earnings beat / miss read this. Absent when the name
           // hasn't reported inside the lookback window, which is the
           // overwhelmingly common case — those predicates then return false.
           earnings: earnings.reported.get(thesis.ticker) ?? null,
-          // EARNINGS_WITHIN reads this — the next scheduled report, when
+          // before-earnings reads this — the next scheduled report, when
           // one is inside the lookahead.
           upcomingEarnings: upcomingRead.report,
-          // SEC_EVENT reads this — the name's watched filings in the lookback.
+          // filing reads this — the name's watched filings in the lookback.
           filings: filingsRead.byTicker.get(thesis.ticker) ?? null,
-          // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read the open position's
+          // the move from our entry and the trail read the open position's
           // entry cost + water mark; absent (WATCHING) → they return false.
           position: posInfo
             ? {
@@ -738,15 +736,12 @@ export const triggerEvaluator = inngest.createFunction(
           // carries the reported figures.
           const upcoming = upcomingRead.report;
           const report = earnings.reported.get(thesis.ticker);
-          // An insider cluster names its buyers on the audit row (DAV-252).
-          const snapBuys = indicators.get(thesis.ticker)?.insiderBuys;
-          // A filing fire names each filing, in words, with its link.
+          // A filing fire names each filing, in words, with its link; an
+          // insider cluster names its buyers (DAV-252), with the chart facts.
           const firedFilingList = filingsByTrigger.get(t.id);
           const firedContext = firedFilingList
             ? firedFilingList.map(describeFiling).join(" ")
-            : t.predicate.kind === "INSIDER_CLUSTER" && snapBuys
-              ? describeCluster(insiderCluster(snapBuys, t.predicate.days, now))
-              : needsUpcomingEarnings(t.predicate)
+            : needsUpcomingEarnings(t.predicate)
                 ? upcoming
                   ? describeUpcomingReport(upcoming, now, upcomingRead.calendarDate)
                   : null
@@ -757,6 +752,7 @@ export const triggerEvaluator = inngest.createFunction(
                         open: quote?.open ?? null,
                         volume: todayBar?.volume ?? null,
                         prevClose: quote?.prevClose ?? null,
+                        now,
                       })
                     : null;
 
@@ -791,7 +787,7 @@ export const triggerEvaluator = inngest.createFunction(
                 thesisId: thesis.id,
                 type: "TRIGGER_FIRED",
                 // held=false: DEMOTE branch ⇒ un-held.
-                summary: `${describeTriggerFire(t, false)} — deferred to the next daily review`,
+                summary: `${sentenceOf(t, false)} — deferred to the next daily review`,
                 rationale:
                   `${t.rationale} There was no priced plan left to set down, ` +
                   `so this is a look rather than a change.`,
@@ -818,7 +814,7 @@ export const triggerEvaluator = inngest.createFunction(
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",
-              summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
+              summary: `${sentenceOf(t)} — deferred to the next daily review`,
               // The figures ride along on an earnings fire. Tomorrow's run
               // reads this row to decide what to do; "Earnings miss" alone
               // makes it go and re-fetch what the row could have told it.
@@ -838,15 +834,14 @@ export const triggerEvaluator = inngest.createFunction(
             analystId,
             ticker: thesis.ticker,
             action,
-            predicateKind: t.predicate.kind,
             firedPrice: latestQuote?.price ?? null,
             firedContext,
-            sentence: describeTriggerFire(t),
+            sentence: sentenceOf(t),
           });
         }
       }
       // Two protective fires on one thesis in one pass → one run (DAV-254).
-      return collapseProtectiveFires(events, (e) => e.sentence ?? e.predicateKind);
+      return collapseProtectiveFires(events);
     });
 
     for (const f of cronFires) {

@@ -17,7 +17,6 @@ import {
   frozenCopies,
   frozenCopyLine,
   sharedRationalesAcross,
-  triggerValue,
 } from "@/lib/agent/triggers/frozen-copy";
 import { parseLevelTriggers } from "@/lib/agent/triggers/load-levels";
 import { applyTriggerDelete } from "@/lib/actions/thesis-edit";
@@ -105,7 +104,7 @@ async function main() {
     });
     for (const c of copies) {
       // The rule in the Activity feed's words; the bucket is a comparison key, never shown.
-      console.log(`  ${t.ticker.padEnd(5)} ${describeTrigger(c.trigger, t.direction).padEnd(40)} ${frozenCopyLine(c)}`);
+      console.log(`  ${t.ticker.padEnd(5)} ${describeTrigger(c.trigger, t.status === "HOLDING").padEnd(40)} ${frozenCopyLine(c)}`);
       if (APPLY) {
         await applyTriggerDelete(
           t.id,
@@ -136,12 +135,7 @@ async function main() {
     if (gone.size === 0) continue;
     console.log(`\n${t.ticker} (${nameByAnalyst.get(analystId)}) — ${own.length - gone.size} left:`);
     for (const r of own.filter((x) => !gone.has(x.id))) {
-      const v = triggerValue(r);
-      console.log(
-        `    ${r.action.padEnd(6)} ${r.predicate.kind}${v != null ? ` ${v}` : ""}` +
-          `${(r.predicate as { direction?: string }).direction ? ` ${(r.predicate as { direction?: string }).direction}` : ""}` +
-          `   [${r.source ?? "unstamped"}]`,
-      );
+      console.log(`    ${describeTrigger(r, t.status === "HOLDING")}   [${r.source ?? "unstamped"}]`);
     }
   }
 

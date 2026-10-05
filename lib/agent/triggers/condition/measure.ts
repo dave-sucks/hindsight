@@ -8,9 +8,10 @@
  * Pure and client-safe.
  */
 
-import type { TriggerAction, TriggerPredicate } from "../types";
+import type { TriggerAction } from "../types";
 import type { Condition, Direction, SettingDef, SettingValue, TriggerType, Watch, When } from "./types";
 import type { VariableDef } from "./variables";
+import type { LegacyPredicate } from "./legacy-types";
 
 export interface ValueDef {
   /** "$" before the number. */
@@ -57,10 +58,10 @@ export interface PillPart {
   value?: string;
 }
 
-type Kind = TriggerPredicate["kind"];
+type Kind = LegacyPredicate["kind"];
 
 /** Until the cutover: how a measure reads the stored kinds, one reader per kind. A reader returns null for a predicate another measure owns. */
-export type LegacyReaders = { [K in Kind]?: (p: Extract<TriggerPredicate, { kind: K }>) => When | null };
+export type LegacyReaders = { [K in Kind]?: (p: Extract<LegacyPredicate, { kind: K }>) => When | null };
 
 /** Where a condition sits on the chart: its price now (null until it has one), which side of the trade, and whether the price moves. */
 export interface Line {
@@ -98,6 +99,8 @@ export interface MeasureDef {
   direct?: (c: Condition) => boolean;
   /** A clock, not a condition: "Review every 30 days." It stands alone. */
   timed?: boolean;
+  /** In a sentence, where the two halves don't read as English: "30 days after the buy". `words` is the value half in words. */
+  says?: (c: Condition, words: string) => string;
   /**
    * A typed price level: a floor or a target. A buy on one is one rule
    * whichever way it is set (the price you'd start at); on a stock we don't
@@ -126,9 +129,9 @@ export interface MeasureDef {
   /** Until the cutover the server stores today's kinds: how this measure reads and writes them. */
   legacy: {
     from: LegacyReaders;
-    to: (c: Condition) => TriggerPredicate | null;
+    to: (c: Condition) => LegacyPredicate | null;
     /** "Any of" several of these conditions, written as one kind (several filing events). */
-    foldAny?: (cs: Condition[]) => TriggerPredicate | null;
+    foldAny?: (cs: Condition[]) => LegacyPredicate | null;
   };
 }
 

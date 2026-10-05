@@ -34,9 +34,10 @@
  */
 
 import { triggerBucket } from "./bucket";
-import { loosens, shapeOf } from "./condition";
+import { loosens, sentenceOf, shapeOf } from "./condition";
 import { protectiveExitCloseReason } from "./types";
-import type { Trigger, TriggerPredicate } from "./types";
+import type { Trigger } from "./types";
+import type { When } from "@/lib/agent/triggers/condition";
 
 export type RatchetViolation = {
   bucket: string;
@@ -59,9 +60,7 @@ function isWellFormed(t: Trigger | null | undefined): t is Trigger {
     !!t &&
     typeof t === "object" &&
     typeof t.action === "string" &&
-    !!t.predicate &&
-    typeof t.predicate === "object" &&
-    typeof t.predicate.kind === "string"
+    shapeOf(t.predicate) != null
   );
 }
 
@@ -96,7 +95,7 @@ function isProtectiveStop(t: Trigger, direction: string | null): boolean {
  * waiting for the close, arming later or a wider range multiple each protect
  * less; the catalog says which (./condition/rules `loosens`).
  */
-function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean {
+function weakens(prev: When, next: When): boolean {
   const a = shapeOf(prev);
   const b = shapeOf(next);
   return a != null && b != null && loosens(a, b);
@@ -163,25 +162,9 @@ export function stopMoveWeakensProtection(args: {
   return isLong ? newStop < oldStop : newStop > oldStop;
 }
 
-/** Plain-language name for a protective rung, for refusal messages. */
+/** Plain-language name for a protective rung, for refusal messages: "Sell if below $65". */
 export function describeProtectiveRung(t: Trigger): string {
-  const p = t.predicate;
-  switch (p.kind) {
-    case "PRICE_BELOW":
-      return `sell if the price drops below $${p.level}`;
-    case "PRICE_ABOVE":
-      return `sell (cover) if the price rises above $${p.level}`;
-    case "TRAILING_FROM_HIGH":
-      return `sell if the stock gives back ${p.pct}% from its high`;
-    case "GAIN_FROM_ENTRY":
-      return p.direction === "DOWN"
-        ? `sell if the stock is down ${p.pct}% from what we paid`
-        : `sell to lock in the gain once up ${p.pct}%`;
-    case "PRICE_MOVE_PCT":
-      return `sell on a ${p.pct}% ${p.direction === "DOWN" ? "drop" : "spike"} in a ${p.window} window`;
-    default:
-      return `the ${p.kind} sell rule`;
-  }
+  return sentenceOf(t);
 }
 
 /** One refusal line per violation, in product language. */

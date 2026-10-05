@@ -114,7 +114,7 @@ export interface LadderLevels {
    */
   triggerState?: Record<string, string | null | undefined>;
   /**
-   * The same per-thesis bookkeeping for a filing trigger (SEC_EVENT): the
+   * The same per-thesis bookkeeping for a filing trigger: the
    * filings an INHERITED rung has already fired on for this thesis.
    * Thesis-level rungs keep `firedFilings` inline.
    */
@@ -142,7 +142,7 @@ export interface LadderLevels {
   /**
    * The thesis's state, for gating position-scoped predicates.
    *
-   * `GAIN_FROM_ENTRY` and `TRAILING_FROM_HIGH` measure off an open
+   * the move from our entry and the trail measure off an open
    * position's avgCost / peak, so on a WATCHING or PROMOTED thesis they
    * evaluate false forever. Those rungs live on the ACCOUNT (where there
    * is no per-thesis state), so the gate belongs here —
@@ -172,7 +172,7 @@ function measuresOffPosition(t: Trigger): boolean {
 }
 // Actions that operate on a position. A rung with one of these on a thesis
 // we don't hold is not a plan, it is a spawn: the account's ±7% scale-in
-// rules are PRICE_MOVE_PCT, so the predicate gate above let them through
+// rules are move-from-a-close, so the predicate gate above let them through
 // onto WATCHING rows, and on 2026-09-03 five of eight tactical runs were
 // "scale in" on names with no position (HPE, RARE, PLTR, NOW; two of them
 // were then retired by an agent that had been asked to add). EXIT is not

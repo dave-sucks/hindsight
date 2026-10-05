@@ -16,7 +16,7 @@
  * (lib/market-data/filing-text → readFilingText). The list says what kind of
  * event a filing is; only the text says what happened.
  *
- * The trigger evaluator reads the same search (`SEC_EVENT`). Insider buying
+ * The filing trigger reads the same search. Insider buying
  * is get_insider_activity (Form 4), not this tool.
  */
 

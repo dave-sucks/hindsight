@@ -17,7 +17,7 @@ import { analystStandingTriggers, signatureSetup } from "@/lib/agent/knowledge/s
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { parseLevelTriggers } from "./load-levels";
 import { triggerBucket } from "./bucket";
-import { predicateSentence, actionLabel } from "./format";
+import { sentenceOf } from "./condition/describe";
 import type { Trigger } from "./types";
 
 export interface ReseedDiff {
@@ -50,7 +50,7 @@ export function reseedDiff(setupIds: readonly string[], existing: Trigger[], min
 
 /** One line per rule, for the dialog and the audit log. */
 export function describeSeatRule(t: Trigger): string {
-  return `${predicateSentence(t.predicate)} — ${actionLabel(t.action, true)}`;
+  return sentenceOf(t);
 }
 
 /**

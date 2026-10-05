@@ -23,7 +23,7 @@ import type { Trigger } from "./types";
 describe("triggerSchema.fireMode", () => {
   it("stays absent when omitted (absent ⇒ TACTICAL at every reader; no stamped label)", () => {
     const parsed = triggerSchema.parse({
-      predicate: { kind: "PRICE_BELOW", level: 100 },
+      predicate: { watch: "price", is: "below", value: 100 },
       action: "EXIT",
       rationale: "stop",
     });
@@ -32,7 +32,7 @@ describe("triggerSchema.fireMode", () => {
 
   it("passes an explicit DIRECT through", () => {
     const parsed = triggerSchema.parse({
-      predicate: { kind: "PRICE_MOVE_PCT", pct: 5, direction: "DOWN", window: "1D" },
+      predicate: { watch: "move", is: "below", value: 5, variable: "prev_close" },
       action: "EXIT",
       rationale: "down 5% on the day",
       fireMode: "DIRECT",
@@ -42,7 +42,7 @@ describe("triggerSchema.fireMode", () => {
 
   it("rejects an unknown fire mode", () => {
     const result = triggerSchema.safeParse({
-      predicate: { kind: "PRICE_BELOW", level: 100 },
+      predicate: { watch: "price", is: "below", value: 100 },
       action: "EXIT",
       rationale: "stop",
       fireMode: "INSTANT",
@@ -66,26 +66,26 @@ describe("defaultFireModeForAction", () => {
 
 describe("isDirectEligiblePredicate — only deterministic price/% exits", () => {
   it.each([
-    { kind: "PRICE_ABOVE", level: 100 },
-    { kind: "PRICE_BELOW", level: 100 },
-    { kind: "PRICE_MOVE_PCT", pct: 5, direction: "DOWN", window: "1D" },
-    { kind: "PRICE_MOVE_PCT", pct: 5, direction: "DOWN", window: "20D" },
-    { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "DOWN" },
-    { kind: "TRAILING_FROM_HIGH", pct: 15 },
+    { watch: "price", is: "above", value: 100 },
+    { watch: "price", is: "below", value: 100 },
+    { watch: "move", is: "below", value: 5, variable: "prev_close" },
+    { watch: "move", is: "below", value: 5, variable: "close_20d" },
+    { watch: "move", is: "below", value: 10, variable: "entry" },
+    { watch: "move", is: "below", value: 15, variable: "peak" },
   ])("%j is DIRECT-eligible", (predicate) => {
     expect(isDirectEligiblePredicate(predicate)).toBe(true);
   });
 
   it.each([
-    { kind: "EARNINGS_MISS" },
-    { kind: "EARNINGS_BEAT" },
-    { kind: "RSI", threshold: 30, direction: "BELOW" },
-    { kind: "NEAR_SMA", period: 50, withinPct: 2 },
-    { kind: "VS_SMA", period: 200, direction: "BELOW" },
-    { kind: "VOLUME_RATIO", min: 2 },
+    { watch: "surprise", is: "miss", value: 0 },
+    { watch: "surprise", is: "beat", value: 0 },
+    { watch: "rsi", is: "below", value: 30 },
+    { watch: "move", is: "near", value: 2, variable: "sma50" },
+    { watch: "price", is: "below", variable: "sma200" },
+    { watch: "volume", value: 2 },
     { kind: "TRAILING_STOP", pct: 10 },
-    { kind: "AND", predicates: [{ kind: "PRICE_BELOW", level: 100 }, { kind: "VOLUME_RATIO", min: 2 }] },
-    { kind: "OR", predicates: [{ kind: "PRICE_BELOW", level: 100 }, { kind: "PRICE_BELOW", level: 90 }] },
+    { match: "all", conditions: [{ watch: "price", is: "below", value: 100 }, { watch: "volume", value: 2 }] },
+    { match: "any", conditions: [{ watch: "price", is: "below", value: 100 }, { watch: "price", is: "below", value: 90 }] },
   ])("%j is NOT DIRECT-eligible (judgment-bearing → tactical)", (predicate) => {
     expect(isDirectEligiblePredicate(predicate)).toBe(false);
   });
@@ -95,7 +95,7 @@ describe("fireMode + cooldown normalizers compose", () => {
   it("a DIRECT EXIT keeps its cooldownDays:0 opt-out", () => {
     const t: Trigger = {
       id: "t1",
-      predicate: { kind: "PRICE_BELOW", level: 100 },
+      predicate: { watch: "price", is: "below", value: 100 },
       action: "EXIT",
       rationale: "stop",
       cooldownDays: 0,

@@ -122,7 +122,7 @@ export async function demoteThesisPlan(args: {
         to: doomed.map((t) => ({
           op: "remove",
           id: t.id,
-          text: `Removed: ${describeTrigger(t, thesis.direction)}`,
+          text: `Removed: ${describeTrigger(t, false)}`,
         })),
       },
     },

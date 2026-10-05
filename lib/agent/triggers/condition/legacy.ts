@@ -13,12 +13,13 @@
  * Pure and client-safe.
  */
 
-import type { TriggerPredicate } from "../types";
+
 import { MEASURES } from "./catalog";
 import type { Condition, Retired, When } from "./types";
 import { isGroup, isRetired } from "./types";
+import type { LegacyPredicate } from "./legacy-types";
 
-type Reader = (p: TriggerPredicate) => When | null;
+type Reader = (p: LegacyPredicate) => When | null;
 
 /** The measures that read each stored kind, in catalog order (a review schedule is read by two). */
 const READERS: ReadonlyMap<string, Reader[]> = (() => {
@@ -41,7 +42,7 @@ export function fromLegacy(p: unknown): When | Retired {
   // Stored since the cutover: already the shape, read as it is.
   if (isShape(p)) return p;
   if (!p || typeof p !== "object" || typeof (p as { kind?: unknown }).kind !== "string") return { retired: true, was: p };
-  const q = p as TriggerPredicate;
+  const q = p as LegacyPredicate;
   if (q.kind === "AND" || q.kind === "OR") {
     const conditions = q.predicates.map(fromLegacy);
     if (conditions.some(isRetired)) return { retired: true, was: p };
@@ -60,7 +61,7 @@ export function shapeOf(p: unknown): When | null {
   return isRetired(w) ? null : w;
 }
 
-export function toLegacy(w: When): TriggerPredicate | null {
+export function toLegacy(w: When): LegacyPredicate | null {
   if (!isGroup(w)) return MEASURES[w.watch].legacy.to(w);
   // "Any of" one measure's conditions may be one kind (several filing events).
   const first = w.conditions[0];
@@ -70,5 +71,5 @@ export function toLegacy(w: When): TriggerPredicate | null {
   }
   const parts = w.conditions.map(toLegacy);
   if (parts.some((part) => part == null)) return null;
-  return { kind: w.match === "all" ? "AND" : "OR", predicates: parts as TriggerPredicate[] };
+  return { kind: w.match === "all" ? "AND" : "OR", predicates: parts as LegacyPredicate[] };
 }

@@ -12,52 +12,11 @@
  */
 
 import type { NeedsAction } from "@/lib/agent/needs-action";
-
-export interface TriggerPredicate {
-  kind: string;
-  level?: number;
-  /** PRICE_ABOVE / PRICE_BELOW — "close" waits for the day's close. */
-  basis?: string;
-  pct?: number;
-  direction?: string;
-  window?: string;
-  period?: number;
-  threshold?: number;
-  minSurprisePct?: number;
-  days?: number;
-  /** NEAR_SMA — % distance from the average. */
-  withinPct?: number;
-  /** GAP_UP — gap size, volume multiple, and how many sessions back. */
-  minPct?: number;
-  minVolRatio?: number;
-  withinDays?: number;
-  /** INSIDER_CLUSTER — distinct open-market buyers needed. */
-  minBuyers?: number;
-  /** SEC_EVENT — a tier ("at least"), 8-K item codes, or forms. */
-  tier?: "RED" | "MATERIAL";
-  items?: string[];
-  forms?: string[];
-  /** EARNINGS_SINCE — days after the report, inclusive. */
-  min?: number;
-  max?: number;
-  trailPct?: number;
-  /** TRAILING_FROM_HIGH — off until the position has once been up this %. */
-  armAtGainPct?: number;
-  /** TRAILING_FROM_HIGH — the give-back widens to this × the stock's ATR when that is wider (DAV-294). */
-  atrMultiple?: number;
-  /** GAIN_FROM_ENTRY — off once the position has run this far off the buy… */
-  skipIfPeakGainPct?: number;
-  /** …within this many days of it (a big winner is fast; a grind is not). */
-  skipIfPeakWithinDays?: number;
-  /** REVIEW_CADENCE — what the day count is counted from, and which side of the event date. */
-  from?: "LAST_REVIEW" | "BUY" | "EVENT";
-  side?: "BEFORE" | "AFTER";
-  predicates?: TriggerPredicate[];
-}
+import type { When } from "@/lib/agent/triggers/condition";
 
 export interface Trigger {
   id: string;
-  predicate: TriggerPredicate;
+  predicate: When;
   action: string;
   rationale: string;
   cooldownDays?: number;
@@ -92,7 +51,7 @@ export interface Trigger {
    */
   overrides?: {
     level: "THESIS" | "ANALYST" | "ACCOUNT";
-    predicate: TriggerPredicate;
+    predicate: When;
   };
 }
 

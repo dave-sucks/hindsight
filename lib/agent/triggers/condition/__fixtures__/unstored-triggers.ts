@@ -1,3 +1,12 @@
+import type { LegacyPredicate } from "../legacy-types";
+import type { When } from "../types";
+
+/**
+ * A predicate as stored before the cutover, handed both to today's code
+ * (which reads either shape through the translator) and to the frozen old
+ * code beside it. Types only.
+ */
+export type StoredRow = LegacyPredicate & When;
 /**
  * Conditions no stored trigger uses yet, so every reader and every rule is
  * exercised: the kinds and options nobody has saved (RSI, a gap, an insider
@@ -7,9 +16,9 @@
  * stored ones.
  */
 
-import type { TriggerPredicate } from "../../types";
 
-export const UNSTORED: TriggerPredicate[] = [
+
+export const UNSTORED: LegacyPredicate[] = [
   { kind: "RSI", threshold: 30, direction: "BELOW" },
   { kind: "RSI", period: 2, threshold: 70, direction: "ABOVE" },
   { kind: "GAP_UP", minPct: 4, minVolRatio: 3 },

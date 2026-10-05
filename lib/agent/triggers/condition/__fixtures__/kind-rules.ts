@@ -9,10 +9,11 @@
  */
 
 import { trailFireLevel } from "../../trail";
-import type { TriggerAction, TriggerPredicate } from "../../types";
+import type { TriggerAction } from "../../types";
+import type { LegacyPredicate } from "../legacy-types";
 
 /** The cascade bucket's predicate half (bucket.ts). */
-export function predicateKey(p: TriggerPredicate): string {
+export function predicateKey(p: LegacyPredicate): string {
   switch (p.kind) {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
@@ -57,7 +58,8 @@ export function predicateKey(p: TriggerPredicate): string {
 }
 
 /** The cascade bucket (bucket.ts): a buy on a typed price is one bucket whichever way it's set. */
-export function triggerBucket(t: { predicate: TriggerPredicate; action: TriggerAction }): string {
+export function triggerBucket(stored: { action: string; predicate: unknown }): string {
+  const t = stored as { action: TriggerAction; predicate: LegacyPredicate };
   if (t.action === "ENTER" && (t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW")) {
     return "PRICE_LEVEL::ENTER";
   }
@@ -65,7 +67,7 @@ export function triggerBucket(t: { predicate: TriggerPredicate; action: TriggerA
 }
 
 /** The default cooldown (defaults.ts). */
-export function defaultCooldownDaysForPredicate(p: TriggerPredicate, action?: TriggerAction): number {
+export function defaultCooldownDaysForPredicate(p: LegacyPredicate, action?: TriggerAction): number {
   switch (p.kind) {
     case "SEC_EVENT":
       return 0;
@@ -121,8 +123,9 @@ export function isStatePredicate(p: { kind: string; predicates?: readonly { kind
 }
 
 /** The weekly floor on a state review (state-cooldown.ts). */
-export function flooredCooldownDays(trigger: { action: string; predicate: TriggerPredicate }, days: number): number {
-  return trigger.action === "REVIEW" && isStatePredicate(trigger.predicate) ? Math.max(days, 7) : days;
+export function flooredCooldownDays(stored: { action: string; predicate: unknown }, days: number): number {
+  const t = stored as { action: TriggerAction; predicate: LegacyPredicate };
+  return t.action === "REVIEW" && isStatePredicate(t.predicate) ? Math.max(days, 7) : days;
 }
 
 /** A sale that can go straight to a proposal (types.ts). */
@@ -131,7 +134,7 @@ export function isDirectEligiblePredicate(kind: string): boolean {
 }
 
 /** The label a protective sale closes with (types.ts). */
-export function protectiveExitCloseReason(predicate: TriggerPredicate, direction: string | null): "STOP" | "TARGET" | null {
+export function protectiveExitCloseReason(predicate: LegacyPredicate, direction: string | null): "STOP" | "TARGET" | null {
   if (!isDirectEligiblePredicate(predicate.kind)) return null;
   const isLong = direction !== "SHORT";
   switch (predicate.kind) {
@@ -154,7 +157,7 @@ export function protectiveExitCloseReason(predicate: TriggerPredicate, direction
 
 /** What a trigger does on a stock we don't hold (types.ts). */
 export function effectiveTriggerAction(
-  trigger: { action: TriggerAction; predicate: TriggerPredicate },
+  trigger: { action: TriggerAction; predicate: LegacyPredicate },
   state: { status?: string | null; direction?: string | null; hasBuy?: boolean },
 ): TriggerAction {
   if (state.status === "HOLDING") return trigger.action;
@@ -189,7 +192,7 @@ export function watchedFloorOnClose<T extends { action: string; predicate: Timed
 
 // ── What the trigger check loaded for a trigger (trigger-evaluator.ts, and indicator-needs.ts, deleted) ──
 
-export function isPriceSidePredicate(p: TriggerPredicate): boolean {
+export function isPriceSidePredicate(p: LegacyPredicate): boolean {
   switch (p.kind) {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
@@ -220,7 +223,7 @@ export function isPriceSidePredicate(p: TriggerPredicate): boolean {
   }
 }
 
-export function needsEarningsData(p: TriggerPredicate): boolean {
+export function needsEarningsData(p: LegacyPredicate): boolean {
   switch (p.kind) {
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
@@ -235,7 +238,7 @@ export function needsEarningsData(p: TriggerPredicate): boolean {
   }
 }
 
-export function needsUpcomingEarnings(p: TriggerPredicate): boolean {
+export function needsUpcomingEarnings(p: LegacyPredicate): boolean {
   switch (p.kind) {
     case "EARNINGS_WITHIN":
       return true;
@@ -247,7 +250,7 @@ export function needsUpcomingEarnings(p: TriggerPredicate): boolean {
   }
 }
 
-export function needsTodayVolume(p: TriggerPredicate): boolean {
+export function needsTodayVolume(p: LegacyPredicate): boolean {
   switch (p.kind) {
     case "VOLUME_RATIO":
     case "GAP_UP":
@@ -260,7 +263,7 @@ export function needsTodayVolume(p: TriggerPredicate): boolean {
   }
 }
 
-export function hasCloseBasis(p: TriggerPredicate): boolean {
+export function hasCloseBasis(p: LegacyPredicate): boolean {
   switch (p.kind) {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
@@ -273,17 +276,17 @@ export function hasCloseBasis(p: TriggerPredicate): boolean {
   }
 }
 
-export function needsFilings(p: TriggerPredicate): boolean {
+export function needsFilings(p: LegacyPredicate): boolean {
   return secEventLeaves(p).length > 0;
 }
 
-function secEventLeaves(p: TriggerPredicate): TriggerPredicate[] {
+function secEventLeaves(p: LegacyPredicate): LegacyPredicate[] {
   if (p.kind === "SEC_EVENT") return [p];
   if (p.kind === "AND" || p.kind === "OR") return p.predicates.flatMap(secEventLeaves);
   return [];
 }
 
-export function needsIndicators(p: TriggerPredicate): boolean {
+export function needsIndicators(p: LegacyPredicate): boolean {
   switch (p.kind) {
     case "VS_SMA":
     case "NEAR_SMA":
@@ -312,17 +315,18 @@ export function needsIndicators(p: TriggerPredicate): boolean {
 // ── Levels, the cascade's gates, and the protective rules (levels.ts, ratchet.ts, price-levels.ts) ──
 
 /** levels.ts: inert without a position (the top-level kind only). */
-export function isPositionScoped(p: TriggerPredicate): boolean {
+export function isPositionScoped(p: LegacyPredicate): boolean {
   return new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH"]).has(p.kind);
 }
 
 /** levels.ts: the review clock a watched stock drops when inherited. */
-export function isInheritedClock(p: TriggerPredicate): boolean {
+export function isInheritedClock(p: LegacyPredicate): boolean {
   return p.kind === "REVIEW_CADENCE" && (p.from ?? "LAST_REVIEW") === "LAST_REVIEW";
 }
 
 /** levels.ts `protectiveTightestFirst`: the rank of a protective EXIT, lower kept first. */
-export function protectiveRank(t: { action: string; predicate: TriggerPredicate }, direction: string | null): number | null {
+export function protectiveRank(stored: { action: string; predicate: unknown }, direction: string | null): number | null {
+  const t = stored as { action: TriggerAction; predicate: LegacyPredicate };
   const isLong = direction !== "SHORT";
   if (t.action !== "EXIT") return null;
   if (protectiveExitCloseReason(t.predicate, direction ?? null) !== "STOP") {
@@ -343,9 +347,9 @@ export function protectiveRank(t: { action: string; predicate: TriggerPredicate 
 }
 
 /** ratchet.ts: does `next` protect less than `prev`. */
-export function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean {
+export function weakens(prev: LegacyPredicate, next: LegacyPredicate): boolean {
   if (prev.kind !== next.kind) return false;
-  const toCloseBasis = (p: TriggerPredicate, n: TriggerPredicate) =>
+  const toCloseBasis = (p: LegacyPredicate, n: LegacyPredicate) =>
     (p as { basis?: string }).basis !== "close" && (n as { basis?: string }).basis === "close";
   switch (prev.kind) {
     case "PRICE_BELOW":
@@ -370,7 +374,7 @@ export function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean
 }
 
 /** live-evaluate.ts and needs-action.ts: evaluable against a quote alone. */
-export function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
+export function isPriceOrTimePredicate(p: LegacyPredicate): boolean {
   const PRICE_OR_TIME_KINDS = new Set([
     "PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT", "GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "VS_SMA", "NEAR_SMA",
     "VOLUME_RATIO", "NEW_HIGH", "PCT_FROM_52W_HIGH", "RS_VS_SPY", "GAP_UP", "RSI", "INSIDER_CLUSTER",
@@ -382,13 +386,13 @@ export function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
   return false;
 }
 
-const ABSOLUTE = new Set<TriggerPredicate["kind"]>(["PRICE_ABOVE", "PRICE_BELOW"]);
-const PROJECTED = new Set<TriggerPredicate["kind"]>(["TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"]);
+const ABSOLUTE = new Set<LegacyPredicate["kind"]>(["PRICE_ABOVE", "PRICE_BELOW"]);
+const PROJECTED = new Set<LegacyPredicate["kind"]>(["TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"]);
 const isLongOf = (d: string | null | undefined) => d !== "SHORT";
 
 /** price-levels.ts: a level on the chart, as `canonicalLevels` read one (null when it is none). */
 export function chartLevel(
-  p: TriggerPredicate,
+  p: LegacyPredicate,
   ctx: { direction: string | null; avgCost?: number | null; peakPrice?: number | null; atr14?: number | null },
 ): { price: number; side: "UPSIDE" | "DOWNSIDE"; projected: boolean } | null {
   const absolute = ABSOLUTE.has(p.kind);
@@ -401,7 +405,8 @@ export function chartLevel(
 }
 
 /** price-levels.ts `levelSlotOf`. */
-export function levelSlotOf(t: { action: string; predicate: TriggerPredicate }, direction: string | null): "ENTRY" | "FLOOR" | "TARGET" | null {
+export function levelSlotOf(stored: { action: string; predicate: unknown }, direction: string | null): "ENTRY" | "FLOOR" | "TARGET" | null {
+  const t = stored as { action: TriggerAction; predicate: LegacyPredicate };
   if (!ABSOLUTE.has(t.predicate.kind)) return null;
   if (t.action === "ENTER") return "ENTRY";
   const side = levelSide(t.predicate, direction);
@@ -410,7 +415,8 @@ export function levelSlotOf(t: { action: string; predicate: TriggerPredicate }, 
 }
 
 /** price-levels.ts `isPlanLevel`. */
-export function isPlanLevel(t: { action: string; predicate: TriggerPredicate }, direction: string | null): boolean {
+export function isPlanLevel(stored: { action: string; predicate: unknown }, direction: string | null): boolean {
+  const t = stored as { action: TriggerAction; predicate: LegacyPredicate };
   if (!ABSOLUTE.has(t.predicate.kind)) return false;
   if (t.action === "ENTER" || t.action === "EXIT") return true;
   if (t.action !== "REVIEW") return false;
@@ -418,11 +424,11 @@ export function isPlanLevel(t: { action: string; predicate: TriggerPredicate }, 
 }
 
 /** price-levels.ts `priceOf`; demote.ts reads the same number (0 for none). */
-export function priceOf(p: TriggerPredicate): number | null {
+export function priceOf(p: LegacyPredicate): number | null {
   return p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW" ? p.level : null;
 }
 
-function levelSide(p: TriggerPredicate, direction: string | null): "UPSIDE" | "DOWNSIDE" | null {
+function levelSide(p: LegacyPredicate, direction: string | null): "UPSIDE" | "DOWNSIDE" | null {
   const long = isLongOf(direction);
   switch (p.kind) {
     case "PRICE_ABOVE":
@@ -439,7 +445,7 @@ function levelSide(p: TriggerPredicate, direction: string | null): "UPSIDE" | "D
 }
 
 function predicatePrice(
-  p: TriggerPredicate,
+  p: LegacyPredicate,
   ctx: { direction: string | null; avgCost?: number | null; peakPrice?: number | null; atr14?: number | null },
 ): number | null {
   const long = isLongOf(ctx.direction);
@@ -464,17 +470,18 @@ function predicatePrice(
 // ── The small readers of a typed price (rearm.ts, buy-crossing.ts, declined-sale.ts, trigger-evaluator.ts, complete-run.ts, agent-watch.ts) ──
 
 /** rearm.ts `isIntradayPriceBuy`, and the comparison it re-arms on. */
-export function isIntradayPriceBuy(t: { action: string; predicate: TriggerPredicate }): boolean {
+export function isIntradayPriceBuy(stored: { action: string; predicate: unknown }): boolean {
+  const t = stored as { action: TriggerAction; predicate: LegacyPredicate };
   const p = t.predicate;
   return t.action === "ENTER" && (p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW") && p.basis !== "close";
 }
-export function levelStillHeld(p: TriggerPredicate, price: number): boolean | null {
+export function levelStillHeld(p: LegacyPredicate, price: number): boolean | null {
   if (p.kind !== "PRICE_ABOVE" && p.kind !== "PRICE_BELOW") return null;
   return p.kind === "PRICE_ABOVE" ? price > p.level : price < p.level;
 }
 
 /** buy-crossing.ts `crossingLevel`. */
-export function crossingLevel(p: TriggerPredicate | null | undefined): { level: number; crossing: "ABOVE" | "BELOW" } | null {
+export function crossingLevel(p: LegacyPredicate | null | undefined): { level: number; crossing: "ABOVE" | "BELOW" } | null {
   if (!p) return null;
   if (p.kind === "PRICE_ABOVE" && typeof p.level === "number" && p.level > 0) {
     return { level: p.level, crossing: "ABOVE" };
@@ -486,7 +493,7 @@ export function crossingLevel(p: TriggerPredicate | null | undefined): { level: 
 }
 
 /** declined-sale.ts: the absolute floor on the side this direction is protected from, as a number. */
-export function protectedFloor(p: TriggerPredicate, direction: string | null): number | null {
+export function protectedFloor(p: LegacyPredicate, direction: string | null): number | null {
   const isLong = direction !== "SHORT";
   const wanted = isLong ? "PRICE_BELOW" : "PRICE_ABOVE";
   if (p.kind !== wanted) return null;
@@ -496,26 +503,26 @@ export function protectedFloor(p: TriggerPredicate, direction: string | null): n
 }
 
 /** trigger-evaluator.ts: the floor a DEMOTE names. */
-export function demoteFloor(p: TriggerPredicate, direction: string | null): number | null {
+export function demoteFloor(p: LegacyPredicate, direction: string | null): number | null {
   const short = direction === "SHORT";
   return p.kind === (short ? "PRICE_ABOVE" : "PRICE_BELOW") ? (p as { level: number }).level : null;
 }
 
 /** complete-run.ts: an EXIT on one of these is a protective rung (a floor or a trail). */
-export function isProtectiveExitKind(p: TriggerPredicate): boolean {
+export function isProtectiveExitKind(p: LegacyPredicate): boolean {
   return ["PRICE_BELOW", "PRICE_ABOVE", "TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"].includes(p.kind);
 }
 
 /** agent-watch.ts: a review schedule's days. */
-export function scheduleDays(p: TriggerPredicate): number | null {
+export function scheduleDays(p: LegacyPredicate): number | null {
   const q = p as { kind?: string; days?: unknown };
   if (q?.kind !== "REVIEW_CADENCE") return null;
   return typeof q.days === "number" && q.days > 0 ? q.days : null;
 }
 
 /** editable.ts (deleted): did the old popover offer a number to edit (the reject dialog lists only these). */
-export function hadEditableNumber(p: TriggerPredicate): boolean {
-  const one = (q: TriggerPredicate) =>
+export function hadEditableNumber(p: LegacyPredicate): boolean {
+  const one = (q: LegacyPredicate) =>
     ["PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT", "GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "REVIEW_CADENCE", "EARNINGS_WITHIN",
       "NEAR_SMA", "VOLUME_RATIO", "PCT_FROM_52W_HIGH", "GAP_UP", "RSI", "INSIDER_CLUSTER"].includes(q.kind);
   return p.kind === "AND" || p.kind === "OR" ? p.predicates.some((c) => c.kind !== "AND" && c.kind !== "OR" && one(c)) : one(p);

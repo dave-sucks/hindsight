@@ -62,7 +62,7 @@ describe("open fires on CEG", () => {
 
   it("needsAction keeps the fire open under the principal's edit (on main the edit answered it)", () => {
     const triggers = [
-      { id: FIFTEEN_OFF_HIGH, action: "REVIEW", predicate: { kind: "TRAILING_FROM_HIGH", pct: 15 }, rationale: "15% off the high" },
+      { id: FIFTEEN_OFF_HIGH, action: "REVIEW", predicate: { watch: "move", is: "below", value: 15, variable: "peak" }, rationale: "15% off the high" },
     ] as unknown as Trigger[];
     const na = computeNeedsAction({
       thesis: { id: "cmqb2ku1a000q04l6jtquuqr6", status: "HOLDING", direction: "LONG", triggers, createdAt: new Date("2026-06-12T15:16:50Z"), lastReviewedAt: new Date("2026-09-28T12:04:39Z") },

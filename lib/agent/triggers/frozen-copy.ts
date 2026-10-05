@@ -5,7 +5,7 @@
  * target, the catalyst exit, the review clock. A thesis rung beats every
  * rule above it, so a copy stamped on the stock freezes yesterday's number
  * and makes the seat's Triggers tab powerless. ABT carries
- * `TRAILING_FROM_HIGH 25 → EXIT` on the thesis; change the Compounder's 25
+ * `sell if 25% off the high` on the thesis; change the Compounder's 25
  * tomorrow and ABT keeps 25.
  *
  * ── `source` cannot decide this, and it is worth saying why ───────────
@@ -55,40 +55,35 @@
  */
 
 import { triggerBucket } from "./bucket";
+import { isGroup, measureOf, shapeOf } from "./condition";
 import type { Trigger } from "./types";
 
 /**
  * Is this the kind of rule that belongs to the seat or the account rather
- * than to one stock? Keyed on (kind, action), because the same predicate
- * means different things under different actions — `GAIN_FROM_ENTRY` is
- * seat policy as a REVIEW and this stock's own 2R partial as a TRIM.
+ * than to one stock? Read with its action, because the same condition means
+ * different things under different actions — "up 15% from our entry" is seat
+ * policy as a REVIEW and this stock's own 2R partial as a TRIM. The rules
+ * about how to trade a position: an add on a day's or a week's move, a gain
+ * review, a trail, an earnings-result review.
  */
-export function isPortfolioPolicyRung(t: {
-  predicate: { kind: string };
-  action: string;
-}): boolean {
-  switch (t.predicate.kind) {
-    case "PRICE_MOVE_PCT":
-      return t.action === "ADD";
-    case "GAIN_FROM_ENTRY":
-      return t.action === "REVIEW";
-    case "TRAILING_FROM_HIGH":
-      return true;
-    case "EARNINGS_BEAT":
-    case "EARNINGS_MISS":
-      return t.action === "REVIEW";
-    default:
-      return false;
-  }
+export function isPortfolioPolicyRung(t: { predicate: unknown; action: string }): boolean {
+  const w = shapeOf(t.predicate);
+  if (!w || isGroup(w)) return false;
+  if (w.variable === "peak") return true;
+  if (w.variable === "entry") return t.action === "REVIEW";
+  if (w.variable === "prev_close" || w.variable === "close_5d" || w.variable === "close_20d") return t.action === "ADD";
+  return measureOf(w).type === "earnings" && (w.is === "beat" || w.is === "miss") && t.action === "REVIEW";
 }
 
-/** The number a rung is set at, for "is this the same rung at the same level". */
-export function triggerValue(t: { predicate: Record<string, unknown> }): number | null {
-  for (const key of ["pct", "level", "days", "min", "max", "minSurprisePct"]) {
-    const v = t.predicate[key];
-    if (typeof v === "number") return v;
-  }
-  return null;
+/**
+ * The number a rung is set at, for "is this the same rung at the same level".
+ * A measure whose 0 reads as "any amount" (an earnings beat of any size) has
+ * no number there: the account's "any beat" is not the same rung as a stock's.
+ */
+export function triggerValue(t: { predicate: unknown }): number | null {
+  const w = shapeOf(t.predicate);
+  if (!w || isGroup(w) || w.value == null) return null;
+  return w.value === 0 && measureOf(w).value.zero ? null : w.value;
 }
 
 export type CopyReason = "SAME_SENTENCE_ELSEWHERE" | "SAME_RUNG_SAME_NUMBER";

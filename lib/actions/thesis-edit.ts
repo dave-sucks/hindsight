@@ -15,18 +15,16 @@
  * whose `fieldChanges.triggerOps` IS the change. No Alpaca, no approval.
  */
 
-import { POSITION_SCOPED_KINDS, THESIS_ADDABLE_KINDS } from "@/lib/agent/triggers/addable";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { addablePredicateProblem, plainConditions } from "@/lib/agent/triggers/two-conditions";
 import {
   applyTriggerCooldownDefaults,
   defaultFireModeForAction,
 } from "@/lib/agent/triggers/defaults";
-import { predicateSentence } from "@/lib/agent/triggers/format";
+import { addProblem, conditionSentence, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -37,12 +35,9 @@ import {
   checkLadder,
   type TriggerOp,
 } from "@/lib/agent/triggers/ops";
-import type {
-  Trigger,
-  TriggerAction,
-  TriggerPredicate,
-} from "@/lib/agent/triggers/types";
+import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import type { When } from "@/lib/agent/triggers/condition";
 
 export interface ThesisEditContext {
   accountId: string;
@@ -70,7 +65,7 @@ export class ThesisEditError extends Error {
  */
 export function buildPrincipalTrigger(input: {
   action: TriggerAction;
-  predicate: TriggerPredicate;
+  predicate: When;
   fireMode?: "TACTICAL" | "DIRECT";
   rationale?: string;
   cooldownDays?: number;
@@ -356,18 +351,14 @@ async function runPrincipalOp(
 
 // ── Add / replace / delete ────────────────────────────────────────────
 
-/** Predicate kinds the add path accepts on a stock. The one list lives in
- *  lib/agent/triggers/addable so the trigger dialog offers exactly these. */
-export const ADDABLE_PREDICATE_KINDS = THESIS_ADDABLE_KINDS;
-
-/** Kinds that evaluate off the open position (avgCost / peakPrice). With no
- *  position they return false forever — a silent missed-trigger footgun —
- *  so the add path refuses to mint them on an un-held thesis. */
-const POSITION_SCOPED_PREDICATE_KINDS = POSITION_SCOPED_KINDS;
+/** A condition measured from the open position (our entry, the high since we
+ *  bought) is false forever with no position — a silent missed trigger — so
+ *  the add path refuses it on an un-held thesis. */
+const offPosition = (p: When) => conditionsOf(p).some((c) => fromPosition(c));
 
 export interface TriggerAddInput {
   action: TriggerAction;
-  predicate: TriggerPredicate;
+  predicate: When;
   /** Omit ⇒ defaultFireModeForAction (EXIT→DIRECT, else TACTICAL). */
   fireMode?: "TACTICAL" | "DIRECT";
   /** Omit ⇒ a generated default sentence. */
@@ -385,49 +376,9 @@ export interface TriggerAddResult {
   synced: { stopLoss?: number; targetPrice?: number };
 }
 
-/** A friendly rationale for a principal-added trigger when none was supplied. */
-function addedTriggerRationale(
-  action: TriggerAction,
-  predicate: TriggerPredicate,
-): string {
-  // A clock is a schedule, not a condition — "Review when every 7 days since
-  // the last review" is not a sentence.
-  if (predicate.kind === "REVIEW_CADENCE") {
-    const from = predicate.from ?? "LAST_REVIEW";
-    if (from === "LAST_REVIEW") {
-      return `Look at this every ${predicate.days} day(s), from the last review (set by principal).`;
-    }
-    const when =
-      from === "BUY"
-        ? `${predicate.days} day(s) after the buy`
-        : `${predicate.days} day(s) ${(predicate.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event date on the thesis`;
-    switch (action) {
-      case "EXIT":
-        return `Sell ${when} if still held (set by principal).`;
-      case "ADD":
-        return `Consider adding ${when} (set by principal).`;
-      case "TRIM":
-        return `Trim ${when} (set by principal).`;
-      default:
-        return `Review ${when} (set by principal).`;
-    }
-  }
-  const cond = predicateSentence(predicate).toLowerCase();
-  switch (action) {
-    case "EXIT":
-      return `Exit when ${cond} (set by principal).`;
-    case "ENTER":
-      return `Consider entry when ${cond} (set by principal).`;
-    case "ADD":
-      return `Scale in when ${cond} (set by principal).`;
-    case "TRIM":
-      return `Trim when ${cond} (set by principal).`;
-    case "MOVE_STOP":
-      return `Move the stop when ${cond} (set by principal).`;
-    case "REVIEW":
-    default:
-      return `Review when ${cond} (set by principal).`;
-  }
+/** A rationale for a principal-added trigger when none was supplied: the trigger in words. */
+function addedTriggerRationale(action: TriggerAction, predicate: When): string {
+  return `${sentenceOf({ action, predicate })} (set by principal).`;
 }
 
 export async function applyTriggerAdd(
@@ -435,14 +386,14 @@ export async function applyTriggerAdd(
   input: TriggerAddInput,
   ctx: ThesisEditContext,
 ): Promise<TriggerAddResult> {
-  const problem = addablePredicateProblem(input.predicate, (k) => ADDABLE_PREDICATE_KINDS.has(k));
+  const problem = addProblem(input.predicate, "THESIS");
   if (problem) throw new ThesisEditError("INVALID", problem);
   let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
   const outcome = await runPrincipalOp(
     thesisId,
     ctx,
     (thesis) => {
-      if (plainConditions(input.predicate).some((c) => POSITION_SCOPED_PREDICATE_KINDS.has(c.kind)) && !thesis.position) {
+      if (offPosition(input.predicate) && !thesis.position) {
         throw new ThesisEditError(
           "INVALID",
           "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be added to a held (HOLDING) thesis.",
@@ -465,12 +416,12 @@ export async function applyTriggerAdd(
       };
     },
     (thesis) => ({
-      summary: `Principal added ${thesis.ticker} trigger — ${predicateSentence(input.predicate)} → ${input.action.toLowerCase()}`,
+      summary: `Principal added ${thesis.ticker} trigger — ${sentenceOf(input)}`,
       // Fire mode is only mentioned where it means something (EXIT). A
       // REVIEW trigger's fire batches into the next daily run — naming a
       // fire mode on it would claim a tactical wake that never happens
       // (DAV-226).
-      rationale: `[USER] Added a "${input.action}" trigger (${predicateSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
+      rationale: `[USER] Added a "${input.action}" trigger (${conditionSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -489,14 +440,14 @@ export async function applyTriggerReplace(
   input: TriggerAddInput,
   ctx: ThesisEditContext,
 ): Promise<TriggerAddResult> {
-  const problem = addablePredicateProblem(input.predicate, (k) => ADDABLE_PREDICATE_KINDS.has(k));
+  const problem = addProblem(input.predicate, "THESIS");
   if (problem) throw new ThesisEditError("INVALID", problem);
   let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
   const outcome = await runPrincipalOp(
     thesisId,
     ctx,
     (thesis) => {
-      if (plainConditions(input.predicate).some((c) => POSITION_SCOPED_PREDICATE_KINDS.has(c.kind)) && !thesis.position) {
+      if (offPosition(input.predicate) && !thesis.position) {
         throw new ThesisEditError(
           "INVALID",
           "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be set on a held (HOLDING) thesis.",
@@ -515,8 +466,8 @@ export async function applyTriggerReplace(
       };
     },
     (thesis) => ({
-      summary: `Principal changed ${thesis.ticker} trigger — ${predicateSentence(input.predicate)} → ${input.action.toLowerCase()}`,
-      rationale: `[USER] Changed a trigger to "${input.action}" (${predicateSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
+      summary: `Principal changed ${thesis.ticker} trigger — ${sentenceOf(input)}`,
+      rationale: `[USER] Changed a trigger to "${input.action}" (${conditionSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -551,16 +502,16 @@ export async function applyTriggerDelete(
     () => ({ op: "remove", id: triggerId }),
     (thesis) => {
       const target = thesis.triggers.find((t) => t.id === triggerId)!;
-      const what = `${predicateSentence(target.predicate)} → ${target.action.toLowerCase()}`;
+      const what = sentenceOf(target);
       if (why) {
         return {
           summary: `Removed a copied rule from ${thesis.ticker} — ${what}`,
-          rationale: `[USER] Removed the "${target.action}" trigger (${predicateSentence(target.predicate)}) in the cleanup of copied rules: ${why}. Don't re-create it on the stock.`,
+          rationale: `[USER] Removed the "${target.action}" trigger (${conditionSentence(target.predicate)}) in the cleanup of copied rules: ${why}. Don't re-create it on the stock.`,
         };
       }
       return {
         summary: `Principal removed ${thesis.ticker} trigger — ${what}`,
-        rationale: `[USER] Removed the "${target.action}" trigger (${predicateSentence(target.predicate)}). Don't re-create it unless the thesis materially changes.`,
+        rationale: `[USER] Removed the "${target.action}" trigger (${conditionSentence(target.predicate)}). Don't re-create it unless the thesis materially changes.`,
       };
     },
   );

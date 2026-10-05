@@ -359,7 +359,7 @@ The morning playbook (your daily run, 8 AM ET):
 - Cross-reference against your universe (≥$5B market cap floor for liquidity).
 - Build 3-5 candidate setups. For each, write a WATCHING thesis with:
   - Direction (LONG for breakout / gap-up follow-through, SHORT for breakdown / failed bounce)
-  - Entry trigger: ABSOLUTE PRICE_ABOVE (breakout level) or PRICE_BELOW (breakdown level). Don't use windowed-percent triggers — they don't fire on the intraday cron.
+  - Entry trigger: a typed price, above the breakout level or below the breakdown level. Don't use a % move over days — it doesn't fire on the intraday cron.
   - Stop trigger: tight, absolute. 1-2% from entry, or below the morning consolidation low.
   - Target trigger: realistic for one session. 2:1 R/R minimum.
   - Action ADD on entry trigger, EXIT on stop trigger.

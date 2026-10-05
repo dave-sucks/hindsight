@@ -7,6 +7,7 @@
  * gets shown instead.
  */
 
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import {
   applyLevelArgs,
   levelLabelState,
@@ -15,7 +16,8 @@ import {
 } from "./price-levels";
 import { resolveLadder } from "./levels";
 import type { ResolvedTrigger } from "./levels";
-import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
+import type { Trigger, TriggerAction } from "./types";
+import type { Condition, When } from "@/lib/agent/triggers/condition";
 
 // ── Builders ───────────────────────────────────────────────────────────
 
@@ -23,7 +25,7 @@ let seq = 0;
 const nextId = () => `t${++seq}`;
 
 function trig(
-  predicate: TriggerPredicate,
+  predicate: When,
   action: TriggerAction,
   over: Partial<Trigger> = {},
 ): Trigger {
@@ -40,8 +42,8 @@ function resolved(t: Trigger, over: Partial<ResolvedTrigger> = {}): ResolvedTrig
   return { ...t, level: "THESIS", inherited: false, ...over };
 }
 
-const below = (level: number) => ({ kind: "PRICE_BELOW" as const, level });
-const above = (level: number) => ({ kind: "PRICE_ABOVE" as const, level });
+const below = (level: number): Condition => ({ watch: "price", is: "below", value: level });
+const above = (level: number): Condition => ({ watch: "price", is: "above", value: level });
 
 beforeEach(() => {
   seq = 0;
@@ -115,21 +117,15 @@ describe("floor vs target", () => {
     // a close above $43.35. The buy has no one entry price, but it is a buy.
     const levels = canonicalLevels({
       triggers: [
-        resolved(trig({ kind: "PRICE_BELOW", level: 27 }, "REVIEW", { id: "dip" })),
+        resolved(trig({ watch: "price", is: "below", value: 27 }, "REVIEW", { id: "dip" })),
         resolved(
           trig(
-            {
-              kind: "AND",
-              predicates: [
-                { kind: "PRICE_ABOVE", level: 36.95, basis: "close" },
-                { kind: "VOLUME_RATIO", min: 1.5 },
-              ],
-            },
+            { match: "all", conditions: [{ watch: "price", is: "above", value: 36.95, settings: { close: true } }, { watch: "volume", value: 1.5 }] },
             "ENTER",
             { id: "buy" },
           ),
         ),
-        resolved(trig({ kind: "PRICE_ABOVE", level: 43.35, basis: "close" }, "REVIEW", { id: "t" })),
+        resolved(trig({ watch: "price", is: "above", value: 43.35, settings: { close: true } }, "REVIEW", { id: "t" })),
       ],
       direction: null,
       status: "WATCHING",
@@ -210,7 +206,7 @@ describe("projected levels", () => {
     const levels = canonicalLevels({
       triggers: [
         resolved(
-          trig({ kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT", { id: "trail" }),
+          trig({ watch: "move", is: "below", value: 8, variable: "peak" }, "EXIT", { id: "trail" }),
         ),
       ],
       direction: "LONG",
@@ -227,7 +223,7 @@ describe("projected levels", () => {
       triggers: [
         resolved(trig(below(680), "EXIT", { id: "typed" })),
         resolved(
-          trig({ kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT", { id: "trail" }),
+          trig({ watch: "move", is: "below", value: 8, variable: "peak" }, "EXIT", { id: "trail" }),
         ),
       ],
       direction: "LONG",
@@ -244,7 +240,7 @@ describe("projected levels", () => {
     const levels = canonicalLevels({
       triggers: [
         resolved(
-          trig({ kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT", { id: "trail" }),
+          trig({ watch: "move", is: "below", value: 8, variable: "peak" }, "EXIT", { id: "trail" }),
         ),
       ],
       direction: "LONG",
@@ -260,7 +256,7 @@ describe("projected levels", () => {
       triggers: [
         resolved(trig(below(680), "EXIT", { id: "typed" })),
         resolved(
-          trig({ kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT", { id: "trail" }),
+          trig({ watch: "move", is: "below", value: 8, variable: "peak" }, "EXIT", { id: "trail" }),
         ),
       ],
       direction: "LONG",
@@ -458,7 +454,7 @@ describe("resolveLadder tie-break", () => {
     const out = resolveLadder({
       thesis: [
         trig(above(1150), "REVIEW", { id: "a" }),
-        trig({ kind: "NEAR_SMA", period: 50, withinPct: 2 }, "REVIEW", { id: "b" }),
+        trig({ watch: "move", is: "near", value: 2, variable: "sma50" }, "REVIEW", { id: "b" }),
       ],
       direction: "LONG",
     });
@@ -515,7 +511,7 @@ describe("the SNOW row, end to end", () => {
       resolved(trig(below(320), "REVIEW", { id: "warn" })),
       resolved(trig(above(340), "REVIEW", { id: "chk" })),
       resolved(
-        trig({ kind: "TRAILING_FROM_HIGH", pct: 3 }, "EXIT", { id: "trail" }),
+        trig({ watch: "move", is: "below", value: 3, variable: "peak" }, "EXIT", { id: "trail" }),
       ),
     ],
     direction: "LONG",
@@ -641,7 +637,7 @@ describe("the EME case: a reject-UI floor under an inherited trail", () => {
   // "$753" it would be a NEW way for it to lie, inside the work that exists
   // to stop it lying.
   const accountTrail = resolved(
-    trig({ kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT", { id: "acct-trail" }),
+    trig({ watch: "move", is: "below", value: 8, variable: "peak" }, "EXIT", { id: "acct-trail" }),
     { level: "ACCOUNT", inherited: true },
   );
   const eme = {
@@ -742,7 +738,7 @@ describe("two protective floors of different kinds", () => {
   // backfill all 8 will. They are different predicate shapes, so the cascade
   // keeps BOTH — the slot has to choose, and the choice is the one that binds.
   const trail = (pct: number, id: string) =>
-    resolved(trig({ kind: "TRAILING_FROM_HIGH", pct }, "EXIT", { id }), {
+    resolved(trig({ watch: "move", is: "below", value: pct, variable: "peak" }, "EXIT", { id }), {
       level: "ACCOUNT",
       inherited: true,
     });
@@ -786,7 +782,7 @@ describe("review cadence reaches a thesis that has none of its own", () => {
   // and they only get one by inheriting it. If the account has no cadence,
   // nothing anywhere does, and the daily run goes quiet with no error.
   const cadence = (days: number, id: string) =>
-    trig({ kind: "REVIEW_CADENCE", days }, "REVIEW", { id });
+    trig({ watch: "repeat", value: days }, "REVIEW", { id });
 
   it("resolves the account's cadence onto a bare thesis", () => {
     const ladder = resolveLadder({
@@ -794,7 +790,7 @@ describe("review cadence reaches a thesis that has none of its own", () => {
       account: [cadence(7, "acct")],
       direction: "LONG",
     });
-    const found = ladder.find((t) => t.predicate.kind === "REVIEW_CADENCE");
+    const found = ladder.find((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
     expect(found?.id).toBe("acct");
     expect(found?.inherited).toBe(true);
   });
@@ -805,7 +801,7 @@ describe("review cadence reaches a thesis that has none of its own", () => {
       account: [cadence(7, "acct")],
       direction: "LONG",
     });
-    const found = ladder.filter((t) => t.predicate.kind === "REVIEW_CADENCE");
+    const found = ladder.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
     expect(found).toHaveLength(1);
     expect(found[0].id).toBe("mine");
     expect(found[0].overrides?.level).toBe("ACCOUNT");
@@ -815,7 +811,7 @@ describe("review cadence reaches a thesis that has none of its own", () => {
     // Exactly the production state before the migration: 0 accounts,
     // 0 analysts and 0 theses carrying one. Nothing errors; reviews just stop.
     const ladder = resolveLadder({ thesis: [], account: [], direction: "LONG" });
-    expect(ladder.find((t) => t.predicate.kind === "REVIEW_CADENCE")).toBeUndefined();
+    expect(ladder.find((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBeUndefined();
   });
 });
 

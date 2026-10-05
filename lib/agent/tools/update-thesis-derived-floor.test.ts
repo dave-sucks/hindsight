@@ -72,9 +72,9 @@ function etnRow() {
 
 function ladder(buyLevel: number) {
   return [
-    { id: "buy", predicate: { kind: "PRICE_ABOVE", level: buyLevel }, action: "ENTER", rationale: "Buy on a clean breakout." },
-    { id: "target", predicate: { kind: "PRICE_ABOVE", level: 490 }, action: "REVIEW", rationale: "Target $490 — decide here." },
-    { id: "floor", predicate: { kind: "PRICE_BELOW", level: 355 }, action: "EXIT", rationale: "Floor — sell if the price drops to $355." },
+    { id: "buy", predicate: { watch: "price", is: "above", value: buyLevel }, action: "ENTER", rationale: "Buy on a clean breakout." },
+    { id: "target", predicate: { watch: "price", is: "above", value: 490 }, action: "REVIEW", rationale: "Target $490 — decide here." },
+    { id: "floor", predicate: { watch: "price", is: "below", value: 355 }, action: "EXIT", rationale: "Floor — sell if the price drops to $355." },
   ];
 }
 

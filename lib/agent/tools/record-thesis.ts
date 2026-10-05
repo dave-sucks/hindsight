@@ -297,7 +297,7 @@ const thesisFields = z.object({
   triggers: triggersInputArraySchema
     .optional()
     .describe(
-      "The trigger ladder. Omit it to accept the horizon defaults. The review clock lives here like any other rung — include a REVIEW_CADENCE trigger to have this name reviewed on a schedule, and leave it out to have nothing review it until one of its other triggers fires. Nothing adds a clock for you.",
+      "The trigger ladder. Omit it to accept the horizon defaults. The review clock lives here like any other rung — include a review schedule ({ watch: 'repeat', value: days }) to have this name reviewed on a schedule, and leave it out to have nothing review it until one of its other triggers fires. Nothing adds a clock for you.",
     ),
   catalyst_date: z
     .string()
@@ -306,7 +306,7 @@ const thesisFields = z.object({
     .describe(
       "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (time-bounded by its review rung) or TARGET (open-ended).",
     ),
-  // next_review_at is gone (DAV-221). Review timing is a REVIEW_CADENCE
+  // next_review_at is gone (DAV-221). Review timing is a review-clock
   // trigger counted from the last actual review; the mint templates stamp it.
   // Explicit status arg. Daily watchlist-review and weekly discovery both
   // need to write WATCHING; trade-eligible coverage stays ACTIVE. When
@@ -326,7 +326,7 @@ const thesisFields = z.object({
     .optional()
     .describe(
       "A LONG/SHORT mint lands WATCHING (a buy happens through place_trade, never here). " +
-        "PASS alone = terminal (recorded as Passed, no triggers, never woken). PASS + status:'WATCHING' = 'no view yet, but keep the name in view' — it stores no direction and no committed plan, carries whatever triggers you give it (including none), and is reviewed on a schedule only if you include a REVIEW_CADENCE trigger in `triggers` — the review clock is an ordinary trigger, and omitting it means nothing looks at the name until one of its other triggers fires. Use it when you're out of dispatch slots or the setup isn't ripe — a capacity rejection keeps the name, it isn't a terminal PASS.",
+        "PASS alone = terminal (recorded as Passed, no triggers, never woken). PASS + status:'WATCHING' = 'no view yet, but keep the name in view' — it stores no direction and no committed plan, carries whatever triggers you give it (including none), and is reviewed on a schedule only if you include a review schedule ({ watch: 'repeat', value: days }) in `triggers` — the review clock is an ordinary trigger, and omitting it means nothing looks at the name until one of its other triggers fires. Use it when you're out of dispatch slots or the setup isn't ripe — a capacity rejection keeps the name, it isn't a terminal PASS.",
     ),
 
   // ── Recently-sold acknowledgment (P1-35 Half B — the XENE re-buy guard) ──
@@ -771,7 +771,7 @@ export const recordThesis = defineTool({
       // `fundamentals` sub-key had zero readers. The column itself drops
       // in PR-5 after the soak.
 
-      // The review clock has one home (DAV-221): a REVIEW_CADENCE trigger,
+      // The review clock has one home (DAV-221): a review-clock trigger,
       // counted from the last actual review (createdAt until the first one).
       // There is no date column to seed. Held templates stamp one; watching
       // templates do not, so a watched name is scheduled only if the caller
@@ -833,7 +833,7 @@ export const recordThesis = defineTool({
       // plan. It is an ordinary watched row, not a tier of its own — it
       // carries whatever triggers the caller gave it (including none), and
       // it is reviewed on a schedule only if the caller sent a
-      // REVIEW_CADENCE trigger of its own (DAV-209).
+      // review-clock trigger of its own (DAV-209).
       const passKeepsWatch =
         args.direction === "PASS" && args.status === "WATCHING";
 
@@ -925,7 +925,7 @@ export const recordThesis = defineTool({
       // they want to see first — but that reading needs the price. Fresh
       // quote first, the caller's `current_price` second. With neither, a
       // priced mint is REFUSED rather than guessed: the old fail-open picked
-      // "breakout" and wrote HPE's $54.75 pullback as PRICE_ABOVE against a
+      // "breakout" and wrote HPE's $54.75 pullback as price-above against a
       // $57.08 price on 2026-09-09 (quote failed, three writers in parallel),
       // a buy that could only fire after a dip below and a re-cross.
       let quoteForEntrySide: number | null = null;
@@ -1050,7 +1050,7 @@ export const recordThesis = defineTool({
       // The re-stamp that used to sit here is gone (DAV-209). It re-added a
       // review clock to every directional mint that lacked one, which is why
       // "buy at $X, no schedule" could not be written in a single call. The
-      // clock is an ordinary REVIEW_CADENCE trigger: send one in `triggers`
+      // clock is an ordinary review-clock trigger: send one in `triggers`
       // to get one, send none to get none.
 
       // ── ENTER-trigger guard (shared with update_thesis) ─────────────

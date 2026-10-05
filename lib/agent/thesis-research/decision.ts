@@ -17,8 +17,8 @@
  */
 
 import { z } from "zod";
-import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { modelEditTriggerOpSchema, modelTriggerSchema } from "@/lib/agent/triggers/model-schema";
+import { editNumber, editTriggerOpSchema, triggerInputSchema, triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { shapeOf } from "@/lib/agent/triggers/condition";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { SETUP_IDS, type Setup } from "@/lib/agent/knowledge/setups";
 
@@ -100,7 +100,7 @@ export const thesisDecisionSchema = z.object({
       "REQUIRED when this analyst SOLD this ticker within the last 14 days and your entry_price is at/above that exit price (the exit details are in your prompt). One line that genuinely engages with the sale — why this is a new setup, not a re-buy of the dip just sold. Omit when no recent sale applies.",
     ),
   triggers: z
-    .array(modelTriggerSchema)
+    .array(triggerInputSchema)
     .optional()
     .describe(
       "MINT ONLY. Optional custom trigger ladder; omit to accept the horizon-default template (right answer for most theses). " +
@@ -108,13 +108,13 @@ export const thesisDecisionSchema = z.object({
     ),
   // ── Refresh: triggers change one at a time (DAV-242) ─────────────────
   add_triggers: z
-    .array(modelTriggerSchema)
+    .array(triggerInputSchema)
     .optional()
     .describe("REFRESH ONLY. Triggers to add. Adding where one exists in the same bucket edits that one."),
   edit_triggers: z
-    .array(modelEditTriggerOpSchema)
+    .array(editTriggerOpSchema)
     .optional()
-    .describe("REFRESH ONLY. Edit a trigger by the id shown in EXISTING THESIS. A level / pct / days change REQUIRES rationale."),
+    .describe("REFRESH ONLY. Edit a trigger by the id shown in EXISTING THESIS. A value change REQUIRES rationale."),
   remove_trigger_ids: z
     .array(z.string())
     .optional()
@@ -387,8 +387,8 @@ export function validateThesisDecision(
     errors.push("add_triggers / edit_triggers / remove_trigger_ids: a mint has no existing triggers to edit — send `triggers` (or omit it for the horizon defaults).");
   }
   for (const e of d.edit_triggers ?? []) {
-    if ((e.level !== undefined || e.pct !== undefined || e.days !== undefined) && !e.rationale?.trim()) {
-      errors.push(`edit_triggers[${e.id}]: a level / pct / days change requires a rationale — the sentence moves with the number.`);
+    if (editNumber(e).value !== undefined && !e.rationale?.trim()) {
+      errors.push(`edit_triggers[${e.id}]: a value change requires a rationale — the sentence moves with the number.`);
     }
   }
 
@@ -412,7 +412,7 @@ export function validateThesisDecision(
         ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints, target the prior high at ≥ 2R. `
         : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop and a target at ≥ 2R. ";
     errors.push(
-      `levels: a ${d.direction} with no entry, no trigger and no review can never come back — nothing on the stock can fire. ${plan}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({kind:"PRICE_BELOW", level}) or a short day count ({kind:"REVIEW_CADENCE", days}). Or PASS with the reason.`,
+      `levels: a ${d.direction} with no entry, no trigger and no review can never come back — nothing on the stock can fire. ${plan}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );
   }
 
@@ -496,9 +496,9 @@ export function readOneTrigger(item: unknown): { trigger: z.infer<typeof trigger
 
   // An invented review kind with a day count ("REVIEW_AFTER_DAYS", IBRX
   // 2026-09-25) means "look again in N days" — the review cadence.
-  if (pred && typeof pred.days === "number" && obj?.action === "REVIEW" && !KNOWN_KINDS.has(kind)) {
+  if (pred && typeof pred.days === "number" && obj?.action === "REVIEW" && shapeOf(pred) == null) {
     const days = Math.min(Math.max(Math.round(pred.days), 1), 365);
-    const asCadence = triggerSchema.safeParse({ ...obj, predicate: { kind: "REVIEW_CADENCE", days } });
+    const asCadence = triggerSchema.safeParse({ ...obj, predicate: { watch: "repeat", value: days } });
     if (asCadence.success) {
       return { trigger: asCadence.data, note: `Trigger kind "${kind}" isn't one the app evaluates; saved as a review in ${days} days.` };
     }
@@ -509,8 +509,3 @@ export function readOneTrigger(item: unknown): { trigger: z.infer<typeof trigger
   return { trigger: null, note: `Dropped one trigger the app couldn't read (${where}: ${issue?.message ?? "invalid"}; kind ${kind}).` };
 }
 
-const KNOWN_KINDS = new Set([
-  "PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT", "GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "VS_SMA", "NEAR_SMA",
-  "VOLUME_RATIO", "NEW_HIGH", "PCT_FROM_52W_HIGH", "RS_VS_SPY", "GAP_UP", "RSI", "INSIDER_CLUSTER", "EARNINGS_BEAT",
-  "EARNINGS_MISS", "EARNINGS_WITHIN", "EARNINGS_SINCE", "SEC_EVENT", "REVIEW_CADENCE", "AND", "OR",
-]);

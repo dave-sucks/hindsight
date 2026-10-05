@@ -44,7 +44,7 @@ const iotThesis = (over: Record<string, unknown> = {}) =>
     triggers: [
       {
         id: "trg_floor",
-        predicate: { kind: "PRICE_BELOW", level: FLOOR },
+        predicate: { watch: "price", is: "below", value: FLOOR },
         action: "EXIT",
         rationale: "Protective floor.",
         cooldownDays: 0,
@@ -230,7 +230,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
 describe("DAV-315 — what a decline does NOT unlock", () => {
   const TRAIL = {
     id: "trg_trail",
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 },
+    predicate: { watch: "move", is: "below", value: 8, variable: "peak" },
     action: "EXIT",
     rationale: "Seat trail.",
     cooldownDays: 0,

@@ -143,7 +143,7 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     conviction: "MEDIUM",
     conviction_rationale: "The fundamental PEAD signal is genuine, but two gap-downs have damaged the structure enough that I can't price a clean entry right now.",
     remove_trigger_ids: ["buy-57.25", "floor-54.90", "target-66.50"],
-    edit_triggers: [{ id: "review-20d", level: 54.48, rationale: "Anchor the review to the rising 20-day" }],
+    edit_triggers: [{ id: "review-20d", value: 54.48, rationale: "Anchor the review to the rising 20-day" }],
   };
   const opts = { mode: "refresh" as const, existingStatus: "WATCHING", existingTargetPrice: 66.5, setups: PEAD_SEAT, chart };
 
@@ -225,7 +225,7 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
       {
         action: "REVIEW",
         cooldownDays: 3,
-        predicate: { kind: "PRICE_BELOW", level: 65 },
+        predicate: { watch: "price", is: "below", value: 65 },
         rationale: "Pullback to the rising 20-day (~$64.50) — evaluate entry with stop $61.52 and target $82.96.",
       },
     ],

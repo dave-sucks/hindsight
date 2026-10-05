@@ -57,15 +57,15 @@ describe("INSIDER_CLUSTER — the trigger kind", () => {
   const ctx = (now: string) => ({ indicators: snap, thesis: { createdAt: new Date() }, now: new Date(now) });
 
   it("fires at three buyers in 30 days, not at four", () => {
-    expect(evaluateTrigger({ kind: "INSIDER_CLUSTER", minBuyers: 3, days: 30 }, ctx("2026-06-20T12:00:00Z"))).toBe(true);
-    expect(evaluateTrigger({ kind: "INSIDER_CLUSTER", minBuyers: 4, days: 30 }, ctx("2026-06-20T12:00:00Z"))).toBe(false);
+    expect(evaluateTrigger({ watch: "insiders", value: 3, settings: { days: 30 } }, ctx("2026-06-20T12:00:00Z"))).toBe(true);
+    expect(evaluateTrigger({ watch: "insiders", value: 4, settings: { days: 30 } }, ctx("2026-06-20T12:00:00Z"))).toBe(false);
   });
   it("stops firing once the buys age out", () => {
-    expect(evaluateTrigger({ kind: "INSIDER_CLUSTER", minBuyers: 3, days: 30 }, ctx("2026-07-05T12:00:00Z"))).toBe(false);
+    expect(evaluateTrigger({ watch: "insiders", value: 3, settings: { days: 30 } }, ctx("2026-07-05T12:00:00Z"))).toBe(false);
   });
   it("is false with no insider data on the snapshot", () => {
     expect(
-      evaluateTrigger({ kind: "INSIDER_CLUSTER", minBuyers: 1, days: 30 }, {
+      evaluateTrigger({ watch: "insiders", value: 1, settings: { days: 30 } }, {
         indicators: {} as IndicatorSnapshot,
         thesis: { createdAt: new Date() },
         now: new Date(),
@@ -73,8 +73,8 @@ describe("INSIDER_CLUSTER — the trigger kind", () => {
     ).toBe(false);
   });
   it("the schema accepts it and bounds it", () => {
-    expect(triggerPredicateSchema.safeParse({ kind: "INSIDER_CLUSTER", minBuyers: 3, days: 30 }).success).toBe(true);
-    expect(triggerPredicateSchema.safeParse({ kind: "INSIDER_CLUSTER", minBuyers: 3, days: 120 }).success).toBe(false);
+    expect(triggerPredicateSchema.safeParse({ watch: "insiders", value: 3, settings: { days: 30 } }).success).toBe(true);
+    expect(triggerPredicateSchema.safeParse({ watch: "insiders", value: 3, settings: { days: 120 } }).success).toBe(false);
   });
 });
 

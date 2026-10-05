@@ -17,7 +17,6 @@
 
 export interface CoFired {
   triggerId: string;
-  predicateKind: string;
   /** The fire in words, for the kickoff and the audit row. */
   sentence: string;
 }
@@ -26,17 +25,15 @@ interface Foldable {
   thesisId: string;
   triggerId: string;
   action: string;
-  predicateKind: string;
+  /** The trigger in words ("Sell if below $969"). */
+  sentence: string;
   firedContext?: string | null;
   coFired?: CoFired[];
 }
 
 const PROTECTIVE = new Set(["EXIT", "TRIM"]);
 
-export function collapseProtectiveFires<T extends Foldable>(
-  events: T[],
-  sentenceFor: (e: T) => string = (e) => `${e.predicateKind} (${e.action})`,
-): T[] {
+export function collapseProtectiveFires<T extends Foldable>(events: T[]): T[] {
   const out: T[] = [];
   const primaryByThesis = new Map<string, T>();
   for (const e of events) {
@@ -52,7 +49,7 @@ export function collapseProtectiveFires<T extends Foldable>(
     }
     primary.coFired = [
       ...(primary.coFired ?? []),
-      { triggerId: e.triggerId, predicateKind: e.predicateKind, sentence: sentenceFor(e) },
+      { triggerId: e.triggerId, sentence: e.sentence },
     ];
   }
   return out;

@@ -15,12 +15,13 @@
  * earnings and filing wakes, the up-7% add).
  */
 
-import type { Trigger, TriggerAction, TriggerPredicate } from "@/lib/agent/triggers/types";
+import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT, TRAIL_ATR_MULTIPLE, isNamedSetup, type SetupId } from "./setups";
+import type { When } from "@/lib/agent/triggers/condition";
 
 export interface SeatRule {
   action: TriggerAction;
-  predicate: TriggerPredicate;
+  predicate: When;
   rationale: string;
   fireMode?: "TACTICAL" | "DIRECT";
   cooldownDays?: number;
@@ -30,20 +31,20 @@ export interface SeatRule {
 const PEAD_RULES: SeatRule[] = [
   {
     action: "EXIT",
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 10, atrMultiple: TRAIL_ATR_MULTIPLE },
+    predicate: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, widenAtr: TRAIL_ATR_MULTIPLE } },
     rationale: `Gave back 12% from the high — or ${TRAIL_ATR_MULTIPLE}× this stock's average daily range if that is wider — once the position had been up 10%. Bank the drift without being shaken out by a volatile name (E5, TARGET).`,
     fireMode: "DIRECT",
     cooldownDays: 0,
   },
   {
     action: "REVIEW",
-    predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },
+    predicate: { watch: "move", is: "above", value: 10, variable: "entry" },
     rationale: "Up 10% from entry — re-underwrite: raise the floor under real structure and arm the next milestone.",
     cooldownDays: 7,
   },
   {
     action: "REVIEW",
-    predicate: { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" },
+    predicate: { watch: "move", is: "below", value: 12, variable: "entry" },
     rationale: "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us.",
     cooldownDays: 7,
   },
@@ -53,13 +54,13 @@ const PEAD_RULES: SeatRule[] = [
 const CATALYST_RULES: SeatRule[] = [
   {
     action: "REVIEW",
-    predicate: { kind: "REVIEW_CADENCE", days: 10, from: "EVENT", side: "BEFORE" },
+    predicate: { watch: "from_date", is: "before", value: 10, variable: "event" },
     rationale: "10 days before the event date on the thesis — the run-up version sells 1–2 weeks before the decision; the hold-through version checks its size can survive a −50% gap.",
     cooldownDays: 10,
   },
   {
     action: "REVIEW",
-    predicate: { kind: "REVIEW_CADENCE", days: 30, from: "EVENT", side: "AFTER" },
+    predicate: { watch: "from_date", is: "after", value: 30, variable: "event" },
     rationale: "30 days after the event date on the thesis — the hold-through exit (T+30). If it's still held, say why.",
     cooldownDays: 30,
   },
@@ -68,7 +69,7 @@ const CATALYST_RULES: SeatRule[] = [
     // events" or a press release, which the account's material-tier wake
     // treats as routine. A catalyst seat wakes on them; other seats would drown.
     action: "REVIEW",
-    predicate: { kind: "SEC_EVENT", items: ["8.01", "7.01"] },
+    predicate: { match: "any", conditions: [{ watch: "filing", variable: "item:8.01" }, { watch: "filing", variable: "item:7.01" }] },
     rationale: "An 'other events' or press-release filing — where FDA outcomes and trial readouts land. Read it before the market finishes pricing it.",
     cooldownDays: 1,
   },
@@ -78,38 +79,38 @@ const CATALYST_RULES: SeatRule[] = [
 const COMPOUNDER_RULES: SeatRule[] = [
   {
     action: "REVIEW",
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_GIVEBACK_REVIEW_PCT },
+    predicate: { watch: "move", is: "below", value: COMPOUNDER_GIVEBACK_REVIEW_PCT, variable: "peak" },
     rationale: `Gave back ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under structure.`,
     cooldownDays: 7,
   },
   {
     action: "EXIT",
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_CATASTROPHE_PCT, atrMultiple: TRAIL_ATR_MULTIPLE },
+    predicate: { watch: "move", is: "below", value: COMPOUNDER_CATASTROPHE_PCT, variable: "peak", settings: { widenAtr: TRAIL_ATR_MULTIPLE } },
     rationale: `Gave back ${COMPOUNDER_CATASTROPHE_PCT}% from the high — or ${TRAIL_ATR_MULTIPLE}× this stock's average daily range if that is wider — the catastrophe line for a multi-year hold, and the only automatic sale.`,
     fireMode: "DIRECT",
     cooldownDays: 0,
   },
   {
     action: "REVIEW",
-    predicate: { kind: "VS_SMA", period: 200, direction: "BELOW" },
+    predicate: { watch: "price", is: "below", variable: "sma200" },
     rationale: "Below the 200-day — the long trend is in question. Review the business, not the chart.",
     cooldownDays: 7,
   },
   {
     action: "REVIEW",
-    predicate: { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" },
+    predicate: { watch: "move", is: "above", value: 15, variable: "entry" },
     rationale: "Up 15% from entry — the second tranche question: is the thesis playing out, and is the floor under the earned gain?",
     cooldownDays: 7,
   },
   {
     action: "REVIEW",
-    predicate: { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "DOWN" },
+    predicate: { watch: "move", is: "below", value: 15, variable: "entry" },
     rationale: "Down 15% from entry — is the reason we bought still true? A price alarm on a compounder opens a review, never a sale.",
     cooldownDays: 7,
   },
   {
     action: "ADD",
-    predicate: { kind: "PRICE_MOVE_PCT", pct: 7, direction: "DOWN", window: "1D" },
+    predicate: { watch: "move", is: "below", value: 7, variable: "prev_close" },
     rationale: "Down 7% in a day — the second tranche on a held 50-day pullback in a market-wide dip with the thesis intact. Never into company-specific bad news. This seat's rule, not the account's: trades never average down.",
     cooldownDays: 3,
   },

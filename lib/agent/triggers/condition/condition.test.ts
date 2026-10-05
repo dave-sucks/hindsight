@@ -31,18 +31,11 @@ import fs from "fs";
 import path from "path";
 import stored from "./__fixtures__/stored-triggers.json";
 import * as kinds from "./__fixtures__/kind-rules";
-import { UNSTORED } from "./__fixtures__/unstored-triggers";
+import { UNSTORED, type StoredRow } from "./__fixtures__/unstored-triggers";
 import { triggerBucket } from "../bucket";
 import { defaultCooldownDaysForPredicate } from "../defaults";
 import { flooredCooldownDays, isStatePredicate } from "../state-cooldown";
-import {
-  effectiveTriggerAction,
-  isDirectEligiblePredicate,
-  protectiveExitCloseReason,
-  watchedFloorOnClose,
-  type TriggerAction,
-  type TriggerPredicate,
-} from "../types";
+import { effectiveTriggerAction, isDirectEligiblePredicate, protectiveExitCloseReason, watchedFloorOnClose, type TriggerAction } from "../types";
 import {
   MEASURES,
   TRIGGER_TYPES,
@@ -51,6 +44,7 @@ import {
   fromLegacy,
   isRetired,
   pillParts,
+  shapeOf,
   toLegacy,
   triggerText,
   variableOptions,
@@ -58,9 +52,10 @@ import {
   type Condition,
   type When,
 } from ".";
+import type { LegacyPredicate } from "./legacy-types";
 
-type Row = { action: TriggerAction; predicate: TriggerPredicate; scopes: string[]; count: number };
-const rows = (stored as { rows: Row[] }).rows;
+type Row = { action: TriggerAction; predicate: StoredRow; scopes: string[]; count: number };
+const rows = (stored as unknown as { rows: Row[] }).rows;
 
 /**
  * Spellings today's checker reads the same way, so a round trip may write
@@ -129,7 +124,7 @@ describe("every stored trigger", () => {
 describe("the rules the kinds answered, from the catalog", () => {
   const ACTIONS: TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW", "MOVE_STOP", "DEMOTE"];
   const DIRECTIONS = ["LONG", "SHORT", null];
-  const live = [...rows.map((r) => r.predicate), ...UNSTORED].filter((p) => !isRetired(fromLegacy(p)));
+  const live = ([...rows.map((r) => r.predicate), ...UNSTORED] as StoredRow[]).filter((p) => !isRetired(fromLegacy(p)));
   const grid = live.flatMap((predicate) => ACTIONS.map((action) => ({ predicate, action })));
 
   /** Where the frozen answer and today's differ: none, or the count and the first few. */
@@ -181,7 +176,7 @@ describe("the rules the kinds answered, from the catalog", () => {
   });
 
   it("which sales propose directly, and the label they close with", () => {
-    const direct = (p: TriggerPredicate) => kinds.isDirectEligiblePredicate(p.kind);
+    const direct = (p: LegacyPredicate) => kinds.isDirectEligiblePredicate(p.kind);
     expect(disagree(live, direct, (p) => isDirectEligiblePredicate(p))).toEqual(agree);
     expect(answers(live, direct)).toBe(2);
     const cases = live.flatMap((predicate) => DIRECTIONS.map((direction) => ({ predicate, direction })));
@@ -203,8 +198,8 @@ describe("the rules the kinds answered, from the catalog", () => {
 
   it("a watched stock's floor reads the close", () => {
     const cases = grid.flatMap((t) => ["HOLDING", "WATCHING", null].map((status) => ({ t, status })));
-    /** The same object back, or the predicate it changed to, in the spelling the checker reads. */
-    const read = <T extends { predicate: unknown }>(out: T, t: T) => (out === t ? "unchanged" : sortKeys(normalise(out.predicate)));
+    /** The same object back, or the condition it changed to (either spelling, read as the shape). */
+    const read = <T extends { predicate: unknown }>(out: T, t: T) => (out === t ? "unchanged" : sortKeys(shapeOf(out.predicate)));
     const then = (c: (typeof cases)[number]) => read(kinds.watchedFloorOnClose(c.t, { status: c.status }), c.t);
     expect(disagree(cases, then, (c) => read(watchedFloorOnClose(c.t, { status: c.status }), c.t))).toEqual(agree);
     expect(answers(cases, then)).toBeGreaterThan(10);
@@ -212,24 +207,24 @@ describe("the rules the kinds answered, from the catalog", () => {
 });
 
 describe("what people read: the form's words, direction · value", () => {
-  const say = (action: TriggerAction, p: TriggerPredicate) => triggerText(action, fromLegacy(p) as When);
+  const say = (action: TriggerAction, p: LegacyPredicate) => triggerText(action, fromLegacy(p) as When);
   it.each([
     ["EXIT", { kind: "PRICE_BELOW", level: 248 }, "Sell if below $248"],
-    ["EXIT", { kind: "TRAILING_FROM_HIGH", pct: 25 }, "Sell if below 25% from the high"],
-    ["REVIEW", { kind: "VS_SMA", period: 200, direction: "BELOW" }, "Review if below 200-day average"],
+    ["EXIT", { kind: "TRAILING_FROM_HIGH", pct: 25 }, "Sell if below 25% from the high since we bought"],
+    ["REVIEW", { kind: "VS_SMA", period: 200, direction: "BELOW" }, "Review if below the 200-day average"],
     ["ADD", { kind: "PRICE_MOVE_PCT", pct: 7, direction: "DOWN", window: "1D" }, "Add if below 7% from yesterday's close"],
-    ["ENTER", { kind: "NEAR_SMA", period: 50, withinPct: 2 }, "Buy if within 2% of 50-day average"],
+    ["ENTER", { kind: "NEAR_SMA", period: 50, withinPct: 2 }, "Buy if within 2% of the 50-day average"],
     ["REVIEW", { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" }, "Review if above 15% from our entry"],
     ["ENTER", { kind: "PRICE_ABOVE", level: 183, basis: "close" }, "Buy if above $183 · only on the close"],
-    ["REVIEW", { kind: "REVIEW_CADENCE", days: 30 }, "Review if every 30 days"],
-    ["EXIT", { kind: "REVIEW_CADENCE", days: 60, from: "BUY" }, "Sell if after 60 days from the buy"],
-    ["REVIEW", { kind: "EARNINGS_WITHIN", days: 5 }, "Review if before earnings 5 days"],
+    ["REVIEW", { kind: "REVIEW_CADENCE", days: 30 }, "Review every 30 days"],
+    ["EXIT", { kind: "REVIEW_CADENCE", days: 60, from: "BUY" }, "Sell 60 days after the buy"],
+    ["REVIEW", { kind: "EARNINGS_WITHIN", days: 5 }, "Review if within 5 days before earnings"],
     ["REVIEW", { kind: "EARNINGS_BEAT" }, "Review if earnings beat any amount"],
     ["REVIEW", { kind: "EARNINGS_MISS", minSurprisePct: 3 }, "Review if earnings miss 3% or more"],
-    ["REVIEW", { kind: "SEC_EVENT", tier: "MATERIAL" }, "Review if files anything material"],
+    ["REVIEW", { kind: "SEC_EVENT", tier: "MATERIAL" }, "Review if it files something material with the SEC"],
     ["REVIEW", { kind: "RS_VS_SPY", window: "6M", min: 0 }, "Review if at least 0 points ahead of the S&P · over 6 months"],
     ["REVIEW", { kind: "RSI", threshold: 30, direction: "BELOW" }, "Review if below RSI 30"],
-  ] as [TriggerAction, TriggerPredicate, string][])("%s %j", (action, p, expected) => {
+  ] as [TriggerAction, LegacyPredicate, string][])("%s %j", (action, p, expected) => {
     expect(say(action, p)).toBe(expected);
   });
 
@@ -238,7 +233,7 @@ describe("what people read: the form's words, direction · value", () => {
   });
 
   it("folds a rule naming two filing events back into one kind", () => {
-    const p: TriggerPredicate = { kind: "SEC_EVENT", items: ["8.01", "7.01"] };
+    const p: LegacyPredicate = { kind: "SEC_EVENT", items: ["8.01", "7.01"] };
     const w = fromLegacy(p) as When;
     expect(conditionsOf(w)).toHaveLength(2);
     expect(toLegacy(w)).toEqual(p);
@@ -314,7 +309,7 @@ describe("the catalog", () => {
   it("keeps a variable's own settings with it, and drops them when it goes", () => {
     const trail = fromLegacy({ kind: "TRAILING_FROM_HIGH", pct: 25, armAtGainPct: 20 }) as Condition;
     expect(trail.settings).toEqual({ startOnceUpPct: 20 });
-    expect(triggerText("EXIT", trail)).toBe("Sell if below 25% from the high, once it has been up 20%");
+    expect(triggerText("EXIT", trail)).toBe("Sell if below 25% from the high since we bought, once it has been up 20%");
     expect(withVariable(trail, "prev_close").settings).toBeUndefined();
   });
 });

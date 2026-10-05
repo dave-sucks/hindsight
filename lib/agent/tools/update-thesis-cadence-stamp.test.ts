@@ -54,6 +54,7 @@ jest.mock("@/lib/agent/triggers/load-levels", () => ({
 }));
 
 import { updateThesis } from "./update-thesis";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -89,13 +90,13 @@ function makeRow(overrides: Record<string, unknown> = {}) {
 
 const enterTrigger = {
   id: "enter-1",
-  predicate: { kind: "PRICE_ABOVE", level: 190 },
+  predicate: { watch: "price", is: "above", value: 190 },
   action: "ENTER",
   rationale: "Breakout confirmation.",
 };
 const clockTrigger = {
   id: "clock-1",
-  predicate: { kind: "REVIEW_CADENCE", days: 30 },
+  predicate: { watch: "repeat", value: 30 },
   action: "REVIEW",
   rationale: "Monthly.",
 };
@@ -133,7 +134,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     expect(result.ok).toBe(true);
 
     const out = patchedTriggers();
-    expect(out.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(false);
+    expect(out.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(false);
     expect(out.some((t) => t.action === "ENTER")).toBe(true);
   });
 
@@ -144,7 +145,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
       rationale: "Slowing the clock deliberately.",
       add_triggers: [
         {
-          predicate: { kind: "REVIEW_CADENCE", days: 14 },
+          predicate: { watch: "repeat", value: 14 },
           action: "REVIEW",
           rationale: "Every two weeks is enough here.",
         },
@@ -153,10 +154,10 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     expect(result.ok).toBe(true);
 
     const cadences = patchedTriggers().filter(
-      (t) => t.predicate.kind === "REVIEW_CADENCE",
+      (t) => kindOf(t.predicate) === "REVIEW_CADENCE",
     );
     expect(cadences).toHaveLength(1);
-    expect(cadences[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 14 });
+    expect(cadences[0].predicate).toEqual({ watch: "repeat", value: 14 });
   });
 
   it("does not stamp a direction-null row — a soft watch stays cadence-free", async () => {
@@ -172,7 +173,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
         triggers: [
           {
             id: "wake-0",
-            predicate: { kind: "PRICE_BELOW", level: 160 },
+            predicate: { watch: "price", is: "below", value: 160 },
             action: "REVIEW",
             rationale: "Original wake level.",
             source: "AGENT",
@@ -187,7 +188,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     });
     expect(result.ok).toBe(true);
     expect(
-      patchedTriggers().some((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      patchedTriggers().some((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toBe(false);
   });
 
@@ -195,7 +196,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     mockThesisFindUnique.mockResolvedValue(
       makeRow({
         status: "HOLDING",
-        triggers: [{ id: "floor-1", predicate: { kind: "PRICE_BELOW", level: 172 }, action: "EXIT", rationale: "Floor." }],
+        triggers: [{ id: "floor-1", predicate: { watch: "price", is: "below", value: 172 }, action: "EXIT", rationale: "Floor." }],
       }),
     );
     const result = await run({
@@ -205,7 +206,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     });
     expect(result.ok).toBe(true);
     expect(
-      patchedTriggers().some((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      patchedTriggers().some((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toBe(false);
   });
 });

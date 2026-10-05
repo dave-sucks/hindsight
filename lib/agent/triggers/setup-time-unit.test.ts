@@ -17,6 +17,7 @@
  * rising-average setup, whose limit is 10 sessions.
  */
 import { setupExitTriggers } from "./setup-exits";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { sessionsToCalendarDays } from "@/lib/market-hours";
 
@@ -28,12 +29,12 @@ const timeTrigger = (setupId: string, horizon: string, boughtAt: string) =>
     stop: 98,
     mintId: () => "x",
     boughtAt: new Date(boughtAt),
-  }).find((t) => t.predicate.kind === "REVIEW_CADENCE");
+  }).find((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
 
 describe("a setup's time limit is counted in its own unit", () => {
   it("ABT: 10 sessions from the 2026-09-11 buy is 14 calendar days, not 10", () => {
     const t = timeTrigger("MA_PULLBACK", "COMPOUNDER", "2026-09-11T17:36:00.482Z");
-    expect(t?.predicate).toEqual({ kind: "REVIEW_CADENCE", days: 14, from: "BUY" });
+    expect(t?.predicate).toEqual({ watch: "from_date", is: "after", value: 14, variable: "buy" });
     // The old behaviour wrote 10, which lands on 2026-09-21 — session five of
     // the ten the setup asks for. The review is now due 2026-09-25.
     expect(t?.cooldownDays).toBe(14);
@@ -49,7 +50,7 @@ describe("a setup's time limit is counted in its own unit", () => {
     // FIVE, bought 2026-09-10 on PEAD, whose limit is the 60-day business
     // checkpoint. Sixty means sixty.
     const t = timeTrigger("PEAD", "TARGET", "2026-09-10T19:57:17.215Z");
-    expect(t?.predicate).toEqual({ kind: "REVIEW_CADENCE", days: 60, from: "BUY" });
+    expect(t?.predicate).toEqual({ watch: "from_date", is: "after", value: 60, variable: "buy" });
     expect(t?.rationale).toContain("60 days after the buy");
     expect(t?.rationale).not.toContain("sessions after the buy");
   });

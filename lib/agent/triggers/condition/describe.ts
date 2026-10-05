@@ -15,6 +15,7 @@ import { measureOf, settingDefs } from "./catalog";
 import type { PillPart } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
+import { shapeOf } from "./legacy";
 import { variableDef } from "./variables";
 import { money } from "./words";
 
@@ -35,11 +36,12 @@ export function conditionParts(c: Condition): PillPart {
   return { label, value: valueText(c) };
 }
 
-function valueText(c: Condition): string {
+/** The value half. `say` is "chip" on the pill and "words" in a sentence (the variable's own words). */
+function valueText(c: Condition, say: "chip" | "words" = "chip"): string {
   const m = measureOf(c);
   const v = m.value;
   const vars = m.variables;
-  const chip = c.variable ? variableDef(c.variable).chip : undefined;
+  const chip = c.variable ? variableDef(c.variable)[say] : undefined;
   let text: string;
   if (vars?.mode === "replace" && chip) text = chip;
   else if (v.none) text = chip ?? v.placeholder;
@@ -47,7 +49,8 @@ function valueText(c: Condition): string {
   else {
     const n = c.value ?? 0;
     const number = v.prefix === "$" ? money(n) : `${v.prefix ? `${v.prefix} ` : ""}${n}`;
-    text = number + (v.suffix ? (/^[%×]/.test(v.suffix) ? v.suffix : ` ${v.suffix}`) : "");
+    const suffix = n === 1 && v.suffix === "days" ? "day" : v.suffix;
+    text = number + (suffix ? (/^[%×]/.test(suffix) ? suffix : ` ${suffix}`) : "");
   }
   if (vars?.mode === "from" && chip) text += ` ${vars.word ? vars.word(c) : "from"} ${chip}`;
   // A setting shows only when it isn't the default: "· only on the close", ", once it has been up 20%".
@@ -62,9 +65,12 @@ function valueText(c: Condition): string {
   return text;
 }
 
+/** A condition in a sentence: the measure's own phrase if it has one, else its two halves in words. */
 export function conditionText(c: Condition): string {
-  const p = conditionParts(c);
-  return `${p.label} ${p.value}`.trim();
+  const m = measureOf(c);
+  const words = valueText(c, "words");
+  if (m.says) return m.says(c, words);
+  return `${conditionParts(c).label} ${words}`.trim();
 }
 
 export function whenText(w: When): string {
@@ -72,12 +78,29 @@ export function whenText(w: When): string {
   return w.conditions.map(whenText).join(w.match === "all" ? " and " : " or ");
 }
 
-/** The whole trigger: "Sell if below $868". */
+/** The whole trigger: "Sell if below $868". A clock has no "if": "Review every 30 days". */
 export function triggerText(action: string, w: When, sells = true): string {
-  return `${actionLabel(action, sells)} ${whenText(w)}`;
+  const label = actionLabel(action, sells);
+  return `${!isGroup(w) && measureOf(w).timed ? label.replace(/ if$/, "") : label} ${whenText(w)}`;
 }
 
 /** A trigger's pill: two halves per condition, with "and" / "or" between conditions. */
 export function pillParts(w: When): { parts: PillPart[]; joiner: "and" | "or" } {
   return { parts: conditionsOf(w).map(conditionParts), joiner: isGroup(w) && w.match === "any" ? "or" : "and" };
+}
+
+/**
+ * A stored trigger in words, the way the pill and every agent read it: "Sell
+ * if below $868". `sells` is false on a stock we don't own (a sale there takes
+ * the plan down). A removed condition reads as one, never as a blank.
+ */
+export function sentenceOf(t: { action: string; predicate: unknown }, sells = true): string {
+  const w = shapeOf(t.predicate);
+  return w ? triggerText(t.action, w, sells) : `${actionLabel(t.action, sells)} a removed condition`;
+}
+
+/** A stored condition in words, without the action: "below $868". */
+export function conditionSentence(p: unknown): string {
+  const w = shapeOf(p);
+  return w ? whenText(w) : "a removed condition";
 }

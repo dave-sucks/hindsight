@@ -36,11 +36,22 @@
  */
 
 import type { ResolvedTrigger } from "./levels";
-import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
+import type { Trigger, TriggerAction } from "./types";
 import { isDirectEligiblePredicate } from "./types";
 import { triggerBucket } from "./bucket";
 import { samePredicate } from "./condition/stored";
-import { predicateSentence } from "./format";
+import {
+  conditionSentence,
+  isGroup,
+  isLevel,
+  levelOf,
+  measureOf,
+  reviewClockDays,
+  sentenceOf,
+  shapeOf,
+  type Condition,
+  type VariableId,
+} from "./condition";
 import { applyTriggerCooldownDefaults } from "./defaults";
 import { stampWrittenPrice } from "./written-price";
 import { validateEnterTriggerRequired } from "./enter-guard";
@@ -59,15 +70,19 @@ import {
 } from "./ratchet";
 import { declineReplanAllows } from "@/lib/agent/declined-sale";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
+import type { When } from "@/lib/agent/triggers/condition";
 
 export type TriggerOp =
   | { op: "add"; trigger: Trigger }
   | {
       op: "edit";
       id: string;
-      level?: number;
-      pct?: number;
-      days?: number;
+      /** The new number, whatever the measure: a price, a %, a count of days. */
+      value?: number;
+      /** The new variable: what the number is measured from, or what stands in for it. */
+      variable?: VariableId;
+      /** The old field the caller named (`level`, `pct`, `days`): the number must be that kind of number. */
+      unit?: "level" | "pct" | "days";
       /** On a two-condition (AND / OR) trigger: which condition's number, 0-based. */
       part?: number;
       action?: TriggerAction;
@@ -156,42 +171,30 @@ const SLOT_LABEL: Record<LevelSlot, string> = {
 
 const money = (n: number) => `$${n % 1 === 0 ? n : n.toFixed(2)}`;
 
-/** "Entry", "Stop", "Target", "Review cadence", or the predicate sentence. */
-function nameOf(t: Trigger, direction: string | null): string {
+/** "Entry", "Stop", "Target", "Review cadence", or the condition in words. */
+function nameOf(t: Trigger, direction: string | null, sells: boolean): string {
   const slot = levelSlotOf(t, direction);
   if (slot) return SLOT_LABEL[slot];
-  if (t.predicate.kind === "REVIEW_CADENCE") return "Review cadence";
-  return predicateSentence(t.predicate);
+  const w = shapeOf(t.predicate);
+  if (w && reviewClockDays(w) != null) return "Review cadence";
+  return sentenceOf(t, sells);
 }
 
-/** "buy above $183", "sell below $110", "review every 14 days", or "<sentence> → <action>". */
-export function describeTrigger(t: Trigger, direction: string | null): string {
-  const p = t.predicate;
-  const slot = levelSlotOf(t, direction);
-  if (slot && (p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW")) {
-    const verb = slot === "ENTRY" ? "buy" : slot === "FLOOR" ? "sell" : "review";
-    return `${verb} ${p.kind === "PRICE_ABOVE" ? "above" : "below"} ${money(p.level)}`;
-  }
-  if (p.kind === "REVIEW_CADENCE") return `review every ${p.days} days`;
-  return `${predicateSentence(p)} → ${t.action.toLowerCase()}`;
+/** The trigger in words, as every surface says it: "Buy if above $183". `sells` is false on a stock we don't own. */
+export function describeTrigger(t: Trigger, sells = true): string {
+  return sentenceOf(t, sells);
 }
 
-/** The editable number on a predicate, as (field, value). */
-function numberOf(p: TriggerPredicate): { field: "level" | "pct" | "days"; value: number } | null {
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-      return { field: "level", value: p.level };
-    case "PRICE_MOVE_PCT":
-    case "GAIN_FROM_ENTRY":
-    case "TRAILING_FROM_HIGH":
-      return { field: "pct", value: p.pct };
-    case "REVIEW_CADENCE":
-    case "EARNINGS_WITHIN":
-      return { field: "days", value: p.days };
-    default:
-      return null;
-  }
+/** How a condition's number reads and moves in a sentence: a price, a %, or days (the measure's own unit). */
+function fieldOf(c: Condition): "level" | "pct" | "days" {
+  const v = measureOf(c).value;
+  return v.prefix === "$" ? "level" : v.suffix === "days" ? "days" : "pct";
+}
+
+/** A single condition's number, with how it reads; null for a group or a condition with none. */
+function numberOf(p: unknown): { field: "level" | "pct" | "days"; value: number } | null {
+  const w = shapeOf(p);
+  return w && !isGroup(w) && w.value != null ? { field: fieldOf(w), value: w.value } : null;
 }
 
 function fmtValue(field: "level" | "pct" | "days", v: number): string {
@@ -288,17 +291,17 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   /**
    * `meta.viaLevel`: the edit came from a plan-level argument (entry / target /
    * stop) rather than an explicit trigger edit — the sentence is moved with
-   * the number, so no rationale is demanded. `meta.kind`: the side the
+   * the number, so no rationale is demanded. `meta.above`: the side the
    * caller wrote on an added price trigger, used when there is no tape to
-   * read it from.
+   * read it from. `meta.close`: the caller says whether it waits for the close.
    */
   const doEdit = (
     op: Extract<TriggerOp, { op: "edit" }>,
     meta: {
       slotForText?: LevelSlot;
       viaLevel?: boolean;
-      kind?: "PRICE_ABOVE" | "PRICE_BELOW";
-      basis?: "intraday" | "close";
+      above?: boolean;
+      close?: boolean;
     } = {},
   ) => {
     const { slotForText } = meta;
@@ -306,33 +309,25 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (!target) return refuse("edit", op.id, `Edit trigger ${op.id}`, notStored(op.id));
 
     // A two-condition trigger's number lives on one of its conditions.
-    const composite = target.predicate.kind === "AND" || target.predicate.kind === "OR" ? target.predicate : null;
-    const child = composite && op.part != null ? composite.predicates[op.part] : undefined;
-    if (op.part != null && !child) {
+    const tw = shapeOf(target.predicate);
+    if (!tw) return refuse("edit", op.id, `Edit trigger ${op.id}`, "This trigger's condition was removed; delete it and add a new one.");
+    const group = isGroup(tw) ? tw : null;
+    const child = group && op.part != null ? group.conditions[op.part] : undefined;
+    if (op.part != null && (!child || isGroup(child))) {
       return refuse("edit", op.id, `Edit trigger ${op.id}`, `This trigger has no condition ${op.part + 1}.`);
     }
-    const current = numberOf(child ?? target.predicate);
-    const wanted =
-      op.level !== undefined
-        ? ({ field: "level", value: op.level } as const)
-        : op.pct !== undefined
-          ? ({ field: "pct", value: op.pct } as const)
-          : op.days !== undefined
-            ? ({ field: "days", value: op.days } as const)
-            : null;
-    const name = slotForText ? SLOT_LABEL[slotForText] : nameOf(target, direction);
+    const subject = (child ?? (group ? null : tw)) as Condition | null;
+    const current = subject?.value != null ? { field: fieldOf(subject), value: subject.value } : null;
+    const wanted = op.value !== undefined && subject ? { field: fieldOf(subject), value: op.value } : op.value !== undefined ? { field: "pct" as const, value: op.value } : null;
+    const name = slotForText ? SLOT_LABEL[slotForText] : nameOf(target, direction, held);
 
     if (wanted) {
-      if (!current || current.field !== wanted.field) {
-        return refuse(
-          "edit",
-          op.id,
-          `Edit ${name}`,
-          `This trigger has no editable \`${wanted.field}\` — it is ${predicateSentence(child ?? target.predicate)}.`,
-        );
+      if (!current || (op.unit && op.unit !== current.field)) {
+        const what = op.unit ? `no editable \`${op.unit}\`` : "no number to change";
+        return refuse("edit", op.id, `Edit ${name}`, `This trigger has ${what} — it is ${conditionSentence(child ?? target.predicate)}.`);
       }
       if (!(wanted.value > 0) || !Number.isFinite(wanted.value)) {
-        return refuse("edit", op.id, `Edit ${name}`, `${wanted.field} must be a positive number.`);
+        return refuse("edit", op.id, `Edit ${name}`, "The number must be positive.");
       }
       if (actor === "AGENT" && !meta.viaLevel && !op.rationale?.trim() && wanted.value !== current.value) {
         return refuse(
@@ -342,6 +337,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
           "A level change needs a rationale — the sentence moves with the number. Resend this edit with `rationale`.",
         );
       }
+    }
+    if (op.variable !== undefined && (!subject || !measureOf(subject).variables?.options.some((v) => v.id === op.variable))) {
+      return refuse("edit", op.id, `Edit ${name}`, `This trigger can't be measured from \`${op.variable}\` — it is ${conditionSentence(child ?? target.predicate)}.`);
     }
     if (
       op.fireMode === "DIRECT" &&
@@ -355,52 +353,46 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       );
     }
 
-    let predicate = target.predicate;
-    if (wanted && current && composite && child) {
-      predicate = {
-        ...composite,
-        predicates: composite.predicates.map((c, i) =>
-          i === op.part ? ({ ...c, [wanted.field]: wanted.value } as TriggerPredicate) : c,
-        ),
+    let predicate: When = tw;
+    if (subject && (wanted || op.variable !== undefined)) {
+      let next: Condition = {
+        ...subject,
+        ...(wanted ? { value: wanted.value } : {}),
+        ...(op.variable !== undefined ? { variable: op.variable } : {}),
       };
-    } else if (wanted && current) {
-      const slot = levelSlotOf(target, direction);
-      // A buy level's side comes from the tape when there is one (a level
-      // under the price is a pullback, over it a breakout); otherwise from
-      // the side the caller wrote, else the side it already had.
-      const tapeKnown = currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0;
-      predicate =
-        wanted.field === "level" && slot
-          ? tapeKnown || !meta.kind
-            ? predicateFor(slot, wanted.value, direction, currentPrice)
-            : { kind: meta.kind, level: wanted.value }
-          : ({ ...predicate, [wanted.field]: wanted.value } as TriggerPredicate);
-      if (wanted.field === "level" && slot === "ENTRY" && !tapeKnown && !meta.kind) {
-        predicate = { kind: target.predicate.kind as "PRICE_ABOVE" | "PRICE_BELOW", level: wanted.value };
+      const slot = !group ? levelSlotOf(target, direction) : null;
+      if (wanted && slot && isLevel(subject)) {
+        // A buy level's side comes from the tape when there is one (a level
+        // under the price is a pullback, over it a breakout); otherwise from
+        // the side the caller wrote, else the side it already had.
+        const tapeKnown = currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0;
+        const sided = tapeKnown || meta.above === undefined ? predicateFor(slot, wanted.value, direction, currentPrice) : { ...next, is: meta.above ? ("above" as const) : ("below" as const) };
+        next = slot === "ENTRY" && !tapeKnown && meta.above === undefined ? { ...sided, is: subject.is } : sided;
+        // Moving the number never changes when it fires (DAV-247 review).
+        next = withBasisOf(subject, next);
       }
-      // Moving the number never changes when it fires (DAV-247 review) —
-      // unless the caller says when it fires.
-      if (wanted.field === "level") predicate = withBasisOf(target.predicate, predicate);
+      predicate = group ? { ...group, conditions: group.conditions.map((c: When, i: number) => (i === op.part ? next : c)) } : next;
     }
-    if (meta.basis && (predicate.kind === "PRICE_ABOVE" || predicate.kind === "PRICE_BELOW")) {
-      const { basis: _old, ...rest } = predicate;
+    // ...unless the caller says when it fires.
+    if (meta.close !== undefined && !isGroup(predicate) && isLevel(predicate)) {
+      const { settings, ...plain } = predicate as Condition;
+      const { close: _old, ...rest } = settings ?? {};
       void _old;
-      predicate = meta.basis === "close" ? { ...rest, basis: "close" } : rest;
+      const kept = meta.close ? { ...rest, close: true } : rest;
+      predicate = Object.keys(kept).length ? { ...plain, settings: kept } : plain;
     }
     const action = op.action ?? target.action;
     let rationale = op.rationale?.trim() || target.rationale;
     const slot = levelSlotOf({ ...target, predicate, action }, direction);
-    const isPriceLevel = predicate.kind === "PRICE_ABOVE" || predicate.kind === "PRICE_BELOW";
+    const level = levelOf(predicate);
     if (!op.rationale?.trim() && wanted && current && wanted.value !== current.value) {
       rationale =
         moveNumberInText(target.rationale, wanted.field, current.value, wanted.value) ??
-        (slot && isPriceLevel
-          ? rationaleFor(slot, wanted.value, direction, held, predicate.kind as "PRICE_ABOVE" | "PRICE_BELOW")
-          : target.rationale);
-    } else if (actor === "SYSTEM" && slot && isPriceLevel && target.source === "DEFAULT") {
+        (slot && level ? rationaleFor(slot, wanted.value, direction, held, level.above) : target.rationale);
+    } else if (actor === "SYSTEM" && slot && level && target.source === "DEFAULT") {
       // A buy fill re-reads a template floor / target for a stock we now own
       // ("the plan comes down" → "sell if the price drops to").
-      rationale = rationaleFor(slot, (predicate as { level: number }).level, direction, held, predicate.kind as "PRICE_ABOVE" | "PRICE_BELOW");
+      rationale = rationaleFor(slot, level.value, direction, held, level.above);
     }
     const edited: Trigger = {
       ...target,
@@ -424,9 +416,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       }
       parts.push(line);
     }
-    const basisOf = (p: TriggerPredicate) => (p as { basis?: string }).basis ?? "intraday";
-    if (basisOf(predicate) !== basisOf(target.predicate))
-      parts.push(`${name}: ${basisOf(predicate) === "close" ? "fires on the close" : "fires intraday"}`);
+    const onClose = (p: When) => levelOf(p)?.close === true;
+    if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
+    if (op.variable !== undefined && op.variable !== subject?.variable) parts.push(`${name}: now ${conditionSentence(predicate)}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
     if (op.fireMode && op.fireMode !== (target.fireMode ?? "TACTICAL"))
@@ -448,7 +440,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const doRemove = (id: string) => {
     const target = stored.find((t) => t.id === id);
     if (!target) return refuse("remove", id, `Remove trigger ${id}`, notStored(id));
-    const text = `Removed: ${describeTrigger(target, direction)}`;
+    const text = `Removed: ${describeTrigger(target, held)}`;
     const next = stored.filter((t) => t.id !== id);
     const blocked = ratchetReason(next);
     if (blocked) return refuse("remove", id, text, blocked);
@@ -461,22 +453,22 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       // One trigger per bucket: the add becomes an edit of the one that is
       // there, which keeps its id and with it its fired state.
       const n = numberOf(trigger.predicate);
-      const k = trigger.predicate.kind;
+      const typed = shapeOf(trigger.predicate);
       return doEdit(
         {
           op: "edit",
           id: existing.id,
-          ...(n ? { [n.field]: n.value } : {}),
+          ...(n ? { value: n.value } : {}),
           action: trigger.action,
           rationale: trigger.rationale,
           ...(trigger.fireMode !== undefined ? { fireMode: trigger.fireMode } : {}),
           ...(trigger.cooldownDays !== undefined ? { cooldownDays: trigger.cooldownDays } : {}),
         },
-        { kind: k === "PRICE_ABOVE" || k === "PRICE_BELOW" ? k : undefined },
+        { above: typed ? levelOf(typed)?.above : undefined },
       );
     }
     const id = trigger.id || mintId();
-    const text = `Added: ${describeTrigger(trigger, direction)}`;
+    const text = `Added: ${describeTrigger(trigger, held)}`;
     const above = inheritedByBucket.get(triggerBucket(trigger));
     if (
       above &&
@@ -504,9 +496,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (!target) return refuse("edit", id, `Change trigger ${id}`, notStored(id));
     const sameSlot = triggerBucket(target) === triggerBucket(trigger);
     const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerBucket(s) === triggerBucket(trigger));
-    const text = `Changed: ${describeTrigger(target, direction)} → ${describeTrigger(trigger, direction)}`;
+    const text = `Changed: ${describeTrigger(target, held)} → ${describeTrigger(trigger, held)}`;
     if (clash) {
-      return refuse("edit", id, text, `This stock already has "${describeTrigger(clash, direction)}". Edit that one instead.`);
+      return refuse("edit", id, text, `This stock already has "${describeTrigger(clash, held)}". Edit that one instead.`);
     }
     if (
       sameSlot &&
@@ -572,17 +564,17 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       // The canonical one — the floor you hit first, the furthest target.
       const long = direction !== "SHORT";
       const keep = occupants.reduce((best, t) => {
-        const a = (t.predicate as { level?: number }).level ?? 0;
-        const b = (best.predicate as { level?: number }).level ?? 0;
+        const a = numberOf(t.predicate)?.value ?? 0;
+        const b = numberOf(best.predicate)?.value ?? 0;
         return (long ? a > b : a < b) ? t : best;
       });
       return doEdit(
-        { op: "edit", id: keep.id, level: price, ...(extra.rationale?.trim() ? { rationale: extra.rationale.trim() } : {}) },
-        { slotForText: slot, viaLevel: true, basis: extra.basis },
+        { op: "edit", id: keep.id, value: price, ...(extra.rationale?.trim() ? { rationale: extra.rationale.trim() } : {}) },
+        { slotForText: slot, viaLevel: true, close: extra.basis === undefined ? undefined : extra.basis === "close" },
       );
     }
     const sided = predicateFor(slot, price, direction, currentPrice);
-    const predicate = extra.basis === "close" ? { ...sided, basis: "close" as const } : sided;
+    const predicate: Condition = extra.basis === "close" ? { ...sided, settings: { close: true } } : sided;
     const directional = direction === "LONG" || direction === "SHORT";
     const action: TriggerAction =
       slot === "ENTRY" ? (directional ? "ENTER" : "REVIEW") : slot === "FLOOR" ? "EXIT" : "REVIEW";
@@ -592,7 +584,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       id,
       predicate,
       action,
-      rationale: extra.rationale?.trim() || rationaleFor(slot, price, direction, held, predicate.kind),
+      rationale: extra.rationale?.trim() || rationaleFor(slot, price, direction, held, predicate.is === "above"),
     };
     const next = [...stored, { ...fresh, source: stamp(fresh) }];
     const blocked = ratchetReason(next);
@@ -605,7 +597,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     refuse(
       "edit",
       id,
-      `Edit and remove: ${t ? describeTrigger(t, direction) : `trigger ${id}`}`,
+      `Edit and remove: ${t ? describeTrigger(t, held) : `trigger ${id}`}`,
       "Edited and removed in the same call — say which: send the edit or the removal, not both.",
     );
   }

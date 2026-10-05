@@ -56,6 +56,7 @@ jest.mock("@/lib/agent/triggers/load-levels", () => ({
 }));
 
 import { updateThesis } from "./update-thesis";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -72,21 +73,21 @@ function makeCtx(): ToolContext {
 const planTriggers: Trigger[] = [
   {
     id: "enter-1",
-    predicate: { kind: "PRICE_ABOVE", level: 190 },
+    predicate: { watch: "price", is: "above", value: 190 },
     action: "ENTER",
     rationale: "Breakout entry.",
     source: "AGENT",
   },
   {
     id: "floor-1",
-    predicate: { kind: "PRICE_BELOW", level: 172 },
+    predicate: { watch: "price", is: "below", value: 172 },
     action: "EXIT",
     rationale: "Below this the setup is wrong.",
     source: "AGENT",
   },
   {
     id: "clock-1",
-    predicate: { kind: "REVIEW_CADENCE", days: 7 },
+    predicate: { watch: "repeat", value: 7 },
     action: "REVIEW",
     rationale: "Weekly while the plan is live.",
     source: "AGENT",
@@ -96,13 +97,13 @@ const planTriggers: Trigger[] = [
 const wakeTriggers = [
   {
     id: "wake-pullback",
-    predicate: { kind: "PRICE_BELOW", level: 160 },
+    predicate: { watch: "price", is: "below", value: 160 },
     action: "REVIEW",
     rationale: "Interesting again on the pullback.",
   },
   {
     id: "wake-earnings",
-    predicate: { kind: "EARNINGS_BEAT" },
+    predicate: { watch: "surprise", is: "beat", value: 0 },
     action: "REVIEW",
     rationale: "A beat re-opens the question.",
   },
@@ -160,7 +161,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     const data = patchedData();
     const triggers = (data.triggers ?? []) as Trigger[];
     // The clock the agent removed stays removed — no silent re-stamp.
-    expect(triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(
+    expect(triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(
       false,
     );
     // The wakes survive.
@@ -186,7 +187,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
-    expect(triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(
+    expect(triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(
       false,
     );
     // The plan is untouched — entry and floor both survive.
@@ -209,7 +210,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
-    expect(triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(
+    expect(triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(
       false,
     );
   });
@@ -242,7 +243,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
         triggers: [
           {
             id: "wake-0",
-            predicate: { kind: "PRICE_BELOW", level: 160 },
+            predicate: { watch: "price", is: "below", value: 160 },
             action: "REVIEW",
             rationale: "Original wake.",
             source: "AGENT",

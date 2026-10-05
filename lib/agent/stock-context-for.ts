@@ -1,11 +1,10 @@
 /**
  * stock-context-for.ts — the "what's been said" block for one stock, with
- * its resolved triggers as the labels. Server-side: describePredicate lives
- * with the evaluator. get_theses and the trigger run both call this, so the
+ * its resolved triggers as the labels, in the catalog's words. get_theses and the trigger run both call this, so the
  * morning run and the trigger run read the same block
  * (docs/plans/AGENT_CONTEXT.md §3.2).
  */
-import { describePredicate } from "@/lib/agent/needs-action";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { buildStockContext, type ActivityRow, type StockContext } from "@/lib/agent/stock-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -30,7 +29,7 @@ export function stockContextFor(args: {
     labelFor: (id) => {
       const t = args.triggers.find((x) => x.id === id);
       return t
-        ? { label: `${describePredicate(t.predicate)} → ${t.action.toLowerCase()}`, rationale: t.rationale ?? null }
+        ? { label: sentenceOf(t), rationale: t.rationale ?? null }
         : null;
     },
     now: args.now,

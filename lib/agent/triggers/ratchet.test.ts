@@ -17,14 +17,14 @@ function rung(
 }
 
 const floor = (level: number, over: Partial<Trigger> = {}) =>
-  rung({ predicate: { kind: "PRICE_BELOW", level }, action: "EXIT", ...over });
+  rung({ predicate: { watch: "price", is: "below", value: level }, action: "EXIT", ...over });
 
 const trail = (pct: number, over: Partial<Trigger> = {}) =>
-  rung({ predicate: { kind: "TRAILING_FROM_HIGH", pct }, action: "EXIT", ...over });
+  rung({ predicate: { watch: "move", is: "below", value: pct, variable: "peak" }, action: "EXIT", ...over });
 
 const drawdownExit = (pct: number) =>
   rung({
-    predicate: { kind: "GAIN_FROM_ENTRY", pct, direction: "DOWN" },
+    predicate: { watch: "move", is: "below", value: pct, variable: "entry" },
     action: "EXIT",
   });
 
@@ -167,7 +167,7 @@ describe("protectiveRatchetViolations — percentage bands widen = weaker", () =
 describe("protectiveRatchetViolations — what is deliberately NOT gated", () => {
   it("ignores profit targets (PRICE_ABOVE exit on LONG is TARGET, not STOP)", () => {
     const target = (level: number) =>
-      rung({ predicate: { kind: "PRICE_ABOVE", level }, action: "EXIT" });
+      rung({ predicate: { watch: "price", is: "above", value: level }, action: "EXIT" });
     const v = protectiveRatchetViolations({
       direction: "LONG",
       before: [target(1100)],
@@ -179,7 +179,7 @@ describe("protectiveRatchetViolations — what is deliberately NOT gated", () =>
 
   it("ignores REVIEW rungs (pruning upside reviews is not a protection change)", () => {
     const review = rung({
-      predicate: { kind: "GAIN_FROM_ENTRY", pct: 20, direction: "UP" },
+      predicate: { watch: "move", is: "above", value: 20, variable: "entry" },
       action: "REVIEW",
     });
     const v = protectiveRatchetViolations({
@@ -193,7 +193,7 @@ describe("protectiveRatchetViolations — what is deliberately NOT gated", () =>
 
   it("ignores judgment rungs (earnings/signals) — no deterministic level to ratchet", () => {
     const miss = rung({
-      predicate: { kind: "EARNINGS_MISS" },
+      predicate: { watch: "surprise", is: "miss", value: 0 },
       action: "EXIT",
     });
     const v = protectiveRatchetViolations({
@@ -219,7 +219,7 @@ describe("protectiveRatchetViolations — what is deliberately NOT gated", () =>
 describe("protectiveRatchetViolations — SHORT positions", () => {
   it("flags raising a SHORT stop (PRICE_ABOVE is the protective side)", () => {
     const cover = (level: number) =>
-      rung({ predicate: { kind: "PRICE_ABOVE", level }, action: "EXIT" });
+      rung({ predicate: { watch: "price", is: "above", value: level }, action: "EXIT" });
     const v = protectiveRatchetViolations({
       direction: "SHORT",
       before: [cover(50)],

@@ -116,21 +116,21 @@ describe("record_thesis — the buy level's side needs a price", () => {
     mockGetStockQuote.mockRejectedValue(new Error("429"));
     const result = await run(hpeArgs({ current_price: 57.08 }));
     expect(result.ok).toBe(true);
-    expect(enterRung().predicate).toEqual({ kind: "PRICE_BELOW", level: 54.75 });
+    expect(enterRung().predicate).toEqual({ watch: "price", is: "below", value: 54.75 });
   });
 
   it("quote fails, current_price passed → level above the price is PRICE_ABOVE (a breakout)", async () => {
     mockGetStockQuote.mockResolvedValue(null);
     const result = await run(hpeArgs({ entry_price: 60, target_price: 80, stop_loss: 54, current_price: 57.08 }));
     expect(result.ok).toBe(true);
-    expect(enterRung().predicate).toEqual({ kind: "PRICE_ABOVE", level: 60 });
+    expect(enterRung().predicate).toEqual({ watch: "price", is: "above", value: 60 });
   });
 
   it("a live quote wins over current_price", async () => {
     mockGetStockQuote.mockResolvedValue({ c: 57.08 });
     const result = await run(hpeArgs({ current_price: 50 })); // stale hint says breakout; the quote says pullback
     expect(result.ok).toBe(true);
-    expect(enterRung().predicate).toEqual({ kind: "PRICE_BELOW", level: 54.75 });
+    expect(enterRung().predicate).toEqual({ watch: "price", is: "below", value: 54.75 });
   });
 
   it("no quote and no current_price → a priced mint is refused, nothing is written", async () => {

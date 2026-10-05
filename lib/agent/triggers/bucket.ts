@@ -16,17 +16,18 @@
  * working.
  */
 
-import type { TriggerAction, TriggerPredicate } from "./types";
+import type { TriggerAction } from "./types";
 import { fromLegacy } from "./condition/legacy";
 import { triggerSlot, whenSlot } from "./condition/slot";
 import { isRetired } from "./condition/types";
+import type { When } from "@/lib/agent/triggers/condition";
 
 /**
  * Stable identity for a predicate, ignoring its VALUE: "price below $60" and
  * "price below $71" are the same rung at different levels. Read off the
  * condition shape's slot (./condition/slot), the same classes the kinds gave.
  */
-export function predicateKey(p: TriggerPredicate): string {
+export function predicateKey(p: When): string {
   const w = fromLegacy(p);
   return isRetired(w) ? `retired:${JSON.stringify(p)}` : whenSlot(w);
 }
@@ -40,7 +41,7 @@ export function predicateKey(p: TriggerPredicate): string {
  * Takes the structural minimum rather than a full `Trigger` so callers
  * holding a loosely-typed client-side rung can use it without a cast.
  */
-export function triggerBucket(t: { predicate: TriggerPredicate; action: TriggerAction }): string {
+export function triggerBucket(t: { predicate: When; action: TriggerAction }): string {
   const w = fromLegacy(t.predicate);
   return isRetired(w) ? `retired:${JSON.stringify(t.predicate)}::${t.action}` : triggerSlot(w, t.action);
 }

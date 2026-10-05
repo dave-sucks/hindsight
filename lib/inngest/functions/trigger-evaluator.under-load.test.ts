@@ -103,7 +103,7 @@ function book(): PrismaDouble {
   const review = (id: string) => ({
     id,
     action: "REVIEW",
-    predicate: { kind: "REVIEW_CADENCE", days: 30 },
+    predicate: { watch: "repeat", value: 30 },
     rationale: "Look at this every 30 days, counting from the last real review.",
     cooldownDays: 30,
     source: "AGENT",
@@ -126,7 +126,7 @@ function book(): PrismaDouble {
             {
               id: `stop_${ticker}`,
               action: "EXIT",
-              predicate: { kind: "PRICE_BELOW", level: h.stop },
+              predicate: { watch: "price", is: "below", value: h.stop },
               rationale: `Hard stop at $${h.stop}. If we hit it the thesis is broken; close and write up the lesson.`,
               cooldownDays: 0,
               fireMode: "TACTICAL",

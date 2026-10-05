@@ -58,8 +58,9 @@
  * stopped loading. No database, no clock of its own — callers pass `now`.
  */
 
-import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+
 import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
+import type { When } from "@/lib/agent/triggers/condition";
 
 /**
  * Rejection messages the SYSTEM wrote (the retired duplicate-close fold, the
@@ -246,7 +247,7 @@ export function declineReplanAllows(input: {
   /** RatchetViolation.reason */
   reason: string;
   /** The predicate the edit would leave in place. */
-  afterPredicate: TriggerPredicate | null | undefined;
+  afterPredicate: When | null | undefined;
   /** The line whose sale was declined; null = we cannot bound it, so no. */
   declinedFloor: number | null;
   direction: string | null;

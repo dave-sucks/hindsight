@@ -11,7 +11,7 @@ import { parseTriggersResilient, triggerPredicateSchema, triggersArraySchema } f
 
 const good = {
   id: "t1",
-  predicate: { kind: "PRICE_BELOW", level: 64 },
+  predicate: { watch: "price", is: "below", value: 64 },
   action: "EXIT",
   rationale: "hard stop",
   cooldownDays: 0,
@@ -19,7 +19,7 @@ const good = {
 /** The exact shape that was discarding whole ladders. */
 const badCooldown = {
   id: "t2",
-  predicate: { kind: "REVIEW_CADENCE", days: 180 },
+  predicate: { watch: "repeat", value: 180 },
   action: "REVIEW",
   rationale: "hygiene",
   cooldownDays: 292,
@@ -75,12 +75,12 @@ describe("parseTriggersResilient", () => {
 
 describe("REVIEW_CADENCE keeps its counting-from choice through the schema", () => {
   it("'sell 30 days after the buy' survives the parse as a count from the buy — on main it came back as a review clock", () => {
-    const parsed = triggerPredicateSchema.parse({ kind: "REVIEW_CADENCE", days: 30, from: "BUY" });
-    expect(parsed).toEqual({ kind: "REVIEW_CADENCE", days: 30, from: "BUY" });
-    const before = triggerPredicateSchema.parse({ kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" });
-    expect(before).toEqual({ kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" });
+    const parsed = triggerPredicateSchema.parse({ watch: "from_date", is: "after", value: 30, variable: "buy" });
+    expect(parsed).toEqual({ watch: "from_date", is: "after", value: 30, variable: "buy" });
+    const before = triggerPredicateSchema.parse({ watch: "from_date", is: "before", value: 3, variable: "event" });
+    expect(before).toEqual({ watch: "from_date", is: "before", value: 3, variable: "event" });
   });
   it("a plain review clock parses as before", () => {
-    expect(triggerPredicateSchema.parse({ kind: "REVIEW_CADENCE", days: 7 })).toEqual({ kind: "REVIEW_CADENCE", days: 7 });
+    expect(triggerPredicateSchema.parse({ watch: "repeat", value: 7 })).toEqual({ watch: "repeat", value: 7 });
   });
 });

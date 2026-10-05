@@ -29,8 +29,8 @@
  * Pure — no DB, no clock, no fetches.
  */
 
-import { levelOf, lineOf, shapeOf } from "./condition";
-import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
+import { isLevel, levelOf, lineOf, shapeOf, type Condition } from "./condition";
+import type { Trigger, TriggerAction } from "./types";
 import type { ResolvedTrigger, TriggerLevel } from "./levels";
 
 // ── Shape ──────────────────────────────────────────────────────────────
@@ -336,7 +336,7 @@ function setLevel(
   if (price == null) return stored.filter((t) => !occupies(t));
 
   const sided = predicateFor(slot, price, direction, currentPrice);
-  const fresh = basis === "close" ? { ...sided, basis: "close" as const } : sided;
+  const fresh: Condition = basis === "close" ? { ...sided, settings: { close: true } } : sided;
   const said = note?.trim() || null;
 
   const matches = stored.filter(occupies);
@@ -370,11 +370,11 @@ function setLevel(
         const before = priceOf(t);
         const rationale = said
           ? said
-          : t.predicate.kind !== predicate.kind
-            ? rationaleFor(slot, price, direction, held, predicate.kind)
+          : typedLevel(t, direction)?.above !== (predicate.is === "above")
+            ? rationaleFor(slot, price, direction, held, predicate.is === "above")
             : before != null && before !== price
               ? (moveNumberInText(t.rationale, "level", before, price) ??
-                rationaleFor(slot, price, direction, held, predicate.kind))
+                rationaleFor(slot, price, direction, held, predicate.is === "above"))
               : t.rationale;
         return { ...t, predicate, rationale };
       });
@@ -407,7 +407,7 @@ function setLevel(
           : slot === "FLOOR"
             ? "EXIT"
             : "REVIEW",
-      rationale: said ?? rationaleFor(slot, price, direction, held, fresh.kind),
+      rationale: said ?? rationaleFor(slot, price, direction, held, fresh.is === "above"),
       ...(source ? { source } : {}),
     },
   ];
@@ -508,15 +508,14 @@ export function isPlanLevelOnList(
  * and removed 2026-08-16 — see ENTRY_TRIGGER_SEMANTICS.md, don't rebuild it.
  */
 /**
- * A rebuilt level predicate keeps the `basis` of the one it replaces — the
- * number moved, not the rule about when it fires. Only a price level has a
- * basis; anything else passes through.
+ * A rebuilt level keeps "only on the close" from the one it replaces — the
+ * number moved, not the rule about when it fires. Only a typed price level
+ * has it; anything else passes through.
  */
-export function withBasisOf<P extends TriggerPredicate>(prior: TriggerPredicate, next: P): P {
-  const basis =
-    (prior.kind === "PRICE_ABOVE" || prior.kind === "PRICE_BELOW") ? prior.basis : undefined;
-  if (basis == null || (next.kind !== "PRICE_ABOVE" && next.kind !== "PRICE_BELOW")) return next;
-  return { ...next, basis } as P;
+export function withBasisOf(prior: unknown, next: Condition): Condition {
+  const w = shapeOf(prior);
+  if (!(w && levelOf(w)?.close) || !isLevel(next)) return next;
+  return { ...next, settings: { ...next.settings, close: true } };
 }
 
 export function predicateFor(
@@ -524,7 +523,7 @@ export function predicateFor(
   price: number,
   direction: string | null,
   currentPrice?: number | null,
-): Extract<TriggerPredicate, { kind: "PRICE_ABOVE" | "PRICE_BELOW" }> {
+): Condition {
   const long = isLong(direction);
   const readsTheTape =
     slot === "ENTRY" &&
@@ -538,8 +537,8 @@ export function predicateFor(
       ? !long
       : long;
   return wantsAbove
-    ? { kind: "PRICE_ABOVE", level: price }
-    : { kind: "PRICE_BELOW", level: price };
+    ? { watch: "price", is: "above", value: price }
+    : { watch: "price", is: "below", value: price };
 }
 
 export function rationaleFor(
@@ -547,17 +546,18 @@ export function rationaleFor(
   price: number,
   direction: string | null,
   held: boolean,
-  kind: "PRICE_ABOVE" | "PRICE_BELOW",
+  /** The level sits above the price (a breakout buy, a short's stop). */
+  above: boolean,
 ): string {
   const long = isLong(direction);
   const p = `$${price.toFixed(2)}`;
   if (slot === "ENTRY") {
     if (long) {
-      return kind === "PRICE_ABOVE"
+      return above
         ? `Buy level — start the position when the price breaks above ${p}.`
         : `Buy level — start the position when the price comes back down to ${p}.`;
     }
-    return kind === "PRICE_BELOW"
+    return !above
       ? `Short entry — start the position when the price breaks below ${p}.`
       : `Short entry — start the position when the price rallies to ${p}.`;
   }

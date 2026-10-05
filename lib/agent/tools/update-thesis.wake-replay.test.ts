@@ -16,6 +16,7 @@
  * still refused.
  */
 import raw from "@/lib/agent/__fixtures__/vst-chat-wake-2026-09-28.json";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import writerRaw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
@@ -33,7 +34,7 @@ const vst = writerRaw as unknown as {
 };
 
 /** VST as the chat found it: no plan, only the 30-day review cadence. */
-const cadence = vst.thesisBefore.triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE");
+const cadence = vst.thesisBefore.triggers.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
 const seed = () => ({
   thesis: [
     thesisRow({
@@ -76,7 +77,7 @@ describe("VST 2026-09-27 — the chat's review above $145, with no buy", () => {
     expect(r.refused).toBe(false);
     const row = rowOf(r);
     const now = row.triggers as Trigger[];
-    expect(now.map((t) => [t.action, t.predicate.kind])).toEqual([
+    expect(now.map((t) => [t.action, kindOf(t.predicate)])).toEqual([
       ["REVIEW", "REVIEW_CADENCE"],
       ["REVIEW", "PRICE_ABOVE"],
     ]);

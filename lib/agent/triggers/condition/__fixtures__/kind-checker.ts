@@ -11,10 +11,11 @@
 import type { Checker, EvaluationContext } from "../../evaluate";
 import { daysUntilReport } from "../../earnings";
 import { trailFireLevel } from "../../trail";
-import type { TriggerPredicate } from "../../types";
+
 import { liveRsi, movePctOverSessions, volumeRatio } from "@/lib/market-data/indicator-snapshot";
 import { insiderCluster } from "@/lib/market-data/insider-cluster";
 import { unfiredMatches } from "@/lib/market-data/sec-events";
+import type { LegacyPredicate } from "../legacy-types";
 
 /**
  * Evaluate a single predicate against the context.
@@ -22,7 +23,7 @@ import { unfiredMatches } from "@/lib/market-data/sec-events";
  * Returns false (not throw) when context is missing required data.
  */
 export function evaluateTrigger(
-  predicate: TriggerPredicate,
+  predicate: LegacyPredicate,
   ctx: EvaluationContext,
 ): boolean {
   switch (predicate.kind) {
@@ -220,10 +221,12 @@ export function evaluateTrigger(
   }
 }
 
+/** The old checker reads kinds only; the parity tests hand it the stored kinds. */
+const kind = (p: unknown) => p as LegacyPredicate;
 export const KIND_CHECKER: Checker = {
-  holds: (p, ctx) => evaluateTrigger(p, ctx) === true,
-  readsPrice: (p) => readsPrice(p),
-  readsUpcomingReport: (p) => readsUpcomingReport(p),
+  holds: (p, ctx) => evaluateTrigger(kind(p), ctx) === true,
+  readsPrice: (p) => readsPrice(kind(p)),
+  readsUpcomingReport: (p) => readsUpcomingReport(kind(p)),
 };
 
 // ── Internals ─────────────────────────────────────────────────────────
@@ -244,7 +247,7 @@ export const KIND_CHECKER: Checker = {
  * couldn't check".
  */
 function peakWasFast(
-  predicate: Extract<TriggerPredicate, { kind: "GAIN_FROM_ENTRY" }>,
+  predicate: Extract<LegacyPredicate, { kind: "GAIN_FROM_ENTRY" }>,
   ctx: EvaluationContext,
 ): boolean {
   if (predicate.skipIfPeakWithinDays == null) return true;
@@ -256,14 +259,14 @@ function peakWasFast(
 }
 
 /** Does this predicate read the next scheduled report? (The heads-up.) */
-function readsUpcomingReport(p: TriggerPredicate): boolean {
+function readsUpcomingReport(p: LegacyPredicate): boolean {
   if (p.kind === "EARNINGS_WITHIN") return true;
   if (p.kind === "AND" || p.kind === "OR") return p.predicates.some(readsUpcomingReport);
   return false;
 }
 
 /** Does this predicate compare the quote's price to a level? */
-function readsPrice(p: TriggerPredicate): boolean {
+function readsPrice(p: LegacyPredicate): boolean {
   switch (p.kind) {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
@@ -297,7 +300,7 @@ function reportedSurprisePct(ctx: EvaluationContext): number | null {
 }
 
 function evaluatePriceMovePct(
-  predicate: Extract<TriggerPredicate, { kind: "PRICE_MOVE_PCT" }>,
+  predicate: Extract<LegacyPredicate, { kind: "PRICE_MOVE_PCT" }>,
   ctx: EvaluationContext,
 ): boolean {
   // 1D: the quote's own change vs prior close (Finnhub `dp`, carried on
@@ -323,7 +326,7 @@ function evaluatePriceMovePct(
  * snapshot's gap list. withinDays 1 = today only.
  */
 function evaluateGapUp(
-  predicate: Extract<TriggerPredicate, { kind: "GAP_UP" }>,
+  predicate: Extract<LegacyPredicate, { kind: "GAP_UP" }>,
   ctx: EvaluationContext,
 ): boolean {
   const snap = ctx.indicators;

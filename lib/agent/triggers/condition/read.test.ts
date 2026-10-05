@@ -13,20 +13,21 @@
  */
 
 import stored from "./__fixtures__/stored-triggers.json";
-import { UNSTORED } from "./__fixtures__/unstored-triggers";
+import { UNSTORED, type StoredRow } from "./__fixtures__/unstored-triggers";
 import { shouldFire, type EvaluationContext } from "../evaluate";
 import { KIND_CHECKER } from "./__fixtures__/kind-checker";
-import type { Trigger, TriggerAction, TriggerPredicate } from "../types";
+import type { Trigger, TriggerAction } from "../types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import type { SecFiling } from "@/lib/market-data/sec-events";
 import { SHAPE_CHECKER } from "./read";
 import { toStoredPredicate } from "./stored";
+import type { LegacyPredicate } from "./legacy-types";
 
-type Row = { action: TriggerAction; predicate: TriggerPredicate; scopes: string[]; count: number };
+type Row = { action: TriggerAction; predicate: StoredRow; scopes: string[]; count: number };
 
 const rows: Row[] = [
-  ...(stored as { rows: Row[] }).rows,
-  ...UNSTORED.flatMap((predicate) => (["ENTER", "EXIT", "REVIEW"] as const).map((action) => ({ action, predicate, scopes: ["live"], count: 1 }))),
+  ...(stored as unknown as { rows: Row[] }).rows,
+  ...UNSTORED.flatMap((predicate) => (["ENTER", "EXIT", "REVIEW"] as const).map((action) => ({ action, predicate: predicate as StoredRow, scopes: ["live"], count: 1 }))),
 ];
 
 /** mulberry32: the same situations on every run. */
@@ -41,7 +42,7 @@ function prng(seed: number) {
 }
 
 /** A price the predicate is about, so the situations land on both sides of it. */
-function anchor(p: TriggerPredicate): number {
+function anchor(p: LegacyPredicate): number {
   if ("level" in p && typeof p.level === "number") return p.level;
   if (p.kind === "AND" || p.kind === "OR") return p.predicates.map(anchor).find((a) => a !== 100) ?? 100;
   return 100;
@@ -52,7 +53,7 @@ const REPORT = { symbol: "X", reportDate: "", hour: null, epsActual: null, epsEs
 const day = (n: number) => new Date(NOW.getTime() + n * 86_400_000);
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
-function situation(p: TriggerPredicate, rand: () => number): EvaluationContext {
+function situation(p: LegacyPredicate, rand: () => number): EvaluationContext {
   const pick = <T,>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)];
   const between = (a: number, b: number) => a + rand() * (b - a);
   const base = anchor(p);
@@ -147,7 +148,7 @@ describe("the checker agrees with the one it replaced on every stored trigger", 
         const b = shouldFire(t, ctx);
         if (a.fires !== b.fires || a.reason !== b.reason) disagree.push({ p, i, a, b, on: "shouldFire" });
         // Stored in the condition shape since the cutover: the same decision.
-        const c = shouldFire({ ...t, predicate: toStoredPredicate(t.predicate) as TriggerPredicate }, ctx);
+        const c = shouldFire({ ...t, predicate: toStoredPredicate(t.predicate) as StoredRow }, ctx);
         if (c.fires !== b.fires || c.reason !== b.reason) disagree.push({ p, i, b, c, on: "stored as the shape" });
         if (disagree.length > 5) break;
       }

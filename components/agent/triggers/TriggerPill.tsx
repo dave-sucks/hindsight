@@ -19,9 +19,8 @@ import {
   actionLabel,
   canProposeDirectly,
   conditionsOf,
-  fromLegacy,
+  shapeOf,
   isGroup,
-  isRetired,
   measureOf,
   pillParts,
   triggerText,
@@ -29,11 +28,12 @@ import {
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
 import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
-import { watchedFloorOnClose, type TriggerAction, type TriggerPredicate } from "@/lib/agent/triggers/types";
+import { watchedFloorOnClose, type TriggerAction } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { cn } from "@/lib/utils";
 import { TriggerDialog } from "./TriggerDialog";
 import { draftOf, useTriggerRequest, type Level } from "./TriggerFields";
+import type { When } from "@/lib/agent/triggers/condition";
 
 export interface TriggerPillProps {
   trigger: Trigger;
@@ -50,9 +50,9 @@ export interface TriggerPillProps {
 /** What the pill and the popover show: the parts, the joiner, and which parts are a clock. */
 function readTrigger(trigger: Trigger, held: boolean) {
   // A watched stock's floor reads the close; the pill says what the check reads.
-  const shown = watchedFloorOnClose(trigger, { status: held ? "HOLDING" : "WATCHING" }).predicate as TriggerPredicate;
-  const w = fromLegacy(shown);
-  if (isRetired(w)) return { parts: [{ label: "a removed condition" }] as PillPart[], joiner: "and" as const, timed: [false], w: null };
+  const shown = watchedFloorOnClose(trigger, { status: held ? "HOLDING" : "WATCHING" }).predicate as When;
+  const w = shapeOf(shown);
+  if (!w) return { parts: [{ label: "a removed condition" }] as PillPart[], joiner: "and" as const, timed: [false], w: null };
   return { ...pillParts(w), timed: conditionsOf(w).map((c) => measureOf(c).timed === true), w };
 }
 
@@ -141,7 +141,7 @@ function TriggerCard({
   });
   const home =
     trigger.level === "ANALYST" && analystId ? `/analysts/${analystId}` : trigger.level === "ACCOUNT" ? "/settings/triggers" : null;
-  const overrides = trigger.overrides ? fromLegacy(trigger.overrides.predicate) : null;
+  const overrides = trigger.overrides ? shapeOf(trigger.overrides.predicate) : null;
   const cooldown = trigger.cooldownDays ? flooredCooldownDays(trigger, trigger.cooldownDays) : null;
   const timed = w != null && !isGroup(w) && measureOf(w).timed === true;
   const facts = [
@@ -198,7 +198,7 @@ function TriggerCard({
       </div>
       {w == null ? <p className="text-xs text-muted-foreground">A condition removed in August 2026. It never fires.</p> : null}
       {trigger.rationale ? <p className="text-xs text-muted-foreground">{trigger.rationale}</p> : null}
-      {overrides && !isRetired(overrides) ? (
+      {overrides ? (
         <p className="text-xs text-muted-foreground">
           Overrides the {trigger.overrides!.level === "ACCOUNT" ? "account" : "analyst"} rule: {triggerText(trigger.action, overrides, sells)}
         </p>

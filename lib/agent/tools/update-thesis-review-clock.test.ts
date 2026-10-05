@@ -98,7 +98,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     triggers: [
       {
         id: "trig_enter",
-        predicate: { kind: "PRICE_ABOVE", level: 110 },
+        predicate: { watch: "price", is: "above", value: 110 },
         action: "ENTER",
         rationale: "Entry.",
       },

@@ -33,7 +33,7 @@ const mintArgs = {
   source_rationale: "PRE_CATALYST dispatch from the catalyst calendar.",
   current_price: 16.51,
   triggers: [
-    { predicate: { kind: "REVIEW_CADENCE", days: 30 }, action: "REVIEW", rationale: "Wake in 30 days to see whether a base is forming." },
+    { predicate: { watch: "repeat", value: 30 }, action: "REVIEW", rationale: "Wake in 30 days to see whether a base is forming." },
   ],
 };
 

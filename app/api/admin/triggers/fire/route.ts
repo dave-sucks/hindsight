@@ -29,6 +29,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest) {
       analystId,
       ticker: thesis.ticker,
       action: trigger.action,
-      predicateKind: trigger.predicate.kind,
+      sentence: sentenceOf(trigger),
       // signalId omitted — this is a price/manual fire, not signal-driven.
     },
   });

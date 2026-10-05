@@ -11,12 +11,13 @@
  */
 
 import { crossingBaseline } from "./written-price";
-import type { Trigger, TriggerPredicate } from "./types";
+import type { Trigger } from "./types";
 import { effectiveCooldownDays } from "./defaults";
 import type { EarningsReport } from "./earnings";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import type { SecFiling } from "@/lib/market-data/sec-events";
 import { SHAPE_CHECKER } from "./condition/read";
+import type { When } from "@/lib/agent/triggers/condition";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ export interface EvaluationContext {
 
   /**
    * This ticker's most recently reported quarter, when it reported inside
-   * the evaluator's lookback window. Read by EARNINGS_BEAT / EARNINGS_MISS.
+   * the evaluator's lookback window. Read by earnings beat / miss.
    *
    * This is the source that works today. The signal-side path below stayed
    * dark for months because no producer ever stamped a surprise figure onto
@@ -60,14 +61,14 @@ export interface EvaluationContext {
 
   /**
    * This ticker's NEXT scheduled report, when one falls inside the
-   * evaluator's lookahead. Read by EARNINGS_WITHIN — the heads-up before
+   * evaluator's lookahead. Read by before-earnings — the heads-up before
    * a report, off the same calendar call as `earnings`. Absent → false.
    */
   upcomingEarnings?: EarningsReport | null;
 
   /**
    * This ticker's watched SEC filings inside the evaluator's lookback,
-   * newest first. Read by SEC_EVENT. Absent → false.
+   * newest first. Read by filing. Absent → false.
    */
   filings?: SecFiling[] | null;
 
@@ -92,8 +93,8 @@ export interface EvaluationContext {
 
   /**
    * Today's session so far. `volume` is consolidated volume through ~15
-   * minutes ago (SIP); `open` is today's open. Read by VOLUME_RATIO and
-   * GAP_UP. Absent → those kinds are false.
+   * minutes ago (SIP); `open` is today's open. Read by volume and
+   * gap. Absent → those kinds are false.
    */
   today?: { open?: number | null; volume?: number | null } | null;
 
@@ -107,8 +108,8 @@ export interface EvaluationContext {
   session?: "INTRADAY" | "CLOSE";
 
   /**
-   * Open-position economics — required by GAIN_FROM_ENTRY (avgCost) and
-   * TRAILING_FROM_HIGH (peakPrice). Supplied by the cron + live paths for
+   * Open-position economics — required by move-from-entry (avgCost) and
+   * trail (peakPrice). Supplied by the cron + live paths for
    * HOLDING theses; absent/null (WATCHING, or caller didn't join the
    * position) → those predicates return false (missed trigger, not a
    * crash). peakPrice is the price-monitor-maintained water mark:
@@ -133,7 +134,7 @@ export interface EvaluationContext {
     createdAt: Date;
     /**
      * When an analyst last actually looked at this thesis. Drives
-     * REVIEW_CADENCE. Absent falls back to createdAt, which makes a
+     * review-clock. Absent falls back to createdAt, which makes a
      * never-reviewed thesis due immediately.
      */
     lastReviewedAt?: Date | null;
@@ -143,8 +144,8 @@ export interface EvaluationContext {
      */
     catalystDate?: Date | null;
     /**
-     * "LONG" | "SHORT" | null — orients GAIN_FROM_ENTRY and
-     * TRAILING_FROM_HIGH (a SHORT's gain is a price DROP; its peak is the
+     * "LONG" | "SHORT" | null — orients move-from-entry and
+     * trail (a SHORT's gain is a price DROP; its peak is the
      * low-water mark). Absent → treated as LONG, the overwhelming default.
      */
     direction?: string | null;
@@ -160,7 +161,7 @@ export interface EvaluationContext {
  * Does the predicate's condition hold? False (never a throw) when the context
  * is missing what it needs. Read off the measure catalog (./condition/read.ts).
  */
-export function evaluateTrigger(predicate: TriggerPredicate, ctx: EvaluationContext): boolean {
+export function evaluateTrigger(predicate: When, ctx: EvaluationContext): boolean {
   return SHAPE_CHECKER.holds(predicate, ctx);
 }
 
@@ -171,9 +172,9 @@ export function evaluateTrigger(predicate: TriggerPredicate, ctx: EvaluationCont
  * off the measure catalog (./condition/read.ts).
  */
 export interface Checker {
-  holds(p: TriggerPredicate, ctx: EvaluationContext): boolean;
-  readsPrice(p: TriggerPredicate): boolean;
-  readsUpcomingReport(p: TriggerPredicate): boolean;
+  holds(p: When, ctx: EvaluationContext): boolean;
+  readsPrice(p: When): boolean;
+  readsUpcomingReport(p: When): boolean;
 }
 
 /**
@@ -224,7 +225,7 @@ export function shouldFire(
   //   standing-order reading a level already past (TOST $35.15 against a
   //   $35.16 tape; PLTR, 16 fires in 30 days) was a daily proposal the
   //   analyst then declined. Evaluating the same predicate at the prior
-  //   close gives composites and VS_SMA the crossing for free; entries
+  //   close gives composites and vs-average the crossing for free; entries
   //   that don't read the price can't cross and keep firing on match. No
   //   prevClose ⇒ level semantics (the read-side snapshots).
   //

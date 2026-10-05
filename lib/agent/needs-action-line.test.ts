@@ -28,7 +28,7 @@ describe("the review flag says when it was due", () => {
           {
             id: "t1",
             action: "REVIEW",
-            predicate: { kind: "REVIEW_CADENCE", days: 7 },
+            predicate: { watch: "repeat", value: 7 },
             rationale: "weekly",
           } as unknown as Trigger,
         ],

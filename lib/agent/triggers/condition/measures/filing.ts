@@ -1,10 +1,11 @@
 /** Filing: an SEC filing, and insider buying. docs/plans/TRIGGER_TYPES.md §3.3. */
 
-import type { TriggerPredicate } from "../../types";
+
 import type { MeasureDef } from "../measure";
 import type { Condition, FilingVariable } from "../types";
 import { FILING_VARIABLES } from "../variables";
 import { num } from "../words";
+import type { LegacyPredicate } from "../legacy-types";
 
 function tierOf(v: string | undefined): "RED" | "MATERIAL" | undefined {
   return v === "tier:RED" ? "RED" : v === "tier:MATERIAL" ? "MATERIAL" : undefined;
@@ -19,6 +20,7 @@ export const filing: MeasureDef = {
   value: { none: true, placeholder: "Choose a filing" },
   variables: { mode: "replace", options: FILING_VARIABLES, title: "Choose a filing", required: "Choose a filing." },
   actions: ["REVIEW"],
+  says: (_c, words) => `it files ${words}`,
   // One fire per filing (firedFilings), and filings cluster: no cooldown.
   cooldownDays: () => 0,
   // A rule naming a tier is the tier rule, whatever else it names, so it
@@ -39,13 +41,13 @@ export const filing: MeasureDef = {
         return { match: "any", conditions: events.map((variable): Condition => ({ watch: "filing", variable })) };
       },
     },
-    to: (c): TriggerPredicate | null => fold([c]),
+    to: (c): LegacyPredicate | null => fold([c]),
     foldAny: (cs) => (cs.length > 1 ? fold(cs) : null),
   },
 };
 
 /** One SEC_EVENT naming every event in `cs` (at most one tier). */
-function fold(cs: Condition[]): TriggerPredicate | null {
+function fold(cs: Condition[]): LegacyPredicate | null {
   let tier: "RED" | "MATERIAL" | undefined;
   const items: string[] = [];
   const forms: string[] = [];
@@ -86,6 +88,6 @@ export const insiders: MeasureDef = {
   fresh: () => ({ watch: "insiders" }),
   legacy: {
     from: { INSIDER_CLUSTER: (p) => ({ watch: "insiders", value: p.minBuyers, settings: { days: p.days } }) },
-    to: (c): TriggerPredicate | null => (c.value != null ? { kind: "INSIDER_CLUSTER", minBuyers: c.value, days: num(c.settings?.days) ?? 30 } : null),
+    to: (c): LegacyPredicate | null => (c.value != null ? { kind: "INSIDER_CLUSTER", minBuyers: c.value, days: num(c.settings?.days) ?? 30 } : null),
   },
 };

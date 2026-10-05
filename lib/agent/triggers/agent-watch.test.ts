@@ -13,11 +13,11 @@ import {
 } from "@/lib/agent/triggers/agent-watch";
 
 const cadence = (days: number) => ({
-  predicate: { kind: "REVIEW_CADENCE", days },
+  predicate: { watch: "repeat", value: days },
   action: "REVIEW",
 });
 const priceRung = {
-  predicate: { kind: "PRICE_ABOVE", level: 186 },
+  predicate: { watch: "price", is: "above", value: 186 },
   action: "ENTER",
 };
 

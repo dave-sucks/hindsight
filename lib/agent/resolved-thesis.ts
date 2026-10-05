@@ -23,6 +23,7 @@
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
+import { conditionSentence, levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
 import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
 import { floorTooFar, type FloorRisk, type FloorStructure } from "@/lib/agent/floor-risk";
@@ -98,7 +99,7 @@ export interface ResolvedEnvelope {
   floorRisk: FloorRisk | null;
 
   triggerState: TriggerState;
-  /** Human-readable for the agent + UI: e.g. "PRICE_ABOVE 92.5 (cur 90.30, -2.4%)". */
+  /** Human-readable for the agent + UI: e.g. "above $92.50 (now $90.30, -2.4%)". */
   triggerDetail: string | null;
 
   actionability: Actionability;
@@ -143,7 +144,7 @@ export interface ResolverThesisInput {
   structure?: FloorStructure | null;
   /**
    * Paired open Position's water mark (high LONG / low SHORT) — feeds the
-   * TRAILING_FROM_HIGH floor math in the ladder-health block. Null when not
+   * trail floor math in the ladder-health block. Null when not
    * held / not tracked (falls back to current price).
    */
   peakPrice?: number | null;
@@ -415,28 +416,16 @@ function extractEntryQualityScore(scoring: unknown): number | null {
   return typeof score === "number" ? score : null;
 }
 
-function describePredicate(
-  predicate: unknown,
-  currentPrice: number | null,
-): string {
-  if (!predicate || typeof predicate !== "object") return "(unknown predicate)";
-  const p = predicate as { kind?: string; level?: number };
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW": {
-      const level = p.level;
-      if (typeof level !== "number") return p.kind;
-      if (currentPrice == null) return `${p.kind} ${level} (no quote)`;
-      const gapPct = ((currentPrice - level) / level) * 100;
-      const sign = gapPct >= 0 ? "+" : "";
-      return `${p.kind} ${level} (cur ${currentPrice.toFixed(2)}, ${sign}${gapPct.toFixed(1)}%)`;
-    }
-    case "EARNINGS_BEAT":
-    case "EARNINGS_MISS":
-      return `${p.kind} (fires off the earnings calendar)`;
-    default:
-      return p.kind ?? "(unknown)";
-  }
+/** The condition in words, and for a typed price how far the price is from it: "above $92.50 (now $90.30, -2.4%)". */
+function describePredicate(predicate: unknown, currentPrice: number | null): string {
+  const w = shapeOf(predicate);
+  if (!w) return "(a removed condition)";
+  const text = conditionSentence(w);
+  const level = levelOf(w);
+  if (!level) return text;
+  if (currentPrice == null) return `${text} (no quote)`;
+  const gapPct = ((currentPrice - level.value) / level.value) * 100;
+  return `${text} (now $${currentPrice.toFixed(2)}, ${gapPct >= 0 ? "+" : ""}${gapPct.toFixed(1)}%)`;
 }
 
 // ── Supersession query helper ─────────────────────────────────────────

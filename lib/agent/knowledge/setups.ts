@@ -17,9 +17,10 @@
  * They live at the top of this file so one edit changes them everywhere.
  */
 
-import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+
 import { etTradingDayDate } from "@/lib/market-hours";
 import { applySetupOverride, type SetupOverrides } from "./setup-overrides";
+import { whenText, type Condition, type When } from "@/lib/agent/triggers/condition";
 
 // ── The numbers (DAV-245 ruling 1: playbook defaults accepted) ───────────
 
@@ -115,34 +116,13 @@ export type Horizon = "TRADE" | "TARGET" | "CATALYST" | "COMPOUNDER";
  * Every name used in a template is defined in PLACEHOLDERS.
  */
 export type Placeholder = `{${string}}`;
-type Level = number | Placeholder;
-
-/** Kinds deleted in DAV-247 (they could never fire) — no template may name them. */
-export const DELETED_KINDS = ["SIGNAL_TYPE", "GUIDANCE_CHANGE", "FILING"] as const;
-
-export type TemplateKind = TriggerPredicate["kind"];
 
 /**
- * An entry condition with holes: the TriggerPredicate shapes, with a price
- * level allowed to be a `{placeholder}` the writer fills from the chart.
+ * An entry condition with holes: the condition shape (lib/agent/triggers/condition),
+ * with a value allowed to be a `{placeholder}` the writer fills from the chart.
  */
-export type TemplatePredicate =
-  | { kind: "PRICE_ABOVE" | "PRICE_BELOW"; level: Level; basis?: "close" | "intraday" }
-  | { kind: "VOLUME_RATIO"; min: number }
-  | { kind: "NEW_HIGH"; window: "20D" | "52W" }
-  | { kind: "NEAR_SMA"; period: 20 | 50 | 150 | 200; withinPct: number }
-  | { kind: "VS_SMA"; period: 20 | 50 | 150 | 200; direction: "ABOVE" | "BELOW" }
-  | { kind: "PCT_FROM_52W_HIGH"; max: number }
-  | { kind: "RS_VS_SPY"; window: "1M" | "3M" | "6M"; min: number }
-  | { kind: "GAP_UP"; minPct: number; minVolRatio: number; withinDays?: number }
-  | { kind: "RSI"; period?: 2 | 14; threshold: number; direction: "ABOVE" | "BELOW" }
-  | { kind: "EARNINGS_SINCE"; min: number; max: number }
-  | { kind: "EARNINGS_WITHIN"; days: number }
-  | { kind: "AND" | "OR"; predicates: TemplatePredicate[] };
-
-/** Compile-time: every template kind is a real trigger kind. */
-type AssertKinds<T extends TemplateKind> = T;
-export type TemplatePredicateKind = AssertKinds<TemplatePredicate["kind"]>;
+export type TemplateCondition = Omit<Condition, "value"> & { value?: number | Placeholder };
+export type TemplatePredicate = TemplateCondition | { match: "all" | "any"; conditions: TemplatePredicate[] };
 
 export interface Setup {
   /** Stable id stored on Thesis.setupId. */
@@ -171,7 +151,7 @@ export interface Setup {
     chaseLimitPct: number | null;
     /**
      * Days after the report inside which this entry applies — the same
-     * count the EARNINGS_SINCE kind evaluates (the report day is 0). Past
+     * count the after-earnings kind evaluates (the report day is 0). Past
      * the last day the setup no longer applies and the writer is told so
      * (HPE 2026-09-15: written as PEAD 13 days after the print, with no
      * plan the drift rules could price).
@@ -364,14 +344,7 @@ export const SETUPS: Setup[] = [
       "Regime RISK_ON — breakouts fail most in CAUTION (Part C)",
     ],
     entry: {
-      template: {
-        kind: "AND",
-        predicates: [
-          { kind: "PRICE_ABOVE", level: "{pivot}", basis: "close" },
-          { kind: "VOLUME_RATIO", min: BREAKOUT_VOLUME_RATIO },
-          { kind: "PRICE_BELOW", level: "{pivotChase}" },
-        ],
-      },
+      template: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: BREAKOUT_VOLUME_RATIO }, { watch: "price", is: "below", value: "{pivotChase}" }] },
       confirmation: [
         `A close above the pivot, not an intraday poke (intraday crosses fail about half the time)`,
         `Volume ≥ ${BREAKOUT_VOLUME_RATIO}× average on the breakout day`,
@@ -425,13 +398,7 @@ export const SETUPS: Setup[] = [
       "Dollar volume enough to fill the seat's size",
     ],
     entry: {
-      template: {
-        kind: "AND",
-        predicates: [
-          { kind: "PRICE_ABOVE", level: "{flagHigh}", basis: "close" },
-          { kind: "VOLUME_RATIO", min: BREAKOUT_VOLUME_RATIO },
-        ],
-      },
+      template: { match: "all", conditions: [{ watch: "price", is: "above", value: "{flagHigh}", settings: { close: true } }, { watch: "volume", value: BREAKOUT_VOLUME_RATIO }] },
       confirmation: ["Range expands upward out of the flag", "Price above the 10- and 20-day"],
       chaseLimitPct: CHASE_LIMIT_PCT,
       text: "Close above the flag high on volume.",
@@ -469,21 +436,7 @@ export const SETUPS: Setup[] = [
       "Growth numbers mid-double-digit or better; liquidity floor met",
     ],
     entry: {
-      template: {
-        kind: "AND",
-        predicates: [
-          // The gap happened today or in the last two sessions — the entry is
-          // day 1 (close above the gap-day high) or day 2 (hold the midpoint).
-          { kind: "GAP_UP", minPct: EP_GAP_MIN_PCT, minVolRatio: EP_GAP_MIN_VOLUME_RATIO, withinDays: 3 },
-          {
-            kind: "OR",
-            predicates: [
-              { kind: "PRICE_ABOVE", level: "{gapDayHigh}", basis: "close" },
-              { kind: "PRICE_ABOVE", level: "{gapDayMid}", basis: "close" },
-            ],
-          },
-        ],
-      },
+      template: { match: "all", conditions: [{ watch: "gap", value: EP_GAP_MIN_PCT, settings: { volume: EP_GAP_MIN_VOLUME_RATIO, withinDays: 3 } }, { match: "any", conditions: [{ watch: "price", is: "above", value: "{gapDayHigh}", settings: { close: true } }, { watch: "price", is: "above", value: "{gapDayMid}", settings: { close: true } }] }] },
       confirmation: ["The gap holds (day 2 closes above the gap-day midpoint)", "Volume stays heavy"],
       chaseLimitPct: CHASE_LIMIT_PCT,
       text: "A close above the gap-day high, or a day-2 hold above the gap-day midpoint.",
@@ -523,13 +476,7 @@ export const SETUPS: Setup[] = [
       "Never a beat the market sold: a beat that gaps down is a fade signal, not a buy",
     ],
     entry: {
-      template: {
-        kind: "AND",
-        predicates: [
-          { kind: "EARNINGS_SINCE", min: PEAD_ENTRY_WINDOW[0], max: PEAD_ENTRY_WINDOW[1] },
-          { kind: "PRICE_ABOVE", level: "{gapDayLow}" },
-        ],
-      },
+      template: { match: "all", conditions: [{ watch: "report", is: "after", value: PEAD_ENTRY_WINDOW[1], settings: { fromDay: PEAD_ENTRY_WINDOW[0] } }, { watch: "price", is: "above", value: "{gapDayLow}" }] },
       confirmation: ["Gap held", "Surprise and guidance confirmed from the release or transcript"],
       chaseLimitPct: PEAD_MAX_RUN_PAST_GAP_PCT,
       windowDays: PEAD_ENTRY_WINDOW,
@@ -583,13 +530,7 @@ export const SETUPS: Setup[] = [
       // stored condition. A stored "close above the prior day's high" needs
       // a level something re-sets every day, and nothing did — the writer
       // had an entry it could not store (HPE 2026-09-15).
-      template: {
-        kind: "OR",
-        predicates: [
-          { kind: "NEAR_SMA", period: 20, withinPct: PULLBACK_NEAR_SMA_PCT },
-          { kind: "NEAR_SMA", period: 50, withinPct: PULLBACK_NEAR_SMA_PCT },
-        ],
-      },
+      template: { match: "any", conditions: [{ watch: "move", is: "near", value: PULLBACK_NEAR_SMA_PCT, variable: "sma20" }, { watch: "move", is: "near", value: PULLBACK_NEAR_SMA_PCT, variable: "sma50" }] },
       confirmation: [
         "The reversal: a close above the prior day's high after touching the average — the tactical run checks this on the fire",
         "The pullback came on below-average volume",
@@ -629,13 +570,7 @@ export const SETUPS: Setup[] = [
     archetypes: ["MEAN_REVERSION_OVERSOLD"],
     preconditions: ["Price above the 200-day", "A sharp 2–5 day flush"],
     entry: {
-      template: {
-        kind: "AND",
-        predicates: [
-          { kind: "VS_SMA", period: 200, direction: "ABOVE" },
-          { kind: "RSI", period: 2, threshold: RSI2_ENTRY_BELOW, direction: "BELOW" },
-        ],
-      },
+      template: { match: "all", conditions: [{ watch: "price", is: "above", variable: "sma200" }, { watch: "rsi", is: "below", value: RSI2_ENTRY_BELOW, settings: { period: 2 } }] },
       confirmation: ["Buy the close"],
       chaseLimitPct: null,
       text: `Above the 200-day with RSI(2) under ${RSI2_ENTRY_BELOW}; buy the close.`,
@@ -675,7 +610,7 @@ export const SETUPS: Setup[] = [
       entryVia: ["BASE_BREAKOUT", "MOMENTUM_FLAG", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      text: "A screen: it says which names; D1/D2/D5 say when. As a condition: PCT_FROM_52W_HIGH ≤ 5 and RS_VS_SPY 3M > 0.",
+      text: "A screen: it says which names; D1/D2/D5 say when. As a condition: within 5% of the 52-week high and ahead of the S&P over 3 months.",
     },
     stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
     target: { minR: MIN_REWARD_RISK, text: "From the entry setup used." },
@@ -766,7 +701,7 @@ export const SETUPS: Setup[] = [
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      text: "A screen and a conviction input; the entry is a D1 or D5 condition. As a wake: INSIDER_CLUSTER (≥ 3 open-market buyers within 30 days) → REVIEW, with the buyers named on the fire.",
+      text: "A screen and a conviction input; the entry is a D1 or D5 condition. As a wake: insider buying (at least 3 open-market buyers in 30 days) → REVIEW, with the buyers named on the fire.",
     },
     stop: {
       structure: ["the lowest insider purchase price"],
@@ -821,20 +756,7 @@ export const SETUPS: Setup[] = [
       "A business that will be structurally more valuable in 3–5 years",
     ],
     entry: {
-      template: {
-        kind: "OR",
-        predicates: [
-          {
-            kind: "AND",
-            predicates: [
-              { kind: "PRICE_ABOVE", level: "{pivot}", basis: "close" },
-              { kind: "VOLUME_RATIO", min: BREAKOUT_VOLUME_RATIO },
-            ],
-          },
-          { kind: "NEAR_SMA", period: 50, withinPct: PULLBACK_NEAR_SMA_PCT },
-          { kind: "VS_SMA", period: 50, direction: "ABOVE" },
-        ],
-      },
+      template: { match: "any", conditions: [{ match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: BREAKOUT_VOLUME_RATIO }] }, { watch: "move", is: "near", value: PULLBACK_NEAR_SMA_PCT, variable: "sma50" }, { watch: "price", is: "above", variable: "sma50" }] },
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: ["Thesis intact; volume matters less than for a trade"],
       chaseLimitPct: null,
@@ -915,50 +837,34 @@ export function setupIndex(): { id: SetupId; code: string; name: string; role: S
   return SETUPS.map(({ id, code, name, role, horizons }) => ({ id, code, name, role, horizons }));
 }
 
-/** The kinds a template uses, recursively. */
-export function templateKinds(p: TemplatePredicate | null): string[] {
+const isGroupTemplate = (p: TemplatePredicate): p is { match: "all" | "any"; conditions: TemplatePredicate[] } => "match" in p;
+
+/** The measures a template uses, recursively. */
+export function templateMeasures(p: TemplatePredicate | null): string[] {
   if (!p) return [];
-  if (p.kind === "AND" || p.kind === "OR") return [p.kind, ...p.predicates.flatMap(templateKinds)];
-  return [p.kind];
+  return isGroupTemplate(p) ? p.conditions.flatMap(templateMeasures) : [p.watch];
 }
 
 /** The `{placeholders}` a template uses, recursively. */
 export function templatePlaceholders(p: TemplatePredicate | null): string[] {
   if (!p) return [];
-  if (p.kind === "AND" || p.kind === "OR") return p.predicates.flatMap(templatePlaceholders);
-  if ((p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW") && typeof p.level === "string") return [p.level];
-  return [];
+  if (isGroupTemplate(p)) return p.conditions.flatMap(templatePlaceholders);
+  return typeof p.value === "string" ? [p.value] : [];
 }
 
-/** One line per condition, for tool output and prompts. */
+/** The template with each `{placeholder}` replaced by `fill(name)`. */
+export function fillTemplate(p: TemplatePredicate, fill: (name: Placeholder) => number): When {
+  if (isGroupTemplate(p)) return { match: p.match, conditions: p.conditions.map((c) => fillTemplate(c, fill)) };
+  return { ...p, value: typeof p.value === "string" ? fill(p.value) : p.value } as Condition;
+}
+
+/** The template in words, the way a trigger reads ("above {pivot} · only on the close and at least 1.5× …"). */
 export function describeTemplate(p: TemplatePredicate | null): string {
   if (!p) return "(no condition of its own)";
-  switch (p.kind) {
-    case "AND":
-    case "OR":
-      return `${p.kind}[${p.predicates.map(describeTemplate).join(", ")}]`;
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-      return `${p.kind}(${p.level}${p.basis ? `, ${p.basis}` : ""})`;
-    case "VOLUME_RATIO":
-      return `VOLUME_RATIO ≥ ${p.min}×`;
-    case "NEW_HIGH":
-      return `NEW_HIGH(${p.window})`;
-    case "NEAR_SMA":
-      return `NEAR_SMA(${p.period}-day, within ${p.withinPct}%)`;
-    case "VS_SMA":
-      return `VS_SMA(${p.direction} ${p.period}-day)`;
-    case "PCT_FROM_52W_HIGH":
-      return `PCT_FROM_52W_HIGH ≤ ${p.max}%`;
-    case "RS_VS_SPY":
-      return `RS_VS_SPY(${p.window}) > ${p.min}`;
-    case "GAP_UP":
-      return `GAP_UP(≥ ${p.minPct}% on ≥ ${p.minVolRatio}× volume${p.withinDays ? `, within ${p.withinDays} sessions` : ""})`;
-    case "RSI":
-      return `RSI(${p.period ?? 14}) ${p.direction === "BELOW" ? "<" : ">"} ${p.threshold}`;
-    case "EARNINGS_SINCE":
-      return `EARNINGS_SINCE(${p.min}–${p.max} days)`;
-    case "EARNINGS_WITHIN":
-      return `EARNINGS_WITHIN(${p.days} days)`;
-  }
+  const marks = templatePlaceholders(p);
+  let text = whenText(fillTemplate(p, (name) => 9_900_001 + marks.indexOf(name)));
+  marks.forEach((name, i) => {
+    text = text.replaceAll(`$${9_900_001 + i}`, name).replaceAll(String(9_900_001 + i), name);
+  });
+  return text;
 }

@@ -1,5 +1,5 @@
 /**
- * Where a TRAILING_FROM_HIGH trigger fires, as one pure function — the
+ * Where a trail trigger fires, as one pure function — the
  * evaluator, the thesis sheet's price levels and the ladder-health block
  * the agents read all call it, so the line on screen is the line that sells.
  *
@@ -18,10 +18,18 @@
  * say so rather than draw a line that isn't live.
  */
 
-import type { TriggerPredicate } from "./types";
 
-/** The trail's numbers. A stored trail predicate has them; so does the condition shape's "% below the high". */
-type Trail = Pick<Extract<TriggerPredicate, { kind: "TRAILING_FROM_HIGH" }>, "pct" | "armAtGainPct" | "atrMultiple"> & { kind?: "TRAILING_FROM_HIGH" };
+
+import type { Condition } from "./condition/types";
+
+/** The trail's numbers: the give-back %, the gain it waits for, and the range multiple that can widen it. */
+type Trail = { pct: number; armAtGainPct?: number | null; atrMultiple?: number | null };
+
+/** A "below N% from the high" condition's trail numbers (its own settings: start once up N%, widen to N× the range). */
+export function trailOf(c: Condition): Trail {
+  const n = (v: unknown) => (typeof v === "number" ? v : undefined);
+  return { pct: c.value ?? 0, armAtGainPct: n(c.settings?.startOnceUpPct), atrMultiple: n(c.settings?.widenAtr) };
+}
 
 /** True once the peak has cleared the arming gain (always true with none). */
 export function trailArmed(

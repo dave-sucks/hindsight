@@ -9,7 +9,7 @@ import type { Trigger } from "./triggers/types";
 
 const ENTER_LONG: Trigger = {
   id: "trig-enter",
-  predicate: { kind: "PRICE_ABOVE", level: 100 },
+  predicate: { watch: "price", is: "above", value: 100 },
   action: "ENTER",
   rationale: "Entry on breakout",
   cooldownDays: 1,
@@ -17,7 +17,7 @@ const ENTER_LONG: Trigger = {
 
 const EXIT_LONG: Trigger = {
   id: "trig-exit",
-  predicate: { kind: "PRICE_BELOW", level: 90 },
+  predicate: { watch: "price", is: "below", value: 90 },
   action: "EXIT",
   rationale: "Stop at 90",
   cooldownDays: 0,
@@ -25,7 +25,7 @@ const EXIT_LONG: Trigger = {
 
 const REVIEW_HYGIENE: Trigger = {
   id: "trig-review",
-  predicate: { kind: "REVIEW_CADENCE", days: 30 },
+  predicate: { watch: "repeat", value: 30 },
   action: "REVIEW",
   rationale: "Monthly hygiene",
   cooldownDays: 25,
@@ -33,7 +33,7 @@ const REVIEW_HYGIENE: Trigger = {
 
 const SIGNAL_EARNINGS: Trigger = {
   id: "trig-earnings",
-  predicate: { kind: "EARNINGS_BEAT" },
+  predicate: { watch: "surprise", is: "beat", value: 0 },
   action: "REVIEW",
   rationale: "Earnings beat",
   cooldownDays: 7,
@@ -60,7 +60,7 @@ const baseThesis = {
  */
 const CADENCE_7D: Trigger = {
   id: "trig-cadence",
-  predicate: { kind: "REVIEW_CADENCE", days: 7 },
+  predicate: { watch: "repeat", value: 7 },
   action: "REVIEW",
   rationale: "Look at this every 7 days.",
   cooldownDays: 7,
@@ -212,7 +212,7 @@ describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
       kind: "TRIGGER_FIRED",
       triggerId: "trig-exit",
       action: "EXIT",
-      summary: "price < $90",
+      summary: "Sell if below $90",
       firedAt: "2026-05-10T09:00:00.000Z",
     });
   });
@@ -264,7 +264,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
       kind: "TRIGGER_MATCHING_NOW",
       triggerId: "trig-enter",
       action: "ENTER",
-      predicateSummary: "price > $100",
+      predicateSummary: "Buy if above $100",
       livePrice: 105,
     });
   });
@@ -521,7 +521,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   // ran +17% — the floor never re-earned. Must flag every morning.
   const ionsExit: Trigger = {
     id: "trig-ions-floor",
-    predicate: { kind: "PRICE_BELOW", level: 65 },
+    predicate: { watch: "price", is: "below", value: 65 },
     action: "EXIT",
     rationale: "day-one stop",
     cooldownDays: 0,
@@ -547,7 +547,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       expect(result.flooredGainPct).toBeCloseTo(-11.96, 1);
       expect(result.unprotectedGapPct).toBeCloseTo(28.77, 1);
       expect(result.hasTrail).toBe(false);
-      expect(result.floorSummary).toContain("$65.00");
+      expect(result.floorSummary).toContain("$65");
     }
   });
 
@@ -569,7 +569,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   it("does NOT flag when the floor reflects the gain (gap under threshold)", () => {
     const raisedFloor: Trigger = {
       ...ionsExit,
-      predicate: { kind: "PRICE_BELOW", level: 82 }, // locks +11.1% vs +16.8% gain
+      predicate: { watch: "price", is: "below", value: 82 }, // locks +11.1% vs +16.8% gain
     };
     const result = computeNeedsAction({
       thesis: { ...ionsThesis, triggers: [raisedFloor] },
@@ -597,7 +597,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   it("a matching-now predicate outranks UNPROTECTED_GAIN", () => {
     const addRung: Trigger = {
       id: "trig-add",
-      predicate: { kind: "PRICE_ABOVE", level: 85 },
+      predicate: { watch: "price", is: "above", value: 85 },
       action: "ADD",
       rationale: "breakout add",
       cooldownDays: 1,
@@ -634,7 +634,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     // flag self-clears and the press decision surfaces.
     const tightFloor: Trigger = {
       id: "trig-tight",
-      predicate: { kind: "PRICE_BELOW", level: 114 },
+      predicate: { watch: "price", is: "below", value: 114 },
       action: "EXIT",
       rationale: "ratcheted floor",
       cooldownDays: 0,
@@ -705,7 +705,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   it("counts a trail as protection via peakPrice: tight trail raises no flag", () => {
     const trail: Trigger = {
       id: "trig-trail",
-      predicate: { kind: "TRAILING_FROM_HIGH", pct: 5 },
+      predicate: { watch: "move", is: "below", value: 5, variable: "peak" },
       action: "EXIT",
       rationale: "gain ratchet",
       cooldownDays: 0,
@@ -746,7 +746,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
   const freshClock = (days: number): Trigger[] => [
     {
       id: "clock",
-      predicate: { kind: "REVIEW_CADENCE", days },
+      predicate: { watch: "repeat", value: days },
       action: "REVIEW",
       rationale: "cadence",
     } as Trigger,
@@ -866,7 +866,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
         triggers: [
           {
             id: "wake",
-            predicate: { kind: "PRICE_BELOW", level: 24 },
+            predicate: { watch: "price", is: "below", value: 24 },
             action: "REVIEW",
             rationale: "wake",
           } as Trigger,
@@ -928,7 +928,7 @@ describe("computeNeedsAction — a day count from the buy is not the review cloc
   // REVIEW_DUE on its own, and it must not be mistaken for a review cadence.
   const SIXTY_AFTER_BUY: Trigger = {
     id: "trig-sixty",
-    predicate: { kind: "REVIEW_CADENCE", days: 60, from: "BUY" },
+    predicate: { watch: "from_date", is: "after", value: 60, variable: "buy" },
     action: "REVIEW",
     rationale: "The 60-day business checkpoint.",
     cooldownDays: 60,

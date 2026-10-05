@@ -12,7 +12,7 @@ import { prismaDouble, thesisRow, positionRow, REPLAY_ACCOUNT_ID, REPLAY_USER_ID
 
 const trail = {
   id: "trail-25",
-  predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 },
+  predicate: { watch: "move", is: "below", value: 25, variable: "peak" },
   action: "EXIT",
   rationale: "Gave back 25% from the high — the catastrophe line.",
   source: "DEFAULT",
@@ -20,7 +20,7 @@ const trail = {
 };
 const floor = {
   id: "floor",
-  predicate: { kind: "PRICE_BELOW", level: 96 },
+  predicate: { watch: "price", is: "below", value: 96 },
   action: "EXIT",
   rationale: "Floor.",
   source: "AGENT",
@@ -48,7 +48,7 @@ describe("applyTriggerDelete — the line says why when it is not a click", () =
   it("the cleanup's removal names itself and its reason", async () => {
     const { row, left } = await remove("same rung, same number as the rule above it; the analyst's rule governs from here");
     expect(left).toEqual(["floor"]);
-    expect(row.summary).toBe("Removed a copied rule from ABT — Trailing 25% from high → exit");
+    expect(row.summary).toBe("Removed a copied rule from ABT — Sell if below 25% from the high since we bought");
     expect(row.rationale).toContain("in the cleanup of copied rules");
     expect(row.rationale).toContain("the analyst's rule governs from here");
     expect(row.summary).not.toMatch(/^Principal removed/);
@@ -57,7 +57,7 @@ describe("applyTriggerDelete — the line says why when it is not a click", () =
   it("a click in the popover is logged as it always was", async () => {
     const { row, left } = await remove();
     expect(left).toEqual(["floor"]);
-    expect(row.summary).toBe("Principal removed ABT trigger — Trailing 25% from high → exit");
+    expect(row.summary).toBe("Principal removed ABT trigger — Sell if below 25% from the high since we bought");
     expect(row.rationale).toContain("Don't re-create it unless the thesis materially changes.");
   });
 });

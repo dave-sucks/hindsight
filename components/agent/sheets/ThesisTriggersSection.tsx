@@ -8,8 +8,7 @@
  * docs/plans/TRIGGER_TYPES.md §7.
  */
 import { useEffect, useState } from "react";
-import { carriesNumber, shapeOf } from "@/lib/agent/triggers/condition";
-import { actionGroupLabel } from "@/lib/agent/triggers/format";
+import { actionLabel, carriesNumber, shapeOf } from "@/lib/agent/triggers/condition";
 import { AddTrigger } from "@/components/agent/triggers/TriggerDialog";
 import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 
@@ -18,7 +17,6 @@ import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 // the same shape. Re-exported here so existing component-side import paths
 // keep working; new code should import from the lib module.
 export type {
-  TriggerPredicate,
   Trigger,
   ThesisStatePosition,
   ThesisPendingProposal,
@@ -73,7 +71,7 @@ export function TriggerGroups({
         if (items.length === 0) return null;
         return (
           <div key={action} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-            <span className="shrink-0 text-sm text-muted-foreground">{actionGroupLabel(action, level === "THESIS" ? held : undefined)}</span>
+            <span className="shrink-0 text-sm text-muted-foreground">{actionLabel(action, level === "THESIS" ? held : undefined)}</span>
             {items.map((t) => (
               <TriggerPill
                 key={t.id}

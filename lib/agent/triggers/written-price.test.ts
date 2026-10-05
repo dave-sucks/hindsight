@@ -21,8 +21,8 @@ import { stampWrittenPrice } from "./written-price";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import type { Trigger } from "./types";
 
-const floor: Trigger = { id: "floor", predicate: { kind: "PRICE_BELOW", level: 470 }, action: "EXIT", rationale: "Floor under the August low.", source: "AGENT" };
-const target: Trigger = { id: "target", predicate: { kind: "PRICE_ABOVE", level: 560 }, action: "REVIEW", rationale: "Target at the prior high.", source: "AGENT" };
+const floor: Trigger = { id: "floor", predicate: { watch: "price", is: "below", value: 470 }, action: "EXIT", rationale: "Floor under the August low.", source: "AGENT" };
+const target: Trigger = { id: "target", predicate: { watch: "price", is: "above", value: 560 }, action: "REVIEW", rationale: "Target at the prior high.", source: "AGENT" };
 
 // 2026-09-08, ET = UTC−4.
 const at = (hhmm: string) => new Date(`2026-09-08T${hhmm}:00-04:00`);
@@ -53,7 +53,7 @@ describe("MSFT, 2026-09-08 — a buy level set on a down day", () => {
   const buy = writeBuy(492.5, 492, at("10:30"));
 
   it("is stored as a breakout above the price it was set at", () => {
-    expect(buy.predicate).toMatchObject({ kind: "PRICE_ABOVE", level: 492.5 });
+    expect(buy.predicate).toMatchObject({ watch: "price", is: "above", value: 492.5 });
   });
 
   it("fires when MSFT trades up through it that morning (on main: no-crossing, never fires that day)", () => {
@@ -71,7 +71,7 @@ describe("MSFT, 2026-09-08 — a buy level set on a down day", () => {
   it("a pullback buy set the same way fires on the first dip", () => {
     // Set at $492 with the level under the price → "buy below $491.50".
     const dip = writeBuy(491.5, 492, at("10:30"));
-    expect(dip.predicate).toMatchObject({ kind: "PRICE_BELOW", level: 491.5 });
+    expect(dip.predicate).toMatchObject({ watch: "price", is: "below", value: 491.5 });
     // Yesterday's close was $499.70, so on main this one already worked — the
     // stamp must not break it.
     expect(check(dip, 491.2, at("11:00"))).toEqual({ fires: true, reason: "match" });
@@ -81,7 +81,7 @@ describe("MSFT, 2026-09-08 — a buy level set on a down day", () => {
 describe("stampWrittenPrice — only the server sets it", () => {
   const now = new Date("2026-09-08T14:30:00Z");
   const enter = (id: string, level: number, extra: Partial<Trigger> = {}): Trigger => ({
-    id, predicate: { kind: "PRICE_ABOVE", level }, action: "ENTER", rationale: "buy", ...extra,
+    id, predicate: { watch: "price", is: "above", value: level }, action: "ENTER", rationale: "buy", ...extra,
   });
 
   it("stamps a new buy trigger with the live price and time", () => {
@@ -105,7 +105,7 @@ describe("stampWrittenPrice — only the server sets it", () => {
   });
 
   it("never stamps a sell or review", () => {
-    const sell: Trigger = { id: "s", predicate: { kind: "PRICE_BELOW", level: 90 }, action: "EXIT", rationale: "floor", writtenPrice: 95, writtenAt: now.toISOString() };
+    const sell: Trigger = { id: "s", predicate: { watch: "price", is: "below", value: 90 }, action: "EXIT", rationale: "floor", writtenPrice: 95, writtenAt: now.toISOString() };
     expect(stampWrittenPrice([], [sell], 99, now)[0].writtenPrice).toBeUndefined();
   });
 });
