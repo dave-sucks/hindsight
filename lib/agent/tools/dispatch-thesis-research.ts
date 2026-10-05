@@ -432,12 +432,6 @@ export const dispatchThesisResearch = defineTool({
       },
     });
 
-    const tag = effectivePromotionContext
-      ? "promotion refresh dispatched"
-      : args.mode === "refresh"
-        ? "refresh dispatched"
-        : "mint dispatched";
-
     return {
       summary: `Dispatched thesis-writer for $${T} (${args.mode}) — child run ${childRun.id}`,
       data: {
