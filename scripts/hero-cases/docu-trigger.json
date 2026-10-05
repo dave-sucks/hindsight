@@ -375,6 +375,12 @@
    {
     "tool": "update_thesis",
     "where": {
+     "edit_triggers.*.value": "present"
+    }
+   },
+   {
+    "tool": "update_thesis",
+    "where": {
      "entry_price": "present"
     }
    }

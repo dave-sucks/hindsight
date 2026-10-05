@@ -27,6 +27,13 @@
      "edit_triggers.*.id": "e9a27456-c604-4ae2-8dd6-5ccb6e96382e",
      "edit_triggers.*.pct": "present"
     }
+   },
+   {
+    "tool": "update_thesis",
+    "where": {
+     "edit_triggers.*.id": "e9a27456-c604-4ae2-8dd6-5ccb6e96382e",
+     "edit_triggers.*.value": "present"
+    }
    }
   ],
   "never": [
