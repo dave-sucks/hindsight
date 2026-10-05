@@ -530,8 +530,8 @@ export const tacticalRun = inngest.createFunction(
     // as every other fire (evaluator → event → here); we just don't spawn the
     // model. Non-EXIT / unheld DIRECT can't happen (the add-path coerces those
     // to TACTICAL) but we guard anyway and fall through to the agent.
-    // The predicate-kind gate is defensive: applyTriggerAdd /
-    // applyTriggerFireModeChange already refuse DIRECT on a non-deterministic
+    // The condition gate is defensive: applyTriggerAdd and the trigger
+    // dialog's replace already refuse DIRECT on a non-deterministic
     // EXIT, but a stale/agent-written trigger could still carry it. A
     // judgment-bearing exit (earnings, signal) must fall through to the agent,
     // not be auto-closed by directExitReason's STOP fallback.

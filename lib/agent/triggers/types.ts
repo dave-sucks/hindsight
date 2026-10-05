@@ -341,8 +341,8 @@ export type ThesisTriggers = Trigger[];
  * it — it always wakes a tactical run. Each measure says which of its
  * conditions qualify (./condition/measures).
  *
- * Single source for the gate, shared by the UI control, the
- * applyTriggerFireModeChange backend, and the tactical-run short-circuit.
+ * Single source for the gate, shared by the trigger dialog's "On fire"
+ * control, the write paths, and the tactical-run short-circuit.
  */
 export function isDirectEligiblePredicate(predicate: unknown): boolean {
   const w = shapeOf(predicate);

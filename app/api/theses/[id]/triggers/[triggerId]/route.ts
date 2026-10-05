@@ -1,12 +1,10 @@
 /**
  * PATCH /api/theses/[id]/triggers/[triggerId]
  *
- * Principal edits one trigger from the trigger popover. Two body shapes:
- *   { value: number }                  → edit the trigger's value (applyTriggerValueEdit)
- *   { fireMode: "TACTICAL" | "DIRECT" } → switch how the trigger fires (applyTriggerFireModeChange)
- *   { replace: { action, predicate, fireMode? } } → the trigger dialog's Save:
- *     swap the condition, action and fire mode in one write (applyTriggerReplace)
- * Both keep Thesis/Position in sync. Pure DB — no Alpaca, no approval.
+ * Principal edits one trigger: the trigger dialog's Save sends
+ *   { replace: { action, predicate, fireMode? } } and the condition, action
+ *   and fire mode are swapped in one write (applyTriggerReplace).
+ * Keeps Thesis/Position in sync. Pure DB — no Alpaca, no approval.
  *
  * DELETE removes the trigger (applyTriggerDelete).
  */
@@ -16,8 +14,6 @@ import { getAccountId, getUserRole } from "@/lib/auth/account";
 import {
   applyTriggerReplace,
   type TriggerAddInput,
-  applyTriggerValueEdit,
-  applyTriggerFireModeChange,
   applyTriggerDelete,
   statusForEditError,
   ThesisEditError,
@@ -82,28 +78,7 @@ export async function PATCH(
       return Response.json(result);
     }
 
-    if (typeof body.fireMode === "string") {
-      if (body.fireMode !== "TACTICAL" && body.fireMode !== "DIRECT") {
-        return new Response('`fireMode` must be "TACTICAL" or "DIRECT".', { status: 400 });
-      }
-      const result = await applyTriggerFireModeChange(
-        id,
-        triggerId,
-        body.fireMode,
-        editCtx,
-      );
-      return Response.json(result);
-    }
-
-    if (typeof body.value !== "number" || !Number.isFinite(body.value)) {
-      return new Response(
-        "Body must include a numeric `value` or a `fireMode` string.",
-        { status: 400 },
-      );
-    }
-    const part = Number.isInteger(body.part) && (body.part as number) >= 0 ? (body.part as number) : null;
-    const result = await applyTriggerValueEdit(id, triggerId, body.value, editCtx, part);
-    return Response.json(result);
+    return new Response("Body must carry `replace`: the trigger dialog's action, predicate and fire mode.", { status: 400 });
   } catch (err) {
     if (err instanceof ThesisEditError) {
       return Response.json(

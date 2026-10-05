@@ -137,3 +137,11 @@ export function scheduleDays(w: When | null): number | null {
 export function isProtectiveLine(w: When): boolean {
   return isLevel(w) || fromPosition(w);
 }
+
+/** It carries a number a person adjusts: a price, a %, a count. Not one that may be zero or negative (a beat by any amount, strength vs. the S&P). */
+export function carriesNumber(w: When): boolean {
+  return conditionsOf(w).some((c) => {
+    const value = measureOf(c).value;
+    return c.value != null && value.allowNegative !== true && value.zero == null;
+  });
+}

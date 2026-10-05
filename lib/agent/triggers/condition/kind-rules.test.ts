@@ -15,7 +15,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import stored from "./__fixtures__/stored-triggers.json";
 import { UNSTORED } from "./__fixtures__/unstored-triggers";
 import * as kinds from "./__fixtures__/kind-rules";
-import { fromPosition, isProtectiveLine, loosens, readsTheTape, reviewClockDays, shapeOf, tightness } from ".";
+import { carriesNumber, fromPosition, isProtectiveLine, loosens, readsTheTape, reviewClockDays, shapeOf, tightness } from ".";
 import { resolveLadder } from "../levels";
 import { canonicalLevels, isPlanLevel, levelSlotOf } from "../price-levels";
 import { decideBuyRearm } from "../rearm";
@@ -207,5 +207,13 @@ describe("the rules that read the kinds, against the kinds' answers", () => {
     expect(disagree(all, kinds.isProtectiveExitKind, (p) => isProtectiveLine(shapeOf(p)!))).toEqual(agree);
     expect(disagree(all, kinds.scheduleDays, (p) => agentWatchDays([{ predicate: p }]))).toEqual(agree);
     expect(answers(all, kinds.scheduleDays)).toBeGreaterThan(3);
+  });
+
+  it("the reject dialog lists the stock's own triggers with a number to adjust", () => {
+    // One difference, on purpose: "N days after the report" has one number in the condition shape (two in its old kind).
+    const differ = all.filter((p) => kinds.hadEditableNumber(p) !== carriesNumber(shapeOf(p)!));
+    expect([...new Set(differ.map((p) => p.kind))]).toEqual(["EARNINGS_SINCE"]);
+    expect(differ.every((p) => carriesNumber(shapeOf(p)!))).toBe(true);
+    expect(answers(all, kinds.hadEditableNumber)).toBe(2);
   });
 });

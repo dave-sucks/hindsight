@@ -512,3 +512,11 @@ export function scheduleDays(p: TriggerPredicate): number | null {
   if (q?.kind !== "REVIEW_CADENCE") return null;
   return typeof q.days === "number" && q.days > 0 ? q.days : null;
 }
+
+/** editable.ts (deleted): did the old popover offer a number to edit (the reject dialog lists only these). */
+export function hadEditableNumber(p: TriggerPredicate): boolean {
+  const one = (q: TriggerPredicate) =>
+    ["PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT", "GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "REVIEW_CADENCE", "EARNINGS_WITHIN",
+      "NEAR_SMA", "VOLUME_RATIO", "PCT_FROM_52W_HIGH", "GAP_UP", "RSI", "INSIDER_CLUSTER"].includes(q.kind);
+  return p.kind === "AND" || p.kind === "OR" ? p.predicates.some((c) => c.kind !== "AND" && c.kind !== "OR" && one(c)) : one(p);
+}

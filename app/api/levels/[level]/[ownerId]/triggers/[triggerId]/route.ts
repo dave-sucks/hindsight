@@ -2,11 +2,8 @@
  * PATCH  /api/levels/:level/:ownerId/triggers/:triggerId
  * DELETE /api/levels/:level/:ownerId/triggers/:triggerId
  *
- * The account/analyst counterparts of the thesis trigger routes. Same two
- * PATCH body shapes so the trigger popover is one component regardless of
- * which level it's editing:
- *   { value: number }                   → edit the value
- *   { fireMode: "TACTICAL" | "DIRECT" } → change how it fires
+ * The account/analyst counterparts of the thesis trigger routes, so the
+ * trigger dialog is one component whichever level it edits. PATCH takes
  *   { replace: { action, predicate, fireMode? } } → the trigger dialog's Save
  */
 
@@ -14,10 +11,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import {
   deleteLevelTrigger,
-  editLevelTriggerValue,
   replaceLevelTrigger,
   type LevelTriggerAddInput,
-  setLevelTriggerFireMode,
   type WritableLevel,
 } from "@/lib/actions/level-triggers";
 import { statusForEditError, ThesisEditError } from "@/lib/actions/thesis-edit";
@@ -94,34 +89,7 @@ export async function PATCH(
       return Response.json({ ok: true, trigger });
     }
 
-    if (typeof body.fireMode === "string") {
-      if (body.fireMode !== "TACTICAL" && body.fireMode !== "DIRECT") {
-        return new Response('`fireMode` must be "TACTICAL" or "DIRECT".', { status: 400 });
-      }
-      const trigger = await setLevelTriggerFireMode(
-        auth.level,
-        ownerId,
-        triggerId,
-        body.fireMode,
-        ctx,
-      );
-      return Response.json({ ok: true, trigger });
-    }
-
-    if (typeof body.value !== "number" || !Number.isFinite(body.value)) {
-      return new Response("Body must include a numeric `value` or a `fireMode` string.", {
-        status: 400,
-      });
-    }
-    const trigger = await editLevelTriggerValue(
-      auth.level,
-      ownerId,
-      triggerId,
-      body.value,
-      ctx,
-      Number.isInteger(body.part) && (body.part as number) >= 0 ? (body.part as number) : null,
-    );
-    return Response.json({ ok: true, trigger });
+    return new Response("Body must carry `replace`: the trigger dialog's action, predicate and fire mode.", { status: 400 });
   } catch (err) {
     if (err instanceof ThesisEditError) {
       return Response.json(

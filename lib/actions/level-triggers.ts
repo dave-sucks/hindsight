@@ -21,7 +21,6 @@
 import { LEVEL_ELIGIBLE_KINDS } from "@/lib/agent/triggers/addable";
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { editableTriggerParts, withEditedValue } from "@/lib/agent/triggers/editable";
 import { addablePredicateProblem } from "@/lib/agent/triggers/two-conditions";
 import { predicateSentence } from "@/lib/agent/triggers/format";
 import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
@@ -223,66 +222,6 @@ export async function replaceLevelTrigger(
     throw new ThesisEditError("INVALID", "That trigger isn't valid at this level.");
   }
   await target.write(next);
-  return updated;
-}
-
-export async function editLevelTriggerValue(
-  level: WritableLevel,
-  ownerId: string,
-  triggerId: string,
-  value: number,
-  ctx: LevelTriggerContext,
-  /** On a two-condition trigger: which condition's number (0-based). */
-  part: number | null = null,
-): Promise<Trigger> {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new ThesisEditError("INVALID", "value must be a positive number.");
-  }
-  const target = await resolveTarget(level, ownerId, ctx);
-  const existing = await target.read();
-  const found = existing.find((t) => t.id === triggerId);
-  if (!found) {
-    throw new ThesisEditError(
-      "NOT_FOUND",
-      `Trigger ${triggerId} not found at this level.`,
-    );
-  }
-  if (!editableTriggerParts(found.predicate).some((f) => f.part === part)) {
-    throw new ThesisEditError("INVALID", "That trigger has no editable value.");
-  }
-
-  const updated: Trigger = {
-    ...found,
-    predicate: withEditedValue(found.predicate, value, part),
-  };
-  await target.write(existing.map((t) => (t.id === triggerId ? updated : t)));
-  return updated;
-}
-
-export async function setLevelTriggerFireMode(
-  level: WritableLevel,
-  ownerId: string,
-  triggerId: string,
-  fireMode: "TACTICAL" | "DIRECT",
-  ctx: LevelTriggerContext,
-): Promise<Trigger> {
-  const target = await resolveTarget(level, ownerId, ctx);
-  const existing = await target.read();
-  const found = existing.find((t) => t.id === triggerId);
-  if (!found) {
-    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found at this level.`);
-  }
-  if (
-    fireMode === "DIRECT" &&
-    (found.action !== "EXIT" || !isDirectEligiblePredicate(found.predicate))
-  ) {
-    throw new ThesisEditError(
-      "INVALID",
-      "Only a deterministic EXIT can act without waking an analyst run.",
-    );
-  }
-  const updated: Trigger = { ...found, fireMode };
-  await target.write(existing.map((t) => (t.id === triggerId ? updated : t)));
   return updated;
 }
 

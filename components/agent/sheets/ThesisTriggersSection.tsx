@@ -8,9 +8,8 @@
  * docs/plans/TRIGGER_TYPES.md §7.
  */
 import { useEffect, useState } from "react";
-import { editableTriggerParts } from "@/lib/agent/triggers/editable";
+import { carriesNumber, shapeOf } from "@/lib/agent/triggers/condition";
 import { actionGroupLabel } from "@/lib/agent/triggers/format";
-import type { TriggerPredicate as SharedTriggerPredicate } from "@/lib/agent/triggers/types";
 import { AddTrigger } from "@/components/agent/triggers/TriggerDialog";
 import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 
@@ -166,7 +165,10 @@ export function ThesisTriggersSection({
   // In editableOnly mode, show just the stock's own triggers with a number.
   const shownTriggers = editableOnly
     ? data.triggers.filter(
-        (t) => !t.inherited && editableTriggerParts(t.predicate as unknown as SharedTriggerPredicate).length > 0,
+        (t) => {
+          const w = shapeOf(t.predicate);
+          return !t.inherited && w != null && carriesNumber(w);
+        },
       )
     : data.triggers;
 

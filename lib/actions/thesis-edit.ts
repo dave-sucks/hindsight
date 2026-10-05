@@ -21,7 +21,6 @@ import { prisma } from "@/lib/prisma";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { editableTriggerParts, editOpFieldFor } from "@/lib/agent/triggers/editable";
 import { addablePredicateProblem, plainConditions } from "@/lib/agent/triggers/two-conditions";
 import {
   applyTriggerCooldownDefaults,
@@ -355,61 +354,7 @@ async function runPrincipalOp(
   return { thesis, id: result.id, triggers: applied.triggers, synced };
 }
 
-export interface TriggerEditResult {
-  ok: true;
-  thesisId: string;
-  triggerId: string;
-  value: number;
-  /** Set when the edit also moved the thesis stop / target. */
-  synced: { stopLoss?: number; targetPrice?: number };
-}
-
-/**
- * applyTriggerValueEdit — the principal edits a single trigger's value
- * directly in the trigger popover (e.g. drag the stop from $375 → $400).
- */
-export async function applyTriggerValueEdit(
-  thesisId: string,
-  triggerId: string,
-  value: number,
-  ctx: ThesisEditContext,
-  /** On a two-condition trigger: which condition's number (0-based). */
-  part: number | null = null,
-): Promise<TriggerEditResult> {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new ThesisEditError("INVALID", "value must be a positive number.");
-  }
-  const fieldOf = (p: TriggerPredicate) => editableTriggerParts(p).find((f) => f.part === part) ?? null;
-  const subjectOf = (p: TriggerPredicate) =>
-    (p.kind === "AND" || p.kind === "OR") && part != null ? (p.predicates[part] ?? p) : p;
-  const outcome = await runPrincipalOp(
-    thesisId,
-    ctx,
-    (thesis) => {
-      const target = thesis.triggers.find((t) => t.id === triggerId);
-      const field = target ? fieldOf(target.predicate) : null;
-      if (target && !field) {
-        throw new ThesisEditError("INVALID", `Trigger ${triggerId} has no editable value.`);
-      }
-      // The op field follows the kind: a price is a level, a day count is
-      // days, the rest are a percent. (A day count used to be sent as a
-      // percent and was refused.)
-      const opField = target ? editOpFieldFor(subjectOf(target.predicate).kind) : "pct";
-      return { op: "edit", id: triggerId, [opField]: value, ...(part != null ? { part } : {}) };
-    },
-    (thesis) => {
-      const target = thesis.triggers.find((t) => t.id === triggerId)!;
-      const label = fieldOf(target.predicate)?.label ?? "value";
-      return {
-        summary: `Principal edited ${thesis.ticker} trigger — ${label} ${value}`,
-        rationale: `[USER] Principal set ${label} = ${value} on the "${target.action}" trigger directly. Honor it; don't re-propose against it unless the thesis materially changes.`,
-      };
-    },
-  );
-  return { ok: true, thesisId: outcome.thesis.id, triggerId, value, synced: outcome.synced };
-}
-
-// ── Add / delete / fire-mode ────────────────────────────────────────────
+// ── Add / replace / delete ────────────────────────────────────────────
 
 /** Predicate kinds the add path accepts on a stock. The one list lives in
  *  lib/agent/triggers/addable so the trigger dialog offers exactly these. */
@@ -620,38 +565,4 @@ export async function applyTriggerDelete(
     },
   );
   return { ok: true, thesisId: outcome.thesis.id, triggerId };
-}
-
-export interface TriggerFireModeChangeResult {
-  ok: true;
-  thesisId: string;
-  triggerId: string;
-  fireMode: "TACTICAL" | "DIRECT";
-}
-
-/**
- * applyTriggerFireModeChange — the principal flips a trigger between waking a
- * tactical run (TACTICAL) and closing directly with no agent (DIRECT), from
- * the popover's "On fire" control. DIRECT is only valid on an EXIT of a held
- * position (nothing deterministic to execute otherwise).
- */
-export async function applyTriggerFireModeChange(
-  thesisId: string,
-  triggerId: string,
-  fireMode: "TACTICAL" | "DIRECT",
-  ctx: ThesisEditContext,
-): Promise<TriggerFireModeChangeResult> {
-  const outcome = await runPrincipalOp(
-    thesisId,
-    ctx,
-    () => ({ op: "edit", id: triggerId, fireMode }),
-    (thesis) => {
-      const target = thesis.triggers.find((t) => t.id === triggerId)!;
-      return {
-        summary: `Principal set ${thesis.ticker} trigger fire mode → ${fireMode}`,
-        rationale: `[USER] Set the "${target.action}" trigger (${predicateSentence(target.predicate)}) to fire mode ${fireMode}${fireMode === "DIRECT" ? " — close directly on fire, no tactical run (still approval-gated)." : " — wake a tactical run on fire."}`,
-      };
-    },
-  );
-  return { ok: true, thesisId: outcome.thesis.id, triggerId, fireMode };
 }
