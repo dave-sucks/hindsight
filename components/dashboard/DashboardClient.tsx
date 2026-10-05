@@ -89,7 +89,7 @@ import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
 import { formatCurrency, formatDateLabel } from '@/lib/format';
-import { realizedInWindow } from '@/lib/portfolio/range-realized';
+import { realizedSince } from '@/lib/portfolio/range-realized';
 import { windowReachesInception } from '@/lib/portfolio/inception';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1013,10 +1013,19 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
   // something closed, so "last minus first inside the window" silently drops
   // the first in-window sale. On this account over a month that read −$534.66
   // instead of −$1,336.84 — exactly PBH's −$802.18, the earliest of the six.
+  // Measured over the SAME window the number above came from — the split is
+  // handed `pnlData`'s first point, not a range name. 1D is the newest
+  // SESSION, not a rolling 24 hours, and a sparse curve can fall back to its
+  // last two points; a second `now − N days` clock disagreed with both. On
+  // this book SRRK closed at 15:50 ET, so for the first 6h20m of the next
+  // session its −$192.51 counted as "sold" in a 1D total that excluded the
+  // previous day entirely, and `held` absorbed it with the opposite sign.
   const rangeRealized = useMemo(() => {
-    if (includesInception) return portfolio.realizedPnl;
-    return realizedInWindow(closedTrades, cutoffMs(range));
-  }, [closedTrades, range, includesInception, portfolio.realizedPnl]);
+    // Fewer than two points means `rangePnl` already fell back to the
+    // whole-account total, so the split has to cover the whole account too.
+    if (includesInception || pnlData.length < 2) return portfolio.realizedPnl;
+    return realizedSince(closedTrades, pnlData[0].date);
+  }, [closedTrades, pnlData, includesInception, portfolio.realizedPnl]);
   const rangeUnrealized = rangePnl - rangeRealized;
   const pnlPositive = rangePnl >= 0;
 
