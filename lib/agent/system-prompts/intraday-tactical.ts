@@ -260,7 +260,7 @@ ${
     ? thesis.allTriggers
         .map(
           (t) =>
-            `  ${t.id === trigger.id ? "→ FIRED:" : coFiredIds.has(t.id) ? "→ ALSO FIRED:" : "  ·"} ${sentenceOf(t)}  [id ${t.id}]`,
+            `  ${t.id === trigger.id ? "→ FIRED:" : coFiredIds.has(t.id) ? "→ ALSO FIRED:" : "  ·"} ${sentenceOf(t, position != null)}  [id ${t.id}]`,
         )
         .join("\n")
     : "  (no triggers on record — this thesis is unprotected; fix that in your close-out)"

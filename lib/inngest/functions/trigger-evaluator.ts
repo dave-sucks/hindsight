@@ -836,7 +836,7 @@ export const triggerEvaluator = inngest.createFunction(
             action,
             firedPrice: latestQuote?.price ?? null,
             firedContext,
-            sentence: sentenceOf(t),
+            sentence: sentenceOf(t, thesis.status === "HOLDING"),
           });
         }
       }

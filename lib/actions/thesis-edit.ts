@@ -416,7 +416,7 @@ export async function applyTriggerAdd(
       };
     },
     (thesis) => ({
-      summary: `Principal added ${thesis.ticker} trigger — ${sentenceOf(input)}`,
+      summary: `Principal added ${thesis.ticker} trigger — ${sentenceOf(input, thesis.status === "HOLDING")}`,
       // Fire mode is only mentioned where it means something (EXIT). A
       // REVIEW trigger's fire batches into the next daily run — naming a
       // fire mode on it would claim a tactical wake that never happens
@@ -466,7 +466,7 @@ export async function applyTriggerReplace(
       };
     },
     (thesis) => ({
-      summary: `Principal changed ${thesis.ticker} trigger — ${sentenceOf(input)}`,
+      summary: `Principal changed ${thesis.ticker} trigger — ${sentenceOf(input, thesis.status === "HOLDING")}`,
       rationale: `[USER] Changed a trigger to "${input.action}" (${conditionSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
     }),
   );
@@ -502,7 +502,7 @@ export async function applyTriggerDelete(
     () => ({ op: "remove", id: triggerId }),
     (thesis) => {
       const target = thesis.triggers.find((t) => t.id === triggerId)!;
-      const what = sentenceOf(target);
+      const what = sentenceOf(target, thesis.status === "HOLDING");
       if (why) {
         return {
           summary: `Removed a copied rule from ${thesis.ticker} — ${what}`,
