@@ -7,6 +7,7 @@ import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalNudge } from "@/lib/agent/refusal-carryover";
 import { MODES } from "@/lib/agent/modes";
+import { addTokenUsage, emptyTokenUsage } from "@/lib/agent/token-usage";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { ensureAccountStandingRules } from "@/lib/agent/triggers/seed-account";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -317,18 +318,14 @@ export const morningResearch = inngest.createFunction(
         // Token accounting (2026-08-13 cost fix). Per-step usage was logged
         // to console and thrown away while the fleet quietly burned ~1M
         // tokens per analyst per morning. Accumulated across the main loop
-        // AND the retry pass, persisted into parameters.toolStats so cost
+        // AND the retry pass, persisted into parameters.tokenUsage so cost
         // is a queryable metric per run. cachedInput tells us whether
-        // OpenAI's automatic prompt caching is actually hitting.
-        const tokenUsage = { input: 0, cachedInput: 0, output: 0, total: 0, requests: 0 };
+        // OpenAI's prompt caching is actually hitting. The counter is the
+        // one every agent uses (lib/agent/token-usage.ts).
+        const tokenUsage = emptyTokenUsage();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const trackUsage = (usage: any) => {
-          if (!usage) return;
-          tokenUsage.input += usage.inputTokens ?? 0;
-          tokenUsage.cachedInput += usage.cachedInputTokens ?? 0;
-          tokenUsage.output += usage.outputTokens ?? 0;
-          tokenUsage.total += usage.totalTokens ?? 0;
-          tokenUsage.requests += 1;
+          addTokenUsage(tokenUsage, usage);
         };
         const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
         let lastStepTimeMs = t0;
@@ -349,12 +346,16 @@ export const morningResearch = inngest.createFunction(
             // pattern below. See lib/agent/modes.ts for the gpt-5.5 swap
             // rationale and the Vercel Pro maxDuration:800 upgrade.
             // .chat(): Chat Completions instead of the default Responses API.
-            // Measured 2026-08-17 (cache probe, byte-identical harness):
-            // OpenAI's cacheable prefix ends at the system+user head on BOTH
-            // APIs (tools never cache; even a byte-identical request only
-            // matched 58%), but chat canonicalization matches 2.5x more of
-            // that head (8,832 vs 3,584 tokens). Small, free win (~$0.4/day);
-            // the rest of the cache ceiling is server-side — do not chase it.
+            // The 2026-08-17 probe that concluded "tools never cache; the
+            // ceiling is server-side" was wrong: its request was not
+            // byte-identical. One trigger field carried a random default
+            // id that the SDK re-ran on every request, so every request's
+            // tool block differed at that point and the cache stopped
+            // there (the fixed 14,976 / 17,024 cached tokens per step seen
+            // from 09-18). Fixed 2026-10-02 (triggers/schema.ts,
+            // triggerInputSchema): the same request cached 71% before and
+            // 97% after. Chat Completions is kept; it cached the head
+            // further than Responses did in that probe.
             model: openai.chat(MODES["research-run"].model),
             system: systemPrompt,
             prompt: userPrompt,

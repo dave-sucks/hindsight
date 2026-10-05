@@ -29,6 +29,9 @@ const badgeVariants = cva(
         // sit quietly beside body copy rather than assert like `secondary`
         // (whose foreground is near-white).
         muted: "bg-muted text-muted-foreground border-transparent",
+        // A variable in a trigger's value ("52-week high" in place of a
+        // price) — the blue chip, as Notion draws "Time triggered".
+        variable: "bg-brand-blue/10 text-brand-blue border-transparent",
       },
       shape: {
         pill: "rounded-4xl",

@@ -211,7 +211,8 @@ export function __resetCatalystCache(): void {
   dateCache.clear();
 }
 
-async function secGet(url: string, accept = "text/html"): Promise<string | null> {
+/** One polite read off SEC — spaced, retried once, null when it didn't come back. The filing reader shares it. */
+export async function secGet(url: string, accept = "text/html"): Promise<string | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     await sleep(FETCH_GAP_MS);
     try {

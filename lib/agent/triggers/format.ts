@@ -159,32 +159,9 @@ export function describeTriggerFire(trigger: Trigger, held?: boolean): string {
  *   ADD       → "Add if"
  *   TRIM      → "Trim if"
  *   MOVE_STOP → "Move stop if"
- *   EXIT      → "Exit if"
+ *   EXIT      → "Sell if"
  *   REVIEW    → "Review if"
  */
-/**
- * Label for a trigger's fire mode — used in the trigger popover's "On fire"
- * control and the add-trigger form. Uses the app's own verbs:
- *
- *   TACTICAL → "Trigger Tactical Run"   (wake the agent to decide)
- *   DIRECT   → "Automatically Exit" / "Automatically Enter"  (no agent),
- *              keyed off the action so the label names what actually happens.
- *
- * DIRECT is only offered on a deterministic EXIT (the control is gated on it),
- * so the action is normally EXIT; ENTER/ADD are handled for completeness.
- */
-export function fireModeLabel(
-  mode: "TACTICAL" | "DIRECT",
-  action?: string,
-): string {
-  if (mode === "DIRECT") {
-    return action === "ENTER" || action === "ADD"
-      ? "Automatically Enter"
-      : "Automatically Exit";
-  }
-  return "Trigger Tactical Run";
-}
-
 /**
  * Where a rung lives, in the second person. Shown in the popover of an
  * inherited (dotted) rung so "why can't I edit this here?" answers itself.
@@ -231,7 +208,7 @@ export function levelBadgeLabel(
 export function actionGroupLabel(action: string, held?: boolean): string {
   // Same honesty rule as actionLabel: a floor/target EXIT on a thesis we
   // don't own resolves to DEMOTE at fire time — the plan comes down,
-  // nothing is sold. Omitted `held` keeps the historical "Exit if".
+  // nothing is sold. Omitted `held` reads as a sale.
   if (action === "EXIT" && held === false) return "Take the plan down if";
   switch (action) {
     case "ENTER":
@@ -243,7 +220,7 @@ export function actionGroupLabel(action: string, held?: boolean): string {
     case "MOVE_STOP":
       return "Move stop if";
     case "EXIT":
-      return "Exit if";
+      return "Sell if";
     case "REVIEW":
     default:
       return "Review if";

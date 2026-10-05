@@ -14,7 +14,7 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { RECENTLY_SOLD_WINDOW_DAYS } from "@/lib/agent/sold-review";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
 import {
   defaultTriggersForHorizon,
   mergeTriggers,
@@ -315,7 +315,7 @@ const thesisFields = z.object({
         "If you can't articulate a variant view for a STRONG/HIGH call, your tier is MEDIUM at best — don't claim STRONG/HIGH without one. " +
         "Example: 'Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 program is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus.'",
     ),
-  triggers: triggersArraySchema
+  triggers: triggersInputArraySchema
     .optional()
     .describe(
       "The trigger ladder. Omit it to accept the horizon defaults. The review clock lives here like any other rung — include a REVIEW_CADENCE trigger to have this name reviewed on a schedule, and leave it out to have nothing review it until one of its other triggers fires. Nothing adds a clock for you.",
@@ -1114,8 +1114,11 @@ export const recordThesis = defineTool({
         // source=AGENT on everything the model supplied. Server-owned —
         // any value the model fabricated is overwritten. The template
         // rungs merged in below already carry source=DEFAULT.
+        // The model's trigger shape has no id (the definition it reads
+        // leaves the server's fields out); the id is minted here.
         const supplied = ((args.triggers ?? []) as Trigger[]).map((t) => ({
           ...t,
+          id: t.id || randomUUID(),
           source: "AGENT" as const,
         }));
         // No committed view, so no horizon template — those are directional

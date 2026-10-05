@@ -4,6 +4,8 @@
  * Principal edits one trigger from the trigger popover. Two body shapes:
  *   { value: number }                  → edit the trigger's value (applyTriggerValueEdit)
  *   { fireMode: "TACTICAL" | "DIRECT" } → switch how the trigger fires (applyTriggerFireModeChange)
+ *   { replace: { action, predicate, fireMode? } } → the trigger dialog's Save:
+ *     swap the condition, action and fire mode in one write (applyTriggerReplace)
  * Both keep Thesis/Position in sync. Pure DB — no Alpaca, no approval.
  *
  * DELETE removes the trigger (applyTriggerDelete).
@@ -12,6 +14,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import {
+  applyTriggerReplace,
+  type TriggerAddInput,
   applyTriggerValueEdit,
   applyTriggerFireModeChange,
   applyTriggerDelete,
@@ -41,6 +45,7 @@ export async function PATCH(
     value?: unknown;
     fireMode?: unknown;
     part?: unknown;
+    replace?: { action?: unknown; predicate?: unknown; fireMode?: unknown };
   };
   try {
     body = (await req.json()) as typeof body;
@@ -55,6 +60,28 @@ export async function PATCH(
 
   const editCtx = { accountId, actorUserId: user.id };
   try {
+    if (body.replace != null) {
+      const r = body.replace;
+      if (typeof r !== "object" || typeof r.action !== "string" || r.predicate == null || typeof r.predicate !== "object") {
+        return new Response("`replace` must carry an `action` string and a `predicate` object.", { status: 400 });
+      }
+      if (r.fireMode != null && r.fireMode !== "TACTICAL" && r.fireMode !== "DIRECT") {
+        return new Response('`fireMode` must be "TACTICAL" or "DIRECT".', { status: 400 });
+      }
+      // Real validation (kind, ranges, the slot rule) happens inside applyTriggerReplace.
+      const result = await applyTriggerReplace(
+        id,
+        triggerId,
+        {
+          action: r.action as TriggerAddInput["action"],
+          predicate: r.predicate as TriggerAddInput["predicate"],
+          fireMode: (r.fireMode ?? undefined) as TriggerAddInput["fireMode"],
+        },
+        editCtx,
+      );
+      return Response.json(result);
+    }
+
     if (typeof body.fireMode === "string") {
       if (body.fireMode !== "TACTICAL" && body.fireMode !== "DIRECT") {
         return new Response('`fireMode` must be "TACTICAL" or "DIRECT".', { status: 400 });

@@ -136,7 +136,7 @@ export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
 
 ${config.analystPrompt}` : ""}
 
-Today is your **weekly discovery run**. Your job is to find ticker coverage worth adding to the WATCHING list — names that the daily run can promote to HOLDING later when conditions warrant.
+This is a **discovery run**. Your job is to find ticker coverage worth adding to the WATCHING list — names that the daily run can promote to HOLDING later when conditions warrant.
 
 You operate as a **two-pass funnel**:
   • **Pass 1 (you, here):** cheap triage + research + scoring across the
@@ -193,7 +193,7 @@ a fence pass. The tools did it.**
     just-reported earnings MINUS your coverage set. This is how it
     announces itself on a result.
 
-Both run every week. Your universe (sectors, cap, exclusions) is what
+Run both every time. Your universe (sectors, cap, exclusions) is what
 you apply with judgment when you triage — not a reason to skip a
 surface.
 
@@ -236,7 +236,7 @@ SCOPE — what this run IS and IS NOT
       mint. Your job is to dispatch, not write.
     • Touch existing theses — the daily portfolio review handles those.
     • Dispatch more than ${DISPATCH_CAP} thesis-writers per run.
-      Beyond the cap the Sunday API budget breaks and the parent run
+      Beyond the cap the API budget breaks and the parent run
       can hit its wall timeout before all children complete.
     • Call place_trade — there is no path from discovery to a proposal.
       Every mint lands WATCHING; the writer prices the buy, and the buy
@@ -294,9 +294,8 @@ Narration that ENDS a turn is the bug.
 If your Step-1 surfaces all returned empty for your Universe today,
 that IS a valid outcome — call \`record_run_summary\` with
 primary_decision="HOLD" and one paragraph on "nothing cleared the bar
-this week" + \`complete_run\`. Don't fabricate candidates to fill the
-thesis cap. An empty discovery week is allowed — especially common for
-analysts subscribed to a narrow feed set.
+this run" + \`complete_run\`. Don't fabricate candidates to fill the
+thesis cap. An empty discovery run is allowed.
 
 ═══════════════════════════════════════════════════════════════════
 WORKFLOW (5 steps)
@@ -421,7 +420,7 @@ For each researched candidate, exactly one of these four actions:
 
   **Hard cap: ${DISPATCH_CAP} dispatches per discovery run** (set
   by the DISPATCH_CAP constant in this prompt file). The cap exists
-  so the Sunday API budget stays bounded and the parent run doesn't
+  so the API budget stays bounded and the parent run doesn't
   hit its wall timeout before children complete. If you have more
   than ${DISPATCH_CAP} composite-≥-4 survivors, dispatch your
   ${DISPATCH_CAP} highest-conviction picks and SOFT-WATCH the rest

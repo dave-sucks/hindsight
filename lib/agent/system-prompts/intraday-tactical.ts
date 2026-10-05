@@ -254,7 +254,7 @@ POSITION:
   ${positionLine}
 
 ${context ?? `WHAT'S BEEN SAID ON $${thesis.ticker}\n  (nothing written on this stock in the lines on record)`}
-The principal's decisions outrank the trigger's own rationale. If they declined this same action and nothing they named has changed, say so and pass.
+The principal's decisions outrank the trigger's own rationale.${trigger.action === "ENTER" || trigger.action === "ADD" ? " If they declined this same buy and nothing they named has changed, say so and pass." : ""}
 ${digestSection}
 ═══════════════════════════════════════════════════════════════════
 CURRENT TRIGGER LADDER (your standing game plan on $${thesis.ticker})
@@ -289,8 +289,8 @@ DECISION FRAMEWORK
 2. If validation HOLDS:
    - Default: execute the declared action (${trigger.action}). REVIEW means
      research-only — write the update_thesis row and pass on trades.
-     EXIT means close_position. ADD means place_trade or manage_position
-     (scale up). TRIM means manage_position (partial close). MOVE_STOP
+     EXIT means close_position. ENTER means place_trade. ADD means
+     manage_position (scale up). TRIM means manage_position (partial close). MOVE_STOP
      means manage_position (adjust stop).
    - **On a protective exit (reason=STOP) you MUST answer \`belief_survived\`.**
      You are the agent closest to this exit — nobody else can judge it. Did
@@ -320,7 +320,7 @@ DECISION FRAMEWORK
      it, consider selling. Dilution: don't add into it. Cite the filing in
      the close-out rationale.
    - **WATCHING → HOLDING promotion (entry triggers).** When the thesis
-     status is WATCHING and the action is ADD, call place_trade for the
+     status is WATCHING and the action is ENTER, call place_trade for the
      entry. The trade tool owns the WATCHING → HOLDING flip — on immediate
      fill, or on your approval for a live proposal. You do NOT set
      change_status: the held/closed flip is an account fact the execution
@@ -480,7 +480,7 @@ TOOLS
     get_theses             — for context on adjacent thesis state.
 
   Action:
-    place_trade            — if action=ADD and no position, or scaling rung.
+    place_trade            — if action=ENTER (no position yet).
     manage_position        — TRIM, MOVE_STOP, scale.
     close_position         — EXIT.
 

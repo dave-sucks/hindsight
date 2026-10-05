@@ -1,0 +1,388 @@
+{
+ "what": "DOCU 2026-09-28 09:30, the trigger run on the pullback buy at $67 (price $65.88). The prompt is rebuilt from DOCU's thesis as it stands today with the 09-28 plan put back (buy $67, floor $63, target $83, setup MA_PULLBACK, watched, no position) and only the plan's own three triggers; the conversation is the recorded one up to the stock data it pulled. The model's next message is its decision. The thesis's summary paragraph is left out: today's was written by the very run being replayed and says the confirmation had not happened.",
+ "lookFor": "Does it call place_trade, or pass with update_thesis because the reversal close has not happened?",
+ "mode": "tactical",
+ "runMode": "INTRADAY_TACTICAL",
+ "promptArgs": {
+  "analyst": {
+   "name": "PEAD Specialist",
+   "mandate": "You trade Post-Earnings Announcement Drift (PEAD) LONG-ONLY. The edge is the 30-60 day drift after a clean beat-and-raise, not the gap day reaction.\n\nWhat counts as a clean signal:\n- EPS beat ≥ 5% AND revenue beat AND guidance raised\n- Volume on the gap day > 1.5x the 20-day average\n- Analyst estimate revisions UP within 72 hours\n\nWhat you filter out:\n- One-time items driving the beat (buybacks, tax benefits, insurance recoveries)\n- Beats where guidance went sideways or down — no drift without a guide\n- Stocks that already gapped 10%+ on the print — most of the edge is gone\n\nWhen the signal points DOWN (EPS miss + guidance cut), you document the bear thesis as a PASS and look for another name. You do NOT short earnings misses — the asymmetric tail risk of a short-squeeze rip on a beaten-down miss is the wrong shape for this edge.\n\nEntry: 1-3 days after the print, not on it. You're buying the drift, not the reaction. Target a 60-day drift window. Stop at -8% from entry or a reversal candle with volume.\n\nSources you respect: FactSet/Zacks consensus revisions, SEC 8-Ks for the actual guide, company transcripts for tone shift, sell-side notes within 48 hours of the print for estimate direction.\n\nYou do not trade earnings lotteries. You don't hold into the next print. You don't chase day-of gap ups. You wait for confirmation, take the drift, and exit before the next cycle.\n\nPEAD works across all sectors — tech, healthcare, retail, industrials, financials. Do not narrow yourself to one sector just because the most recent winners came from it.\n\n\n\nSIZING JUDGMENT: My position-size band is enforced by config and stated in my run brief — I do not restate the numbers here. What matters is the judgment: if my conviction does not justify a full in-band position, it is not a trade. I leave the thesis WATCHING rather than open an undersized starter, because an entry too small to move the book cannot pay for the slot it occupies. I size to signal strength — a clean sweep of all four PEAD signals earns the top of the band, a marginal setup does not."
+  },
+  "thesis": {
+   "id": "cmtu9lfhw000004i575f6xyig",
+   "ticker": "DOCU",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "MA_PULLBACK",
+   "coreBelief": "DOCU drifts to $83 within 60 days of the September 3 print as the 18 HOLD-rated analysts who haven't yet revised absorb the confirmed ARR guide raise and IAM ARR inflection to 15.1% — but only on a pullback to the rising 20-day SMA (~$64.50) where a 2:1 R/R entry can be structured.",
+   "keyAssumptions": [
+    "IAM ARR mix continues to expand from 15.1% toward management's 18%–19% Q4 FY2027 target, validating the platform re-rating thesis",
+    "The remaining 18 HOLD-rated analysts revise estimates upward over the next 4–6 weeks, maintaining the systematic estimate-diffusion bid that drives PEAD continuation"
+   ],
+   "invalidationConds": [
+    "Gap-day low of $64.16 closes below on volume — the gap fills, the PEAD setup is broken",
+    "Analyst consensus price targets fail to move above $75 over the next 30 days, indicating the revision wave has peaked below the stock price and the diffusion edge has expired"
+   ],
+   "entryPrice": 67,
+   "targetPrice": 83,
+   "stopLoss": 63,
+   "snapshotText": null,
+   "bullCaseBullets": [
+    "**IAM is a genuine platform shift, not marketing:** IAM ARR rose from 12.6% to 15.1% of total ARR in a single quarter, a 250 bps sequential gain that validates CEO commentary and raises the probability that the 18%–19% exit-rate target is achievable — which would represent a step-function re-rating of DOCU from a single-product e-sign vendor to a multi-product platform.",
+    "**Estimate revision tail is long:** According to 20 analysts polled, DOCU has a Hold consensus with an average price target near current levels; UBS and BofA moving within 24 hours signals the early movers, but 18 of 29 analysts remain at HOLD [STRUCTURED:analyst_coverage]. The structural PEAD edge is precisely that the slow-moving majority updates over 4–8 weeks, pulling the stock higher.",
+    "**RSI-adjusted momentum is durable:** DOCU's up/down volume ratio of 2.17 over 20 days and 3-month relative outperformance of +62.2 pts vs. SPY indicates institutional accumulation, not retail speculation [STRUCTURED:volume, relative_strength].",
+    "**FCF yield is compelling relative to rate-neutral SaaS:** FCF of $920M–$1.06B on a $13.4B market cap implies a ~7.7%–7.9% FCF yield, making the stock defensible if multiple expansion stalls [STRUCTURED:financials_annual].",
+    "**Zero leverage:** D/E of 0.00 means any cash flow upside can be deployed into buybacks, which the peer group confirms are ongoing [STRUCTURED:ratios]."
+   ],
+   "bearCaseBullets": [
+    "**The gap has already run 11%+ from the prior base:** DOCU at $71.85 is 11.9% above the gap-day high of $70.40 on an intraday basis; the PEAD edge erodes when most of the reaction is already priced. The existing thesis's original entry at $62.50 is 13% below spot [STRUCTURED:swings].",
+    "**Revenue guide mixed on closer read:** DocuSign's Q3 2026 (i.e., an earlier period) EPS beat was overshadowed by a revenue slight miss; the Q4 outlook collectively placed the company's trajectory as \"stable but not accelerating.\" The full-year revenue guide of $3.499B–$3.507B for FY2027 implies a modest deceleration in the back half if Q2's 9% growth doesn't hold.",
+    "**Consensus PT is near or below spot:** The average analyst price target is approximately $66–$67, which is below the current $71.85 stock price — meaning the stock has already traded through median sell-side expectations, reducing the systematic upward revision pull.",
+    "**YTD underperformance vs. peers reflects structural concern:** DOCU ranks 4th of 4 peers in YTD performance at -30.3%, versus DT (-7.4%) and PTC (-15.2%) [STRUCTURED:peer_comparison]. Revenue growth of +8.6% ranks 3rd of 4, below DT (+17.9%) and PTC (+19.5%) — the market has consistently penalized the slower growth trajectory.",
+    "**Insider selling, not buying:** The Form 4 filings in the last 30 days show no open-market purchases; all recent Form 4 activity implies sales or option exercises [STRUCTURED:insider_activity]. Combined with an elevated RSI of 69.3, smart-money behavior is not supporting the bull thesis from the inside."
+   ],
+   "researchAge": {
+    "daysOld": 0,
+    "freshness": "fresh",
+    "lastWrittenAt": "2026-09-28T01:05:08.000Z",
+    "horizonThreshold": 30
+   },
+   "allTriggers": [
+    {
+     "id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 67
+     },
+     "action": "ENTER",
+     "rationale": "Pullback to the rising 20-day: the plan's buy level."
+    },
+    {
+     "id": "hero-floor",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 63
+     },
+     "action": "EXIT",
+     "rationale": "The plan's floor."
+    },
+    {
+     "id": "hero-target",
+     "predicate": {
+      "kind": "PRICE_ABOVE",
+      "level": 83
+     },
+     "action": "REVIEW",
+     "rationale": "The plan's target."
+    }
+   ]
+  },
+  "trigger": {
+   "id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+   "predicate": {
+    "kind": "PRICE_BELOW",
+    "level": 67
+   },
+   "action": "ENTER",
+   "rationale": "Pullback to the rising 20-day: the plan's buy level."
+  },
+  "position": null,
+  "context": null,
+  "latestDigest": null,
+  "fired": {
+   "price": 65.88,
+   "coFired": []
+  },
+  "capacity": null
+ },
+ "toolCtx": {
+  "analystId": "cmnhxpjio000004jvox6kl6c7",
+  "minPositionSize": 3000,
+  "maxPositionSize": 14000,
+  "maxPositionTotal": 28000,
+  "maxOpenPositions": 6,
+  "minConfidence": 60
+ },
+ "messages": [
+  {
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "Tactical run on $DOCU. Price below $67 — consider entry. Validate, decide, act if warranted, then close out via update_thesis. You are running unattended — no human will respond. Every turn must call a tool; text-only turns terminate the run as FAILED."
+    }
+   ]
+  },
+  {
+   "role": "assistant",
+   "content": [
+    {
+     "type": "tool-call",
+     "toolCallId": "call_STnuVpPw0mcVOyYCsuuJLvYp",
+     "toolName": "get_stock_data",
+     "input": {
+      "ticker": "DOCU",
+      "include_technicals": true
+     },
+     "providerOptions": {
+      "openai": {
+       "itemId": "fc_0982397c657acbd2006aba6bfa10f487d29b75a222048c726d"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": [
+    {
+     "type": "tool-result",
+     "toolCallId": "call_STnuVpPw0mcVOyYCsuuJLvYp",
+     "toolName": "get_stock_data",
+     "output": {
+      "type": "json",
+      "value": {
+       "ok": true,
+       "ui": "tool-ui",
+       "groupId": "Researching",
+       "progressLabel": "Pulling $DOCU's snapshot",
+       "summary": "[Our history with $DOCU] LAST THESIS (cmtu9lfhw000004i575f6xyig): WATCHING LONG, conviction MEDIUM, researched 2026-09-16, catalyst was 2026-12-03. What we believed: \"DOCU drifts to $83 within 60 days of the September 3 print as the 18 HOLD-rated analysts who haven't yet revised absorb the confirmed ARR guide raise and IAM ARR inflection to 15.1% — but only on a pullback to the rising 20-day SMA (~$64.50) where a 2:1 R/R entry can be structured.\" Full prior thesis — assumptions, invalidation conditions, levels, triggers and the whole audit trail — is available: get_theses(tickers: [\"DOCU\"], status: [\"WATCHING\"], include_history: true). We researched this name before without trading it. Say what is different now before reaching the same conclusion or a different one. DOCU — DocuSign Inc. $65.88 (-2.40%). Technology · $12.6B · P/E 40.8 · 34% Buy. UPTREND, RSI 54.4. 3 news.",
+       "data": {
+        "priorCoverage": "LAST THESIS (cmtu9lfhw000004i575f6xyig): WATCHING LONG, conviction MEDIUM, researched 2026-09-16, catalyst was 2026-12-03. What we believed: \"DOCU drifts to $83 within 60 days of the September 3 print as the 18 HOLD-rated analysts who haven't yet revised absorb the confirmed ARR guide raise and IAM ARR inflection to 15.1% — but only on a pullback to the rising 20-day SMA (~$64.50) where a 2:1 R/R entry can be structured.\" Full prior thesis — assumptions, invalidation conditions, levels, triggers and the whole audit trail — is available: get_theses(tickers: [\"DOCU\"], status: [\"WATCHING\"], include_history: true). We researched this name before without trading it. Say what is different now before reaching the same conclusion or a different one.",
+        "quote": {
+         "price": 65.88,
+         "change": -1.62,
+         "changePct": -2.4,
+         "high": 65.91000000000001,
+         "low": 65.85,
+         "open": 65.9,
+         "prevClose": 67.5,
+         "asOf": "2026-09-28T13:30:05.000Z",
+         "ageMinutes": 1,
+         "live": true
+        },
+        "company": {
+         "name": "DocuSign Inc",
+         "sector": "Technology",
+         "marketCap": 12615915022.28584,
+         "exchange": "NASDAQ NMS - GLOBAL MARKET",
+         "country": "US"
+        },
+        "financials": {
+         "peRatio": 40.817,
+         "pbRatio": 5.4302,
+         "high52w": 83.29,
+         "low52w": 40.16,
+         "avgVolume10d": 3.71167,
+         "beta": 0.8566551
+        },
+        "technicals": {
+         "asOf": "2026-09-25",
+         "bars": 260,
+         "price": 65.88,
+         "priceIsLive": true,
+         "lastClose": 67.5,
+         "sma": {
+          "d20": {
+           "value": 67.43,
+           "slope": "RISING",
+           "pctFromPrice": -2.31
+          },
+          "d50": {
+           "value": 61.38,
+           "slope": "RISING",
+           "pctFromPrice": 7.33
+          },
+          "d150": {
+           "value": 51.8,
+           "slope": "RISING",
+           "pctFromPrice": 27.17
+          },
+          "d200": {
+           "value": 53.7,
+           "slope": "FLAT",
+           "pctFromPrice": 22.69
+          }
+         },
+         "ema": {
+          "d10": 68.28,
+          "d21": 66.78
+         },
+         "rsi14": 54.4,
+         "atr14": {
+          "dollars": 2.76,
+          "pct": 4.19
+         },
+         "adr20Pct": 4.09,
+         "range": {
+          "high20": 74.07,
+          "low20": 63.6,
+          "high52w": 83.29,
+          "low52w": 40.16,
+          "pctBelow52wHigh": 20.9,
+          "pctAbove52wLow": 64
+         },
+         "swings": {
+          "lastHigh": {
+           "price": 74.065,
+           "date": "2026-09-15"
+          },
+          "lastLow": {
+           "price": 63.633,
+           "date": "2026-09-09"
+          }
+         },
+         "base": null,
+         "volume": {
+          "lastVsAvg20": 0.57,
+          "avg20": 3895982,
+          "avgDollarVolume50": 206136512,
+          "upDownRatio20": 1.18
+         },
+         "gaps": [],
+         "relativeStrength": {
+          "vsSpy": {
+           "m1": 13.1,
+           "m3": 43.5,
+           "m6": 23.5
+          },
+          "vsSector": {
+           "etf": "XLK",
+           "m1": 6.4,
+           "m3": 40.9,
+           "m6": -5.1
+          }
+         },
+         "fib": {
+          "legLow": 41.37,
+          "legLowDate": "2026-06-18",
+          "legHigh": 74.07,
+          "legHighDate": "2026-09-15",
+          "retrace382": 61.57,
+          "retrace500": 57.72,
+          "retrace618": 53.86,
+          "extension1272": 82.96,
+          "extension1618": 94.27
+         },
+         "trendTemplate": {
+          "passed": 6,
+          "of": 8,
+          "pass": false,
+          "failing": [
+           "150-day above the 200-day",
+           "200-day rising for at least a month"
+          ]
+         },
+         "verdict": "UPTREND",
+         "suggested": {
+          "trendStrength": {
+           "score": 2,
+           "note": "Uptrend above the 200-day. Trend Template 6/8."
+          },
+          "relativeStrength": {
+           "score": 3,
+           "note": "vs SPY: 1M +13.1pts, 3M +43.5pts, 6M +23.5pts."
+          }
+         },
+         "volumeFeed": "sip",
+         "today": null
+        },
+        "analystConsensus": {
+         "buy": 6,
+         "hold": 18,
+         "sell": 1,
+         "strongBuy": 4,
+         "strongSell": 0
+        },
+        "priceTargets": null,
+        "news": [
+         {
+          "headline": "Productivity Software Stocks Q2 Highlights: DocuSign (NASDAQ:DOCU)",
+          "summary": "Quarterly earnings results are a good time to check in on a company’s progress, ",
+          "source": "Yahoo",
+          "url": "https://finnhub.io/api/news?id=5532cfef4fe8879474e26ef026eb881c8d982e3fbd4f876962edb6943467ec18",
+          "date": "2026-09-24"
+         },
+         {
+          "headline": "Investors Heavily Search Docusign Inc. (DOCU): Here is What You Need to Know",
+          "summary": "DocuSign (DOCU) has received quite a bit of attention from Zacks.com users latel",
+          "source": "Yahoo",
+          "url": "https://finnhub.io/api/news?id=98524c35f9adf09dcc87d0d5abd2734b1e2cc6e24d901d64eca83ad9087dfbda",
+          "date": "2026-09-24"
+         },
+         {
+          "headline": "DocuSign President Sells 14,676 Shares",
+          "summary": "The executive sold shares after the stock fell 16% over the past year.",
+          "source": "Yahoo",
+          "url": "https://finnhub.io/api/news?id=7f4df887677763ecbd4a4240938a1b3658952e06fe1bf104be91baa649ab02ec",
+          "date": "2026-09-23"
+         }
+        ],
+        "tickers": [
+         {
+          "ticker": "DOCU",
+          "tag": "Prior coverage",
+          "summary": "Prior coverage: last thesis WATCHING. DocuSign Inc. Technology · $12.6B · P/E 40.8 · 34% Buy. UPTREND. 50-day $61.38 (+7.3%) · 200-day $53.70 (+22.7%) · swing low $63.63 · moves $2.76/day"
+         }
+        ]
+       },
+       "sources": [
+        {
+         "provider": "Finnhub",
+         "title": "DOCU Real-Time Quote",
+         "url": "https://finnhub.io/docs/api/quote"
+        },
+        {
+         "provider": "Finnhub",
+         "title": "DOCU Company Profile",
+         "url": "https://finnhub.io/docs/api/company-profile2"
+        },
+        {
+         "provider": "Finnhub",
+         "title": "DOCU Key Financials",
+         "url": "https://finnhub.io/docs/api/stock-basic-financials"
+        },
+        {
+         "provider": "Finnhub",
+         "title": "DOCU Analyst Consensus",
+         "url": "https://finnhub.io/docs/api/recommendation-trends"
+        },
+        {
+         "provider": "Alpaca",
+         "title": "DOCU One-Year Daily Bars",
+         "url": "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/"
+        }
+       ]
+      }
+     },
+     "providerOptions": {
+      "openai": {
+       "itemId": "fc_0982397c657acbd2006aba6bfa10f487d29b75a222048c726d"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "expect": {
+  "call": [
+   {
+    "tool": "update_thesis",
+    "where": {
+     "edit_triggers.*.level": "present"
+    }
+   },
+   {
+    "tool": "update_thesis",
+    "where": {
+     "entry_price": "present"
+    }
+   }
+  ],
+  "never": [
+   {
+    "tool": "place_trade"
+   }
+  ]
+ }
+}

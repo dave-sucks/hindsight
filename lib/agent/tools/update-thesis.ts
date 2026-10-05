@@ -30,7 +30,7 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import {
   parseTriggersResilient,
-  triggersArraySchema,
+  triggersInputArraySchema,
   editTriggerOpSchema,
 } from "@/lib/agent/triggers/schema";
 import {
@@ -278,7 +278,7 @@ const updateSchema = z.object({
   catalyst_date: z.string().datetime().nullable().optional(),
 
   // ── Trigger ops (DAV-242) — one trigger at a time, never a whole list ──
-  add_triggers: triggersArraySchema
+  add_triggers: triggersInputArraySchema
     .optional()
     .describe(
       "Triggers to ADD. Each is { predicate, action, rationale, cooldownDays?, fireMode? }; ids are minted here. " +
@@ -739,7 +739,7 @@ export const updateThesis = defineTool({
           message:
             `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
             `Three legal commitments:\n` +
-            `  • \`direction: "LONG"\` + horizon + entry_price + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
+            `  • \`direction: "LONG"\` + horizon + entry_price (or one buy trigger in add_triggers) + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
             `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
             `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
             `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`,
@@ -779,7 +779,16 @@ export const updateThesis = defineTool({
         if (!args.horizon) missing.push("horizon");
         if (args.target_price == null) missing.push("target_price");
         if (args.stop_loss == null) missing.push("stop_loss");
-        if (args.entry_price == null) missing.push("entry_price");
+        // The buy may already be on the stock as a chart condition, or come
+        // in this call as one. SMMT 2026-10-02: the buy was "closes above
+        // $17.10 and above the 20-day" (an AND trigger); this rule demanded
+        // entry_price anyway, the chat sent $17.10 to satisfy it, and the
+        // stock got an accidental copy of the buy it already had.
+        const hasBuy =
+          args.entry_price != null ||
+          existingRowTriggers.some((t) => t.action === "ENTER") ||
+          (args.add_triggers ?? []).some((t) => t.action === "ENTER");
+        if (!hasBuy) missing.push("entry_price (or one buy trigger, action ENTER, in add_triggers)");
         if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
         if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
         if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
@@ -1090,7 +1099,7 @@ export const updateThesis = defineTool({
       if (isTerminalTransition) {
         opResults.push(
           ...triggerOps.map((o) => ({
-            op: o.op === "level" ? ("edit" as const) : o.op,
+            op: o.op === "level" || o.op === "replace" ? ("edit" as const) : o.op,
             id: "id" in o ? o.id : "",
             ok: false,
             text: "Trigger change",
@@ -1102,7 +1111,7 @@ export const updateThesis = defineTool({
         // that would silently delete a stop. Say so; nothing changes.
         opResults.push(
           ...triggerOps.map((o) => ({
-            op: o.op === "level" ? ("edit" as const) : o.op,
+            op: o.op === "level" || o.op === "replace" ? ("edit" as const) : o.op,
             id: "id" in o ? o.id : "",
             ok: false,
             text: "Trigger change",
