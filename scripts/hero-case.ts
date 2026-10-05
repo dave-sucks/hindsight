@@ -4,6 +4,9 @@
  *
  *   npx tsx --env-file=.env.local scripts/hero-case.ts <case> [--runs 6]
  *   npx tsx --env-file=.env.local scripts/hero-case.ts --all [--runs 6]
+ *   … [--written out.jsonl]  also append what each run wrote for Dave
+ *                            (narration + the shown text fields), for
+ *                            scripts/voice-count.ts. Scoring is unchanged.
  *   cases: scripts/hero-cases/*.json  (cut from real runs by hero-case-from-run.ts)
  *
  * Each case is a recorded conversation up to one decision. The system prompt
@@ -22,7 +25,7 @@
  * { lt, gt, regex }. Not in CI; the pass rate is read by a person and
  * recorded with the PR, before and after a change.
  */
-import { readFileSync, readdirSync } from "fs";
+import { appendFileSync, readFileSync, readdirSync } from "fs";
 import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -169,7 +172,34 @@ function brief(call: Call): string {
   return `${call.toolName}(${shown.join(", ")})`;
 }
 
-async function runCase(name: string, runs: number): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
+/** The fields whose text Dave reads (lib/agent/voice.ts), per tool. */
+const SHOWN: Record<string, string[]> = {
+  update_thesis: ["rationale"],
+  place_trade: ["entry_rationale"],
+  close_position: ["notes"],
+  manage_position: ["reason"],
+  submit_thesis: ["rationale"],
+};
+
+/** What one run wrote that Dave would read: the shown fields, each trigger's note, the summary lines. */
+function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: string }> {
+  const out: Array<{ tool: string; field: string; text: string }> = [];
+  for (const c of calls) {
+    const a = (c.input ?? {}) as Record<string, unknown>;
+    for (const f of SHOWN[c.toolName] ?? []) if (typeof a[f] === "string") out.push({ tool: c.toolName, field: f, text: a[f] as string });
+    for (const f of ["add_triggers", "edit_triggers", "triggers"]) {
+      for (const t of Array.isArray(a[f]) ? (a[f] as Array<Record<string, unknown>>) : []) {
+        if (typeof t?.rationale === "string") out.push({ tool: c.toolName, field: `${f}.rationale`, text: t.rationale });
+      }
+    }
+    if (c.toolName === "record_run_summary" && Array.isArray(a.ranked_picks)) {
+      for (const p of a.ranked_picks as Array<Record<string, unknown>>) if (typeof p?.reasoning === "string") out.push({ tool: c.toolName, field: "ranked_picks.reasoning", text: p.reasoning });
+    }
+  }
+  return out;
+}
+
+async function runCase(name: string, runs: number, writtenPath: string | null): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   const mode = MODES[c.mode];
   const system = systemFor(c);
@@ -248,6 +278,7 @@ async function runCase(name: string, runs: number): Promise<{ name: string; pass
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
     for (const call of calls) console.log(`CALL ${brief(call)}`);
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };
@@ -257,12 +288,14 @@ async function main() {
   const args = process.argv.slice(2);
   const runsAt = args.indexOf("--runs");
   const runs = runsAt >= 0 ? Number(args[runsAt + 1]) : 6;
+  const writtenAt = args.indexOf("--written");
+  const writtenPath = writtenAt >= 0 ? args[writtenAt + 1] : null;
   const names = args.includes("--all")
     ? readdirSync("scripts/hero-cases").filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, "")).sort()
-    : args.filter((a) => !a.startsWith("--") && a !== String(runs));
+    : args.filter((a) => !a.startsWith("--") && a !== String(runs) && a !== writtenPath);
   if (names.length === 0) throw new Error("usage: hero-case.ts <case>... | --all  [--runs N]");
   const results = [];
-  for (const name of names) results.push(await runCase(name, runs));
+  for (const name of names) results.push(await runCase(name, runs, writtenPath));
   console.log("\n| Case | Pass | Looks for |\n|---|---|---|");
   for (const r of results) console.log(`| ${r.name} | ${r.passes}/${r.runs} | ${r.lookFor} |`);
 }
