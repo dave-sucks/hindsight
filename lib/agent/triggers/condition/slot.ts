@@ -29,7 +29,11 @@ export function conditionSlot(c: Condition): string {
 
 export function whenSlot(w: When): string {
   if (!isGroup(w)) return conditionSlot(w);
-  return `${w.match}:${w.conditions.map(whenSlot).sort().join("|")}`;
+  // "Any of" one measure's conditions can be one rule its entry names (a filing rule with a tier).
+  const cs = w.conditions.filter((c): c is Condition => !isGroup(c));
+  const one = w.match === "any" && cs.length > 0 && cs.length === w.conditions.length && cs.every((c) => c.watch === cs[0].watch);
+  const taken = one ? measureOf(cs[0]).groupSlot?.(cs) : undefined;
+  return taken ? conditionSlot(taken) : `${w.match}:${w.conditions.map(whenSlot).sort().join("|")}`;
 }
 
 /** `(slot, action)`. */

@@ -20,6 +20,9 @@ export const filing: MeasureDef = {
   actions: ["REVIEW"],
   // One fire per filing (firedFilings), and filings cluster: no cooldown.
   cooldownDays: () => 0,
+  // A rule naming a tier is the tier rule, whatever else it names, so it
+  // overrides the tier rule above it. One naming only events adds to it.
+  groupSlot: (cs) => cs.find((c) => tierOf(c.variable)),
   fresh: () => ({ watch: "filing", variable: "tier:MATERIAL" }),
   legacy: {
     from: {

@@ -93,6 +93,8 @@ export interface MeasureDef {
   cooldownDays: (c: Condition, action: string) => number;
   /** Somewhere the stock is for weeks (below the 200-day), not a moment: a review on it asks at most weekly. */
   state?: (c: Condition) => boolean;
+  /** For "any of" this measure's own conditions that is one rule: the condition whose cascade slot it takes. */
+  groupSlot?: (cs: readonly Condition[]) => Condition | undefined;
   /** What a new condition on this tab starts as. */
   fresh: () => Condition;
   /** What's wrong beyond the number and the variable, in one sentence, or null. */

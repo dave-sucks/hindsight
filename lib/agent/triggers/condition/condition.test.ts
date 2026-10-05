@@ -31,6 +31,7 @@ import fs from "fs";
 import path from "path";
 import stored from "./__fixtures__/stored-triggers.json";
 import * as kinds from "./__fixtures__/kind-rules";
+import { UNSTORED } from "./__fixtures__/unstored-triggers";
 import { triggerBucket } from "../bucket";
 import { defaultCooldownDaysForPredicate } from "../defaults";
 import { flooredCooldownDays, isStatePredicate } from "../state-cooldown";
@@ -119,16 +120,17 @@ describe("every stored trigger", () => {
 
 /**
  * The rules the kinds used to answer, from the catalog: each stored condition
- * under every action, both directions and none, held and watched, with a buy
- * and without, against the kinds' answer frozen in ./__fixtures__/kind-rules.ts.
+ * (and the ones in ./__fixtures__/unstored-triggers.ts the book lacks) under
+ * every action, both directions and none, held and watched, with a buy and
+ * without, against the kinds' answer frozen in ./__fixtures__/kind-rules.ts.
  * The removed kind is left out: the kinds had no answer for it, it sits only on
  * retired theses, and it never fires.
  */
 describe("the rules the kinds answered, from the catalog", () => {
   const ACTIONS: TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW", "MOVE_STOP", "DEMOTE"];
   const DIRECTIONS = ["LONG", "SHORT", null];
-  const live = rows.filter((r) => !isRetired(fromLegacy(r.predicate)));
-  const grid = live.flatMap((r) => ACTIONS.map((action) => ({ predicate: r.predicate, action })));
+  const live = [...rows.map((r) => r.predicate), ...UNSTORED].filter((p) => !isRetired(fromLegacy(p)));
+  const grid = live.flatMap((predicate) => ACTIONS.map((action) => ({ predicate, action })));
 
   /** Where the frozen answer and today's differ: none, or the count and the first few. */
   function disagree<C>(cases: C[], then: (c: C) => unknown, now: (c: C) => unknown) {
@@ -144,7 +146,7 @@ describe("the rules the kinds answered, from the catalog", () => {
   const answers = <C,>(cases: C[], then: (c: C) => unknown) => new Set(cases.map((c) => JSON.stringify(then(c)))).size;
 
   it("covers every stored condition under every action", () => {
-    expect(live.length).toBe(rows.length - 1);
+    expect(live.length).toBe(rows.length - 1 + UNSTORED.length);
     expect(grid.length).toBe(live.length * ACTIONS.length);
   });
 
@@ -164,7 +166,7 @@ describe("the rules the kinds answered, from the catalog", () => {
   });
 
   it("the default cooldown", () => {
-    const cases = [...grid, ...live.map((r) => ({ predicate: r.predicate, action: undefined }))];
+    const cases = [...grid, ...live.map((predicate) => ({ predicate, action: undefined }))];
     const then = (t: (typeof cases)[number]) => kinds.defaultCooldownDaysForPredicate(t.predicate, t.action);
     expect(disagree(cases, then, (t) => defaultCooldownDaysForPredicate(t.predicate, t.action))).toEqual(agree);
     expect(answers(cases, then)).toBeGreaterThan(5);
@@ -179,10 +181,10 @@ describe("the rules the kinds answered, from the catalog", () => {
   });
 
   it("which sales propose directly, and the label they close with", () => {
-    const direct = (r: Row) => kinds.isDirectEligiblePredicate(r.predicate.kind);
-    expect(disagree(live, direct, (r) => isDirectEligiblePredicate(r.predicate))).toEqual(agree);
+    const direct = (p: TriggerPredicate) => kinds.isDirectEligiblePredicate(p.kind);
+    expect(disagree(live, direct, (p) => isDirectEligiblePredicate(p))).toEqual(agree);
     expect(answers(live, direct)).toBe(2);
-    const cases = live.flatMap((r) => DIRECTIONS.map((direction) => ({ predicate: r.predicate, direction })));
+    const cases = live.flatMap((predicate) => DIRECTIONS.map((direction) => ({ predicate, direction })));
     const then = (c: (typeof cases)[number]) => kinds.protectiveExitCloseReason(c.predicate, c.direction);
     expect(disagree(cases, then, (c) => protectiveExitCloseReason(c.predicate, c.direction))).toEqual(agree);
     expect(answers(cases, then)).toBe(3);

@@ -12,6 +12,7 @@
  */
 
 import stored from "./__fixtures__/stored-triggers.json";
+import { UNSTORED } from "./__fixtures__/unstored-triggers";
 import { KIND_CHECKER, shouldFire, type EvaluationContext } from "../evaluate";
 import type { Trigger, TriggerAction, TriggerPredicate } from "../types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
@@ -20,27 +21,6 @@ import { READERS, SHAPE_CHECKER, compareWithShape } from "./read";
 
 type Row = { action: TriggerAction; predicate: TriggerPredicate; scopes: string[]; count: number };
 
-/** Kinds and options no stored trigger uses yet (RSI, a gap, an insider cluster, the trail's options…), so every reader is exercised. */
-const UNSTORED: TriggerPredicate[] = [
-  { kind: "RSI", threshold: 30, direction: "BELOW" },
-  { kind: "RSI", period: 2, threshold: 70, direction: "ABOVE" },
-  { kind: "GAP_UP", minPct: 4, minVolRatio: 3 },
-  { kind: "GAP_UP", minPct: 4, minVolRatio: 2, withinDays: 3 },
-  { kind: "INSIDER_CLUSTER", minBuyers: 2, days: 30 },
-  { kind: "INSIDER_CLUSTER", minBuyers: 3, days: 90 },
-  { kind: "NEW_HIGH", window: "20D" },
-  { kind: "NEW_HIGH", window: "52W" },
-  { kind: "PCT_FROM_52W_HIGH", max: 8 },
-  { kind: "PRICE_MOVE_PCT", pct: 6, direction: "UP", window: "20D" },
-  { kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 15, atrMultiple: 3 },
-  { kind: "GAIN_FROM_ENTRY", pct: 20, direction: "UP", skipIfPeakGainPct: 20, skipIfPeakWithinDays: 21 },
-  { kind: "EARNINGS_SINCE", min: 1, max: 3 },
-  { kind: "SEC_EVENT", tier: "RED" },
-  { kind: "SEC_EVENT", forms: ["S-3", "NT 10-Q"] },
-  { kind: "SEC_EVENT", tier: "MATERIAL", items: ["8.01"] },
-  { kind: "REVIEW_CADENCE", days: 10, from: "EVENT", side: "AFTER" },
-  { kind: "OR", predicates: [{ kind: "VS_SMA", period: 50, direction: "BELOW" }, { kind: "RSI", threshold: 25, direction: "BELOW" }] },
-];
 const rows: Row[] = [
   ...(stored as { rows: Row[] }).rows,
   ...UNSTORED.flatMap((predicate) => (["ENTER", "EXIT", "REVIEW"] as const).map((action) => ({ action, predicate, scopes: ["live"], count: 1 }))),
