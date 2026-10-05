@@ -634,6 +634,26 @@ Each PR follows the repo's rules: rebased onto main and never stacked; the
 five-line message; a test replayed from the real production input; merged
 only on Dave's click.
 
+**PR 3 is built in stages on one branch**, each with the code it replaces
+frozen in the suite (`condition/__fixtures__/`) and checked against the
+catalog at the entry point the app calls:
+
+1. The rules the kinds answered (cooldown, the weekly review floor, direct
+   sales and their close label, typed levels, the slot) read the catalog.
+2. The new checker decides; what the five-minute pass loads, the levels on
+   the chart and their slots, the cascade's gates, the stop-tightening rule
+   and the other typed-price readers read the catalog. The old popover's
+   value and fire-mode edits, dead since PR 1, are deleted.
+3. Storage holds the shape: the database client stores every write in it
+   and gives the code that still speaks in kinds their spelling on read;
+   the backfill and its down script.
+4. The agents' tools and prompts move to the shape (after the architecture
+   work's step 4a lands), and with them everything that still speaks in
+   kinds: the read view goes, the templates and writers build the shape, the
+   sentences agents read come from the catalog. The test cases where an agent
+   writes triggers run 12 times each, in the same hour, before and after.
+5. Tests and docs.
+
 **Lanes.** This crosses both lanes' columns and every shared file in
 `LANES.md` §4. One owner runs it end to end. While PR 2 or PR 3 is open,
 neither lane opens a PR on `lib/agent/triggers/` without saying so in its
