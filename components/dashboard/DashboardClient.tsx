@@ -89,6 +89,8 @@ import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
 import { formatCurrency, formatDateLabel } from '@/lib/format';
+import { realizedSince } from '@/lib/portfolio/range-realized';
+import { windowReachesInception } from '@/lib/portfolio/inception';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -975,8 +977,16 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
   // NOT "curve today minus curve on day one": the curve's first point is only
   // zero if every opening dollar has a matching deposit record, and one
   // mis-dated deposit turned that into −$1,592 on a +$6,406 account.
-  const includesInception =
-    pnlData.length > 0 && rawPnlCurve.length > 0 && pnlData[0].date === rawPnlCurve[0].date;
+  //
+  // Measured against the FULL-HISTORY daily curve, never against whichever
+  // curve is being drawn. 1D and 1W draw the 15-minute series, which only
+  // reaches back a week — so "the window covers the whole curve" was true for
+  // 1W the moment intraday shipped, and 1W showed the all-time number
+  // (+$6,242.51 instead of +$821.88 on the live book).
+  const includesInception = windowReachesInception(
+    pnlData,
+    data?.pnlCurve?.length ? data.pnlCurve : rawPnlCurve,
+  );
   // Range-aware P&L: delta over the selected range from the active (filtered)
   // curve. Because that curve is deposit-adjusted, the delta is pure trading
   // P&L — a deposit inside the window cancels out instead of showing as a gain.
@@ -992,6 +1002,31 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
     ? (portfolio.netContributed > 0 ? portfolio.netContributed : (equityRange[0]?.value ?? 0))
     : (equityRange[0]?.value ?? portfolio.netContributed);
   const rangePnlPct = rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
+
+  // The split BEHIND that number, over the SAME window. The header used to put
+  // the range's total next to ALL-TIME unrealized — two different clocks — so a
+  // month holding $1,337 of booked losses read "−$1,313" beside "+$5,204
+  // unrealized" and looked self-contradictory. These two sum to rangePnl.
+  //
+  // Realized is SUMMED from the closed trades in the window, not taken as a
+  // delta off the realized curve: that curve only has a point on days when
+  // something closed, so "last minus first inside the window" silently drops
+  // the first in-window sale. On this account over a month that read −$534.66
+  // instead of −$1,336.84 — exactly PBH's −$802.18, the earliest of the six.
+  // Measured over the SAME window the number above came from — the split is
+  // handed `pnlData`'s first point, not a range name. 1D is the newest
+  // SESSION, not a rolling 24 hours, and a sparse curve can fall back to its
+  // last two points; a second `now − N days` clock disagreed with both. On
+  // this book SRRK closed at 15:50 ET, so for the first 6h20m of the next
+  // session its −$192.51 counted as "sold" in a 1D total that excluded the
+  // previous day entirely, and `held` absorbed it with the opposite sign.
+  const rangeRealized = useMemo(() => {
+    // Fewer than two points means `rangePnl` already fell back to the
+    // whole-account total, so the split has to cover the whole account too.
+    if (includesInception || pnlData.length < 2) return portfolio.realizedPnl;
+    return realizedSince(closedTrades, pnlData[0].date);
+  }, [closedTrades, pnlData, includesInception, portfolio.realizedPnl]);
+  const rangeUnrealized = rangePnl - rangeRealized;
   const pnlPositive = rangePnl >= 0;
 
   const spyPct: number | null =
@@ -1121,7 +1156,10 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                       />
                       <span className="text-xs text-muted-foreground tabular-nums">
                         <span className="font-medium">{RANGE_PNL_LABEL[range]}</span>
-                        <span className="font-light"> ({portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized)</span>
+                        <span className="font-light">
+                          {' '}({rangeRealized >= 0 ? '+' : ''}{formatCurrency(rangeRealized)} sold
+                          {' · '}{rangeUnrealized >= 0 ? '+' : ''}{formatCurrency(rangeUnrealized)} held)
+                        </span>
                       </span>
                     </div>
                   </div>
