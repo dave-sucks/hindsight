@@ -379,6 +379,26 @@ export function evaluateTrigger(
 }
 
 /**
+ * What `shouldFire` asks of a predicate: does it hold now, does it compare the
+ * price to a level (so a buy on it fires on the crossing), and does it read
+ * the next scheduled report (so a heads-up fires once per report). Today's
+ * answers come from the kinds; the condition shape's come from its catalog
+ * (lib/agent/triggers/condition/read.ts), and the trigger check runs both and
+ * logs any disagreement until the cutover (docs/plans/TRIGGER_TYPES.md PR 2).
+ */
+export interface Checker {
+  holds(p: TriggerPredicate, ctx: EvaluationContext): boolean;
+  readsPrice(p: TriggerPredicate): boolean;
+  readsUpcomingReport(p: TriggerPredicate): boolean;
+}
+
+export const KIND_CHECKER: Checker = {
+  holds: (p, ctx) => evaluateTrigger(p, ctx) === true,
+  readsPrice: (p) => readsPrice(p),
+  readsUpcomingReport: (p) => readsUpcomingReport(p),
+};
+
+/**
  * Evaluate a full Trigger including the cooldown gate. Returns a reason
  * code so callers (and tests) can distinguish "predicate matched but
  * cooldown blocks fire" from "predicate didn't match."
@@ -405,11 +425,12 @@ export function evaluateTrigger(
 export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
+  checker: Checker = KIND_CHECKER,
 ): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "stale-quote" | "cooldown" } {
   // A filing trigger reads its own fired-filing memory; nothing else does.
   if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
   if (trigger.firedReports?.length) ctx = { ...ctx, firedReports: trigger.firedReports };
-  const matched = evaluateTrigger(trigger.predicate, ctx);
+  const matched = checker.holds(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 
   // Two fire semantics, keyed off the action (DAV-229, 2026-09-02):
@@ -444,8 +465,8 @@ export function shouldFire(
     trigger.action === "ENTER" && ctx.latestQuote?.prevClose != null && ctx.latestQuote.prevClose > 0
       ? crossingBaseline(trigger, ctx.latestQuote.prevClose, ctx.now)
       : null;
-  if (baseline != null && ctx.latestQuote && readsPrice(trigger.predicate)) {
-    const atBaseline = evaluateTrigger(trigger.predicate, {
+  if (baseline != null && ctx.latestQuote && checker.readsPrice(trigger.predicate)) {
+    const atBaseline = checker.holds(trigger.predicate, {
       ...ctx,
       latestQuote: { ...ctx.latestQuote, price: baseline },
     });
@@ -462,7 +483,7 @@ export function shouldFire(
   // in cooldown, whatever the clock says. Without this, one fire against a
   // wrong date eats the real heads-up: AIR fired for a phantom 2026-09-21
   // and the 7-day cooldown ran past the true 09-29 window (DAV-293).
-  const reportDate = readsUpcomingReport(trigger.predicate)
+  const reportDate = checker.readsUpcomingReport(trigger.predicate)
     ? (ctx.upcomingEarnings?.reportDate ?? null)
     : null;
   const unfiredReport = reportDate != null && !(trigger.firedReports ?? []).includes(reportDate);

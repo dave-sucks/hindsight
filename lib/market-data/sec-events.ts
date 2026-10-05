@@ -125,7 +125,8 @@ export function describeFiling(f: SecFiling): string {
 
 // ── Matching a trigger ──────────────────────────────────────────────────────
 
-type SecEventPredicate = Extract<TriggerPredicate, { kind: "SEC_EVENT" }>;
+/** What a filing rule names: a tier, items, forms. A stored SEC_EVENT has them; so does one filing condition. */
+type SecEventPredicate = Pick<Extract<TriggerPredicate, { kind: "SEC_EVENT" }>, "tier" | "items" | "forms"> & { kind?: "SEC_EVENT" };
 
 /**
  * Does this filing satisfy the predicate? `tier` is "at least" — MATERIAL

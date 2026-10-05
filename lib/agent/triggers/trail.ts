@@ -20,7 +20,8 @@
 
 import type { TriggerPredicate } from "./types";
 
-type Trail = Extract<TriggerPredicate, { kind: "TRAILING_FROM_HIGH" }>;
+/** The trail's numbers. A stored trail predicate has them; so does the condition shape's "% below the high". */
+type Trail = Pick<Extract<TriggerPredicate, { kind: "TRAILING_FROM_HIGH" }>, "pct" | "armAtGainPct" | "atrMultiple"> & { kind?: "TRAILING_FROM_HIGH" };
 
 /** True once the peak has cleared the arming gain (always true with none). */
 export function trailArmed(
