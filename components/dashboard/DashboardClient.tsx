@@ -90,6 +90,7 @@ import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
 import { formatCurrency, formatDateLabel } from '@/lib/format';
 import { realizedInWindow } from '@/lib/portfolio/range-realized';
+import { windowReachesInception } from '@/lib/portfolio/inception';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -976,8 +977,16 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
   // NOT "curve today minus curve on day one": the curve's first point is only
   // zero if every opening dollar has a matching deposit record, and one
   // mis-dated deposit turned that into −$1,592 on a +$6,406 account.
-  const includesInception =
-    pnlData.length > 0 && rawPnlCurve.length > 0 && pnlData[0].date === rawPnlCurve[0].date;
+  //
+  // Measured against the FULL-HISTORY daily curve, never against whichever
+  // curve is being drawn. 1D and 1W draw the 15-minute series, which only
+  // reaches back a week — so "the window covers the whole curve" was true for
+  // 1W the moment intraday shipped, and 1W showed the all-time number
+  // (+$6,242.51 instead of +$821.88 on the live book).
+  const includesInception = windowReachesInception(
+    pnlData,
+    data?.pnlCurve?.length ? data.pnlCurve : rawPnlCurve,
+  );
   // Range-aware P&L: delta over the selected range from the active (filtered)
   // curve. Because that curve is deposit-adjusted, the delta is pure trading
   // P&L — a deposit inside the window cancels out instead of showing as a gain.
