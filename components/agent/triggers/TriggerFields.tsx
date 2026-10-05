@@ -3,10 +3,13 @@
 /**
  * The trigger form's parts, shared by the Add trigger dialog and the pill's
  * popover. A condition is the same fields for every type, drawn from the
- * catalog (lib/agent/triggers/condition/catalog.ts):
+ * catalog (lib/agent/triggers/condition/measures):
  *
- *   tabs · setting · [ buttons ][ value: a number or a variable chip   {x} ]
+ *   tabs · setting · [ Below ▾ | value: a number or a variable chip   {x} ]
  *   one line: what fires, or what to fix
+ *
+ * On a trigger that is already set (the popover) only the value can change:
+ * no tabs, no setting, and the direction is a word in the input.
  *
  * docs/plans/TRIGGER_TYPES.md §7.
  */
@@ -14,12 +17,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, CalendarDays, DollarSign, FileText, Repeat, Variable, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   conditionProblem,
@@ -166,22 +166,23 @@ export function ConditionFields({
   onChange,
   ctx,
   disabled,
-  tabs = false,
+  set = false,
 }: {
   condition: Condition;
   onChange: (c: Condition) => void;
   ctx: CheckContext;
   disabled: boolean;
-  /** The dialog shows the type's tabs; the popover keeps the one the trigger has. */
-  tabs?: boolean;
+  /** A trigger that is already set: only its value can change. */
+  set?: boolean;
 }) {
   const m = measureOf(condition);
   const type = typeDef(m.type);
-  // A read-only rule says what it does; only a form being filled in says what to fix.
+  // A locked rule says what it does; only a form being filled in says what to fix.
   const problem = disabled ? null : conditionProblem(condition, ctx);
+  const choosesDirection = !set && m.buttons != null && m.buttons.length > 1;
   return (
     <div className="space-y-2">
-      {tabs && type.measures.length > 1 ? (
+      {!set && type.measures.length > 1 ? (
         <Tabs
           value={m.id}
           onValueChange={(id) => {
@@ -198,32 +199,36 @@ export function ConditionFields({
           </TabsList>
         </Tabs>
       ) : null}
-      {settingDefs(condition)
-        .filter((s) => s.options)
-        .map((s) => (
-          <SettingSelect key={s.key} condition={condition} setting={s} onChange={onChange} disabled={disabled} />
-        ))}
-      {/* The buttons on the left, the input on the right; the input drops below them when the box is too narrow. */}
-      <div className="flex flex-wrap gap-2">
-        {m.buttons && m.buttons.length > 1 ? (
-          <ButtonGroup>
-            {m.buttons.map((b) => (
-              <Button
-                key={b.is}
-                variant={condition.is === b.is ? "secondary" : "outline"}
-                aria-pressed={condition.is === b.is}
-                disabled={disabled}
-                onClick={() => onChange(withDirection(condition, b.is, ctx))}
-              >
-                {b.label}
-              </Button>
-            ))}
-          </ButtonGroup>
+      {set
+        ? null
+        : settingDefs(condition)
+            .filter((s) => s.options)
+            .map((s) => <SettingSelect key={s.key} condition={condition} setting={s} onChange={onChange} disabled={disabled} />)}
+      {/* One control: the direction on the left, the value on the right. */}
+      <ButtonGroup width="full">
+        {choosesDirection && m.buttons ? (
+          <Select
+            value={condition.is ?? m.buttons[0].is}
+            onValueChange={(v) => {
+              const b = m.buttons?.find((x) => x.is === v);
+              if (b) onChange(withDirection(condition, b.is, ctx));
+            }}
+            disabled={disabled}
+          >
+            <SelectTrigger aria-label="Direction">
+              <SelectValue>{m.buttons.find((b) => b.is === condition.is)?.label}</SelectValue>
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false} align="start">
+              {m.buttons.map((b) => (
+                <SelectItem key={b.is} value={b.is}>
+                  {b.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : null}
-        <div className="min-w-fit flex-1">
-          <ValueInput condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} />
-        </div>
-      </div>
+        <ValueInput condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} set={set} />
+      </ButtonGroup>
       <p className="text-xs text-muted-foreground">{problem ?? fireLine(condition)}</p>
     </div>
   );
@@ -272,16 +277,20 @@ function ValueInput({
   onChange,
   ctx,
   disabled,
+  set,
 }: {
   condition: Condition;
   onChange: (c: Condition) => void;
   ctx: CheckContext;
   disabled: boolean;
+  set: boolean;
 }) {
   const m = measureOf(condition);
   const v = m.value;
   const vars = m.variables;
-  const options = disabled ? [] : variableOptions(condition, ctx);
+  // What a "from" variable a set trigger is measured from is part of the rule, not its value.
+  const canPick = !disabled && vars != null && !(set && vars.mode === "from");
+  const options = canPick ? variableOptions(condition, ctx) : [];
   const [text, setText] = useState(condition.value != null ? String(condition.value) : "");
   // Follow a value changed from outside (a tab switch, a reset) without fighting typing.
   useEffect(() => {
@@ -290,15 +299,17 @@ function ValueInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condition.value]);
 
+  // A measure with one choice, or a set trigger's direction, reads as a word: "Every", "At least", "Below".
+  const word = m.word ?? (set ? m.buttons?.find((b) => b.is === condition.is)?.label : undefined);
   const replaced = vars?.mode === "replace" && condition.variable != null;
-  const clear = disabled ? undefined : () => onChange(withVariable(condition, undefined));
+  const removable = canPick && (vars?.mode === "replace" || !set);
+  const clear = removable ? () => onChange(withVariable(condition, undefined)) : undefined;
 
   return (
     <InputGroup>
-      {/* A measure with one choice says it as a word: "Every", "At least", "Files". */}
-      {m.word ? (
+      {word ? (
         <InputGroupAddon>
-          <InputGroupText>{m.word}</InputGroupText>
+          <InputGroupText>{word}</InputGroupText>
         </InputGroupAddon>
       ) : null}
       {v.prefix && !replaced ? (
@@ -344,7 +355,7 @@ function ValueInput({
       ) : null}
       {vars && options.length > 0 ? (
         <InputGroupAddon align="inline-end">
-          <VariableMenu options={options} title={vars.title} onPick={(id) => onChange(withVariable(condition, id))} />
+          <VariableSelect value={condition.variable} options={options} title={vars.title} onPick={(id) => onChange(withVariable(condition, id))} />
         </InputGroupAddon>
       ) : null}
     </InputGroup>
@@ -366,43 +377,46 @@ function VariableChip({ id, onRemove }: { id: VariableId; onRemove?: () => void 
   );
 }
 
-/** The {x} button inside the value input: the variables this condition can take, grouped, searchable. */
-function VariableMenu({ options, title, onPick }: { options: readonly VariableDef[]; title: string; onPick: (id: VariableId) => void }) {
-  const [open, setOpen] = useState(false);
+/** The {x} button inside the value input: a plain select of the variables this condition can take. */
+function VariableSelect({
+  value,
+  options,
+  title,
+  onPick,
+}: {
+  value: VariableId | undefined;
+  options: readonly VariableDef[];
+  title: string;
+  onPick: (id: VariableId) => void;
+}) {
   const groups = useMemo(() => {
     const out = new Map<string, VariableDef[]>();
     for (const o of options) out.set(o.group, [...(out.get(o.group) ?? []), o]);
     return [...out];
   }, [options]);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="icon-xs" aria-label={title} title={title} />}>
+    <Select
+      value={value ?? null}
+      onValueChange={(v) => {
+        const picked = options.find((o) => o.id === v);
+        if (picked) onPick(picked.id);
+      }}
+    >
+      <SelectTrigger variant="ghost" size="sm" chevron={false} aria-label={title} title={title}>
         <Variable />
-      </PopoverTrigger>
-      <PopoverContent align="end">
-        <Command>
-          {options.length > 8 ? <CommandInput placeholder={title} /> : null}
-          <CommandList>
-            <CommandEmpty>Nothing matches.</CommandEmpty>
-            {groups.map(([group, items]) => (
-              <CommandGroup key={group} heading={group}>
-                {items.map((o) => (
-                  <CommandItem
-                    key={o.id}
-                    value={o.label}
-                    onSelect={() => {
-                      onPick(o.id);
-                      setOpen(false);
-                    }}
-                  >
-                    {o.label}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} align="end" width="content">
+        {groups.map(([group, items]) => (
+          <SelectGroup key={group}>
+            {groups.length > 1 ? <SelectLabel>{group}</SelectLabel> : null}
+            {items.map((o) => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.label}
+              </SelectItem>
             ))}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+          </SelectGroup>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

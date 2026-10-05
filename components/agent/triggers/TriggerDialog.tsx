@@ -178,7 +178,7 @@ function TriggerDialog({
 
           <div className="space-y-1.5">
             <FieldLabel>Condition</FieldLabel>
-            <ConditionFields tabs condition={draft.conditions[0]} onChange={(c) => setCondition(0, c)} ctx={ctx} disabled={pending} />
+            <ConditionFields condition={draft.conditions[0]} onChange={(c) => setCondition(0, c)} ctx={ctx} disabled={pending} />
           </div>
 
           {draft.conditions.length > 1 ? (
@@ -199,7 +199,7 @@ function TriggerDialog({
                   Remove
                 </Button>
               </div>
-              <ConditionFields tabs condition={draft.conditions[1]} onChange={(c) => setCondition(1, c)} ctx={ctx} disabled={pending} />
+              <ConditionFields condition={draft.conditions[1]} onChange={(c) => setCondition(1, c)} ctx={ctx} disabled={pending} />
             </div>
           ) : measureOf(draft.conditions[0]).timed ? null : (
             // A schedule stands alone, so it is not offered as a second condition.
