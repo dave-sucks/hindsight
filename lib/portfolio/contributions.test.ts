@@ -227,3 +227,52 @@ describe("alignFundingToEquity — the opening deposit stays on the opening day"
     for (const p of curve) expect(Math.abs(p.value)).toBeLessThan(10_000);
   });
 });
+
+/**
+ * The 1D/1W chart feeds this an INTRADAY curve, whose keys are full ISO
+ * timestamps ("2026-10-02T20:00:00.000Z") while a funding event's date is a
+ * plain day ("2026-10-02"). `contributedAsOf` compares those as strings, so
+ * this is the case that would silently under- or over-subtract a deposit on
+ * the live account and show it as a gain.
+ */
+describe("depositAdjustedPnlCurve with intraday keys", () => {
+  const intraday = (day: string, hhmm: string, equity: number) => ({
+    date: `${day}T${hhmm}:00.000Z`,
+    equity,
+  });
+
+  it("an older deposit is fully subtracted at every intraday point", () => {
+    const curve = [
+      intraday("2026-10-02", "13:30", 113_000),
+      intraday("2026-10-02", "17:00", 113_500),
+      intraday("2026-10-02", "20:00", 113_200),
+    ];
+    const events = [{ date: "2026-05-14", amount: 100_000 }];
+    const out = depositAdjustedPnlCurve(curve, events);
+    expect(out.map((p) => p.value)).toEqual([13_000, 13_500, 13_200]);
+  });
+
+  it("a deposit dated the same day counts from that day's first point", () => {
+    const curve = [
+      intraday("2026-10-01", "20:00", 100_000),
+      intraday("2026-10-02", "13:30", 140_000),
+      intraday("2026-10-02", "20:00", 141_000),
+    ];
+    // $40k lands on the 2nd. Without the string compare working, the deposit
+    // would read as a $40k one-day gain.
+    const events = [
+      { date: "2026-05-14", amount: 100_000 },
+      { date: "2026-10-02", amount: 40_000 },
+    ];
+    const out = depositAdjustedPnlCurve(curve, events);
+    expect(out[0].value).toBe(0);
+    expect(out[1].value).toBe(0);
+    expect(out[2].value).toBe(1_000);
+  });
+
+  it("keeps the point's own timestamp as the key", () => {
+    const curve = [intraday("2026-10-02", "13:30", 1), intraday("2026-10-02", "20:00", 2)];
+    const out = depositAdjustedPnlCurve(curve, []);
+    expect(out.map((p) => p.date)).toEqual(curve.map((p) => p.date));
+  });
+});

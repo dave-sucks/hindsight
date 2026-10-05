@@ -49,7 +49,14 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
     return <ToolErrorRow toolName={toolName} error={result.error} />;
   }
 
-  const ui: ToolUI = result.ui;
+  // A replayed chat renders the result that was STORED, and `ui` is part of
+  // it — so a tool that changes how it renders leaves every past message
+  // looking the way it used to. `dispatch_thesis_research` wrote `tool-ui`
+  // until this branch, and those rows still carry everything the writing
+  // table needs (childRunId, ticker, analystName), so they are routed by the
+  // tool's NAME and the whole history renders the new way.
+  const ui: ToolUI =
+    toolName === "dispatch_thesis_research" ? "thesis-card" : result.ui;
 
   switch (ui) {
     case "thesis-card":

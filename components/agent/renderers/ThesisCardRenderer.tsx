@@ -24,10 +24,8 @@ import { useMessage } from "@assistant-ui/react";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { ThesisCarousel } from "@/components/domain/thesis-carousel";
 import { ReadThesesTable } from "@/components/domain/read-theses-table";
-import {
-  WritingThesesTable,
-  type DispatchedWriter,
-} from "@/components/domain/writing-theses-table";
+import { WritingThesesTable } from "@/components/domain/writing-theses-table";
+import { collectDispatched } from "@/lib/chat/dispatched-writers";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -345,25 +343,4 @@ function buildWriteHeading(
   if (recordCount > 0 && updateCount === 0) return `Wrote ${count} ${noun}`;
   if (updateCount > 0 && recordCount === 0) return `Edited ${count} ${noun}`;
   return `Wrote / edited ${count} ${noun}`;
-}
-
-/** The dispatched writers in this message, oldest call first. */
-function collectDispatched(parts: Record<string, unknown>[]): DispatchedWriter[] {
-  const out: DispatchedWriter[] = [];
-  for (const p of parts) {
-    const res = (p.result ?? p.output) as { data?: Record<string, unknown> } | undefined;
-    const d = res?.data;
-    if (!d) continue;
-    const childRunId = d.childRunId;
-    const ticker = d.ticker;
-    // A refused dispatch carries childRunId: null — there is no run to watch.
-    if (typeof childRunId !== "string" || typeof ticker !== "string") continue;
-    out.push({
-      childRunId,
-      ticker,
-      analystName: typeof d.analystName === "string" ? d.analystName : "an analyst",
-      mode: typeof d.mode === "string" ? d.mode : "mint",
-    });
-  }
-  return out;
 }

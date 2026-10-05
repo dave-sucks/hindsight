@@ -27,14 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import { useRunStatus } from "@/hooks/useRunStatus";
-
-export interface DispatchedWriter {
-  childRunId: string;
-  ticker: string;
-  analystName: string;
-  /** mint | refresh | promotion-refresh — what the writer was asked for. */
-  mode: string;
-}
+import type { DispatchedWriter } from "@/lib/chat/dispatched-writers";
 
 /** What the row says while the writer works. Cycles so it reads as alive. */
 const WORKING_PHASES = ["Researching", "Reading filings", "Writing the thesis"];
