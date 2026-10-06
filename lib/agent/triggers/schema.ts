@@ -59,7 +59,9 @@ function buildPredicateInputSchema() {
     return `For ${w}, \`${field}\` is wrong: ${issue.message}. ${MEASURES[w as Watch].shape}`;
   };
   const branches = Object.values(byWatch) as unknown as [z.ZodObject, z.ZodObject, ...z.ZodObject[]];
-  const condition = z.discriminatedUnion("watch", branches, { error: (iss) => explain(iss.input) }).meta({ id: "Condition" });
+  // `anyOf`, not `oneOf`: with the same branches as a discriminated union (`oneOf`), DOCU's trigger
+  // run stopped writing triggers at all (0 of 8 re-priced, 3 bought into the dip); as `anyOf`, 8 of 8.
+  const condition = z.union(branches, { error: (iss) => explain(iss.input) }).meta({ id: "Condition" });
   const stored = condition.transform((c) => toStored(c as AgentCondition));
   const group = z.object({
     match: z.enum(["all", "any"]).describe("all = every condition holds; any = one does."),
@@ -78,14 +80,25 @@ function buildPredicateInputSchema() {
     .transform((w) => declaredOnly(w as When));
 }
 
+/** The variables a measure can read with one of its buttons: the ones the form's {x} menu offers. */
+function fittingVariables(m: MeasureDef) {
+  return (m.variables?.options ?? []).filter((o) =>
+    (m.buttons ?? [{ is: undefined }]).some((b) => m.fits({ watch: m.id, is: b.is, variable: o.id, value: 1 } as Condition)),
+  );
+}
+
+/** A measure's settings: its own, and on a measure counted from a variable, that variable's (the trail's, on a move). */
+function measureSettings(m: MeasureDef) {
+  const own = m.settings ?? [];
+  const fromVariables = m.variables?.mode === "from" ? fittingVariables(m).flatMap((o) => (o.settings ?? []).map((d) => ({ d, with: o.id }))) : [];
+  return [...own.map((d) => ({ d, with: undefined as string | undefined })), ...fromVariables];
+}
+
 /** One measure's condition: its own fields only, each saying its range. */
 function measureBranch(m: MeasureDef) {
   const shape: Record<string, z.ZodTypeAny> = { watch: z.literal(m.id).describe(m.shape) };
   if (m.buttons) shape.is = z.enum(m.buttons.map((b) => b.is) as [Direction, ...Direction[]]);
-  // Only the variables this measure can read with one of its buttons, the same ones the form's {x} menu offers.
-  const fitting = (m.variables?.options ?? []).filter((o) =>
-    (m.buttons ?? [{ is: undefined }]).some((b) => m.fits({ watch: m.id, is: b.is, variable: o.id, value: 1 } as Condition)),
-  );
+  const fitting = fittingVariables(m);
   const ids = fitting.map((o) => o.id) as [VariableId, ...VariableId[]];
   const ranges = [m.value.ranges?.map((r) => `${r.range.what}: ${rangeWords(r.range)}`).join("; "), m.value.range && `otherwise ${rangeWords(m.value.range)}`]
     .filter(Boolean)
@@ -99,8 +112,7 @@ function measureBranch(m: MeasureDef) {
     shape.value = m.value.zero != null ? n.optional() : n;
   }
   if (m.variables?.mode === "from") shape.variable = z.enum(ids).describe("What it is measured from.");
-  // A variable's own settings belong to the measures it is measured from (the trail's, on a move), not to a line a price reads.
-  const settings = [...(m.settings ?? []), ...(m.variables?.mode === "from" ? fitting.flatMap((o) => o.settings ?? []) : [])];
+  const settings = measureSettings(m).map(({ d }) => d);
   if (settings.length) {
     const fields: Record<string, z.ZodTypeAny> = {};
     for (const d of settings) {
