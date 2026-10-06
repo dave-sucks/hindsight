@@ -105,7 +105,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   it("MSFT is flagged: HIGH conviction, a review clock, and nothing that can buy it", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [msft()] },
-      args: {},
+      args: { tickers: ["MSFT"] },
       quotes: { MSFT: 512 },
     });
 
@@ -141,7 +141,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
           }),
         ],
       },
-      args: {},
+      args: { tickers: ["GD"] },
       quotes: { GD: 330 },
     });
 
@@ -157,7 +157,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   it("EXEL as it stands is parked — 156 days out, and a plain clock is all it carries", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [exel([plainClock])] },
-      args: {},
+      args: { tickers: ["EXEL"] },
       quotes: { EXEL: 41 },
     });
     expect(flags(result, "EXEL")).not.toContain("NO_BUY_LEVEL");
@@ -166,7 +166,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   it("the day its window opens the same row is flagged, with no trigger having fired", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_exel", ticker: "EXEL", horizon: "CATALYST", setupId: "PRE_CATALYST", catalystDate: inDays(69), triggers: [plainClock] })] },
-      args: {},
+      args: { tickers: ["EXEL"] },
       quotes: { EXEL: 41 },
     });
     const f = flagRows(result, "EXEL").find((x) => x.kind === "NO_BUY_LEVEL");
@@ -178,7 +178,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   it("BMRN is parked too — a CATALYST row written before setups were named, 153 days out", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_bmrn", ticker: "BMRN", horizon: "CATALYST", setupId: null, catalystDate: inDays(153), triggers: [plainClock] })] },
-      args: {},
+      args: { tickers: ["BMRN"] },
       quotes: { BMRN: 60 },
     });
     expect(flags(result, "BMRN")).not.toContain("NO_BUY_LEVEL");
@@ -187,7 +187,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   it("CYTK is flagged — 47 days out is inside the window, whatever the setup is called", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_cytk", ticker: "CYTK", horizon: "CATALYST", setupId: "NONE", catalystDate: inDays(47), triggers: [plainClock] })] },
-      args: {},
+      args: { tickers: ["CYTK"] },
       quotes: { CYTK: 62 },
     });
     expect(flags(result, "CYTK")).toContain("NO_BUY_LEVEL");
@@ -196,7 +196,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   it("AIR the day before its print is parked — the drift entry does not exist until the gap does", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_air", ticker: "AIR", horizon: "CATALYST", setupId: "PEAD", catalystDate: inDays(1), triggers: earningsWakes })] },
-      args: {},
+      args: { tickers: ["AIR"] },
       quotes: { AIR: 70 },
     });
     expect(flags(result, "AIR")).not.toContain("NO_BUY_LEVEL");
@@ -205,7 +205,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   it("two days after the print the same row owes a buy level or a goodbye", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_air", ticker: "AIR", horizon: "CATALYST", setupId: "PEAD", catalystDate: inDays(-2), triggers: earningsWakes })] },
-      args: {},
+      args: { tickers: ["AIR"] },
       quotes: { AIR: 70 },
     });
     expect(flags(result, "AIR")).toContain("NO_BUY_LEVEL");
@@ -214,7 +214,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   it("MSFT's flag offers two answers, not a park — a compounder has no date to park until", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [msft()] },
-      args: {},
+      args: { tickers: ["MSFT"] },
       quotes: { MSFT: 512 },
     });
     const f = flagRows(result, "MSFT").find((x) => x.kind === "NO_BUY_LEVEL");
@@ -229,7 +229,7 @@ describe("DAV-321 ruling 4 — a buy still live inside the last 21 days", () => 
   it("MIRM on 09-17: a $97.50 buy nine days before the decision is flagged", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_mirm", ticker: "MIRM", horizon: "CATALYST", setupId: "PRE_CATALYST", catalystDate: inDays(9), entryPrice: 97.5, targetPrice: 137, stopLoss: 88, triggers: [buy] })] },
-      args: {},
+      args: { tickers: ["MIRM"] },
       quotes: { MIRM: 98 },
     });
     const f = flagRows(result, "MIRM").find((x) => x.kind === "BUY_INSIDE_CUTOFF");
@@ -240,7 +240,7 @@ describe("DAV-321 ruling 4 — a buy still live inside the last 21 days", () => 
   it("AGIO at 34 days, with its buy, is inside the window and outside the cut-off — no flag", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_agio", ticker: "AGIO", horizon: "CATALYST", setupId: "PRE_CATALYST", catalystDate: inDays(34), entryPrice: 31.5, targetPrice: 40, stopLoss: 27.5, triggers: [{ ...buy, predicate: { kind: "PRICE_ABOVE", level: 31.5 } }] })] },
-      args: {},
+      args: { tickers: ["AGIO"] },
       quotes: { AGIO: 30 },
     });
     expect(flags(result, "AGIO")).not.toContain("BUY_INSIDE_CUTOFF");
@@ -250,7 +250,7 @@ describe("DAV-321 ruling 4 — a buy still live inside the last 21 days", () => 
   it("a compounder with a buy is never flagged for a date it does not have", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_gd", ticker: "GD", horizon: "COMPOUNDER", setupId: "COMPOUNDER_ACCUMULATION", catalystDate: null, entryPrice: 356, targetPrice: 435, stopLoss: 315, triggers: [{ ...buy, predicate: { kind: "PRICE_ABOVE", level: 356 } }] })] },
-      args: {},
+      args: { tickers: ["GD"] },
       quotes: { GD: 340 },
     });
     expect(flags(result, "GD")).not.toContain("BUY_INSIDE_CUTOFF");
@@ -281,7 +281,7 @@ describe("a watched stock waiting on a review at a price, with no buy", () => {
     ]);
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [vstRow(saved)] },
-      args: {},
+      args: { tickers: ["VST"] },
       quotes: { VST: vst.currentPrice },
     });
     expect(flags(result, "VST")).not.toContain("NO_BUY_LEVEL");
@@ -292,7 +292,7 @@ describe("a watched stock waiting on a review at a price, with no buy", () => {
     const withoutWake = saved.filter((t) => t.predicate.kind !== "PRICE_ABOVE");
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [vstRow(withoutWake)] },
-      args: {},
+      args: { tickers: ["VST"] },
       quotes: { VST: vst.currentPrice },
     });
     expect(flags(result, "VST")).toContain("NO_BUY_LEVEL");
@@ -309,7 +309,7 @@ describe("a watched stock waiting on a review at a price, with no buy", () => {
     ];
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_bbio", ticker: "BBIO", horizon: "CATALYST", setupId: "PRE_CATALYST", catalystDate: inDays(59), triggers: bbio })] },
-      args: {},
+      args: { tickers: ["BBIO"] },
       quotes: { BBIO: 55 },
     });
     const f = flagRows(result, "BBIO").find((x) => x.kind === "NO_BUY_LEVEL");
@@ -327,7 +327,7 @@ describe("a watched stock waiting on a review at a price, with no buy", () => {
           },
         ],
       },
-      args: {},
+      args: { tickers: ["VST"] },
       quotes: { VST: vst.currentPrice },
     });
     expect(flags(result, "VST")).toContain("NO_BUY_LEVEL");
