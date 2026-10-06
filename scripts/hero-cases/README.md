@@ -68,3 +68,14 @@ Six runs per case, about $16 of model calls in all. The production runs share
 the OpenAI key, so check the balance before a batch: a full baseline is about
 a day of morning runs.
 
+## Cases added 2026-10-06
+
+Twelve runs each, four processes per version, in the same hour. "Before" is
+main at `8fb21cb8` (before #765–#768); "merged" is `2157e708`.
+
+| Case | Agent | Before | Merged | Looks for |
+|---|---|---|---|---|
+| now-needs-research | morning run | 0/12 | 0/12 | Opens NOW (get_theses on the ticker) to read its research before re-affirming it. Before, the text was in the opening read, so it never needed to ask; merged, the read carries only the date, and no run asked. |
+| pbh-two-flags | morning run | — | 6/12 | Gives a stock nothing can wake (scored under the minimum) a way back or lets it go. Six runs archived it; six wrote a note and left it unable to wake. |
+| wst-buy-level-arrives | morning run | — | 12/12 | Answers a buy reached on the morning read (buy, re-price or set down). All twelve bought it. |
+

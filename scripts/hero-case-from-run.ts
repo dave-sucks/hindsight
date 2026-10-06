@@ -54,7 +54,16 @@ async function main() {
     where: { ticker, researchRun: { agentConfigId: analyst.id }, status: { in: ["WATCHING", "HOLDING"] } },
     include: { researchRun: { select: { agentConfigId: true } }, updates: { orderBy: { timestamp: "desc" }, take: 40, select: ACTIVITY_SELECT } },
   });
-  const thesisId = thesis?.id ?? ((run.parameters as { thesisId?: string })?.thesisId ?? null);
+  // A stock retired since the run is found by the id its own read carried.
+  const readId = (() => {
+    for (const m of messages) for (const p of Array.isArray(m.content) ? m.content : []) {
+      const out = (p as { type: string; toolName?: string; output?: { value?: { data?: { theses?: Array<{ id: string; ticker: string }> } } } });
+      const row = out.type === "tool-result" && out.toolName === "get_theses" ? out.output?.value?.data?.theses?.find((t) => t.ticker === ticker) : undefined;
+      if (row) return row.id;
+    }
+    return null;
+  })();
+  const thesisId = thesis?.id ?? readId ?? ((run.parameters as { thesisId?: string })?.thesisId ?? null);
 
   // Cut before the first deciding turn on this stock.
   let cut = messages.length;
