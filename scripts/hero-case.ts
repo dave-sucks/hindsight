@@ -254,7 +254,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
         ? { anthropic: { thinking: { type: "enabled", budgetTokens: mode.thinkingBudget } } }
         : undefined
       : { openai: { strictJsonSchema: true, promptCacheKey: `hero-${name}` } };
-  const maxTurns = c.scoreOn ? (c.maxTurns ?? 3) : 1;
+  // A refused call gets the refusal back and one more turn, as it does in production.
+  const maxTurns = c.scoreOn ? (c.maxTurns ?? 3) : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
@@ -268,17 +269,27 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
       tokensIn += result.usage.inputTokens ?? 0;
       tokensCached += result.usage.inputTokenDetails?.cacheReadTokens ?? result.usage.cachedInputTokens ?? 0;
       tokensOut += result.usage.outputTokens ?? 0;
-      const turnCalls: Call[] = result.toolCalls.map((t) => ({ toolName: t.toolName, input: t.input }));
-      for (const t of result.toolCalls as Array<{ toolName: string; invalid?: boolean; error?: unknown }>) {
-        if (t.invalid) invalid.push({ tool: t.toolName, error: String((t.error as Error)?.message ?? t.error).slice(0, 300) });
+      // A call the schema refuses is refused in production too: it never counts toward a pass.
+      const turnCalls: Call[] = result.toolCalls.filter((t) => !(t as { invalid?: boolean }).invalid).map((t) => ({ toolName: t.toolName, input: t.input }));
+      const refusals = new Map<string, string>();
+      for (const t of result.toolCalls as Array<{ toolCallId: string; toolName: string; invalid?: boolean; error?: unknown; input?: unknown }>) {
+        if (!t.invalid) continue;
+        // The reason comes after the whole input: keep the reason, and the triggers it was about.
+        const msg = String((t.error as Error)?.message ?? t.error);
+        const reason = msg.includes("Error message:") ? msg.slice(msg.indexOf("Error message:")) : msg.slice(-700);
+        refusals.set(t.toolCallId, msg);
+        const input = (t.input ?? {}) as Record<string, unknown>;
+        const triggers = Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => input[k] != null).map((k) => [k, input[k]]));
+        invalid.push({ tool: t.toolName, error: `${reason.replace(/\s+/g, " ")} — ${JSON.stringify(triggers)}` });
       }
       calls.push(...turnCalls);
       text += (text ? "\n" : "") + result.text;
-      if (!c.scoreOn || turnCalls.length === 0 || turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!))) break;
+      const decided = !c.scoreOn || turnCalls.length === 0 || turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!));
+      if (refusals.size === 0 && (decided || turn >= (c.scoreOn ? maxTurns : 1))) break;
       // Not there yet: answer every call with a stub and let the model go on.
       // Nothing is run. Ending the run is refused the way complete_run
       // refuses it when a stock on the list has not been answered.
-      const left = c.scoreOn.ticker ?? c.scoreOn.thesisId ?? "the stock";
+      const left = c.scoreOn?.ticker ?? c.scoreOn?.thesisId ?? "the stock";
       messages.push(...(result.response.messages as ModelMessage[]));
       messages.push({
         role: "tool",
@@ -288,8 +299,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
           toolName: t.toolName,
           output: {
             type: "json" as const,
-            value:
-              t.toolName === "complete_run"
+            value: refusals.has(t.toolCallId)
+              ? { ok: false, error: refusals.get(t.toolCallId)! }
+              : t.toolName === "complete_run"
                 ? { ok: false, error: `complete_run refused: $${left} is on today's list and has not been answered. Answer it, then call complete_run.` }
                 : { ok: true, summary: "Replay: this call was recorded, not executed." },
           },
@@ -302,7 +314,11 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
     for (const call of calls) console.log(`CALL ${brief(call)}`);
     for (const bad of invalid) console.log(`INVALID ${bad.tool}: ${bad.error}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls), invalid }) + "\n");
+    const triggerFields = calls.map((c) => {
+      const a = (c.input ?? {}) as Record<string, unknown>;
+      return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
+    });
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };
