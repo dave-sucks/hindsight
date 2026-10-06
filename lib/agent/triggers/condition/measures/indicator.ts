@@ -3,7 +3,7 @@
 
 import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
 import type { Condition } from "../types";
-import { num } from "../words";
+import { isNum, num, wholeIn } from "../words";
 import type { LegacyPredicate } from "../legacy-types";
 
 const window = (c: Condition) => (typeof c.settings?.window === "string" ? c.settings.window : "3M");
@@ -17,6 +17,8 @@ export const volume: MeasureDef = {
   value: { suffix: "× normal volume", placeholder: "2", min: 0 },
   cooldownDays: () => 1,
   fresh: () => ({ watch: "volume" }),
+  fits: (c) => c.value != null,
+  valid: (c) => isNum(c.value) && c.value > 0 && c.value <= 50,
   legacy: {
     from: { VOLUME_RATIO: (p) => ({ watch: "volume", value: p.min }) },
     to: (c): LegacyPredicate | null => (c.value != null ? { kind: "VOLUME_RATIO", min: c.value } : null),
@@ -44,6 +46,8 @@ export const rsi: MeasureDef = {
   ],
   cooldownDays: () => 1,
   fresh: () => ({ watch: "rsi", is: "below" }),
+  fits: (c) => c.value != null && (c.is === "above" || c.is === "below"),
+  valid: (c) => rsi.fits(c) && isNum(c.value) && c.value >= 0 && c.value <= 100,
   legacy: {
     from: {
       RSI: (p) => withSettings({ watch: "rsi", is: p.direction === "ABOVE" ? "above" : "below", value: p.threshold }, { period: p.period }),
@@ -80,6 +84,9 @@ export const strength: MeasureDef = {
   cooldownDays: () => 7,
   state: () => true,
   fresh: () => ({ watch: "strength", settings: { window: "3M" } }),
+  fits: (c) => c.value != null && ["1M", "3M", "6M"].includes(window(c)),
+  // Points ahead of the S&P; behind it is legal ("not lagging by more than 5").
+  valid: (c) => strength.fits(c) && isNum(c.value) && c.value >= -100 && c.value <= 500,
   legacy: {
     from: { RS_VS_SPY: (p) => ({ watch: "strength", value: p.min, settings: { window: p.window } }) },
     to: (c): LegacyPredicate | null => {
@@ -105,6 +112,14 @@ export const gap: MeasureDef = {
   // A gap stays "within the last N sessions" for N days: one fire per gap.
   cooldownDays: (c) => Math.max(1, num(c.settings?.withinDays) ?? 1),
   fresh: () => ({ watch: "gap", settings: { volume: 3, withinDays: 3 } }),
+  fits: (c) => c.value != null,
+  valid: (c) => {
+    if (!isNum(c.value) || c.value <= 0 || c.value > 100) return false;
+    const volume = num(c.settings?.volume) ?? 3;
+    const within = num(c.settings?.withinDays);
+    // Up to the 10 sessions the snapshot keeps gaps for.
+    return volume >= 0 && volume <= 50 && (within == null || wholeIn(within, 1, 10));
+  },
   legacy: {
     from: { GAP_UP: (p) => withSettings({ watch: "gap", value: p.minPct }, { volume: p.minVolRatio, withinDays: p.withinDays }) },
     to: (c): LegacyPredicate | null => {

@@ -2,7 +2,7 @@
 
 
 import { withSettings, type MeasureDef } from "../measure";
-import { num } from "../words";
+import { isNum, num, wholeIn } from "../words";
 import type { LegacyPredicate } from "../legacy-types";
 
 export const report: MeasureDef = {
@@ -27,6 +27,14 @@ export const report: MeasureDef = {
   // True every day of the window, so the cooldown is what makes it fire once; 30 clears any window and is short of a quarter.
   cooldownDays: () => 30,
   fresh: () => ({ watch: "report", is: "before" }),
+  fits: (c) => c.value != null && (c.is === "before" || c.is === "after"),
+  // The calendar looks 14 days ahead and 5 back; the report day is 0.
+  valid: (c) => {
+    if (!report.fits(c)) return false;
+    if (c.is === "before") return wholeIn(c.value, 1, 14);
+    const from = num(c.settings?.fromDay) ?? 0;
+    return wholeIn(from, 0, 5) && wholeIn(c.value, 0, 5) && from <= (c.value as number);
+  },
   check: (c) => (c.is === "before" && (c.value ?? 0) > 14 ? "The earnings calendar looks 14 days ahead." : null),
   legacy: {
     from: {
@@ -55,6 +63,8 @@ export const surprise: MeasureDef = {
   actions: ["REVIEW"],
   cooldownDays: () => 7,
   fresh: () => ({ watch: "surprise", is: "beat", value: 0 }),
+  fits: (c) => c.is === "beat" || c.is === "miss",
+  valid: (c) => surprise.fits(c) && (c.value == null || isNum(c.value)),
   legacy: {
     // A negative minimum is ignored by today's checker (any beat or miss
     // fires), so it reads as 0. Two retired rows carry one.

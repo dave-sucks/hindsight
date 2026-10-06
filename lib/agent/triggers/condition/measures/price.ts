@@ -8,7 +8,7 @@
 
 import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
 import { PRICE_VARIABLES, variableDef } from "../variables";
-import { num } from "../words";
+import { isNum, num, wholeIn } from "../words";
 import { trailFireLevel, trailOf } from "../../trail";
 import type { LegacyPredicate } from "../legacy-types";
 
@@ -57,6 +57,14 @@ export const price: MeasureDef = {
     if (c.variable && c.settings?.close === true) return "Only on the close works with a typed price.";
     return null;
   },
+  // A typed price either way; an average either way; a high only from below (a new high). On the close only for a typed price.
+  fits: (c) => {
+    if (c.is !== "above" && c.is !== "below") return false;
+    if (!c.variable) return c.value != null;
+    if (c.settings?.close === true) return false;
+    return SMA_PERIOD[c.variable] != null || ((c.variable === "high20" || c.variable === "high52") && c.is === "above");
+  },
+  valid: (c) => price.fits(c) && (c.variable != null || isNum(c.value)),
   legacy: {
     from: {
       PRICE_ABOVE: (p) => withSettings({ watch: "price", is: "above", value: p.level }, { close: p.basis === "close" ? true : undefined }),
@@ -122,6 +130,31 @@ export const move: MeasureDef = {
     if (c.is === "near" && (c.value ?? 0) === 0) return "Within needs a distance, such as 2%.";
     if (c.is === "below" && (c.value ?? 0) >= 100) return "A fall of 100% or more can't happen.";
     return null;
+  },
+  // Within: of an average or the 52-week high. Above or below: a recent close or our entry; below only for the high since we bought.
+  fits: (c) => {
+    if (!c.variable || c.value == null) return false;
+    if (c.is === "near") return SMA_PERIOD[c.variable] != null || c.variable === "high52";
+    if (c.is !== "above" && c.is !== "below") return false;
+    return MOVE_WINDOW[c.variable] != null || c.variable === "entry" || (c.variable === "peak" && c.is === "below");
+  },
+  valid: (c) => {
+    if (!move.fits(c) || !isNum(c.value)) return false;
+    const v = c.value;
+    const s = c.settings ?? {};
+    if (c.is === "near") return SMA_PERIOD[c.variable!] != null ? v > 0 && v <= 10 : v >= 0 && v <= 100;
+    if (c.variable === "peak") {
+      // A give-back under 1% would fire on noise the moment the high is set.
+      const arm = num(s.startOnceUpPct);
+      const atr = num(s.widenAtr);
+      return v >= 1 && (arm == null || (arm >= 0 && arm <= 200)) && (atr == null || (atr > 0 && atr <= 10));
+    }
+    if (c.variable === "entry") {
+      const fast = num(s.fastWinnerPct);
+      const within = num(s.fastWinnerDays);
+      return v > 0 && (fast == null || (fast > 0 && fast <= 500 && (within == null || wholeIn(within, 1, 365))));
+    }
+    return v > 0;
   },
   legacy: {
     from: {

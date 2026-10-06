@@ -20,6 +20,16 @@ export function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** A whole number between lo and hi, inclusive. */
+export function wholeIn(v: unknown, lo: number, hi: number): boolean {
+  return typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi;
+}
+
+/** A finite number. */
+export function isNum(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
 /** A number setting, or undefined. */
 export function num(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;

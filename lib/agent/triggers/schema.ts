@@ -14,6 +14,7 @@ import { legacyPredicateSchema } from "./condition/legacy-schema";
 import type { Condition, VariableId, Watch, When } from "./condition/types";
 import { isGroup } from "./condition/types";
 import { MEASURES, declaredOnly } from "./condition/catalog";
+import { whenValid } from "./condition/valid";
 
 // Recursive shape for AND/OR composition. Zod doesn't support direct
 // discriminated-union recursion, so we type the recursion via z.lazy.
@@ -32,7 +33,7 @@ export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
   }
   const w = shapeOf(p);
   const spelled = w ? toLegacy(w) : null;
-  if (!w || !spelled || (!legacyIn && !legacyPredicateSchema.safeParse(spelled).success)) {
+  if (!w || !spelled || (!legacyIn && !whenValid(w))) {
     ctx.addIssue({ code: "custom", message: "Not a condition this app can check." });
     return z.NEVER;
   }
@@ -94,8 +95,7 @@ function buildPredicateInputSchema() {
         .describe(`One condition, or { match, conditions } for two or more. ${measureGuide()}`),
     )
     .superRefine((w, ctx) => {
-      const spelled = isShape(w) ? toLegacy(w as When) : null;
-      if (!spelled || !legacyPredicateSchema.safeParse(spelled).success) {
+      if (!whenValid(w)) {
         ctx.addIssue({ code: "custom", message: "Not a condition this app can check: see the measures and what each takes." });
       }
     })
