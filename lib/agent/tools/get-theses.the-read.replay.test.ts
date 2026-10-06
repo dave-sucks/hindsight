@@ -8,9 +8,11 @@
  * writer's research text (snapshot, bull and bear cases, score notes) rode on
  * every full row too, as old as the writer's last visit.
  *
- * Now: history and research text come back on a read of named stocks; every
- * row says when its research was written and at what price. The screen gets
- * the whole result as before.
+ * Now: the raw history comes back on a read of named stocks; every row says
+ * when its research was written and at what price. The research text stays on
+ * every full row: a run left to ask for it never did (now-needs-research,
+ * 0/12, also with a line saying how). The screen gets the whole result as
+ * before.
  *
  * Through the real get_theses execute and its real model-output hook.
  */
@@ -97,14 +99,15 @@ async function read(args: Record<string, unknown>) {
 }
 
 describe("get_theses — the read", () => {
-  it("the opening read with include_history: no history, no research text, the scores as numbers, and a dated research line", async () => {
+  it("the opening read with include_history: no history, the research text kept, and a dated research line", async () => {
     const { model, modelRow } = await read({ include_history: true });
     expect(modelRow).toBeDefined();
     expect(modelRow.history).toBeUndefined();
-    expect(modelRow.snapshot).toBeUndefined();
-    expect(modelRow.bullCase).toBeUndefined();
-    expect(modelRow.bearCase).toBeUndefined();
-    expect(modelRow.scoring).toEqual({ composite: 7, trendStrength: 2, relativeStrength: 2, entryQuality: 1, catalystFreshness: 2 });
+    // A run left to ask for the research never did (now-needs-research), so it stays on the row.
+    expect(modelRow.snapshot).toEqual(snapshot);
+    expect(modelRow.bullCase).toEqual(bull);
+    expect(modelRow.bearCase).toEqual(bear);
+    expect((modelRow.scoring as Record<string, { note?: string }>).trendStrength.note).toMatch(/51 days ago/);
     expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348, 51 days ago\.$/);
     expect(modelRow.triggerState).toBeUndefined();
     expect(String(model.historyNote)).toMatch(/named stocks/);
