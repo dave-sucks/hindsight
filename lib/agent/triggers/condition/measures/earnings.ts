@@ -3,7 +3,6 @@
 
 import { withSettings, type MeasureDef } from "../measure";
 import { isNum, num, wholeIn } from "../words";
-import type { LegacyPredicate } from "../legacy-types";
 
 export const report: MeasureDef = {
   id: "report",
@@ -36,18 +35,6 @@ export const report: MeasureDef = {
     return wholeIn(from, 0, 5) && wholeIn(c.value, 0, 5) && from <= (c.value as number);
   },
   check: (c) => (c.is === "before" && (c.value ?? 0) > 14 ? "The earnings calendar looks 14 days ahead." : null),
-  legacy: {
-    from: {
-      EARNINGS_WITHIN: (p) => ({ watch: "report", is: "before", value: p.days }),
-      EARNINGS_SINCE: (p) => withSettings({ watch: "report", is: "after", value: p.max }, { fromDay: p.min }),
-    },
-    to: (c): LegacyPredicate | null => {
-      if (c.value == null) return null;
-      if (c.is === "before") return { kind: "EARNINGS_WITHIN", days: c.value };
-      if (c.is === "after") return { kind: "EARNINGS_SINCE", min: num(c.settings?.fromDay) ?? 0, max: c.value };
-      return null;
-    },
-  },
 };
 
 export const surprise: MeasureDef = {
@@ -65,17 +52,4 @@ export const surprise: MeasureDef = {
   fresh: () => ({ watch: "surprise", is: "beat", value: 0 }),
   fits: (c) => c.is === "beat" || c.is === "miss",
   valid: (c) => surprise.fits(c) && (c.value == null || isNum(c.value)),
-  legacy: {
-    // A negative minimum is ignored by today's checker (any beat or miss
-    // fires), so it reads as 0. Two retired rows carry one.
-    from: {
-      EARNINGS_BEAT: (p) => ({ watch: "surprise", is: "beat", value: Math.max(0, p.minSurprisePct ?? 0) }),
-      EARNINGS_MISS: (p) => ({ watch: "surprise", is: "miss", value: Math.max(0, p.minSurprisePct ?? 0) }),
-    },
-    to: (c): LegacyPredicate | null => {
-      if (c.is !== "beat" && c.is !== "miss") return null;
-      const v = c.value ?? 0;
-      return { kind: c.is === "beat" ? "EARNINGS_BEAT" : "EARNINGS_MISS", ...(v > 0 ? { minSurprisePct: v } : {}) };
-    },
-  },
 };

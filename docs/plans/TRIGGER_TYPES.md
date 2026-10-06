@@ -691,6 +691,20 @@ catalog at the entry point the app calls:
   old schema. PR 4 (#771) moves the check onto the catalog with the same
   combinations; each option is then one catalog change of its own.
 
+**PR 4 as built.** The catalog decides what a condition may hold (`fits`,
+`valid`, `validAny` on each entry; `whenValid` for a trigger). A parity test
+ran it against the old spelling and schema over every stored condition, every
+measure × direction × variable × number edge, filing groups of every size and
+250,000 generated cases, and they agreed on all of them; it was deleted with
+the translator, and its commit is where it passed. Then the translator, the
+database client's conversion, the backfill and down scripts, the frozen old
+code and its parity tests, and the `TriggerShadowDay` table went. The
+recorded fixtures were moved to the shape with the backfill's own function
+first. A model that sends an old kind is now refused with the list of
+measures, where the cutover translated it and logged
+`[triggers] a model sent the kind …; translated`; the week before the merge
+is the time to check that line never appeared.
+
 **Lanes.** This crosses both lanes' columns and every shared file in
 `LANES.md` §4. One owner runs it end to end. While PR 2 or PR 3 is open,
 neither lane opens a PR on `lib/agent/triggers/` without saying so in its

@@ -17,7 +17,7 @@
  */
 
 import type { TriggerAction } from "./types";
-import { fromLegacy } from "./condition/legacy";
+import { shapeOf } from "./condition/valid";
 import { triggerSlot, whenSlot } from "./condition/slot";
 import { isRetired } from "./condition/types";
 import type { When } from "@/lib/agent/triggers/condition";
@@ -28,8 +28,8 @@ import type { When } from "@/lib/agent/triggers/condition";
  * condition shape's slot (./condition/slot), the same classes the kinds gave.
  */
 export function predicateKey(p: When): string {
-  const w = fromLegacy(p);
-  return isRetired(w) ? `retired:${JSON.stringify(p)}` : whenSlot(w);
+  const w = shapeOf(p);
+  return w ? whenSlot(w) : `retired:${JSON.stringify(p)}`;
 }
 
 /**
@@ -42,6 +42,6 @@ export function predicateKey(p: When): string {
  * holding a loosely-typed client-side rung can use it without a cast.
  */
 export function triggerBucket(t: { predicate: When; action: TriggerAction }): string {
-  const w = fromLegacy(t.predicate);
-  return isRetired(w) ? `retired:${JSON.stringify(t.predicate)}::${t.action}` : triggerSlot(w, t.action);
+  const w = shapeOf(t.predicate);
+  return w ? triggerSlot(w, t.action) : `retired:${JSON.stringify(t.predicate)}::${t.action}`;
 }

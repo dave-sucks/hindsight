@@ -16,8 +16,9 @@
         "action": "EXIT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 220
+          "watch": "price",
+          "is": "below",
+          "value": 220
         },
         "rationale": "Hard stop at $248. If we hit it the thesis is broken; close and write up the lessons.",
         "cooldownDays": 0
@@ -27,8 +28,9 @@
         "action": "REVIEW",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 256.42
+          "watch": "price",
+          "is": "below",
+          "value": 256.42
         },
         "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
         "lastFiredAt": "2026-09-30T13:35:05.295Z",
@@ -39,8 +41,9 @@
         "action": "REVIEW",
         "source": "DEFAULT",
         "predicate": {
-          "kind": "PRICE_ABOVE",
-          "level": 360
+          "watch": "price",
+          "is": "above",
+          "value": 360
         },
         "rationale": "Target $360.00 — decide here: take it, trim it, or raise the target.",
         "cooldownDays": 1
@@ -51,8 +54,8 @@
         "source": "DEFAULT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "days": 30,
-          "kind": "REVIEW_CADENCE"
+          "watch": "repeat",
+          "value": 30
         },
         "rationale": "Look at this every 30 days, counting from the last real review.",
         "cooldownDays": 30
@@ -62,9 +65,10 @@
         "action": "REVIEW",
         "source": "DEFAULT",
         "predicate": {
-          "days": 60,
-          "from": "BUY",
-          "kind": "REVIEW_CADENCE"
+          "watch": "from_date",
+          "is": "after",
+          "value": 60,
+          "variable": "buy"
         },
         "rationale": "60 days after the buy — A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.",
         "cooldownDays": 60
@@ -127,8 +131,10 @@
         "id": "06506e39-522f-4ad1-aa62-d7fe10bf7003",
         "action": "REVIEW",
         "predicate": {
-          "pct": 15,
-          "kind": "TRAILING_FROM_HIGH"
+          "watch": "move",
+          "is": "below",
+          "value": 15,
+          "variable": "peak"
         },
         "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
         "cooldownDays": 7
@@ -137,8 +143,10 @@
         "id": "823a7df5-e8a9-4502-ac6e-6968c9c96ed5",
         "action": "EXIT",
         "predicate": {
-          "pct": 25,
-          "kind": "TRAILING_FROM_HIGH"
+          "watch": "move",
+          "is": "below",
+          "value": 25,
+          "variable": "peak"
         },
         "rationale": "Gave back 25% from the high — the catastrophe line for a multi-year hold. The review at 15% should have acted long before this; if we are here, protect the capital.",
         "cooldownDays": 0
@@ -148,9 +156,9 @@
         "action": "REVIEW",
         "source": "PRINCIPAL",
         "predicate": {
-          "kind": "VS_SMA",
-          "period": 200,
-          "direction": "BELOW"
+          "watch": "price",
+          "is": "below",
+          "variable": "sma200"
         },
         "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart.",
         "cooldownDays": 1
@@ -160,9 +168,10 @@
         "action": "REVIEW",
         "source": "PRINCIPAL",
         "predicate": {
-          "pct": 15,
-          "kind": "GAIN_FROM_ENTRY",
-          "direction": "UP"
+          "watch": "move",
+          "is": "above",
+          "value": 15,
+          "variable": "entry"
         },
         "rationale": "Up 15% from entry — re-underwrite at the new price and raise the floor under real structure (DAV-279 ruling).",
         "cooldownDays": 7
@@ -172,9 +181,10 @@
         "action": "REVIEW",
         "source": "PRINCIPAL",
         "predicate": {
-          "pct": 15,
-          "kind": "GAIN_FROM_ENTRY",
-          "direction": "DOWN"
+          "watch": "move",
+          "is": "below",
+          "value": 15,
+          "variable": "entry"
         },
         "rationale": "Down 15% from entry — decide hold-vs-cut deliberately, before the stop decides (DAV-279 ruling).",
         "cooldownDays": 7
@@ -184,10 +194,10 @@
         "action": "ADD",
         "source": "PRINCIPAL",
         "predicate": {
-          "pct": 7,
-          "kind": "PRICE_MOVE_PCT",
-          "window": "1D",
-          "direction": "DOWN"
+          "watch": "move",
+          "is": "below",
+          "value": 7,
+          "variable": "prev_close"
         },
         "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
         "cooldownDays": 1
@@ -203,10 +213,10 @@
         "source": "DEFAULT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "pct": 7,
-          "kind": "PRICE_MOVE_PCT",
-          "window": "1D",
-          "direction": "UP"
+          "watch": "move",
+          "is": "above",
+          "value": 7,
+          "variable": "prev_close"
         },
         "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
         "cooldownDays": 3
@@ -217,8 +227,8 @@
         "source": "DEFAULT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "days": 7,
-          "kind": "REVIEW_CADENCE"
+          "watch": "repeat",
+          "value": 7
         },
         "rationale": "Look at this every 7 days, counting from the last real review.",
         "cooldownDays": 7
@@ -228,8 +238,9 @@
         "action": "REVIEW",
         "source": "DEFAULT",
         "predicate": {
-          "days": 3,
-          "kind": "EARNINGS_WITHIN"
+          "watch": "report",
+          "is": "before",
+          "value": 3
         },
         "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
         "cooldownDays": 30
@@ -239,7 +250,9 @@
         "action": "REVIEW",
         "source": "DEFAULT",
         "predicate": {
-          "kind": "EARNINGS_BEAT"
+          "watch": "surprise",
+          "is": "beat",
+          "value": 0
         },
         "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
         "cooldownDays": 7
@@ -249,7 +262,9 @@
         "action": "REVIEW",
         "source": "DEFAULT",
         "predicate": {
-          "kind": "EARNINGS_MISS"
+          "watch": "surprise",
+          "is": "miss",
+          "value": 0
         },
         "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
         "cooldownDays": 7
@@ -259,8 +274,8 @@
         "action": "REVIEW",
         "source": "DEFAULT",
         "predicate": {
-          "kind": "SEC_EVENT",
-          "tier": "MATERIAL"
+          "watch": "filing",
+          "variable": "tier:MATERIAL"
         },
         "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story."
       }
@@ -377,8 +392,9 @@
         "action": "ENTER",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_ABOVE",
-          "level": 255
+          "watch": "price",
+          "is": "above",
+          "value": 255
         },
         "rationale": "Entry trigger — price broke above $255. Validate setup and consider INITIATE.",
         "lastFiredAt": "2026-08-13T13:31:26Z",
@@ -389,7 +405,9 @@
         "action": "REVIEW",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "EARNINGS_BEAT"
+          "watch": "surprise",
+          "is": "beat",
+          "value": 0
         },
         "rationale": "Review after an earnings beat to verify that higher earnings quality, guidance, and datacenter/nuclear contracting evidence continue to support the compounder thesis.",
         "cooldownDays": 7
@@ -399,8 +417,9 @@
         "action": "REVIEW",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "EARNINGS_MISS",
-          "minSurprisePct": 3
+          "watch": "surprise",
+          "is": "miss",
+          "value": 3
         },
         "rationale": "Review immediately on a meaningful earnings miss to test whether execution, integration, or demand assumptions have weakened.",
         "cooldownDays": 7

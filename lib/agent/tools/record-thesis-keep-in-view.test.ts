@@ -47,7 +47,7 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 import { recordThesis } from "./record-thesis";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -118,11 +118,11 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
     expect(row.entryPrice).toBeNull();
     expect(row.stopLoss).toBeNull();
 
-    const kinds = row.triggers.map((t) => `${t.action}:${kindOf(t.predicate)}`);
-    expect(kinds).toEqual(["REVIEW:PRICE_BELOW"]);
+    const kinds = row.triggers.map((t) => `${t.action}:${shapeName(t.predicate)}`);
+    expect(kinds).toEqual(["REVIEW:price:below"]);
     // No clock stamped — none was asked for, so the name costs no attention.
     expect(
-      row.triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      row.triggers.some((t) => shapeName(t.predicate) === "repeat"),
     ).toBe(false);
   });
 
@@ -157,7 +157,7 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
     const row = createdRow();
     // Still no clock — a level on the row does not put it on a schedule.
     expect(
-      row.triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      row.triggers.some((t) => shapeName(t.predicate) === "repeat"),
     ).toBe(false);
     // And CRITICALLY: the price does NOT become an armed buy. There is no
     // committed view on this row — an ENTER here would let the evaluator
@@ -182,7 +182,7 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
     );
     expect(result.ok).toBe(true);
     const row = createdRow();
-    expect(row.triggers.map((t) => kindOf(t.predicate))).toEqual(["REVIEW_CADENCE"]);
+    expect(row.triggers.map((t) => shapeName(t.predicate))).toEqual(["repeat"]);
   });
 
   it("redirects to update_thesis when the name is already covered", async () => {

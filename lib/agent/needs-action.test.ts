@@ -402,7 +402,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   // 08:00 ET (12:00 UTC) needs to catch a thesis whose review comes due
   // later TODAY (e.g. 09:30 ET = 13:30 UTC). Before the look-ahead
   // window was added, this returned null and the trigger evaluator's
-  // REVIEW_DATE_HIT cron picked it up 90 min later in a redundant
+  // old review-date trigger cron picked it up 90 min later in a redundant
   // tactical run.
   it("returns REVIEW_DUE when the review comes due later TODAY", () => {
     const result = computeNeedsAction({

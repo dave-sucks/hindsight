@@ -51,8 +51,9 @@
     {
      "id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
      "predicate": {
-      "kind": "PRICE_BELOW",
-      "level": 67
+      "watch": "price",
+      "is": "below",
+      "value": 67
      },
      "action": "ENTER",
      "rationale": "Pullback to the rising 20-day: the plan's buy level."
@@ -60,8 +61,9 @@
     {
      "id": "hero-floor",
      "predicate": {
-      "kind": "PRICE_BELOW",
-      "level": 63
+      "watch": "price",
+      "is": "below",
+      "value": 63
      },
      "action": "EXIT",
      "rationale": "The plan's floor."
@@ -69,8 +71,9 @@
     {
      "id": "hero-target",
      "predicate": {
-      "kind": "PRICE_ABOVE",
-      "level": 83
+      "watch": "price",
+      "is": "above",
+      "value": 83
      },
      "action": "REVIEW",
      "rationale": "The plan's target."
@@ -80,8 +83,9 @@
   "trigger": {
    "id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
    "predicate": {
-    "kind": "PRICE_BELOW",
-    "level": 67
+    "watch": "price",
+    "is": "below",
+    "value": 67
    },
    "action": "ENTER",
    "rationale": "Pullback to the rising 20-day: the plan's buy level."

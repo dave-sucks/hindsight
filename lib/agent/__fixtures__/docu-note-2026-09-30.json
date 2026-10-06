@@ -16,8 +16,9 @@
     "action": "EXIT",
     "source": "AGENT",
     "predicate": {
-     "kind": "PRICE_BELOW",
-     "level": 63
+     "watch": "price",
+     "is": "below",
+     "value": 63
     },
     "rationale": "Under the Sep 9 swing low $63.63 and the Sep 3 gap-day low $64.16 — if both break, the MA_PULLBACK thesis is wrong. -8% from entry would be $61.64; the structural level is tighter at $63.00.",
     "cooldownDays": 1

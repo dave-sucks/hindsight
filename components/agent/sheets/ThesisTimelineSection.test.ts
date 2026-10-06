@@ -869,7 +869,7 @@ describe("the outcome names what the review actually changed", () => {
   // across the book carried one of these and read "no change".
   it("a trigger change that moves no price is an update, not nothing", () => {
     expect(
-      outcomePhrase(resp({ triggers: { from: "ENTER PRICE_ABOVE 54.75", to: "ENTER PRICE_BELOW 54.75" } })),
+      outcomePhrase(resp({ triggers: { from: "ENTER price above 54.75", to: "ENTER price below 54.75" } })),
     ).toBe("updated");
     expect(outcomePhrase(resp(ops({ op: "add", text: "Added: review every 10 days" })))).toBe(
       "updated",

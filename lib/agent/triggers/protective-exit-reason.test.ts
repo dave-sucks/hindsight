@@ -22,13 +22,13 @@ import { protectiveExitCloseReason } from "./types";
 import type { When } from "@/lib/agent/triggers/condition";
 
 describe("protectiveExitCloseReason — protective/price EXIT → STOP/TARGET tag", () => {
-  it("tags a TRAILING_FROM_HIGH give-back exit STOP (the ARQT gain-lock)", () => {
+  it("tags a trail give-back exit STOP (the ARQT gain-lock)", () => {
     const p: When = { watch: "move", is: "below", value: 8, variable: "peak" };
     expect(protectiveExitCloseReason(p, "LONG")).toBe("STOP");
     expect(protectiveExitCloseReason(p, "SHORT")).toBe("STOP");
   });
 
-  it("tags a GAIN_FROM_ENTRY gain-lock exit STOP", () => {
+  it("tags a move from entry gain-lock exit STOP", () => {
     const p: When = { watch: "move", is: "above", value: 21, variable: "entry" };
     expect(protectiveExitCloseReason(p, "LONG")).toBe("STOP");
   });
@@ -44,7 +44,7 @@ describe("protectiveExitCloseReason — protective/price EXIT → STOP/TARGET ta
     expect(protectiveExitCloseReason(above, "SHORT")).toBe("STOP");
   });
 
-  it("maps a daily PRICE_MOVE_PCT by whether the move is with the position", () => {
+  it("maps a daily move from a close by whether the move is with the position", () => {
     const up: When = { watch: "move", is: "above", value: 5, variable: "prev_close" };
     const down: When = { watch: "move", is: "below", value: 5, variable: "prev_close" };
     // LONG: up move = favorable (TARGET), down move = adverse (STOP).

@@ -4,7 +4,6 @@
 import type { MeasureDef } from "../measure";
 import { DATE_VARIABLES, variableDef } from "../variables";
 import { wholeIn } from "../words";
-import type { LegacyPredicate } from "../legacy-types";
 
 export const repeat: MeasureDef = {
   id: "repeat",
@@ -21,10 +20,6 @@ export const repeat: MeasureDef = {
   fits: (c) => c.value != null,
   valid: (c) => wholeIn(c.value, 1, 365),
   // Counted from the last review.
-  legacy: {
-    from: { REVIEW_CADENCE: (p) => ((p.from ?? "LAST_REVIEW") === "LAST_REVIEW" ? { watch: "repeat", value: p.days } : null) },
-    to: (c): LegacyPredicate | null => (c.value != null ? { kind: "REVIEW_CADENCE", days: c.value } : null),
-  },
 };
 
 export const fromDate: MeasureDef = {
@@ -47,19 +42,4 @@ export const fromDate: MeasureDef = {
     c.value != null && (c.is === "after" || c.is === "before") && (c.variable === "event" || (c.variable === "buy" && c.is === "after")),
   valid: (c) => fromDate.fits(c) && wholeIn(c.value, 1, 365),
   check: (c) => (c.variable === "buy" && c.is === "before" ? "The buy is already in the past. Pick After." : null),
-  legacy: {
-    from: {
-      REVIEW_CADENCE: (p) => {
-        if (p.from === "BUY") return { watch: "from_date", is: "after", value: p.days, variable: "buy" };
-        if (p.from === "EVENT") return { watch: "from_date", is: p.side === "BEFORE" ? "before" : "after", value: p.days, variable: "event" };
-        return null;
-      },
-    },
-    to: (c): LegacyPredicate | null => {
-      if (c.value == null || (c.is !== "after" && c.is !== "before")) return null;
-      if (c.variable === "buy") return c.is === "after" ? { kind: "REVIEW_CADENCE", days: c.value, from: "BUY" } : null;
-      if (c.variable === "event") return { kind: "REVIEW_CADENCE", days: c.value, from: "EVENT", side: c.is === "before" ? "BEFORE" : "AFTER" };
-      return null;
-    },
-  },
 };

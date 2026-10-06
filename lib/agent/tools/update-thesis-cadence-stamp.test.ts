@@ -54,7 +54,7 @@ jest.mock("@/lib/agent/triggers/load-levels", () => ({
 }));
 
 import { updateThesis } from "./update-thesis";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -134,7 +134,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     expect(result.ok).toBe(true);
 
     const out = patchedTriggers();
-    expect(out.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(false);
+    expect(out.some((t) => shapeName(t.predicate) === "repeat")).toBe(false);
     expect(out.some((t) => t.action === "ENTER")).toBe(true);
   });
 
@@ -154,7 +154,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     expect(result.ok).toBe(true);
 
     const cadences = patchedTriggers().filter(
-      (t) => kindOf(t.predicate) === "REVIEW_CADENCE",
+      (t) => shapeName(t.predicate) === "repeat",
     );
     expect(cadences).toHaveLength(1);
     expect(cadences[0].predicate).toEqual({ watch: "repeat", value: 14 });
@@ -188,7 +188,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     });
     expect(result.ok).toBe(true);
     expect(
-      patchedTriggers().some((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      patchedTriggers().some((t) => shapeName(t.predicate) === "repeat"),
     ).toBe(false);
   });
 
@@ -206,7 +206,7 @@ describe("update_thesis — the review cadence is a trigger like any other (DAV-
     });
     expect(result.ok).toBe(true);
     expect(
-      patchedTriggers().some((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      patchedTriggers().some((t) => shapeName(t.predicate) === "repeat"),
     ).toBe(false);
   });
 });

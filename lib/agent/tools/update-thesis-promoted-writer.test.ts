@@ -87,12 +87,12 @@ const promotedThesisRow = {
   triggers: [
     {
       id: "t1",
-      condition: { type: "PRICE_ABOVE", value: 110 },
+      predicate: { watch: "price", is: "above", value: 110 },
       action: "ENTER",
     },
     {
       id: "t2",
-      condition: { type: "PRICE_BELOW", value: 180 },
+      predicate: { watch: "price", is: "below", value: 180 },
       action: "REVIEW",
     },
   ],

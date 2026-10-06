@@ -3,12 +3,12 @@
  * rows (DAV-303).
  *
  * The Secular Compounder, limit 4, held ABT/ASML/CEG/WST.
- *   ETN  thesis cmqeg5hyu000a04l1jsoavysc — buy PRICE_ABOVE 418,
+ *   ETN  thesis cmqeg5hyu000a04l1jsoavysc — buy price above 418,
  *        lastFiredAt 2026-09-18T13:45:15.819Z. place_trade refused it at the
  *        position limit; the run wrote one rationale-only row 23 seconds
  *        later ("Updated ETN thesis", fieldChanges {}) and another on 09-21
  *        ("Full — waiting", fieldChanges {}). Neither touched the ladder.
- *   ISRG thesis cmsplh2ow000m04l74ho8iti0 — buy PRICE_ABOVE 383,
+ *   ISRG thesis cmsplh2ow000m04l74ho8iti0 — buy price above 383,
  *        lastFiredAt 2026-09-17T16:40:19.704Z, same wall on 09-16 and 09-17.
  *
  * Dave raised the limit to 6 on 09-21. Both seats now have room, both stocks
@@ -16,7 +16,7 @@
  * again — a buy fires on the crossing. Before this module nothing asked.
  *
  * LUXE is the other half, and the reason the PREDICATE decides which way
- * "past the level" runs. It is a LONG whose buy is PRICE_BELOW $9.10 — "the
+ * "past the level" runs. It is a LONG whose buy is price below $9.10 — "the
  * non-chase PEAD entry" — and it traded at $10.08 on 2026-09-21. Reading
  * direction instead of predicate would call that a spent crossing and tell
  * the run to re-anchor a deliberate pullback level up onto the tape: the
@@ -128,7 +128,7 @@ describe("LUXE — a pullback buy the price has not reached is not spent", () =>
     now: new Date("2026-09-22T12:00:00Z"),
   };
 
-  it("$10.08 against a PRICE_BELOW $9.10 buy raises nothing", () => {
+  it("$10.08 against a price below $9.10 buy raises nothing", () => {
     expect(spentBuyCrossing(LUXE)).toBeNull();
     expect(
       computePlanSanity({
@@ -196,9 +196,9 @@ describe("only a plain price level can be read this way", () => {
   // the price can be "past", and inventing one is how a pullback entry gets
   // read backwards.
   it.each<[string, When]>([
-    ["VS_SMA (GD / GEV / SYK)", { watch: "price", is: "above", variable: "sma50" }],
-    ["NEAR_SMA", { watch: "move", is: "near", value: 2, variable: "sma50" }],
-    ["VOLUME_RATIO", { watch: "volume", value: 1.5 }],
+    ["price vs an average (GD / GEV / SYK)", { watch: "price", is: "above", variable: "sma50" }],
+    ["near an average", { watch: "move", is: "near", value: 2, variable: "sma50" }],
+    ["volume", { watch: "volume", value: 1.5 }],
     [
       "a composite breakout",
       { match: "all", conditions: [{ watch: "price", is: "above", value: 418, settings: { close: true } }, { watch: "volume", value: 1.5 }] },

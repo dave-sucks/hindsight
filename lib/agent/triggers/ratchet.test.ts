@@ -165,7 +165,7 @@ describe("protectiveRatchetViolations — percentage bands widen = weaker", () =
 });
 
 describe("protectiveRatchetViolations — what is deliberately NOT gated", () => {
-  it("ignores profit targets (PRICE_ABOVE exit on LONG is TARGET, not STOP)", () => {
+  it("ignores profit targets (price above exit on LONG is TARGET, not STOP)", () => {
     const target = (level: number) =>
       rung({ predicate: { watch: "price", is: "above", value: level }, action: "EXIT" });
     const v = protectiveRatchetViolations({
@@ -217,7 +217,7 @@ describe("protectiveRatchetViolations — what is deliberately NOT gated", () =>
 });
 
 describe("protectiveRatchetViolations — SHORT positions", () => {
-  it("flags raising a SHORT stop (PRICE_ABOVE is the protective side)", () => {
+  it("flags raising a SHORT stop (price above is the protective side)", () => {
     const cover = (level: number) =>
       rung({ predicate: { watch: "price", is: "above", value: level }, action: "EXIT" });
     const v = protectiveRatchetViolations({
@@ -230,7 +230,7 @@ describe("protectiveRatchetViolations — SHORT positions", () => {
     expect(v[0].reason).toBe("LOWERED");
   });
 
-  it("ignores PRICE_BELOW on SHORT (that is the profit target)", () => {
+  it("ignores price below on SHORT (that is the profit target)", () => {
     const v = protectiveRatchetViolations({
       direction: "SHORT",
       before: [floor(40)],

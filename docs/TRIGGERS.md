@@ -47,21 +47,18 @@ default cooldown, what the check must load for it, whether it is a typed price
 level, and how the check reads it (`condition/read.ts`). Adding a measure is one
 entry; nothing else switches on it.
 
-**Storage holds the same shape.** `lib/prisma.ts` turns every `triggers`
-write on a thesis, an analyst or the account into it, and every read, so
-the app only ever holds conditions. `prismaRaw` skips the conversion and is
-for the backfill (`scripts/backfill-trigger-shape.ts`) and its down script
-only. A condition an old trigger kind stored is translated by
-`condition/legacy.ts`; the translator is the one place the old kinds are
-named, and a removed kind (the old review-date trigger) is kept verbatim and
-reads as "a removed condition".
+**Storage holds the same shape.** Every writer writes it; the rows written
+before the cutover were rewritten by its backfill. Anything else stored in a
+trigger list (one condition type removed in August, kept on retired theses)
+reads as "a removed condition" and is never checked.
 
 Validation is one Zod gate (`triggers/schema.ts`) used by **every** writer — the
 agent (`record_thesis`/`update_thesis`), the UI add/edit, and the reject dialog.
-A condition is legal when it means something the check can read, with the same
-ranges as before. An invalid trigger is dropped at evaluation, so the gate
-rejects it up front. A model that still sends an old kind has it translated
-and logged, never refused.
+A condition is legal when its measure says so: `fits` (a button it has, a
+variable it reads with that button, a number where it needs one) and `valid`
+(every number in range) on the catalog entry, read for a whole trigger by
+`whenValid` (`condition/valid.ts`). An invalid trigger is dropped at
+evaluation, so the gate rejects it up front, with the list of measures.
 
 ## 2. The measures
 
@@ -450,8 +447,7 @@ on the row's `fieldChanges.triggerOps`.
 
 ## Key files
 
-- `lib/agent/triggers/condition/` — the condition shape (`types.ts`), one catalog entry per measure (`catalog.ts`, `measures/*`), the variables (`variables.ts`), the rules that read the catalog (`rules.ts`), the check (`read.ts`), the words (`describe.ts`), the save check (`check.ts`), what a fire names (`facts.ts`, server-only), storage (`stored.ts`) and the translator from the old kinds (`legacy.ts`, `legacy-types.ts`, `legacy-schema.ts`) — the only place they are named
-- `lib/prisma.ts` — every `triggers` write and read is turned into the shape; `prismaRaw` skips it (backfill and down script only)
+- `lib/agent/triggers/condition/` — the condition shape (`types.ts`), one catalog entry per measure (`catalog.ts`, `measures/*`), the variables (`variables.ts`), the rules that read the catalog (`rules.ts`), the check (`read.ts`), the words (`describe.ts`), the form's checks (`check.ts`), what the save accepts (`valid.ts`), what a fire names (`facts.ts`, server-only) and comparing stored conditions (`stored.ts`)
 - `lib/agent/triggers/ops.ts` — the per-trigger write path (`applyTriggerOps` + `checkLadder`) every editor goes through once a thesis exists (§8)
 - `lib/agent/triggers/types.ts` — the `Trigger` type and `watchedFloorOnClose`
 - `lib/agent/triggers/enforce-close-reason.ts` — the sale-label rule: a close from a protective fire stores STOP/TARGET, auto-corrected with an audit note (DAV-192)

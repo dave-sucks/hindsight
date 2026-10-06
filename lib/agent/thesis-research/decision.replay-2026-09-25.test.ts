@@ -16,7 +16,7 @@
  * the stock.
  */
 import raw from "@/lib/agent/__fixtures__/writer-and-trade-refusals-2026-09-25.json";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
 
@@ -38,7 +38,7 @@ describe("the 2026-09-25 catalyst decisions are accepted, with the fixes written
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
     expect(v.decision?.conviction_rationale?.length).toBeGreaterThan(400);
-    expect(v.decision?.triggers?.map((t) => kindOf(t.predicate))).toEqual(["REVIEW_CADENCE"]);
+    expect(v.decision?.triggers?.map((t) => shapeName(t.predicate))).toEqual(["repeat"]);
     expect(v.decision?.notes).toBeUndefined();
   });
 
