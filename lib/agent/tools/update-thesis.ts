@@ -412,6 +412,24 @@ function dryRunPassed(ticker: string, triggerOps: TriggerOpResult[]) {
   };
 }
 
+/**
+ * The research sections only the writer's refresh fills (step 5 of
+ * docs/plans/AGENT_ARCHITECTURE.md): of 370 update_thesis calls by agents in
+ * the 30 days to 2026-10-05, none sent one. They leave every agent's copy of
+ * the tool (4,725 characters each); the writer's refresh keeps them.
+ */
+const WRITER_ONLY_UPDATE_FIELDS = {
+  bull_case: true,
+  bear_case: true,
+  recent_catalysts: true,
+  fundamentals: true,
+  latest_earnings: true,
+  catalysts_and_events: true,
+  analyst_consensus: true,
+  insider_technical: true,
+  research_data: true,
+} as const;
+
 export const updateThesis = defineTool({
   description:
     "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
@@ -419,6 +437,7 @@ export const updateThesis = defineTool({
     "(1) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
     "(2) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, removing a protective sell trigger, or switching one from automatic to judgment-first is refused per trigger (the rest of the call still lands; every op comes back in `trigger_ops` with accepted/refused and why). Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
   schema: updateSchema,
+  schemaFor: (ctx) => (ctx.runMode === "THESIS_WRITER" ? updateSchema : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS)),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 

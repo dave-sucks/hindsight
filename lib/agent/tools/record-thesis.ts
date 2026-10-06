@@ -410,7 +410,7 @@ const thesisFields = z.object({
     ),
 });
 
-export const thesisSchema = thesisFields.superRefine((val, ctx) => {
+function refineThesis(val: { source_kind?: string; source_rationale?: string }, ctx: z.RefinementCtx) {
   if (val.source_kind) {
     // A kind needs its rationale.
     if (!val.source_rationale || val.source_rationale.trim().length === 0) {
@@ -421,13 +421,39 @@ export const thesisSchema = thesisFields.superRefine((val, ctx) => {
       });
     }
   }
-});
+}
+
+export const thesisSchema = thesisFields.superRefine(refineThesis);
+
+/**
+ * The research sections only the writer's save fills (step 5 of
+ * docs/plans/AGENT_ARCHITECTURE.md): no agent sent one in the 30 days to
+ * 2026-10-05, and the plain-string bull/bear forms are older still. They
+ * leave every agent's copy of the tool; the writer's save, and the paste-a-
+ * thesis path that validates against `thesisSchema` itself, keep them.
+ */
+const WRITER_ONLY_FIELDS = {
+  snapshot: true,
+  bull_case: true,
+  bear_case: true,
+  recent_catalysts: true,
+  fundamentals: true,
+  latest_earnings: true,
+  catalysts_and_events: true,
+  analyst_consensus: true,
+  insider_technical: true,
+  research_data: true,
+  thesis_bullets: true,
+  risk_flags: true,
+} as const;
+const agentThesisSchema = thesisFields.omit(WRITER_ONLY_FIELDS).superRefine(refineThesis);
 
 export const recordThesis = defineTool({
   description:
     "Write a new thesis on a stock. Direction is LONG, SHORT, or PASS — a PASS documents a stock you researched and won't trade. Never write a verdict as narration text instead of calling this tool. " +
     "Structural-belief gate: directional theses (LONG/SHORT) MUST include core_belief (1 sentence), key_assumptions (≥2 specific items), and invalidation_conditions (≥2 specific items). Without all three the call is rejected — these fields drive the trade evaluator's post-mortem, the tactical agent's invalidation reasoning, and the daily run's assumption-drift checks. PASS theses are exempt.",
   schema: thesisSchema,
+  schemaFor: (ctx) => (ctx.runMode === "THESIS_WRITER" ? thesisSchema : agentThesisSchema),
   ui: "thesis-card" as const,
   gateLog: "record_thesis",
 
