@@ -20,7 +20,7 @@ const lowScore = {
   entryQuality: { score: 1, note: "" },
   catalystFreshness: { score: 2, note: "" },
 };
-const clock = { id: "clock", action: "REVIEW", predicate: { kind: "REVIEW_CADENCE", days: 30 }, rationale: "Monthly.", cooldownDays: 30 };
+const clock = { id: "clock", action: "REVIEW", predicate: { watch: "repeat", value: 30 }, rationale: "Monthly.", cooldownDays: 30 };
 
 /** A watched LONG, reviewed yesterday, its clock not due: only its flags could list it. */
 const watched = (over: Record<string, unknown>) =>
@@ -93,9 +93,9 @@ describe("decision 4 — two flags stop listing a stock by themselves", () => {
       stopLoss: 300,
       triggers: [
         clock,
-        { id: "buy", action: "ENTER", predicate: { kind: "PRICE_BELOW", level: 330 }, rationale: "Buy the pullback.", cooldownDays: 1 },
-        { id: "floor", action: "EXIT", predicate: { kind: "PRICE_BELOW", level: 300 }, rationale: "Below the base.", cooldownDays: 1 },
-        { id: "target", action: "REVIEW", predicate: { kind: "PRICE_ABOVE", level: 400 }, rationale: "Target.", cooldownDays: 1 },
+        { id: "buy", action: "ENTER", predicate: { watch: "price", is: "below", value: 330 }, rationale: "Buy the pullback.", cooldownDays: 1 },
+        { id: "floor", action: "EXIT", predicate: { watch: "price", is: "below", value: 300 }, rationale: "Below the base.", cooldownDays: 1 },
+        { id: "target", action: "REVIEW", predicate: { watch: "price", is: "above", value: 400 }, rationale: "Target.", cooldownDays: 1 },
       ],
     });
     expect(await namedRead(priced, "ETN", 345)).toContain("COMPOSITE_BELOW_MINIMUM");
