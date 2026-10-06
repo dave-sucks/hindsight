@@ -761,7 +761,7 @@
                "orderId": "cmupknt1c000704l4drax59zr",
                "quantity": 300,
                "approvedAt": "2026-10-01T17:28:24.137Z",
-               "approvedBy": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+               "approvedBy": "owner",
                "alpacaOrderId": "425a42bb-14a8-4e97-ae03-a393d3406dac",
                "proposedQuantity": 359
               },
@@ -2648,7 +2648,7 @@
                "orderId": "cmuo5kmx2000504la2yshm62p",
                "quantity": 120,
                "approvedAt": "2026-09-30T16:25:14.191Z",
-               "approvedBy": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+               "approvedBy": "owner",
                "alpacaOrderId": "23e155a2-a3f5-4f43-b485-9e4080230f6a",
                "proposedQuantity": 162
               },
