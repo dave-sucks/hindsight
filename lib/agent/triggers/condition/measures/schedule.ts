@@ -3,14 +3,13 @@
 
 import type { MeasureDef } from "../measure";
 import { DATE_VARIABLES, variableDef } from "../variables";
-import { shown, wholeIn } from "../words";
 
 export const repeat: MeasureDef = {
   id: "repeat",
   type: "schedule",
   label: "Repeat",
   word: "Every",
-  value: { suffix: "days", placeholder: "30", integer: true, min: 1 },
+  value: { suffix: "days", placeholder: "30", range: { what: "A repeat", unit: " days", integer: true, min: 1, max: 365 } },
   actions: ["REVIEW"],
   timed: true,
   clock: true,
@@ -18,7 +17,7 @@ export const repeat: MeasureDef = {
   cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "repeat" }),
   fits: (c) => c.value != null,
-  problem: (c) => (wholeIn(c.value, 1, 365) ? null : `A repeat runs every 1 to 365 whole days; ${shown(c.value)} isn't.`),
+  shape: "A repeat takes a number of days.",
   // Counted from the last review.
 };
 
@@ -30,7 +29,7 @@ export const fromDate: MeasureDef = {
     { is: "after", label: "After" },
     { is: "before", label: "Before" },
   ],
-  value: { suffix: "days", placeholder: "60", integer: true, min: 1 },
+  value: { suffix: "days", placeholder: "60", range: { what: "A date count", unit: " days", integer: true, min: 1, max: 365 } },
   variables: { mode: "from", options: DATE_VARIABLES, title: "Counted from", word: () => "from", required: "Choose what to count from." },
   actions: ["TRIM", "EXIT", "REVIEW"],
   timed: true,
@@ -40,9 +39,6 @@ export const fromDate: MeasureDef = {
   // After the buy, or either side of the event date.
   fits: (c) =>
     c.value != null && (c.is === "after" || c.is === "before") && (c.variable === "event" || (c.variable === "buy" && c.is === "after")),
-  problem: (c) => {
-    if (!fromDate.fits(c)) return "A date count runs after the buy, or before or after the event date.";
-    return wholeIn(c.value, 1, 365) ? null : `A date count runs 1 to 365 whole days; ${shown(c.value)} isn't.`;
-  },
+  shape: "A date count runs after the buy, or before or after the event date.",
   check: (c) => (c.variable === "buy" && c.is === "before" ? "The buy is already in the past. Pick After." : null),
 };

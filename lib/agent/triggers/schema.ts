@@ -9,9 +9,11 @@
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import type { Condition, VariableId, Watch, When } from "./condition/types";
+import type { Condition, Direction, VariableId, Watch, When } from "./condition/types";
+import type { MeasureDef } from "./condition/measure";
 import { MEASURES, declaredOnly } from "./condition/catalog";
-import { refusalOf } from "./condition/valid";
+import { notACondition, refusalOf } from "./condition/valid";
+import { rangeWords } from "./condition/range";
 
 /**
  * A trigger's condition, in the condition shape (./condition): one its
@@ -29,14 +31,16 @@ export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
 });
 
 /**
- * The condition as the model writes it. It is the form's fields: a price's
- * one input takes a dollar number or a line (the 50-day average, the 20-day
- * low), and a filing's is which filing, so `value` carries either and there
- * is no second half to send. `variable` is only what a % move or a day count
- * is measured from. A field the measure doesn't take is dropped, as a
- * setting is. The condition is defined once per tool (`Condition`), so its
- * lists appear once. The stored shape is unchanged: `toStored` maps onto it.
- * The save holds every number to its measure's range.
+ * The condition as the model writes it: one branch per measure, keyed on
+ * `watch`, holding only the fields that measure takes (its buttons, its
+ * value, what it is measured from, its own settings), so a model has nothing
+ * to fill that the measure doesn't read. It is the form's fields: a price's
+ * one input takes a dollar number or a line (the 50-day average), and a
+ * filing's is which filing. Each value and setting says its range, read from
+ * the catalog (./condition/range), and the save holds it to that range with
+ * the same sentence. A field a branch doesn't list is dropped. The condition
+ * is defined once per tool (`Condition`); `toStored` maps it onto the stored
+ * shape. An old kind is refused with the list of measures.
  */
 export function predicateInputSchema() {
   return (agentPredicate ??= buildPredicateInputSchema());
@@ -44,31 +48,28 @@ export function predicateInputSchema() {
 let agentPredicate: ReturnType<typeof buildPredicateInputSchema> | undefined;
 
 function buildPredicateInputSchema() {
-  const lines = variableIds("replace");
-  const froms = variableIds("from");
-  const condition = z
-    .object({
-      watch: z.enum(Object.keys(MEASURES) as [Watch, ...Watch[]]).describe("The measure, from the list above."),
-      is: z.enum(["below", "above", "near", "before", "after", "miss", "beat"]).optional().describe("Its direction, from the list; omit where a measure has one choice."),
-      value: z
-        .union([z.number(), z.enum(lines as [VariableId, ...VariableId[]])])
-        .optional()
-        .describe("The number, in the measure's unit. A price: a dollar number or a line from the list (sma50 = the 50-day average, low20 = the 20-day low, prev_close = yesterday's close). A filing: which filing."),
-      variable: z
-        .enum(froms as [VariableId, ...VariableId[]])
-        .optional()
-        .describe("Only for a % move or a day count: what it is measured from."),
-      settings: settingsSchema().optional().describe("Only the settings the measure or its variable takes; leave every other key out."),
-    })
-    .meta({ id: "Condition" });
-  const stored = condition.transform(toStored);
+  const byWatch = Object.fromEntries(Object.values(MEASURES).map((m) => [m.id, measureBranch(m)])) as Record<Watch, z.ZodObject>;
+  // A refusal says what's wrong: the field a measure is missing, or, for no measure at all, the list of them.
+  const explain = (input: unknown): string => {
+    const w = input && typeof input === "object" ? (input as { watch?: unknown }).watch : undefined;
+    const branch = typeof w === "string" ? byWatch[w as Watch] : undefined;
+    const issue = branch?.safeParse(input).error?.issues[0];
+    if (!issue) return notACondition(input);
+    const field = issue.path.join(".") || "condition";
+    return `For ${w}, \`${field}\` is wrong: ${issue.message}. ${MEASURES[w as Watch].shape}`;
+  };
+  const branches = Object.values(byWatch) as unknown as [z.ZodObject, z.ZodObject, ...z.ZodObject[]];
+  const condition = z.discriminatedUnion("watch", branches, { error: (iss) => explain(iss.input) }).meta({ id: "Condition" });
+  const stored = condition.transform((c) => toStored(c as AgentCondition));
   const group = z.object({
     match: z.enum(["all", "any"]).describe("all = every condition holds; any = one does."),
     conditions: z.array(stored).min(2).max(8),
   });
   return z
-    .union([stored, z.object({ match: group.shape.match, conditions: z.array(z.union([stored, group])).min(2).max(8) })])
-    .describe(`One condition, or { match, conditions } for two or more. ${measureGuide()}`)
+    .union([stored, z.object({ match: group.shape.match, conditions: z.array(z.union([stored, group])).min(2).max(8) })], {
+      error: (iss) => explain(iss.input),
+    })
+    .describe("One condition, or { match, conditions } for two or more. `watch` picks the measure; a condition takes only the fields listed under its measure.")
     .superRefine((w, ctx) => {
       const refused = refusalOf(w);
       if (refused) ctx.addIssue({ code: "custom", message: refused });
@@ -77,67 +78,54 @@ function buildPredicateInputSchema() {
     .transform((w) => declaredOnly(w as When));
 }
 
-type AgentCondition = { watch: Watch; is?: Condition["is"]; value?: number | VariableId; variable?: VariableId; settings?: Record<string, unknown> };
-
-/** The agents' condition, stored: a line in `value` is the stored `variable`; a field the measure doesn't take is dropped. */
-function toStored({ value, variable, ...rest }: AgentCondition): Condition {
-  const mode = MEASURES[rest.watch]?.variables?.mode;
-  if (mode === "replace") return { ...rest, ...(typeof value === "string" ? { variable: value } : value != null ? { value } : {}) } as Condition;
-  return { ...rest, ...(value != null ? { value } : {}), ...(mode === "from" && variable != null ? { variable } : {}) } as Condition;
-}
-
-/** The variable ids every measure of one mode takes, from the catalog. */
-function variableIds(mode: "replace" | "from"): VariableId[] {
-  return [...new Set(Object.values(MEASURES).filter((m) => m.variables?.mode === mode).flatMap((m) => m.variables!.options.map((o) => o.id)))];
-}
-
-/** Each measure in one line: its directions, its number, its variables and settings. */
-function measureGuide(): string {
-  const line = (m: (typeof MEASURES)[Watch]) => {
-    const is = m.buttons ? ` is ${m.buttons.map((b) => b.is).join("|")};` : "";
-    const unit = m.value.none ? "" : ` value ${m.value.prefix === "$" ? "in dollars" : (m.value.suffix ?? "a number")};`;
-    const vars = m.variables
-      ? ` ${m.variables.mode === "replace" ? (m.value.none ? "value" : "or value") : "variable"} ${variableList(m.variables.options.map((o) => o.id))};`
-      : "";
-    const settings = (m.settings ?? []).map((s) => `${s.key}${s.options ? `=${s.options.map((o) => String(o.value)).join("|")}` : ""}`);
-    const varSettings = [...new Set((m.variables?.options ?? []).flatMap((o) => (o.settings ?? []).map((s) => `${s.key} (with ${o.id})`)))];
-    const all = [...settings, ...varSettings];
-    return `${m.id} (${m.label}):${is}${unit}${vars}${all.length ? ` settings ${all.join(", ")};` : ""}`.replace(/;$/, ".");
-  };
-  return `Measures: ${Object.values(MEASURES).map(line).join(" ")}`;
-}
-
-/**
- * Every setting a measure or a variable takes, by key, from the catalog. The
- * SDK writes a record as an object that allows no keys, so the keys are
- * listed, each saying what takes it: a model shown eleven bare keys filled
- * every one with a 0 and was refused. The save checks it again.
- */
-function settingsSchema() {
-  const owners = new Map<string, { sample: unknown; by: string[] }>();
-  const own = (d: { key: string; default?: unknown; options?: readonly { value: unknown }[] }, by: string) => {
-    const o = owners.get(d.key) ?? { sample: d.options?.[0]?.value ?? d.default, by: [] };
-    if (!o.by.includes(by)) o.by.push(by);
-    owners.set(d.key, o);
-  };
-  for (const m of Object.values(MEASURES)) {
-    for (const d of m.settings ?? []) own(d, m.id);
-    for (const v of m.variables?.options ?? []) for (const d of v.settings ?? []) own(d, `variable ${v.id}`);
+/** One measure's condition: its own fields only, each saying its range. */
+function measureBranch(m: MeasureDef) {
+  const shape: Record<string, z.ZodTypeAny> = { watch: z.literal(m.id).describe(m.shape) };
+  if (m.buttons) shape.is = z.enum(m.buttons.map((b) => b.is) as [Direction, ...Direction[]]);
+  // Only the variables this measure can read with one of its buttons, the same ones the form's {x} menu offers.
+  const fitting = (m.variables?.options ?? []).filter((o) =>
+    (m.buttons ?? [{ is: undefined }]).some((b) => m.fits({ watch: m.id, is: b.is, variable: o.id, value: 1 } as Condition)),
+  );
+  const ids = fitting.map((o) => o.id) as [VariableId, ...VariableId[]];
+  const ranges = [m.value.ranges?.map((r) => `${r.range.what}: ${rangeWords(r.range)}`).join("; "), m.value.range && `otherwise ${rangeWords(m.value.range)}`]
+    .filter(Boolean)
+    .join("; ");
+  if (m.value.none) {
+    shape.value = z.enum(ids).describe("Which filing: a tier, an 8-K item or a form.");
+  } else if (m.variables?.mode === "replace") {
+    shape.value = z.union([z.number(), z.enum(ids)]).describe(`A dollar price (${ranges}), or a line instead of one.`);
+  } else {
+    const n = z.number().describe(`${m.value.suffix ?? "The number"}: ${ranges}.`);
+    shape.value = m.value.zero != null ? n.optional() : n;
   }
-  const shape: Record<string, z.ZodOptional<z.ZodTypeAny>> = {};
-  for (const [key, { sample, by }] of owners) {
-    const type = typeof sample === "boolean" ? z.boolean() : typeof sample === "string" ? z.string() : z.number();
-    shape[key] = type.describe(`Only with ${by.join(" or ")}.`).optional();
+  if (m.variables?.mode === "from") shape.variable = z.enum(ids).describe("What it is measured from.");
+  // A variable's own settings belong to the measures it is measured from (the trail's, on a move), not to a line a price reads.
+  const settings = [...(m.settings ?? []), ...(m.variables?.mode === "from" ? fitting.flatMap((o) => o.settings ?? []) : [])];
+  if (settings.length) {
+    const fields: Record<string, z.ZodTypeAny> = {};
+    for (const d of settings) {
+      if (fields[d.key]) continue;
+      const sample = d.options?.[0]?.value ?? d.default;
+      const type = d.options ? z.enum(d.options.map((o) => String(o.value)) as [string, ...string[]]) : typeof sample === "boolean" ? z.boolean() : typeof sample === "string" ? z.string() : z.number();
+      const typed = d.options && typeof sample !== "string" ? (typeof sample === "boolean" ? z.boolean() : z.number()) : type;
+      const owner = m.settings?.includes(d) ? "" : ` Only with variable ${fitting.find((o) => o.settings?.includes(d))?.id}.`;
+      const said = d.options ? `One of ${d.options.map((o) => String(o.value)).join(", ")}.` : d.range ? `${rangeWords(d.range)}.` : "";
+      const name = (d.label ?? d.range?.what ?? d.key).replace(/ \(\w+\)$/, "");
+      fields[d.key] = typed.describe(`${name}: ${said}${owner}`).optional();
+    }
+    shape.settings = z.object(fields).optional();
   }
   return z.object(shape);
 }
 
+type AgentCondition = { watch: Watch; is?: Condition["is"]; value?: number | VariableId; variable?: VariableId; settings?: Record<string, unknown> };
 
-/** Variable ids, with the filing ones written as patterns. */
-function variableList(ids: readonly string[]): string {
-  const plain = ids.filter((id) => !/^(item|form):/.test(id));
-  const filing = ids.some((id) => id.startsWith("item:")) ? ["item:<8-K item, e.g. 8.01>", "form:<form, e.g. S-3>"] : [];
-  return [...plain, ...filing].join("|");
+/** The agents' condition, stored: a line or a filing in `value` is the stored `variable`; no empty settings. */
+function toStored({ value, variable, settings, ...base }: AgentCondition): Condition {
+  const rest = settings && Object.keys(settings).length ? { ...base, settings } : base;
+  const mode = MEASURES[rest.watch]?.variables?.mode;
+  if (mode === "replace") return { ...rest, ...(typeof value === "string" ? { variable: value } : value != null ? { value } : {}) } as Condition;
+  return { ...rest, ...(value != null ? { value } : {}), ...(mode === "from" && variable != null ? { variable } : {}) } as Condition;
 }
 
 export const triggerActionSchema = z.enum([

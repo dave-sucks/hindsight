@@ -97,9 +97,35 @@ describe("the condition a model writes", () => {
     expect(schema.parse({ watch: "price", is: "above", value: 183, settings: { close: true } })).toEqual({ watch: "price", is: "above", value: 183, settings: { close: true } });
   });
 
-  it("names the measures once, not once per level of nesting", () => {
+  it("defines each measure once, not once per level of nesting", () => {
     const json = JSON.stringify(zodSchema(predicateInputSchema() as never).jsonSchema);
-    expect(json.split("Measures: price").length - 1).toBe(1);
+    expect(json.split('"Condition":{').length - 1).toBe(1);
+    for (const watch of ["price", "move", "volume", "rsi", "strength", "gap", "report", "surprise", "filing", "insiders", "repeat", "from_date"]) {
+      expect({ watch, branches: json.split(`"const":"${watch}"`).length - 1 }).toEqual({ watch, branches: 1 });
+    }
+  });
+
+  it("offers each measure only its own fields", () => {
+    const json = zodSchema(predicateInputSchema() as never).jsonSchema as { definitions: { Condition: { oneOf?: unknown[]; anyOf?: unknown[] } } };
+    const arms = (json.definitions.Condition.oneOf ?? json.definitions.Condition.anyOf ?? []) as Array<{ properties: Record<string, { properties?: Record<string, unknown> }> }>;
+    const fields = Object.fromEntries(arms.map((a) => [(a.properties.watch as { const?: string }).const, Object.keys(a.properties.settings?.properties ?? {})]));
+    expect(fields).toEqual({
+      price: ["close"],
+      move: ["fastWinnerPct", "fastWinnerDays", "startOnceUpPct", "widenAtr"],
+      volume: [],
+      rsi: ["period"],
+      strength: ["window"],
+      gap: ["volume", "withinDays"],
+      report: ["fromDay"],
+      surprise: [],
+      filing: [],
+      insiders: ["days"],
+      repeat: [],
+      from_date: [],
+    });
+    // A price reads a line in `value` and has no `variable`; a move has one.
+    const price = arms.find((a) => (a.properties.watch as { const?: string }).const === "price")!;
+    expect(Object.keys(price.properties)).toEqual(["watch", "is", "value", "settings"]);
   });
 });
 

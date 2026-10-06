@@ -9,7 +9,7 @@
  */
 
 import type { TriggerAction } from "../types";
-import type { Condition, Direction, SettingDef, TriggerType, Watch } from "./types";
+import type { Condition, Direction, Range, SettingDef, TriggerType, Watch } from "./types";
 import type { VariableDef } from "./variables";
 
 export interface ValueDef {
@@ -20,12 +20,10 @@ export interface ValueDef {
   placeholder: string;
   /** No number at all: the input holds only a variable chip (a filing). */
   none?: boolean;
-  /** Whole numbers only (days, insiders). */
-  integer?: boolean;
-  min?: number;
-  max?: number;
-  /** A negative number means something (strength vs. the S&P). */
-  allowNegative?: boolean;
+  /** Where the number may sit (./range). The form, the save and the agents' schema all read it. */
+  range?: Range;
+  /** Where it sits instead for one button or one variable; the first that matches wins. */
+  ranges?: readonly { is?: Direction; variables?: readonly string[]; range: Range }[];
   /** What the line under the input says while the number is missing. */
   missing?: string;
   /** How 0 reads ("any amount" for a beat of 0%). */
@@ -126,12 +124,14 @@ export interface MeasureDef {
    * The {x} menu offers only the variables that fit.
    */
   fits: (c: Condition) => boolean;
+  /** Said when a condition doesn't `fit`: what the measure takes. */
+  shape: string;
   /**
-   * What the save refuses, in one sentence that names the number and its
-   * range, or null when the condition fits and every number is in range. The
-   * save, the agents' schema and the form all refuse with this sentence.
+   * A fact about the numbers beyond their ranges, in one sentence, or null
+   * ("can't end on day 2 before it starts on day 3"). Every number's range is
+   * data (`value.range`, a setting's `range`); this is the rest.
    */
-  problem: (c: Condition) => string | null;
+  rule?: (c: Condition) => string | null;
   /**
    * "Any of" several of these conditions read as one rule (several filing
    * events): what's wrong with that rule (null for nothing), or undefined

@@ -15,6 +15,7 @@ import { conditionsOf, isGroup } from "./types";
 import { variableDef, type VariableDef } from "./variables";
 import { capitalise } from "./words";
 import { isLevel } from "./rules";
+import { conditionRefusal } from "./range";
 
 export type { CheckContext } from "./measure";
 
@@ -42,17 +43,9 @@ export function withDirection(c: Condition, is: Direction, ctx: CheckContext): C
 
 export function conditionProblem(c: Condition, ctx: CheckContext): string | null {
   const m = measureOf(c);
-  const def = m.value;
   const replaced = m.variables?.mode === "replace" && c.variable != null;
 
-  if (!def.none && !replaced) {
-    const v = c.value;
-    if (v == null || !Number.isFinite(v)) return def.missing ?? "Enter a number.";
-    if (v < 0 && !def.allowNegative) return "Use a positive number. The buttons set the direction.";
-    if (def.integer && !Number.isInteger(v)) return "Use a whole number.";
-    if (def.min != null && v < def.min) return `Use ${def.min} or more.`;
-    if (def.max != null && v > def.max) return `Use ${def.max} or less.`;
-  }
+  if (!m.value.none && !replaced && c.value == null && m.value.zero == null) return m.value.missing ?? "Enter a number.";
   if (m.variables?.required && !c.variable) return m.variables.required;
   if (c.variable && variableDef(c.variable).position && ctx.level === "THESIS" && !ctx.held) {
     return "Our entry and the high since we bought exist only once we own the stock.";
@@ -64,7 +57,7 @@ export function conditionProblem(c: Condition, ctx: CheckContext): string | null
     return `${capitalise(variableDef(c.variable).chip)} doesn't work with ${button}. Pick another with the {x} button.`;
   }
   // The same sentence the save refuses with, so the form and the server agree.
-  const refused = m.problem(c);
+  const refused = conditionRefusal(c);
   if (refused) return refused;
   return levelProblem(c, ctx);
 }

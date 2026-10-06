@@ -8,6 +8,7 @@
  */
 
 import { MEASURES } from "./catalog";
+import { conditionRefusal } from "./range";
 import type { Condition, When } from "./types";
 import { isGroup } from "./types";
 
@@ -31,8 +32,8 @@ export function whenValid(w: unknown): w is When {
 
 /** Why the save refuses a condition, in its measure's words with the number, or null when it doesn't. */
 export function refusalOf(w: unknown): string | null {
-  if (!isShape(w)) return "Not a condition this app can check: see the measures and what each takes.";
-  if (!isGroup(w)) return MEASURES[w.watch].problem(w);
+  if (!isShape(w)) return notACondition(w);
+  if (!isGroup(w)) return conditionRefusal(w);
   const cs = w.conditions;
   const first = cs[0];
   // "Any of" one measure's conditions may be one rule (several filing events).
@@ -46,4 +47,15 @@ export function refusalOf(w: unknown): string | null {
     if (p) return p;
   }
   return null;
+}
+
+/**
+ * What a refusal says when the input isn't a condition at all, an old kind
+ * included: the measures it can be.
+ */
+export function notACondition(w: unknown): string {
+  const measures = Object.keys(MEASURES).join(", ");
+  const kind = w && typeof w === "object" && typeof (w as { kind?: unknown }).kind === "string" ? (w as { kind: string }).kind : null;
+  const lead = kind ? `"kind: ${kind}" is an old trigger kind, retired. ` : "Not a condition this app can check. ";
+  return `${lead}A condition is { watch, is, value, variable, settings } with watch one of: ${measures}; or { match: "all" | "any", conditions } for two or more.`;
 }

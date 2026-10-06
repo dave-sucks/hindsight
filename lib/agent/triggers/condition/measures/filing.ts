@@ -4,7 +4,7 @@
 import type { MeasureDef } from "../measure";
 import type { Condition } from "../types";
 import { FILING_VARIABLES } from "../variables";
-import { num, shown, wholeIn } from "../words";
+import { shown } from "../words";
 
 function tierOf(v: string | undefined): "RED" | "MATERIAL" | undefined {
   return v === "tier:RED" ? "RED" : v === "tier:MATERIAL" ? "MATERIAL" : undefined;
@@ -27,7 +27,8 @@ export const filing: MeasureDef = {
   groupSlot: (cs) => cs.find((c) => tierOf(c.variable)),
   fresh: () => ({ watch: "filing", variable: "tier:MATERIAL" }),
   fits: (c) => event(c.variable) != null,
-  problem: (c) => eventsProblem([c]),
+  shape: "Choose a filing: a tier, an 8-K item or a form.",
+  rule: (c) => eventsProblem([c]),
   // Several events are one rule when they name at most one tier; then the
   // rule holds at most 20 items and 10 forms.
   problemAny: (cs) => (cs.length > 1 && cs.every((c) => event(c.variable)) && cs.filter((c) => tierOf(c.variable)).length <= 1 ? eventsProblem(cs) : undefined),
@@ -63,12 +64,14 @@ export const insiders: MeasureDef = {
   type: "filing",
   label: "Insider buying",
   word: "At least",
-  value: { suffix: "insiders buying", placeholder: "3", integer: true, min: 1 },
+  value: { suffix: "insiders buying", placeholder: "3", range: { what: "Insider buying", unit: " insiders", integer: true, min: 1, max: 10 } },
   settings: [
     {
       key: "days",
       label: "Look-back",
       default: 30,
+      // The snapshot keeps 90 days of buys.
+      range: { what: "Insider buying's look-back (days)", unit: " days", integer: true, min: 1, max: 90, why: "The snapshot keeps 90 days." },
       options: [
         { value: 30, label: "In the last 30 days" },
         { value: 90, label: "In the last 90 days" },
@@ -79,10 +82,5 @@ export const insiders: MeasureDef = {
   cooldownDays: () => 30,
   fresh: () => ({ watch: "insiders" }),
   fits: (c) => c.value != null,
-  // The snapshot keeps 90 days of buys.
-  problem: (c) => {
-    if (!wholeIn(c.value, 1, 10)) return `Insider buying counts 1 to 10 whole insiders; ${shown(c.value)} isn't.`;
-    const days = num(c.settings?.days) ?? 30;
-    return wholeIn(days, 1, 90) ? null : `Insider buying looks back 1 to 90 whole days, the most the snapshot keeps; ${shown(days)} isn't.`;
-  },
+  shape: "Insider buying takes a number: how many insiders.",
 };

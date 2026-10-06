@@ -54,9 +54,10 @@ export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] =
       // The big-winner switch: don't take the profit on a stock that ran up fast.
       {
         key: "fastWinnerPct",
+        range: { what: "The big-winner switch's gain (fastWinnerPct)", unit: "%", over: 0, max: 500 },
         words: (v, s) => ` (not if it ran up ${pct(Number(v))}${typeof s.fastWinnerDays === "number" ? ` within ${s.fastWinnerDays} days` : ""})`,
       },
-      { key: "fastWinnerDays" },
+      { key: "fastWinnerDays", range: { what: "The big-winner switch's days (fastWinnerDays)", unit: " days", integer: true, min: 1, max: 365 } },
     ],
   },
   {
@@ -68,8 +69,8 @@ export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] =
     position: true,
     direct: true,
     settings: [
-      { key: "startOnceUpPct", looser: true, words: (v) => `, once it has been up ${pct(Number(v))}` },
-      { key: "widenAtr", looser: true, snapshot: true, words: (v) => ` (or ${v}× its daily range, if wider)` },
+      { key: "startOnceUpPct", looser: true, range: { what: "A trail's start (startOnceUpPct)", unit: "%", min: 0, max: 200 }, words: (v) => `, once it has been up ${pct(Number(v))}` },
+      { key: "widenAtr", looser: true, snapshot: true, range: { what: "A trail's widening (widenAtr)", unit: "×", over: 0, max: 10 }, words: (v) => ` (or ${v}× its daily range, if wider)` },
     ],
   },
   { id: "sma20", label: "20-day average", group: "Averages", chip: "20-day average", words: "the 20-day average", snapshot: true },
