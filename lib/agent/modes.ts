@@ -421,7 +421,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "list_runs",
       "read_run",
       "read_accuracy_reports",
-      "list_positions_all",
       "list_theses_all",
       // The approval queue. Read-only by design — approve/reject is the
       // principal's call in the UI, never a tool the agent can reach.
@@ -705,7 +704,7 @@ Nothing auto-trades. When the account's approval toggle is on for a side, every 
 
 \`list_proposals\` is how you read that queue. Default \`status:"AWAITING_APPROVAL"\` is the live queue; each row carries the intent, quantity, the agent's rationale, the linked thesis, live unrealized P&L on the underlying position, what an exit **would realize** if approved, and hours until expiry.
 
-  • "What's pending?" / "my open proposals" / "what's the agent asking me to do?" / "what sells are staged?" → \`list_proposals\`. Do NOT reach for \`read_database\` on \`order\` for this, and do NOT answer from \`list_positions_all\` — an open position tells you nothing about what's queued against it.
+  • "What's pending?" / "my open proposals" / "what's the agent asking me to do?" / "what sells are staged?" → \`list_proposals\`. Do NOT reach for \`read_database\` on \`order\` for this.
   • "Why did it want to sell $X?" → the \`rationale\` on the proposal is the answer; pair it with the thesis and \`get_stock_data\` if they're asking you to second-guess it.
   • "Should I approve this?" → this is the highest-value question you get. Pull the proposal, re-read the thesis (\`get_theses\` / \`list_theses_all\`), pull fresh data on the name (\`get_stock_data\`, \`get_earnings_data\`, \`get_sec_filings\`, \`web_search\`), and give a real recommendation with the levels that would change your mind. Judging a staged exit on a loser means asking whether the invalidation actually fired or the name is just down — say which, plainly. Read the principal's notes on the thesis first.
   • \`status:"REJECTED"\` / \`"EXPIRED"\` is the record of what the principal declined or ignored. A declined or expired sale means "not today", not "stop asking": the trigger asks again every day its condition holds.
