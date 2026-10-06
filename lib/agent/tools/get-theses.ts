@@ -163,7 +163,8 @@ export const getTheses = defineTool({
   // cases, score notes) come back only on a read of named stocks: 29% and
   // 29% of the morning read on 2026-10-02, and the row's `context` already
   // sums up the history. Each row keeps a one-line `research` note instead:
-  // when it was written, at what price, and how to read it.
+  // when it was written and at what price. How to read it is said once, in
+  // the tool's description.
   forModel: (result, input) => {
     if (!result.ok) return result;
     const data = result.data as Record<string, unknown> | undefined;
@@ -1614,7 +1615,7 @@ export function rowForModel(row: Record<string, unknown>, named: boolean): Recor
   const price = typeof row.researchPriceThen === "number" ? row.researchPriceThen : null;
   const age = (row.researchAge as { daysOld?: number | null } | undefined)?.daysOld;
   out.research = written
-    ? `Written ${written}${price != null ? ` at $${price}` : ""}${age != null ? `, ${age} days ago` : ""}.${named ? "" : ` Read it with get_theses(tickers: ["${String(row.ticker)}"]).`}`
+    ? `Written ${written}${price != null ? ` at $${price}` : ""}${age != null ? `, ${age} days ago` : ""}.`
     : "No research written yet.";
   delete out.researchPriceThen;
   delete out.researchUpdatedAt;

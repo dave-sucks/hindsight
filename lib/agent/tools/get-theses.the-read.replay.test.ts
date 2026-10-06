@@ -105,7 +105,7 @@ describe("get_theses — the read", () => {
     expect(modelRow.bullCase).toBeUndefined();
     expect(modelRow.bearCase).toBeUndefined();
     expect(modelRow.scoring).toEqual({ composite: 7, trendStrength: 2, relativeStrength: 2, entryQuality: 1, catalystFreshness: 2 });
-    expect(String(modelRow.research)).toMatch(/Written \d{4}-\d{2}-\d{2} at \$348, 51 days ago\. Read it with get_theses\(tickers: \["SYK"\]\)\./);
+    expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348, 51 days ago\.$/);
     expect(modelRow.triggerState).toBeUndefined();
     expect(String(model.historyNote)).toMatch(/named stocks/);
   });
