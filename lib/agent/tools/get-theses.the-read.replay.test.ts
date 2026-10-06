@@ -47,10 +47,10 @@ const syk = () =>
     researchUpdatedAt: new Date(Date.now() - 51 * 86_400_000),
     lastReviewedAt: new Date(Date.now() - 40 * 86_400_000),
     triggers: [
-      { id: "t_buy", action: "ENTER", predicate: { kind: "PRICE_BELOW", level: 340 }, rationale: "Buy the pullback.", cooldownDays: 1 },
-      { id: "t_floor", action: "EXIT", predicate: { kind: "PRICE_BELOW", level: 300 }, rationale: "Below the base.", cooldownDays: 1 },
-      { id: "t_target", action: "REVIEW", predicate: { kind: "PRICE_ABOVE", level: 420 }, rationale: "Target.", cooldownDays: 1 },
-      { id: "t_clock", action: "REVIEW", predicate: { kind: "REVIEW_CADENCE", days: 30 }, rationale: "Monthly.", cooldownDays: 30 },
+      { id: "t_buy", action: "ENTER", predicate: { watch: "price", is: "below", value: 340 }, rationale: "Buy the pullback.", cooldownDays: 1 },
+      { id: "t_floor", action: "EXIT", predicate: { watch: "price", is: "below", value: 300 }, rationale: "Below the base.", cooldownDays: 1 },
+      { id: "t_target", action: "REVIEW", predicate: { watch: "price", is: "above", value: 420 }, rationale: "Target.", cooldownDays: 1 },
+      { id: "t_clock", action: "REVIEW", predicate: { watch: "repeat", value: 30 }, rationale: "Monthly.", cooldownDays: 30 },
     ],
   });
 
@@ -76,8 +76,8 @@ const ceg = () =>
     researchUpdatedAt: new Date(Date.now() - 5 * 86_400_000),
     lastReviewedAt: new Date(Date.now() - 2 * 86_400_000),
     triggers: [
-      { id: "c_floor", action: "EXIT", predicate: { kind: "PRICE_BELOW", level: 262 }, rationale: "Under the gain.", cooldownDays: 1 },
-      { id: "c_clock", action: "REVIEW", predicate: { kind: "REVIEW_CADENCE", days: 30 }, rationale: "Monthly.", cooldownDays: 30 },
+      { id: "c_floor", action: "EXIT", predicate: { watch: "price", is: "below", value: 262 }, rationale: "Under the gain.", cooldownDays: 1 },
+      { id: "c_clock", action: "REVIEW", predicate: { watch: "repeat", value: 30 }, rationale: "Monthly.", cooldownDays: 30 },
     ],
   });
 
