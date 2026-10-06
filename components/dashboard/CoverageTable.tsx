@@ -17,7 +17,7 @@ import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { cn } from "@/lib/utils";
 import { PriceChange } from "@/components/ui/price-change";
 import { PnlBadge } from "@/components/ui/pnl-badge";
-import { dayDollarMove } from "@/lib/portfolio/day-move";
+import { moveDollar } from "@/lib/portfolio/move-dollar";
 import {
   Tooltip,
   TooltipContent,
@@ -135,10 +135,10 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
       ? null
       : isLifetime
         ? row.sinceDollar
-        : dayDollarMove({
+        : moveDollar({
             shares: row.shares,
             currentPrice: row.currentPrice,
-            oneDayPct: row.oneDayPct,
+            pct: row.oneDayPct,
           });
 
   return (
