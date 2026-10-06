@@ -119,13 +119,13 @@ const schema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Include recent ThesisUpdate rows per thesis. Default false. Set true for tactical mode and per-thesis review.",
+      "The raw activity log, returned for a read of named stocks (tickers or ids). Each full row's `context` already sums up what's been said since your last answer.",
     ),
   include_research: z
     .boolean()
     .optional()
     .describe(
-      "Include the LOWER-PRIORITY deep-research sections (researchData + recentCatalysts + fundamentals + latestEarnings + catalystsAndEvents + analystConsensus + insiderTechnical) per thesis. Default false. Note that snapshot + bullCase + bearCase are ALREADY in the default response (they're the three sections agents need most), as is `researchAge` (the freshness annotation). Set this true only when refreshing a thesis (thesis-writer mode) or when the agent specifically needs the full multi-section synthesis to grade against.",
+      "Also return the lower-priority deep-research sections (researchData, recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical). A read of named stocks already includes the snapshot, the bull and bear cases and the score notes.",
     ),
   history_limit: z
     .number()
@@ -151,20 +151,39 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
+    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book); each row says when its research was written and at what price. The research text itself (snapshot, bull and bear cases, score notes) and the raw activity log come back when you read named stocks (tickers or ids). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
   // renderer's shape, with the research text a second time. 14–26% of the
   // read in the recorded cases, re-sent on every later step. The screen
   // keeps them; the model reads the rows.
-  forModel: (result) => {
+  //
+  // The raw history and the writer's research text (snapshot, bull and bear
+  // cases, score notes) come back only on a read of named stocks: 29% and
+  // 29% of the morning read on 2026-10-02, and the row's `context` already
+  // sums up the history. Each row keeps a one-line `research` note instead:
+  // when it was written and at what price. How to read it is said once, in
+  // the tool's description.
+  forModel: (result, input) => {
     if (!result.ok) return result;
     const data = result.data as Record<string, unknown> | undefined;
-    if (!data || !("cards" in data)) return result;
+    if (!data) return result;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { cards, ...rest } = data;
-    return { ...result, data: rest };
+    const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
+    if (!Array.isArray(rest.theses)) return { ...result, data: rest };
+    const theses = (rest.theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, named));
+    return {
+      ...result,
+      data: {
+        ...rest,
+        theses,
+        ...(!named && input?.include_history
+          ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `context` already sums up what's been said." }
+          : {}),
+      },
+    };
   },
 
   progressLabel: (args) => {
@@ -217,13 +236,16 @@ export const getTheses = defineTool({
       (args.tickers && args.tickers.length > 0) ||
       (args.ids && args.ids.length > 0)
     );
+    // History and research come back only on a read of named stocks, so
+    // asking for them on the whole book is not a reason to send every row
+    // full: 27 of 40 morning opening reads in September did exactly that,
+    // because this tool's own description invited it, and each read ran
+    // 180,000-330,000 characters (docs/plans/AGENT_ARCHITECTURE.md, 2.3).
     const explicitScope =
       explicitTarget ||
       !!(
         (args.status && args.status.length > 0) ||
-        (args.horizon && args.horizon.length > 0) ||
-        args.include_history ||
-        args.include_research
+        (args.horizon && args.horizon.length > 0)
       );
     const detailMode: "actionable" | "book" = explicitTarget
       ? "book"
@@ -348,7 +370,7 @@ export const getTheses = defineTool({
     // History: one batched query, grouped per thesis on return. Avoids the
     // N+1 we'd get from a per-thesis findMany, even at limit=50.
     let historyByThesis = new Map<string, unknown[]>();
-    if (args.include_history && theses.length > 0) {
+    if (args.include_history && explicitTarget && theses.length > 0) {
       const allHistory = await prisma.thesisUpdate.findMany({
         where: { thesisId: { in: theses.map((t) => t.id) } },
         orderBy: { timestamp: "desc" },
@@ -377,6 +399,21 @@ export const getTheses = defineTool({
         const arr = historyByThesis.get(h.thesisId);
         if (arr && arr.length < histLimit) arr.push(h);
       }
+    }
+
+    // The price when the research was written: the writer's latest save on
+    // each stock. The research text and the score are as old as that visit
+    // (SYK on 2026-10-02: written at $348, the stock at $273, 51 days on), so
+    // the row says so next to them.
+    const researchPriceByThesis = new Map<string, number>();
+    if (theses.length > 0) {
+      const writerSaves = await prisma.thesisUpdate.findMany({
+        where: { thesisId: { in: theses.map((t) => t.id) }, priceAtTime: { not: null }, run: { mode: "THESIS_WRITER" } },
+        orderBy: { timestamp: "desc" },
+        distinct: ["thesisId"],
+        select: { thesisId: true, priceAtTime: true },
+      });
+      for (const u of writerSaves) if (u.priceAtTime != null) researchPriceByThesis.set(u.thesisId, u.priceAtTime);
     }
 
     // ── needsAction (Fix #2) ───────────────────────────────────────────
@@ -1298,6 +1335,7 @@ export const getTheses = defineTool({
         // proposed this exit and the user declined N×" — don't re-propose
         // unless the thesis materially changed. 0 for non-HOLDING rows.
         unapprovedExitCount: unapprovedExitCountByThesisId.get(t.id) ?? 0,
+        researchPriceThen: researchPriceByThesis.get(t.id) ?? null,
         // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
         // recent protective (STOP) declines in the last 7d + the principal's
         // verbatim reject message + the recent low (lowest low since the last
@@ -1556,3 +1594,44 @@ export const getTheses = defineTool({
     };
   },
 });
+
+/** Fields on a live row that only ever carry bookkeeping or a state the row cannot be in. */
+const NOT_FOR_THE_MODEL = ["sourceSignalIds", "sourceKind", "parentThesisId", "invalidatedAt", "invalidReason", "closedAt", "closeReason", "promotedAt", "paperTenureDays", "paperRealizedPnl", "paperReviewCount"];
+
+/**
+ * One full row as the model reads it (see forModel above). The screen and a
+ * saved run keep the whole row.
+ */
+export function rowForModel(row: Record<string, unknown>, named: boolean): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...row };
+  // The evaluator's fire bookkeeping for inherited triggers; the run reads
+  // what fired from needsAction and context.
+  delete out.triggerState;
+  for (const k of NOT_FOR_THE_MODEL) {
+    const v = out[k];
+    if (v == null || (Array.isArray(v) && v.length === 0) || v === 0) delete out[k];
+  }
+  const written = typeof row.researchUpdatedAt === "string" ? row.researchUpdatedAt.slice(0, 10) : row.researchUpdatedAt instanceof Date ? row.researchUpdatedAt.toISOString().slice(0, 10) : null;
+  const price = typeof row.researchPriceThen === "number" ? row.researchPriceThen : null;
+  const age = (row.researchAge as { daysOld?: number | null } | undefined)?.daysOld;
+  out.research = written
+    ? `Written ${written}${price != null ? ` at $${price}` : ""}${age != null ? `, ${age} days ago` : ""}.`
+    : "No research written yet.";
+  delete out.researchPriceThen;
+  delete out.researchUpdatedAt;
+  if (!named) {
+    delete out.history;
+    delete out.snapshot;
+    delete out.bullCase;
+    delete out.bearCase;
+    const scoring = row.scoring as Record<string, unknown> | null | undefined;
+    if (scoring && typeof scoring === "object") {
+      const scores: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(scoring)) {
+        scores[k] = v && typeof v === "object" && "score" in (v as Record<string, unknown>) ? (v as Record<string, unknown>).score : v;
+      }
+      out.scoring = scores;
+    }
+  }
+  return out;
+}
