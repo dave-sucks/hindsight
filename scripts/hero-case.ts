@@ -42,6 +42,7 @@ import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { prisma } from "@/lib/prisma";
+import { isMarketOpen } from "@/lib/market-hours";
 
 type Cond = "present" | "absent" | string | number | boolean | { lt?: number; gt?: number; regex?: string };
 interface Rule { tool: string; where?: Record<string, Cond> }
@@ -120,9 +121,17 @@ function inStoredShape(o: unknown): unknown {
 
 type LiveRead = { execute: (input: unknown, opts: { toolCallId: string; messages: ModelMessage[] }) => Promise<unknown>; toModelOutput?: (o: { toolCallId: string; input: unknown; output: unknown }) => unknown };
 
-/** The case's `execute` tools, built as the run's owner on the run's account. */
-async function liveReads(c: HeroCase): Promise<Record<string, LiveRead> | null> {
+/**
+ * The case's `execute` tools, built as the run's owner on the run's account.
+ * Refused while the market is open unless `--live-reads-in-session` is given:
+ * a read spends the shared market-data budget the five-minute trigger check
+ * has first claim on (quote-budget.ts), and its prices move between runs.
+ */
+async function liveReads(c: HeroCase, inSession: boolean): Promise<Record<string, LiveRead> | null> {
   if (!c.execute?.length) return null;
+  if (isMarketOpen() && !inSession) {
+    throw new Error(`the case runs ${c.execute.join(", ")} for real and the market is open; run it after the close, or pass --live-reads-in-session`);
+  }
   for (const name of c.execute) if (!READS.has(name)) throw new Error(`${name} is not a read; a case can run only ${[...READS].join(", ")}`);
   if (!c.source?.runId) throw new Error("a case that runs reads needs source.runId");
   const run = await prisma.researchRun.findUniqueOrThrow({ where: { id: c.source.runId }, select: { userId: true, accountId: true } });
@@ -250,7 +259,7 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
   return out;
 }
 
-async function runCase(name: string, runs: number, writtenPath: string | null): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
+async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   // The triggers a case recorded are read as the app reads stored ones: the
   // database client hands every trigger back in the condition shape.
@@ -296,7 +305,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
         : undefined
       : { openai: { strictJsonSchema: true, promptCacheKey: `hero-${name}` } };
   // A refused call gets the refusal back and one more turn, as it does in production.
-  const live = await liveReads(c);
+  const live = await liveReads(c, inSession);
   const maxTurns = c.scoreOn || live ? (c.maxTurns ?? 3) : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
@@ -397,7 +406,8 @@ async function main() {
     : args.filter((a) => !a.startsWith("--") && a !== String(runs) && a !== writtenPath);
   if (names.length === 0) throw new Error("usage: hero-case.ts <case>... | --all  [--runs N]");
   const results = [];
-  for (const name of names) results.push(await runCase(name, runs, writtenPath));
+  const inSession = args.includes("--live-reads-in-session");
+  for (const name of names) results.push(await runCase(name, runs, writtenPath, inSession));
   console.log("\n| Case | Pass | Looks for |\n|---|---|---|");
   for (const r of results) console.log(`| ${r.name} | ${r.passes}/${r.runs} | ${r.lookFor} |`);
 }

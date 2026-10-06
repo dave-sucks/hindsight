@@ -59,6 +59,11 @@ real reply; every other call still gets the stub. The turn repeats until the
 model answers without a call, up to `maxTurns`. It is how a case checks what
 a read returns, not only that it was made.
 
+While the market is open the runner refuses such a case: the reads spend the
+market-data budget the five-minute trigger check has first claim on, and the
+prices move between runs. Run it after the close, or pass
+`--live-reads-in-session` to run it anyway.
+
 For a chat with no analyst selected, give `-` for the ticker:
 `hero-case-from-run.ts <runId> - <case-name>` cuts before the model's first
 turn.
