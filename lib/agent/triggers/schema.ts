@@ -11,7 +11,8 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { isShape, shapeOf, toLegacy } from "./condition/legacy";
 import { legacyPredicateSchema } from "./condition/legacy-schema";
-import type { Watch, When } from "./condition/types";
+import type { VariableId, Watch, When } from "./condition/types";
+import { conditionsOf } from "./condition/types";
 import { MEASURES, declaredOnly } from "./condition/catalog";
 
 // Recursive shape for AND/OR composition. Zod doesn't support direct
@@ -50,8 +51,8 @@ export function predicateInputSchema() {
     watch: z.enum(Object.keys(MEASURES) as [Watch, ...Watch[]]).describe("The measure, from the list above."),
     is: z.enum(["below", "above", "near", "before", "after", "miss", "beat"]).optional().describe("Its direction, from the list; omit where a measure has one choice."),
     value: z.number().optional().describe("The number, in the measure's unit."),
-    variable: z.string().optional().describe("What the number is measured from or stands in for, a date, or a filing, from the list."),
-    settings: settingsSchema().optional().describe("The measure's own options, from the list."),
+    variable: variableSchema().optional().describe("What the number is measured from, or what stands in for it, from the measure's list. A price takes a dollar value or a variable, not both."),
+    settings: settingsSchema().optional().describe("Only the settings the measure or its variable takes; leave every other key out."),
   });
   const group = z.object({
     match: z.enum(["all", "any"]).describe("all = every condition holds; any = one does."),
@@ -72,11 +73,20 @@ export function predicateInputSchema() {
     .superRefine((w, ctx) => {
       const spelled = isShape(w) ? toLegacy(w) : null;
       if (!spelled || !legacyPredicateSchema.safeParse(spelled).success) {
-        ctx.addIssue({ code: "custom", message: "Not a condition this app can check: see the measures and what each takes." });
+        ctx.addIssue({ code: "custom", message: valueAndVariable(w) ?? "Not a condition this app can check: see the measures and what each takes." });
       }
     })
     // A setting the measure doesn't take is dropped, never stored.
     .transform((w) => declaredOnly(w as When));
+}
+
+/** A measure whose variable replaces its number, sent both: the one refusal a model can't read from the list. */
+function valueAndVariable(w: unknown): string | null {
+  if (!isShape(w)) return null;
+  const both = conditionsOf(w as When).find((c) => MEASURES[c.watch]?.variables?.mode === "replace" && c.value != null && c.variable != null);
+  if (!both) return null;
+  const m = MEASURES[both.watch];
+  return `${m.label} takes a number or a variable, not both: send value alone for a fixed level, or variable alone to follow ${both.variable}.`;
 }
 
 /** Each measure in one line: its directions, its number, its variables and settings. */
@@ -98,20 +108,32 @@ function measureGuide(): string {
 /**
  * Every setting a measure or a variable takes, by key, from the catalog. The
  * SDK writes a record as an object that allows no keys, so the keys are
- * listed; which measure takes which is in the list above, and the save checks it.
+ * listed, each saying what takes it: a model shown eleven bare keys filled
+ * every one with a 0 and was refused. The save checks it again.
  */
 function settingsSchema() {
-  const defs = Object.values(MEASURES).flatMap((m) => [
-    ...(m.settings ?? []),
-    ...(m.variables?.options ?? []).flatMap((o) => o.settings ?? []),
-  ]);
+  const owners = new Map<string, { sample: unknown; by: string[] }>();
+  const own = (d: { key: string; default?: unknown; options?: readonly { value: unknown }[] }, by: string) => {
+    const o = owners.get(d.key) ?? { sample: d.options?.[0]?.value ?? d.default, by: [] };
+    if (!o.by.includes(by)) o.by.push(by);
+    owners.set(d.key, o);
+  };
+  for (const m of Object.values(MEASURES)) {
+    for (const d of m.settings ?? []) own(d, m.id);
+    for (const v of m.variables?.options ?? []) for (const d of v.settings ?? []) own(d, `variable ${v.id}`);
+  }
   const shape: Record<string, z.ZodOptional<z.ZodTypeAny>> = {};
-  for (const d of defs) {
-    if (shape[d.key]) continue;
-    const sample = d.options?.[0]?.value ?? d.default;
-    shape[d.key] = (typeof sample === "boolean" ? z.boolean() : typeof sample === "string" ? z.string() : z.number()).optional();
+  for (const [key, { sample, by }] of owners) {
+    const type = typeof sample === "boolean" ? z.boolean() : typeof sample === "string" ? z.string() : z.number();
+    shape[key] = type.describe(`Only with ${by.join(" or ")}.`).optional();
   }
   return z.object(shape);
+}
+
+/** Every variable a measure takes, from the catalog: the list is closed. */
+function variableSchema() {
+  const ids = [...new Set(Object.values(MEASURES).flatMap((m) => (m.variables?.options ?? []).map((o) => o.id)))];
+  return z.enum(ids as [VariableId, ...VariableId[]]);
 }
 
 /** Variable ids, with the filing ones written as patterns. */
@@ -279,7 +301,6 @@ export const triggersInputArraySchema = z
 export const editTriggerOpSchema = z.looseObject({
   id: z.string().describe("The trigger's id, as shown on the thesis."),
   value: z.number().optional().describe("The new number, in the trigger's own unit (a price, a %, a count of days)."),
-  variable: z.string().optional().describe("The new variable: what the number is measured from, or what stands in for it."),
   action: triggerActionSchema.optional(),
   fire_mode: z.enum(["TACTICAL", "DIRECT"]).optional(),
   rationale: z.string().optional().describe("REQUIRED when the value changes — the sentence moves with the number."),

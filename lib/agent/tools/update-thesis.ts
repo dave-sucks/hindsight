@@ -25,7 +25,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { VariableId } from "@/lib/agent/triggers/condition";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
@@ -887,7 +886,6 @@ export const updateThesis = defineTool({
         op: "edit" as const,
         id: e.id,
         ...editNumber(e),
-        variable: e.variable as VariableId | undefined,
         action: e.action,
         fireMode: e.fire_mode,
         rationale: e.rationale,

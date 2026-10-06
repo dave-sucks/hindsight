@@ -50,7 +50,6 @@ import {
   sentenceOf,
   shapeOf,
   type Condition,
-  type VariableId,
 } from "./condition";
 import { applyTriggerCooldownDefaults } from "./defaults";
 import { stampWrittenPrice } from "./written-price";
@@ -79,8 +78,6 @@ export type TriggerOp =
       id: string;
       /** The new number, whatever the measure: a price, a %, a count of days. */
       value?: number;
-      /** The new variable: what the number is measured from, or what stands in for it. */
-      variable?: VariableId;
       /** The old field the caller named (`level`, `pct`, `days`): the number must be that kind of number. */
       unit?: "level" | "pct" | "days";
       /** On a two-condition (AND / OR) trigger: which condition's number, 0-based. */
@@ -338,9 +335,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         );
       }
     }
-    if (op.variable !== undefined && (!subject || !measureOf(subject).variables?.options.some((v) => v.id === op.variable))) {
-      return refuse("edit", op.id, `Edit ${name}`, `This trigger can't be measured from \`${op.variable}\` — it is ${conditionSentence(child ?? target.predicate)}.`);
-    }
     if (
       op.fireMode === "DIRECT" &&
       ((op.action ?? target.action) !== "EXIT" || !held || !isDirectEligiblePredicate(target.predicate))
@@ -354,11 +348,10 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
 
     let predicate: When = tw;
-    if (subject && (wanted || op.variable !== undefined)) {
+    if (subject && wanted) {
       let next: Condition = {
         ...subject,
-        ...(wanted ? { value: wanted.value } : {}),
-        ...(op.variable !== undefined ? { variable: op.variable } : {}),
+        value: wanted.value,
       };
       const slot = !group ? levelSlotOf(target, direction) : null;
       if (wanted && slot && isLevel(subject)) {
@@ -418,7 +411,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     const onClose = (p: When) => levelOf(p)?.close === true;
     if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
-    if (op.variable !== undefined && op.variable !== subject?.variable) parts.push(`${name}: now ${conditionSentence(predicate)}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
     if (op.fireMode && op.fireMode !== (target.fireMode ?? "TACTICAL"))
