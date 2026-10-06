@@ -63,7 +63,9 @@ export function conditionProblem(c: Condition, ctx: CheckContext): string | null
     const button = m.buttons?.find((b) => b.is === c.is)?.label ?? m.word ?? "this";
     return `${capitalise(variableDef(c.variable).chip)} doesn't work with ${button}. Pick another with the {x} button.`;
   }
-  if (!m.fits(c)) return "This can't be saved yet.";
+  // The same sentence the save refuses with, so the form and the server agree.
+  const refused = m.problem(c);
+  if (refused) return refused;
   return levelProblem(c, ctx);
 }
 

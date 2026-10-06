@@ -2,7 +2,7 @@
  * Zod schemas for triggers: the save gate every writer goes through (the
  * agents' tools, the trigger popover, the level rules) and the condition the
  * agents write. A condition is in the shape (./condition) and is valid when
- * its measure says so (`whenValid`, from the catalog). A new measure is one
+ * its measure says so (`refusalOf`, from the catalog). A new measure is one
  * catalog entry; this file lists the measures from the catalog and needs no
  * change.
  */
@@ -11,19 +11,21 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { Condition, VariableId, Watch, When } from "./condition/types";
 import { MEASURES, declaredOnly } from "./condition/catalog";
-import { whenValid } from "./condition/valid";
+import { refusalOf } from "./condition/valid";
 
 /**
  * A trigger's condition, in the condition shape (./condition): one its
- * measures can check, every number in range (`whenValid`, from the catalog).
- * Anything else is refused: a removed condition is never parsed as a live one.
+ * measures can check, every number in range (from the catalog). Anything else
+ * is refused with the measure's sentence naming the number; a removed
+ * condition is never parsed as a live one.
  */
 export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
-  if (!whenValid(p)) {
-    ctx.addIssue({ code: "custom", message: "Not a condition this app can check." });
+  const refused = refusalOf(p);
+  if (refused) {
+    ctx.addIssue({ code: "custom", message: refused });
     return z.NEVER;
   }
-  return declaredOnly(p);
+  return declaredOnly(p as When);
 });
 
 /**
@@ -68,9 +70,8 @@ function buildPredicateInputSchema() {
     .union([stored, z.object({ match: group.shape.match, conditions: z.array(z.union([stored, group])).min(2).max(8) })])
     .describe(`One condition, or { match, conditions } for two or more. ${measureGuide()}`)
     .superRefine((w, ctx) => {
-      if (!whenValid(w)) {
-        ctx.addIssue({ code: "custom", message: "Not a condition this app can check: see the measures and what each takes." });
-      }
+      const refused = refusalOf(w);
+      if (refused) ctx.addIssue({ code: "custom", message: refused });
     })
     // A setting the measure doesn't take is dropped, never stored.
     .transform((w) => declaredOnly(w as When));

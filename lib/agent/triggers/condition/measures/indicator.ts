@@ -3,7 +3,7 @@
 
 import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
 import type { Condition } from "../types";
-import { isNum, num, wholeIn } from "../words";
+import { isNum, num, shown, wholeIn } from "../words";
 
 const window = (c: Condition) => (typeof c.settings?.window === "string" ? c.settings.window : "3M");
 
@@ -17,7 +17,7 @@ export const volume: MeasureDef = {
   cooldownDays: () => 1,
   fresh: () => ({ watch: "volume" }),
   fits: (c) => c.value != null,
-  valid: (c) => isNum(c.value) && c.value > 0 && c.value <= 50,
+  problem: (c) => (isNum(c.value) && c.value > 0 && c.value <= 50 ? null : `Volume can be more than 0 and up to 50× normal; ${shown(c.value)}× isn't.`),
 };
 
 export const rsi: MeasureDef = {
@@ -42,7 +42,10 @@ export const rsi: MeasureDef = {
   cooldownDays: () => 1,
   fresh: () => ({ watch: "rsi", is: "below" }),
   fits: (c) => c.value != null && (c.is === "above" || c.is === "below"),
-  valid: (c) => rsi.fits(c) && isNum(c.value) && c.value >= 0 && c.value <= 100,
+  problem: (c) => {
+    if (!rsi.fits(c)) return "RSI is above or below a number.";
+    return isNum(c.value) && c.value >= 0 && c.value <= 100 ? null : `RSI runs 0 to 100; ${shown(c.value)} isn't.`;
+  },
 };
 
 export const strength: MeasureDef = {
@@ -71,7 +74,10 @@ export const strength: MeasureDef = {
   fresh: () => ({ watch: "strength", settings: { window: "3M" } }),
   fits: (c) => c.value != null && ["1M", "3M", "6M"].includes(window(c)),
   // Points ahead of the S&P; behind it is legal ("not lagging by more than 5").
-  valid: (c) => strength.fits(c) && isNum(c.value) && c.value >= -100 && c.value <= 500,
+  problem: (c) => {
+    if (!strength.fits(c)) return "Strength vs the S&P takes a number and a window of 1M, 3M or 6M.";
+    return isNum(c.value) && c.value >= -100 && c.value <= 500 ? null : `Strength vs the S&P can be -100 to 500 points; ${shown(c.value)} isn't.`;
+  },
 };
 
 export const gap: MeasureDef = {
@@ -90,11 +96,12 @@ export const gap: MeasureDef = {
   cooldownDays: (c) => Math.max(1, num(c.settings?.withinDays) ?? 1),
   fresh: () => ({ watch: "gap", settings: { volume: 3, withinDays: 3 } }),
   fits: (c) => c.value != null,
-  valid: (c) => {
-    if (!isNum(c.value) || c.value <= 0 || c.value > 100) return false;
+  problem: (c) => {
+    if (!isNum(c.value) || c.value <= 0 || c.value > 100) return `A gap can be more than 0% and up to 100%; ${shown(c.value)}% isn't.`;
     const volume = num(c.settings?.volume) ?? 3;
+    if (!(volume >= 0 && volume <= 50)) return `A gap's volume can be 0 to 50× normal; ${shown(volume)}× isn't.`;
     const within = num(c.settings?.withinDays);
     // Up to the 10 sessions the snapshot keeps gaps for.
-    return volume >= 0 && volume <= 50 && (within == null || wholeIn(within, 1, 10));
+    return within == null || wholeIn(within, 1, 10) ? null : `A gap counts within 1 to 10 whole sessions, the most the snapshot keeps; ${shown(within)} isn't.`;
   },
 };
