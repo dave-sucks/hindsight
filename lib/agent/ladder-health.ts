@@ -31,7 +31,7 @@
  *     - move-from-entry % — floor = avgCost × (1 ∓ pct/100); the plan
  *       names only the first two, but a drawdown-from-entry EXIT locks a
  *       floor by the same semantics, so it counts
- *   TRIM / MOVE_STOP / REVIEW rungs do NOT count — a partial trim or a
+ *   TRIM / REVIEW rungs do NOT count — a partial trim or a
  *   proposal-to-move-the-stop doesn't lock the gain. Predicates nested in an
  *   OR count (any branch fires alone); predicates inside an AND don't (the
  *   level alone doesn't guarantee the exit).

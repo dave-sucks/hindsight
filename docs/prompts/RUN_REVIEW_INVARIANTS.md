@@ -53,7 +53,7 @@ WITH th AS (SELECT t.ticker, t.status, t.direction, t."entryPrice" e, t."targetP
 SELECT ticker, status, e, tg, s,
  (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->>'action'='ENTER') AS n_enter,
  (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->>'action'='EXIT') AS n_exit,
- (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->>'action' IN ('ADD','TRIM','MOVE_STOP')) AS n_pos,
+ (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->>'action' IN ('ADD','TRIM')) AS n_pos,
  (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->'predicate'->>'kind'='REVIEW_CADENCE') AS n_clock,
  CASE WHEN direction='LONG' AND e>s THEN round(((tg-e)/(e-s))::numeric,2) END AS rr,
  (SELECT count(*) FROM "Position" p WHERE p.symbol=th.ticker AND p.status='OPEN') AS open_pos

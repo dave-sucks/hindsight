@@ -180,7 +180,6 @@ export const triggerActionSchema = z.enum([
   "ENTER",
   "ADD",
   "TRIM",
-  "MOVE_STOP",
   // Never authored — derived at fire time by effectiveTriggerAction. Listed
   // so a stored value round-trips rather than failing the parse (which would
   // silently drop the whole ladder — see parseTriggersResilient's header).

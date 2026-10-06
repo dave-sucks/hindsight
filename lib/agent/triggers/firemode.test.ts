@@ -56,7 +56,7 @@ describe("defaultFireModeForAction", () => {
     expect(defaultFireModeForAction("EXIT")).toBe("DIRECT");
   });
 
-  it.each(["ENTER", "REVIEW", "ADD", "TRIM", "MOVE_STOP"] as const)(
+  it.each(["ENTER", "REVIEW", "ADD", "TRIM"] as const)(
     "%s → TACTICAL (judgment-bearing actions wake an agent)",
     (action) => {
       expect(defaultFireModeForAction(action)).toBe("TACTICAL");

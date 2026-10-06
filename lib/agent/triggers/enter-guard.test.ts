@@ -95,7 +95,7 @@ describe("validateEnterTriggerRequired", () => {
   });
 
   // ── A floor on a watch item is legal now (DAV-195 L5) ─────────────────
-  // The guard used to reject EXIT/TRIM/ADD/MOVE_STOP on a WATCHING thesis,
+  // The guard used to reject EXIT/TRIM/ADD on a WATCHING thesis,
   // because a price level firing on something we don't own had no meaning
   // and would spawn an orphan tactical run. `effectiveTriggerAction` gives
   // it one — DEMOTE, inline, no spawn — so the rule is gone and the write
@@ -139,7 +139,7 @@ describe("validateEnterTriggerRequired", () => {
   });
 
   it("tolerates position-scoped actions on a watch item without refusing the write", () => {
-    // TRIM / ADD / MOVE_STOP remain meaningless before we own the name, but
+    // TRIM / ADD remain meaningless before we own the name, but
     // they are inert rather than harmful — they read an open position and
     // evaluate false without one. Refusing the whole write over them cost
     // more than it saved.
@@ -391,7 +391,7 @@ describe("validateEnterTriggerRequired", () => {
     expect(result.reason).toBe("missing-exit-trigger-on-active");
   });
 
-  it("ACTIVE LONG with EXIT + TRIM + ADD + MOVE_STOP + REVIEW (full HELD set): ok", () => {
+  it("ACTIVE LONG with EXIT + TRIM + ADD + REVIEW (full HELD set): ok", () => {
     const trim: Trigger = {
       id: "trig-trim",
       predicate: { watch: "price", is: "above", value: 150 },
@@ -404,17 +404,11 @@ describe("validateEnterTriggerRequired", () => {
       action: "ADD",
       rationale: "Add on beat",
     };
-    const moveStop: Trigger = {
-      id: "trig-move-stop",
-      predicate: { watch: "price", is: "above", value: 120 },
-      action: "MOVE_STOP",
-      rationale: "Trail stop up",
-    };
     expect(
       validateEnterTriggerRequired({
         direction: "LONG",
         status: "HOLDING",
-        triggers: [EXIT_STOP, trim, add, moveStop, REVIEW_EARNINGS],
+        triggers: [EXIT_STOP, trim, add, REVIEW_EARNINGS],
         targetPrice: 100,
       }),
     ).toEqual({ ok: true });

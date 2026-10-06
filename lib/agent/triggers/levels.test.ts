@@ -391,7 +391,7 @@ describe("resolveLadder — position actions never reach an un-held thesis (2026
     action: "EXIT",
   });
 
-  it("drops ADD / TRIM / MOVE_STOP on WATCHING and PROMOTED at every level", () => {
+  it("drops ADD / TRIM on WATCHING and PROMOTED at every level", () => {
     for (const state of ["WATCHING", "PROMOTED"] as const) {
       const ids = resolveLadder({
         thesis: [trim],

@@ -21,7 +21,7 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
 - **predicate** — the condition, in one shape (`lib/agent/triggers/condition/types.ts`):
   `{ watch, is?, value?, variable?, settings? }` for one condition, or
   `{ match: "all" | "any", conditions }` for two or more.
-- **action** — what firing means: `ENTER | EXIT | REVIEW | ADD | TRIM | MOVE_STOP`.
+- **action** — what firing means: `ENTER | EXIT | REVIEW | ADD | TRIM`.
 - **rationale** — prose the agent reads when it acts.
 - **cooldownDays** — don't re-fire within N days (see §6).
 - **fireMode** — `TACTICAL` (default) or `DIRECT` (see §4).

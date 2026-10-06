@@ -16,8 +16,8 @@
  *
  * Each trigger has three parts:
  *   - predicate: what to check (this file)
- *   - action:    what to do when it fires (REVIEW / EXIT / ADD / TRIM /
- *                MOVE_STOP) — the agent executes this in tactical mode
+ *   - action:    what to do when it fires (REVIEW / EXIT / ADD / TRIM) —
+ *                the agent executes this in tactical mode
  *   - rationale: prose for the LLM to read when it acts
  *
  * The predicate union is intentionally narrow at v1. Add cases as needed,
@@ -54,7 +54,7 @@ export type Urgency = "LOW" | "MEDIUM" | "HIGH" | "BREAKING";
  * the action is the default, not a hard rule.
  *
  * Action by thesis state:
- *   HELD positions    — EXIT, TRIM, ADD, MOVE_STOP, REVIEW
+ *   HELD positions    — EXIT, TRIM, ADD, REVIEW
  *   WATCHING theses   — ENTER, REVIEW
  *
  * ENTER fires when a watchlist entry condition is met (e.g. price breaks
@@ -70,7 +70,6 @@ export type TriggerAction =
   | "ENTER"
   | "ADD"
   | "TRIM"
-  | "MOVE_STOP"
   /**
    * Set the plan down: drop the buy / floor / target levels, keep watching.
    *

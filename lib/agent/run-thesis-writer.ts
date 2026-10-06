@@ -370,7 +370,7 @@ decision by the orchestrator — you are writing the research and the plan.`;
 
   const triggerBlock = isHeldRefresh
     ? `TRIGGERS — YOU ARE REFRESHING A HELD THESIS (open position):
-  • Legal actions: EXIT, REVIEW, TRIM, ADD, MOVE_STOP. NEVER ENTER —
+  • Legal actions: EXIT, REVIEW, TRIM, ADD. NEVER ENTER —
     we already own it.
   • At least one EXIT rung on the stop ({ watch: "price", is: "below",
     value: stop } for LONG, is: "above" for SHORT) — that's the
@@ -389,14 +389,14 @@ decision by the orchestrator — you are writing the research and the plan.`;
     : isPromotedRefresh
       ? `TRIGGERS — YOU ARE REFRESHING A PROMOTED THESIS (no live position):
   • The paper position was force-closed at promotion. Legal actions:
-    ENTER + REVIEW only. NEVER EXIT/TRIM/ADD/MOVE_STOP — there is no
+    ENTER + REVIEW only. NEVER EXIT/TRIM/ADD — there is no
     position to manage.
   • You do NOT decide re-entry. Status stays PROMOTED; the next daily
     run reads your refreshed research and decides RE-ENTER (place_trade)
     / DEFER (downgrade to WATCHING) / KILL. Frame the note so that
     decision is easy, and put your recommended call in the rationale.`
       : `TRIGGERS — WATCHING thesis (no position; we're waiting for a reason to buy):
-  • Legal actions: ENTER + REVIEW only. NEVER EXIT/TRIM/ADD/MOVE_STOP —
+  • Legal actions: ENTER + REVIEW only. NEVER EXIT/TRIM/ADD —
     there is no position.
   • The ENTER rung follows the level: { watch: "price", is: "above",
     value: entry_price } for a breakout above the tape, is: "below" for

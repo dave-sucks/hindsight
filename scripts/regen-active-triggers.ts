@@ -84,24 +84,21 @@ function summarizeTriggers(triggers: Trigger[]): {
   exit: number;
   trim: number;
   add: number;
-  moveStop: number;
   review: number;
 } {
   let enter = 0;
   let exit = 0;
   let trim = 0;
   let add = 0;
-  let moveStop = 0;
   let review = 0;
   for (const t of triggers) {
     if (t.action === "ENTER") enter++;
     else if (t.action === "EXIT") exit++;
     else if (t.action === "TRIM") trim++;
     else if (t.action === "ADD") add++;
-    else if (t.action === "MOVE_STOP") moveStop++;
     else if (t.action === "REVIEW") review++;
   }
-  return { enter, exit, trim, add, moveStop, review };
+  return { enter, exit, trim, add, review };
 }
 
 async function loadTargets(flags: Flags): Promise<Target[]> {
@@ -198,13 +195,13 @@ function fmtTargets(targets: Target[]): string {
     );
     lines.push(
       `        before:  ENTER=${summary.enter} EXIT=${summary.exit} ` +
-        `TRIM=${summary.trim} ADD=${summary.add} MOVE_STOP=${summary.moveStop} ` +
+        `TRIM=${summary.trim} ADD=${summary.add} ` +
         `REVIEW=${summary.review}`,
     );
     if (heldSummary) {
       lines.push(
         `        after:   ENTER=${heldSummary.enter} EXIT=${heldSummary.exit} ` +
-          `TRIM=${heldSummary.trim} ADD=${heldSummary.add} MOVE_STOP=${heldSummary.moveStop} ` +
+          `TRIM=${heldSummary.trim} ADD=${heldSummary.add} ` +
           `REVIEW=${heldSummary.review}`,
       );
     } else {

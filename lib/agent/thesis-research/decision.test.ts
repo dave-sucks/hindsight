@@ -290,7 +290,7 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     rationale: "stop",
   };
 
-  it("mint (no position): EXIT/TRIM/ADD/MOVE_STOP are forbidden", () => {
+  it("mint (no position): EXIT/TRIM/ADD are forbidden", () => {
     const v = validateThesisDecision({ ...validLong, triggers: [exitTrigger] }, mintOpts);
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("no position exists");

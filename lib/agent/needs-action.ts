@@ -101,8 +101,7 @@ export type NeedsActionVerb =
   | "EXIT"
   | "REVIEW"
   | "ADD"
-  | "TRIM"
-  | "MOVE_STOP";
+  | "TRIM";
 
 export type NeedsAction =
   | {
