@@ -1,0 +1,56 @@
+{
+ "what": "2026-10-05, a chat with no analyst selected. The owner asks for a review of what we own: nearly out of cash, more proposals than money, is anything worth selling, and do the winners' sell levels lock in enough. The question is paraphrased. In the real chat the portfolio read came back 'No analyst context \u2014 portfolio context unavailable', so the chat listed positions and theses separately and pulled ten single-stock reads to rebuild prices and gains, and still had no cash, equity, open risk or market line.",
+ "lookFor": "Does the chat get the account (cash, equity, open risk, the market, each position's gain and stop) from one portfolio read, with nothing refused?",
+ "source": {
+  "runId": "cmuw09ivh000504jy77wnixw0",
+  "cutBeforeMessage": 1,
+  "theRunDid": [
+   "get_portfolio_context {\"include_thesis\":true}",
+   "list_proposals {}"
+  ],
+  "notes": [
+   "The chat ran in the PAPER book; every open position on the account is LIVE, so the case reads the LIVE book."
+  ]
+ },
+ "expect": {
+  "read": {
+   "tool": "get_portfolio_context",
+   "has": [
+    "data.capitalSummary.cash",
+    "data.capitalSummary.totalEquity",
+    "data.book.openRiskPct",
+    "data.book.market",
+    "data.positions.*.unrealizedPnlPct",
+    "data.positions.*.stopLoss"
+   ]
+  },
+  "never": [
+   {
+    "tool": "list_positions_all"
+   }
+  ]
+ },
+ "execute": [
+  "get_portfolio_context"
+ ],
+ "maxTurns": 4,
+ "mode": "principal",
+ "runMode": "PRINCIPAL_CHAT",
+ "promptArgs": {
+  "scopedAnalyst": null
+ },
+ "toolCtx": {
+  "runEnvironment": "LIVE"
+ },
+ "messages": [
+  {
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "I'm nearly out of cash and there are more buy proposals waiting than I can fund. Things are going well overall: I sold IOT at a loss and it has rallied since, and CEG is my one real loser but it is recovering. Tell me whether anything should be sold, on its own merits or because a new proposal has more upside, and check that each winner's sell-on-a-drop level locks in enough of the gain."
+    }
+   ]
+  }
+ ]
+}

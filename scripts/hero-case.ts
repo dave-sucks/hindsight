@@ -15,6 +15,10 @@
  * one run of a model proves nothing. The tools are described to it and never
  * run: nothing is executed, nothing touches the database or the account.
  *
+ * A case may name read-only tools that run for real (`execute`): they read
+ * the account as it is today, through the tool's own code, so a case can
+ * check what a read returns. Nothing that writes can be named.
+ *
  * A case names the decision the right answer makes (`expect`), and a run
  * passes when the turn's tool calls and text match it:
  *   call:  at least one of these calls is made (any one of the list)
@@ -37,10 +41,13 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
+import { prisma } from "@/lib/prisma";
 
 type Cond = "present" | "absent" | string | number | boolean | { lt?: number; gt?: number; regex?: string };
 interface Rule { tool: string; where?: Record<string, Cond> }
-interface Expect { call?: Rule[]; never?: Rule[]; text?: { regex: string }; neverText?: { regex: string } }
+/** A read that ran for real (`execute`) returned every one of these paths, not empty. */
+interface ReadRule { tool: string; has: string[] }
+interface Expect { call?: Rule[]; never?: Rule[]; text?: { regex: string }; neverText?: { regex: string }; read?: ReadRule }
 interface HeroCase {
   what: string;
   lookFor: string;
@@ -53,6 +60,14 @@ interface HeroCase {
    */
   scoreOn?: { ticker?: string; thesisId?: string };
   maxTurns?: number;
+  /**
+   * Read-only tools that run for real when the model calls them (only those
+   * in READS). With this set the turn is repeated until the model answers
+   * without a call, up to `maxTurns`; other calls get the stub reply.
+   */
+  execute?: string[];
+  /** The run the case was cut from: an executed read runs as its owner, on its account. */
+  source?: { runId?: string };
   mode: "principal" | "tactical" | "thesis-writer" | "research-run";
   runMode: string;
   promptArgs: Record<string, unknown>;
@@ -68,6 +83,9 @@ function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
   const t = String(a.ticker ?? a.symbol ?? "").toUpperCase();
   return (on.ticker != null && t === on.ticker.toUpperCase()) || (on.thesisId != null && a.thesis_id === on.thesisId);
 }
+
+/** The tools a case may run for real: each only reads. */
+const READS = new Set(["get_portfolio_context", "get_theses", "list_proposals", "get_market_context", "get_stock_data"]);
 
 /** Chat with no analyst selected can't write to a stock (route.ts, UNSCOPED_BLOCKED_WRITES). */
 const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "update_thesis"];
@@ -98,6 +116,20 @@ function inStoredShape(o: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(o)) out[k] = k === "predicate" ? toStoredPredicate(v) : inStoredShape(v);
   return out;
+}
+
+type LiveRead = { execute: (input: unknown, opts: { toolCallId: string; messages: ModelMessage[] }) => Promise<unknown>; toModelOutput?: (o: { toolCallId: string; input: unknown; output: unknown }) => unknown };
+
+/** The case's `execute` tools, built as the run's owner on the run's account. */
+async function liveReads(c: HeroCase): Promise<Record<string, LiveRead> | null> {
+  if (!c.execute?.length) return null;
+  for (const name of c.execute) if (!READS.has(name)) throw new Error(`${name} is not a read; a case can run only ${[...READS].join(", ")}`);
+  if (!c.source?.runId) throw new Error("a case that runs reads needs source.runId");
+  const run = await prisma.researchRun.findUniqueOrThrow({ where: { id: c.source.runId }, select: { userId: true, accountId: true } });
+  const all = createResearchTools({
+    runId: "hero-case", userId: run.userId, accountId: run.accountId, runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
+  } as never) as unknown as Record<string, LiveRead>;
+  return Object.fromEntries(c.execute.map((name) => [name, all[name]]));
 }
 
 function systemFor(c: HeroCase): string {
@@ -162,9 +194,17 @@ function matches(call: Call, rule: Rule): boolean {
   return Object.entries(rule.where ?? {}).every(([path, cond]) => holds(call.input, path, cond));
 }
 
-function score(ex: Expect | undefined, calls: Call[], text: string): { pass: boolean; why: string } {
+function score(ex: Expect | undefined, calls: Call[], text: string, reads: Array<{ toolName: string; output: unknown }> = []): { pass: boolean; why: string } {
   if (!ex) return { pass: true, why: "no expectation" };
   const why: string[] = [];
+  if (ex.read) {
+    const ran = reads.filter((r) => r.toolName === ex.read!.tool);
+    if (ran.length === 0) why.push(`no ${ex.read.tool} read`);
+    else if (!ran.some((r) => ex.read!.has.every((path) => holds(r.output, path, "present")))) {
+      const last = ran[ran.length - 1].output;
+      why.push(`${ex.read.tool} returned no ${ex.read.has.filter((path) => !holds(last, path, "present")).join(", ")}`);
+    }
+  }
   if (ex.call?.length && !ex.call.some((r) => calls.some((c) => matches(c, r)))) why.push(`no ${ex.call.map((r) => r.tool).join(" / ")} as expected`);
   for (const r of ex.never ?? []) if (calls.some((c) => matches(c, r))) why.push(`made the ${r.tool} it must not`);
   if (ex.text && !new RegExp(ex.text.regex, "i").test(text)) why.push(`text lacks /${ex.text.regex}/`);
@@ -256,10 +296,12 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
         : undefined
       : { openai: { strictJsonSchema: true, promptCacheKey: `hero-${name}` } };
   // A refused call gets the refusal back and one more turn, as it does in production.
-  const maxTurns = c.scoreOn ? (c.maxTurns ?? 3) : 2;
+  const live = await liveReads(c);
+  const maxTurns = c.scoreOn || live ? (c.maxTurns ?? 3) : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
+    const reads: Array<{ toolName: string; output: unknown }> = [];
     let text = "";
     let turns = 0;
     /** Calls the SDK could not match to the schema (a missing field, an enum written as a word). */
@@ -285,11 +327,14 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
       }
       calls.push(...turnCalls);
       text += (text ? "\n" : "") + result.text;
-      const decided = !c.scoreOn || turnCalls.length === 0 || turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!));
-      if (refusals.size === 0 && (decided || turn >= (c.scoreOn ? maxTurns : 1))) break;
-      // Not there yet: answer every call with a stub and let the model go on.
-      // Nothing is run. Ending the run is refused the way complete_run
-      // refuses it when a stock on the list has not been answered.
+      // Done when the model answers without a call, or (with scoreOn) decides on the stock.
+      const decided = turnCalls.length === 0 || (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live);
+      if (refusals.size === 0 && (decided || turn >= (c.scoreOn || live ? maxTurns : 1))) break;
+      // Not there yet: answer every call and let the model go on. A read the
+      // case runs for real gets its real reply, as the model would read it;
+      // every other call gets a stub and nothing is run. Ending the run is
+      // refused the way complete_run refuses it when a stock on the list has
+      // not been answered.
       const left = c.scoreOn?.ticker ?? c.scoreOn?.thesisId ?? "the stock";
       const reply = result.response.messages as ModelMessage[];
       messages.push(...reply);
@@ -300,27 +345,37 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
       const unanswered = result.toolCalls.filter((t) => !answered.has(t.toolCallId));
       if (unanswered.length) messages.push({
         role: "tool",
-        content: unanswered.map((t) => ({
-          type: "tool-result" as const,
-          toolCallId: t.toolCallId,
-          toolName: t.toolName,
-          output: {
-            type: "json" as const,
-            value: refusals.has(t.toolCallId)
-              ? { ok: false, error: refusals.get(t.toolCallId)! }
-              : t.toolName === "complete_run"
-                ? { ok: false, error: `complete_run refused: $${left} is on today's list and has not been answered. Answer it, then call complete_run.` }
-                : { ok: true, summary: "Replay: this call was recorded, not executed." },
-          },
+        content: await Promise.all(unanswered.map(async (t) => {
+          const read = live?.[t.toolName];
+          if (read && !refusals.has(t.toolCallId)) {
+            const output = await read.execute(t.input, { toolCallId: t.toolCallId, messages });
+            reads.push({ toolName: t.toolName, output });
+            const forModel = read.toModelOutput ? await read.toModelOutput({ toolCallId: t.toolCallId, input: t.input, output }) : { type: "json" as const, value: output };
+            return { type: "tool-result" as const, toolCallId: t.toolCallId, toolName: t.toolName, output: forModel as { type: "json"; value: never } };
+          }
+          return {
+            type: "tool-result" as const,
+            toolCallId: t.toolCallId,
+            toolName: t.toolName,
+            output: {
+              type: "json" as const,
+              value: refusals.has(t.toolCallId)
+                ? { ok: false, error: refusals.get(t.toolCallId)! }
+                : t.toolName === "complete_run"
+                  ? { ok: false, error: `complete_run refused: $${left} is on today's list and has not been answered. Answer it, then call complete_run.` }
+                  : { ok: true, summary: "Replay: this call was recorded, not executed." },
+            },
+          };
         })),
       });
     }
-    const verdict = score(c.expect, calls, text);
+    const verdict = score(c.expect, calls, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
     for (const call of calls) console.log(`CALL ${brief(call)}`);
     for (const bad of invalid) console.log(`INVALID ${bad.tool}: ${bad.error}`);
+    for (const r of reads) console.log(`READ ${r.toolName}: ${String((r.output as { summary?: string; error?: string })?.summary ?? (r.output as { error?: string })?.error ?? "").slice(0, 240)}`);
     const triggerFields = calls.map((c) => {
       const a = (c.input ?? {}) as Record<string, unknown>;
       return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
