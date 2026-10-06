@@ -44,8 +44,9 @@
               "action": "REVIEW",
               "source": "AGENT",
               "predicate": {
-                "kind": "PRICE_BELOW",
-                "level": 315
+                "watch": "price",
+                "is": "below",
+                "value": 315
               },
               "rationale": "The old $342 pullback zone has been lost. A review at $315 would represent a fresh leg lower closer to the 52-week low and is now the meaningful downside wake.",
               "lastFiredAt": "2026-09-24T15:25:07.417Z",
@@ -56,8 +57,9 @@
               "action": "REVIEW",
               "source": "AGENT",
               "predicate": {
-                "kind": "EARNINGS_BEAT",
-                "minSurprisePct": 3
+                "watch": "surprise",
+                "is": "beat",
+                "value": 3
               },
               "rationale": "A Q2 2026 EPS beat of 3%+ would confirm the Electric Boat margin recovery thesis. Review to consider entering if still watching.",
               "cooldownDays": 7
@@ -67,7 +69,9 @@
               "action": "REVIEW",
               "source": "AGENT",
               "predicate": {
-                "kind": "EARNINGS_MISS"
+                "watch": "surprise",
+                "is": "miss",
+                "value": 0
               },
               "rationale": "Any earnings miss warrants a review to assess whether it reflects Electric Boat cost overruns, Gulfstream demand weakness, or only delivery timing.",
               "cooldownDays": 7
@@ -77,8 +81,8 @@
               "action": "REVIEW",
               "source": "DEFAULT",
               "predicate": {
-                "days": 30,
-                "kind": "REVIEW_CADENCE"
+                "watch": "repeat",
+                "value": 30
               },
               "rationale": "Look at this every 30 days, counting from the last real review.",
               "cooldownDays": 30
@@ -88,9 +92,9 @@
               "action": "ENTER",
               "source": "AGENT",
               "predicate": {
-                "kind": "VS_SMA",
-                "period": 50,
-                "direction": "ABOVE"
+                "watch": "price",
+                "is": "above",
+                "variable": "sma50"
               },
               "rationale": "Buy only when GD reclaims the 50-day average, which would show the pullback has ended and the market is again underwriting the submarine-margin inflection story.",
               "cooldownDays": 1
@@ -191,7 +195,9 @@
               "action": "REVIEW",
               "source": "AGENT",
               "predicate": {
-                "kind": "EARNINGS_BEAT"
+                "watch": "surprise",
+                "is": "beat",
+                "value": 0
               },
               "rationale": "Review whether earnings strength confirms da Vinci 5 placements, procedure growth, and margin trajectory.",
               "cooldownDays": 7
@@ -201,7 +207,9 @@
               "action": "REVIEW",
               "source": "AGENT",
               "predicate": {
-                "kind": "EARNINGS_MISS"
+                "watch": "surprise",
+                "is": "miss",
+                "value": 0
               },
               "rationale": "Review whether an earnings miss reflects temporary noise or a real break in procedure growth, margins, or placements.",
               "cooldownDays": 7
@@ -211,8 +219,8 @@
               "action": "REVIEW",
               "source": "DEFAULT",
               "predicate": {
-                "days": 30,
-                "kind": "REVIEW_CADENCE"
+                "watch": "repeat",
+                "value": 30
               },
               "rationale": "Look at this every 30 days, counting from the last real review.",
               "cooldownDays": 30
@@ -259,8 +267,8 @@
               "action": "REVIEW",
               "source": "AGENT",
               "predicate": {
-                "days": 30,
-                "kind": "REVIEW_CADENCE"
+                "watch": "repeat",
+                "value": 30
               },
               "rationale": "No buy plan yet, but VST still belongs in coverage. Revisit in 30 days or sooner if other wakes fire and decide whether business evidence or structure has improved enough to price a real entry.",
               "cooldownDays": 30

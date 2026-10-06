@@ -9,7 +9,6 @@ export * from "./types";
 export * from "./measure";
 export * from "./variables";
 export * from "./catalog";
-export * from "./legacy";
 export * from "./describe";
 export * from "./check";
 export * from "./actions";

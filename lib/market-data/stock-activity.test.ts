@@ -22,7 +22,7 @@ import { getInsiderBuying, getStockVolume } from "./stock-activity";
 const NOW = new Date("2026-09-17T01:30:00Z");
 
 describe("volume", () => {
-  it("today against the last 20 completed sessions — the VOLUME_RATIO comparison", async () => {
+  it("today against the last 20 completed sessions — the volume comparison", async () => {
     dailyBars.mockResolvedValue({ feed: "sip", bars });
     sessionBars.mockResolvedValue({ AMH: { close: 1, high: 1, low: 1, volume: 5_000_000 } });
     const v = await getStockVolume("amh", NOW);

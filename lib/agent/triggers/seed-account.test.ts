@@ -10,7 +10,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import { accountSeedTriggers } from "./seed-account";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { triggerBucket } from "./bucket";
 
 describe("accountSeedTriggers", () => {
@@ -23,20 +23,20 @@ describe("accountSeedTriggers", () => {
   });
 
   it("carries the earnings rules — a look before the report and a look on it", () => {
-    const kinds = accountSeedTriggers().map((t) => kindOf(t.predicate));
-    expect(kinds).toContain("EARNINGS_WITHIN");
-    expect(kinds).toContain("EARNINGS_BEAT");
-    expect(kinds).toContain("EARNINGS_MISS");
+    const kinds = accountSeedTriggers().map((t) => shapeName(t.predicate));
+    expect(kinds).toContain("report:before");
+    expect(kinds).toContain("surprise:beat");
+    expect(kinds).toContain("surprise:miss");
     // Wakes, not clocks: every earnings rule is a REVIEW, never a trade.
     expect(
       accountSeedTriggers()
-        .filter((t) => (kindOf(t.predicate) ?? "").startsWith("EARNINGS"))
+        .filter((t) => /^(report|surprise):/.test(shapeName(t.predicate) ?? ""))
         .every((t) => t.action === "REVIEW"),
     ).toBe(true);
   });
 
   it("carries the SEC filing wake — one rule, a review, never a trade", () => {
-    const sec = accountSeedTriggers().filter((t) => kindOf(t.predicate) === "SEC_EVENT");
+    const sec = accountSeedTriggers().filter((t) => isFilingRule(t.predicate));
     expect(sec).toHaveLength(1);
     expect(sec[0]).toMatchObject({ predicate: { watch: "filing", variable: "tier:MATERIAL" }, action: "REVIEW" });
   });

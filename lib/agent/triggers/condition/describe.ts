@@ -15,7 +15,7 @@ import { measureOf, settingDefs } from "./catalog";
 import type { PillPart } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
-import { shapeOf } from "./legacy";
+import { shapeOf } from "./valid";
 import { variableDef } from "./variables";
 import { money } from "./words";
 

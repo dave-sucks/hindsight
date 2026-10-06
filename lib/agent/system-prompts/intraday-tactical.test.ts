@@ -2,7 +2,7 @@
  * intraday-tactical.test.ts — the tracked-peak contract for trail fires
  * (DAV-186).
  *
- * A TRAILING_FROM_HIGH fire must hand the agent the system's remembered
+ * A trail fire must hand the agent the system's remembered
  * peak (Position.peakPrice) and the exact fire line, and tell it the number
  * is authoritative — the HPE 2026-08-18 miss was the validating agent
  * re-deriving a "peak" from a short chart window and declining a genuine

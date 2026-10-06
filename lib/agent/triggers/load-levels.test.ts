@@ -19,7 +19,7 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { Condition } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
@@ -162,14 +162,14 @@ describe("resolveThesisLadder", () => {
     const acct = resolveThesisLadder(base, {
       analyst: [],
       account: [trail(6, "acc-trail")],
-    }).find((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH")!;
+    }).find((t) => shapeName(t.predicate) === "move:below:peak")!;
     expect(acct.level).toBe("ACCOUNT");
     expect((acct.predicate as Condition).value).toBe(6);
 
     const analyst = resolveThesisLadder(base, {
       analyst: [trail(5, "an-trail")],
       account: [trail(6, "acc-trail")],
-    }).find((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH")!;
+    }).find((t) => shapeName(t.predicate) === "move:below:peak")!;
     expect(analyst.level).toBe("ANALYST");
     expect((analyst.predicate as Condition).value).toBe(5);
   });
@@ -183,7 +183,7 @@ describe("resolveThesisLadder", () => {
         horizon: "TARGET",
       },
       { analyst: [trail(5, "an-trail")], account: [trail(6, "acc-trail")] },
-    ).find((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH")!;
+    ).find((t) => shapeName(t.predicate) === "move:below:peak")!;
 
     expect(own.level).toBe("THESIS");
     expect(own.inherited).toBe(false);
@@ -197,8 +197,8 @@ describe("resolveThesisLadder", () => {
       { triggers: [], triggerState: {}, status: "WATCHING", horizon: "TARGET" },
       { analyst: [], account: accountSeedTriggers() },
     );
-    expect(ladder.some((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH")).toBe(false);
-    expect(ladder.some((t) => kindOf(t.predicate) === "GAIN_FROM_ENTRY")).toBe(false);
+    expect(ladder.some((t) => shapeName(t.predicate) === "move:below:peak")).toBe(false);
+    expect(ladder.some((t) => (shapeName(t.predicate) ?? "").endsWith(":entry"))).toBe(false);
     // The daily-move scale-ins are ADD rungs — a position action — and go
     // too (2026-09-03: they spawned five "scale in" runs on un-held names).
     expect(ladder.some((t) => t.action === "ADD")).toBe(false);

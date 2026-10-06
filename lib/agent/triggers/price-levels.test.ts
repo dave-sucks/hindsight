@@ -7,7 +7,7 @@
  * gets shown instead.
  */
 
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import {
   applyLevelArgs,
   levelLabelState,
@@ -790,7 +790,7 @@ describe("review cadence reaches a thesis that has none of its own", () => {
       account: [cadence(7, "acct")],
       direction: "LONG",
     });
-    const found = ladder.find((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
+    const found = ladder.find((t) => shapeName(t.predicate) === "repeat");
     expect(found?.id).toBe("acct");
     expect(found?.inherited).toBe(true);
   });
@@ -801,7 +801,7 @@ describe("review cadence reaches a thesis that has none of its own", () => {
       account: [cadence(7, "acct")],
       direction: "LONG",
     });
-    const found = ladder.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
+    const found = ladder.filter((t) => shapeName(t.predicate) === "repeat");
     expect(found).toHaveLength(1);
     expect(found[0].id).toBe("mine");
     expect(found[0].overrides?.level).toBe("ACCOUNT");
@@ -811,7 +811,7 @@ describe("review cadence reaches a thesis that has none of its own", () => {
     // Exactly the production state before the migration: 0 accounts,
     // 0 analysts and 0 theses carrying one. Nothing errors; reviews just stop.
     const ladder = resolveLadder({ thesis: [], account: [], direction: "LONG" });
-    expect(ladder.find((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBeUndefined();
+    expect(ladder.find((t) => shapeName(t.predicate) === "repeat")).toBeUndefined();
   });
 });
 
@@ -844,8 +844,8 @@ describe("applyLevelArgs — the buy level decides which side it fires on", () =
 
   it("does not rewrite a pullback rung back into a breakout", () => {
     // The regression that hid #566: the horizon default hands over
-    // PRICE_BELOW $130 against a $132.51 tape, and this used to return
-    // PRICE_ABOVE $130 — a buy condition already true on arrival.
+    // price below $130 against a $132.51 tape, and this used to return
+    // price above $130 — a buy condition already true on arrival.
     const fromDefaults = [trig(below(130), "ENTER", { id: "d" })];
     expect(enter(fromDefaults, 130, "LONG", 132.51).predicate).toEqual(below(130));
   });

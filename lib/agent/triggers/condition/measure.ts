@@ -11,7 +11,6 @@
 import type { TriggerAction } from "../types";
 import type { Condition, Direction, SettingDef, SettingValue, TriggerType, Watch, When } from "./types";
 import type { VariableDef } from "./variables";
-import type { LegacyPredicate } from "./legacy-types";
 
 export interface ValueDef {
   /** "$" before the number. */
@@ -57,11 +56,6 @@ export interface PillPart {
   label: string;
   value?: string;
 }
-
-type Kind = LegacyPredicate["kind"];
-
-/** How a measure reads a row stored as a kind (before the backfill), one reader per kind. A reader returns null for a predicate another measure owns. Goes with the translator in PR 4. */
-export type LegacyReaders = { [K in Kind]?: (p: Extract<LegacyPredicate, { kind: K }>) => When | null };
 
 /** Where a condition sits on the chart: its price now (null until it has one), which side of the trade, and whether the price moves. */
 export interface Line {
@@ -140,13 +134,6 @@ export interface MeasureDef {
    * rule and each is checked on its own.
    */
   validAny?: (cs: readonly Condition[]) => boolean | undefined;
-  /** How this measure reads the old kinds (rows stored before the cutover) and spells itself as one for the save check. Goes with the translator in PR 4. */
-  legacy: {
-    from: LegacyReaders;
-    to: (c: Condition) => LegacyPredicate | null;
-    /** "Any of" several of these conditions, written as one kind (several filing events). */
-    foldAny?: (cs: Condition[]) => LegacyPredicate | null;
-  };
 }
 
 export const BELOW_ABOVE = [

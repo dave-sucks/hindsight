@@ -2,42 +2,28 @@
  * Zod schemas for triggers: the save gate every writer goes through (the
  * agents' tools, the trigger popover, the level rules) and the condition the
  * agents write. A condition is in the shape (./condition) and is valid when
- * its old-kind spelling passes the old schema (./condition/legacy-schema),
- * until PR 4 moves that check onto the catalog. A new measure is one catalog
- * entry; this file lists the measures from the catalog and needs no change.
+ * its measure says so (`whenValid`, from the catalog). A new measure is one
+ * catalog entry; this file lists the measures from the catalog and needs no
+ * change.
  */
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { isShape, shapeOf, toLegacy } from "./condition/legacy";
-import { legacyPredicateSchema } from "./condition/legacy-schema";
 import type { Condition, VariableId, Watch, When } from "./condition/types";
-import { isGroup } from "./condition/types";
 import { MEASURES, declaredOnly } from "./condition/catalog";
 import { whenValid } from "./condition/valid";
 
-// Recursive shape for AND/OR composition. Zod doesn't support direct
-// discriminated-union recursion, so we type the recursion via z.lazy.
 /**
- * A trigger's condition, in the condition shape (./condition). It is valid
- * exactly when its kind spelling passes the kinds' schema, so the shape
- * accepts what the kinds did and refuses what they refused. A kind (a row
- * from before the cutover, an old event, a model that still sends one) is
- * translated on the way in.
+ * A trigger's condition, in the condition shape (./condition): one its
+ * measures can check, every number in range (`whenValid`, from the catalog).
+ * Anything else is refused: a removed condition is never parsed as a live one.
  */
 export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
-  const legacyIn = !isShape(p);
-  if (legacyIn && !legacyPredicateSchema.safeParse(p).success) {
+  if (!whenValid(p)) {
     ctx.addIssue({ code: "custom", message: "Not a condition this app can check." });
     return z.NEVER;
   }
-  const w = shapeOf(p);
-  const spelled = w ? toLegacy(w) : null;
-  if (!w || !spelled || (!legacyIn && !whenValid(w))) {
-    ctx.addIssue({ code: "custom", message: "Not a condition this app can check." });
-    return z.NEVER;
-  }
-  return declaredOnly(w);
+  return declaredOnly(p);
 });
 
 /**
@@ -48,8 +34,7 @@ export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
  * is measured from. A field the measure doesn't take is dropped, as a
  * setting is. The condition is defined once per tool (`Condition`), so its
  * lists appear once. The stored shape is unchanged: `toStored` maps onto it.
- * A model that still sends a kind has it translated (and logged), never
- * refused; the values are held to the same ranges as before.
+ * The save holds every number to its measure's range.
  */
 export function predicateInputSchema() {
   return (agentPredicate ??= buildPredicateInputSchema());
@@ -80,20 +65,8 @@ function buildPredicateInputSchema() {
     conditions: z.array(stored).min(2).max(8),
   });
   return z
-    .preprocess(
-      (v) => {
-        if (!v || typeof v !== "object") return v;
-        if (typeof (v as { kind?: unknown }).kind === "string") {
-          const w = shapeOf(v);
-          if (w) console.info(`[triggers] a model sent the kind ${(v as { kind: string }).kind}; translated`);
-          return w ? toAgentShape(w) : v;
-        }
-        return v;
-      },
-      z
-        .union([stored, z.object({ match: group.shape.match, conditions: z.array(z.union([stored, group])).min(2).max(8) })])
-        .describe(`One condition, or { match, conditions } for two or more. ${measureGuide()}`),
-    )
+    .union([stored, z.object({ match: group.shape.match, conditions: z.array(z.union([stored, group])).min(2).max(8) })])
+    .describe(`One condition, or { match, conditions } for two or more. ${measureGuide()}`)
     .superRefine((w, ctx) => {
       if (!whenValid(w)) {
         ctx.addIssue({ code: "custom", message: "Not a condition this app can check: see the measures and what each takes." });
@@ -110,14 +83,6 @@ function toStored({ value, variable, ...rest }: AgentCondition): Condition {
   const mode = MEASURES[rest.watch]?.variables?.mode;
   if (mode === "replace") return { ...rest, ...(typeof value === "string" ? { variable: value } : value != null ? { value } : {}) } as Condition;
   return { ...rest, ...(value != null ? { value } : {}), ...(mode === "from" && variable != null ? { variable } : {}) } as Condition;
-}
-
-/** A stored condition in the agents' spelling, for a kind a model still sends. */
-function toAgentShape(w: When): unknown {
-  if (isGroup(w)) return { ...w, conditions: w.conditions.map(toAgentShape) };
-  const { variable, ...rest } = w as Condition;
-  if (variable == null) return rest;
-  return MEASURES[rest.watch]?.variables?.mode === "replace" ? { ...rest, value: variable } : { ...rest, variable };
 }
 
 /** The variable ids every measure of one mode takes, from the catalog. */

@@ -22,7 +22,7 @@
  * trigger so cooldown stamps survive subsequent merges.
  */
 
-import { shapeOf } from "./condition/legacy";
+import { shapeOf } from "./condition/valid";
 import { defaultCooldownDays, reviewClockDays } from "./condition/rules";
 import { randomUUID } from "node:crypto";
 import type { Trigger } from "./types";

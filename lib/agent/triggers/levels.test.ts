@@ -1,6 +1,6 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { Condition } from "@/lib/agent/triggers/condition";
 import {
   resolveLadder,
@@ -79,7 +79,7 @@ describe("resolveLadder — precedence", () => {
     expect(resolved.find((t) => t.action === "REVIEW")!.level).toBe("ACCOUNT");
   });
 
-  it("distinguishes GAIN_FROM_ENTRY UP from DOWN (they are separate buckets)", () => {
+  it("distinguishes move-from-entry gain from DOWN (they are separate buckets)", () => {
     const up = gainReview(10);
     const down = rung({
       predicate: { watch: "move", is: "below", value: 12, variable: "entry" },
@@ -310,14 +310,14 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
   const cadence = (days: number, id?: string) =>
     rung({ id, predicate: { watch: "repeat", value: days }, action: "REVIEW" });
 
-  it("drops inherited REVIEW_CADENCE on a WATCHING thesis (all levels)", () => {
+  it("drops inherited review clock on a WATCHING thesis (all levels)", () => {
     const resolved = resolveLadder({
       thesis: [],
       analyst: [cadence(1, "analyst-cadence")],
       account: [cadence(7, "account-cadence")],
       state: "WATCHING",
     });
-    expect(resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toEqual([]);
+    expect(resolved.filter((t) => shapeName(t.predicate) === "repeat")).toEqual([]);
   });
 
   it("keeps a thesis-level cadence on WATCHING — the opt-in survives, unannotated", () => {
@@ -326,7 +326,7 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       account: [cadence(7, "account-cadence")],
       state: "WATCHING",
     });
-    const kept = resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
+    const kept = resolved.filter((t) => shapeName(t.predicate) === "repeat");
     expect(kept).toHaveLength(1);
     expect(kept[0].id).toBe("own-cadence");
     expect(kept[0].level).toBe("THESIS");
@@ -341,7 +341,7 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       account: [cadence(7, "account-cadence")],
       state: "HELD",
     });
-    const kept = resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
+    const kept = resolved.filter((t) => shapeName(t.predicate) === "repeat");
     expect(kept).toHaveLength(1);
     expect(kept[0].level).toBe("ACCOUNT");
   });
@@ -353,7 +353,7 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       state: "PROMOTED",
     });
     expect(
-      resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      resolved.filter((t) => shapeName(t.predicate) === "repeat"),
     ).toHaveLength(1);
   });
 
@@ -364,14 +364,14 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       viewLevel: "ACCOUNT",
     });
     expect(
-      resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      resolved.filter((t) => shapeName(t.predicate) === "repeat"),
     ).toHaveLength(1);
   });
 
 });
 
 describe("resolveLadder — position actions never reach an un-held thesis (2026-09-03)", () => {
-  // The account's standing "±7% in a day — scale in" rules are PRICE_MOVE_PCT
+  // The account's standing "±7% in a day — scale in" rules are move from a close
   // with action ADD. The predicate gate let them onto WATCHING rows and the
   // 5-minute cron spawned tactical runs to add to positions that did not
   // exist (HPE, RARE, PLTR, NOW on 2026-09-03).

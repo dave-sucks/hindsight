@@ -15,7 +15,7 @@
 // test reads is pure. Same shape as defaults.test.ts.
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import {
   frozenCopies,
   sharedRationalesAcross,
@@ -186,7 +186,7 @@ describe("DAV-322 — a new holding is not given a copy in the first place", () 
       // The review clock is the one shared bucket that is legitimately the
       // thesis's own — a CATALYST name reviews on its own schedule, not the
       // account's 7 days. Everything else is the account's to own.
-      const notTheClock = clash.filter((c) => kindOf(c.predicate) !== "REVIEW_CADENCE");
+      const notTheClock = clash.filter((c) => shapeName(c.predicate) !== "repeat");
       expect({ horizon, stamped: notTheClock.map(triggerBucket) }).toEqual({
         horizon,
         stamped: [],

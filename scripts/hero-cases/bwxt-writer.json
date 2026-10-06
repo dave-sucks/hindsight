@@ -31,8 +31,9 @@
     {
      "id": "hero-buy",
      "predicate": {
-      "kind": "PRICE_ABOVE",
-      "level": 162.91
+      "watch": "price",
+      "is": "above",
+      "value": 162.91
      },
      "action": "ENTER",
      "rationale": "The plan's buy: back above the last swing high."
@@ -40,8 +41,9 @@
     {
      "id": "hero-review-low",
      "predicate": {
-      "kind": "PRICE_BELOW",
-      "level": 133
+      "watch": "price",
+      "is": "below",
+      "value": 133
      },
      "action": "REVIEW",
      "rationale": "Review at the 52-week low."
@@ -49,8 +51,9 @@
     {
      "id": "hero-target",
      "predicate": {
-      "kind": "PRICE_ABOVE",
-      "level": 285
+      "watch": "price",
+      "is": "above",
+      "value": 285
      },
      "action": "REVIEW",
      "rationale": "The plan's target."
@@ -58,8 +61,9 @@
     {
      "id": "hero-floor",
      "predicate": {
-      "kind": "PRICE_BELOW",
-      "level": 125
+      "watch": "price",
+      "is": "below",
+      "value": 125
      },
      "action": "EXIT",
      "rationale": "The plan's floor."
@@ -67,9 +71,8 @@
     {
      "id": "hero-cadence",
      "predicate": {
-      "kind": "REVIEW_CADENCE",
-      "days": 30,
-      "from": "LAST_REVIEW"
+      "watch": "repeat",
+      "value": 30
      },
      "action": "REVIEW",
      "rationale": "Review every 30 days."
