@@ -17,6 +17,7 @@ import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { cn } from "@/lib/utils";
 import { PriceChange } from "@/components/ui/price-change";
 import { PnlBadge } from "@/components/ui/pnl-badge";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import { moveDollar } from "@/lib/portfolio/move-dollar";
 import {
   Tooltip,
@@ -24,7 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatSignedCurrency } from "@/lib/format";
 import { proposalSentence, proposalTooltip } from "@/lib/trade-status";
 import { StatusDot } from "@/components/ui/trade-row";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
@@ -36,6 +37,13 @@ import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 
 type Tab = "trades" | "watching" | "passed";
 type MobileView = "lifetime" | "1d";
+/**
+ * What the 1D/5D/30D columns say. A column of percents cannot show why a book
+ * is down on a day most of its names are up — a −1.16% day on an $11,718
+ * position outweighs a +0.86% one on $9,027. `$` turns the same three windows
+ * into the money they moved, on the shares held now.
+ */
+type MoveMode = "pct" | "dollar";
 
 // Moves under this magnitude read as "flat" — shown muted, not green/red.
 const FLAT_BAND_PCT = 0.5;
@@ -66,12 +74,38 @@ function statusDot(row: CoverageRow): { className: string; label: string } {
   return { className: "bg-sky-500", label: `Watching since ${since}` };
 }
 
-// ── Plain % cell (1D/5D/30D momentum) ────────────────────────────────────────
-function Pct({ value }: { value: number | null }) {
-  if (value == null) return <span className="text-muted-foreground/40">—</span>;
-  const flat = Math.abs(value) < FLAT_BAND_PCT;
-  if (flat) return <span className="tabular-nums text-sm text-muted-foreground">{value >= 0 ? "+" : ""}{value.toFixed(2)}%</span>;
-  return <PnlBadge value={value} format="percent" className="text-xs" />;
+// ── 1D/5D/30D cell ───────────────────────────────────────────────────────────
+// Same window either way; `mode` only changes the unit. A name with no shares
+// has no dollars to show, so $ mode reads "—" on the Watching and Passed tabs.
+// The flat band stays a PERCENT test in both modes — "did this barely move"
+// is a question about the move, not about how much of it you own.
+function Move({
+  pct,
+  row,
+  mode,
+}: {
+  pct: number | null;
+  row: CoverageRow;
+  mode: MoveMode;
+}) {
+  if (pct == null) return <span className="text-muted-foreground/40">—</span>;
+  const flat = Math.abs(pct) < FLAT_BAND_PCT;
+
+  if (mode === "dollar") {
+    const d = moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
+    if (d == null) return <span className="text-muted-foreground/40">—</span>;
+    if (flat) {
+      return (
+        <span className="tabular-nums text-sm text-muted-foreground">
+          {formatSignedCurrency(d)}
+        </span>
+      );
+    }
+    return <PnlBadge value={d} format="currency" className="text-xs" />;
+  }
+
+  if (flat) return <span className="tabular-nums text-sm text-muted-foreground">{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>;
+  return <PnlBadge value={pct} format="percent" className="text-xs" />;
 }
 
 // ── Name cell ─────────────────────────────────────────────────────────────────
@@ -181,11 +215,13 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
 function CoverageTab({
   rows,
   tab,
+  mode,
   emptyLabel,
   onRowClick,
 }: {
   rows: CoverageRow[];
   tab: Tab;
+  mode: MoveMode;
   emptyLabel: string;
   onRowClick: (row: CoverageRow) => void;
 }) {
@@ -230,23 +266,19 @@ function CoverageTab({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              {/* Mobile toggle — same pill style as the chart range tabs */}
-              <div className="md:hidden inline-flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
-                {(["lifetime", "1d"] as MobileView[]).map((v) => (
-                  <button
-                    key={v}
-                    onClick={(e) => { e.stopPropagation(); setMobileView(v); }}
-                    className={cn(
-                      "px-2 py-0.5 text-xs rounded transition-colors",
-                      mobileView === v
-                        ? "bg-background text-foreground font-medium shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {v === "lifetime" ? "All" : "1D"}
-                  </button>
-                ))}
-              </div>
+              {/* Mobile toggle — the shared tray, same as the tabs above it */}
+              <ChipTabs<MobileView>
+                variant="tray"
+                size="sm"
+                clearable={false}
+                className="md:hidden"
+                options={[
+                  { value: "lifetime", label: "All" },
+                  { value: "1d", label: "1D" },
+                ]}
+                value={mobileView}
+                onChange={(v) => v && setMobileView(v)}
+              />
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -264,13 +296,13 @@ function CoverageTab({
                 {row.currentPrice != null ? `$${row.currentPrice.toFixed(2)}` : "—"}
               </TableCell>
               <TableCell className="hidden md:table-cell text-right">
-                <Pct value={row.oneDayPct} />
+<Move pct={row.oneDayPct} row={row} mode={mode} />
               </TableCell>
               <TableCell className="hidden md:table-cell text-right">
-                <Pct value={row.fiveDayPct} />
+<Move pct={row.fiveDayPct} row={row} mode={mode} />
               </TableCell>
               <TableCell className="hidden md:table-cell text-right">
-                <Pct value={row.thirtyDayPct} />
+<Move pct={row.thirtyDayPct} row={row} mode={mode} />
               </TableCell>
               <TableCell className="text-right">
                 <LifetimeCell row={row} mobileView={mobileView} />
@@ -315,15 +347,18 @@ function seedFor(row: CoverageRow): ThesisCardData {
   };
 }
 
-const COVERAGE_TABS: { key: Tab; label: string }[] = [
-  { key: "trades", label: "Trades" },
-  { key: "watching", label: "Watching" },
-  { key: "passed", label: "Passed" },
+const COVERAGE_TABS: { value: Tab; label: string }[] = [
+  { value: "trades", label: "Trades" },
+  { value: "watching", label: "Watching" },
+  { value: "passed", label: "Passed" },
 ];
 
 export default function CoverageTable({ data }: { data: CoverageData }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("trades");
+  // Percent or dollars for the 1D/5D/30D columns. Lives here because the
+  // toggle sits in the tab bar, above whichever tab is open.
+  const [mode, setMode] = useState<MoveMode>("pct");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [seed, setSeed] = useState<ThesisCardData | null>(null);
 
@@ -344,26 +379,31 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex w-fit items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
-        {COVERAGE_TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={cn(
-              "px-2.5 py-1 text-xs rounded transition-colors",
-              activeTab === t.key
-                ? "bg-background text-foreground font-medium shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Which names on the left, what unit their move is in on the right. */}
+      <div className="flex items-center justify-between gap-2">
+        <ChipTabs<Tab>
+          variant="tray"
+          clearable={false}
+          options={COVERAGE_TABS}
+          value={activeTab}
+          onChange={(v) => v && setActiveTab(v)}
+        />
+        <ChipTabs<MoveMode>
+          variant="tray"
+          clearable={false}
+          options={[
+            { value: "pct", label: "%", title: "1D / 5D / 30D as a percent move" },
+            { value: "dollar", label: "$", title: "1D / 5D / 30D as a dollar move, on the shares held now" },
+          ]}
+          value={mode}
+          onChange={(v) => v && setMode(v)}
+        />
       </div>
 
       <CoverageTab
         rows={data[activeTab]}
         tab={activeTab}
+        mode={mode}
         emptyLabel={EMPTY_LABELS[activeTab]}
         onRowClick={handleRowClick}
       />

@@ -22,29 +22,51 @@ describe("moveDollar", () => {
     expect(moveDollar({ shares: 43, currentPrice: 118.9, pct: 2.3 })!).toBeGreaterThan(0);
   });
 
-  // The whole point of the $ mode. These are the live rows from 2026-10-06:
-  // six of the eight names were green on the day, and the book still lost
-  // money, because the red ones are the bigger positions.
-  it("explains a red portfolio under a mostly-green column", () => {
-    const BOOK = [
-      { ticker: "MSFT", shares: 17, currentPrice: 529.7, pct: 0.86 },
-      { ticker: "V", shares: 27, currentPrice: 370.63, pct: 0.25 },
-      { ticker: "AAPL", shares: 29, currentPrice: 333.9, pct: 0.3 },
-      { ticker: "PLTR", shares: 38, currentPrice: 191.87, pct: 1.3 },
-      { ticker: "IOT", shares: 300, currentPrice: 41.9, pct: -1.16 },
-      { ticker: "ASML", shares: 5, currentPrice: 1833, pct: -1.44 },
-      { ticker: "WST", shares: 20, currentPrice: 372.29, pct: -1.19 },
-      { ticker: "MU", shares: 13, currentPrice: 1046.75, pct: -1.62 },
-    ];
-    const green = BOOK.filter((r) => r.pct > 0);
-    const red = BOOK.filter((r) => r.pct < 0);
-    expect(green.length).toBeGreaterThan(red.length); // more names up than down
+  // The twelve open LIVE positions on 2026-10-06, as measured (shares and
+  // price from Alpaca, pct against the previous close).
+  const BOOK = [
+    { ticker: "CEG", shares: 51, currentPrice: 296.75, pct: 10.88 },
+    { ticker: "GEV", shares: 9, currentPrice: 1030.49, pct: 4.09 },
+    { ticker: "PLTR", shares: 38, currentPrice: 191.83, pct: 1.28 },
+    { ticker: "MSFT", shares: 17, currentPrice: 529.51, pct: 0.82 },
+    { ticker: "NVDA", shares: 33, currentPrice: 240.2, pct: 0.54 },
+    { ticker: "AAPL", shares: 29, currentPrice: 333.88, pct: 0.3 },
+    { ticker: "V", shares: 27, currentPrice: 370.64, pct: 0.25 },
+    { ticker: "CORT", shares: 43, currentPrice: 121, pct: -0.84 },
+    { ticker: "WST", shares: 20, currentPrice: 372.64, pct: -1.09 },
+    { ticker: "ASML", shares: 5, currentPrice: 1834.1, pct: -1.39 },
+    { ticker: "IOT", shares: 300, currentPrice: 41.74, pct: -1.53 },
+    { ticker: "MU", shares: 13, currentPrice: 1044.69, pct: -1.81 },
+  ];
 
-    const sum = (rows: typeof BOOK) =>
-      rows.reduce((t, r) => t + (moveDollar(r) ?? 0), 0);
-    // ...and the money still goes the other way.
-    expect(sum(red) + sum(green)).toBeLessThan(0);
-    expect(Math.abs(sum(red))).toBeGreaterThan(sum(green));
+  // The point of the $ column: percents cannot be added, dollars can. This is
+  // the number that reconciles with the header; a column of percents never
+  // could, whatever order it is in.
+  it("turns the column into something that sums", () => {
+    const total = BOOK.reduce((t, r) => t + (moveDollar(r) ?? 0), 0);
+    // $1,411.71 live; $0.81 of the difference is this fixture rounding each
+    // percent to two places, which is what the column renders anyway.
+    expect(total).toBeCloseTo(1410.9, 1);
+  });
+
+  it("each cell is the exact inversion of its percent", () => {
+    for (const r of BOOK) {
+      const d = moveDollar(r)!;
+      const then = r.currentPrice / (1 + r.pct / 100);
+      expect(d).toBeCloseTo(r.shares * (r.currentPrice - then), 6);
+    }
+  });
+
+  // Worth stating because it was the assumption going in and the data says
+  // otherwise: on this book the dollar order matched the percent order exactly
+  // — the positions are all $5k–$15k, so nothing reorders. The $ column earns
+  // its place by being summable, not by reranking the rows.
+  it("does not rerank this book — the positions are too evenly sized", () => {
+    const byPct = [...BOOK].sort((a, b) => b.pct - a.pct).map((r) => r.ticker);
+    const byDollar = [...BOOK]
+      .sort((a, b) => (moveDollar(b) ?? 0) - (moveDollar(a) ?? 0))
+      .map((r) => r.ticker);
+    expect(byDollar).toEqual(byPct);
   });
 
   it("says nothing when there is nothing to say", () => {
