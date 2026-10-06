@@ -102,7 +102,7 @@ lane accepts, edits the catalog and prompts, and says so on the ticket.
 ## 4. Files both lanes touch — take care
 
 `lib/agent/triggers/types.ts`, `schema.ts`, `evaluate.ts`, `format.ts`,
-`editable.ts`, `lib/inngest/functions/trigger-evaluator.ts`,
+`lib/agent/triggers/condition/` (the catalog and its measures), `lib/inngest/functions/trigger-evaluator.ts`,
 `lib/market-data/indicator-snapshot.ts`, `lib/agent/modes.ts` (tool lists),
 `app/api/inngest/route.ts`.
 

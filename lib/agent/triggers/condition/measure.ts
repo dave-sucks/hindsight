@@ -126,7 +126,7 @@ export interface MeasureDef {
   fresh: () => Condition;
   /** What's wrong beyond the number and the variable, in one sentence, or null. */
   check?: (c: Condition, ctx: CheckContext) => string | null;
-  /** Until the cutover the server stores today's kinds: how this measure reads and writes them. */
+  /** How this measure reads the old kinds (rows stored before the cutover) and spells itself as one for the save check. Goes with the translator in PR 4. */
   legacy: {
     from: LegacyReaders;
     to: (c: Condition) => LegacyPredicate | null;

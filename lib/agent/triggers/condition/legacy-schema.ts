@@ -1,8 +1,9 @@
 /**
- * The kinds' schema, from before the condition shape. It still decides what a
- * condition may hold: a condition is valid exactly when its kind spelling
+ * The kinds' schema, from before the condition shape, and the app's save
+ * check until PR 4: a condition is valid exactly when its kind spelling
  * passes this (lib/agent/triggers/schema.ts), so the shape accepts what the
- * kinds did and refuses what they refused. Part of the translator.
+ * kinds did and refuses what they refused. PR 4 moves the ranges onto each
+ * measure's catalog entry and deletes this file with the translator.
  */
 
 import { z } from "zod";

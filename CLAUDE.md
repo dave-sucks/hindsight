@@ -114,7 +114,7 @@ rows are **kept**: `Signal`, `Monitor`, `AnalystSignalRoute`, `SignalBatch`,
 `Artifact` are readable on `/intelligence` (read-only) and via `read_database`,
 but nothing adds to them. `read_signals` / `read_artifact` stay in the
 codebase and on **no** mode's allowlist. Outside facts reach an agent through a
-trigger kind the five-minute check can evaluate, or a data field the agent
+measure the five-minute check can evaluate, or a data field the agent
 pulls mid-run — see `docs/plans/LANES.md` §2.
 
 ### The Agent (what the "Run" button and morning cron both use)

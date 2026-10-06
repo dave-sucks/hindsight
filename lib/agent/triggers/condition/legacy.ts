@@ -7,8 +7,10 @@
  *               predicate already in the shape comes back as it is.
  *   toLegacy:   a condition → the kind that says the same thing, or null.
  *
- * Until the cutover the server stores and checks kinds, so the form builds a
- * condition and saves `toLegacy(condition)`. docs/plans/TRIGGER_TYPES.md §9.
+ * Since the cutover the app stores and checks the shape. The translator reads
+ * rows stored before it (and an old kind a model still sends), and the save
+ * check spells a condition as a kind to run the old schema on it, until PR 4
+ * moves that check onto the catalog and deletes this file. docs/plans/TRIGGER_TYPES.md §9.
  *
  * Pure and client-safe.
  */
