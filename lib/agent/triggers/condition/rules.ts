@@ -142,6 +142,6 @@ export function isProtectiveLine(w: When): boolean {
 export function carriesNumber(w: When): boolean {
   return conditionsOf(w).some((c) => {
     const value = measureOf(c).value;
-    return c.value != null && value.allowNegative !== true && value.zero == null;
+    return c.value != null && (value.range?.min ?? 0) >= 0 && value.zero == null;
   });
 }

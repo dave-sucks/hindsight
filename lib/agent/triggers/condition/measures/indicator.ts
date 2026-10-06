@@ -3,7 +3,7 @@
 
 import { BELOW_ABOVE, type MeasureDef } from "../measure";
 import type { Condition } from "../types";
-import { isNum, num, shown, wholeIn } from "../words";
+import { num } from "../words";
 
 const window = (c: Condition) => (typeof c.settings?.window === "string" ? c.settings.window : "3M");
 
@@ -13,11 +13,11 @@ export const volume: MeasureDef = {
   type: "indicator",
   label: "Volume",
   word: "At least",
-  value: { suffix: "× normal volume", placeholder: "2", min: 0 },
+  value: { suffix: "× normal volume", placeholder: "2", range: { what: "Volume", unit: "×", over: 0, max: 50 } },
   cooldownDays: () => 1,
   fresh: () => ({ watch: "volume" }),
   fits: (c) => c.value != null,
-  problem: (c) => (isNum(c.value) && c.value > 0 && c.value <= 50 ? null : `Volume can be more than 0 and up to 50× normal; ${shown(c.value)}× isn't.`),
+  shape: "Volume takes a number: how many times normal volume.",
 };
 
 export const rsi: MeasureDef = {
@@ -26,7 +26,7 @@ export const rsi: MeasureDef = {
   type: "indicator",
   label: "RSI",
   buttons: BELOW_ABOVE,
-  value: { prefix: "RSI", placeholder: "30", min: 0, max: 100 },
+  value: { prefix: "RSI", placeholder: "30", range: { what: "RSI", min: 0, max: 100 } },
   settings: [
     {
       key: "period",
@@ -42,10 +42,7 @@ export const rsi: MeasureDef = {
   cooldownDays: () => 1,
   fresh: () => ({ watch: "rsi", is: "below" }),
   fits: (c) => c.value != null && (c.is === "above" || c.is === "below"),
-  problem: (c) => {
-    if (!rsi.fits(c)) return "RSI is above or below a number.";
-    return isNum(c.value) && c.value >= 0 && c.value <= 100 ? null : `RSI runs 0 to 100; ${shown(c.value)} isn't.`;
-  },
+  shape: "RSI is above or below a number.",
 };
 
 export const strength: MeasureDef = {
@@ -54,7 +51,8 @@ export const strength: MeasureDef = {
   type: "indicator",
   label: "vs. S&P",
   word: "At least",
-  value: { suffix: "points ahead of the S&P", placeholder: "0", allowNegative: true },
+  // Points ahead of the S&P; behind it is legal ("not lagging by more than 5").
+  value: { suffix: "points ahead of the S&P", placeholder: "0", range: { what: "Strength vs the S&P", unit: " points", min: -100, max: 500 } },
   settings: [
     {
       key: "window",
@@ -73,11 +71,7 @@ export const strength: MeasureDef = {
   state: () => true,
   fresh: () => ({ watch: "strength", settings: { window: "3M" } }),
   fits: (c) => c.value != null && ["1M", "3M", "6M"].includes(window(c)),
-  // Points ahead of the S&P; behind it is legal ("not lagging by more than 5").
-  problem: (c) => {
-    if (!strength.fits(c)) return "Strength vs the S&P takes a number and a window of 1M, 3M or 6M.";
-    return isNum(c.value) && c.value >= -100 && c.value <= 500 ? null : `Strength vs the S&P can be -100 to 500 points; ${shown(c.value)} isn't.`;
-  },
+  shape: "Strength vs the S&P takes a number and a window of 1M, 3M or 6M.",
 };
 
 export const gap: MeasureDef = {
@@ -86,22 +80,16 @@ export const gap: MeasureDef = {
   type: "indicator",
   label: "Gap up",
   word: "At least",
-  value: { suffix: "% gap up", placeholder: "4", min: 0 },
+  value: { suffix: "% gap up", placeholder: "4", range: { what: "A gap", unit: "%", over: 0, max: 100 } },
   // An agent's choices; a gap added here needs 3× volume within 3 days.
   settings: [
-    { key: "volume", default: 3 },
-    { key: "withinDays", default: 1 },
+    { key: "volume", default: 3, range: { what: "A gap's volume (volume)", unit: "×", min: 0, max: 50 } },
+    // Up to the 10 sessions the snapshot keeps gaps for.
+    { key: "withinDays", default: 1, range: { what: "A gap's look-back (withinDays)", unit: " sessions", integer: true, min: 1, max: 10, why: "The snapshot keeps 10." } },
   ],
   // A gap stays "within the last N sessions" for N days: one fire per gap.
   cooldownDays: (c) => Math.max(1, num(c.settings?.withinDays) ?? 1),
   fresh: () => ({ watch: "gap", settings: { volume: 3, withinDays: 3 } }),
   fits: (c) => c.value != null,
-  problem: (c) => {
-    if (!isNum(c.value) || c.value <= 0 || c.value > 100) return `A gap can be more than 0% and up to 100%; ${shown(c.value)}% isn't.`;
-    const volume = num(c.settings?.volume) ?? 3;
-    if (!(volume >= 0 && volume <= 50)) return `A gap's volume can be 0 to 50× normal; ${shown(volume)}× isn't.`;
-    const within = num(c.settings?.withinDays);
-    // Up to the 10 sessions the snapshot keeps gaps for.
-    return within == null || wholeIn(within, 1, 10) ? null : `A gap counts within 1 to 10 whole sessions, the most the snapshot keeps; ${shown(within)} isn't.`;
-  },
+  shape: "A gap takes a number: the % gap up.",
 };
