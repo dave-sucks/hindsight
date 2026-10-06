@@ -17,7 +17,10 @@ import { UNSTORED, type StoredRow } from "./__fixtures__/unstored-triggers";
 import { shouldFire, type EvaluationContext } from "../evaluate";
 import { KIND_CHECKER } from "./__fixtures__/kind-checker";
 import type { Trigger, TriggerAction } from "../types";
-import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
+import { liveRsi, movePctOverSessions, volumeRatio, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
+import { insiderCluster } from "@/lib/market-data/insider-cluster";
+import { daysUntilReport } from "../earnings";
+import { trailFireLevel } from "../trail";
 import type { SecFiling } from "@/lib/market-data/sec-events";
 import { SHAPE_CHECKER } from "./read";
 import { toStoredPredicate } from "./stored";
@@ -157,5 +160,138 @@ describe("the checker agrees with the one it replaced on every stored trigger", 
     expect(disagree).toEqual([]);
     // The grid is only proof if it lands on both sides: a fair share of situations must hold.
     expect(holds / (rows.length * SITUATIONS)).toBeGreaterThan(0.15);
+  });
+});
+
+/**
+ * Exactly on the line. Random prices almost never equal a level, so a reader
+ * that said "at least" where it should say "more than" would pass the grid
+ * above. Here each measure's number is set to the situation's own line: the
+ * typed level, the variable's number (an average, a high, the close N days
+ * back, our entry, the high since we bought), the trail line, the day of the
+ * report and N days before it, and a count of days to the minute. Both
+ * checkers must still agree, under every action. A filing has no number and
+ * is left to the grid.
+ */
+describe("the checker agrees with the one it replaced exactly on every line", () => {
+  const DAY = 86_400_000;
+  const rand = prng(20261006);
+  /** A situation with a quote, a snapshot and a position, for a condition at about `base`. */
+  const live = (base = 100): EvaluationContext => {
+    const ctx = situation({ kind: "PRICE_ABOVE", level: base }, rand);
+    const price = ctx.latestQuote?.price ?? base;
+    const changePct = ctx.latestQuote?.changePct ?? 2;
+    ctx.latestQuote = { price, changePct, prevClose: price / (1 + changePct / 100), stale: false };
+    if (!ctx.indicators) ctx.indicators = situation({ kind: "PRICE_ABOVE", level: base }, () => 0.5).indicators ?? null;
+    ctx.indicators = { ...ctx.indicators!, volumeAvg20: 1_000_000, atr14: null };
+    ctx.today = { open: price * 1.04, volume: 2_000_000 };
+    ctx.position = { avgCost: price * 0.9, peakPrice: price * 1.2, openedAt: new Date(ctx.now.getTime() - 40 * DAY), peakAt: null };
+    ctx.thesis = { ...ctx.thesis, direction: "LONG" };
+    return ctx;
+  };
+  const withPrice = (ctx: EvaluationContext, price: number): EvaluationContext => ({ ...ctx, latestQuote: { ...ctx.latestQuote!, price } });
+  const ago = (ctx: EvaluationContext, days: number) => new Date(ctx.now.getTime() - days * DAY);
+
+  /** Every (condition, situation) pair that sits exactly on its line. */
+  function cases(): Array<{ p: LegacyPredicate; ctx: EvaluationContext; on: string }> {
+    const out: Array<{ p: LegacyPredicate; ctx: EvaluationContext; on: string }> = [];
+    const add = (on: string, p: LegacyPredicate, ctx: EvaluationContext) => out.push({ p, ctx, on });
+    for (let i = 0; i < 20; i++) {
+      const c = live(50 + i * 25);
+      const price = c.latestQuote!.price;
+      const snap = c.indicators!;
+      for (const session of ["INTRADAY", "CLOSE", undefined] as const) {
+        add("a typed level", { kind: "PRICE_ABOVE", level: price }, { ...c, session });
+        add("a typed level", { kind: "PRICE_BELOW", level: price }, { ...c, session });
+        add("a typed level on the close", { kind: "PRICE_ABOVE", level: price, basis: "close" }, { ...c, session });
+      }
+      for (const period of [20, 50, 200] as const) {
+        const line = snap.sma[period];
+        if (line == null) continue;
+        for (const direction of ["ABOVE", "BELOW"] as const) add("an average", { kind: "VS_SMA", period, direction }, withPrice(c, line));
+        const near = withPrice(c, line * 1.04);
+        add("near an average", { kind: "NEAR_SMA", period, withinPct: (Math.abs(near.latestQuote!.price - line) / line) * 100 }, near);
+      }
+      add("the 20-day high", { kind: "NEW_HIGH", window: "20D" }, withPrice(c, snap.high20!));
+      add("the 52-week high", { kind: "NEW_HIGH", window: "52W" }, withPrice(c, snap.high52w!));
+      const under = withPrice(c, snap.high52w! * 0.95);
+      add("near the 52-week high", { kind: "PCT_FROM_52W_HIGH", max: ((snap.high52w! - under.latestQuote!.price) / snap.high52w!) * 100 }, under);
+      const chg = c.latestQuote!.changePct;
+      add("yesterday's close", { kind: "PRICE_MOVE_PCT", pct: Math.abs(chg), direction: chg >= 0 ? "UP" : "DOWN", window: "1D" }, c);
+      for (const [window, n] of [["5D", 5], ["20D", 20]] as const) {
+        const m = movePctOverSessions(snap, price, n);
+        if (m != null && m !== 0) add(`the close ${n} days back`, { kind: "PRICE_MOVE_PCT", pct: Math.abs(m), direction: m > 0 ? "UP" : "DOWN", window }, c);
+      }
+      const avg = c.position!.avgCost!;
+      const gain = ((price - avg) / avg) * 100;
+      add("our entry", { kind: "GAIN_FROM_ENTRY", pct: Math.abs(gain), direction: gain >= 0 ? "UP" : "DOWN" }, c);
+      for (const pct of [5, 12, 25]) {
+        const line = trailFireLevel({ pct }, { peak: c.position!.peakPrice, avgCost: avg, isLong: true, atr: null });
+        if (line != null) add("the trail line", { kind: "TRAILING_FROM_HIGH", pct }, withPrice(c, line));
+        const armed = trailFireLevel({ pct, armAtGainPct: 10 }, { peak: c.position!.peakPrice, avgCost: avg, isLong: true, atr: null });
+        if (armed != null) add("the trail line, armed", { kind: "TRAILING_FROM_HIGH", pct, armAtGainPct: 10 }, withPrice(c, armed));
+      }
+      const ratio = volumeRatio(snap, c.today!.volume);
+      if (ratio != null) add("the volume ratio", { kind: "VOLUME_RATIO", min: ratio }, c);
+      for (const period of [14, 2] as const) {
+        const rsi = liveRsi(snap, price, period);
+        if (rsi == null) continue;
+        for (const direction of ["ABOVE", "BELOW"] as const) add(`the ${period}-day RSI`, { kind: "RSI", period, threshold: rsi, direction }, c);
+      }
+      for (const window of ["1M", "3M"] as const) {
+        const rs = snap.rsVsSpy[window];
+        if (rs != null) add("strength vs the S&P", { kind: "RS_VS_SPY", window, min: rs }, c);
+      }
+      const gapPct = ((c.today!.open! - c.latestQuote!.prevClose!) / c.latestQuote!.prevClose!) * 100;
+      if (ratio != null) add("today's gap", { kind: "GAP_UP", minPct: gapPct, minVolRatio: ratio }, c);
+      const buys = [0, 1, 2].map((k) => ({ name: `insider ${k}`, date: ago(c, 10 + k).toISOString().slice(0, 10), shares: 1000, price }));
+      const withBuys: EvaluationContext = { ...c, indicators: { ...snap, insiderBuys: buys } };
+      add("insider buyers", { kind: "INSIDER_CLUSTER", minBuyers: insiderCluster(buys, 30, c.now).buyers, days: 30 }, withBuys);
+      // The day of the report, N days before it, and N days after it.
+      const report = { ...REPORT, epsActual: 1, surprisePct: 4 + i };
+      for (const n of [0, 1, 3]) {
+        const ahead = { ...c, upcomingEarnings: { ...report, reportDate: ymd(new Date(c.now.getTime() + n * DAY)) } };
+        const days = daysUntilReport(ahead.upcomingEarnings, c.now);
+        add(n === 0 ? "the report day, before" : `${n} days before the report`, { kind: "EARNINGS_WITHIN", days: Math.max(1, days) }, ahead);
+        const behind = { ...c, earnings: { ...report, reportDate: ymd(ago(c, n)) } };
+        const since = -daysUntilReport(behind.earnings, c.now);
+        add(n === 0 ? "the report day, after" : `${n} days after the report`, { kind: "EARNINGS_SINCE", min: since, max: since }, behind);
+        add("the report day through N days after", { kind: "EARNINGS_SINCE", min: 0, max: since }, behind);
+      }
+      add("the surprise", { kind: "EARNINGS_BEAT", minSurprisePct: report.surprisePct }, { ...c, earnings: { ...report, reportDate: ymd(ago(c, 1)) } });
+      add("the surprise", { kind: "EARNINGS_MISS", minSurprisePct: report.surprisePct }, { ...c, earnings: { ...report, surprisePct: -report.surprisePct, reportDate: ymd(ago(c, 1)) } });
+      // N days to the minute: since the last review, since the buy, before and after the event date.
+      for (const days of [1, 7, 30]) {
+        add("days since the last review", { kind: "REVIEW_CADENCE", days }, { ...c, thesis: { ...c.thesis, lastReviewedAt: ago(c, days) } });
+        add("days since the buy", { kind: "REVIEW_CADENCE", days, from: "BUY" }, { ...c, position: { ...c.position!, openedAt: ago(c, days) } });
+        add("days before the event", { kind: "REVIEW_CADENCE", days, from: "EVENT", side: "BEFORE" }, { ...c, thesis: { ...c.thesis, catalystDate: ago(c, -days) } });
+        add("0 days before the event", { kind: "REVIEW_CADENCE", days, from: "EVENT", side: "BEFORE" }, { ...c, thesis: { ...c.thesis, catalystDate: c.now } });
+        add("days after the event", { kind: "REVIEW_CADENCE", days, from: "EVENT", side: "AFTER" }, { ...c, thesis: { ...c.thesis, catalystDate: ago(c, days) } });
+      }
+    }
+    return out;
+  }
+
+  it("on the typed level, every variable's number, the trail line, the report day and N days to the minute", () => {
+    const all = cases();
+    const disagree: unknown[] = [];
+    let holds = 0;
+    for (const { p, ctx, on } of all) {
+      const kinds = KIND_CHECKER.holds(p as StoredRow, ctx);
+      if (kinds) holds++;
+      if (SHAPE_CHECKER.holds(p as StoredRow, ctx) !== kinds) disagree.push({ on, p, kinds });
+      for (const action of ["ENTER", "EXIT", "REVIEW"] as const) {
+        const t: Trigger = { id: "t", predicate: p as StoredRow, action, rationale: "" };
+        const a = shouldFire(t, ctx, KIND_CHECKER);
+        const b = shouldFire({ ...t, predicate: toStoredPredicate(p) as StoredRow }, ctx);
+        if (a.fires !== b.fires || a.reason !== b.reason) disagree.push({ on, p, action, a, b });
+      }
+      if (disagree.length > 5) break;
+    }
+    expect(disagree).toEqual([]);
+    // Every line in the list is reached, and on a line some conditions hold and some don't.
+    expect(new Set(all.map((x) => x.on)).size).toBeGreaterThanOrEqual(30);
+    expect(holds).toBeGreaterThan(0);
+    expect(holds).toBeLessThan(all.length);
   });
 });
