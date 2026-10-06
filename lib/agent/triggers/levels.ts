@@ -20,7 +20,7 @@
  *
  * ## Precedence
  *
- * One rung per `triggerBucket` — `(predicateKey, action)` — because two
+ * One rung per `triggerSlot` — `(slot, action)` — because two
  * rungs in the same bucket express the same intent at different values.
  * "Exit if price below $60" from the account and "$71" from the thesis are
  * the same stop; the thesis wins and the account rung is not shown twice.
@@ -40,7 +40,7 @@
  * reach the evaluator is a lie told in CSS.
  */
 
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { fromPosition, reviewClockDays, shapeOf, tightness } from "./condition";
 import { protectiveExitCloseReason } from "./types";
 import type { Trigger } from "./types";
@@ -219,7 +219,7 @@ function protectiveTightestFirst(
   // and it would shuffle unrelated triggers for no reason.
   const groups = new Map<string, Trigger[]>();
   for (const t of triggers) {
-    const bucket = triggerBucket(t);
+    const bucket = triggerSlot(t);
     const g = groups.get(bucket);
     if (g) g.push(t);
     else groups.set(bucket, [t]);
@@ -305,7 +305,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
       ) {
         continue;
       }
-      const bucket = triggerBucket(t);
+      const bucket = triggerSlot(t);
       // First level to claim a bucket owns it. Also dedupes within a
       // level, matching mergeTriggers' within-list behavior.
       if (claimed.has(bucket)) {

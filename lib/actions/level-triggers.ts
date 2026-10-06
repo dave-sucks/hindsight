@@ -22,7 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { addProblem, conditionSentence } from "@/lib/agent/triggers/condition";
 import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
-import { triggerBucket } from "@/lib/agent/triggers/bucket";
+import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { ThesisEditError, buildPrincipalTrigger } from "@/lib/actions/thesis-edit";
 import type { When } from "@/lib/agent/triggers/condition";
@@ -136,11 +136,11 @@ export async function addLevelTrigger(
   // One rung per bucket at a given level — a second "trail X%" here would
   // be dead weight (resolveLadder keeps the first and silently drops the
   // rest), so refuse it with an explanation instead.
-  const candidateBucket = triggerBucket({
+  const candidateBucket = triggerSlot({
     predicate: input.predicate,
     action: input.action,
   });
-  if (existing.some((t) => triggerBucket(t) === candidateBucket)) {
+  if (existing.some((t) => triggerSlot(t) === candidateBucket)) {
     throw new ThesisEditError(
       "INVALID",
       `A "${conditionSentence(input.predicate)}" rule already exists at this level — edit that one instead of adding a second.`,
@@ -185,8 +185,8 @@ export async function replaceLevelTrigger(
   if (!found) {
     throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found at this level.`);
   }
-  const bucket = triggerBucket({ predicate: input.predicate, action: input.action });
-  if (existing.some((t) => t.id !== triggerId && triggerBucket(t) === bucket)) {
+  const bucket = triggerSlot({ predicate: input.predicate, action: input.action });
+  if (existing.some((t) => t.id !== triggerId && triggerSlot(t) === bucket)) {
     throw new ThesisEditError(
       "INVALID",
       `A "${conditionSentence(input.predicate)}" rule already exists at this level — edit that one instead.`,
@@ -197,7 +197,7 @@ export async function replaceLevelTrigger(
     defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
     allowDirect: input.action === "EXIT" && isDirectEligiblePredicate(input.predicate),
   });
-  const sameSlot = triggerBucket(found) === bucket;
+  const sameSlot = triggerSlot(found) === bucket;
   const updated: Trigger = sameSlot
     ? { ...found, predicate: built.predicate, action: built.action, fireMode: built.fireMode, source: built.source }
     : built;

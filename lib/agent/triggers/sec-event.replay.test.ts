@@ -32,14 +32,14 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 import fixture from "@/lib/market-data/__fixtures__/edgar-search-2026-09.json";
-import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
+import { isFilingRule } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { parseSearchHits } from "@/lib/market-data/sec-filings";
 import { filingNeedsSameDayLook, filingsBehindFire } from "@/lib/market-data/sec-events";
 import { resolveThesisLadder } from "./load-levels";
 import { shouldFire } from "./evaluate";
 import { splitFiresByLevel } from "./levels";
 import { secFilingStandingTriggers } from "./seed-account";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { __test__ } from "@/lib/inngest/functions/trigger-evaluator";
 import type { Trigger } from "./types";
 
@@ -105,7 +105,7 @@ describe("MU 8-K 5.02, 2026-08-26 — held, under the account's filing rule", ()
   it("a thesis rule for its own filing is stamped on the thesis and never silences the account's", async () => {
     const own: Trigger = { id: "own-502", predicate: { watch: "filing", variable: "item:5.02" }, action: "REVIEW", rationale: "New CEO is the thesis." };
     stored.triggers = [own];
-    expect(triggerBucket(own)).not.toBe(triggerBucket(account[0]));
+    expect(triggerSlot(own)).not.toBe(triggerSlot(account[0]));
     const fired = ladder().filter((t) => shouldFire(t, ctx()).fires);
     expect(fired.map((t) => t.id).sort()).toEqual(["acct-sec", "own-502"]);
 

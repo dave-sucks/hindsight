@@ -11,7 +11,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import { accountSeedTriggers } from "./seed-account";
 import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 
 describe("accountSeedTriggers", () => {
   it("carries the up-7% add prompt and no sell rule — the down-7% add and the sell rules live on each analyst (DAV-279)", () => {
@@ -51,6 +51,6 @@ describe("accountSeedTriggers", () => {
 
   it("emits one rung per bucket so it resolves without self-collision", () => {
     const seed = accountSeedTriggers();
-    expect(new Set(seed.map(triggerBucket)).size).toBe(seed.length);
+    expect(new Set(seed.map(triggerSlot)).size).toBe(seed.length);
   });
 });

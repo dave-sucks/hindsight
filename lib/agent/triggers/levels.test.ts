@@ -1,6 +1,6 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
+import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { Condition } from "@/lib/agent/triggers/condition";
 import {
   resolveLadder,
@@ -8,7 +8,7 @@ import {
   splitFiresByLevel,
 } from "./levels";
 import { resolveThesisLadder } from "./load-levels";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
 
 /** Minimal rung builder — only the fields the resolver reads. */
@@ -88,7 +88,7 @@ describe("resolveLadder — precedence", () => {
     const resolved = resolveLadder({ thesis: [up], account: [down] });
 
     expect(resolved).toHaveLength(2);
-    expect(triggerBucket(up)).not.toBe(triggerBucket(down));
+    expect(triggerSlot(up)).not.toBe(triggerSlot(down));
   });
 
   it("dedupes within a single level, keeping the first", () => {
