@@ -14,7 +14,7 @@
  *   );
  *
  * Merge rule (kept simple for v1): defaults fill gaps. Agent-supplied
- * triggers take precedence on the same (predicate.kind, action) key.
+ * triggers take precedence on the same (condition, action) key.
  * That way the agent can override "sell below $stop" with a
  * tighter level without producing two contradictory exits.
  *

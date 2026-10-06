@@ -1060,7 +1060,7 @@ export const recordThesis = defineTool({
       // against. The default templates emit one off targetPrice; this
       // guard catches the cases where (a) targetPrice is missing or (b)
       // the agent passed an explicit triggers[] array that crowded out
-      // the default ENTER via the (predicate.kind, action) merge bucket.
+      // the default ENTER via the (condition, action) merge bucket.
       // Shared with update_thesis — see lib/agent/triggers/enter-guard.ts.
       const enterGuard = validateEnterTriggerRequired({
         direction: args.direction,
