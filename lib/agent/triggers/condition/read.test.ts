@@ -168,8 +168,9 @@ describe("the checker agrees with the one it replaced on every stored trigger", 
  * that said "at least" where it should say "more than" would pass the grid
  * above. Here each measure's number is set to the situation's own line: the
  * typed level, the variable's number (an average, a high, the close N days
- * back, our entry, the high since we bought), the trail line, the day of the
- * report and N days before it, and a count of days to the minute. Both
+ * back, our entry, the high since we bought), the trail line, the big-winner
+ * switch, the day of the report and N days before it, and a count of days to
+ * the minute. Both
  * checkers must still agree, under every action. A filing has no number and
  * is left to the grid.
  */
@@ -225,6 +226,15 @@ describe("the checker agrees with the one it replaced exactly on every line", ()
       const avg = c.position!.avgCost!;
       const gain = ((price - avg) / avg) * 100;
       add("our entry", { kind: "GAIN_FROM_ENTRY", pct: Math.abs(gain), direction: gain >= 0 ? "UP" : "DOWN" }, c);
+      // The big-winner switch: a peak exactly this far off the buy, exactly this many days (or 0) after it.
+      const down = withPrice(c, avg * 0.92);
+      const fell = ((avg - down.latestQuote!.price) / avg) * 100;
+      const ran = ((c.position!.peakPrice! - avg) / avg) * 100;
+      for (const days of [5, 21]) {
+        for (const peakAt of [new Date(c.position!.openedAt!.getTime() + days * DAY), c.position!.openedAt!]) {
+          add("the big-winner switch", { kind: "GAIN_FROM_ENTRY", pct: fell, direction: "DOWN", skipIfPeakGainPct: ran, skipIfPeakWithinDays: days }, { ...down, position: { ...down.position!, peakAt } });
+        }
+      }
       for (const pct of [5, 12, 25]) {
         const line = trailFireLevel({ pct }, { peak: c.position!.peakPrice, avgCost: avg, isLong: true, atr: null });
         if (line != null) add("the trail line", { kind: "TRAILING_FROM_HIGH", pct }, withPrice(c, line));
