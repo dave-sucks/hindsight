@@ -3,7 +3,7 @@
 
 import type { MeasureDef } from "../measure";
 import { DATE_VARIABLES, variableDef } from "../variables";
-import { wholeIn } from "../words";
+import { shown, wholeIn } from "../words";
 
 export const repeat: MeasureDef = {
   id: "repeat",
@@ -18,7 +18,7 @@ export const repeat: MeasureDef = {
   cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "repeat" }),
   fits: (c) => c.value != null,
-  valid: (c) => wholeIn(c.value, 1, 365),
+  problem: (c) => (wholeIn(c.value, 1, 365) ? null : `A repeat runs every 1 to 365 whole days; ${shown(c.value)} isn't.`),
   // Counted from the last review.
 };
 
@@ -40,6 +40,9 @@ export const fromDate: MeasureDef = {
   // After the buy, or either side of the event date.
   fits: (c) =>
     c.value != null && (c.is === "after" || c.is === "before") && (c.variable === "event" || (c.variable === "buy" && c.is === "after")),
-  valid: (c) => fromDate.fits(c) && wholeIn(c.value, 1, 365),
+  problem: (c) => {
+    if (!fromDate.fits(c)) return "A date count runs after the buy, or before or after the event date.";
+    return wholeIn(c.value, 1, 365) ? null : `A date count runs 1 to 365 whole days; ${shown(c.value)} isn't.`;
+  },
   check: (c) => (c.variable === "buy" && c.is === "before" ? "The buy is already in the past. Pick After." : null),
 };

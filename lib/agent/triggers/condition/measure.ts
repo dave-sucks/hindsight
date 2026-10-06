@@ -126,14 +126,18 @@ export interface MeasureDef {
    * The {x} menu offers only the variables that fit.
    */
   fits: (c: Condition) => boolean;
-  /** `fits`, with every number in its range. The save refuses anything else. */
-  valid: (c: Condition) => boolean;
+  /**
+   * What the save refuses, in one sentence that names the number and its
+   * range, or null when the condition fits and every number is in range. The
+   * save, the agents' schema and the form all refuse with this sentence.
+   */
+  problem: (c: Condition) => string | null;
   /**
    * "Any of" several of these conditions read as one rule (several filing
-   * events): whether that rule is valid, or undefined when they aren't one
-   * rule and each is checked on its own.
+   * events): what's wrong with that rule (null for nothing), or undefined
+   * when they aren't one rule and each is checked on its own.
    */
-  validAny?: (cs: readonly Condition[]) => boolean | undefined;
+  problemAny?: (cs: readonly Condition[]) => string | null | undefined;
 }
 
 export const BELOW_ABOVE = [

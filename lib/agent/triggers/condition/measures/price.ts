@@ -8,7 +8,7 @@
 
 import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
 import { PRICE_VARIABLES, variableDef } from "../variables";
-import { isNum, num, wholeIn } from "../words";
+import { isNum, num, shown, wholeIn } from "../words";
 import { trailFireLevel, trailOf } from "../../trail";
 
 const SMA_PERIOD: Readonly<Record<string, 20 | 50 | 150 | 200>> = { sma20: 20, sma50: 50, sma150: 150, sma200: 200 };
@@ -61,7 +61,10 @@ export const price: MeasureDef = {
     if (c.settings?.close === true) return false;
     return SMA_PERIOD[c.variable] != null || ((c.variable === "high20" || c.variable === "high52") && c.is === "above");
   },
-  valid: (c) => price.fits(c) && (c.variable != null || isNum(c.value)),
+  problem: (c) => {
+    if (!price.fits(c)) return "A price is above or below a typed price, an average, or (from below) a high; only a typed price can wait for the close.";
+    return c.variable != null || isNum(c.value) ? null : `Enter the price as a number, not ${shown(c.value)}.`;
+  },
 };
 
 export const move: MeasureDef = {
@@ -113,22 +116,33 @@ export const move: MeasureDef = {
     if (c.is !== "above" && c.is !== "below") return false;
     return MOVE_WINDOW[c.variable] != null || c.variable === "entry" || (c.variable === "peak" && c.is === "below");
   },
-  valid: (c) => {
-    if (!move.fits(c) || !isNum(c.value)) return false;
+  problem: (c) => {
+    if (!move.fits(c))
+      return "A % move is within an average or the 52-week high, above or below a recent close or our entry, or below the high since we bought.";
+    if (!isNum(c.value)) return `Enter the % as a number, not ${shown(c.value)}.`;
     const v = c.value;
     const s = c.settings ?? {};
-    if (c.is === "near") return SMA_PERIOD[c.variable!] != null ? v > 0 && v <= 10 : v >= 0 && v <= 100;
+    if (c.is === "near") {
+      if (SMA_PERIOD[c.variable!] != null) return v > 0 && v <= 10 ? null : `Within an average can be more than 0% and up to 10%; ${shown(v)}% isn't.`;
+      return v >= 0 && v <= 100 ? null : `Within the 52-week high can be 0% to 100%; ${shown(v)}% isn't.`;
+    }
     if (c.variable === "peak") {
       // A give-back under 1% would fire on noise the moment the high is set.
+      if (v < 1) return `A trail needs at least 1%; ${shown(v)}% would fire on noise the moment a high is set.`;
       const arm = num(s.startOnceUpPct);
+      if (arm != null && !(arm >= 0 && arm <= 200)) return `A trail can start once up 0% to 200%; ${shown(arm)}% isn't.`;
       const atr = num(s.widenAtr);
-      return v >= 1 && (arm == null || (arm >= 0 && arm <= 200)) && (atr == null || (atr > 0 && atr <= 10));
+      if (atr != null && !(atr > 0 && atr <= 10)) return `A trail can widen to more than 0 and up to 10× the daily range; ${shown(atr)}× isn't.`;
+      return null;
     }
     if (c.variable === "entry") {
+      if (!(v > 0)) return `A move from our entry needs more than 0%; ${shown(v)}% isn't.`;
       const fast = num(s.fastWinnerPct);
+      if (fast != null && !(fast > 0 && fast <= 500)) return `The big-winner switch can be more than 0% and up to 500%; ${shown(fast)}% isn't.`;
       const within = num(s.fastWinnerDays);
-      return v > 0 && (fast == null || (fast > 0 && fast <= 500 && (within == null || wholeIn(within, 1, 365))));
+      if (fast != null && within != null && !wholeIn(within, 1, 365)) return `The big-winner switch counts 1 to 365 whole days; ${shown(within)} isn't.`;
+      return null;
     }
-    return v > 0;
+    return v > 0 ? null : `A move needs more than 0%; ${shown(v)}% isn't.`;
   },
 };

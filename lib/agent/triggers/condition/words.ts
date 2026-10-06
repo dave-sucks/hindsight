@@ -26,6 +26,11 @@ export function wholeIn(v: unknown, lo: number, hi: number): boolean {
 }
 
 /** A finite number. */
+/** A number as a refusal shows it: "0.5", "60", or what was sent instead. */
+export function shown(v: unknown): string {
+  return isNum(v) ? String(Math.round(v * 10000) / 10000) : v == null ? "nothing" : JSON.stringify(v);
+}
+
 export function isNum(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
