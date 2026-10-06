@@ -1,7 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { generateText, stepCountIs, type ModelMessage } from "ai";
-import { withScreenOutputs } from "@/lib/agent/screen-outputs";
+import { generateText, stepCountIs } from "ai";
+import { saveRunThread } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
@@ -328,9 +328,6 @@ export const morningResearch = inngest.createFunction(
         const trackUsage = (usage: any) => {
           addTokenUsage(tokenUsage, usage);
         };
-        // Every tool result as execute() returned it, for the saved thread
-        // (screen-outputs.ts): the model's copy leaves out screen-only data.
-        const screenSteps: Array<{ toolResults?: Array<{ toolCallId: string; output?: unknown }> }> = [];
         const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
         let lastStepTimeMs = t0;
 
@@ -393,7 +390,6 @@ export const morningResearch = inngest.createFunction(
             ),
             onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage }) {
               trackUsage(usage);
-              screenSteps.push({ toolResults: toolResults as never });
               const now = Date.now();
               const elapsed = now - t0;
               const stepLatencyMs = now - lastStepTimeMs;
@@ -706,7 +702,6 @@ export const morningResearch = inngest.createFunction(
                 abortSignal: AbortSignal.timeout(120_000),
                 onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason, usage }) {
                   trackUsage(usage);
-                  screenSteps.push({ toolResults: toolResults as never });
                   const now = Date.now();
                   const stepLatencyMs = now - lastStepTimeMs;
                   lastStepTimeMs = now;
@@ -973,49 +968,12 @@ export const morningResearch = inngest.createFunction(
             );
           }
 
-          // Persist full conversation messages for replay (atomic — old messages preserved on failure)
-          try {
-            const userMessage = {
-              role: "user",
-              content: [{ type: "text", text: userPrompt }],
-            };
-            // Defensive: response.messages may be undefined depending on the
-            // AI SDK provider (observed after switching from OpenAI to Anthropic).
-            // Fall back to reconstructing from steps if the top-level is missing.
-            let responseMessages = response?.messages;
-            if (!responseMessages || !Array.isArray(responseMessages) || responseMessages.length === 0) {
-              console.warn(
-                `[morning-research] response.messages is ${responseMessages === undefined ? "undefined" : "empty"} for run ${run.id}. ` +
-                `Reconstructing from ${steps.length} steps.`
-              );
-              // Each step has its own response.messages — flatten them
-              responseMessages = steps.flatMap((s) => {
-                const stepMsgs = (s as unknown as { response?: { messages?: unknown[] } }).response?.messages;
-                return Array.isArray(stepMsgs) ? stepMsgs : [];
-              }) as typeof responseMessages;
-            }
-            const allMessages = [userMessage, ...withScreenOutputs(responseMessages as ModelMessage[], screenSteps)];
-            const json = JSON.stringify(allMessages);
-            console.log(
-              `[morning-research] Persisting ${allMessages.length} messages (${(json.length / 1024).toFixed(0)}KB) for run ${run.id}`
-            );
-            await prisma.$transaction(async (tx) => {
-              await tx.runMessage.deleteMany({ where: { runId: run.id } });
-              await tx.runMessage.create({
-                data: {
-                  runId: run.id,
-                  role: "thread",
-                  content: json,
-                },
-              });
-            });
-            console.log(`[morning-research] ✅ Messages persisted for run ${run.id}`);
-          } catch (msgErr) {
-            console.error(
-              `[morning-research] ❌ Failed to persist messages for run ${run.id}:`,
-              msgErr instanceof Error ? msgErr.message : msgErr,
-            );
-          }
+          // The conversation for /runs/[id] (run-thread.ts).
+          await saveRunThread(
+            run.id,
+            { opening: [{ role: "user", content: [{ type: "text", text: userPrompt }] }], messages: response?.messages, steps },
+            "morning-research",
+          );
 
           // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
           // continuity now comes from the account-level PortfolioDigest, read
@@ -1083,25 +1041,18 @@ export const morningResearch = inngest.createFunction(
                     toolStats[tc.toolName] = bucket;
                   }
                 }
-                try {
-                  let recoveryMessages = recoveryResp.response?.messages;
-                  if (!recoveryMessages || !Array.isArray(recoveryMessages) || recoveryMessages.length === 0) {
-                    recoveryMessages = recoveryResp.steps.flatMap((s) => {
-                      const stepMsgs = (s as unknown as { response?: { messages?: unknown[] } }).response?.messages;
-                      return Array.isArray(stepMsgs) ? stepMsgs : [];
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    }) as any[];
-                  }
-                  if (recoveryMessages && recoveryMessages.length > 0) {
-                    const userMessage = { role: "user", content: [{ type: "text", text: userPrompt }] };
-                    const recoveryNote = { role: "user", content: "(catch-path recovery: prior attempt produced zero tool calls — restarting)" };
-                    const allMessages = [userMessage, recoveryNote, ...withScreenOutputs(recoveryMessages as ModelMessage[], recoveryResp.steps as never)];
-                    await prisma.$transaction(async (tx) => {
-                      await tx.runMessage.deleteMany({ where: { runId: run.id } });
-                      await tx.runMessage.create({ data: { runId: run.id, role: "thread", content: JSON.stringify(allMessages) } });
-                    });
-                  }
-                } catch { /* persistence is non-critical */ }
+                await saveRunThread(
+                  run.id,
+                  {
+                    opening: [
+                      { role: "user", content: [{ type: "text", text: userPrompt }] },
+                      { role: "user", content: "(catch-path recovery: prior attempt produced zero tool calls — restarting)" },
+                    ],
+                    messages: recoveryResp.response?.messages,
+                    steps: recoveryResp.steps,
+                  },
+                  "morning-research",
+                );
                 message = `Recovered after zero-tool-call abort. Recovery produced ${recoveryToolCalls} tool calls.`;
               }
             } catch (recoveryErr) {

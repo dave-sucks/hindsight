@@ -1,0 +1,463 @@
+{
+ "_source": "Trigger run cmtd08iij000504l6cps17hih (2026-08-28, CYTK): its one get_theses call and the result execute() returned, as saved before the model's copy left out the cards. The only trigger run in the last 400 that read get_theses.",
+ "call": {
+  "toolCallId": "call_B5WBdBMiNppG1pmU81XXk4lK",
+  "input": {
+   "status": [
+    "WATCHING"
+   ],
+   "tickers": [
+    "CYTK"
+   ],
+   "ids": [
+    "cmroeg0l2000c04jux1gjdqhk"
+   ],
+   "horizon": [
+    "CATALYST"
+   ],
+   "watching_review_due_only": false,
+   "include_history": true,
+   "include_research": false,
+   "history_limit": 5,
+   "limit": 1,
+   "detail": "book"
+  }
+ },
+ "result": {
+  "ok": true,
+  "ui": "thesis-card",
+  "progressLabel": "Reading thesis on $CYTK",
+  "summary": "1 thesis (0 active, 1 watching).",
+  "data": {
+   "count": 1,
+   "active": 0,
+   "watching": 1,
+   "theses": [
+    {
+     "id": "cmroeg0l2000c04jux1gjdqhk",
+     "ticker": "CYTK",
+     "direction": "LONG",
+     "status": "WATCHING",
+     "horizon": "CATALYST",
+     "coreBelief": "Aficamten receives FDA approval for the nHCM label expansion by November 14, 2026, expanding the addressable population by ~2x and re-rating CYTK toward analyst consensus targets of ~$105+.",
+     "snapshot": {
+      "text": "CYTK thesis confirmed correct following discovery session review. Core catalyst is ACACIA-HCM/aficamten nHCM label expansion with a Nov 14, 2026 PDUFA \u2014 correctly sourced. A third-party research document (Perplexity) mislabeled the catalyst as Camzyos/MAPLE-HCM; that is a BMS product (mavacamten). CYTK's product is Myqorzo/aficamten, and the ACACIA-HCM Phase 3 dual-primary endpoints (KCCQ-CSS + peak VO2) are both met. Price $77.95, sitting 2.6% below the $80 ENTER trigger. Tape has not repaired enough for re-entry; thesis remains WATCHING pending a reclaim of $80.",
+      "citations": [
+       {
+        "url": "https://www.asecho.org/news/cytokinetics-announces-positive-topline-results-from-acacia-hcm-the-pivotal-phase-3-clinical-trial-of-aficamten-in-patients-with-non-obstructive-hypertrophic-cardiomyopathy/",
+        "kind": "WEB",
+        "title": "ACACIA-HCM Dual Primary Endpoints Met \u2014 ASE/Cytokinetics",
+        "domain": "asecho.org"
+       }
+      ]
+     },
+     "bullCase": {
+      "bullets": [
+       {
+        "text": "ACACIA-HCM efficacy data is already in hand \u2014 both dual primary endpoints met (KCCQ-CSS + peak VO2) in Phase 3. This is categorically different from a pre-readout binary bet; the clinical risk is retired and the FDA review is a regulatory process binary, not a science binary. FDA approval rates for sNDAs with clean Phase 3 data exceed 85%.",
+        "citation": {
+         "url": "https://www.asecho.org/news/cytokinetics-announces-positive-topline-results-from-acacia-hcm-the-pivotal-phase-3-clinical-trial-of-aficamten-in-patients-with-non-obstructive-hypertrophic-cardiomyopathy/",
+         "kind": "WEB",
+         "title": "ACACIA-HCM Dual Primary Endpoints Met",
+         "domain": "asecho.org"
+        }
+       },
+       {
+        "text": "nHCM label expansion would roughly double the addressable HCM patient population (750K\u2013850K nHCM patients vs. ~200K obHCM in the U.S.), creating a step-change in peak revenue potential \u2014 with analysts likely undermodeling this in the current $10B cap, given the Camzyos/BMS precedent valued at ~$13B at peak.",
+        "citation": {
+         "url": "https://tickeron.com/blogs/cytokinetics-cytk-climbs-25-on-myqorzo-launch-momentum-and-analyst-upgrades-14749/",
+         "kind": "WEB",
+         "title": "Cytokinetics nHCM Market Expansion",
+         "domain": "tickeron.com"
+        }
+       },
+       {
+        "text": "Commercial momentum in obHCM is real and de-risks the franchise: Myqorzo launched January 2026 (U.S.) and Germany (mid-2026), with ~$1.1B cash providing 3+ year runway without dilution risk regardless of PDUFA outcome.",
+        "citation": {
+         "url": "https://tickeron.com/blogs/cytokinetics-cytk-climbs-25-on-myqorzo-launch-momentum-and-analyst-upgrades-14749/",
+         "kind": "WEB",
+         "title": "Cytokinetics Cash Position and Commercial Launch",
+         "domain": "tickeron.com"
+        }
+       },
+       {
+        "text": "89% buy-rated analyst consensus (25 Buy, 0 Sell) with ~30.5% consensus price upside implied \u2014 institutional conviction at this breadth near a confirmed PDUFA date is a strong positive re-rating signal.",
+        "citation": {
+         "url": "https://finnhub.io/api/news?id=a08a3e359ee4a9dc30dcba6c47d86a3cbbccbd604fb33dde45327b2c098e982c",
+         "kind": "WEB",
+         "title": "Wall Street Analysts: CYTK Could Surge 30.54%",
+         "domain": "yahoo.com"
+        }
+       },
+       {
+        "text": "Technical setup is clean: RSI 49 (neutral, not extended), pullback to SMA20 support in a bullish SMA stack (SMA20 > SMA50), stock in the upper quartile of its 52w range \u2014 ideal accumulation zone with 4 months before the PDUFA binary resolves.",
+        "citation": {
+         "url": "[STRUCTURED: CYTK RSI 49.2, SMA20 $82.92, SMA50 $77.66, trend bullish]",
+         "kind": "STRUCTURED",
+         "title": "CYTK Technical Indicators",
+         "domain": "finnhub.io"
+        }
+       }
+      ]
+     },
+     "bearCase": {
+      "bullets": [
+       {
+        "text": "FDA could issue a CRL citing manufacturing (CMC), labeling, or post-marketing safety concerns even with clean Phase 3 data \u2014 a CRL on an sNDA is uncommon but not rare (~10-15% of reviewed sNDAs). A CRL would likely send CYTK back to the $55\u201365 range, a 20\u201330% drawdown from current levels.",
+        "citation": {
+         "url": "https://tickeron.com/blogs/cytokinetics-cytk-climbs-25-on-myqorzo-launch-momentum-and-analyst-upgrades-14749/",
+         "kind": "WEB",
+         "title": "CYTK PDUFA Risk Assessment",
+         "domain": "tickeron.com"
+        }
+       },
+       {
+        "text": "CEO insider sale of 7,500 shares at $82.02 on July 13, 2026 \u2014 while the exercise was from options at $10.60 (routine), the timing of selling near 52w highs after 110% gains suggests management is not aggressively accumulating ahead of the PDUFA catalyst window; a soft negative signal.",
+        "citation": {
+         "url": "https://www.theglobeandmail.com/investing/markets/markets-news/motley/3284023/what-this-cytokinetics-insider-sale-might-mean-with-the-stock-up-110/",
+         "kind": "WEB",
+         "title": "CYTK Insider Sale at $82 \u2014 Globe and Mail",
+         "domain": "theglobeandmail.com"
+        }
+       },
+       {
+        "text": "The stock has already doubled from its 52w low ($32.89) and trades at $80.36 \u2014 much of the ACACIA-HCM positive readout and Myqorzo launch success may be priced in, leaving less room for error than a typical pre-readout catalyst setup.",
+        "citation": {
+         "url": "[STRUCTURED: CYTK 52w range $32.89-$88.31, current $80.36]",
+         "kind": "STRUCTURED",
+         "title": "CYTK Price History",
+         "domain": "finnhub.io"
+        }
+       },
+       {
+        "text": "Myqorzo commercial ramp risk: if Q2 2026 net product revenue disappoints (below expectations for a product just launched in January), it would signal physician adoption headwinds, undermining the market size assumptions for the nHCM label expansion.",
+        "citation": {
+         "url": "https://www.marketbeat.com/stocks/NASDAQ/CYTK/earnings/",
+         "kind": "WEB",
+         "title": "CYTK Q2 2026 Earnings Risk \u2014 MarketBeat",
+         "domain": "marketbeat.com"
+        }
+       },
+       {
+        "text": "CYTK remains pre-profitability and cash-burning, with no P/E anchor. Broader biotech risk-off or rising credit spreads could compress pre-profitability biotech multiples ahead of or after the PDUFA date, irrespective of the regulatory outcome.",
+        "citation": {
+         "url": "[STRUCTURED: CYTK P/E null, quarterly EPS losses $1.50-2.55/share]",
+         "kind": "STRUCTURED",
+         "title": "CYTK Pre-Profitability Risk",
+         "domain": "finnhub.io"
+        }
+       }
+      ]
+     },
+     "keyAssumptions": [
+      "ACACIA-HCM positive dual-primary endpoints (KCCQ-CSS and peak VO2) are sufficient for an FDA approvable package with no major Complete Response Letter",
+      "Myqorzo commercial launch momentum in obHCM continues through the PDUFA window, providing revenue validation that the HCM franchise is intact",
+      "No serious safety signal emerges in post-marketing surveillance or FDA AdCom review that would delay or deny nHCM approval"
+     ],
+     "invalidationConds": [
+      "FDA issues a Complete Response Letter (CRL) on the nHCM sNDA prior to or at the Nov 14 PDUFA date",
+      "FDA calls an unexpected AdCom with negative tone or requests additional Phase 3 data, implying delay beyond Nov 14",
+      "Myqorzo net revenue growth decelerates sharply (below $30M quarterly run-rate in Q2 2026 print), signaling commercial failure that undermines nHCM market assumptions",
+      "CYTK price breaks below $67 (structural support, prior base), indicating market pricing in CRL risk"
+     ],
+     "entryPrice": null,
+     "targetPrice": null,
+     "stopLoss": null,
+     "targetSizePct": 4,
+     "triggers": [
+      {
+       "id": "4af78393-9547-4e82-a2bd-64334b43d8a3",
+       "action": "REVIEW",
+       "source": "AGENT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "OR",
+        "predicates": [
+         {
+          "kind": "FILING",
+          "formType": "8-K"
+         },
+         {
+          "kind": "FILING",
+          "formType": "10-Q"
+         },
+         {
+          "kind": "FILING",
+          "formType": "10-K"
+         }
+        ]
+       },
+       "rationale": "Review material filings immediately for any FDA, commercial, or balance-sheet change ahead of the November PDUFA.",
+       "cooldownDays": 1
+      },
+      {
+       "id": "895342f8-4e91-45fe-b620-94fd41a9d1df",
+       "action": "REVIEW",
+       "source": "AGENT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "kind": "SIGNAL_TYPE",
+        "sentiment": "BEARISH",
+        "minUrgency": "HIGH",
+        "signalType": "NEWS"
+       },
+       "rationale": "Review any high-urgency bearish news immediately for damage to the approval setup or launch case.",
+       "cooldownDays": 1
+      },
+      {
+       "id": "3bc989da-9c43-4e5c-a336-8d1a6e4f5be9",
+       "action": "REVIEW",
+       "source": "AGENT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "days": 14,
+        "kind": "TIME_ELAPSED"
+       },
+       "rationale": "Re-underwrite the FDA setup every two weeks while waiting for a cleaner entry or new catalyst evidence.",
+       "lastFiredAt": "2026-08-21T13:31:18.876Z",
+       "cooldownDays": 11
+      },
+      {
+       "id": "e08cf4f6-6266-45ff-977c-a00d32e36ab7",
+       "action": "REVIEW",
+       "source": "DEFAULT",
+       "fireMode": "TACTICAL",
+       "predicate": {
+        "days": 1,
+        "kind": "REVIEW_CADENCE"
+       },
+       "rationale": "Look at this every day.",
+       "lastFiredAt": "2026-08-27T13:30:57.207Z",
+       "cooldownDays": 1
+      }
+     ],
+     "triggerState": {
+      "1758189f-7614-4193-92e2-b913264f3307": {
+       "firedAt": "2026-08-20T18:35:23.738Z"
+      },
+      "cacf717e-af57-42e5-a9af-28835e20508d": {
+       "firedAt": "2026-08-28T13:45:40.918Z"
+      }
+     },
+     "scalingPlan": null,
+     "catalystDate": "2026-11-14T00:00:00.000Z",
+     "nextReviewAt": "2026-08-29T12:01:27.579Z",
+     "sourceSignalIds": [],
+     "sourceKind": "WEB_SEARCH",
+     "scoring": {
+      "composite": 9,
+      "entryQuality": {
+       "note": "Clean pullback to SMA20 zone ($80.36 vs SMA20 $82.92), RSI at neutral 49 \u2014 not a chase; entry at well-defined technical support with 4 months to PDUFA",
+       "score": 2
+      },
+      "trendStrength": {
+       "note": "Bullish SMA stack (SMA20 > SMA50), stock up 21% YTD and 75% through 52w range; minor pullback to SMA20 is constructive, not broken",
+       "score": 2
+      },
+      "relativeStrength": {
+       "note": "CYTK composite score 83 vs peers SMMT 53, APGE 54, KRYS 81 \u2014 clear sector leader in the HCM cardiology niche; 450% revenue growth rate leads the peer group",
+       "score": 3
+      },
+      "catalystFreshness": {
+       "note": "PDUFA date Nov 14, 2026 confirmed; ACACIA-HCM dual primary endpoints already met \u2014 regulatory binary de-risked on efficacy, FDA review outcome is the remaining variable",
+       "score": 2
+      }
+     },
+     "conviction": "MEDIUM",
+     "convictionRationale": "The PDUFA setup still works, but the chart has weakened enough that I don't want to be as aggressive as when CYTK was holding above both key moving averages. This is still a valid hold, just not as clean a tape as it was a few days ago.",
+     "variantView": "Market is treating CYTK as a single-product obHCM story; the Nov 14 PDUFA for nHCM label expansion would roughly double the addressable patient population and is materially underweighted in the current $10B cap.",
+     "createdAt": "2026-07-17T03:49:43.286Z",
+     "updatedAt": "2026-08-28T13:45:42.282Z",
+     "invalidatedAt": null,
+     "invalidReason": null,
+     "closedAt": "2026-08-20T19:46:07.082Z",
+     "closeReason": "STOP",
+     "parentThesisId": null,
+     "promotedAt": null,
+     "paperTenureDays": null,
+     "paperRealizedPnl": null,
+     "paperReviewCount": null,
+     "researchUpdatedAt": "2026-08-27T21:32:49.904Z",
+     "triggerCount": 6,
+     "history": [
+      {
+       "id": "cmtd08jac000704jwtxwqu6kz",
+       "thesisId": "cmroeg0l2000c04jux1gjdqhk",
+       "timestamp": "2026-08-28T13:45:56.388Z",
+       "type": "TRIGGER_FIRED",
+       "summary": "Price down 7% over 1D \u2014 scale in",
+       "rationale": "Down 7% in a day \u2014 evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add \u2014 hold, trim, or exit. Approval-gated.",
+       "fieldChanges": {},
+       "priceAtTime": 72.32,
+       "positionAtTime": null,
+       "triggerId": "cacf717e-af57-42e5-a9af-28835e20508d",
+       "signalIds": [],
+       "runId": "cmtd08iij000504l6cps17hih",
+       "tradeId": null
+      },
+      {
+       "id": "cmtczozeb000004l01xzq6zoz",
+       "thesisId": "cmroeg0l2000c04jux1gjdqhk",
+       "timestamp": "2026-08-28T13:30:44.147Z",
+       "type": "TRIGGER_FIRED",
+       "summary": "CYTK plan set down \u2014 the floor broke before we ever bought it, so the plan's premise is gone.",
+       "rationale": "The priced plan on CYTK was removed: enter at $80, exit at $76.1, review at $107. the floor broke before we ever bought it, so the plan's premise is gone. Still watching \u2014 re-price it if the setup comes back, or stop watching if it doesn't.",
+       "fieldChanges": {
+        "triggers": {
+         "to": "4 triggers",
+         "from": "7 triggers"
+        },
+        "entryPrice": {
+         "to": null,
+         "from": null
+        }
+       },
+       "priceAtTime": 73.82,
+       "positionAtTime": null,
+       "triggerId": "397d1602-484a-4968-ad82-634247b0291e",
+       "signalIds": [],
+       "runId": null,
+       "tradeId": null
+      },
+      {
+       "id": "cmtcwi6fb000c04lbm9djyqtn",
+       "thesisId": "cmroeg0l2000c04jux1gjdqhk",
+       "timestamp": "2026-08-28T12:01:27.815Z",
+       "type": "UPDATED",
+       "summary": "Updated CYTK thesis",
+       "rationale": "CYTK review: I am keeping this on watch, not chasing it. The thesis is still alive into the Nov 14 PDUFA, but the stock remains below the $80 reclaim level and still below the 50-day average. No new negative catalyst has broken the setup, yet the tape has not improved enough to justify re-entry after the prior stop.",
+       "fieldChanges": {
+        "nextReviewAt": {
+         "to": "2026-08-29T12:01:27.579Z",
+         "from": "2026-08-28T21:32:49.904Z"
+        }
+       },
+       "priceAtTime": 77.95,
+       "positionAtTime": null,
+       "triggerId": null,
+       "signalIds": [],
+       "runId": "cmtcwh9tl000404lbn223w3vl",
+       "tradeId": null
+      },
+      {
+       "id": "cmtc1h44y000104ik896lrpry",
+       "thesisId": "cmroeg0l2000c04jux1gjdqhk",
+       "timestamp": "2026-08-27T21:32:50.098Z",
+       "type": "UPDATED",
+       "summary": "Updated CYTK: rationale updated",
+       "rationale": "Discovery session confirmed: CYTK thesis is correctly sourced on ACACIA-HCM/aficamten nHCM expansion with a Nov 14 PDUFA. A Perplexity research row mislabeled the catalyst as Camzyos/MAPLE-HCM \u2014 that is a BMS product (mavacamten), not a CYTK catalyst. Thesis stands unchanged. Price $77.95, below the $80 ENTER trigger. No new negative catalysts surfaced in social monitoring. Updating snapshot to confirm sourcing is validated.",
+       "fieldChanges": {
+        "snapshot": {
+         "to": "CYTK thesis confirmed correct following discovery session review. Core catalyst is ACACIA-HCM/aficamten nHCM label expansion with a Nov 14, 2026 PDUFA \u2014 correct\u2026",
+         "from": "CYTK's nHCM approval thesis remains intact, but the stock still has not repaired enough to justify re-entry. Shares are around $76.8, below both the 20-day and \u2026"
+        }
+       },
+       "priceAtTime": 77.95,
+       "positionAtTime": null,
+       "triggerId": null,
+       "signalIds": [],
+       "runId": "cmtc07jlh000004l5amt13v7i",
+       "tradeId": null
+      },
+      {
+       "id": "cmtbk9gj5000004l75ca33pj8",
+       "thesisId": "cmroeg0l2000c04jux1gjdqhk",
+       "timestamp": "2026-08-27T13:30:59.441Z",
+       "type": "TRIGGER_FIRED",
+       "summary": "Every 1 days since the last review \u2014 review \u2014 deferred to the next daily review",
+       "rationale": "Look at this every day.",
+       "fieldChanges": {},
+       "priceAtTime": 79.22,
+       "positionAtTime": null,
+       "triggerId": "e08cf4f6-6266-45ff-977c-a00d32e36ab7",
+       "signalIds": [],
+       "runId": null,
+       "tradeId": null
+      }
+     ],
+     "needsAction": {
+      "kind": "TRIGGER_FIRED",
+      "triggerId": "cacf717e-af57-42e5-a9af-28835e20508d",
+      "action": "ADD",
+      "summary": "\u22127% over 1D",
+      "firedAt": "2026-08-28T13:45:56.388Z"
+     },
+     "resolved": {
+      "currentPrice": 72.745,
+      "entryQualityScore": 2,
+      "unrealizedGainPct": null,
+      "progressToTarget": null,
+      "ladderHealth": null,
+      "planSanity": null,
+      "triggerState": "NONE",
+      "triggerDetail": null,
+      "actionability": "PENDING_CATALYST",
+      "supersededBy": null,
+      "staleness": "FRESH",
+      "resolvedAt": "2026-08-28T13:46:14.865Z",
+      "quoteAgeMs": 0
+     },
+     "researchAge": {
+      "daysOld": 0,
+      "freshness": "fresh",
+      "lastWrittenAt": "2026-08-27T21:32:49.904Z",
+      "horizonThreshold": 7
+     },
+     "unapprovedExitCount": 0,
+     "heldThroughFloor": null,
+     "principalDirective": null
+    }
+   ],
+   "quiet_theses": [],
+   "cards": [
+    {
+     "thesis_id": "cmroeg0l2000c04jux1gjdqhk",
+     "ticker": "CYTK",
+     "direction": "LONG",
+     "confidence_score": 90,
+     "reasoning_summary": "CYTK thesis confirmed correct following discovery session review. Core catalyst is ACACIA-HCM/aficamten nHCM label expansion with a Nov 14, 2026 PDUFA \u2014 correctly sourced. A third-party research document (Perplexity) mislabeled the catalyst as Camzyos/MAPLE-HCM; that is a BMS product (mavacamten). CYTK's product is Myqorzo/aficamten, and the ACACIA-HCM Phase 3 dual-primary endpoints (KCCQ-CSS + peak VO2) are both met. Price $77.95, sitting 2.6% below the $80 ENTER trigger. Tape has not repaired enough for re-entry; thesis remains WATCHING pending a reclaim of $80.",
+     "thesis_bullets": [
+      "ACACIA-HCM efficacy data is already in hand \u2014 both dual primary endpoints met (KCCQ-CSS + peak VO2) in Phase 3. This is categorically different from a pre-readout binary bet; the clinical risk is retired and the FDA review is a regulatory process binary, not a science binary. FDA approval rates for sNDAs with clean Phase 3 data exceed 85%.",
+      "nHCM label expansion would roughly double the addressable HCM patient population (750K\u2013850K nHCM patients vs. ~200K obHCM in the U.S.), creating a step-change in peak revenue potential \u2014 with analysts likely undermodeling this in the current $10B cap, given the Camzyos/BMS precedent valued at ~$13B at peak.",
+      "Commercial momentum in obHCM is real and de-risks the franchise: Myqorzo launched January 2026 (U.S.) and Germany (mid-2026), with ~$1.1B cash providing 3+ year runway without dilution risk regardless of PDUFA outcome.",
+      "89% buy-rated analyst consensus (25 Buy, 0 Sell) with ~30.5% consensus price upside implied \u2014 institutional conviction at this breadth near a confirmed PDUFA date is a strong positive re-rating signal.",
+      "Technical setup is clean: RSI 49 (neutral, not extended), pullback to SMA20 support in a bullish SMA stack (SMA20 > SMA50), stock in the upper quartile of its 52w range \u2014 ideal accumulation zone with 4 months before the PDUFA binary resolves."
+     ],
+     "risk_flags": [
+      "FDA could issue a CRL citing manufacturing (CMC), labeling, or post-marketing safety concerns even with clean Phase 3 data \u2014 a CRL on an sNDA is uncommon but not rare (~10-15% of reviewed sNDAs). A CRL would likely send CYTK back to the $55\u201365 range, a 20\u201330% drawdown from current levels.",
+      "CEO insider sale of 7,500 shares at $82.02 on July 13, 2026 \u2014 while the exercise was from options at $10.60 (routine), the timing of selling near 52w highs after 110% gains suggests management is not aggressively accumulating ahead of the PDUFA catalyst window; a soft negative signal.",
+      "The stock has already doubled from its 52w low ($32.89) and trades at $80.36 \u2014 much of the ACACIA-HCM positive readout and Myqorzo launch success may be priced in, leaving less room for error than a typical pre-readout catalyst setup.",
+      "Myqorzo commercial ramp risk: if Q2 2026 net product revenue disappoints (below expectations for a product just launched in January), it would signal physician adoption headwinds, undermining the market size assumptions for the nHCM label expansion.",
+      "CYTK remains pre-profitability and cash-burning, with no P/E anchor. Broader biotech risk-off or rising credit spreads could compress pre-profitability biotech multiples ahead of or after the PDUFA date, irrespective of the regulatory outcome."
+     ],
+     "entry_price": null,
+     "target_price": null,
+     "stop_loss": null,
+     "signal_types": [],
+     "company_name": null,
+     "exchange": null,
+     "fundamentals": null,
+     "status": "WATCHING",
+     "promoted_at": null,
+     "paper_tenure_days": null,
+     "paper_realized_pnl": null,
+     "paper_review_count": null,
+     "needs_action": {
+      "kind": "TRIGGER_FIRED",
+      "triggerId": "cacf717e-af57-42e5-a9af-28835e20508d",
+      "action": "ADD",
+      "summary": "\u22127% over 1D",
+      "firedAt": "2026-08-28T13:45:56.388Z"
+     },
+     "research_age": {
+      "daysOld": 0,
+      "freshness": "fresh",
+      "lastWrittenAt": "2026-08-27T21:32:49.904Z",
+      "horizonThreshold": 7
+     }
+    }
+   ]
+  },
+  "sources": []
+ }
+}

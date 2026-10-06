@@ -12,6 +12,7 @@
 
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
+import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -126,6 +127,7 @@ export const podcastSegmentRun = inngest.createFunction(
       );
 
       let response: Awaited<ReturnType<typeof generateText>>["response"];
+      let steps: RunStep[] = [];
       try {
         const result = await generateText({
           model: openai("gpt-4o"),
@@ -136,6 +138,7 @@ export const podcastSegmentRun = inngest.createFunction(
           abortSignal: AbortSignal.timeout(210_000), // 3.5 min — leaves buffer before Inngest step limit
         });
         response = result.response;
+        steps = result.steps;
 
         console.log(
           `[podcast-segment-run] generateText done in ${Date.now() - t0}ms steps=${result.steps.length}`,
@@ -157,23 +160,16 @@ export const podcastSegmentRun = inngest.createFunction(
         throw err;
       }
 
-      // ── Persist messages ───────────────────────────────────────────────────
-      try {
-        const userMessage = {
-          role: "user",
-          content: [{ type: "text", text: "Begin researching and writing this segment now." }],
-        };
-        const allMessages = [userMessage, ...(response?.messages ?? [])];
-        await prisma.$transaction(async (tx) => {
-          await tx.runMessage.deleteMany({ where: { runId } });
-          await tx.runMessage.create({
-            data: { runId, role: "thread", content: JSON.stringify(allMessages) },
-          });
-        });
-        console.log(`[podcast-segment-run] Persisted ${allMessages.length} messages for run ${runId}`);
-      } catch (err) {
-        console.error(`[podcast-segment-run] Failed to persist messages:`, err);
-      }
+      // ── Persist messages (run-thread.ts) ───────────────────────────────────
+      await saveRunThread(
+        runId,
+        {
+          opening: [{ role: "user", content: [{ type: "text", text: "Begin researching and writing this segment now." }] }],
+          messages: response?.messages,
+          steps,
+        },
+        "podcast-segment-run",
+      );
 
       // ── Safety: mark RUNNING → COMPLETE if complete_run didn't ────────────
       await prisma.researchRun.updateMany({

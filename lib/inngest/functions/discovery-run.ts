@@ -15,8 +15,8 @@
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { generateText, stepCountIs, type ModelMessage } from "ai";
-import { withScreenOutputs } from "@/lib/agent/screen-outputs";
+import { generateText, stepCountIs } from "ai";
+import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -278,9 +278,6 @@ export const discoveryRun = inngest.createFunction(
         const tokenUsage = emptyTokenUsage();
         const openaiOptions = { strictJsonSchema: true, promptCacheKey: run.id };
         try {
-          // Every tool result as execute() returned it, for the saved thread
-          // (screen-outputs.ts): the model's copy leaves out screen-only data.
-          const screenSteps: Array<{ toolResults?: Array<{ toolCallId: string; output?: unknown }> }> = [];
           const { steps, response } = await generateText({
             model: openai(MODES["discovery"].model),
             system: systemPrompt,
@@ -291,8 +288,7 @@ export const discoveryRun = inngest.createFunction(
             abortSignal: AbortSignal.timeout(
               (MODES["discovery"].maxDuration - 30) * 1000,
             ),
-            onStepFinish({ usage, toolResults }) {
-              screenSteps.push({ toolResults: toolResults as never });
+            onStepFinish({ usage }) {
               addTokenUsage(tokenUsage, usage);
             },
           });
@@ -316,6 +312,9 @@ export const discoveryRun = inngest.createFunction(
               return Array.isArray(stepMsgs) ? stepMsgs : [];
             }) as typeof responseMessages;
           }
+
+          // Every step whose messages are saved, for the thread's tool results.
+          const threadSteps: RunStep[] = [...steps];
 
           // ── Refusal retry (2026-09-25) ───────────────────────────────────
           // A refused call this run never redid (a PASS save, a mint the
@@ -352,6 +351,7 @@ export const discoveryRun = inngest.createFunction(
                 }) as typeof refusalMessages;
               }
               if (refusalMessages && refusalMessages.length > 0) {
+                threadSteps.push(...refusalResp.steps);
                 responseMessages = [
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   ...(responseMessages as any[]),
@@ -369,32 +369,12 @@ export const discoveryRun = inngest.createFunction(
           }
           await recordOpenRefusalsEvent(run.id, await listOpenRefusalsForRun(run.id));
 
-          // Persist conversation messages so /runs/[id] can replay the chat.
-          // Without this, every discovery run shows "No replay data
-          // available" — same pattern as morning-research and tactical-run.
-          try {
-            const userMessage = {
-              role: "user",
-              content: [{ type: "text", text: userPrompt }],
-            };
-            const allMessages = [userMessage, ...withScreenOutputs(responseMessages as ModelMessage[], [...screenSteps, ...steps])];
-            const json = JSON.stringify(allMessages);
-            await prisma.$transaction(async (tx) => {
-              await tx.runMessage.deleteMany({ where: { runId: run.id } });
-              await tx.runMessage.create({
-                data: {
-                  runId: run.id,
-                  role: "thread",
-                  content: json,
-                },
-              });
-            });
-          } catch (msgErr) {
-            console.error(
-              `[discovery-run] failed to persist messages for run=${run.id}:`,
-              msgErr instanceof Error ? msgErr.message : msgErr,
-            );
-          }
+          // The conversation for /runs/[id] (run-thread.ts).
+          await saveRunThread(
+            run.id,
+            { opening: [{ role: "user", content: [{ type: "text", text: userPrompt }] }], messages: responseMessages, steps: threadSteps },
+            "discovery-run",
+          );
 
           // Count new theses minted by this run.
           const newTheses = await prisma.thesis.count({

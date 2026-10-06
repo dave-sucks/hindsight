@@ -49,6 +49,7 @@ import { z } from "zod";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { prisma } from "@/lib/prisma";
+import { saveRunThread } from "@/lib/agent/run-thread";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import type { ToolContext } from "@/lib/agent/tool-context";
@@ -1771,23 +1772,17 @@ export async function writerPersistPhase(
   // 1. Replay thread — persisted success or fail. A timed-out V1 run left
   //    no RunMessage at all; that observability hole is the reason CEG/CRWD
   //    took a diagnosis agent to reconstruct.
-  try {
-    if (research.userPrompt || research.threadMessages.length > 0) {
-      const threadContent = JSON.stringify([
-        { role: "user", content: research.userPrompt || `Write a deep-research thesis on $${T} (${args.mode}).` },
-        ...research.threadMessages,
-      ]);
-      await prisma.$transaction([
-        prisma.runMessage.deleteMany({ where: { runId: args.childRunId } }),
-        prisma.runMessage.create({
-          data: { runId: args.childRunId, role: "thread", content: threadContent },
-        }),
-      ]);
-    }
-  } catch (msgErr) {
-    console.warn(
-      `[thesis-writer] thread persistence failed for child=${args.childRunId}:`,
-      msgErr instanceof Error ? msgErr.message : msgErr,
+  //    The writer's tools hand the model what the screen gets, so it has
+  //    no tool results to put back (run-thread.ts).
+  if (research.userPrompt || research.threadMessages.length > 0) {
+    await saveRunThread(
+      args.childRunId,
+      {
+        opening: [{ role: "user", content: research.userPrompt || `Write a deep-research thesis on $${T} (${args.mode}).` }],
+        messages: research.threadMessages,
+        steps: [],
+      },
+      "thesis-writer",
     );
   }
 
