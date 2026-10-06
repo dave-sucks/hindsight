@@ -126,6 +126,20 @@ export interface MeasureDef {
   fresh: () => Condition;
   /** What's wrong beyond the number and the variable, in one sentence, or null. */
   check?: (c: Condition, ctx: CheckContext) => string | null;
+  /**
+   * Whether the condition says something this measure can check: a button it
+   * has, a variable it reads with that button, a number where it needs one.
+   * The {x} menu offers only the variables that fit.
+   */
+  fits: (c: Condition) => boolean;
+  /** `fits`, with every number in its range. The save refuses anything else. */
+  valid: (c: Condition) => boolean;
+  /**
+   * "Any of" several of these conditions read as one rule (several filing
+   * events): whether that rule is valid, or undefined when they aren't one
+   * rule and each is checked on its own.
+   */
+  validAny?: (cs: readonly Condition[]) => boolean | undefined;
   /** How this measure reads the old kinds (rows stored before the cutover) and spells itself as one for the save check. Goes with the translator in PR 4. */
   legacy: {
     from: LegacyReaders;

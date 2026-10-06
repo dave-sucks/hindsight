@@ -9,7 +9,6 @@
  */
 
 import { measureOf } from "./catalog";
-import { toLegacy } from "./legacy";
 import type { CheckContext } from "./measure";
 import type { Condition, Direction, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
@@ -30,7 +29,7 @@ export function variableOptions(c: Condition, ctx: CheckContext): readonly Varia
   return vars.options.filter((o) => {
     if (o.position && ctx.level === "THESIS" && !ctx.held) return false;
     const option: Condition = { ...c, variable: o.id, value: c.value ?? 1, settings: undefined };
-    return toLegacy(option) != null && levelProblem(option, ctx) == null;
+    return measureOf(option).fits(option) && levelProblem(option, ctx) == null;
   });
 }
 
@@ -64,8 +63,7 @@ export function conditionProblem(c: Condition, ctx: CheckContext): string | null
     const button = m.buttons?.find((b) => b.is === c.is)?.label ?? m.word ?? "this";
     return `${capitalise(variableDef(c.variable).chip)} doesn't work with ${button}. Pick another with the {x} button.`;
   }
-  const legacy = toLegacy(c);
-  if (!legacy) return "This can't be saved yet.";
+  if (!m.fits(c)) return "This can't be saved yet.";
   return levelProblem(c, ctx);
 }
 
