@@ -17,7 +17,8 @@ import { report, surprise } from "./measures/earnings";
 import { filing, insiders } from "./measures/filing";
 import { move, price } from "./measures/price";
 import { fromDate, repeat } from "./measures/schedule";
-import type { Condition, SettingDef, SettingValue, TriggerType, VariableId, Watch } from "./types";
+import type { Condition, SettingDef, SettingValue, TriggerType, VariableId, Watch, When } from "./types";
+import { isGroup } from "./types";
 import { variableDef } from "./variables";
 
 export const MEASURES: Readonly<Record<Watch, MeasureDef>> = {
@@ -67,6 +68,27 @@ export function measureOf(c: Condition): MeasureDef {
 /** The settings a condition can carry: its measure's, then its variable's. */
 export function settingDefs(c: Condition): readonly SettingDef[] {
   return [...(measureOf(c).settings ?? []), ...(c.variable ? (variableDef(c.variable).settings ?? []) : [])];
+}
+
+/**
+ * The condition with only the settings its measure or its variable declares.
+ * A key nothing reads is dropped, never stored: a % move carrying `close`
+ * would otherwise be picked for the close pass while its reader ignores it
+ * (the old gate dropped such keys the same way).
+ */
+export function declaredOnly<W extends When>(w: W): W {
+  if (isGroup(w)) {
+    const conditions = w.conditions.map(declaredOnly);
+    return (conditions.every((c, i) => c === w.conditions[i]) ? w : { ...w, conditions }) as W;
+  }
+  const c = w as Condition;
+  if (!c.settings) return w;
+  const keys = new Set(settingDefs(c).map((s) => s.key));
+  const kept = Object.entries(c.settings).filter(([k]) => keys.has(k));
+  if (kept.length === Object.keys(c.settings).length) return w;
+  const { settings: _dropped, ...rest } = c;
+  void _dropped;
+  return (kept.length ? { ...rest, settings: Object.fromEntries(kept) } : rest) as W;
 }
 
 export function settingOf(c: Condition, key: string): SettingValue | undefined {

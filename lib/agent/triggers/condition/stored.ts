@@ -12,10 +12,12 @@
  */
 
 import { isShape, shapeOf, toLegacy } from "./legacy";
+import { declaredOnly } from "./catalog";
 
 /** The predicate as stored: the condition shape (a removed kind verbatim). */
 export function toStoredPredicate(p: unknown): unknown {
-  return shapeOf(p) ?? p;
+  const w = shapeOf(p);
+  return w ? declaredOnly(w) : p;
 }
 
 /** The predicate in the kinds' spelling, for the down script: the kind that says the same thing (or the shape, when no kind can). */

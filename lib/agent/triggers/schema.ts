@@ -1,11 +1,10 @@
 /**
- * Zod schemas for thesis triggers — used by record_thesis / update_thesis
- * to validate agent-supplied trigger arrays before persistence.
- *
- * Stays in sync with lib/agent/triggers/types.ts. Adding a new predicate
- * kind requires updating BOTH this schema AND the type union AND the
- * deterministic evaluator (PR 2). All three or none — partial updates
- * mean triggers that look valid get silently dropped at evaluation time.
+ * Zod schemas for triggers: the save gate every writer goes through (the
+ * agents' tools, the trigger popover, the level rules) and the condition the
+ * agents write. A condition is in the shape (./condition) and is valid when
+ * its old-kind spelling passes the old schema (./condition/legacy-schema),
+ * until PR 4 moves that check onto the catalog. A new measure is one catalog
+ * entry; this file lists the measures from the catalog and needs no change.
  */
 
 import { z } from "zod";
@@ -13,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { isShape, shapeOf, toLegacy } from "./condition/legacy";
 import { legacyPredicateSchema } from "./condition/legacy-schema";
 import type { Watch, When } from "./condition/types";
-import { MEASURES } from "./condition/catalog";
+import { MEASURES, declaredOnly } from "./condition/catalog";
 
 // Recursive shape for AND/OR composition. Zod doesn't support direct
 // discriminated-union recursion, so we type the recursion via z.lazy.
@@ -36,7 +35,7 @@ export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
     ctx.addIssue({ code: "custom", message: "Not a condition this app can check." });
     return z.NEVER;
   }
-  return w;
+  return declaredOnly(w);
 });
 
 /**
@@ -75,7 +74,9 @@ export function predicateInputSchema() {
       if (!spelled || !legacyPredicateSchema.safeParse(spelled).success) {
         ctx.addIssue({ code: "custom", message: "Not a condition this app can check: see the measures and what each takes." });
       }
-    });
+    })
+    // A setting the measure doesn't take is dropped, never stored.
+    .transform((w) => declaredOnly(w as When));
 }
 
 /** Each measure in one line: its directions, its number, its variables and settings. */
@@ -153,7 +154,7 @@ export const triggerSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "Prose the LLM reads when acting on this trigger. e.g. 'A close under the 50-day on heavy volume breaks the pullback thesis — exit.'",
+      "The note the owner reads: why it's here and what you'll do when it fires. e.g. 'A close under the 50-day average on heavy volume breaks the pullback, so I sell.'",
     ),
   cooldownDays: z
     .number()

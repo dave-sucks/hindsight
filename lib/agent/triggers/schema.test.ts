@@ -8,6 +8,7 @@
  */
 
 import { zodSchema } from "ai";
+import { toStoredPredicate, waitsForClose } from "./condition";
 import { parseTriggersResilient, predicateInputSchema, triggerPredicateSchema, triggersArraySchema } from "./schema";
 
 const good = {
@@ -99,5 +100,31 @@ describe("the condition a model writes", () => {
   it("names the measures once, not once per level of nesting", () => {
     const json = JSON.stringify(zodSchema(predicateInputSchema() as never).jsonSchema);
     expect(json.split("Measures: price").length - 1).toBe(1);
+  });
+});
+
+describe("a setting the measure doesn't take is dropped at the gate", () => {
+  // Reproduced in review: a % move carrying `close` passed both schemas, so
+  // the close pass picked it up while the move's reader ignores `close`.
+  const undeclared = { watch: "move", is: "below", value: 7, variable: "prev_close", settings: { close: true } };
+
+  it("the save gate stores the move without it, and the close pass doesn't pick it up", () => {
+    const stored = triggerPredicateSchema.parse(undeclared);
+    expect(stored).toEqual({ watch: "move", is: "below", value: 7, variable: "prev_close" });
+    expect(waitsForClose(stored)).toBe(false);
+  });
+
+  it("the condition a model writes drops it too, and keeps what the measure or variable declares", () => {
+    expect(predicateInputSchema().parse(undeclared)).toEqual({ watch: "move", is: "below", value: 7, variable: "prev_close" });
+    const trail = { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, close: true } };
+    expect(predicateInputSchema().parse(trail)).toEqual({ watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10 } });
+    const closeBuy = { watch: "price", is: "above", value: 183, settings: { close: true } };
+    expect(triggerPredicateSchema.parse(closeBuy)).toEqual(closeBuy);
+  });
+
+  it("so does storage, for every writer", () => {
+    expect(toStoredPredicate(undeclared)).toEqual({ watch: "move", is: "below", value: 7, variable: "prev_close" });
+    const group = { match: "all", conditions: [undeclared, { watch: "volume", value: 1.5, settings: { window: "3M" } }] };
+    expect(toStoredPredicate(group)).toEqual({ match: "all", conditions: [{ watch: "move", is: "below", value: 7, variable: "prev_close" }, { watch: "volume", value: 1.5 }] });
   });
 });
