@@ -47,7 +47,7 @@ export function buildHeldThroughNote(args: {
   const { declineCount, rejectMessage, recentExtreme, direction } = args;
   if (declineCount <= 0) return null;
   const isLong = direction !== "SHORT";
-  // In words (lib/agent/voice.ts): Dave reads this on the proposal.
+  // In plain words (lib/agent/voice.ts): this is read on the proposal.
   const times = declineCount === 1 ? "once" : declineCount === 2 ? "twice" : `${declineCount} times`;
   const nth = ["Second", "Third", "Fourth", "Fifth"][declineCount - 1];
   const parts: string[] = [

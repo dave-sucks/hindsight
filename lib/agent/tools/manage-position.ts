@@ -26,7 +26,6 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
-import { shownToDave } from "@/lib/agent/voice";
 import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -125,8 +124,7 @@ const schema = z.object({
     .string()
     .min(20)
     .describe(
-      "Required: what you're doing and why, in 1–3 sentences, with the price, the catalyst and what you expect." +
-        shownToDave("on the Activity line and, for an add or a trim, on the proposal and in the approval email"),
+      "Required: what you're doing and why, in 1–3 sentences, with the price, the catalyst and what you expect. Shown to the owner on the Activity line and, for an add or a trim, on the proposal and in the approval email; write it by How you write.",
     ),
 
   // partial_close

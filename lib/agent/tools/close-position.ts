@@ -7,7 +7,6 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { shownToDave } from "@/lib/agent/voice";
 import {
   collapseCloseReason,
   enforceCloseReason,
@@ -44,8 +43,7 @@ export const closePosition = defineTool({
       .string()
       .optional()
       .describe(
-        "Why you're selling, always supplied: the sale and the price first, then the reason in a sentence or two." +
-          shownToDave("on the sale proposal and in the approval email when deciding whether to approve it"),
+        "Why you're selling, always supplied: the sale and the price first, then the reason in a sentence or two. Shown to the owner on the sale proposal and in the approval email; write it by How you write.",
       ),
     belief_survived: z
       .boolean()

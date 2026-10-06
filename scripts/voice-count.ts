@@ -19,7 +19,7 @@ const FORBIDDEN: Array<[string, RegExp]> = [
   ["principal", /\bthe principal\b|\bthis seat\b/gi],
 ];
 
-interface Run { case: string; run: number; narration: string; saved: Array<{ tool: string; field: string; text: string }> }
+interface Run { case: string; run: number; narration: string; saved: Array<{ tool: string; field: string; text: string }>; invalid?: Array<{ tool: string; error: string }> }
 
 function count(path: string) {
   const runs = readFileSync(path, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Run);
@@ -44,6 +44,7 @@ function count(path: string) {
     per1000: allWords ? Math.round((Object.values(hits).reduce((a, b) => a + b, 0) / allWords) * 10000) / 10 : 0,
     hits,
     worst: worst.sort((a, b) => b.n - a.n).slice(0, 3),
+    invalid: runs.flatMap((r) => (r.invalid ?? []).map((x) => `${r.case} run ${r.run}: ${x.tool} — ${x.error}`)),
   };
 }
 
@@ -57,6 +58,10 @@ console.log(`| Notes and reasons written | ${a.notes} | ${b.notes} |`);
 console.log(`| Average note, words | ${a.avgNoteWords} | ${b.avgNoteWords} |`);
 console.log(`| Forbidden words per 1,000 | ${a.per1000} | ${b.per1000} |`);
 for (const [k] of FORBIDDEN) console.log(`| — ${k} | ${a.hits[k]} | ${b.hits[k]} |`);
+console.log(`| Tool calls that failed the schema | ${a.invalid.length} | ${b.invalid.length} |`);
+for (const [label, r] of [["Before", a], ["After", b]] as const) {
+  if (r.invalid.length) console.log(`\n${label}, calls that failed the schema:\n${r.invalid.map((x) => `- ${x}`).join("\n")}`);
+}
 for (const [label, r] of [["Before", a], ["After", b]] as const) {
   console.log(`\n${label}, worst lines:`);
   for (const w of r.worst) console.log(`- (${w.n}) ${w.text.slice(0, 300)}${w.text.length > 300 ? "…" : ""}`);

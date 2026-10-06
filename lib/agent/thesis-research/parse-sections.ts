@@ -99,6 +99,20 @@ export function parseCitations(text: string): string[] {
   return out;
 }
 
+/**
+ * A paragraph without its source markers. They are already in the section's
+ * `citations`; left in the text they print inside the sentence. A new
+ * thesis's first Activity line is its snapshot paragraph, and 18 in the 30
+ * days to 2026-10-05 read like Visa's: "…alongside Mastercard. [STRUCTURED:
+ * MarketCap] The stock closed at $367.74…".
+ */
+export function withoutCitationMarkers(text: string): string {
+  return text
+    .replace(/\s*\[(?:STRUCTURED|WEB):[^\]]*\]/g, "")
+    .replace(/[ \t]+([.,;:])/g, "$1")
+    .trim();
+}
+
 export function citationsFromRaw(rawList: string[]): ResearchCitation[] {
   return rawList.map((raw): ResearchCitation => {
     const colon = raw.indexOf(":");

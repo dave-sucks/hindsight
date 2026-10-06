@@ -10,7 +10,6 @@ import { isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowledge/setups
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
-import { shownToDave } from "@/lib/agent/voice";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
@@ -85,8 +84,7 @@ const placeTradeSchema = z.object({
       .string()
       .optional()
       .describe(
-        "REQUIRED on every buy proposal, from a trigger run or the daily run: why you're buying now. The buy and the price first, then the reason in a sentence or two, then the target and the stop. Skip only for a one-shot buy in the chat, where the thesis you just wrote is the reason." +
-          shownToDave("on the proposal and in the approval email"),
+        "REQUIRED on every buy proposal, from a trigger run or the daily run: why you're buying now. The buy and the price first, then the reason in a sentence or two, then the target and the stop. Skip only for a one-shot buy in the chat, where the thesis you just wrote is the reason. Shown to the owner on the proposal and in the approval email; write it by How you write.",
       ),
     analyst_id: z
       .string()

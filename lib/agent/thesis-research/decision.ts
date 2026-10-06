@@ -42,7 +42,7 @@ export const thesisDecisionSchema = z.object({
     .describe("Your directional call. PASS is allowed when the research doesn't support a directional view."),
   rationale: z
     .string()
-    .describe("The decision in two or three sentences: the call and the price first, then why. On a refresh it becomes the stock's newest Activity note, which Dave reads: write it by How you write."),
+    .describe("The decision in two or three sentences: the call and the price first, then why. On a refresh it becomes the stock's newest Activity note, shown to the owner; write it by How you write."),
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .describe("Exit policy + trigger template. CATALYST requires catalyst_date."),

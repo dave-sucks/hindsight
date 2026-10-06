@@ -48,7 +48,6 @@ import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { FlameIcon } from "@/components/ui/flame-icon";
 import { planSanityLabel } from "@/lib/agent/plan-sanity-label";
 import { latestNoteView } from "@/lib/thesis/latest-note";
-import { withoutSourceTags } from "@/lib/thesis/source-tags";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import { SendToAgentButton } from "@/components/stocks/SendToAgentButton";
 import {
@@ -822,8 +821,7 @@ function LatestNoteBlock({
   analystName: string | null;
   suppressText: string | null;
 }) {
-  const written = latestUpdate?.rationale?.trim() || latestUpdate?.summary?.trim() || null;
-  const note = written ? withoutSourceTags(written) : null;
+  const note = latestUpdate?.rationale?.trim() || latestUpdate?.summary?.trim() || null;
   // A pending proposal prints its own rationale in the trade block right
   // below. When the newest written note IS that rationale, showing it twice
   // made the sheet read as two agents saying the same thing.

@@ -4,8 +4,8 @@
  *
  *   npx tsx --env-file=.env.local scripts/hero-case.ts <case> [--runs 6]
  *   npx tsx --env-file=.env.local scripts/hero-case.ts --all [--runs 6]
- *   … [--written out.jsonl]  also append what each run wrote for Dave
- *                            (narration + the shown text fields), for
+ *   … [--written out.jsonl]  also append what each run wrote for the
+ *                            owner (narration + shown text fields), for
  *                            scripts/voice-count.ts. Scoring is unchanged.
  *   cases: scripts/hero-cases/*.json  (cut from real runs by hero-case-from-run.ts)
  *
@@ -172,7 +172,7 @@ function brief(call: Call): string {
   return `${call.toolName}(${shown.join(", ")})`;
 }
 
-/** The fields whose text Dave reads (lib/agent/voice.ts), per tool. */
+/** The fields whose text the owner reads (lib/agent/voice.ts), per tool. */
 const SHOWN: Record<string, string[]> = {
   update_thesis: ["rationale"],
   place_trade: ["entry_rationale"],
@@ -181,7 +181,7 @@ const SHOWN: Record<string, string[]> = {
   submit_thesis: ["rationale"],
 };
 
-/** What one run wrote that Dave would read: the shown fields, each trigger's note, the summary lines. */
+/** What one run wrote that the owner reads: the shown fields, each trigger's note, the summary lines. */
 function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: string }> {
   const out: Array<{ tool: string; field: string; text: string }> = [];
   for (const c of calls) {
@@ -242,6 +242,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
     const calls: Call[] = [];
     let text = "";
     let turns = 0;
+    /** Calls the SDK could not match to the schema (a missing field, an enum written as a word). */
+    const invalid: Array<{ tool: string; error: string }> = [];
     for (let turn = 1; turn <= maxTurns; turn++) {
       turns = turn;
       const result = await generateText({ model, system, messages, tools, stopWhen: stepCountIs(1), providerOptions });
@@ -249,6 +251,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
       tokensCached += result.usage.inputTokenDetails?.cacheReadTokens ?? result.usage.cachedInputTokens ?? 0;
       tokensOut += result.usage.outputTokens ?? 0;
       const turnCalls: Call[] = result.toolCalls.map((t) => ({ toolName: t.toolName, input: t.input }));
+      for (const t of result.toolCalls as Array<{ toolName: string; invalid?: boolean; error?: unknown }>) {
+        if (t.invalid) invalid.push({ tool: t.toolName, error: String((t.error as Error)?.message ?? t.error).slice(0, 300) });
+      }
       calls.push(...turnCalls);
       text += (text ? "\n" : "") + result.text;
       if (!c.scoreOn || turnCalls.length === 0 || turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!))) break;
@@ -278,7 +283,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
     for (const call of calls) console.log(`CALL ${brief(call)}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls) }) + "\n");
+    for (const bad of invalid) console.log(`INVALID ${bad.tool}: ${bad.error}`);
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls), invalid }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };

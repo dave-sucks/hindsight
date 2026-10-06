@@ -330,7 +330,7 @@ DECISION FRAMEWORK
            A trigger fired N minutes ago; verify the move hasn't already
            failed back below the level. If the breakout is unwinding
            right now, pass — write update_thesis(REVIEWED) saying so
-           plainly: "Not buying yet: it hit $X, then slipped back to $Y."
+           plainly: "Not acting yet: it hit $X, then slipped back to $Y."
 
        (b) **The setup's own confirmation.** Read THE SETUP block above
            and check what it says to confirm — a breakout needs a close

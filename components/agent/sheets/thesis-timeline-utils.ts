@@ -17,8 +17,6 @@
  *     ("Entry $183 → $190") — never a diff of two lists
  */
 
-import { withoutSourceTags } from "@/lib/thesis/source-tags";
-
 export type FieldChange = { from: unknown; to: unknown };
 
 export interface TimelineUpdate {
@@ -856,7 +854,7 @@ function describe(u: TimelineUpdate): { text: string | null; quoted: boolean } {
   const r = u.rationale?.trim();
   if (!r) return { text: null, quoted: false };
   // Principal UI edits carry a [USER] marker the title already reflects.
-  return { text: withoutSourceTags(r.replace(/^\[USER\]\s*/, "")), quoted: false };
+  return { text: r.replace(/^\[USER\]\s*/, ""), quoted: false };
 }
 
 /** Map any timeline item to the single render shape. */

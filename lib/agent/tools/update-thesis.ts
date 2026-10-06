@@ -27,7 +27,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { shownToDave } from "@/lib/agent/voice";
 import { prisma } from "@/lib/prisma";
 import {
   parseTriggersResilient,
@@ -112,8 +111,7 @@ const updateSchema = z.object({
     .string()
     .min(10)
     .describe(
-      "Required. What you did on this stock and why: every update writes one Activity line, and the newest one heads the stock's page. When you move a level and the belief still holds, say why in one sentence here." +
-        shownToDave("on the stock's Activity and at the top of the stock's page"),
+      "Required. What you did on this stock and why: every update writes one Activity line, and the newest one heads the stock's page. When you move a level and the belief still holds, say why in one sentence here. Shown to the owner on the stock's Activity and at the top of the stock's page; write it by How you write.",
     ),
   trigger_id: z
     .string()

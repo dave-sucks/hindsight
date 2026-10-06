@@ -226,8 +226,8 @@ export function sizeByRisk(input: RiskSizingInput): RiskSizing | null {
   const riskDollars = shares * perShare;
   const riskPctOfEquity = (riskDollars / equity) * 100;
 
-  // In words Dave reads on every buy (lib/agent/voice.ts): the shares and
-  // dollars first, then the arithmetic, every number kept.
+  // In plain words (lib/agent/voice.ts): the shares and dollars first,
+  // then the arithmetic, every number kept.
   const word = conviction.toLowerCase();
   const math =
     `${riskPct}% of the ${$(equity)} account` +

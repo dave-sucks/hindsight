@@ -57,7 +57,7 @@ export function computeRegime(
     ? Math.round((withAvg.filter((b) => b.closes[b.closes.length - 1] > (b.sma[50] as number)).length / withAvg.length) * 100)
     : null;
 
-  // In words Dave reads on every buy (lib/agent/voice.ts): no codes.
+  // In plain words (lib/agent/voice.ts): no codes.
   const pos = (v: number, avg: number, label: string) => `${v >= avg ? "above" : "below"} its ${label} ($${avg.toFixed(2)})`;
   const what =
     regime === "RISK_OFF"

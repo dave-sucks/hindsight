@@ -496,7 +496,7 @@ export async function approveProposal(
       thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
       type: "PROPOSAL_APPROVED",
       summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""}${resized ? ` (${effectiveQty}→${submitQty} sh — ${resizeNote})` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
-      // In words (lib/agent/voice.ts): this line is the Activity row Dave reads.
+      // In plain words (lib/agent/voice.ts): this is the Activity row.
       rationale:
         `You approved the ${PROPOSAL_NOUN[intent] ?? "trade"} of ${qtyEdited ? `${effectiveQty} shares, changed from ${order.quantity}` : `${effectiveQty} shares`}` +
         `${resized ? `; ${isSale ? "sold" : "bought"} ${submitQty} of them, ${resizeNote} at approval` : ""}. Sent to Alpaca as order ${alpacaOrderId}.`,

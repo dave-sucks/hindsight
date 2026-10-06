@@ -64,6 +64,7 @@ import {
 } from "@/lib/agent/thesis-research/pull-data";
 import {
   parseIntoSections,
+  withoutCitationMarkers,
   type ParsedSections,
 } from "@/lib/agent/thesis-research/parse-sections";
 import {
@@ -627,7 +628,7 @@ ${priorExitBlock}
 HOW YOU WRITE — your decision rationale and each trigger's note
 ═══════════════════════════════════════════════════════════════════
 The research note in STEP 1 keeps its sections and its citations; these
-rules cover what you put in submit_thesis for Dave to read.
+rules cover what you put in submit_thesis for the owner to read.
 ${VOICE_RULES}
 
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
@@ -1273,6 +1274,11 @@ export function buildWriterSaveCall(
   const eventDate = resolveEventDate(d, pull);
   const notes = [...(d.notes ?? []), ...(eventDate.note ? [eventDate.note] : [])];
   const rationale = notes.length ? `${d.rationale}\n\n${notes.map((n) => `[${n}]`).join("\n")}` : d.rationale;
+  // The snapshot paragraph is saved without its source markers: they are
+  // already in its `citations`, and on a new thesis the paragraph is the
+  // first Activity line.
+  const snapshot = sectionArgs.snapshot as { text: string; citations: unknown[] } | undefined;
+  const sections: SectionArgs = snapshot ? { ...sectionArgs, snapshot: { ...snapshot, text: withoutCitationMarkers(snapshot.text) } } : sectionArgs;
   if (args.mode === "mint") {
     return {
       toolName: "record_thesis",
@@ -1326,7 +1332,7 @@ export function buildWriterSaveCall(
         source_kind: "WEB_SEARCH",
         source_rationale: args.reason.slice(0, 300),
         research_data: pull?.rawDataBlock,
-        ...sectionArgs,
+        ...sections,
       },
     };
   }
@@ -1372,7 +1378,7 @@ export function buildWriterSaveCall(
       remove_trigger_ids: d.remove_trigger_ids,
       price_at_time: pull?.currentPrice ?? undefined,
       research_data: pull?.rawDataBlock,
-      ...sectionArgs,
+      ...sections,
     },
   };
 }
