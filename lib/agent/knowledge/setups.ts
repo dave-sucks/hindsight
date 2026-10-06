@@ -313,16 +313,16 @@ export function preCatalystWindowLine(row: BinaryRow, asOf: Date = new Date()): 
   const on = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const before = (n: number) => new Date(event.getTime() - n * DAY);
   const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
-  const rule = `This setup buys ${opens} to ${closes} days before the event.`;
+  const rule = `A run-up into the event buys ${opens} to ${closes} days before it.`;
   const where =
     daysOut < 0
       ? `the event date on file (${on(event)}) has passed`
       : daysOut > opens
-        ? `${days(daysOut)} to the event date (${on(event)}), ${days(daysOut - opens)} before this setup's window opens (${on(before(opens))})`
+        ? `${days(daysOut)} to the event date (${on(event)}), so the buying window opens in ${days(daysOut - opens)} (${on(before(opens))})`
         : daysOut <= closes
-          ? `${days(daysOut)} to the event date (${on(event)}), past this setup's window, which closed ${on(before(closes))}`
-          : `${days(daysOut)} to the event date (${on(event)}), inside this setup's window`;
-  return `Buying window: ${where}. ${rule}`;
+          ? `${days(daysOut)} to the event date (${on(event)}), past the buying window, which closed ${on(before(closes))}`
+          : `${days(daysOut)} to the event date (${on(event)}), inside the buying window`;
+  return `${where.charAt(0).toUpperCase()}${where.slice(1)}. ${rule}`;
 }
 
 const trendTemplate =
@@ -341,7 +341,7 @@ export const SETUPS: Setup[] = [
       "A base of 20+ sessions (chart.base), 15–25% deep at most, the last contraction tighter than the base (≤ 5–8%)",
       "Volume drying up into the pivot",
       "Earnings at least 10 days away",
-      "Regime RISK_ON — breakouts fail most in CAUTION (Part C)",
+      "A risk-on market: breakouts fail most in a cautious one (playbook Part C)",
     ],
     entry: {
       template: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: BREAKOUT_VOLUME_RATIO }, { watch: "price", is: "below", value: "{pivotChase}" }] },

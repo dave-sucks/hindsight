@@ -57,7 +57,7 @@ describe("applyTriggerDelete — the line says why when it is not a click", () =
   it("a click in the popover is logged as it always was", async () => {
     const { row, left } = await remove();
     expect(left).toEqual(["floor"]);
-    expect(row.summary).toBe("Principal removed ABT trigger — Sell if below 25% from the high since we bought");
-    expect(row.rationale).toContain("Don't re-create it unless the thesis materially changes.");
+    expect(row.summary).toBe("You removed a trigger on ABT: Sell if below 25% from the high since we bought");
+    expect(row.rationale).toContain("Don't add it back unless the thesis changes.");
   });
 });

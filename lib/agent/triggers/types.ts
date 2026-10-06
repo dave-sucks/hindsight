@@ -92,7 +92,7 @@ export type Trigger = {
   /** The condition (./condition): stored and read in this shape since the cutover. */
   predicate: When;
   action: TriggerAction;
-  /** Prose the LLM reads when acting. "Guidance cut means the multiple compresses → exit." */
+  /** The trigger's note: the owner reads it, and so does the agent acting on a fire. "A guidance cut means the multiple compresses, so I sell." */
   rationale: string;
   /** Don't re-fire same trigger more than once per N days. Optional, default no cooldown. */
   cooldownDays?: number;

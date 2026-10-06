@@ -787,7 +787,7 @@ export const triggerEvaluator = inngest.createFunction(
                 thesisId: thesis.id,
                 type: "TRIGGER_FIRED",
                 // held=false: DEMOTE branch ⇒ un-held.
-                summary: `${sentenceOf(t, false)} — deferred to the next daily review`,
+                summary: sentenceOf(t, false),
                 rationale:
                   `${t.rationale} There was no priced plan left to set down, ` +
                   `so this is a look rather than a change.`,
@@ -814,7 +814,7 @@ export const triggerEvaluator = inngest.createFunction(
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",
-              summary: `${sentenceOf(t)} — deferred to the next daily review`,
+              summary: sentenceOf(t),
               // The figures ride along on an earnings fire. Tomorrow's run
               // reads this row to decide what to do; "Earnings miss" alone
               // makes it go and re-fetch what the row could have told it.

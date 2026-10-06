@@ -554,12 +554,12 @@ export function rationaleFor(
   if (slot === "ENTRY") {
     if (long) {
       return above
-        ? `Buy level — start the position when the price breaks above ${p}.`
-        : `Buy level — start the position when the price comes back down to ${p}.`;
+        ? `I buy when it breaks above ${p}.`
+        : `I buy when it comes back down to ${p}.`;
     }
     return !above
-      ? `Short entry — start the position when the price breaks below ${p}.`
-      : `Short entry — start the position when the price rallies to ${p}.`;
+      ? `I short when it breaks below ${p}.`
+      : `I short when it rallies to ${p}.`;
   }
   if (slot === "FLOOR") {
     // On a thesis we don't own, "sell" is meaningless — a floor break
@@ -567,14 +567,14 @@ export function rationaleFor(
     // Write the wording that matches what actually happens (DAV-226).
     if (!held) {
       return long
-        ? `Floor — below ${p} the setup is wrong, so the plan comes down rather than waiting to be bought.`
-        : `Floor — above ${p} the setup is wrong, so the plan comes down rather than waiting to be entered.`;
+        ? `Below ${p} the setup is wrong, so the plan comes down instead of waiting to buy.`
+        : `Above ${p} the setup is wrong, so the plan comes down instead of waiting to short.`;
     }
     return long
-      ? `Floor — sell if the price drops to ${p}. Below this the plan is wrong.`
-      : `Floor — cover if the price rises to ${p}. Above this the plan is wrong.`;
+      ? `I sell at ${p}: below it, the reason I own this is wrong.`
+      : `I cover at ${p}: above it, the reason I'm short is wrong.`;
   }
-  return `Target ${p} — decide here: take it, trim it, or raise the target.`;
+  return `Target ${p}: when it gets there, I take it, trim, or raise the target.`;
 }
 
 /**

@@ -104,7 +104,6 @@ function stripTicker(s: string): string {
 export function triggerPhrase(summary: string): string {
   let s = summary;
   s = s.replace(/\s*\(signal:[\s\S]*$/, "");
-  s = s.replace(/\s*—\s*deferred to the next daily review\s*$/, "");
   const dash = s.lastIndexOf(" — ");
   if (dash > 0) s = s.slice(0, dash);
   return stripTicker(s).trim();
@@ -176,8 +175,8 @@ export function eventKind(u: TimelineUpdate): EventKind {
     case "CREATED":
       return "created";
     case "UPDATED":
-      // The trigger popover tags the principal's own edits.
-      return u.rationale?.startsWith("[USER]") ? "edited-by-you" : "updated";
+      // Your own edits from the trigger popover: marked in fieldChanges, or (rows before 2026-10-06) by a [USER] tag on the note.
+      return isYourEdit(u) ? "edited-by-you" : "updated";
     case "INVALIDATED":
       return "invalidated";
     case "SUPERSEDED":
@@ -415,8 +414,8 @@ export function buildTimeline(
   // It used to also require the review to carry the same `triggerId` or
   // `runId` as the fire, which split the feed in two without meaning to.
   // A fire that wakes a tactical run is answered in the same second by that
-  // run, with both ids on the row — those paired. A REVIEW fire is
-  // "deferred to the next daily review": nothing wakes, and the next
+  // run, with both ids on the row — those paired. A REVIEW fire waits
+  // for the next daily review: nothing wakes, and the next
   // morning's run writes a real answer with no idea which fire it was
   // answering. Those never paired. ISRG fired "price below the 200-day"
   // nine times between Sep 15 and Sep 25 and not one of them joined the
@@ -845,6 +844,12 @@ const PROSE_VISIBLE = new Set<EventKind>([
 const REVIEW_KINDS = new Set<EventKind>(["updated", "edited-by-you", "reviewed"]);
 function isSilentReview(u: TimelineUpdate): boolean {
   return REVIEW_KINDS.has(eventKind(u)) && outcomePhrase(u) === "no change";
+}
+
+/** An edit you made by hand: the trigger popover marks it in fieldChanges; older rows carry a [USER] tag on the note. */
+export function isYourEdit(u: { rationale?: string | null; fieldChanges?: unknown }): boolean {
+  const source = (u.fieldChanges as Record<string, { to?: unknown } | undefined> | null | undefined)?.source;
+  return source?.to === "USER" || (u.rationale?.startsWith("[USER]") ?? false);
 }
 
 /** The prose for a row + whether it's the principal's own words. */

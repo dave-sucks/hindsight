@@ -24,7 +24,7 @@ import {
   applyTriggerCooldownDefaults,
   defaultFireModeForAction,
 } from "@/lib/agent/triggers/defaults";
-import { addProblem, conditionSentence, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
+import { addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -320,7 +320,7 @@ async function runPrincipalOp(
               : synced.targetPrice != null
                 ? "TARGET_UPDATED"
                 : "MODIFIED",
-          description: `Principal: ${result.text}.`,
+          description: `Your edit: ${result.text}.`,
           priceAt: null,
         },
       });
@@ -376,9 +376,15 @@ export interface TriggerAddResult {
   synced: { stopLoss?: number; targetPrice?: number };
 }
 
-/** A rationale for a principal-added trigger when none was supplied: the trigger in words. */
+/** A note for a trigger the owner added without one: the trigger in words. */
 function addedTriggerRationale(action: TriggerAction, predicate: When): string {
-  return `${sentenceOf({ action, predicate })} (set by principal).`;
+  return `${sentenceOf({ action, predicate })}. You set this.`;
+}
+
+/** How a sale you added runs, said only where it means something (a sale). */
+function howItRuns(action: TriggerAction, fireMode: string): string {
+  if (action !== "EXIT") return "";
+  return fireMode === "DIRECT" ? ", proposed as a sale straight away when it fires" : ", and the analyst decides when it fires";
 }
 
 export async function applyTriggerAdd(
@@ -416,12 +422,12 @@ export async function applyTriggerAdd(
       };
     },
     (thesis) => ({
-      summary: `Principal added ${thesis.ticker} trigger — ${sentenceOf(input, thesis.status === "HOLDING")}`,
+      summary: `You added a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
       // Fire mode is only mentioned where it means something (EXIT). A
       // REVIEW trigger's fire batches into the next daily run — naming a
       // fire mode on it would claim a tactical wake that never happens
       // (DAV-226).
-      rationale: `[USER] Added a "${input.action}" trigger (${conditionSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
+      rationale: `You added this trigger: ${sentenceOf(input, thesis.status === "HOLDING")}${howItRuns(input.action, fireMode)}. It stands until you change it.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -466,8 +472,8 @@ export async function applyTriggerReplace(
       };
     },
     (thesis) => ({
-      summary: `Principal changed ${thesis.ticker} trigger — ${sentenceOf(input, thesis.status === "HOLDING")}`,
-      rationale: `[USER] Changed a trigger to "${input.action}" (${conditionSentence(input.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
+      summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
+      rationale: `You changed this trigger to: ${sentenceOf(input, thesis.status === "HOLDING")}${howItRuns(input.action, fireMode)}. It stands until you change it.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -506,12 +512,12 @@ export async function applyTriggerDelete(
       if (why) {
         return {
           summary: `Removed a copied rule from ${thesis.ticker} — ${what}`,
-          rationale: `[USER] Removed the "${target.action}" trigger (${conditionSentence(target.predicate)}) in the cleanup of copied rules: ${why}. Don't re-create it on the stock.`,
+          rationale: `Removed in the cleanup of copied rules: ${what}. ${why.charAt(0).toUpperCase()}${why.slice(1).replace(/\.$/, "")}. Don't add it back on this stock.`,
         };
       }
       return {
-        summary: `Principal removed ${thesis.ticker} trigger — ${what}`,
-        rationale: `[USER] Removed the "${target.action}" trigger (${conditionSentence(target.predicate)}). Don't re-create it unless the thesis materially changes.`,
+        summary: `You removed a trigger on ${thesis.ticker}: ${what}`,
+        rationale: `You removed this trigger: ${what}. Don't add it back unless the thesis changes.`,
       };
     },
   );
