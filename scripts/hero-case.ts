@@ -290,10 +290,16 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
       // Nothing is run. Ending the run is refused the way complete_run
       // refuses it when a stock on the list has not been answered.
       const left = c.scoreOn?.ticker ?? c.scoreOn?.thesisId ?? "the stock";
-      messages.push(...(result.response.messages as ModelMessage[]));
-      messages.push({
+      const reply = result.response.messages as ModelMessage[];
+      messages.push(...reply);
+      // The SDK already answers a refused call with its error; answer each call once.
+      const answered = new Set(
+        reply.flatMap((m) => (m.role === "tool" ? (m.content as Array<{ toolCallId?: string }>).map((p) => p.toolCallId) : [])),
+      );
+      const unanswered = result.toolCalls.filter((t) => !answered.has(t.toolCallId));
+      if (unanswered.length) messages.push({
         role: "tool",
-        content: result.toolCalls.map((t) => ({
+        content: unanswered.map((t) => ({
           type: "tool-result" as const,
           toolCallId: t.toolCallId,
           toolName: t.toolName,
