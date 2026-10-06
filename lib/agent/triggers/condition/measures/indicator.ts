@@ -1,7 +1,7 @@
 /** Indicator: volume, RSI, strength vs. the S&P, a gap up. docs/plans/TRIGGER_TYPES.md §3.3. */
 
 
-import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
+import { BELOW_ABOVE, type MeasureDef } from "../measure";
 import type { Condition } from "../types";
 import { isNum, num, shown, wholeIn } from "../words";
 

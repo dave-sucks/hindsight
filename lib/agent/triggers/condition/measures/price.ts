@@ -6,7 +6,7 @@
  */
 
 
-import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
+import { BELOW_ABOVE, type MeasureDef } from "../measure";
 import { PRICE_VARIABLES, variableDef } from "../variables";
 import { isNum, num, shown, wholeIn } from "../words";
 import { trailFireLevel, trailOf } from "../../trail";

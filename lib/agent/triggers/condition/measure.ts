@@ -9,7 +9,7 @@
  */
 
 import type { TriggerAction } from "../types";
-import type { Condition, Direction, SettingDef, SettingValue, TriggerType, Watch, When } from "./types";
+import type { Condition, Direction, SettingDef, TriggerType, Watch } from "./types";
 import type { VariableDef } from "./variables";
 
 export interface ValueDef {
@@ -144,9 +144,3 @@ export const BELOW_ABOVE = [
   { is: "below", label: "Below" },
   { is: "above", label: "Above" },
 ] as const;
-
-/** A condition with the settings that are set (an absent stored field stays absent). */
-export function withSettings(c: Condition, settings: Record<string, SettingValue | undefined>): Condition {
-  const set = Object.fromEntries(Object.entries(settings).filter(([, v]) => v !== undefined)) as Record<string, SettingValue>;
-  return Object.keys(set).length ? { ...c, settings: set } : c;
-}
