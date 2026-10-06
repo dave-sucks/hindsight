@@ -5,6 +5,7 @@
  * accept/reject boundary is pinned hard.
  */
 
+import { zodSchema } from "ai";
 import {
   thesisDecisionSchema,
   validateThesisDecision,
@@ -448,5 +449,13 @@ describe("submit_thesis edit_triggers — the same form update_thesis saves (DAV
     const parsed = editTriggerOpSchema.parse(op);
     expect(parsed).toMatchObject({ id: PRAX_0911_EDIT.id, action: "REVIEW", rationale: "Weekly into the PDUFA.", cooldown_days: 7 });
     expect(editNumber(parsed)).toEqual({ value: 7, unit: "days" });
+  });
+});
+
+describe("submit_thesis carries the trigger once", () => {
+  it("triggers and add_triggers point at one definition, so the measures guide appears one time", () => {
+    const json = JSON.stringify(zodSchema(thesisDecisionSchema).jsonSchema);
+    expect(json.split("Measures: price").length - 1).toBe(1);
+    expect(json.split('"$ref"').length - 1).toBe(2);
   });
 });

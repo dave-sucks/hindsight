@@ -36,6 +36,13 @@ const scoringDimSchema = z.object({
  * the save (which trims or clamps rather than refusing). See
  * lib/agent/triggers/model-schema.ts.
  */
+/**
+ * The trigger a writer sends, defined once: \`triggers\` (a mint) and
+ * \`add_triggers\` (a refresh) both point at it, so the tool definition carries
+ * the condition and its measures guide one time.
+ */
+const writerTrigger = triggerInputSchema.meta({ id: "Trigger" });
+
 export const thesisDecisionSchema = z.object({
   direction: z
     .enum(["LONG", "SHORT", "PASS"])
@@ -100,7 +107,7 @@ export const thesisDecisionSchema = z.object({
       "REQUIRED when this analyst SOLD this ticker within the last 14 days and your entry_price is at/above that exit price (the exit details are in your prompt). One line that genuinely engages with the sale — why this is a new setup, not a re-buy of the dip just sold. Omit when no recent sale applies.",
     ),
   triggers: z
-    .array(triggerInputSchema)
+    .array(writerTrigger)
     .optional()
     .describe(
       "MINT ONLY. Optional custom trigger ladder; omit to accept the horizon-default template (right answer for most theses). " +
@@ -108,7 +115,7 @@ export const thesisDecisionSchema = z.object({
     ),
   // ── Refresh: triggers change one at a time (DAV-242) ─────────────────
   add_triggers: z
-    .array(triggerInputSchema)
+    .array(writerTrigger)
     .optional()
     .describe("REFRESH ONLY. Triggers to add. Adding where one exists in the same bucket edits that one."),
   edit_triggers: z
