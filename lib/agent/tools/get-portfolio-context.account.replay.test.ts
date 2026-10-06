@@ -96,9 +96,10 @@ describe("get_portfolio_context — the account", () => {
     expect(r.data.positions.find((p) => p.symbol === "MU")!.stopLoss).toBe(1048);
   });
 
-  it("with an analyst: only that analyst's positions", async () => {
+  it("with an analyst: only that analyst's positions, and no digest (it narrates the whole account)", async () => {
     const r = await read({ analystId: "cmnhxpjio000004jvox6kl6c7" });
     expect(r.data.positions.map((p) => p.symbol).sort()).toEqual(["MU", "NVDA"]);
+    expect(r.data.digest).toBeNull();
   });
 
   it("one book at a time: the paper book of the same account is empty", async () => {

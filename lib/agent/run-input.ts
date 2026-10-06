@@ -193,17 +193,6 @@ export interface RunInput {
     rationale: string;
     matchDetail: string;
   }>;
-  // Latest account-level PortfolioDigest — written by the digest backend
-  // (Feature A, docs/plans/PORTFOLIO_DIGEST.md). Replaces the deprecated
-  // per-analyst AnalystBriefing. The V2 system prompt renders the
-  // `narrative` as "Yesterday's portfolio digest" for cross-run continuity.
-  // Account-level (NOT per-analyst): every analyst on the account reads the
-  // same most-recent digest. Most-recent 1 by default (extend to last-N
-  // later). `date` is the trading day (ET) the digest covers, ISO string.
-  latestDigest: {
-    narrative: string;
-    date: string;
-  } | null;
   // Earnings on the book this week, live off the calendar at run start
   // (one call; the same one the trigger evaluator makes). Held and watched
   // names reporting in the next 7 days, and those that reported in the
@@ -848,37 +837,6 @@ export async function buildRunInput(
     console.error("[buildRunInput] FAILED triggersMatchingNow:", err);
   }
 
-  // 12. Latest account-level portfolio digest — drives the V2 prompt's
-  // "Yesterday's portfolio digest" section. Account- AND environment-scoped:
-  // PAPER and LIVE share one accountId but get separate digests (one book
-  // each), so a run must read its OWN book's digest — feeding a PAPER run the
-  // LIVE narrative (or vice versa) is incoherent context. Every analyst on the
-  // same account + environment reads the same most-recent digest. Written by
-  // the digest backend (Feature A); replaces the deprecated AnalystBriefing.
-  let latestDigest: RunInput["latestDigest"] = null;
-  try {
-    const row = await prisma.portfolioDigest.findFirst({
-      where: {
-        accountId: config.accountId,
-        environment: config.tradingEnvironment ?? "PAPER",
-      },
-      orderBy: { date: "desc" },
-      take: 1,
-      select: {
-        narrative: true,
-        date: true,
-      },
-    });
-    if (row?.narrative) {
-      latestDigest = {
-        narrative: row.narrative,
-        date: row.date.toISOString(),
-      };
-    }
-  } catch (err) {
-    console.error("[buildRunInput] FAILED latestDigest:", err);
-  }
-
   // 12b. Refused calls never redone — what the run is told to resolve.
   const openRefusals = await listOpenRefusalsForAnalyst(config.id, 7);
 
@@ -984,7 +942,6 @@ export async function buildRunInput(
     priorityReviews,
     triggersFiredSinceLastRun,
     triggersMatchingNow,
-    latestDigest,
     earnings,
     filings,
     intelligencePolicy,
