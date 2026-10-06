@@ -57,7 +57,7 @@ export function setupExitTriggers(input: {
   // playbook says exit OR re-set, and that is a decision, not a stop.
   //
   // THE ONE CONVERSION. The catalog writes the short clocks in sessions and
-  // the checkpoints in calendar days; a REVIEW_CADENCE day count is always
+  // the checkpoints in calendar days; a review-clock day count is always
   // calendar. Counting the real NYSE calendar here is the difference between
   // a breakout getting its 20 sessions and getting about 14 — the weekends
   // inside the window used to be spent as if the market had been open.
@@ -71,7 +71,7 @@ export function setupExitTriggers(input: {
         : setup.time.count;
     out.push({
       id: input.mintId(),
-      predicate: { kind: "REVIEW_CADENCE", days, from: "BUY" },
+      predicate: { watch: "from_date", is: "after", value: days, variable: "buy" },
       action: "REVIEW",
       rationale:
         (sessions != null
@@ -96,14 +96,12 @@ export function setupExitTriggers(input: {
       out.push({
         id: input.mintId(),
         predicate: {
-          kind: "GAIN_FROM_ENTRY",
-          pct,
-          direction: "UP",
+          watch: "move",
+          is: "above",
+          value: pct,
+          variable: "entry",
           ...(bigWinnerApplies
-            ? {
-                skipIfPeakGainPct: BIG_WINNER_PEAK_GAIN_PCT,
-                skipIfPeakWithinDays: BIG_WINNER_PEAK_WITHIN_DAYS,
-              }
+            ? { settings: { fastWinnerPct: BIG_WINNER_PEAK_GAIN_PCT, fastWinnerDays: BIG_WINNER_PEAK_WITHIN_DAYS } }
             : {}),
         },
         action: "TRIM",
@@ -121,13 +119,7 @@ export function setupExitTriggers(input: {
   if (setup.manage.beatAndFadeReview && (input.horizon === "TRADE" || input.horizon === "TARGET")) {
     out.push({
       id: input.mintId(),
-      predicate: {
-        kind: "AND",
-        predicates: [
-          { kind: "EARNINGS_BEAT" },
-          { kind: "PRICE_MOVE_PCT", pct: BEAT_AND_FADE_DOWN_PCT, direction: "DOWN", window: "1D" },
-        ],
-      },
+      predicate: { match: "all", conditions: [{ watch: "surprise", is: "beat", value: 0 }, { watch: "move", is: "below", value: BEAT_AND_FADE_DOWN_PCT, variable: "prev_close" }] },
       action: "REVIEW",
       rationale: `A beat the market sold — the stock is down ${BEAT_AND_FADE_DOWN_PCT}%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.`,
       cooldownDays: 7,

@@ -9,13 +9,14 @@
 
 import { effectiveTriggerAction, watchedFloorOnClose } from "./types";
 import { isPlanLevel, isPlanLevelOnList } from "./price-levels";
-import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
+import type { Trigger, TriggerAction } from "./types";
+import type { Condition, When } from "@/lib/agent/triggers/condition";
 
-const below = (level: number) => ({ kind: "PRICE_BELOW" as const, level });
-const above = (level: number) => ({ kind: "PRICE_ABOVE" as const, level });
+const below = (level: number): Condition => ({ watch: "price", is: "below", value: level });
+const above = (level: number): Condition => ({ watch: "price", is: "above", value: level });
 
 function t(
-  predicate: TriggerPredicate,
+  predicate: When,
   action: TriggerAction,
   id = "x",
 ): Trigger {
@@ -51,13 +52,13 @@ describe("effectiveTriggerAction", () => {
     // Review cadence, earnings, news — these still just want a look.
     expect(
       effectiveTriggerAction(
-        t({ kind: "REVIEW_CADENCE", days: 30 }, "REVIEW"),
+        t({ watch: "repeat", value: 30 }, "REVIEW"),
         WATCH,
       ),
     ).toBe("REVIEW");
     expect(
       effectiveTriggerAction(
-        t({ kind: "NEAR_SMA", period: 50, withinPct: 2 }, "REVIEW"),
+        t({ watch: "move", is: "near", value: 2, variable: "sma50" }, "REVIEW"),
         WATCH,
       ),
     ).toBe("REVIEW");
@@ -90,7 +91,7 @@ describe("effectiveTriggerAction", () => {
   it("demotes a judgment exit on a watch item too", () => {
     // "Sell on an earnings miss" is equally meaningless with nothing to sell.
     expect(
-      effectiveTriggerAction(t({ kind: "EARNINGS_MISS" }, "EXIT"), WATCH),
+      effectiveTriggerAction(t({ watch: "surprise", is: "miss", value: 0 }, "EXIT"), WATCH),
     ).toBe("DEMOTE");
   });
 });
@@ -102,8 +103,8 @@ describe("watchedFloorOnClose — a watched plan comes down on a close, never a 
   const floor = t(below(359.87), "EXIT", "floor");
 
   it("a watched stock's floor reads the day's close", () => {
-    expect(watchedFloorOnClose(floor, WATCH)).toEqual({ ...floor, predicate: { ...below(359.87), basis: "close" } });
-    expect(watchedFloorOnClose(t(above(80), "EXIT"), WATCH_SHORT).predicate).toEqual({ ...above(80), basis: "close" });
+    expect(watchedFloorOnClose(floor, WATCH)).toEqual({ ...floor, predicate: { ...below(359.87), settings: { close: true } } });
+    expect(watchedFloorOnClose(t(above(80), "EXIT"), WATCH_SHORT).predicate).toEqual({ ...above(80), settings: { close: true } });
   });
 
   it("a held stock's floor is a sale and keeps its own timing", () => {
@@ -117,15 +118,15 @@ describe("watchedFloorOnClose — a watched plan comes down on a close, never a 
   });
 
   it("a two-condition sell reads its price condition on the close; the other condition is untouched", () => {
-    const both = t({ kind: "AND", predicates: [below(359.87), { kind: "VOLUME_RATIO", min: 1.5 }] } as TriggerPredicate, "EXIT");
+    const both = t({ match: "all", conditions: [below(359.87), { watch: "volume", value: 1.5 }] }, "EXIT");
     expect(watchedFloorOnClose(both, WATCH).predicate).toEqual({
-      kind: "AND",
-      predicates: [{ ...below(359.87), basis: "close" }, { kind: "VOLUME_RATIO", min: 1.5 }],
+      match: "all",
+      conditions: [{ ...below(359.87), settings: { close: true } }, { watch: "volume", value: 1.5 }],
     });
   });
 
   it("a floor already on the close is returned as it is", () => {
-    const onClose = t({ ...below(359.87), basis: "close" }, "EXIT");
+    const onClose = t({ ...below(359.87), settings: { close: true } }, "EXIT");
     expect(watchedFloorOnClose(onClose, WATCH)).toBe(onClose);
   });
 });
@@ -139,15 +140,15 @@ describe("isPlanLevel — what demotion actually removes", () => {
 
   it("keeps everything that makes it still a watch", () => {
     // The whole point is that the item survives — only the numbers go.
-    expect(isPlanLevel(t({ kind: "REVIEW_CADENCE", days: 30 }, "REVIEW"), "LONG")).toBe(
+    expect(isPlanLevel(t({ watch: "repeat", value: 30 }, "REVIEW"), "LONG")).toBe(
       false,
     );
     expect(
-      isPlanLevel(t({ kind: "NEAR_SMA", period: 50, withinPct: 2 }, "REVIEW"), "LONG"),
+      isPlanLevel(t({ watch: "move", is: "near", value: 2, variable: "sma50" }, "REVIEW"), "LONG"),
     ).toBe(false);
     expect(
       isPlanLevel(
-        t({ kind: "PRICE_MOVE_PCT", pct: 7, direction: "UP", window: "1D" }, "REVIEW"),
+        t({ watch: "move", is: "above", value: 7, variable: "prev_close" }, "REVIEW"),
         "LONG",
       ),
     ).toBe(false);

@@ -19,6 +19,7 @@
  * FMP + Finnhub all resolving.
  */
 
+import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
@@ -161,22 +162,22 @@ export async function GET(
   // this one row rides the first paint. Shaped as the timeline's own row type
   // so `titleSegments` words it — one grammar, not a second one here.
   const latestUpdateRow = await prisma.thesisUpdate
-    .findFirst({
+    .findMany({
       // Not simply the newest row: TRIGGER_FIRED is templated machine text
       // and PROPOSAL_APPROVED is an order receipt, and between them they win
       // the recency race on most stocks. See lib/thesis/latest-note.ts.
-      // A principal edit from the trigger popover writes a templated
-      // `[USER] ...` rationale. It is a real audit row, but it is MY note to
-      // the agent, not the analyst's read on the stock — leading the sheet
-      // with it answered "what is going on with this stock?" with "you moved
-      // a stop." Excluded here so the headline is always something a run
-      // wrote.
+      // Your own edit from the trigger popover is a real audit row, but it
+      // is your note to the agent, not the analyst's read on the stock —
+      // leading the sheet with it answered "what is going on with this
+      // stock?" with "you moved a stop." Skipped below (it is marked in
+      // fieldChanges; older rows by a [USER] tag) so the headline is always
+      // something a run wrote.
       where: {
         thesisId: thesis.id,
         type: { in: [...HERO_UPDATE_TYPES] },
-        NOT: { rationale: { startsWith: "[USER]" } },
       },
       orderBy: { timestamp: "desc" },
+      take: 20,
       select: {
         id: true,
         timestamp: true,
@@ -189,6 +190,7 @@ export async function GET(
         runId: true,
       },
     })
+    .then((rows) => rows.find((r) => !isYourEdit(r)) ?? null)
     .catch(() => null);
 
   const atr14Value: number | null = await loadIndicatorSnapshots([thesis.ticker.toUpperCase()])

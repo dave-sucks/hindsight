@@ -10,7 +10,7 @@
  * (TickerIndicators asOf 2026-09-10), verbatim.
  */
 
-import { describeChartFire } from "./chart-context";
+import { describeChartFire } from "./condition/facts";
 import { shouldFire, type EvaluationContext } from "./evaluate";
 import type { Trigger } from "./types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
@@ -19,7 +19,7 @@ const GD_TRIGGER: Trigger = {
   id: "973da0b6-b16a-43d0-8b57-6b6b65af9df7",
   action: "ENTER",
   source: "AGENT",
-  predicate: { kind: "VS_SMA", period: 50, direction: "ABOVE" },
+  predicate: { watch: "price", is: "above", variable: "sma50" },
   rationale:
     "Buy only when GD reclaims the 50-day average, which would show the pullback has ended and the market is again underwriting the submarine-margin inflection story.",
   cooldownDays: 1,

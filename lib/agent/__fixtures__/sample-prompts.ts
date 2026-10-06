@@ -19,7 +19,7 @@ const runInput = {
   earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, intelligencePolicy: { maxSignalsPerRun: 0 }, openRefusals: [],
 } as unknown as RunInput;
 
-const trailTrigger = { id: "trig_trail", predicate: { kind: "TRAILING_FROM_HIGH", pct: 12 }, action: "EXIT", rationale: "Protect the gain." };
+const trailTrigger = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." };
 
 export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
   daily: () => buildDailyRunSystemPromptV2({ name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),

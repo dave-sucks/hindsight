@@ -247,7 +247,7 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
           retiredReason: null,
           triggers: [
             expect.objectContaining({
-              predicate: { kind: "REVIEW_CADENCE", days: 1 },
+              predicate: { watch: "repeat", value: 1 },
               action: "REVIEW",
               source: "DEFAULT",
             }),

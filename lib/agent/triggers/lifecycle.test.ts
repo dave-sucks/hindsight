@@ -20,6 +20,7 @@
  */
 
 import { canonicalLevels, applyLevelArgs } from "./price-levels";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { resolveLadder } from "./levels";
 import { effectiveTriggerAction } from "./types";
 import { evaluateTrigger } from "./evaluate";
@@ -30,8 +31,9 @@ import {
   derivedNextReviewAt,
 } from "./defaults";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
-import type { Trigger, TriggerPredicate } from "./types";
+import type { Trigger } from "./types";
 import type { ResolvedTrigger } from "./levels";
+import type { When } from "@/lib/agent/triggers/condition";
 
 const NOW = new Date("2026-08-25T14:00:00Z");
 const asResolved = (ts: Trigger[]): ResolvedTrigger[] =>
@@ -62,8 +64,8 @@ describe("1. minting a stock with a plan", () => {
     // They were conflated once: the buy trigger read targetPrice, so the
     // analyst would buy at the take-profit level (MDB, 2026-05-25).
     const buy = minted.find((t) => t.action === "ENTER");
-    expect(buy?.predicate).toEqual({ kind: "PRICE_ABOVE", level: 100 });
-    expect(buy?.predicate).not.toEqual({ kind: "PRICE_ABOVE", level: 150 });
+    expect(buy?.predicate).toEqual({ watch: "price", is: "above", value: 100 });
+    expect(buy?.predicate).not.toEqual({ watch: "price", is: "above", value: 150 });
   });
 
   it("shows the same numbers on the card as it will fire on", () => {
@@ -86,8 +88,8 @@ describe("2. the price reaches a level", () => {
     thesis: { createdAt: NOW, direction: "LONG" },
     now: NOW,
   });
-  const buyAt100: TriggerPredicate = { kind: "PRICE_ABOVE", level: 100 };
-  const floorAt90: TriggerPredicate = { kind: "PRICE_BELOW", level: 90 };
+  const buyAt100: When = { watch: "price", is: "above", value: 100 };
+  const floorAt90: When = { watch: "price", is: "below", value: 90 };
 
   it("fires the buy level when it breaks up through it", () => {
     expect(evaluateTrigger(buyAt100, at(101))).toBe(true);
@@ -101,9 +103,9 @@ describe("2. the price reaches a level", () => {
 });
 
 describe("3. what happens depends on whether we own it", () => {
-  const floor = { action: "EXIT" as const, predicate: { kind: "PRICE_BELOW" as const, level: 90 } };
-  const target = { action: "REVIEW" as const, predicate: { kind: "PRICE_ABOVE" as const, level: 150 } };
-  const buy = { action: "ENTER" as const, predicate: { kind: "PRICE_ABOVE" as const, level: 100 } };
+  const floor = { action: "EXIT" as const, predicate: { watch: "price", is: "below", value: 90 } };
+  const target = { action: "REVIEW" as const, predicate: { watch: "price", is: "above", value: 150 } };
+  const buy = { action: "ENTER" as const, predicate: { watch: "price", is: "above", value: 100 } };
   const held = { status: "HOLDING", direction: "LONG" };
   const watched = { status: "WATCHING", direction: "LONG" };
 
@@ -209,7 +211,7 @@ describe("5. the review cadence", () => {
       account: [reviewCadenceTrigger(7)],
       direction: "LONG",
     });
-    expect(ladder.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(true);
+    expect(ladder.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(true);
   });
 });
 
@@ -248,7 +250,7 @@ describe("6. the analyst changes its mind", () => {
     expect(out.columns.stopLoss).toBe(98);
     expect(
       evaluateTrigger(
-        { kind: "PRICE_BELOW", level: out.columns.stopLoss! },
+        { watch: "price", is: "below", value: out.columns.stopLoss! },
         { latestQuote: { price: 97, changePct: 0 }, thesis: { createdAt: NOW }, now: NOW },
       ),
     ).toBe(true);
@@ -276,7 +278,7 @@ describe("6. the analyst changes its mind", () => {
     // forgot to resend must not linger on screen as protection.
     const out = applyLevelArgs({
       stored: mint().filter(
-        (t) => !(t.action === "EXIT" && t.predicate.kind === "PRICE_BELOW"),
+        (t) => !(t.action === "EXIT" && kindOf(t.predicate) === "PRICE_BELOW"),
       ),
       levels: {},
       direction: "LONG",
@@ -306,7 +308,7 @@ describe("7. the review date the rest of the app reads", () => {
   });
 
   it("uses the thesis's own cadence when it has one", () => {
-    const own = [{ predicate: { kind: "REVIEW_CADENCE", days: 3 } }];
+    const own = [{ predicate: { watch: "repeat", value: 3 } }];
     expect(days(nextReviewFrom(reviewed, own, "COMPOUNDER"))).toBe(3);
   });
 

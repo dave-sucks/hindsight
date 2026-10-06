@@ -14,7 +14,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 
 const trailTrigger: Trigger = {
   id: "trig_trail",
-  predicate: { kind: "TRAILING_FROM_HIGH", pct: 12 },
+  predicate: { watch: "move", is: "below", value: 12, variable: "peak" },
   action: "EXIT",
   rationale: "Protect the gain.",
 };
@@ -84,7 +84,7 @@ describe("buildTacticalSystemPrompt — tracked peak on trail fires (DAV-186)", 
   it("adds no peak block on non-trailing fires", () => {
     const floorTrigger: Trigger = {
       id: "trig_floor",
-      predicate: { kind: "PRICE_BELOW", level: 50 },
+      predicate: { watch: "price", is: "below", value: 50 },
       action: "EXIT",
       rationale: "Hard stop.",
     };
@@ -101,8 +101,8 @@ describe("buildTacticalSystemPrompt — tracked peak on trail fires (DAV-186)", 
 });
 
 describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, the fired price (DAV-254, DAV-265)", () => {
-  const stop: Trigger = { id: "stop-969", predicate: { kind: "PRICE_BELOW", level: 969 }, action: "EXIT", rationale: "Stop." };
-  const trail: Trigger = { id: "trail-8", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, action: "EXIT", rationale: "Trail." };
+  const stop: Trigger = { id: "stop-969", predicate: { watch: "price", is: "below", value: 969 }, action: "EXIT", rationale: "Stop." };
+  const trail: Trigger = { id: "trail-8", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, action: "EXIT", rationale: "Trail." };
 
   it("names the setup's own confirmation and deletes the horizon volume table", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs({ thesis: { ...makeArgs().thesis, setupId: "PEAD" } }));
@@ -124,11 +124,11 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
       makeArgs({
         trigger: stop,
         thesis: { ...makeArgs().thesis, ticker: "MU", allTriggers: [stop, trail] },
-        fired: { price: 964.2, coFired: [{ triggerId: "trail-8", predicateKind: "TRAILING_FROM_HIGH", sentence: "Trailing 8% from high — exit position" }] },
+        fired: { price: 964.2, coFired: [{ triggerId: "trail-8", sentence: "Sell if below 8% from the high since we bought" }] },
       }),
     );
-    expect(prompt).toContain("→ FIRED: EXIT");
-    expect(prompt).toContain("→ ALSO FIRED: EXIT");
+    expect(prompt).toContain("→ FIRED: Sell if below $969  [id stop-969]");
+    expect(prompt).toContain("→ ALSO FIRED: Sell if below 8% from the high since we bought  [id trail-8]");
     expect(prompt).toContain("Two protective triggers fired together");
   });
 
@@ -194,7 +194,7 @@ describe("buildTacticalSystemPrompt — a declined sale is asked again", () => {
     expect(buildTacticalSystemPrompt(makeArgs())).not.toContain(PASS);
   });
   it("a buy or add fire keeps it: a declined buy is not re-proposed unchanged", () => {
-    const enter: Trigger = { id: "trig_buy", predicate: { kind: "PRICE_ABOVE", level: 60 }, action: "ENTER", rationale: "Buy the breakout." };
+    const enter: Trigger = { id: "trig_buy", predicate: { watch: "price", is: "above", value: 60 }, action: "ENTER", rationale: "Buy the breakout." };
     const add: Trigger = { ...enter, id: "trig_add", action: "ADD" };
     expect(buildTacticalSystemPrompt(makeArgs({ trigger: enter, position: null }))).toContain(PASS);
     expect(buildTacticalSystemPrompt(makeArgs({ trigger: add }))).toContain(PASS);

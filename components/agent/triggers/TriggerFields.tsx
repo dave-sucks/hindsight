@@ -21,9 +21,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   conditionProblem,
   conditionsOf,
-  fromLegacy,
   isGroup,
-  isRetired,
+  shapeOf,
   measureOf,
   settingDefs,
   settingOf,
@@ -68,8 +67,8 @@ export function whenOf(d: Draft): When {
 
 /** A stored trigger as a draft, or null when the form can't show it (a removed kind, or more than two conditions). */
 export function draftOf(t: Trigger): Draft | null {
-  const w = fromLegacy(t.predicate);
-  if (isRetired(w) || (isGroup(w) && (w.conditions.length !== 2 || w.conditions.some(isGroup)))) return null;
+  const w = shapeOf(t.predicate);
+  if (!w || (isGroup(w) && (w.conditions.length !== 2 || w.conditions.some(isGroup)))) return null;
   return {
     action: t.action as TriggerAction,
     conditions: conditionsOf(w),

@@ -10,9 +10,9 @@ Built for one user now, marketed later.
 
 ## The Trigger Game Plan (shipped 2026-07-12 — read before touching anything trigger/position-related)
 Every thesis carries a **trigger ladder** (condition → action: ENTER/ADD/TRIM/
-EXIT/REVIEW) the agents author and maintain. New predicates `GAIN_FROM_ENTRY`
-(cumulative % vs entry) + `TRAILING_FROM_HIGH` (give-back off the tracked
-peak) protect gains. Every HOLDING inherits its sell rules from its ANALYST
+EXIT/REVIEW) the agents author and maintain. The move from our entry
+(cumulative % vs entry) and the trail (the give-back off the tracked peak)
+protect gains. Every HOLDING inherits its sell rules from its ANALYST
 (the analyst's Triggers tab — its style, e.g. the Secular Compounder's only
 automatic sale is 25% off the high) and the account's universal rules. Nothing
 stamps them onto the thesis: a thesis rung beats every rule above it, so a
@@ -33,10 +33,23 @@ Triggers are edited one at a time (DAV-242): `update_thesis` takes
 target / floor trigger. Every op is one line in the Activity feed; a refused
 op comes back by id and the rest of the call lands. The shared core is
 `lib/agent/triggers/ops.ts` — the UI popover and the agent go through it.
-The chart kinds (VS_SMA, NEAR_SMA, VOLUME_RATIO, NEW_HIGH, PCT_FROM_52W_HIGH,
-RS_VS_SPY, GAP_UP, RSI, the 5D/20D move) read the daily indicator snapshot
+**A condition is one shape** (shipped 2026-10, `docs/plans/TRIGGER_TYPES.md`):
+`{ watch, is?, value?, variable?, settings? }`, or `{ match, conditions }` for
+two or more — the form's own fields. Each measure (`price`, `move`, `volume`,
+`rsi`, `strength`, `gap`, `report`, `surprise`, `filing`, `insiders`, `repeat`,
+`from_date`) is ONE catalog entry in `lib/agent/triggers/condition/measures/`
+carrying its words, number, variables, settings, default cooldown, what the
+check loads and how it reads; nothing switches on a kind. The old trigger
+kinds are named only in the translator (`condition/legacy*.ts`). `lib/prisma.ts`
+turns every `triggers` write and read into the shape, so the app only holds
+conditions; `prismaRaw` skips that and is for the backfill script only. A
+trigger reads as one sentence everywhere ("Sell if below $150", "Review every
+30 days") from `condition/describe.ts`.
+The chart measures (a price against an average or a high, a move near one,
+volume, RSI, strength vs the S&P, a gap, the 5- and 20-day move, insiders)
+read the daily indicator snapshot
 (`TickerIndicators`, written 06:30 ET from `lib/market-data/price-structure.ts`);
-a `basis: "close"` price level fires only on the 16:20 ET close pass, and so
+a price level read on the close (`settings.close`) fires only on the 16:20 ET close pass, and so
 does the floor of a stock we only watch: its plan comes down on a close below
 it, never an intraday dip (`watchedFloorOnClose`, DAV-337). There is
 no buy-now option: buying now is an entry price at or near the current price
@@ -101,7 +114,7 @@ rows are **kept**: `Signal`, `Monitor`, `AnalystSignalRoute`, `SignalBatch`,
 `Artifact` are readable on `/intelligence` (read-only) and via `read_database`,
 but nothing adds to them. `read_signals` / `read_artifact` stay in the
 codebase and on **no** mode's allowlist. Outside facts reach an agent through a
-trigger kind the five-minute check can evaluate, or a data field the agent
+measure the five-minute check can evaluate, or a data field the agent
 pulls mid-run — see `docs/plans/LANES.md` §2.
 
 ### The Agent (what the "Run" button and morning cron both use)
@@ -610,7 +623,7 @@ it with a ticker chip as if it were a traded security.
 - **What it looked like (2026-08-14):** the thesis sheet rendered SNOW at `$337.38 +$5.12 +1.54%` at 11:38 AM ET while the live price was `$329.43 −2.36%`. The displayed numbers were a perfectly self-consistent snapshot of the *previous* session's close (note `pc: 337.38` in the live payload) — which is exactly why it never looked like corrupt data.
 - **The tell that localizes it instantly:** on the same sheet, the **1D chart was correct** while the header price was a day stale. Both are "live price," but the chart polls `/api/stocks/intraday` every 30s (`thesis-chart.tsx`) so its second poll always lands fresh, while the header fetches `/api/theses/:id/quote` **once on open** and never re-polls. **Polling masks this bug; single-fetch surfaces expose it.** If a chart and a price label disagree, suspect cache staleness on the single-fetch side, not the vendor.
 - **Confirm before rewriting anything:** ask the vendor directly — `curl -H "APCA-API-KEY-ID: $ALPACA_API_KEY" -H "APCA-API-SECRET-KEY: $ALPACA_API_SECRET" "https://data.alpaca.markets/v2/stocks/snapshots?symbols=SNOW&feed=sip"`. If the vendor is right and the app is wrong, it's caching — do not go blame Finnhub/FMP/Alpaca.
-- **Blast radius when it regresses:** `getStockQuote` feeds the sheet header, `/stocks/[symbol]`, `/trades/[id]`, `update_thesis` conviction gates, `complete_run`, and the `lib/alpaca.ts` position-quote fallback. `getLiveQuotes` (`lib/market-data/live-quote.ts`) feeds `get_stock_data`, `get_market_context`, `getStockQuote` **and the trigger evaluator** — so a stale quote there scores `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH` against a wrong price, i.e. protective stops evaluated against yesterday's close right after an overnight gap. Actual fills are unaffected (Alpaca market orders execute at the real price).
+- **Blast radius when it regresses:** `getStockQuote` feeds the sheet header, `/stocks/[symbol]`, `/trades/[id]`, `update_thesis` conviction gates, `complete_run`, and the `lib/alpaca.ts` position-quote fallback. `getLiveQuotes` (`lib/market-data/live-quote.ts`) feeds `get_stock_data`, `get_market_context`, `getStockQuote` **and the trigger evaluator** — so a stale quote there scores the move from our entry and the trail against a wrong price, i.e. protective stops evaluated against yesterday's close right after an overnight gap. Actual fills are unaffected (Alpaca market orders execute at the real price).
 - **The freshness guard:** every quote carries `t` (unix seconds — Alpaca's trade timestamp, or Finnhub's on the fallback) and nothing read it for months — a day-old quote is structurally identical to a live one. How old a price is, is decided in ONE place: `lib/market-data/quote-age.ts` (`quoteAgeMs`, `freshQuotePrice`, `staleForTrading`, `readPrice`). The trigger evaluator still scores sells and reviews on a stale quote (skipping a stop is the worse failure) but a **buy never fires on one** (DAV-261 — ETN 2026-09-14: at 09:30 Friday's close was served as "now"). `get_stock_data` and `get_market_context` tell the agent, in words, when the price isn't live — a rate-limited quote used to leave the chart measured from the last close with nothing said (NVDA 2026-09-14). **The trigger check has first claim on the quote budget** (`lib/market-data/quote-budget.ts`): every vendor reply says how many calls the key has left this minute, and once that falls to the reserve (a fifth of Alpaca's 10,000, 45 of Finnhub's 60) every caller but the trigger check is refused a quote until the minute turns over. On 2026-09-15 the pages' polling spent the one Finnhub key and ~29 stocks went unpriced on a trigger pass.
 
 **Portfolio P&L must be net of deposits — never measure against a fixed baseline** (`lib/portfolio/contributions.ts`, `lib/actions/portfolio.actions.ts`, `components/dashboard/DashboardClient.tsx`, `lib/alpaca.ts`; still-open twin: `lib/actions/analytics.actions.ts`)
@@ -703,11 +716,12 @@ When you spot something new, file it there — not here.)
 
 ### Triggers (the living ladder)
 - lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id / a plan level as an op) + checkLadder (the one post-op plan check). update_thesis, the UI popover, a buy fill and a plan set-down all go through it (DAV-242)
-- lib/agent/triggers/types.ts — predicate union (incl. GAIN_FROM_ENTRY + TRAILING_FROM_HIGH) + isDirectEligiblePredicate + protectiveExitCloseReason
-- lib/agent/triggers/evaluate.ts — pure evaluator (1D daily-move + HOLDING-only gain/trail paths)
+- lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, direct sale + close reason, levels, states), the check (read.ts), the words (describe.ts), and the translator from the old kinds (legacy*.ts)
+- lib/agent/triggers/types.ts — the Trigger type + watchedFloorOnClose
+- lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
 - lib/agent/triggers/defaults.ts — horizon templates + accountStandingRules() (the account's add prompts) + cooldown defaults
 - lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note); THESIS_INVALIDATED stays distinct via belief_survived
-- lib/inngest/functions/trigger-evaluator.ts — 5-min cron + signal paths
+- lib/inngest/functions/trigger-evaluator.ts — 5-min cron + close pass; one catch per trigger, so one it can't read never stops the pass
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
 - lib/actions/thesis-edit.ts — UI add / edit / delete / fire-mode write paths
 - Mechanics: docs/TRIGGERS.md · model: docs/plans/TRIGGER_MODEL.md · lifecycle: docs/plans/TRIGGER_LIFECYCLE.md · why: docs/plans/THESIS_GAME_PLAN.md

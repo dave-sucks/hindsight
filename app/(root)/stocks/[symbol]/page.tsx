@@ -113,7 +113,7 @@ async function NewsTab({ symbol }: { symbol: string }) {
 }
 
 // Volume against its 20-day average and open-market insider buying — the
-// same reads the VOLUME_RATIO and INSIDER_CLUSTER triggers fire on, so this
+// same reads the volume and insider-buying triggers fire on, so this
 // section and the triggers can't disagree. Live; a failed read says so.
 function fmtShares(n: number | null): string {
   if (n == null) return "—";

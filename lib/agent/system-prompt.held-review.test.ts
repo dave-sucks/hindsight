@@ -89,7 +89,7 @@ describe("get_theses — a held stock on the work list carries the list the prom
     ];
     const rung = {
       id: "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
-      predicate: { kind: "VS_SMA", period: 200, direction: "BELOW" },
+      predicate: { watch: "price", is: "below", variable: "sma200" },
       action: "REVIEW",
       rationale: "Below the 200-day — review",
       cooldownDays: 1,

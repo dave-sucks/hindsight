@@ -4,9 +4,6 @@
  * Add trigger: a menu of the five types, then the dialog for the one picked.
  * Editing a trigger opens the same dialog, filled in. Every type fills the
  * same form (./TriggerFields). docs/plans/TRIGGER_TYPES.md §7.
- *
- * Until the cutover the server stores today's kinds, so the dialog builds a
- * condition and saves `toLegacy(condition)`.
  */
 
 import { useEffect, useState } from "react";
@@ -21,7 +18,6 @@ import {
   allowedActions,
   canProposeDirectly,
   measureOf,
-  toLegacy,
   typeDef,
   whenProblem,
   type TriggerType,
@@ -139,9 +135,8 @@ export function TriggerDialog({
     setDraft((d) => ({ ...d, conditions: d.conditions.map((x, j) => (j === i ? c : x)) }));
 
   function save() {
-    const predicate = problem ? null : toLegacy(w);
-    if (!predicate) return;
-    const body = { action, predicate, fireMode: showOnFire ? draft.fireMode : undefined };
+    if (problem) return;
+    const body = { action, predicate: w, fireMode: showOnFire ? draft.fireMode : undefined };
     if (trigger) void send("PATCH", `${endpointBase}/${trigger.id}`, { replace: body });
     else void send("POST", endpointBase, body);
   }

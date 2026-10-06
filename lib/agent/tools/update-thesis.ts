@@ -32,6 +32,7 @@ import {
   parseTriggersResilient,
   triggersInputArraySchema,
   editTriggerOpSchema,
+  editNumber,
 } from "@/lib/agent/triggers/schema";
 import {
   loadLevelSources,
@@ -227,7 +228,7 @@ const updateSchema = z.object({
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .optional()
     .describe(
-      "Change when the trade's structure has changed: a TRADE that is compounding past its window → TARGET; a COMPOUNDER whose moat eroded but isn't dead → TARGET with a tighter exit; a CATALYST that printed and now runs on momentum → TARGET. Retune the REVIEW_CADENCE trigger to match (edit_triggers). A fresh record_thesis is for a direction or belief flip, not a horizon change.",
+      "Change when the trade's structure has changed: a TRADE that is compounding past its window → TARGET; a COMPOUNDER whose moat eroded but isn't dead → TARGET with a tighter exit; a CATALYST that printed and now runs on momentum → TARGET. Retune the review schedule ('every N days') to match (edit_triggers). A fresh record_thesis is for a direction or belief flip, not a horizon change.",
     ),
   catalyst_date: z.string().datetime().nullable().optional(),
 
@@ -392,7 +393,7 @@ export function setDownInstruction(stored: Trigger[], direction: string | null):
   const levels = stored.filter((t) => isPlanLevelOnList(t, stored, direction));
   if (levels.length === 0) return "";
   const ids = levels.map((t) => `"${t.id}"`).join(", ");
-  const words = levels.map((t) => describeTrigger(t, direction)).join(", ");
+  const words = levels.map((t) => describeTrigger(t, false)).join(", ");
   return `To set the plan down, remove all of them in one call: remove_trigger_ids: [${ids}] (${words}).`;
 }
 
@@ -546,7 +547,7 @@ export const updateThesis = defineTool({
       );
       const placesBuyLevel =
         args.entry_price != null ||
-        (args.edit_triggers ?? []).some((e) => e.level != null && (e.action === "ENTER" || enterIds.has(e.id)));
+        (args.edit_triggers ?? []).some((e) => editNumber(e).value != null && (e.action === "ENTER" || enterIds.has(e.id)));
       if (placesBuyLevel) {
         console.warn(`[update_thesis] refused ${existing.ticker}: no live price to place the buy level`);
         return {
@@ -884,9 +885,7 @@ export const updateThesis = defineTool({
       ...(args.edit_triggers ?? []).map((e) => ({
         op: "edit" as const,
         id: e.id,
-        level: e.level,
-        pct: e.pct,
-        days: e.days,
+        ...editNumber(e),
         action: e.action,
         fireMode: e.fire_mode,
         rationale: e.rationale,

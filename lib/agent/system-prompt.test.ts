@@ -45,7 +45,7 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("## Filings on your book this week");
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
     expect(prompt).toContain("A held name's review runs its setup's checklist");
-    expect(prompt).toContain("REVIEW from a FILING trigger");
+    expect(prompt).toContain("REVIEW from a filing trigger");
   });
 });
 

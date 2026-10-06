@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { isProtectiveLine, shapeOf } from "@/lib/agent/triggers/condition";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
@@ -279,13 +280,10 @@ export const completeRun = defineTool({
               );
               continue;
             }
-            const hasProtectiveExit = ladder.some(
-              (t) =>
-                t.action === "EXIT" &&
-                ["PRICE_BELOW", "PRICE_ABOVE", "TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"].includes(
-                  t.predicate.kind,
-                ),
-            );
+            const hasProtectiveExit = ladder.some((t) => {
+              const w = shapeOf(t.predicate);
+              return t.action === "EXIT" && w != null && isProtectiveLine(w);
+            });
             if (!hasProtectiveExit) {
               ladderWarnings.push(
                 `$${h.ticker}: HOLDING with no protective EXIT rung (no floor, no trail)`,

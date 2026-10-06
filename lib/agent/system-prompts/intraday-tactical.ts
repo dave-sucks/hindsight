@@ -14,7 +14,7 @@
 
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { capacityLine, isFull, type AnalystCapacity } from "@/lib/agent/capacity";
-import { describePredicate } from "@/lib/agent/needs-action";
+import { conditionSentence, isGroup, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
@@ -86,7 +86,7 @@ interface TacticalPromptArgs {
    */
   fired?: {
     price: number | null;
-    coFired: Array<{ triggerId: string; predicateKind: string; sentence: string }>;
+    coFired: Array<{ triggerId: string; sentence: string }>;
   } | null;
   /** The account's playbook numbers laid over the catalog (DAV-273). */
   setupOverrides?: SetupOverrides | null;
@@ -99,7 +99,7 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   const setup = thesis.setupId ? getSetup(thesis.setupId, args.setupOverrides ?? undefined) : undefined;
   const coFiredIds = new Set((fired?.coFired ?? []).map((c) => c.triggerId));
 
-  const predicateSummary = describePredicate(trigger.predicate);
+  const predicateSummary = conditionSentence(trigger.predicate);
 
   // DAV-186: a fell-from-peak fire is validated against the system's tracked
   // watermark, never a chart-derived high. On 2026-08-18 a genuine HPE trail
@@ -109,8 +109,10 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   // when Position.peakPrice exists, so a missing peak here means OUR context
   // lookup failed — not that the fire was wrong.
   const trailingPeakBlock = (() => {
-    if (trigger.predicate.kind !== "TRAILING_FROM_HIGH") return "";
-    const pct = trigger.predicate.pct;
+    // A give-back off the high since we bought.
+    const w = shapeOf(trigger.predicate);
+    if (!w || isGroup(w) || w.variable !== "peak" || w.value == null) return "";
+    const pct = w.value;
     const isShort = thesis.direction === "SHORT";
     const peak = position?.peakPrice ?? null;
     const threshold =
@@ -258,7 +260,7 @@ ${
     ? thesis.allTriggers
         .map(
           (t) =>
-            `  ${t.id === trigger.id ? "→ FIRED:" : coFiredIds.has(t.id) ? "→ ALSO FIRED:" : "  ·"} ${t.action}: ${describePredicate(t.predicate)}  [id ${t.id}]`,
+            `  ${t.id === trigger.id ? "→ FIRED:" : coFiredIds.has(t.id) ? "→ ALSO FIRED:" : "  ·"} ${sentenceOf(t, position != null)}  [id ${t.id}]`,
         )
         .join("\n")
     : "  (no triggers on record — this thesis is unprotected; fix that in your close-out)"
@@ -304,7 +306,7 @@ DECISION FRAMEWORK
      add into the print. On a miss with a broken assumption, EXIT and
      answer belief_survived=false; on a miss with the story intact, keep
      it and say what would change your mind.
-   - **A FILING trigger.** The kickoff names the kind of event and the
+   - **A filing trigger.** The kickoff names the kind of event and the
      link; read the document first (\`get_sec_filings\`). A restatement
      (4.02): exit unless clearly small and off-thesis, and say which.
      Bankruptcy or a delisting notice: exit. A late report: tighten the
@@ -434,7 +436,7 @@ DECISION FRAMEWORK
    the beat-that-sold review) were written at the fill; the trail is
    your analyst's rule and applies on its own.
    Mechanics: triggers are edited ONE AT A TIME by id — the ids are in
-   the ladder printed above. \`edit_triggers: [{ id, level|pct|days,
+   the ladder printed above. \`edit_triggers: [{ id, value,
    rationale }]\` moves a level (the rationale is required — the
    sentence moves with the number); \`add_triggers\` arms a new one;
    \`remove_trigger_ids\` retires one; \`stop_loss\` / \`target_price\`

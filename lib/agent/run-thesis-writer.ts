@@ -127,7 +127,7 @@ export interface RunThesisWriterArgs {
   } | null;
   /**
    * Review clock the dispatcher asked for, in days (DAV-225). Null/absent =
-   * no clock. Applied as an ordinary REVIEW_CADENCE rung — researching a
+   * no clock. Applied as an ordinary review-clock rung — researching a
    * name and agreeing to look at it weekly are separate decisions, and the
    * second belongs to whoever asked for the research.
    */
@@ -348,7 +348,7 @@ ${
     ? opts.existingThesis.triggers
         .map(
           (t) =>
-            `      - ${t.id}: ${describeTrigger(t, opts.existingThesis!.direction)} — "${t.rationale.slice(0, 90)}"`,
+            `      - ${t.id}: ${describeTrigger(t, opts.existingThesis!.status === "HOLDING")} — "${t.rationale.slice(0, 90)}"`,
         )
         .join("\n")
     : "      (none)"
@@ -372,10 +372,11 @@ decision by the orchestrator — you are writing the research and the plan.`;
     ? `TRIGGERS — YOU ARE REFRESHING A HELD THESIS (open position):
   • Legal actions: EXIT, REVIEW, TRIM, ADD, MOVE_STOP. NEVER ENTER —
     we already own it.
-  • At least one EXIT rung on the stop (PRICE_BELOW stop for LONG,
-    PRICE_ABOVE stop for SHORT) — that's the automated stop-loss path.
+  • At least one EXIT rung on the stop ({ watch: "price", is: "below",
+    value: stop } for LONG, is: "above" for SHORT) — that's the
+    automated stop-loss path.
   • Triggers are edited ONE AT A TIME: edit_triggers by the ids listed
-    under EXISTING THESIS (a level change needs a rationale),
+    under EXISTING THESIS (a value change needs a rationale),
     add_triggers for a new one, remove_trigger_ids to retire one.
     Everything you don't name stays exactly as it is. Most refreshes
     need no trigger ops at all.
@@ -397,14 +398,15 @@ decision by the orchestrator — you are writing the research and the plan.`;
       : `TRIGGERS — WATCHING thesis (no position; we're waiting for a reason to buy):
   • Legal actions: ENTER + REVIEW only. NEVER EXIT/TRIM/ADD/MOVE_STOP —
     there is no position.
-  • The ENTER rung follows the level: PRICE_ABOVE(entry_price) for a
-    breakout above the tape, PRICE_BELOW(entry_price) for a pullback
-    below it (mirror for SHORT). A setup already true today is an entry
-    at or a few cents past the live price.
+  • The ENTER rung follows the level: { watch: "price", is: "above",
+    value: entry_price } for a breakout above the tape, is: "below" for
+    a pullback below it (mirror for SHORT). A setup already true today
+    is an entry at or a few cents past the live price.
   • A chart condition from the setup's entry rule that isn't a price
-    (NEAR_SMA for a pullback, EARNINGS_SINCE for PEAD day 1–3, GAP_UP)
-    can be added as its own ENTER trigger next to the price level —
-    whichever comes true first wakes the buy decision.
+    (within 2% of the 50-day for a pullback: { watch: "move", is:
+    "near", value: 2, variable: "sma50" }; the days after the report
+    for PEAD; a gap) can be added as its own ENTER trigger next to the
+    price level — whichever comes true first wakes the buy decision.
   • Most theses need NO custom triggers — omit the field and the
     horizon-default template (entry/stop/review) is applied for you.
   • Setting an existing priced plan DOWN on a refresh (levels no longer
@@ -416,18 +418,18 @@ decision by the orchestrator — you are writing the research and the plan.`;
   // The account already carries the basics for every name; the writer
   // authors one only where the report IS the thesis.
   const earningsTriggerBlock = `
-EARNINGS TRIGGERS — three kinds, all live (they read the earnings
+EARNINGS TRIGGERS — two measures, both live (they read the earnings
 calendar, not news):
-  • EARNINGS_WITHIN { days } — "reports within N days", the heads-up
-    BEFORE the report. Fires once per approaching report.
-  • EARNINGS_BEAT / EARNINGS_MISS { minSurprisePct? } — reported EPS
-    against the estimate, at the first open after the report.
+  • { watch: "report", is: "before", value: N } — N days before the
+    report, the heads-up. Fires once per approaching report.
+  • { watch: "surprise", is: "beat" | "miss", value: % (0 = any) } —
+    reported EPS against the estimate, at the first open after it.
   The account rules already give EVERY name a heads-up and a
   review on any beat or miss, so most theses need none of these. Author
   one only when the report is the thesis: a CATALYST built on the print
-  wants a tighter bar (EARNINGS_BEAT minSurprisePct 5 → REVIEW, or the
-  miss → EXIT on a held name); a long-dated COMPOUNDER may want a wider
-  heads-up (EARNINGS_WITHIN 7). Never ENTER on a beat by itself — a beat
+  wants a tighter bar (a beat of 5% or more → REVIEW, or the miss →
+  EXIT on a held name); a long-dated COMPOUNDER may want a wider
+  heads-up (7 days before). Never ENTER on a beat by itself — a beat
   the stock sold on is the market saying it wanted more; price the entry.`;
 
   const priorExitBlock = opts.priorExit
@@ -1320,7 +1322,7 @@ export function buildWriterSaveCall(
               ? [
                   ...(d.triggers ?? []),
                   {
-                    predicate: { kind: "REVIEW_CADENCE", days: args.reviewCadenceDays },
+                    predicate: { watch: "repeat", value: args.reviewCadenceDays },
                     action: "REVIEW",
                     rationale: `Look at this every ${args.reviewCadenceDays} day(s), from the last review.`,
                   },
@@ -1503,6 +1505,10 @@ export function makeSubmitThesisTool(opts: {
     // schema (every trigger kind by name), the validator coerces or drops
     // what it still gets wrong with a note, and a refused decision is
     // repaired once. That is the guarantee; a grammar is not available.
+    // (The chat's tools hit a different limit first: strict refuses a range on
+    // an integer, "For 'integer' type, properties maximum, minimum are not
+    // supported" (req_011CfmMgGCGJBUrYGBYDZxHS, 2026-10-06). Strict there
+    // would mean moving every range into a description.)
     inputSchema: thesisDecisionSchema,
     execute: async (raw: z.infer<typeof thesisDecisionSchema>) => {
       const attempt = opts.onAttempt();

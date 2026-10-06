@@ -21,11 +21,10 @@ describe("collapseProtectiveFires", () => {
   it("MU 09-14: the stop and the trail fold into one event carrying the other", () => {
     const out = collapseProtectiveFires(
       [mk("stop-969", "EXIT", "PRICE_BELOW"), mk("trail-8", "EXIT", "TRAILING_FROM_HIGH")],
-      (e) => e.sentence,
     );
     expect(out).toHaveLength(1);
     expect(out[0].triggerId).toBe("stop-969");
-    expect(out[0].coFired).toEqual([{ triggerId: "trail-8", predicateKind: "TRAILING_FROM_HIGH", sentence: "TRAILING_FROM_HIGH — EXIT" }]);
+    expect(out[0].coFired).toEqual([{ triggerId: "trail-8", sentence: "TRAILING_FROM_HIGH — EXIT" }]);
   });
 
   it("a trim with a stop folds too; an add or a review beside a stop stays its own event", () => {

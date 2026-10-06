@@ -58,7 +58,9 @@
  * stopped loading. No database, no clock of its own — callers pass `now`.
  */
 
-import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+
+import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
+import type { When } from "@/lib/agent/triggers/condition";
 
 /**
  * Rejection messages the SYSTEM wrote (the retired duplicate-close fold, the
@@ -245,7 +247,7 @@ export function declineReplanAllows(input: {
   /** RatchetViolation.reason */
   reason: string;
   /** The predicate the edit would leave in place. */
-  afterPredicate: TriggerPredicate | null | undefined;
+  afterPredicate: When | null | undefined;
   /** The line whose sale was declined; null = we cannot bound it, so no. */
   declinedFloor: number | null;
   direction: string | null;
@@ -257,10 +259,10 @@ export function declineReplanAllows(input: {
   if (!p) return false;
   const isLong = input.direction !== "SHORT";
   // An absolute floor, on the side this direction is protected from.
-  const wanted = isLong ? "PRICE_BELOW" : "PRICE_ABOVE";
-  if (p.kind !== wanted) return false;
-  const level = (p as { level?: unknown }).level;
-  if (typeof level !== "number" || !(level > 0)) return false;
+  const w = shapeOf(p);
+  const floor = w == null ? null : levelOf(w);
+  if (floor == null || floor.above === isLong || !(floor.value > 0)) return false;
+  const level = floor.value;
   const bound = replanFloorBound(input.declinedFloor, input.direction);
   return isLong ? level >= bound : level <= bound;
 }

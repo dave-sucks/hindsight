@@ -627,12 +627,68 @@ it reads through the translator until PR 4.
 |---|---|---|---|
 | **1. The editor** | The condition shape and the measure catalog (`lib/agent/triggers/condition/`): one entry per measure holding its tab, buttons, input, settings, words, slot, actions and how it reads and writes today's kinds; no code outside an entry branches on a measure. Add trigger opens a menu of the five types; each opens the dialog for that type; every type fills the same layout. A pill opens a popover that reads the trigger the same way as the pill; Edit opens the same dialog filled in; inherited rules link to where they live. One vocabulary everywhere: the form's direction and value. The analyst and account settings use the same pills, popover and dialog. It saves today's kinds through the measures' `legacy` field, so storage and the checker are untouched. The form offers only what the server accepts. Editing in place is one new `replace` op on the shared write path (same slot keeps the id and history; another slot is a new trigger). The add paths' kind lists move to `lib/agent/triggers/addable.ts`. Deletes `dialog-condition.ts`, the eight-tab form and the old popover. | The round-trip and slot tests over every stored trigger (487 distinct conditions behind 909 triggers); the no-branching test; the replace-op tests; the full suite; screenshots of every type's dialog and the popovers. | The dialog, popover and pills only |
 | **2. Alongside** | One checker over the catalog, plus a comparison on every pass that logs any disagreement. | The CI parity grid; three or more trading days of production logs with zero disagreements. | None (logging only) |
-| **3. Cutover** | Storage moves to the shape (dual read, then the backfill); every writer (`ops.ts`, `thesis-edit.ts`, the seeders, `setup-exits.ts`, `defaults.ts`, `setups.ts`); the new checker decides; fire history moves into `triggerState`; the agents' schemas and prompts; the new options shown; `MOVE_STOP` deleted; docs updated (`TRIGGERS.md`, `TRIGGER_MODEL.md`, `CLAUDE.md`, the `LANES.md` §2 checklist). The 20 kind names are deleted from all code except the translator. | A grep showing the kind names only in `condition/legacy.ts` and its tests; tool size before and after; the backfill dry-run diff; replay tests passing; a check after the backfill showing zero old rows. | Same fires; new options available |
+| **3. Cutover** | Storage moves to the shape (dual read, then the backfill); every writer (`ops.ts`, `thesis-edit.ts`, the seeders, `setup-exits.ts`, `defaults.ts`, `setups.ts`); the new checker decides; fire history moves into `triggerState`; the agents' schemas and prompts; the new options shown; `MOVE_STOP` deleted; docs updated (`TRIGGERS.md`, `TRIGGER_MODEL.md`, `CLAUDE.md`, the `LANES.md` §2 checklist). The 20 kind names are deleted from all code except the translator. | The old rules and the old checker kept frozen in the suite (`condition/__fixtures__/`) and checked against the catalog for every stored condition, and the ones the book lacks, under every action (`condition.test.ts`, `read.test.ts`), so a stage that replaces old code can't leave its test comparing the new code with itself; a grep showing the kind names only in `condition/legacy.ts`, those fixtures and their tests; tool size before and after; the backfill dry-run diff; replay tests passing; a check after the backfill showing zero old rows. | Same fires; new options available |
 | **4. Cleanup** | After a week with zero old rows: the translator's read path and the comparison code go. | A grep showing zero kind names. | None |
 
 Each PR follows the repo's rules: rebased onto main and never stacked; the
 five-line message; a test replayed from the real production input; merged
 only on Dave's click.
+
+**PR 3 is built in stages on one branch**, each with the code it replaces
+frozen in the suite (`condition/__fixtures__/`) and checked against the
+catalog at the entry point the app calls:
+
+1. The rules the kinds answered (cooldown, the weekly review floor, direct
+   sales and their close label, typed levels, the slot) read the catalog.
+2. The new checker decides; what the five-minute pass loads, the levels on
+   the chart and their slots, the cascade's gates, the stop-tightening rule
+   and the other typed-price readers read the catalog. The old popover's
+   value and fire-mode edits, dead since PR 1, are deleted.
+3. Storage holds the shape: the database client stores every write in it
+   and gives the code that still speaks in kinds their spelling on read;
+   the backfill and its down script.
+4. The agents' tools and prompts move to the shape (after the architecture
+   work's step 4a lands), and with them everything that still speaks in
+   kinds: the read view goes, the templates and writers build the shape, the
+   sentences agents read come from the catalog. The test cases where an agent
+   writes triggers run 12 times each, in the same hour, before and after.
+5. Tests and docs.
+
+**As built (stages 4 and 5).**
+
+- The agents' tools take the shape. The measures, their directions,
+  variables and settings are listed once, on `predicate`, from the catalog.
+  `settings` lists its keys, because the AI SDK writes a record as an object
+  that allows none; a model reading the old definition could not have said
+  "on the close". An edit is `{ id, value, … }`: it moves the number and never
+  changes what a trigger is measured from. A model that still sends `level`,
+  `pct` or `days` has it read as the value, and the old unit check stands (a
+  dollar figure on a % trigger is refused).
+- Review fixes: a price's line goes in `value`, so price-or-line is one input
+  a model can't send both halves of; `variable` is only what a move or a day
+  count is measured from. The condition is defined once per tool. DOCU's
+  trigger run saved nothing in 6 of 8 runs before this.
+- Every trigger reads as one sentence from `describe.ts`, in the variables'
+  own words: "Sell if below 25% from the high since we bought", "Review every
+  30 days", "Review if within 2 days after earnings". Activity, needs-action,
+  the tactical kickoff and ladder, the fired-trigger list and the setup
+  catalog all use it.
+- The read view is gone: storage reads and writes the shape, and the kinds'
+  spelling exists only for the down script.
+- The kind names are gone from app code. What remains under those names is
+  another vocabulary: signal and aggregate types (`EARNINGS_BEAT` as a
+  signal, `GAP_UP` in an archetype's signal list), the `INSIDER_CLUSTER`
+  setup id, and the translator with its fixtures and tests.
+- Not done here, from the PR 3 row above: deleting the `MOVE_STOP` action
+  (no stored trigger carries it; 34 references) and moving fire history into
+  `triggerState`. Both are follow-ups; neither touches the shape.
+  `MOVE_STOP` is deleted in its own PR (#772); fire history is part of the
+  storage proposal, a document on the `claude/trigger-storage-plan` branch (#773).
+- The §12.3 options (a sale below our entry on a stock we watch, a % move or
+  volume read on the close, a review every N weeks) are **not on**. The save
+  still accepts only what an old kind could say, because its check is the
+  old schema. PR 4 (#771) moves the check onto the catalog with the same
+  combinations; each option is then one catalog change of its own.
 
 **Lanes.** This crosses both lanes' columns and every shared file in
 `LANES.md` §4. One owner runs it end to end. While PR 2 or PR 3 is open,

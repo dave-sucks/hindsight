@@ -53,7 +53,7 @@
  *                         day — without it, a thesis coming due at
  *                         today 09:30 ET would be
  *                         skipped by the 08:00 ET morning daily-run
- *                         ("not yet due"), then fire the REVIEW_DATE_HIT
+ *                         ("not yet due"), then fire the old review-date
  *                         trigger 90 min later, spawning a tactical run
  *                         that did the same work. 24h is wide enough to
  *                         catch same-day reviews regardless of when the
@@ -85,12 +85,14 @@ import { isMarketOpen } from "@/lib/market-hours";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import { floorTooFar, type FloorStructure } from "@/lib/agent/floor-risk";
-import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import type { Trigger } from "@/lib/agent/triggers/types";
+import { readsTheTape, reviewClockDays, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
 import { fireStreak, type FireStreakUpdate } from "@/lib/agent/fire-streak";
 import { openFires, type ActivityRow } from "@/lib/agent/stock-context";
 import type { Horizon as StalenessHorizon } from "@/lib/agent/horizon-policy";
+import type { When } from "@/lib/agent/triggers/condition";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -200,7 +202,7 @@ export type NeedsAction =
       flooredGainPct: number | null;
       /** gainPct − flooredGainPct. Null when there is no floor (unbounded). */
       unprotectedGapPct: number | null;
-      /** True when a TRAILING_FROM_HIGH EXIT rung exists. */
+      /** True when a trail EXIT rung exists. */
       hasTrail: boolean;
       /** Compact description of the tightest floor, e.g. "price < $65.00". */
       floorSummary: string | null;
@@ -246,99 +248,13 @@ export type NeedsAction =
 // can't evaluate them inline at run-start. (Signal-side fires already
 // arrive via the TRIGGER_FIRED audit row path.)
 
-const PRICE_OR_TIME_KINDS = new Set([
-  "PRICE_ABOVE",
-  "PRICE_BELOW",
-  "PRICE_MOVE_PCT",
-  "GAIN_FROM_ENTRY",
-  "TRAILING_FROM_HIGH",
-  "VS_SMA",
-  "NEAR_SMA",
-  "VOLUME_RATIO",
-  "NEW_HIGH",
-  "PCT_FROM_52W_HIGH",
-  "RS_VS_SPY",
-  "GAP_UP",
-  "RSI",
-  "INSIDER_CLUSTER",
-  // REVIEW_CADENCE is deliberately NOT here: it has its own needsAction
-  // kind (REVIEW_DUE) with a 24h look-ahead the generic loop can't express,
-  // and routing it through TRIGGER_MATCHING_NOW would relabel every routine
-  // review as an urgent trigger fire.
-]);
-
-function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
-  if (PRICE_OR_TIME_KINDS.has(p.kind)) return true;
-  if (p.kind === "AND" || p.kind === "OR") {
-    return p.predicates.every(isPriceOrTimePredicate);
-  }
-  return false;
-}
-
-// ─── Predicate description (compact one-liner for the prompt) ───────────────
-
-/**
- * The one compact wording of a predicate for agent prompts and tool rows —
- * the daily run's needsAction lines, the live matching-now list
- * (./triggers/live-evaluate) and the tactical run's "what fired" line all
- * read this. (The UI's longer sentence lives in ./triggers/format.)
- */
-export function describePredicate(p: TriggerPredicate): string {
-  switch (p.kind) {
-    case "PRICE_BELOW":
-      return `${p.basis === "close" ? "closes" : "price"} < $${p.level}`;
-    case "PRICE_ABOVE":
-      return `${p.basis === "close" ? "closes" : "price"} > $${p.level}`;
-    case "PRICE_MOVE_PCT":
-      return `${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}`;
-    case "GAIN_FROM_ENTRY":
-      return `${p.direction === "UP" ? "up" : "down"} ${p.pct}% from entry`;
-    case "TRAILING_FROM_HIGH":
-      return (
-        `gives back ${p.pct}% from the high` +
-        (p.armAtGainPct ? `, armed once up ${p.armAtGainPct}%` : "")
-      );
-    case "VS_SMA":
-      return `${p.direction.toLowerCase()} the ${p.period}-day`;
-    case "NEAR_SMA":
-      return `within ${p.withinPct}% of the ${p.period}-day`;
-    case "VOLUME_RATIO":
-      return `volume ≥ ${p.min}× the 20-day average`;
-    case "NEW_HIGH":
-      return p.window === "20D" ? "new 20-day high" : "new 52-week high";
-    case "PCT_FROM_52W_HIGH":
-      return `within ${p.max}% of the 52-week high`;
-    case "RS_VS_SPY":
-      return `${p.window} return vs SPY ≥ ${p.min} pts`;
-    case "GAP_UP":
-      return `gap up ≥ ${p.minPct}% on ≥ ${p.minVolRatio}× volume${(p.withinDays ?? 1) > 1 ? ` within ${p.withinDays} sessions` : ""}`;
-    case "RSI":
-      return `RSI(${p.period ?? 14}) ${p.direction.toLowerCase()} ${p.threshold}`;
-    case "INSIDER_CLUSTER":
-      return `≥ ${p.minBuyers} insiders bought on the open market within ${p.days}d`;
-    case "REVIEW_CADENCE":
-      return (p.from ?? "LAST_REVIEW") === "BUY"
-        ? `${p.days}d after the buy`
-        : p.from === "EVENT"
-          ? `${p.days}d ${(p.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event date`
-          : `due for review (every ${p.days}d)`;
-    case "EARNINGS_BEAT":
-      return `earnings beat${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
-    case "EARNINGS_MISS":
-      return `earnings miss${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
-    case "EARNINGS_WITHIN":
-      return `reports within ${p.days}d`;
-    case "EARNINGS_SINCE":
-      return `${p.min}–${p.max}d after the report`;
-    case "SEC_EVENT":
-      return p.tier
-        ? `${p.tier === "RED" ? "serious" : "material"} SEC filing`
-        : `SEC filing (${[...(p.items ?? []), ...(p.forms ?? [])].join(", ")})`;
-    case "AND":
-      return `(${p.predicates.map(describePredicate).join(" AND ")})`;
-    case "OR":
-      return `(${p.predicates.map(describePredicate).join(" OR ")})`;
-  }
+// The review clock is deliberately not here (it is a schedule): it has its
+// own needsAction kind (REVIEW_DUE) with a 24h look-ahead the generic loop
+// can't express, and routing it through TRIGGER_MATCHING_NOW would relabel
+// every routine review as an urgent trigger fire.
+function isPriceOrTimePredicate(p: When): boolean {
+  const w = shapeOf(p);
+  return w != null && readsTheTape(w);
 }
 
 // ─── Inputs ──────────────────────────────────────────────────────────────────
@@ -390,7 +306,7 @@ export interface NeedsActionInput {
     targetPrice?: number | null;
     /**
      * Paired open Position's water mark (high LONG / low SHORT), maintained
-     * hourly by the price monitor. Feeds the TRAILING_FROM_HIGH floor math
+     * hourly by the price monitor. Feeds the trail floor math
      * in the UNPROTECTED_GAIN computation. Null when not held / not tracked
      * — ladder-health falls back to the current price.
      */
@@ -551,7 +467,7 @@ export function computeNeedsAction(
         return {
           f,
           action: (t?.action as NeedsActionVerb) ?? "REVIEW",
-          summary: t ? describePredicate(t.predicate) : "(predicate removed)",
+          summary: t ? sentenceOf(t, thesis.status == null || thesis.status === "HOLDING") : "(predicate removed)",
         };
       })
       // P1-25 Change 4: a pending buy proposal already expresses the ENTER —
@@ -626,7 +542,7 @@ export function computeNeedsAction(
         kind: "TRIGGER_MATCHING_NOW",
         triggerId: trigger.id,
         action,
-        predicateSummary: describePredicate(trigger.predicate),
+        predicateSummary: sentenceOf(trigger, thesis.status == null || thesis.status === "HOLDING"),
         livePrice: latestQuote?.price ?? null,
       };
     }
@@ -679,7 +595,7 @@ export function computeNeedsAction(
   //    evaluator's cron fires 90 min later and spawns a redundant
   //    tactical run to do the same work. With look-ahead, the morning
   //    agent catches it upfront. See lib/agent/triggers/defaults.ts
-  //    header comment for the matching half (REVIEW_DATE_HIT removed
+  //    header comment for the matching half (old review-date removed
   //    from watching defaults).
   //
   //    Special case: unresearched seeds (user/builder/editor adds, direction
@@ -699,14 +615,13 @@ export function computeNeedsAction(
   // Only the review clock decides REVIEW_DUE. A day count from the buy or
   // the event date is an ordinary trigger: it fires through the evaluator
   // and arrives as TRIGGER_FIRED.
-  const cadence = thesis.triggers.find(
-    (t) =>
-      t.predicate.kind === "REVIEW_CADENCE" &&
-      (t.predicate.from ?? "LAST_REVIEW") === "LAST_REVIEW",
-  );
-  if (cadence?.predicate.kind === "REVIEW_CADENCE") {
+  const clockDays = thesis.triggers
+    .map((t) => shapeOf(t.predicate))
+    .map((w) => (w == null ? null : reviewClockDays(w)))
+    .find((d) => d != null);
+  if (clockDays != null) {
     const lastLooked = thesis.lastReviewedAt ?? thesis.createdAt;
-    const dueAt = lastLooked.getTime() + cadence.predicate.days * 86_400_000;
+    const dueAt = lastLooked.getTime() + clockDays * 86_400_000;
     if (dueAt <= now.getTime() + REVIEW_DUE_LOOKAHEAD_MS) {
       // Clamp negative ("due later today") to 0 so the UI reads "due today"
       // rather than "-1 days overdue".

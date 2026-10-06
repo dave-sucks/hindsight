@@ -15,6 +15,7 @@
 // test reads is pure. Same shape as defaults.test.ts.
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import {
   frozenCopies,
   sharedRationalesAcross,
@@ -30,24 +31,24 @@ const t = (over: Partial<Trigger> & { predicate: Trigger["predicate"]; action: T
 
 // ── The rules above, verbatim from the live account ────────────────────
 const COMPOUNDER: Trigger[] = [
-  t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" }, action: "REVIEW", source: "PRINCIPAL" }),
-  t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "DOWN" }, action: "REVIEW", source: "PRINCIPAL" }),
-  t({ predicate: { kind: "PRICE_MOVE_PCT", pct: 7, window: "1D", direction: "DOWN" }, action: "ADD", source: "PRINCIPAL" }),
-  t({ predicate: { kind: "TRAILING_FROM_HIGH", pct: 15 }, action: "REVIEW" }),
-  t({ predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 }, action: "EXIT" }),
-  t({ predicate: { kind: "VS_SMA", period: 200, direction: "BELOW" }, action: "REVIEW", source: "PRINCIPAL" }),
+  t({ predicate: { watch: "move", is: "above", value: 15, variable: "entry" }, action: "REVIEW", source: "PRINCIPAL" }),
+  t({ predicate: { watch: "move", is: "below", value: 15, variable: "entry" }, action: "REVIEW", source: "PRINCIPAL" }),
+  t({ predicate: { watch: "move", is: "below", value: 7, variable: "prev_close" }, action: "ADD", source: "PRINCIPAL" }),
+  t({ predicate: { watch: "move", is: "below", value: 15, variable: "peak" }, action: "REVIEW" }),
+  t({ predicate: { watch: "move", is: "below", value: 25, variable: "peak" }, action: "EXIT" }),
+  t({ predicate: { watch: "price", is: "below", variable: "sma200" }, action: "REVIEW", source: "PRINCIPAL" }),
 ];
 const PEAD: Trigger[] = [
-  t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" }, action: "REVIEW", source: "PRINCIPAL" }),
-  t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" }, action: "REVIEW", source: "PRINCIPAL" }),
-  t({ predicate: { kind: "TRAILING_FROM_HIGH", pct: 12 }, action: "EXIT", source: "PRINCIPAL" }),
+  t({ predicate: { watch: "move", is: "below", value: 12, variable: "entry" }, action: "REVIEW", source: "PRINCIPAL" }),
+  t({ predicate: { watch: "move", is: "above", value: 10, variable: "entry" }, action: "REVIEW", source: "PRINCIPAL" }),
+  t({ predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", source: "PRINCIPAL" }),
 ];
 const ACCOUNT: Trigger[] = [
-  t({ predicate: { kind: "EARNINGS_BEAT" }, action: "REVIEW", source: "DEFAULT" }),
-  t({ predicate: { kind: "EARNINGS_MISS" }, action: "REVIEW", source: "DEFAULT" }),
-  t({ predicate: { kind: "PRICE_MOVE_PCT", pct: 7, window: "1D", direction: "UP" }, action: "ADD", source: "DEFAULT" }),
-  t({ predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", source: "DEFAULT" }),
-  t({ predicate: { kind: "SEC_EVENT", tier: "MATERIAL" }, action: "REVIEW", source: "DEFAULT" }),
+  t({ predicate: { watch: "surprise", is: "beat", value: 0 }, action: "REVIEW", source: "DEFAULT" }),
+  t({ predicate: { watch: "surprise", is: "miss", value: 0 }, action: "REVIEW", source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "above", value: 7, variable: "prev_close" }, action: "ADD", source: "DEFAULT" }),
+  t({ predicate: { watch: "repeat", value: 7 }, action: "REVIEW", source: "DEFAULT" }),
+  t({ predicate: { watch: "filing", variable: "tier:MATERIAL" }, action: "REVIEW", source: "DEFAULT" }),
 ];
 
 // ── The template's sentences, which sit on four stocks apiece ──────────
@@ -58,37 +59,37 @@ const GAIN_DOWN = "Down 12% from entry — loser attention. Decide hold-vs-cut d
 
 const ABT: Trigger[] = [
   // The six copies.
-  t({ predicate: { kind: "PRICE_MOVE_PCT", pct: 7, window: "1D", direction: "UP" }, action: "ADD", rationale: ADD_UP, source: "DEFAULT" }),
-  t({ predicate: { kind: "PRICE_MOVE_PCT", pct: 7, window: "1D", direction: "DOWN" }, action: "ADD", rationale: ADD_DOWN, source: "DEFAULT" }),
-  t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" }, action: "REVIEW", rationale: GAIN_UP, source: "DEFAULT" }),
-  t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" }, action: "REVIEW", rationale: GAIN_DOWN, source: "DEFAULT" }),
-  t({ predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 }, action: "EXIT", rationale: "Gave back 25% from the high — the catastrophe line for a multi-year hold.", source: "DEFAULT" }),
-  t({ predicate: { kind: "TRAILING_FROM_HIGH", pct: 15 }, action: "REVIEW", rationale: "Gave back 15% from the high. This is a question, not a sale.", source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "above", value: 7, variable: "prev_close" }, action: "ADD", rationale: ADD_UP, source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "below", value: 7, variable: "prev_close" }, action: "ADD", rationale: ADD_DOWN, source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "above", value: 10, variable: "entry" }, action: "REVIEW", rationale: GAIN_UP, source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "below", value: 12, variable: "entry" }, action: "REVIEW", rationale: GAIN_DOWN, source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "below", value: 25, variable: "peak" }, action: "EXIT", rationale: "Gave back 25% from the high — the catastrophe line for a multi-year hold.", source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "below", value: 15, variable: "peak" }, action: "REVIEW", rationale: "Gave back 15% from the high. This is a question, not a sale.", source: "DEFAULT" }),
   // …and the seven that are ABT's own.
-  t({ id: "abt_floor", predicate: { kind: "PRICE_BELOW", level: 96 }, action: "EXIT", source: "AGENT" }),
-  t({ id: "abt_target", predicate: { kind: "PRICE_ABOVE", level: 135 }, action: "REVIEW", source: "AGENT" }),
-  t({ id: "abt_reviewline", predicate: { kind: "PRICE_BELOW", level: 95.09 }, action: "REVIEW", source: "DEFAULT" }),
-  t({ id: "abt_clock10", predicate: { kind: "REVIEW_CADENCE", days: 10 }, action: "REVIEW", source: "DEFAULT" }),
-  t({ id: "abt_clock30", predicate: { kind: "REVIEW_CADENCE", days: 30 }, action: "REVIEW", source: "AGENT" }),
-  t({ id: "abt_beat", predicate: { kind: "EARNINGS_BEAT" }, action: "REVIEW", rationale: "Re-check the thesis if Abbott beats earnings by at least 1%.", source: "AGENT" }),
-  t({ id: "abt_miss", predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 }, action: "REVIEW", rationale: "Re-check the thesis on a meaningful miss.", source: "AGENT" }),
+  t({ id: "abt_floor", predicate: { watch: "price", is: "below", value: 96 }, action: "EXIT", source: "AGENT" }),
+  t({ id: "abt_target", predicate: { watch: "price", is: "above", value: 135 }, action: "REVIEW", source: "AGENT" }),
+  t({ id: "abt_reviewline", predicate: { watch: "price", is: "below", value: 95.09 }, action: "REVIEW", source: "DEFAULT" }),
+  t({ id: "abt_clock10", predicate: { watch: "repeat", value: 10 }, action: "REVIEW", source: "DEFAULT" }),
+  t({ id: "abt_clock30", predicate: { watch: "repeat", value: 30 }, action: "REVIEW", source: "AGENT" }),
+  t({ id: "abt_beat", predicate: { watch: "surprise", is: "beat", value: 0 }, action: "REVIEW", rationale: "Re-check the thesis if Abbott beats earnings by at least 1%.", source: "AGENT" }),
+  t({ id: "abt_miss", predicate: { watch: "surprise", is: "miss", value: 3 }, action: "REVIEW", rationale: "Re-check the thesis on a meaningful miss.", source: "AGENT" }),
 ];
 
 const NVDA: Trigger[] = [
-  t({ predicate: { kind: "PRICE_MOVE_PCT", pct: 7, window: "1D", direction: "UP" }, action: "ADD", rationale: ADD_UP, source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "above", value: 7, variable: "prev_close" }, action: "ADD", rationale: ADD_UP, source: "DEFAULT" }),
   // The one with money attached: nothing above it governs. The account's
   // was removed on 09-18 and the copy stayed; the PEAD seat has no add.
-  t({ id: "nvda_add_down", predicate: { kind: "PRICE_MOVE_PCT", pct: 7, window: "1D", direction: "DOWN" }, action: "ADD", rationale: ADD_DOWN, source: "DEFAULT" }),
-  t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" }, action: "REVIEW", rationale: GAIN_DOWN, source: "DEFAULT" }),
+  t({ id: "nvda_add_down", predicate: { watch: "move", is: "below", value: 7, variable: "prev_close" }, action: "ADD", rationale: ADD_DOWN, source: "DEFAULT" }),
+  t({ predicate: { watch: "move", is: "below", value: 12, variable: "entry" }, action: "REVIEW", rationale: GAIN_DOWN, source: "DEFAULT" }),
   // Written for NVDA. Same bucket as the account's, and it stays.
-  t({ id: "nvda_beat", predicate: { kind: "EARNINGS_BEAT" }, action: "REVIEW", rationale: "Beat — possibly a reason to extend the target.", source: "DEFAULT" }),
-  t({ id: "nvda_trim", predicate: { kind: "GAIN_FROM_ENTRY", pct: 16.6, direction: "UP" }, action: "TRIM", rationale: "The 2R partial.", source: "DEFAULT" }),
+  t({ id: "nvda_beat", predicate: { watch: "surprise", is: "beat", value: 0 }, action: "REVIEW", rationale: "Beat — possibly a reason to extend the target.", source: "DEFAULT" }),
+  t({ id: "nvda_trim", predicate: { watch: "move", is: "above", value: 16.6, variable: "entry" }, action: "TRIM", rationale: "The 2R partial.", source: "DEFAULT" }),
 ];
 
 const BMRN: Trigger[] = [
   t({
     id: "bmrn_miss",
-    predicate: { kind: "EARNINGS_MISS" },
+    predicate: { watch: "surprise", is: "miss", value: 0 },
     action: "REVIEW",
     rationale: "A meaningful earnings miss could signal VOXZOGO commercial erosion and weaken the post-approval re-rating case.",
     source: "DEFAULT",
@@ -101,8 +102,8 @@ const shared = sharedRationalesAcross([
   { ticker: "BMRN", triggers: BMRN },
   // A third and fourth stock carrying the same template sentences is what
   // makes them recognisable as a template's, rather than anyone's writing.
-  { ticker: "ASML", triggers: [t({ predicate: { kind: "PRICE_MOVE_PCT", pct: 7, window: "1D", direction: "UP" }, action: "ADD", rationale: ADD_UP }), t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" }, action: "REVIEW", rationale: GAIN_UP })] },
-  { ticker: "WST", triggers: [t({ predicate: { kind: "PRICE_MOVE_PCT", pct: 7, window: "1D", direction: "DOWN" }, action: "ADD", rationale: ADD_DOWN }), t({ predicate: { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" }, action: "REVIEW", rationale: GAIN_DOWN })] },
+  { ticker: "ASML", triggers: [t({ predicate: { watch: "move", is: "above", value: 7, variable: "prev_close" }, action: "ADD", rationale: ADD_UP }), t({ predicate: { watch: "move", is: "above", value: 10, variable: "entry" }, action: "REVIEW", rationale: GAIN_UP })] },
+  { ticker: "WST", triggers: [t({ predicate: { watch: "move", is: "below", value: 7, variable: "prev_close" }, action: "ADD", rationale: ADD_DOWN }), t({ predicate: { watch: "move", is: "below", value: 12, variable: "entry" }, action: "REVIEW", rationale: GAIN_DOWN })] },
 ]);
 
 const idsOf = (list: ReturnType<typeof frozenCopies>) => list.map((c) => c.trigger.id);
@@ -121,7 +122,7 @@ describe("DAV-322 — the copies come off", () => {
 
   it("2. the 25% sale goes because it is the Compounder's number, not ABT's", () => {
     const copies = frozenCopies({ own: ABT, analyst: COMPOUNDER, account: ACCOUNT, sharedRationales: shared });
-    const trail = copies.find((c) => c.bucket === "TRAILING_FROM_HIGH::EXIT");
+    const trail = copies.find((c) => c.bucket === triggerBucket({ predicate: { watch: "move", is: "below", value: 25, variable: "peak" }, action: "EXIT" }));
     expect(trail?.reason).toBe("SAME_RUNG_SAME_NUMBER");
     expect(trail?.governedBy).toBe("ANALYST");
   });
@@ -149,15 +150,15 @@ describe("DAV-322 — the copies come off", () => {
 
   it("6. a rung at a different number with its own words is an override, not a copy", () => {
     const own = [
-      t({ id: "own_trail", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, action: "EXIT", rationale: "Tighter than the seat because this one gaps.", source: "AGENT" }),
+      t({ id: "own_trail", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, action: "EXIT", rationale: "Tighter than the seat because this one gaps.", source: "AGENT" }),
     ];
     expect(frozenCopies({ own, analyst: COMPOUNDER, account: ACCOUNT, sharedRationales: shared })).toHaveLength(0);
   });
 
   it("7. triggerValue reads the number a rung is set at", () => {
-    expect(triggerValue({ predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 } })).toBe(25);
-    expect(triggerValue({ predicate: { kind: "PRICE_BELOW", level: 96 } })).toBe(96);
-    expect(triggerValue({ predicate: { kind: "EARNINGS_BEAT" } })).toBeNull();
+    expect(triggerValue({ predicate: { watch: "move", is: "below", value: 25, variable: "peak" } })).toBe(25);
+    expect(triggerValue({ predicate: { watch: "price", is: "below", value: 96 } })).toBe(96);
+    expect(triggerValue({ predicate: { watch: "surprise", is: "beat", value: 0 } })).toBeNull();
   });
 });
 
@@ -185,7 +186,7 @@ describe("DAV-322 — a new holding is not given a copy in the first place", () 
       // The review clock is the one shared bucket that is legitimately the
       // thesis's own — a CATALYST name reviews on its own schedule, not the
       // account's 7 days. Everything else is the account's to own.
-      const notTheClock = clash.filter((c) => c.predicate.kind !== "REVIEW_CADENCE");
+      const notTheClock = clash.filter((c) => kindOf(c.predicate) !== "REVIEW_CADENCE");
       expect({ horizon, stamped: notTheClock.map(triggerBucket) }).toEqual({
         horizon,
         stamped: [],

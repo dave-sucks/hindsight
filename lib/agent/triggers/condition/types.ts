@@ -4,7 +4,7 @@
  *   watch (the measure) · is (its button) · value (what you type) or variable (what you insert) · settings
  *
  * Everything about a measure (its tab, buttons, input, settings, words,
- * slot, the actions it can take, and how it is stored until the cutover)
+ * slot, the actions it can take, and how it reads a row stored as a kind)
  * lives on its catalog entry in ./measures. Nothing else branches on a
  * measure. docs/plans/TRIGGER_TYPES.md §3, §5 and §6.
  *
@@ -71,6 +71,10 @@ export interface SettingDef {
   default?: SettingValue;
   /** Part of the rule's identity: a 14-day and a 2-day RSI rule are two rules, not one at two values. */
   identity?: boolean;
+  /** Raising it, or turning it on, protects less: on a sale it counts as loosening the stop. */
+  looser?: boolean;
+  /** When set, the check reads the daily indicator snapshot for it (the trail's daily range). */
+  snapshot?: boolean;
   /** Added to the sentence when set: ", once it has been up 20%". */
   words?: (v: SettingValue, s: Settings) => string;
 }
@@ -93,7 +97,7 @@ export interface Group {
 export type When = Condition | Group;
 
 /**
- * A stored condition no current kind can read (REVIEW_DATE_HIT, deleted in
+ * A stored condition no current kind can read (old review-date, deleted in
  * August). Kept verbatim so nothing is lost; it never fires.
  */
 export interface Retired {

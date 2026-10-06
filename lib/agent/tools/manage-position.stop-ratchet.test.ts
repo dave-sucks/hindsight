@@ -74,10 +74,10 @@ const NVDA = {
 
 /** NVDA's real ladder. `floor` is the level on its hard-stop rung. */
 const ladder = (floor: number) => [
-  { id: "d9c8dabf", action: "REVIEW", source: "DEFAULT", predicate: { days: 7, kind: "REVIEW_CADENCE" }, rationale: "Look at this every 7 days.", cooldownDays: 7 },
-  { id: "6306936b", action: "EXIT", source: "DEFAULT", predicate: { kind: "PRICE_BELOW", level: floor }, rationale: `Hard stop at $${floor}.`, cooldownDays: 0 },
-  { id: "8f58e347", action: "REVIEW", source: "DEFAULT", predicate: { kind: "PRICE_ABOVE", level: 322 }, rationale: "Target $322 hit.", cooldownDays: 1 },
-  { id: "d7d37522", action: "REVIEW", source: "DEFAULT", predicate: { pct: 12, kind: "GAIN_FROM_ENTRY", direction: "DOWN" }, rationale: "Down 12% from entry.", cooldownDays: 7 },
+  { id: "d9c8dabf", action: "REVIEW", source: "DEFAULT", predicate: { watch: "repeat", value: 7 }, rationale: "Look at this every 7 days.", cooldownDays: 7 },
+  { id: "6306936b", action: "EXIT", source: "DEFAULT", predicate: { watch: "price", is: "below", value: floor }, rationale: `Hard stop at $${floor}.`, cooldownDays: 0 },
+  { id: "8f58e347", action: "REVIEW", source: "DEFAULT", predicate: { watch: "price", is: "above", value: 322 }, rationale: "Target $322 hit.", cooldownDays: 1 },
+  { id: "d7d37522", action: "REVIEW", source: "DEFAULT", predicate: { watch: "move", is: "below", value: 12, variable: "entry" }, rationale: "Down 12% from entry.", cooldownDays: 7 },
 ];
 
 const tool = () =>

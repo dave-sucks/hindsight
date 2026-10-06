@@ -7,6 +7,7 @@
  */
 
 import { priorSessionCloseAt } from "@/lib/market-hours";
+import { samePredicate } from "./condition/stored";
 import type { Trigger } from "./types";
 
 /** The price to evaluate "was it already true?" at. Null = no baseline (level semantics). */
@@ -43,7 +44,7 @@ export function stampWrittenPrice(
     if (t.action !== "ENTER") return rest;
     const was = prior.get(t.id);
     const unchanged =
-      was && was.action === "ENTER" && JSON.stringify(was.predicate) === JSON.stringify(t.predicate);
+      was && was.action === "ENTER" && samePredicate(was.predicate, t.predicate);
     if (unchanged) {
       return was.writtenPrice != null && was.writtenAt
         ? { ...rest, writtenPrice: was.writtenPrice, writtenAt: was.writtenAt }

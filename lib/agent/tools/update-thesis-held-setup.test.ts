@@ -45,10 +45,7 @@ const ABT_TRIGGERS = [
     "id": "earnbeat1",
     "action": "REVIEW",
     "source": "AGENT",
-    "predicate": {
-      "kind": "EARNINGS_BEAT",
-      "minSurprisePct": 1
-    },
+    "predicate": { watch: "surprise", is: "beat", value: 1 },
     "rationale": "Re-check the thesis if Abbott beats earnings by at least 1%; confirm Libre growth, diagnostics synergy progress, and whether the beat supports a higher-confidence entry.",
     "cooldownDays": 7
   },
@@ -56,10 +53,7 @@ const ABT_TRIGGERS = [
     "id": "earnmiss2",
     "action": "REVIEW",
     "source": "AGENT",
-    "predicate": {
-      "kind": "EARNINGS_MISS",
-      "minSurprisePct": 2
-    },
+    "predicate": { watch: "surprise", is: "miss", value: 2 },
     "rationale": "Re-check the thesis on a meaningful miss; test whether EPS power or segment execution is slipping enough to threaten the compounding case.",
     "cooldownDays": 7
   },
@@ -68,10 +62,7 @@ const ABT_TRIGGERS = [
     "action": "EXIT",
     "source": "AGENT",
     "fireMode": "TACTICAL",
-    "predicate": {
-      "kind": "PRICE_BELOW",
-      "level": 96
-    },
+    "predicate": { watch: "price", is: "below", value: 96 },
     "rationale": "If already held and $ABT breaks below $96, review immediately for structural damage versus a simple drawdown; this is the protective line tied to the thesis setup.",
     "cooldownDays": 1
   },
@@ -79,10 +70,7 @@ const ABT_TRIGGERS = [
     "id": "rev135",
     "action": "REVIEW",
     "source": "AGENT",
-    "predicate": {
-      "kind": "PRICE_ABOVE",
-      "level": 135
-    },
+    "predicate": { watch: "price", is: "above", value: 135 },
     "rationale": "If $ABT reaches $135, review whether the thesis has largely played out or whether earnings power has improved enough to justify a higher long-term value.",
     "cooldownDays": 1
   },
@@ -90,10 +78,7 @@ const ABT_TRIGGERS = [
     "id": "cadence",
     "action": "REVIEW",
     "source": "AGENT",
-    "predicate": {
-      "days": 30,
-      "kind": "REVIEW_CADENCE"
-    },
+    "predicate": { watch: "repeat", value: 30 },
     "rationale": "Regular maintenance review to test the thesis against new business evidence, not just the stock price.",
     "cooldownDays": 7
   },
@@ -101,10 +86,7 @@ const ABT_TRIGGERS = [
     "id": "d40232f7-cdfc-49da-a1ab-efeaff435789",
     "action": "REVIEW",
     "source": "DEFAULT",
-    "predicate": {
-      "kind": "PRICE_BELOW",
-      "level": 95.09
-    },
+    "predicate": { watch: "price", is: "below", value: 95.09 },
     "rationale": "8% drop from entry \u2014 something material happened. Re-evaluate before deciding to ride it out or trim.",
     "cooldownDays": 1
   },
@@ -112,12 +94,7 @@ const ABT_TRIGGERS = [
     "id": "24c7d002-b633-452b-95c6-39c8497c40a4",
     "action": "ADD",
     "source": "DEFAULT",
-    "predicate": {
-      "pct": 7,
-      "kind": "PRICE_MOVE_PCT",
-      "window": "1D",
-      "direction": "UP"
-    },
+    "predicate": { watch: "move", is: "above", value: 7, variable: "prev_close" },
     "rationale": "Up 7% in a day \u2014 strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
     "cooldownDays": 3
   },
@@ -125,12 +102,7 @@ const ABT_TRIGGERS = [
     "id": "6ddd4838-a614-43a6-b505-714fe4f17a75",
     "action": "ADD",
     "source": "DEFAULT",
-    "predicate": {
-      "pct": 7,
-      "kind": "PRICE_MOVE_PCT",
-      "window": "1D",
-      "direction": "DOWN"
-    },
+    "predicate": { watch: "move", is: "below", value: 7, variable: "prev_close" },
     "rationale": "Down 7% in a day \u2014 evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add \u2014 hold, trim, or exit. Approval-gated.",
     "cooldownDays": 3
   },
@@ -138,11 +110,7 @@ const ABT_TRIGGERS = [
     "id": "f96d1cd8-27a5-469d-b203-1f2972689ca8",
     "action": "REVIEW",
     "source": "DEFAULT",
-    "predicate": {
-      "pct": 10,
-      "kind": "GAIN_FROM_ENTRY",
-      "direction": "UP"
-    },
+    "predicate": { watch: "move", is: "above", value: 10, variable: "entry" },
     "rationale": "Up 10% from entry \u2014 gain milestone checkpoint. Re-underwrite at the new price: raise the floor to lock the gain in, and arm the next milestone.",
     "cooldownDays": 7
   },
@@ -150,10 +118,7 @@ const ABT_TRIGGERS = [
     "id": "d4991e66-7877-44c6-90bd-ab5476d27f4e",
     "action": "REVIEW",
     "source": "DEFAULT",
-    "predicate": {
-      "pct": 15,
-      "kind": "TRAILING_FROM_HIGH"
-    },
+    "predicate": { watch: "move", is: "below", value: 15, variable: "peak" },
     "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
     "cooldownDays": 7
   },
@@ -161,10 +126,7 @@ const ABT_TRIGGERS = [
     "id": "934cc6bd-54ef-4814-a8cb-ac4157883c7f",
     "action": "EXIT",
     "source": "DEFAULT",
-    "predicate": {
-      "pct": 25,
-      "kind": "TRAILING_FROM_HIGH"
-    },
+    "predicate": { watch: "move", is: "below", value: 25, variable: "peak" },
     "rationale": "Gave back 25% from the high \u2014 the catastrophe line for a multi-year hold. The review at 15% should have acted long before this; if we are here, protect the capital.",
     "cooldownDays": 0
   },
@@ -172,11 +134,7 @@ const ABT_TRIGGERS = [
     "id": "6d0fa696-819b-4f8e-aa48-6a98e4faf3a8",
     "action": "REVIEW",
     "source": "DEFAULT",
-    "predicate": {
-      "pct": 12,
-      "kind": "GAIN_FROM_ENTRY",
-      "direction": "DOWN"
-    },
+    "predicate": { watch: "move", is: "below", value: 12, variable: "entry" },
     "rationale": "Down 12% from entry \u2014 loser attention. Decide hold-vs-cut deliberately, before the hard stop decides for us.",
     "cooldownDays": 7
   }
@@ -270,7 +228,7 @@ describe("update_thesis — a held stock gets its setup's exits when the review 
     expect(next!.slice(0, ABT_TRIGGERS.length)).toEqual(ABT_TRIGGERS);
     const added = next![next!.length - 1];
     expect(added.action).toBe("REVIEW");
-    expect(added.predicate).toEqual({ kind: "REVIEW_CADENCE", days: 60, from: "BUY" });
+    expect(added.predicate).toEqual({ watch: "from_date", is: "after", value: 60, variable: "buy" });
 
     // One Activity line for it.
     const audit = mockWriteThesisUpdate.mock.calls[0][0] as { fieldChanges?: { triggerOps?: { to: { text: string }[] } } };

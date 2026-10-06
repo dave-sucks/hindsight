@@ -10,34 +10,35 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import { accountSeedTriggers } from "./seed-account";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { triggerBucket } from "./bucket";
 
 describe("accountSeedTriggers", () => {
   it("carries the up-7% add prompt and no sell rule — the down-7% add and the sell rules live on each analyst (DAV-279)", () => {
     const seed = accountSeedTriggers();
     expect(seed.filter((t) => t.action === "ADD").map((t) => t.predicate)).toEqual([
-      { kind: "PRICE_MOVE_PCT", pct: 7, direction: "UP", window: "1D" },
+      { watch: "move", is: "above", value: 7, variable: "prev_close" },
     ]);
     expect(seed.filter((t) => t.action === "EXIT")).toEqual([]);
   });
 
   it("carries the earnings rules — a look before the report and a look on it", () => {
-    const kinds = accountSeedTriggers().map((t) => t.predicate.kind);
+    const kinds = accountSeedTriggers().map((t) => kindOf(t.predicate));
     expect(kinds).toContain("EARNINGS_WITHIN");
     expect(kinds).toContain("EARNINGS_BEAT");
     expect(kinds).toContain("EARNINGS_MISS");
     // Wakes, not clocks: every earnings rule is a REVIEW, never a trade.
     expect(
       accountSeedTriggers()
-        .filter((t) => t.predicate.kind.startsWith("EARNINGS"))
+        .filter((t) => (kindOf(t.predicate) ?? "").startsWith("EARNINGS"))
         .every((t) => t.action === "REVIEW"),
     ).toBe(true);
   });
 
   it("carries the SEC filing wake — one rule, a review, never a trade", () => {
-    const sec = accountSeedTriggers().filter((t) => t.predicate.kind === "SEC_EVENT");
+    const sec = accountSeedTriggers().filter((t) => kindOf(t.predicate) === "SEC_EVENT");
     expect(sec).toHaveLength(1);
-    expect(sec[0]).toMatchObject({ predicate: { kind: "SEC_EVENT", tier: "MATERIAL" }, action: "REVIEW" });
+    expect(sec[0]).toMatchObject({ predicate: { watch: "filing", variable: "tier:MATERIAL" }, action: "REVIEW" });
   });
 
   it("mints fresh ids per call — these are real stored rows now", () => {

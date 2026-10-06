@@ -7,30 +7,30 @@
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { ADDABLE_PREDICATE_KINDS, applyTriggerAdd, buildPrincipalTrigger } from "./thesis-edit";
+import { applyTriggerAdd, buildPrincipalTrigger } from "./thesis-edit";
 import { addLevelTrigger } from "./level-triggers";
-import { LEVEL_ELIGIBLE_PREDICATE_KINDS } from "./level-triggers";
-import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+import { addProblem, conditionSentence, isLevel, type When } from "@/lib/agent/triggers/condition";
 
-const DIALOG_POSTS: TriggerPredicate[] = [
-  { kind: "NEAR_SMA", period: 50, withinPct: 2 },
-  { kind: "VS_SMA", period: 200, direction: "ABOVE" },
-  { kind: "NEW_HIGH", window: "52W" },
-  { kind: "PCT_FROM_52W_HIGH", max: 5 },
-  { kind: "VOLUME_RATIO", min: 1.5 },
-  { kind: "GAP_UP", minPct: 8, minVolRatio: 3 },
-  { kind: "RSI", period: 2, threshold: 10, direction: "BELOW" },
-  { kind: "RS_VS_SPY", window: "3M", min: 0 },
-  { kind: "INSIDER_CLUSTER", minBuyers: 3, days: 30 },
-  { kind: "PRICE_ABOVE", level: 517.88, basis: "close" },
-  { kind: "PRICE_MOVE_PCT", pct: 8, direction: "DOWN", window: "5D" },
+
+const DIALOG_POSTS: When[] = [
+  { watch: "move", is: "near", value: 2, variable: "sma50" },
+  { watch: "price", is: "above", variable: "sma200" },
+  { watch: "price", is: "above", variable: "high52" },
+  { watch: "move", is: "near", value: 5, variable: "high52" },
+  { watch: "volume", value: 1.5 },
+  { watch: "gap", value: 8, settings: { volume: 3 } },
+  { watch: "rsi", is: "below", value: 10, settings: { period: 2 } },
+  { watch: "strength", value: 0, settings: { window: "3M" } },
+  { watch: "insiders", value: 3, settings: { days: 30 } },
+  { watch: "price", is: "above", value: 517.88, settings: { close: true } },
+  { watch: "move", is: "below", value: 8, variable: "close_5d" },
 ];
 
 describe("the Add-trigger dialog's chart conditions", () => {
-  it.each(DIALOG_POSTS.map((p) => [p.kind, p] as const))("%s is addable from the sheet", (_k, p) => {
-    expect(ADDABLE_PREDICATE_KINDS.has(p.kind)).toBe(true);
+  it.each(DIALOG_POSTS.map((p) => [conditionSentence(p), p] as const))("%s is addable from the sheet", (_k, p) => {
+    expect(addProblem(p, "THESIS")).toBeNull();
     const t = buildPrincipalTrigger({
-      action: p.kind === "PRICE_ABOVE" ? "ENTER" : "REVIEW",
+      action: isLevel(p) ? "ENTER" : "REVIEW",
       predicate: p,
       defaultRationale: "test",
       allowDirect: false,
@@ -40,11 +40,11 @@ describe("the Add-trigger dialog's chart conditions", () => {
     expect(t.cooldownDays).toBeGreaterThan(0);
   });
 
-  it("the chart kinds can also be account / analyst standing rules", () => {
-    for (const p of DIALOG_POSTS.filter((x) => x.kind !== "PRICE_ABOVE")) {
-      expect({ kind: p.kind, eligible: LEVEL_ELIGIBLE_PREDICATE_KINDS.has(p.kind) }).toEqual({
-        kind: p.kind,
-        eligible: true,
+  it("the chart conditions can also be account / analyst standing rules; a typed price can't", () => {
+    for (const p of DIALOG_POSTS) {
+      expect({ p: conditionSentence(p), problem: addProblem(p, "ANALYST") }).toEqual({
+        p: conditionSentence(p),
+        problem: isLevel(p) ? expect.stringMatching(/same thing on every stock/) : null,
       });
     }
   });
@@ -53,7 +53,7 @@ describe("the Add-trigger dialog's chart conditions", () => {
     expect(() =>
       buildPrincipalTrigger({
         action: "REVIEW",
-        predicate: { kind: "FILING", formType: "8-K" } as unknown as TriggerPredicate,
+        predicate: { kind: "FILING", formType: "8-K" } as unknown as When,
         defaultRationale: "test",
         allowDirect: false,
       }),
@@ -64,16 +64,14 @@ describe("the Add-trigger dialog's chart conditions", () => {
   // by hand. On main both write paths stop at the first line: the sheet says
   // "can't be added from the sheet (got AND)", the level says it is
   // "specific to one thesis".
-  const BEAT_THE_MARKET_SOLD: TriggerPredicate = {
-    kind: "AND",
-    predicates: [{ kind: "EARNINGS_BEAT" }, { kind: "PRICE_MOVE_PCT", pct: 3, direction: "DOWN", window: "1D" }],
-  };
+  const BEAT_THE_MARKET_SOLD: When = { match: "all", conditions: [{ watch: "surprise", is: "beat", value: 0 }, { watch: "move", is: "below", value: 3, variable: "prev_close" }] };
   const ctx = { userId: "u1", accountId: "a1", actorUserId: "u1" } as never;
 
   it("a beat and a miss are conditions the dialog can post, on a stock and as a standing rule", () => {
-    for (const k of ["EARNINGS_BEAT", "EARNINGS_MISS"] as const) {
-      expect(ADDABLE_PREDICATE_KINDS.has(k)).toBe(true);
-      expect(LEVEL_ELIGIBLE_PREDICATE_KINDS.has(k)).toBe(true);
+    for (const is of ["beat", "miss"] as const) {
+      const result: When = { watch: "surprise", is, value: 0 };
+      expect(addProblem(result, "THESIS")).toBeNull();
+      expect(addProblem(result, "ANALYST")).toBeNull();
     }
     const t = buildPrincipalTrigger({ action: "REVIEW", predicate: BEAT_THE_MARKET_SOLD, defaultRationale: "test", allowDirect: false });
     expect(t.predicate).toEqual(BEAT_THE_MARKET_SOLD);
@@ -88,14 +86,14 @@ describe("the Add-trigger dialog's chart conditions", () => {
   });
 
   it("a pair holding a price level is still refused as a standing rule", async () => {
-    const p: TriggerPredicate = { kind: "AND", predicates: [{ kind: "EARNINGS_BEAT" }, { kind: "PRICE_BELOW", level: 96 }] };
-    await expect(addLevelTrigger("ACCOUNT", "a1", { action: "REVIEW", predicate: p }, ctx)).rejects.toThrow(/PRICE_BELOW/);
+    const p: When = { match: "all", conditions: [{ watch: "surprise", is: "beat", value: 0 }, { watch: "price", is: "below", value: 96 }] };
+    await expect(addLevelTrigger("ACCOUNT", "a1", { action: "REVIEW", predicate: p }, ctx)).rejects.toThrow(/same thing on every stock/);
   });
 });
 
 // DAV-279 — the Catalyst seat's rules are day counts from the event date.
 describe("a day count as a standing rule", () => {
-  it("REVIEW_CADENCE is level-eligible, so 'review 10 days before the event date' can be an analyst rule", () => {
-    expect(LEVEL_ELIGIBLE_PREDICATE_KINDS.has("REVIEW_CADENCE")).toBe(true);
+  it("a day count is level-eligible, so 'review 10 days before the event date' can be an analyst rule", () => {
+    expect(addProblem({ watch: "from_date", is: "before", value: 10, variable: "event" }, "ANALYST")).toBeNull();
   });
 });

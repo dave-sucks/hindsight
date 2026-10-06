@@ -2,7 +2,7 @@
  * indicator-snapshot.ts — the chart numbers a trigger reads, stored daily.
  *
  * The 5-minute trigger evaluator has a live quote and nothing else. That is
- * why VS_SMA never fired (no average), RSI was a stub (no closes) and the
+ * why vs-average never fired (no average), RSI was a stub (no closes) and the
  * 5D/20D move windows were deleted (no close series). The 06:30 ET job
  * (lib/inngest/functions/indicator-snapshot.ts) computes the chart for
  * every ticker on the book with lib/market-data/price-structure.ts and
@@ -55,7 +55,7 @@ export interface IndicatorSnapshot {
   /**
    * Open-market insider purchases in the last INSIDER_LOOKBACK_DAYS (DAV-252).
    * Absent on snapshots written before it, or when the vendor didn't answer —
-   * INSIDER_CLUSTER then reads false.
+   * insider-buying then reads false.
    */
   insiderBuys?: import("@/lib/market-data/insider-cluster").InsiderBuy[];
 }

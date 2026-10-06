@@ -166,7 +166,7 @@ describe("CEG 2026-09-30 through get_theses", () => {
 
   it("a fired trim still comes first — money moving now — and the floor's numbers ride on the row", async () => {
     const seed = seed0930(220);
-    const trim = { id: "trim_1", action: "TRIM", predicate: { kind: "PRICE_MOVE_PCT", pct: 2, direction: "DOWN", window: "1D" }, rationale: "A trim.", cooldownDays: 1 };
+    const trim = { id: "trim_1", action: "TRIM", predicate: { watch: "move", is: "below", value: 2, variable: "prev_close" }, rationale: "A trim.", cooldownDays: 1 };
     (seed.thesis[0].triggers as Row[]).push(trim);
     seed.thesisUpdate[0] = { ...seed.thesisUpdate[0], triggerId: "trim_1", summary: "Price down 2% today — trim" };
     const { result } = await read(seed, { at: AT_0930, price: fx.price0930.price, equity: fx.equity["2026-09-29"] });

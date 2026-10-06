@@ -18,7 +18,7 @@
  *
  * The check is structural — does the array carry the required action and
  * not carry the forbidden ones? The horizon-aware predicate shapes
- * (PRICE_ABOVE target for LONG ENTER, PRICE_BELOW stop for LONG EXIT, etc.)
+ * (price-above target for LONG ENTER, price-below stop for LONG EXIT, etc.)
  * are supplied by `defaultTriggersForHorizon` in defaults.ts — this gate
  * just makes sure the right action kinds landed.
  *
@@ -133,9 +133,9 @@ export function validateEnterTriggerRequired(
           `A stock we own must carry at least one sell trigger (action EXIT) — that's the ` +
           `automated stop-loss path. Without it nothing sells the position when the ` +
           `price breaks the stop; the hourly price check is the only thing watching it.` +
-          `\n\nFix: add one with add_triggers — action "EXIT" with a price predicate ` +
-          `(PRICE_BELOW at the stop for a LONG position, PRICE_ABOVE at the stop for a ` +
-          `SHORT), or set stop_loss, which is the same edit on the floor trigger.`,
+          `\n\nFix: add one with add_triggers — action "EXIT" with a price below the stop ` +
+          `for a LONG position ({ watch: "price", is: "below", value: stop }; above it for ` +
+          `a SHORT), or set stop_loss, which is the same edit on the floor trigger.`,
       };
     }
     return { ok: true };

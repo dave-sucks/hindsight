@@ -38,8 +38,8 @@ const fx = raw as unknown as {
 };
 
 const LINE =
-  "Buying window: 79 days to the event date (Dec 17), 9 days before this setup's window opens (Oct 8). " +
-  "This setup buys 70 to 21 days before the event.";
+  "79 days to the event date (Dec 17), so the buying window opens in 9 days (Oct 8). " +
+  "A run-up into the event buys 70 to 21 days before it.";
 
 /** What the evaluator put on the fire: the 50-day numbers behind "within 3%". */
 const FIRED_CONTEXT = "50-day $111.29; price $113.71 (+2.2% from it)";
@@ -159,7 +159,9 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     // On main this was production's kickoff, word for word.
     const production = fx.kickoff[0].text;
     const [head, tail] = production.split(` ${FIRED_CONTEXT} `);
-    expect(kickoff).toBe(`${head} ${FIRED_CONTEXT} ${LINE} ${tail}`);
+    // The trigger reads as the pill says it now; the rest is production's, word for word.
+    const said = head.replace("Within 3% of the 50-day — consider entry.", "Buy if within 3% of the 50-day average.");
+    expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tail}`);
   });
 
   it("the proposal it makes carries the same line, and is still a proposal", async () => {
@@ -197,6 +199,6 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     // What production's proposal carried, and still does: the run's own
     // words first, the sizing after.
     expect(order.rationale as string).toContain("I am buying $CORT here because the pre-FDA setup is still intact");
-    expect(fx.proposal.rationale).not.toContain("Buying window");
+    expect(fx.proposal.rationale).not.toContain(LINE);
   });
 });

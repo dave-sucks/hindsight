@@ -590,7 +590,7 @@ export const placeTrade = defineTool({
             // The risk taken — never moves; the scorecard's R (DAV-248).
             initialStop: args.stop_loss,
             // Per-thesis triggers (lib/agent/triggers/*) own ALL exit logic now.
-            // The stop EXIT trigger (PRICE_BELOW from the horizon defaults) and
+            // The stop EXIT trigger (price-below from the horizon defaults) and
             // any added Target-Price / Movement-Amount EXIT fire via the trigger
             // evaluator's 5-min cron — there's no parallel auto-close path. The
             // legacy exitStrategy="TRAILING" side-channel was removed; this

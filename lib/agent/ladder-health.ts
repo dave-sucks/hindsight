@@ -13,7 +13,7 @@
  *   - gain % from entry (position avgCost vs current price, direction-aware)
  *   - what the floor locks in — the tightest protective EXIT rung expressed
  *     as a % vs entry ("floor locks +5.2%" / "floor is −12% BELOW entry")
- *   - whether a trail (TRAILING_FROM_HIGH EXIT) exists
+ *   - whether a trail EXIT exists
  *   - the nearest forward rung + its distance from the current price
  *   - days since the ladder was last edited (caller supplies the timestamp)
  *   - the UNPROTECTED_GAIN flag: gain meaningfully above what the floor locks
@@ -25,10 +25,10 @@
  * What counts as PROTECTION (a floor):
  *   An EXIT-action rung that deterministically fires on the losing side of
  *   the current price:
- *     - PRICE_BELOW level      (LONG)  / PRICE_ABOVE level      (SHORT)
- *     - TRAILING_FROM_HIGH pct — floor = peak × (1 ∓ pct/100), where peak is
+ *     - price below a level (LONG) / above a level (SHORT)
+ *     - trail % — floor = peak × (1 ∓ pct/100), where peak is
  *       the water-mark-corrected Position.peakPrice (see below)
- *     - GAIN_FROM_ENTRY DOWN pct — floor = avgCost × (1 ∓ pct/100); the plan
+ *     - move-from-entry % — floor = avgCost × (1 ∓ pct/100); the plan
  *       names only the first two, but a drawdown-from-entry EXIT locks a
  *       floor by the same semantics, so it counts
  *   TRIM / MOVE_STOP / REVIEW rungs do NOT count — a partial trim or a
@@ -43,12 +43,13 @@
  * currentPrice) — falling back to currentPrice when peakPrice is null.
  *
  * SHORT positions are fully handled: gain math inverts (avgCost vs price),
- * the protective side flips (PRICE_ABOVE), and the trail uses the low-water
+ * the protective side flips (price-above), and the trail uses the low-water
  * mark — mirroring lib/agent/triggers/evaluate.ts.
  */
 
-import { effectiveTrailPct, trailFireLevel } from "@/lib/agent/triggers/trail";
-import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import { effectiveTrailPct, trailFireLevel, trailOf } from "@/lib/agent/triggers/trail";
+import type { Trigger } from "@/lib/agent/triggers/types";
+import { conditionSentence, isGroup, levelOf, shapeOf, type When } from "@/lib/agent/triggers/condition";
 
 // ─── Tunable constants ───────────────────────────────────────────────────────
 
@@ -75,8 +76,6 @@ export const UNPROTECTED_GAIN_GAP_PCT = 6;
 
 export interface LadderFloor {
   triggerId: string;
-  /** Predicate kind supplying the floor. */
-  kind: "PRICE_BELOW" | "PRICE_ABOVE" | "TRAILING_FROM_HIGH" | "GAIN_FROM_ENTRY";
   /** Price at which the protective EXIT fires. */
   price: number;
   /**
@@ -85,9 +84,9 @@ export interface LadderFloor {
    * shape).
    */
   flooredGainPct: number;
-  /** True when this floor is a TRAILING_FROM_HIGH rung. */
+  /** True when this floor is a give-back off the high (a trail). */
   isTrail: boolean;
-  /** Compact human description, e.g. "stop $65.00" or "trail 8% off $86.24 → $79.34". */
+  /** The floor in words, e.g. "below $65" or "below 8% from the high of $86.24 → $79.34". */
   label: string;
 }
 
@@ -101,7 +100,7 @@ export interface LadderRung {
    * (positive = above current, negative = below).
    */
   distancePct: number;
-  /** Compact predicate description, e.g. "price > $455". */
+  /** The rung in words, e.g. "above $455". */
   label: string;
 }
 
@@ -112,7 +111,7 @@ export interface LadderHealth {
   floor: LadderFloor | null;
   /** floor?.flooredGainPct surfaced flat for the agent. Null = no floor. */
   flooredGainPct: number | null;
-  /** True when a TRAILING_FROM_HIGH EXIT rung exists (mechanical ratchet on). */
+  /** True when a trail (a give-back off the high) sells (mechanical ratchet on). */
   hasTrail: boolean;
   /** The nearest not-yet-matching price rung (any action), by |distance|. */
   nearestRung: LadderRung | null;
@@ -137,7 +136,6 @@ export interface LadderHealth {
 // ─── Rung extraction ──────────────────────────────────────────────────────────
 
 interface ExtractedRung {
-  kind: LadderFloor["kind"];
   /** Direction of price travel that makes the predicate fire. */
   firesWhen: "RISES" | "FALLS";
   price: number;
@@ -149,86 +147,37 @@ const fmtUsd = (x: number) => `$${x.toFixed(2)}`;
 const fmtPct = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}%`;
 
 /**
- * Flatten a predicate into the fixed price levels at which it fires.
- * Recurses into OR (any branch fires alone); skips AND (a level inside an
- * AND doesn't fire by itself, so it neither protects nor counts as a rung).
- * Non-price predicates (signals, RSI, SMA, time) and PRICE_MOVE_PCT (level
- * is relative to a prior close we don't have here) yield nothing.
+ * The fixed price levels a condition fires at: a typed price, a % from our
+ * entry, a give-back off the high. Recurses into "any of" (any branch fires
+ * alone); skips "all of" (a level inside it doesn't fire by itself, so it
+ * neither protects nor counts as a rung). Anything with no one price (an
+ * average, a day's move, a date) yields nothing.
  */
-/** The give-back actually in force, for the label — the written percent, or the range's. */
-function trailLabelPct(
-  p: Extract<import("@/lib/agent/triggers/types").TriggerPredicate, { kind: "TRAILING_FROM_HIGH" }>,
-  ctx: { peak: number; atr?: number | null },
-): number {
-  return effectiveTrailPct(p, { peak: ctx.peak, atr: ctx.atr });
-}
-
-function extractPriceRungs(
-  predicate: TriggerPredicate,
-  ctx: { isLong: boolean; avgCost: number; peak: number },
-): ExtractedRung[] {
-  switch (predicate.kind) {
-    case "PRICE_ABOVE":
-      return [
-        {
-          kind: "PRICE_ABOVE",
-          firesWhen: "RISES",
-          price: predicate.level,
-          isTrail: false,
-          label: `price > ${fmtUsd(predicate.level)}`,
-        },
-      ];
-    case "PRICE_BELOW":
-      return [
-        {
-          kind: "PRICE_BELOW",
-          firesWhen: "FALLS",
-          price: predicate.level,
-          isTrail: false,
-          label: `price < ${fmtUsd(predicate.level)}`,
-        },
-      ];
-    case "GAIN_FROM_ENTRY": {
-      // UP fires when the position GAINS pct% (LONG: price rises; SHORT:
-      // price falls). DOWN fires when it LOSES pct% (mirror). Either way the
-      // fire level is avg×(1+pct/100) when firing needs a HIGHER price, and
-      // avg×(1−pct/100) when it needs a LOWER one.
-      const gainSide = predicate.direction === "UP";
-      const priceRises = ctx.isLong === gainSide;
-      const level = priceRises
-        ? ctx.avgCost * (1 + predicate.pct / 100)
-        : ctx.avgCost * (1 - predicate.pct / 100);
-      return [
-        {
-          kind: "GAIN_FROM_ENTRY",
-          firesWhen: priceRises ? "RISES" : "FALLS",
-          price: level,
-          isTrail: false,
-          label: `${gainSide ? "up" : "down"} ${predicate.pct}% from entry`,
-        },
-      ];
-    }
-    case "TRAILING_FROM_HIGH": {
-      // LONG: fires when price falls to peak×(1−pct/100); SHORT: rises to
-      // peak×(1+pct/100) off the low-water mark. A trail that hasn't armed
-      // yet (armAtGainPct) protects nothing and is not a rung.
-      const price = trailFireLevel(predicate, ctx);
-      if (price == null) return [];
-      return [
-        {
-          kind: "TRAILING_FROM_HIGH",
-          firesWhen: ctx.isLong ? "FALLS" : "RISES",
-          price,
-          isTrail: true,
-          label: `trail ${trailLabelPct(predicate, ctx)}% off ${fmtUsd(ctx.peak)} → ${fmtUsd(price)}`,
-        },
-      ];
-    }
-    case "OR":
-      return predicate.predicates.flatMap((p) => extractPriceRungs(p, ctx));
-    default:
-      return [];
+function extractPriceRungs(w: When, ctx: { isLong: boolean; avgCost: number; peak: number; atr?: number | null }): ExtractedRung[] {
+  if (isGroup(w)) return w.match === "any" ? w.conditions.flatMap((c) => extractPriceRungs(c, ctx)) : [];
+  const level = levelOf(w);
+  if (level) {
+    return [{ firesWhen: level.above ? "RISES" : "FALLS", price: level.value, isTrail: false, label: conditionSentence(w) }];
   }
+  if (w.value == null || (w.is !== "above" && w.is !== "below")) return [];
+  if (w.variable === "entry") {
+    // Up fires when the position GAINS the % (a LONG's price rises, a SHORT's
+    // falls); down when it loses it. Either way the level is avg×(1+%) when
+    // firing needs a higher price, and avg×(1−%) when it needs a lower one.
+    const priceRises = ctx.isLong === (w.is === "above");
+    const price = priceRises ? ctx.avgCost * (1 + w.value / 100) : ctx.avgCost * (1 - w.value / 100);
+    return [{ firesWhen: priceRises ? "RISES" : "FALLS", price, isTrail: false, label: `${conditionSentence(w)} → ${fmtUsd(price)}` }];
+  }
+  if (w.variable === "peak") {
+    // LONG: the give-back below the high; SHORT: above the low. A trail that
+    // hasn't armed yet protects nothing and is not a rung.
+    const trail = trailOf(w);
+    const price = trailFireLevel(trail, ctx);
+    if (price == null) return [];
+    const pct = effectiveTrailPct(trail, { peak: ctx.peak, atr: ctx.atr });
+    return [{ firesWhen: ctx.isLong ? "FALLS" : "RISES", price, isTrail: true, label: `below ${pct}% from the high of ${fmtUsd(ctx.peak)} → ${fmtUsd(price)}` }];
+  }
+  return [];
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -278,7 +227,8 @@ export function computeLadderHealth(opts: {
   let hasTrail = false;
   for (const trigger of triggers) {
     if (trigger.action !== "EXIT") continue;
-    for (const rung of extractPriceRungs(trigger.predicate, ctx)) {
+    const w = shapeOf(trigger.predicate);
+    for (const rung of w ? extractPriceRungs(w, ctx) : []) {
       if (rung.firesWhen !== protectiveSide) continue; // take-profit side, not a floor
       if (rung.isTrail) hasTrail = true;
       const flooredGainPct = isLong
@@ -287,7 +237,6 @@ export function computeLadderHealth(opts: {
       if (floor == null || flooredGainPct > floor.flooredGainPct) {
         floor = {
           triggerId: trigger.id,
-          kind: rung.kind,
           price: rung.price,
           flooredGainPct,
           isTrail: rung.isTrail,
@@ -300,7 +249,8 @@ export function computeLadderHealth(opts: {
   // ── Nearest forward rung: any action, any side, not currently matching
   let nearestRung: LadderRung | null = null;
   for (const trigger of triggers) {
-    for (const rung of extractPriceRungs(trigger.predicate, ctx)) {
+    const w = shapeOf(trigger.predicate);
+    for (const rung of w ? extractPriceRungs(w, ctx) : []) {
       const forward =
         rung.firesWhen === "RISES"
           ? rung.price > currentPrice

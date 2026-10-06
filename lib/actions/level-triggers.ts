@@ -13,32 +13,23 @@
  * A level above the thesis can only express rules that mean the same
  * thing on every name it covers. "Trail 6%" does. "Exit below $64.00"
  * does not — there is no account-wide $64.00, and a thesis-parameterized
- * rung stored up here would fire nonsense on every other ticker. That is
- * the whole of `LEVEL_ELIGIBLE_PREDICATE_KINDS`, and it's enforced here
- * rather than in the UI so a hand-rolled request can't bypass it.
+ * rung stored up here would fire nonsense on every other ticker. So a typed
+ * price is the one thing refused (condition/check.ts `addProblem`), here
+ * rather than only in the UI so a hand-rolled request can't bypass it.
  */
 
-import { LEVEL_ELIGIBLE_KINDS } from "@/lib/agent/triggers/addable";
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { editableTriggerParts, withEditedValue } from "@/lib/agent/triggers/editable";
-import { addablePredicateProblem } from "@/lib/agent/triggers/two-conditions";
-import { predicateSentence } from "@/lib/agent/triggers/format";
+import { addProblem, conditionSentence } from "@/lib/agent/triggers/condition";
 import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
 import { triggerBucket } from "@/lib/agent/triggers/bucket";
-import type {
-  Trigger,
-  TriggerAction,
-  TriggerPredicate,
-} from "@/lib/agent/triggers/types";
+import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { ThesisEditError, buildPrincipalTrigger } from "@/lib/actions/thesis-edit";
+import type { When } from "@/lib/agent/triggers/condition";
 
 /** The two levels this module writes. THESIS goes through ./thesis-edit. */
 export type WritableLevel = "ACCOUNT" | "ANALYST";
 
-/** Predicate kinds a standing rule may use. The one list, and why each is in
- * it, lives in lib/agent/triggers/addable so the trigger dialog offers exactly these. */
-export const LEVEL_ELIGIBLE_PREDICATE_KINDS = LEVEL_ELIGIBLE_KINDS;
 
 export interface LevelTriggerContext {
   accountId: string;
@@ -119,22 +110,14 @@ function parseOrRefuse(raw: unknown, label: string): Trigger[] {
   return parsed.data as Trigger[];
 }
 
-function assertLevelEligible(predicate: TriggerPredicate): void {
-  if (predicate.kind === "AND" || predicate.kind === "OR") {
-    const problem = addablePredicateProblem(predicate, (k) => LEVEL_ELIGIBLE_PREDICATE_KINDS.has(k));
-    if (problem) throw new ThesisEditError("INVALID", problem);
-    return;
-  }
-  if (LEVEL_ELIGIBLE_PREDICATE_KINDS.has(predicate.kind)) return;
-  throw new ThesisEditError(
-    "INVALID",
-    `"${predicateSentence(predicate)}" is specific to one thesis — a standing rule has to mean the same thing on every name it covers. Set an absolute price level on the thesis itself.`,
-  );
+function assertLevelEligible(predicate: When): void {
+  const problem = addProblem(predicate, "ANALYST");
+  if (problem) throw new ThesisEditError("INVALID", problem);
 }
 
 export interface LevelTriggerAddInput {
   action: TriggerAction;
-  predicate: TriggerPredicate;
+  predicate: When;
   fireMode?: "TACTICAL" | "DIRECT";
   rationale?: string;
   cooldownDays?: number;
@@ -160,7 +143,7 @@ export async function addLevelTrigger(
   if (existing.some((t) => triggerBucket(t) === candidateBucket)) {
     throw new ThesisEditError(
       "INVALID",
-      `A "${predicateSentence(input.predicate)}" rule already exists at this level — edit that one instead of adding a second.`,
+      `A "${conditionSentence(input.predicate)}" rule already exists at this level — edit that one instead of adding a second.`,
     );
   }
 
@@ -169,9 +152,9 @@ export async function addLevelTrigger(
   // predicate gate is the whole gate.
   const created = buildPrincipalTrigger({
     ...input,
-    defaultRationale: `${predicateSentence(input.predicate)} — standing rule set by the principal.`,
+    defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
     allowDirect:
-      input.action === "EXIT" && isDirectEligiblePredicate(input.predicate.kind),
+      input.action === "EXIT" && isDirectEligiblePredicate(input.predicate),
   });
 
   const next = [...existing, created];
@@ -206,13 +189,13 @@ export async function replaceLevelTrigger(
   if (existing.some((t) => t.id !== triggerId && triggerBucket(t) === bucket)) {
     throw new ThesisEditError(
       "INVALID",
-      `A "${predicateSentence(input.predicate)}" rule already exists at this level — edit that one instead.`,
+      `A "${conditionSentence(input.predicate)}" rule already exists at this level — edit that one instead.`,
     );
   }
   const built = buildPrincipalTrigger({
     ...input,
-    defaultRationale: `${predicateSentence(input.predicate)} — standing rule set by the principal.`,
-    allowDirect: input.action === "EXIT" && isDirectEligiblePredicate(input.predicate.kind),
+    defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
+    allowDirect: input.action === "EXIT" && isDirectEligiblePredicate(input.predicate),
   });
   const sameSlot = triggerBucket(found) === bucket;
   const updated: Trigger = sameSlot
@@ -223,66 +206,6 @@ export async function replaceLevelTrigger(
     throw new ThesisEditError("INVALID", "That trigger isn't valid at this level.");
   }
   await target.write(next);
-  return updated;
-}
-
-export async function editLevelTriggerValue(
-  level: WritableLevel,
-  ownerId: string,
-  triggerId: string,
-  value: number,
-  ctx: LevelTriggerContext,
-  /** On a two-condition trigger: which condition's number (0-based). */
-  part: number | null = null,
-): Promise<Trigger> {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new ThesisEditError("INVALID", "value must be a positive number.");
-  }
-  const target = await resolveTarget(level, ownerId, ctx);
-  const existing = await target.read();
-  const found = existing.find((t) => t.id === triggerId);
-  if (!found) {
-    throw new ThesisEditError(
-      "NOT_FOUND",
-      `Trigger ${triggerId} not found at this level.`,
-    );
-  }
-  if (!editableTriggerParts(found.predicate).some((f) => f.part === part)) {
-    throw new ThesisEditError("INVALID", "That trigger has no editable value.");
-  }
-
-  const updated: Trigger = {
-    ...found,
-    predicate: withEditedValue(found.predicate, value, part),
-  };
-  await target.write(existing.map((t) => (t.id === triggerId ? updated : t)));
-  return updated;
-}
-
-export async function setLevelTriggerFireMode(
-  level: WritableLevel,
-  ownerId: string,
-  triggerId: string,
-  fireMode: "TACTICAL" | "DIRECT",
-  ctx: LevelTriggerContext,
-): Promise<Trigger> {
-  const target = await resolveTarget(level, ownerId, ctx);
-  const existing = await target.read();
-  const found = existing.find((t) => t.id === triggerId);
-  if (!found) {
-    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found at this level.`);
-  }
-  if (
-    fireMode === "DIRECT" &&
-    (found.action !== "EXIT" || !isDirectEligiblePredicate(found.predicate.kind))
-  ) {
-    throw new ThesisEditError(
-      "INVALID",
-      "Only a deterministic EXIT can act without waking an analyst run.",
-    );
-  }
-  const updated: Trigger = { ...found, fireMode };
-  await target.write(existing.map((t) => (t.id === triggerId ? updated : t)));
   return updated;
 }
 

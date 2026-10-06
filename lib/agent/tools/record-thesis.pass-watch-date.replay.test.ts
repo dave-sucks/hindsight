@@ -18,7 +18,7 @@ describe("record_thesis(direction: PASS, status: WATCHING) and the event date", 
         reasoning_summary: "Single-asset first approval (bezuclastinib + sunitinib in GIST, Nov 30 PDUFA); separate NonAdvSM PDUFA. Watching for a safety signal or a pullback.",
         catalyst_date: "2026-11-30T00:00:00.000Z",
         source_kind: "WEB_SEARCH", source_rationale: "From the discovery paste: Nov 30 PDUFA, transaminase signal.",
-        triggers: [{ predicate: { kind: "PRICE_BELOW", level: 27 }, action: "REVIEW", rationale: "Pullback — look again." }],
+        triggers: [{ predicate: { watch: "price", is: "below", value: 27 }, action: "REVIEW", rationale: "Pullback — look again." }],
       },
       quotes: { COGT: 31.43 },
     });
@@ -33,7 +33,7 @@ describe("record_thesis(direction: PASS, status: WATCHING) and the event date", 
 
 describe("update_thesis(catalyst_date) on a pass kept on watch", () => {
   it("COGT as saved on 09-24 — a wake, no date — takes the date from one edit", async () => {
-    const wake = { id: "w1", predicate: { kind: "PRICE_BELOW", level: 27 }, action: "REVIEW", rationale: "Pullback — look again.", source: "AGENT" };
+    const wake = { id: "w1", predicate: { watch: "price", is: "below", value: 27 }, action: "REVIEW", rationale: "Pullback — look again.", source: "AGENT" };
     const { refused, refusal, db } = await replayTool("update-thesis", "updateThesis", {
       seed: { thesis: [thesisRow({ id: "cogt", ticker: "COGT", status: "WATCHING", direction: null, catalystDate: null, entryPrice: null, targetPrice: null, stopLoss: null, triggers: [wake] })] },
       ctx: { runMode: "PRINCIPAL_CHAT", analystId: REPLAY_ANALYST_ID },

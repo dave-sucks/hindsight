@@ -30,7 +30,7 @@ const QUOTE_CACHE_TTL = 30 * 1000;
  * Vercel, so the first read after any idle gap is served an arbitrarily old
  * value — the previous session's close after an overnight gap. For the
  * trigger evaluator that means the first evaluation after a quiet period can
- * score GAIN_FROM_ENTRY / TRAILING_FROM_HIGH against yesterday's price, which
+ * score the move from our entry and the trail against yesterday's price, which
  * is precisely when a gap move makes a protective stop matter most.
  * Slow-moving endpoints (profile, metrics, financials) keep the normal cache.
  */

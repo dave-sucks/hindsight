@@ -1,7 +1,7 @@
 /**
  * Reported-earnings lookup for the trigger evaluator.
  *
- * EARNINGS_BEAT / EARNINGS_MISS were written against the signal router:
+ * earnings beat / miss were written against the signal router:
  * a producer had to summarise a report into a Signal row and stamp
  * `surprisePct` onto its dataPayload, the router had to route that row to
  * the analyst, and only then could the predicate read the number. Every
@@ -85,7 +85,7 @@ export const MIN_SCORABLE_ESTIMATE = 0.05;
 
 /**
  * How far forward to look for scheduled reports — the ceiling on
- * EARNINGS_WITHIN's `days`. Two weeks covers every sensible "heads up"
+ * before-earnings's `days`. Two weeks covers every sensible "heads up"
  * (2–7 days is the useful range; the schema caps at 14) and keeps the
  * firm-wide payload to a few hundred rows. Only fetched when some trigger
  * in the batch actually asks about an upcoming report.

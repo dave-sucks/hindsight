@@ -14,18 +14,21 @@
  *   );
  *
  * Merge rule (kept simple for v1): defaults fill gaps. Agent-supplied
- * triggers take precedence on the same (predicate.kind, action) key.
- * That way the agent can override "PRICE_BELOW $stop → EXIT" with a
+ * triggers take precedence on the same (condition, action) key.
+ * That way the agent can override "sell below $stop" with a
  * tighter level without producing two contradictory exits.
  *
  * IDs are auto-assigned via randomUUID() — stable for the life of the
  * trigger so cooldown stamps survive subsequent merges.
  */
 
+import { shapeOf } from "./condition/legacy";
+import { defaultCooldownDays, reviewClockDays } from "./condition/rules";
 import { randomUUID } from "node:crypto";
-import type { Trigger, TriggerPredicate } from "./types";
+import type { Trigger } from "./types";
 import { triggerBucket } from "./bucket";
 import { flooredCooldownDays } from "./state-cooldown";
+import type { When } from "@/lib/agent/triggers/condition";
 
 export { isStatePredicate, STATE_PREDICATE_MIN_COOLDOWN_DAYS } from "./state-cooldown";
 
@@ -70,7 +73,7 @@ export interface ThesisShape {
  * evaluate pressing the winner. `ADD` is a held-only action and resolves to
  * fireMode TACTICAL by default (the agent decides + confirms; it never
  * auto-fills), and it is approval-gated, so a fire produces an add *proposal*.
- * `PRICE_MOVE_PCT{window:"1D"}` is cron-evaluable (reads the daily change), so
+ * a move from yesterday's close is cron-evaluable (reads the daily change), so
  * this fires intraday — the reactive complement to PR3's morning RUNNING_WINNER
  * flag.
  *
@@ -83,12 +86,7 @@ const SCALE_IN_MOVE_PCT = 7;
 function scaleInOnStrengthTrigger(): Trigger {
   return {
     id: createId(),
-    predicate: {
-      kind: "PRICE_MOVE_PCT",
-      pct: SCALE_IN_MOVE_PCT,
-      direction: "UP",
-      window: "1D",
-    },
+    predicate: { watch: "move", is: "above", value: SCALE_IN_MOVE_PCT, variable: "prev_close" },
     action: "ADD",
     rationale: `Up ${SCALE_IN_MOVE_PCT}% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.`,
     // 3-day cooldown so a multi-day run doesn't re-propose an add every session.
@@ -114,12 +112,7 @@ function scaleInOnStrengthTrigger(): Trigger {
 export function scaleInOnPullbackTrigger(): Trigger {
   return {
     id: createId(),
-    predicate: {
-      kind: "PRICE_MOVE_PCT",
-      pct: SCALE_IN_MOVE_PCT,
-      direction: "DOWN",
-      window: "1D",
-    },
+    predicate: { watch: "move", is: "below", value: SCALE_IN_MOVE_PCT, variable: "prev_close" },
     action: "ADD",
     rationale: `Down ${SCALE_IN_MOVE_PCT}% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.`,
     cooldownDays: 3,
@@ -150,14 +143,14 @@ export function accountStandingRules(): Trigger[] {
  *
  * A clock is chosen, never inherited. The WATCHING templates below do not
  * stamp one: whoever creates the thesis decides how often to look at it, or
- * that nobody should, by including a REVIEW_CADENCE trigger or leaving it
+ * that nobody should, by including a review-clock trigger or leaving it
  * out. Held templates keep theirs — a position we own is reviewed on a
  * schedule by default.
  */
 export function reviewCadenceTrigger(days: number): Trigger {
   return {
     id: createId(),
-    predicate: { kind: "REVIEW_CADENCE", days },
+    predicate: { watch: "repeat", value: days },
     action: "REVIEW",
     rationale:
       days === 1
@@ -190,7 +183,7 @@ export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
  */
 export function nextReviewFrom(
   lastReviewedAt: Date,
-  triggers: Array<{ predicate: TriggerPredicate }> | null | undefined,
+  triggers: Array<{ predicate: When }> | null | undefined,
   horizon: Horizon | null,
 ): Date {
   const own = resolvedCadenceDays(triggers ?? []);
@@ -218,7 +211,7 @@ export function derivedNextReviewAt(thesis: {
 }): Date | null {
   if (thesis.status === "RETIRED" || thesis.status === "PASSED") return null;
   const triggers = Array.isArray(thesis.triggers)
-    ? (thesis.triggers as Array<{ predicate: TriggerPredicate }>)
+    ? (thesis.triggers as Array<{ predicate: When }>)
     : [];
   if (thesis.status === "WATCHING" && resolvedCadenceDays(triggers) == null) {
     return null;
@@ -232,19 +225,16 @@ export function derivedNextReviewAt(thesis: {
 
 /** The cadence in force on a resolved ladder; null when nothing sets one. */
 export function resolvedCadenceDays(
-  triggers: Array<{ predicate: TriggerPredicate }>,
+  triggers: Array<{ predicate: When }>,
 ): number | null {
   for (const t of triggers ?? []) {
     // Defensive: legacy rows carry malformed triggers (that is why
     // parseTriggersResilient exists), and this runs on the review-stamp path
     // of the most-called tool in the app. One bad trigger must not fail an
     // otherwise valid thesis update — it just doesn't supply the cadence.
-    const kind = t?.predicate?.kind;
-    const from = (t?.predicate as { from?: unknown } | undefined)?.from ?? "LAST_REVIEW";
-    if (kind === "REVIEW_CADENCE" && from === "LAST_REVIEW") {
-      const days = (t.predicate as { days?: unknown }).days;
-      if (typeof days === "number" && days > 0) return days;
-    }
+    const w = shapeOf(t?.predicate);
+    const days = w == null ? null : reviewClockDays(w);
+    if (days != null && days > 0) return days;
   }
   return null;
 }
@@ -256,7 +246,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
+      predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}. If we hit it the thesis is broken; close and write up the lessons.`,
       cooldownDays: 0, // explicit opt-out — EXIT is terminal; the position closes and the cron's status:ACTIVE filter takes over.
@@ -267,7 +257,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
     const reviewLevel = +(thesis.entryPrice * 0.92).toFixed(2);
     out.push({
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: reviewLevel },
+      predicate: { watch: "price", is: "below", value: reviewLevel },
       action: "REVIEW",
       rationale: `8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.`,
       cooldownDays: 1,
@@ -290,7 +280,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
+      predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}.`,
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
@@ -299,7 +289,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
   if (thesis.targetPrice != null) {
     out.push({
       id: createId(),
-      predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
+      predicate: { watch: "price", is: "above", value: thesis.targetPrice },
       action: "REVIEW",
       rationale: `Target $${thesis.targetPrice} hit. Decide: close at target or trail higher with confidence intact.`,
       cooldownDays: 1,
@@ -319,7 +309,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
+      predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Tight stop at $${thesis.stopLoss}. Trade-horizon — get out fast on invalidation.`,
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
@@ -328,7 +318,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
   if (thesis.targetPrice != null) {
     out.push({
       id: createId(),
-      predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
+      predicate: { watch: "price", is: "above", value: thesis.targetPrice },
       action: "EXIT",
       rationale: `Target $${thesis.targetPrice} hit. Trade plan executed; close.`,
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
@@ -348,7 +338,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
+      predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}.`,
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
@@ -374,14 +364,14 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 //     fell to support — better entry or thesis weakening?") and an
 //     ENTRY threshold for SHORT (mirror semantics)
 //   - News/event triggers stay as REVIEW
-//   - REVIEW_DATE_HIT trigger REMOVED from watching templates 2026-05-20.
+//   - old review-date trigger REMOVED from watching templates 2026-05-20.
 //     It was duplicating daily-run's needsAction.REVIEW_DUE check —
 //     daily-run computes review due-ness itself every morning and
 //     decides REVIEW_DUE without needing a trigger. Auto-attaching the
 //     trigger meant the 5-min cron also spawned a TACTICAL run on every
 //     overdue WATCHING thesis intra-day, which produced almost zero
 //     state changes (28 of 35 tactical runs on 2026-05-18 were
-//     REVIEW_DATE_HIT, 0 produced state changes). The intra-day
+//     old review-date, 0 produced state changes). The intra-day
 //     "review" was pure busywork — the agent wasn't going to make a
 //     different decision at 11 AM than it would the next morning at
 //     8 AM. The predicate kind stays in the schema + evaluator for
@@ -389,8 +379,8 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 //     scripts/dedupe-review-date-hit-triggers.ts strips it from
 //     existing WATCHING theses.
 //
-// Direction matters here: LONG watches enter on PRICE_ABOVE entryPrice,
-// SHORT watches enter on PRICE_BELOW entryPrice. PASS watches get only
+// Direction matters here: LONG watches enter on price-above entryPrice,
+// SHORT watches enter on price-below entryPrice. PASS watches get only
 // REVIEW triggers ("the move I dismissed actually happened — re-look").
 //
 // Per-horizon shape (matches the held side's per-horizon split):
@@ -410,7 +400,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
  * 2026-05-31 (P1-3 fix): this used to read `targetPrice`, which was the
  * structural bug GAPS P1-3 tracked — targetPrice was the take-profit
  * level when ACTIVE, so defaulting the ENTER trigger to
- * PRICE_ABOVE(targetPrice) on WATCHING meant the agent would literally
+ * a price-above-target trigger on WATCHING meant the agent would literally
  * buy at the take-profit level (production evidence: MDB 2026-05-25).
  * The fix is one line: read `entryPrice` instead. The schema already had
  * `entryPrice` as a distinct column meaning "where you'd buy / did buy."
@@ -432,7 +422,7 @@ function watchingEntryTrigger(
   if (direction === "LONG") {
     return {
       id: createId(),
-      predicate: { kind: "PRICE_ABOVE", level: thesis.entryPrice },
+      predicate: { watch: "price", is: "above", value: thesis.entryPrice },
       action: "ENTER",
       rationale: `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
       cooldownDays,
@@ -441,7 +431,7 @@ function watchingEntryTrigger(
   if (direction === "SHORT") {
     return {
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.entryPrice },
+      predicate: { watch: "price", is: "below", value: thesis.entryPrice },
       action: "ENTER",
       rationale: `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
       cooldownDays,
@@ -450,7 +440,7 @@ function watchingEntryTrigger(
   // PASS: the move we dismissed actually happened. Re-evaluate.
   return {
     id: createId(),
-    predicate: { kind: "PRICE_ABOVE", level: thesis.entryPrice },
+    predicate: { watch: "price", is: "above", value: thesis.entryPrice },
     action: "REVIEW",
     rationale: `Price hit the entry level we dismissed. Re-evaluate the PASS — was the rejection wrong?`,
     cooldownDays: 7,
@@ -458,7 +448,7 @@ function watchingEntryTrigger(
 }
 
 // reviewDateHitTrigger() removed 2026-05-20 (see header comment above).
-// REVIEW_DATE_HIT predicate stays in types/evaluator for back-compat with
+// old review-date predicate stays in types/evaluator for back-compat with
 // existing rows; new theses no longer get it.
 
 
@@ -487,8 +477,8 @@ function watchingPlanLevels(
     out.push({
       id: createId(),
       predicate: long
-        ? { kind: "PRICE_BELOW", level: thesis.stopLoss }
-        : { kind: "PRICE_ABOVE", level: thesis.stopLoss },
+        ? { watch: "price", is: "below", value: thesis.stopLoss }
+        : { watch: "price", is: "above", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Floor $${thesis.stopLoss} — below this the setup is wrong, so the plan comes off rather than waiting to be bought.`,
     });
@@ -497,8 +487,8 @@ function watchingPlanLevels(
     out.push({
       id: createId(),
       predicate: long
-        ? { kind: "PRICE_ABOVE", level: thesis.targetPrice }
-        : { kind: "PRICE_BELOW", level: thesis.targetPrice },
+        ? { watch: "price", is: "above", value: thesis.targetPrice }
+        : { watch: "price", is: "below", value: thesis.targetPrice },
       action: "REVIEW",
       rationale: `Target $${thesis.targetPrice} reached before we bought — the move happened without us, so the entry is stale.`,
     });
@@ -514,7 +504,7 @@ function watchingPlanLevels(
  * They used to invent a review schedule and a set of earnings / filing /
  * guidance rungs on every new watch. Both are gone (DAV-209). The schedule
  * was the forced clock. The event rungs were worse than useless: news and
- * earnings routing is paused, so an EARNINGS_BEAT rung cannot fire at all —
+ * earnings routing is paused, so an earnings-beat rung cannot fire at all —
  * it was ladder decoration that made a name look watched when nothing was
  * watching it. A watch now carries what its author wrote, and nothing more.
  *
@@ -602,7 +592,7 @@ function defaultTriggersForHorizonInner(
 // Triggers without a `cooldownDays` value used to fire forever — the
 // `shouldFire` gate only enforces cooldown when both `cooldownDays` and
 // `lastFiredAt` are set, so an unset cooldown silently disabled rate
-// limiting. Observed in production: agent-supplied EARNINGS_BEAT trigger
+// limiting. Observed in production: agent-supplied earnings-beat trigger
 // on AMZN with no cooldown fired 10 tactical runs over 12.5 hours on a
 // single earnings signal that the router (correctly) re-evaluated each
 // time a new intel batch landed.
@@ -623,84 +613,16 @@ function defaultTriggersForHorizonInner(
  * intel batch; a review cadence rate-limits at its own interval.
  */
 export function defaultCooldownDaysForPredicate(
-  p: TriggerPredicate,
+  p: When,
   action?: Trigger["action"],
 ): number {
-  switch (p.kind) {
-    case "SEC_EVENT":
-      // No cooldown: one fire per FILING (firedFilings), and filings cluster —
-      // NVDA filed three 8-Ks in 17 days; a cooldown would swallow two.
-      return 0;
-    case "EARNINGS_BEAT":
-    case "EARNINGS_MISS":
-      return 7;
-    case "EARNINGS_WITHIN":
-    case "EARNINGS_SINCE":
-    case "INSIDER_CLUSTER":
-      // "Reports within N days" is true every day of the approach, so the
-      // cooldown is what makes it fire once. 30 clears any legal window
-      // (≤14) with room and is well short of a quarter, so the next
-      // report still fires.
-      return 30;
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-    case "PRICE_MOVE_PCT":
-    case "NEAR_SMA":
-    case "VOLUME_RATIO":
-    case "NEW_HIGH":
-    case "RSI":
-      // Price and chart conditions: one nudge per day at most.
-      return 1;
-    case "RS_VS_SPY":
-      // A daily-resolution number that stays true for weeks: once a week, not
-      // a daily re-ask (it can't "cross" — it doesn't read the price).
-      return 7;
-    case "VS_SMA":
-    case "PCT_FROM_52W_HIGH":
-      // DAV-329. On a review, a trim or a sale, "below the 200-day" is a
-      // STATE the rung asks about every day it holds: ABT sat under its
-      // 200-day from 09-15 to 09-25 and the Compounder's review rule fired
-      // all nine trading days, five of the six runs that received it writing
-      // no change at all. A condition that is true for a fortnight should
-      // ask twice, not fourteen times.
-      //
-      // Only the REVIEW slows down. A BUY reads the price, so an ENTER on
-      // these fires on the crossing, once, by itself (`shouldFire`); a
-      // week's cooldown there would not quiet a nag, it would swallow the
-      // second crossing (GD, GEV and SYK buy on "back above the 50-day").
-      // A SALE keeps DAV-229: a protective rung is a standing order and
-      // asks every day its condition holds. #719 shipped this as
-      // `ENTER ? 1 : 7`, which quietly put an EXIT on a weekly clock too.
-      // See `effectiveCooldownDays` below — same rule, enforced as a floor
-      // so a written `cooldownDays: 1` can't defeat it.
-      return action === "REVIEW" ? 7 : 1;
-    case "GAP_UP":
-      // A gap stays "within the last N sessions" for N days; one fire per gap.
-      return Math.max(1, p.withinDays ?? 1);
-    case "GAIN_FROM_ENTRY":
-      // A gain milestone LATCHES (up 10% stays up 10%): the acting agent
-      // is expected to replace the fired rung with the next checkpoint;
-      // 7d stops a same-week re-fire if it doesn't.
-      return 7;
-    case "TRAILING_FROM_HIGH":
-      // Also latches while price sits below the trail. EXIT is terminal
-      // anyway; REVIEW/TRIM rungs get one nudge per day, matching the
-      // other price predicates.
-      return 1;
-    case "REVIEW_CADENCE":
-      // The cadence IS the interval. A clock allowed to re-fire sooner than
-      // its own schedule is just a faster clock; the flat 7 that used to sit
-      // here made a 30-day review nag weekly once it latched.
-      return p.days;
-    case "AND":
-    case "OR":
-      // Composite: pick the max child cooldown. If a composite contains
-      // an EARNINGS_BEAT, use 7 — the more conservative default wins.
-      return Math.max(
-        1,
-        ...p.predicates.map((child) => defaultCooldownDaysForPredicate(child, action)),
-      );
-  }
+  // Each measure carries its own default (./condition/measures): no cooldown
+  // on a filing (one fire per filing), 7 on a beat/miss, 30 on a report
+  // window or an insider cluster, a day on price and chart lines, a week on a
+  // state a review asks about (DAV-329), a week on a gain milestone (it
+  // latches), one fire per gap, and a schedule's own interval.
+  const w = shapeOf(p);
+  return w == null ? 1 : defaultCooldownDays(w, action ?? "");
 }
 
 /**
@@ -713,7 +635,7 @@ export function defaultCooldownDaysForPredicate(
  * terminal (the position closes and the cron's `status:ACTIVE` filter
  * takes over), so re-firing isn't a runaway risk. On any other action
  * (REVIEW, ENTER, TRIM) `0` is structurally invalid against a sticky
- * predicate (PRICE_ABOVE/BELOW, VS_SMA, RSI, REVIEW_CADENCE, AND/OR
+ * predicate (price levels, vs-average, RSI, review-clock, AND/OR
  * composites of the same) — once the condition is true it stays true,
  * and a 5-min trigger-evaluator tick re-fires every cycle until
  * intervention. Treat `0` on non-EXIT as "needs default" and overwrite
@@ -755,7 +677,7 @@ export function defaultFireModeForAction(
  *   3. A FLOOR on state predicates that aren't buys.
  *
  * Layer 3 is the DAV-329 fix and it has to be a floor, not a default:
- * #719 set the default for `VS_SMA` to 7 and it changed nothing, because
+ * #719 set the default for vs-average to 7 and it changed nothing, because
  * the Secular Compounder's "below the 200-day → review" rule carries an
  * explicit `cooldownDays: 1`, and a written 1 beats any default. ABT sat
  * under its 200-day from 09-15 to 09-25 and that rule fired all nine

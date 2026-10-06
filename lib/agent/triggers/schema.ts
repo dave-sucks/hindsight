@@ -1,191 +1,178 @@
 /**
- * Zod schemas for thesis triggers — used by record_thesis / update_thesis
- * to validate agent-supplied trigger arrays before persistence.
- *
- * Stays in sync with lib/agent/triggers/types.ts. Adding a new predicate
- * kind requires updating BOTH this schema AND the type union AND the
- * deterministic evaluator (PR 2). All three or none — partial updates
- * mean triggers that look valid get silently dropped at evaluation time.
+ * Zod schemas for triggers: the save gate every writer goes through (the
+ * agents' tools, the trigger popover, the level rules) and the condition the
+ * agents write. A condition is in the shape (./condition) and is valid when
+ * its old-kind spelling passes the old schema (./condition/legacy-schema),
+ * until PR 4 moves that check onto the catalog. A new measure is one catalog
+ * entry; this file lists the measures from the catalog and needs no change.
  */
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
+import { isShape, shapeOf, toLegacy } from "./condition/legacy";
+import { legacyPredicateSchema } from "./condition/legacy-schema";
+import type { Condition, VariableId, Watch, When } from "./condition/types";
+import { isGroup } from "./condition/types";
+import { MEASURES, declaredOnly } from "./condition/catalog";
 
 // Recursive shape for AND/OR composition. Zod doesn't support direct
 // discriminated-union recursion, so we type the recursion via z.lazy.
-type PredicateShape =
-  | { kind: "PRICE_ABOVE"; level: number; basis?: "intraday" | "close" }
-  | { kind: "PRICE_BELOW"; level: number; basis?: "intraday" | "close" }
-  | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" | "5D" | "20D" }
-  | {
-      kind: "GAIN_FROM_ENTRY";
-      pct: number;
-      direction: "UP" | "DOWN";
-      skipIfPeakGainPct?: number;
-      skipIfPeakWithinDays?: number;
-    }
-  | { kind: "TRAILING_FROM_HIGH"; pct: number; armAtGainPct?: number; atrMultiple?: number }
-  | { kind: "VS_SMA"; period: 20 | 50 | 150 | 200; direction: "ABOVE" | "BELOW" }
-  | { kind: "NEAR_SMA"; period: 20 | 50 | 150 | 200; withinPct: number }
-  | { kind: "VOLUME_RATIO"; min: number }
-  | { kind: "NEW_HIGH"; window: "20D" | "52W" }
-  | { kind: "PCT_FROM_52W_HIGH"; max: number }
-  | { kind: "RS_VS_SPY"; window: "1M" | "3M" | "6M"; min: number }
-  | { kind: "GAP_UP"; minPct: number; minVolRatio: number; withinDays?: number }
-  | { kind: "RSI"; period?: 2 | 14; threshold: number; direction: "ABOVE" | "BELOW" }
-  | { kind: "INSIDER_CLUSTER"; minBuyers: number; days: number }
-  | { kind: "EARNINGS_BEAT"; minSurprisePct?: number }
-  | { kind: "EARNINGS_MISS"; minSurprisePct?: number }
-  | { kind: "EARNINGS_WITHIN"; days: number }
-  | { kind: "EARNINGS_SINCE"; min: number; max: number }
-  | { kind: "SEC_EVENT"; tier?: "RED" | "MATERIAL"; items?: string[]; forms?: string[] }
-  | { kind: "REVIEW_CADENCE"; days: number; from?: "LAST_REVIEW" | "BUY" | "EVENT"; side?: "BEFORE" | "AFTER" }
-  | { kind: "AND"; predicates: PredicateShape[] }
-  | { kind: "OR"; predicates: PredicateShape[] };
+/**
+ * A trigger's condition, in the condition shape (./condition). It is valid
+ * exactly when its kind spelling passes the kinds' schema, so the shape
+ * accepts what the kinds did and refuses what they refused. A kind (a row
+ * from before the cutover, an old event, a model that still sends one) is
+ * translated on the way in.
+ */
+export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
+  const legacyIn = !isShape(p);
+  if (legacyIn && !legacyPredicateSchema.safeParse(p).success) {
+    ctx.addIssue({ code: "custom", message: "Not a condition this app can check." });
+    return z.NEVER;
+  }
+  const w = shapeOf(p);
+  const spelled = w ? toLegacy(w) : null;
+  if (!w || !spelled || (!legacyIn && !legacyPredicateSchema.safeParse(spelled).success)) {
+    ctx.addIssue({ code: "custom", message: "Not a condition this app can check." });
+    return z.NEVER;
+  }
+  return declaredOnly(w);
+});
 
-const priceBasis = z
-  .enum(["intraday", "close"])
-  .optional()
-  .describe('"close" = the day must CLOSE past the level (checked once at 16:20 ET); omit for the intraday cross.');
-const smaPeriod = z.union([z.literal(20), z.literal(50), z.literal(150), z.literal(200)]);
+/**
+ * The condition as the model writes it. It is the form's fields: a price's
+ * one input takes a dollar number or a line (the 50-day average, the 20-day
+ * low), and a filing's is which filing, so `value` carries either and there
+ * is no second half to send. `variable` is only what a % move or a day count
+ * is measured from. A field the measure doesn't take is dropped, as a
+ * setting is. The condition is defined once per tool (`Condition`), so its
+ * lists appear once. The stored shape is unchanged: `toStored` maps onto it.
+ * A model that still sends a kind has it translated (and logged), never
+ * refused; the values are held to the same ranges as before.
+ */
+export function predicateInputSchema() {
+  return (agentPredicate ??= buildPredicateInputSchema());
+}
+let agentPredicate: ReturnType<typeof buildPredicateInputSchema> | undefined;
 
-export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
-  z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("PRICE_ABOVE"), level: z.number(), basis: priceBasis }),
-    z.object({ kind: z.literal("PRICE_BELOW"), level: z.number(), basis: priceBasis }),
-    z.object({
-      kind: z.literal("PRICE_MOVE_PCT"),
-      pct: z.number().positive(),
-      direction: z.enum(["UP", "DOWN"]),
-      // 1D off the quote; 5D / 20D off the daily snapshot's closes.
-      window: z.enum(["1D", "5D", "20D"]),
-    }),
-    z.object({
-      kind: z.literal("GAIN_FROM_ENTRY"),
-      // A big winner is not trimmed: once the position's peak has run this
-      // far off the buy, this fast, the rung is off for good. Both halves
-      // together — a slow grind to the same gain is an ordinary winner and
-      // still gets de-risked.
-      skipIfPeakGainPct: z.number().positive().max(500).optional(),
-      skipIfPeakWithinDays: z.number().int().positive().max(365).optional(),
-      pct: z.number().positive(),
-      direction: z.enum(["UP", "DOWN"]),
-    }),
-    z.object({
-      kind: z.literal("TRAILING_FROM_HIGH"),
-      // The stock's own range widens the give-back: the larger of pct and
-      // atrMultiple × ATR(14). It only ever widens (DAV-294, playbook E5).
-      atrMultiple: z.number().positive().max(10).optional(),
-      // ≥1%: a sub-1% trail off the peak would re-fire on ordinary noise
-      // every tick the moment the peak is set.
-      pct: z.number().min(1),
-      // Off until the position has once been up this % from entry.
-      armAtGainPct: z.number().min(0).max(200).optional(),
-    }),
-    z.object({
-      kind: z.literal("VS_SMA"),
-      period: smaPeriod,
-      direction: z.enum(["ABOVE", "BELOW"]),
-    }),
-    z.object({
-      kind: z.literal("NEAR_SMA"),
-      period: smaPeriod,
-      withinPct: z.number().positive().max(10),
-    }),
-    z.object({
-      kind: z.literal("VOLUME_RATIO"),
-      min: z.number().positive().max(50),
-    }),
-    z.object({
-      kind: z.literal("NEW_HIGH"),
-      window: z.enum(["20D", "52W"]),
-    }),
-    z.object({
-      kind: z.literal("PCT_FROM_52W_HIGH"),
-      max: z.number().min(0).max(100),
-    }),
-    z.object({
-      kind: z.literal("RS_VS_SPY"),
-      window: z.enum(["1M", "3M", "6M"]),
-      // Percentage points vs SPY; negative is legal ("not lagging by more than 5").
-      min: z.number().min(-100).max(500),
-    }),
-    z.object({
-      kind: z.literal("GAP_UP"),
-      minPct: z.number().positive().max(100),
-      minVolRatio: z.number().min(0).max(50),
-      // 1 = today only; up to the 10 sessions the snapshot keeps gaps for.
-      withinDays: z.number().int().min(1).max(10).optional(),
-    }),
-    z.object({
-      kind: z.literal("RSI"),
-      period: z.union([z.literal(2), z.literal(14)]).optional(),
-      threshold: z.number().min(0).max(100),
-      direction: z.enum(["ABOVE", "BELOW"]),
-    }),
-    z.object({
-      kind: z.literal("INSIDER_CLUSTER"),
-      minBuyers: z.number().int().min(1).max(10),
-      // The snapshot keeps 90 days of buys (INSIDER_LOOKBACK_DAYS).
-      days: z.number().int().min(1).max(90),
-    }),
-    z.object({
-      kind: z.literal("EARNINGS_BEAT"),
-      minSurprisePct: z.number().optional(),
-    }),
-    z.object({
-      kind: z.literal("EARNINGS_MISS"),
-      minSurprisePct: z.number().optional(),
-    }),
-    z.object({
-      kind: z.literal("EARNINGS_WITHIN"),
-      // Capped at the calendar lookahead (EARNINGS_LOOKAHEAD_DAYS) — a
-      // longer horizon would ask about reports the evaluator never fetches.
-      days: z.number().int().min(1).max(14),
-    }),
-    z
-      .object({
-        kind: z.literal("EARNINGS_SINCE"),
-        // 0 = the report day itself. Max is the calendar lookback
-        // (EARNINGS_LOOKBACK_DAYS) — beyond it the row isn't fetched.
-        min: z.number().int().min(0).max(5),
-        max: z.number().int().min(0).max(5),
-      })
-      .refine((p) => p.min <= p.max, { message: "min must be ≤ max" }),
-    z
-      .object({
-        kind: z.literal("SEC_EVENT"),
-        // "At least": MATERIAL matches red filings too.
-        tier: z.enum(["RED", "MATERIAL"]).optional(),
-        // 8-K item codes, e.g. ["2.01"] for a completed acquisition.
-        items: z.array(z.string().min(4).max(5)).max(20).optional(),
-        // Forms that are an event by themselves, e.g. ["SCHEDULE 13D"].
-        forms: z.array(z.string().min(1).max(20)).max(10).optional(),
-      })
-      .refine((p) => p.tier != null || (p.items?.length ?? 0) > 0 || (p.forms?.length ?? 0) > 0, {
-        message: "SEC_EVENT needs a tier, item codes or forms",
-      }),
-    z.object({
-      kind: z.literal("REVIEW_CADENCE"),
-      days: z.number().int().positive().max(365),
-      // Counting from: the last review (the review clock, repeating), the
-      // buy (a time limit on a held position: "sell 20 days after the buy
-      // if still held"), or the thesis's own event date ("review 3 days
-      // before the FDA date"). The event date is the one stored on the
-      // thesis (catalystDate) — never typed here.
-      from: z.enum(["LAST_REVIEW", "BUY", "EVENT"]).optional(),
-      side: z.enum(["BEFORE", "AFTER"]).optional(),
-    }),
-    z.object({
-      kind: z.literal("AND"),
-      predicates: z.array(triggerPredicateSchema).min(1).max(8),
-    }),
-    z.object({
-      kind: z.literal("OR"),
-      predicates: z.array(triggerPredicateSchema).min(1).max(8),
-    }),
-  ]),
-);
+function buildPredicateInputSchema() {
+  const lines = variableIds("replace");
+  const froms = variableIds("from");
+  const condition = z
+    .object({
+      watch: z.enum(Object.keys(MEASURES) as [Watch, ...Watch[]]).describe("The measure, from the list above."),
+      is: z.enum(["below", "above", "near", "before", "after", "miss", "beat"]).optional().describe("Its direction, from the list; omit where a measure has one choice."),
+      value: z
+        .union([z.number(), z.enum(lines as [VariableId, ...VariableId[]])])
+        .optional()
+        .describe("The number, in the measure's unit. A price: a dollar number or a line from the list (sma50 = the 50-day average, low20 = the 20-day low, prev_close = yesterday's close). A filing: which filing."),
+      variable: z
+        .enum(froms as [VariableId, ...VariableId[]])
+        .optional()
+        .describe("Only for a % move or a day count: what it is measured from."),
+      settings: settingsSchema().optional().describe("Only the settings the measure or its variable takes; leave every other key out."),
+    })
+    .meta({ id: "Condition" });
+  const stored = condition.transform(toStored);
+  const group = z.object({
+    match: z.enum(["all", "any"]).describe("all = every condition holds; any = one does."),
+    conditions: z.array(stored).min(2).max(8),
+  });
+  return z
+    .preprocess(
+      (v) => {
+        if (!v || typeof v !== "object") return v;
+        if (typeof (v as { kind?: unknown }).kind === "string") {
+          const w = shapeOf(v);
+          if (w) console.info(`[triggers] a model sent the kind ${(v as { kind: string }).kind}; translated`);
+          return w ? toAgentShape(w) : v;
+        }
+        return v;
+      },
+      z
+        .union([stored, z.object({ match: group.shape.match, conditions: z.array(z.union([stored, group])).min(2).max(8) })])
+        .describe(`One condition, or { match, conditions } for two or more. ${measureGuide()}`),
+    )
+    .superRefine((w, ctx) => {
+      const spelled = isShape(w) ? toLegacy(w as When) : null;
+      if (!spelled || !legacyPredicateSchema.safeParse(spelled).success) {
+        ctx.addIssue({ code: "custom", message: "Not a condition this app can check: see the measures and what each takes." });
+      }
+    })
+    // A setting the measure doesn't take is dropped, never stored.
+    .transform((w) => declaredOnly(w as When));
+}
+
+type AgentCondition = { watch: Watch; is?: Condition["is"]; value?: number | VariableId; variable?: VariableId; settings?: Record<string, unknown> };
+
+/** The agents' condition, stored: a line in `value` is the stored `variable`; a field the measure doesn't take is dropped. */
+function toStored({ value, variable, ...rest }: AgentCondition): Condition {
+  const mode = MEASURES[rest.watch]?.variables?.mode;
+  if (mode === "replace") return { ...rest, ...(typeof value === "string" ? { variable: value } : value != null ? { value } : {}) } as Condition;
+  return { ...rest, ...(value != null ? { value } : {}), ...(mode === "from" && variable != null ? { variable } : {}) } as Condition;
+}
+
+/** A stored condition in the agents' spelling, for a kind a model still sends. */
+function toAgentShape(w: When): unknown {
+  if (isGroup(w)) return { ...w, conditions: w.conditions.map(toAgentShape) };
+  const { variable, ...rest } = w as Condition;
+  if (variable == null) return rest;
+  return MEASURES[rest.watch]?.variables?.mode === "replace" ? { ...rest, value: variable } : { ...rest, variable };
+}
+
+/** The variable ids every measure of one mode takes, from the catalog. */
+function variableIds(mode: "replace" | "from"): VariableId[] {
+  return [...new Set(Object.values(MEASURES).filter((m) => m.variables?.mode === mode).flatMap((m) => m.variables!.options.map((o) => o.id)))];
+}
+
+/** Each measure in one line: its directions, its number, its variables and settings. */
+function measureGuide(): string {
+  const line = (m: (typeof MEASURES)[Watch]) => {
+    const is = m.buttons ? ` is ${m.buttons.map((b) => b.is).join("|")};` : "";
+    const unit = m.value.none ? "" : ` value ${m.value.prefix === "$" ? "in dollars" : (m.value.suffix ?? "a number")};`;
+    const vars = m.variables
+      ? ` ${m.variables.mode === "replace" ? (m.value.none ? "value" : "or value") : "variable"} ${variableList(m.variables.options.map((o) => o.id))};`
+      : "";
+    const settings = (m.settings ?? []).map((s) => `${s.key}${s.options ? `=${s.options.map((o) => String(o.value)).join("|")}` : ""}`);
+    const varSettings = [...new Set((m.variables?.options ?? []).flatMap((o) => (o.settings ?? []).map((s) => `${s.key} (with ${o.id})`)))];
+    const all = [...settings, ...varSettings];
+    return `${m.id} (${m.label}):${is}${unit}${vars}${all.length ? ` settings ${all.join(", ")};` : ""}`.replace(/;$/, ".");
+  };
+  return `Measures: ${Object.values(MEASURES).map(line).join(" ")}`;
+}
+
+/**
+ * Every setting a measure or a variable takes, by key, from the catalog. The
+ * SDK writes a record as an object that allows no keys, so the keys are
+ * listed, each saying what takes it: a model shown eleven bare keys filled
+ * every one with a 0 and was refused. The save checks it again.
+ */
+function settingsSchema() {
+  const owners = new Map<string, { sample: unknown; by: string[] }>();
+  const own = (d: { key: string; default?: unknown; options?: readonly { value: unknown }[] }, by: string) => {
+    const o = owners.get(d.key) ?? { sample: d.options?.[0]?.value ?? d.default, by: [] };
+    if (!o.by.includes(by)) o.by.push(by);
+    owners.set(d.key, o);
+  };
+  for (const m of Object.values(MEASURES)) {
+    for (const d of m.settings ?? []) own(d, m.id);
+    for (const v of m.variables?.options ?? []) for (const d of v.settings ?? []) own(d, `variable ${v.id}`);
+  }
+  const shape: Record<string, z.ZodOptional<z.ZodTypeAny>> = {};
+  for (const [key, { sample, by }] of owners) {
+    const type = typeof sample === "boolean" ? z.boolean() : typeof sample === "string" ? z.string() : z.number();
+    shape[key] = type.describe(`Only with ${by.join(" or ")}.`).optional();
+  }
+  return z.object(shape);
+}
+
+
+/** Variable ids, with the filing ones written as patterns. */
+function variableList(ids: readonly string[]): string {
+  const plain = ids.filter((id) => !/^(item|form):/.test(id));
+  const filing = ids.some((id) => id.startsWith("item:")) ? ["item:<8-K item, e.g. 8.01>", "form:<form, e.g. S-3>"] : [];
+  return [...plain, ...filing].join("|");
+}
 
 export const triggerActionSchema = z.enum([
   "REVIEW",
@@ -220,7 +207,7 @@ export const triggerSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "Prose the LLM reads when acting on this trigger. e.g. 'A close under the 50-day on heavy volume breaks the pullback thesis — exit.'",
+      "The note the owner reads: why it's here and what you'll do when it fires. e.g. 'A close under the 50-day average on heavy volume breaks the pullback, so I sell.'",
     ),
   cooldownDays: z
     .number()
@@ -241,7 +228,7 @@ export const triggerSchema = z.object({
       // including the legitimate EXIT stops sitting next to the bad
       // REVIEW. That's the same silent-failure shape PR #371 just fixed
       // for the id-less bug; don't re-introduce it.
-      "Don't re-fire this trigger more than once per N days. Omit it to use the per-kind default (earnings kinds 7, price and chart kinds 1, REVIEW_CADENCE its cadence) — the right answer in almost every case. 0 is for EXIT triggers only; on any other action the runtime replaces it with the default.",
+      "Don't re-fire this trigger more than once per N days. Omit it to use the default (an earnings result 7, price and chart conditions 1, a review schedule its own interval) — the right answer in almost every case. 0 is for EXIT triggers only; on any other action the runtime replaces it with the default.",
     ),
   lastFiredAt: z.string().datetime().optional(),
   firedFilings: z
@@ -316,15 +303,17 @@ export const triggersArraySchema = z
  * cached 71% with the random id and 97% without). The server schema above
  * is unchanged; this is only what the model is shown.
  */
-export const triggerInputSchema = triggerSchema.omit({
-  id: true,
-  lastFiredAt: true,
-  firedFilings: true,
-  firedReports: true,
-  writtenPrice: true,
-  writtenAt: true,
-  source: true,
-});
+export const triggerInputSchema = triggerSchema
+  .omit({
+    id: true,
+    lastFiredAt: true,
+    firedFilings: true,
+    firedReports: true,
+    writtenPrice: true,
+    writtenAt: true,
+    source: true,
+  })
+  .extend({ predicate: predicateInputSchema() });
 
 export const triggersInputArraySchema = z
   .array(triggerInputSchema)
@@ -340,16 +329,27 @@ export const triggersInputArraySchema = z
  * was a free string, update_thesis's the enum) and a PRAX refresh passed the
  * writer's check, then failed at save with no retry (DAV-257).
  */
-export const editTriggerOpSchema = z.object({
+export const editTriggerOpSchema = z.looseObject({
   id: z.string().describe("The trigger's id, as shown on the thesis."),
-  level: z.number().optional().describe("New price for a price-above / price-below trigger."),
-  pct: z.number().optional().describe("New percent for a move / gain / trailing trigger."),
-  days: z.number().int().optional().describe("New day count for a review-cadence trigger."),
+  value: z.number().optional().describe("The new number, in the trigger's own unit (a price, a %, a count of days)."),
   action: triggerActionSchema.optional(),
   fire_mode: z.enum(["TACTICAL", "DIRECT"]).optional(),
-  rationale: z.string().optional().describe("REQUIRED when level / pct / days changes — the sentence moves with the number."),
+  rationale: z.string().optional().describe("REQUIRED when the value changes — the sentence moves with the number."),
   cooldown_days: z.number().int().min(0).max(90).optional(),
 });
+
+/**
+ * An edit's number. A model that still sends the old `level` / `pct` / `days`
+ * has it read as the value, and the old name kept as the unit it promised: an
+ * edit naming `level` on a % trigger is refused, as it always was.
+ */
+export function editNumber(e: { value?: number } & Record<string, unknown>): { value?: number; unit?: "level" | "pct" | "days" } {
+  if (e.value !== undefined) return { value: e.value };
+  for (const unit of ["level", "pct", "days"] as const) {
+    if (typeof e[unit] === "number") return { value: e[unit] as number, unit };
+  }
+  return {};
+}
 
 export type TriggerInput = z.infer<typeof triggerSchema>;
 

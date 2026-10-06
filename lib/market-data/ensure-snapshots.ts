@@ -33,7 +33,7 @@ export async function computeAndStoreSnapshot(
   const structure = computePriceStructure({ bars, spyBars });
   if (!structure) return null;
   const snapshot = toIndicatorSnapshot(structure, bars);
-  // Open-market insider buys for INSIDER_CLUSTER (DAV-252). Fail-open: a
+  // Open-market insider buys for insider-buying (DAV-252). Fail-open: a
   // vendor miss leaves the field off and that kind reads false.
   const buys = ticker === "SPY" ? null : await fetchOpenMarketBuys(ticker).catch(() => null);
   if (buys) snapshot.insiderBuys = buys;

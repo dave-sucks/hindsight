@@ -1,8 +1,9 @@
 /** Schedule: every N days, and N days from a date. docs/plans/TRIGGER_TYPES.md §3.3. */
 
-import type { TriggerPredicate } from "../../types";
+
 import type { MeasureDef } from "../measure";
-import { DATE_VARIABLES } from "../variables";
+import { DATE_VARIABLES, variableDef } from "../variables";
+import type { LegacyPredicate } from "../legacy-types";
 
 export const repeat: MeasureDef = {
   id: "repeat",
@@ -12,11 +13,14 @@ export const repeat: MeasureDef = {
   value: { suffix: "days", placeholder: "30", integer: true, min: 1 },
   actions: ["REVIEW"],
   timed: true,
+  clock: true,
+  // The cadence is the interval.
+  cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "repeat" }),
   // Counted from the last review.
   legacy: {
     from: { REVIEW_CADENCE: (p) => ((p.from ?? "LAST_REVIEW") === "LAST_REVIEW" ? { watch: "repeat", value: p.days } : null) },
-    to: (c): TriggerPredicate | null => (c.value != null ? { kind: "REVIEW_CADENCE", days: c.value } : null),
+    to: (c): LegacyPredicate | null => (c.value != null ? { kind: "REVIEW_CADENCE", days: c.value } : null),
   },
 };
 
@@ -32,6 +36,8 @@ export const fromDate: MeasureDef = {
   variables: { mode: "from", options: DATE_VARIABLES, title: "Counted from", word: () => "from", required: "Choose what to count from." },
   actions: ["TRIM", "EXIT", "REVIEW"],
   timed: true,
+  says: (c) => `${c.value ?? 0} ${c.value === 1 ? "day" : "days"} ${c.is ?? "after"} ${c.variable ? variableDef(c.variable).words : "a date"}`,
+  cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "from_date", is: "after", variable: "buy" }),
   check: (c) => (c.variable === "buy" && c.is === "before" ? "The buy is already in the past. Pick After." : null),
   legacy: {
@@ -42,7 +48,7 @@ export const fromDate: MeasureDef = {
         return null;
       },
     },
-    to: (c): TriggerPredicate | null => {
+    to: (c): LegacyPredicate | null => {
       if (c.value == null || (c.is !== "after" && c.is !== "before")) return null;
       if (c.variable === "buy") return c.is === "after" ? { kind: "REVIEW_CADENCE", days: c.value, from: "BUY" } : null;
       if (c.variable === "event") return { kind: "REVIEW_CADENCE", days: c.value, from: "EVENT", side: c.is === "before" ? "BEFORE" : "AFTER" };

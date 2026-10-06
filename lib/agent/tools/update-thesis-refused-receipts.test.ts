@@ -81,10 +81,10 @@ function vst() {
     lastReviewedAt: null,
     researchUpdatedAt: new Date(),
     triggers: [
-      { id: CADENCE, predicate: { kind: "REVIEW_CADENCE", days: 30 }, action: "REVIEW", rationale: "Monthly review.", source: "DEFAULT", cooldownDays: 7 },
-      { id: BUY, predicate: { kind: "PRICE_ABOVE", level: 165 }, action: "ENTER", rationale: "Only revisit as a buy above $165.", source: "AGENT", cooldownDays: 1 },
-      { id: FLOOR, predicate: { kind: "PRICE_BELOW", level: 132 }, action: "EXIT", rationale: "Floor — sell if the price drops to $132.00.", source: "DEFAULT", cooldownDays: 1 },
-      { id: TARGET, predicate: { kind: "PRICE_ABOVE", level: 240 }, action: "REVIEW", rationale: "Target $240.00 — decide here.", source: "AGENT", cooldownDays: 1 },
+      { id: CADENCE, predicate: { watch: "repeat", value: 30 }, action: "REVIEW", rationale: "Monthly review.", source: "DEFAULT", cooldownDays: 7 },
+      { id: BUY, predicate: { watch: "price", is: "above", value: 165 }, action: "ENTER", rationale: "Only revisit as a buy above $165.", source: "AGENT", cooldownDays: 1 },
+      { id: FLOOR, predicate: { watch: "price", is: "below", value: 132 }, action: "EXIT", rationale: "Floor — sell if the price drops to $132.00.", source: "DEFAULT", cooldownDays: 1 },
+      { id: TARGET, predicate: { watch: "price", is: "above", value: 240 }, action: "REVIEW", rationale: "Target $240.00 — decide here.", source: "AGENT", cooldownDays: 1 },
     ],
     triggerState: {},
   };

@@ -1,3 +1,5 @@
+// Types only from the catalog: its variables read this file's filing names.
+import { conditionsOf, type When } from "@/lib/agent/triggers/condition/types";
 /**
  * The SEC event list — which filings matter and how much. Pure: no fetch,
  * no environment, safe in the trigger UI. The EDGAR reader is
@@ -7,7 +9,7 @@
  * codes. docs/plans/SEC_FILINGS.md §3.
  */
 
-import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+
 
 // ── The event list ──────────────────────────────────────────────────────────
 
@@ -125,8 +127,8 @@ export function describeFiling(f: SecFiling): string {
 
 // ── Matching a trigger ──────────────────────────────────────────────────────
 
-/** What a filing rule names: a tier, items, forms. A stored SEC_EVENT has them; so does one filing condition. */
-type SecEventPredicate = Pick<Extract<TriggerPredicate, { kind: "SEC_EVENT" }>, "tier" | "items" | "forms"> & { kind?: "SEC_EVENT" };
+/** What a filing rule names: a tier ("at least"), 8-K items, or forms. */
+type SecEventPredicate = { tier?: "RED" | "MATERIAL"; items?: string[]; forms?: string[] };
 
 /**
  * Does this filing satisfy the predicate? `tier` is "at least" — MATERIAL
@@ -160,20 +162,26 @@ export function rememberFired(prior: readonly string[] | null | undefined, acces
   return merged.slice(-FIRED_FILINGS_KEPT);
 }
 
-/** Every SEC_EVENT inside a predicate, composites included. */
-export function secEventLeaves(p: TriggerPredicate): SecEventPredicate[] {
-  if (p.kind === "SEC_EVENT") return [p];
-  if (p.kind === "AND" || p.kind === "OR") return p.predicates.flatMap(secEventLeaves);
-  return [];
+/** Every filing condition inside a trigger, groups included, as the rule it names. */
+export function secEventLeaves(w: When): SecEventPredicate[] {
+  if (!w || typeof w !== "object") return [];
+  return conditionsOf(w).flatMap((c): SecEventPredicate[] => {
+    const v = c.variable;
+    if (!v) return [];
+    if (v.startsWith("tier:")) return [{ tier: v === "tier:RED" ? "RED" : "MATERIAL" }];
+    if (v.startsWith("item:")) return [{ items: [v.slice(5)] }];
+    if (v.startsWith("form:")) return [{ forms: [v.slice(5)] }];
+    return [];
+  });
 }
 
 /**
- * The filings behind a fire: every unfired filing any SEC_EVENT in the
+ * The filings behind a fire: every unfired filing any filing condition in the
  * trigger matches. What the activity row names, what gets remembered so it
  * never fires this trigger again, and what decides the urgency.
  */
 export function filingsBehindFire(
-  trigger: { predicate: TriggerPredicate; firedFilings?: readonly string[] },
+  trigger: { predicate: When; firedFilings?: readonly string[] },
   filings: SecFiling[] | null | undefined,
 ): SecFiling[] {
   const out = new Map<string, SecFiling>();

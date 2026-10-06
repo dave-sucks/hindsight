@@ -235,7 +235,7 @@ export async function pullThesisData(
   // The last report's date — one Finnhub calendar call, fail-open. The EPS
   // history above carries no report dates, so without this the writer can't
   // tell whether a drift window is open (HPE 2026-09-15 was written as PEAD
-  // 13 days after the print). Counted the way the EARNINGS_SINCE trigger
+  // 13 days after the print). Counted the way the after-earnings trigger
   // counts it, so the check and the trigger agree.
   const lastReport = await fetchCalendarRows({
     symbol: T,

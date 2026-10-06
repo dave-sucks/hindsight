@@ -5,13 +5,13 @@
  * accept/reject boundary is pinned hard.
  */
 
+import { zodSchema } from "ai";
 import {
   thesisDecisionSchema,
   validateThesisDecision,
   type ThesisDecisionInput,
 } from "./decision";
-import { modelEditTriggerOpSchema } from "@/lib/agent/triggers/model-schema";
-import { editTriggerOpSchema } from "@/lib/agent/triggers/schema";
+import { editTriggerOpSchema, editNumber } from "@/lib/agent/triggers/schema";
 
 const validLong: ThesisDecisionInput = {
   direction: "LONG",
@@ -86,12 +86,12 @@ describe("validateThesisDecision — accept paths", () => {
         ...validLong,
         triggers: [
           {
-            predicate: { kind: "PRICE_ABOVE", level: 100 },
+            predicate: { watch: "price", is: "above", value: 100 },
             action: "ENTER",
             rationale: "breakout entry",
           },
           {
-            predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
+            predicate: { watch: "surprise", is: "miss", value: 3 },
             action: "REVIEW",
             rationale: "guidance miss kills the thesis",
           },
@@ -154,7 +154,7 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
     const v = validateThesisDecision(
       {
         ...unpriced,
-        triggers: [{ predicate: { kind: "REVIEW_CADENCE", days: 14 }, action: "REVIEW", rationale: "Price this after the January readout." }],
+        triggers: [{ predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Price this after the January readout." }],
       } as ThesisDecisionInput,
       mintOpts,
     );
@@ -180,7 +180,7 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
         ...unpriced,
         remove_trigger_ids: ["buy", "floor", "target"],
         add_triggers: [
-          { predicate: { kind: "REVIEW_CADENCE", days: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
+          { predicate: { watch: "repeat", value: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
         ],
       },
       { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130 },
@@ -280,12 +280,12 @@ describe("validateThesisDecision — horizon conditionals", () => {
 
 describe("validateThesisDecision — trigger action-set by position state", () => {
   const enterTrigger = {
-    predicate: { kind: "PRICE_ABOVE" as const, level: 100 },
+    predicate: { watch: "price", is: "above", value: 100 } as const,
     action: "ENTER" as const,
     rationale: "breakout",
   };
   const exitTrigger = {
-    predicate: { kind: "PRICE_BELOW" as const, level: 90 },
+    predicate: { watch: "price", is: "below", value: 90 } as const,
     action: "EXIT" as const,
     rationale: "stop",
   };
@@ -314,7 +314,7 @@ describe("validateThesisDecision — trigger action-set by position state", () =
         add_triggers: [
           exitTrigger,
           {
-            predicate: { kind: "REVIEW_CADENCE" as const, days: 7 },
+            predicate: { watch: "repeat", value: 7 },
             action: "REVIEW" as const,
             rationale: "scheduled hygiene",
           },
@@ -346,7 +346,7 @@ describe("validateThesisDecision — trigger action-set by position state", () =
 
   it("refresh: a level edit without a rationale is refused in the loop", () => {
     const v = validateThesisDecision(
-      { ...validLong, edit_triggers: [{ id: "floor", level: 95 }] },
+      { ...validLong, edit_triggers: [{ id: "floor", value: 95 }] },
       { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
     );
     expect(v.ok).toBe(false);
@@ -378,7 +378,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
         rationale: "No edge at current prices; keep an eye on the reclaim level.",
         horizon: "TARGET",
         triggers: [
-          { predicate: { kind: "PRICE_ABOVE", level: 100 }, action: "ENTER", rationale: "x" },
+          { predicate: { watch: "price", is: "above", value: 100 }, action: "ENTER", rationale: "x" },
         ],
       },
       mintOpts,
@@ -406,7 +406,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
       {
         ...validLong,
         add_triggers: [
-          { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
+          { predicate: { watch: "repeat", value: 7 }, action: "REVIEW", rationale: "hygiene" },
         ],
       },
       { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90, existingTargetPrice: 130 },
@@ -442,13 +442,23 @@ describe("submit_thesis edit_triggers — the same form update_thesis saves (DAV
     expect(parsed.success).toBe(true);
   });
 
-  it("the model-facing edit form and the save's edit form read the same op the same way", () => {
-    // Two schemas by design now: the model's is strict-clean (no numeric
-    // ranges, so the grammar compiler accepts it), the save's carries the
-    // ranges. They must agree on every real op — a drift is a PRAX 09-11.
-    expect(thesisDecisionSchema.shape.edit_triggers.unwrap().element).toBe(modelEditTriggerOpSchema);
+  it("the writer and update_thesis edit a trigger with the one schema, and an old `days` reads as the value", () => {
+    // Two hand-written copies drifted once (PRAX 09-11); there is one now.
+    expect(thesisDecisionSchema.shape.edit_triggers.unwrap().element).toBe(editTriggerOpSchema);
     const op = { id: PRAX_0911_EDIT.id, action: "REVIEW", days: 7, rationale: "Weekly into the PDUFA.", cooldown_days: 7 };
-    expect(modelEditTriggerOpSchema.parse(op)).toEqual(editTriggerOpSchema.parse(op));
-    expect(modelEditTriggerOpSchema.safeParse(PRAX_0911_EDIT).success).toBe(false);
+    const parsed = editTriggerOpSchema.parse(op);
+    expect(parsed).toMatchObject({ id: PRAX_0911_EDIT.id, action: "REVIEW", rationale: "Weekly into the PDUFA.", cooldown_days: 7 });
+    expect(editNumber(parsed)).toEqual({ value: 7, unit: "days" });
+  });
+});
+
+describe("submit_thesis carries the trigger once", () => {
+  it("triggers and add_triggers point at one definition, so the measures guide appears one time", () => {
+    const json = JSON.stringify(zodSchema(thesisDecisionSchema).jsonSchema);
+    expect(json.split("Measures: price").length - 1).toBe(1);
+    expect(json.split('"$ref":"#/definitions/Trigger"').length - 1).toBe(2);
+    // The condition, with its lists and settings, is defined once too.
+    expect(json.split('"sma150"').length - 1).toBe(2); // once as a line, once as what a move is measured from
+    expect(json.split('"Condition":{').length - 1).toBe(1);
   });
 });

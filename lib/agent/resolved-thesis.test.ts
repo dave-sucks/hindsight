@@ -107,7 +107,7 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     const enterTrigger: Trigger = {
       id: "trg_promoted_enter",
       action: "ENTER",
-      predicate: { kind: "PRICE_ABOVE", level: 92.5 },
+      predicate: { watch: "price", is: "above", value: 92.5 },
       cooldownDays: 1,
       rationale: "Breakout confirm.",
     };
@@ -168,7 +168,7 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     const enterTrigger: Trigger = {
       id: "trg_test_enter",
       action: "ENTER",
-      predicate: { kind: "PRICE_ABOVE", level: 92.5 },
+      predicate: { watch: "price", is: "above", value: 92.5 },
       cooldownDays: 1,
       rationale: "Breakout confirm.",
     };
@@ -179,14 +179,14 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     });
     expect(r.actionability).toBe("ENTER_NOW");
     expect(r.triggerState).toBe("ENTER_FIRED");
-    expect(r.triggerDetail).toMatch(/PRICE_ABOVE 92.5/);
+    expect(r.triggerDetail).toMatch(/above \$92\.50 \(now \$94\.00/);
   });
 
   it("WAIT_FOR_TRIGGER when ENTER trigger has not fired (price below threshold)", () => {
     const enterTrigger: Trigger = {
       id: "trg_test_enter",
       action: "ENTER",
-      predicate: { kind: "PRICE_ABOVE", level: 92.5 },
+      predicate: { watch: "price", is: "above", value: 92.5 },
       cooldownDays: 1,
       rationale: "Breakout confirm.",
     };
@@ -197,7 +197,7 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     });
     expect(r.actionability).toBe("WAIT_FOR_TRIGGER");
     expect(r.triggerState).toBe("ENTER_WAITING");
-    expect(r.triggerDetail).toMatch(/PRICE_ABOVE 92.5 \(cur 90\.00, -2\.7%\)/);
+    expect(r.triggerDetail).toBe("above $92.50 (now $90.00, -2.7%)");
   });
 
   it("a buy level sitting ON the price is NOT an instruction to buy", () => {
@@ -260,7 +260,7 @@ describe("buildResolvedEnvelope — ladder-health block (Game Plan PR-B)", () =>
   const floorExit: Trigger = {
     id: "trg_floor",
     action: "EXIT",
-    predicate: { kind: "PRICE_BELOW", level: 65 },
+    predicate: { watch: "price", is: "below", value: 65 },
     cooldownDays: 0,
     rationale: "day-one stop",
   };

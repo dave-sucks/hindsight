@@ -4,16 +4,13 @@
  * levels and the ratchet must all agree on that.
  */
 
-import { trailFireLevel } from "./trail";
+import { trailFireLevel, trailOf } from "./trail";
 import { evaluateTrigger, type EvaluationContext } from "./evaluate";
 import { protectiveRatchetViolations } from "./ratchet";
-import type { Trigger, TriggerPredicate } from "./types";
+import type { Trigger } from "./types";
+import type { Condition, When } from "@/lib/agent/triggers/condition";
 
-const armed12: Extract<TriggerPredicate, { kind: "TRAILING_FROM_HIGH" }> = {
-  kind: "TRAILING_FROM_HIGH",
-  pct: 12,
-  armAtGainPct: 10,
-};
+const armed12: Condition = { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10 } };
 
 const ctx = (price: number, peak: number): EvaluationContext => ({
   thesis: { createdAt: new Date("2026-09-01"), direction: "LONG" },
@@ -24,17 +21,17 @@ const ctx = (price: number, peak: number): EvaluationContext => ({
 
 describe("trailFireLevel", () => {
   it("has no level before the peak clears the arming gain", () => {
-    expect(trailFireLevel(armed12, { peak: 109, avgCost: 100, isLong: true })).toBeNull();
+    expect(trailFireLevel(trailOf(armed12), { peak: 109, avgCost: 100, isLong: true })).toBeNull();
   });
   it("draws the line once armed", () => {
-    expect(trailFireLevel(armed12, { peak: 120, avgCost: 100, isLong: true })).toBeCloseTo(105.6);
+    expect(trailFireLevel(trailOf(armed12), { peak: 120, avgCost: 100, isLong: true })).toBeCloseTo(105.6);
   });
   it("an unarmed-by-design trail (no armAtGainPct) is live from the first peak", () => {
-    expect(trailFireLevel({ kind: "TRAILING_FROM_HIGH", pct: 8 }, { peak: 101, isLong: true })).toBeCloseTo(92.92);
+    expect(trailFireLevel(trailOf({ watch: "move", is: "below", value: 8, variable: "peak" }), { peak: 101, isLong: true })).toBeCloseTo(92.92);
   });
   it("SHORT arms on the low-water mark", () => {
-    expect(trailFireLevel(armed12, { peak: 91, avgCost: 100, isLong: false })).toBeNull();
-    expect(trailFireLevel(armed12, { peak: 85, avgCost: 100, isLong: false })).toBeCloseTo(95.2);
+    expect(trailFireLevel(trailOf(armed12), { peak: 91, avgCost: 100, isLong: false })).toBeNull();
+    expect(trailFireLevel(trailOf(armed12), { peak: 85, avgCost: 100, isLong: false })).toBeCloseTo(95.2);
   });
 });
 
@@ -51,12 +48,12 @@ describe("evaluateTrigger — the armed trail", () => {
 });
 
 describe("the ratchet — arming later is a loosening", () => {
-  const rung = (p: TriggerPredicate): Trigger => ({ id: "t", predicate: p, action: "EXIT", rationale: "trail" });
+  const rung = (p: When): Trigger => ({ id: "t", predicate: p, action: "EXIT", rationale: "trail" });
   it("raising armAtGainPct is refused for an agent", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
       before: [rung(armed12)],
-      after: [rung({ ...armed12, armAtGainPct: 20 })],
+      after: [rung({ ...armed12, settings: { startOnceUpPct: 20 } })],
       inherited: [],
     });
     expect(v.map((x) => x.reason)).toEqual(["LOWERED"]);
@@ -64,7 +61,7 @@ describe("the ratchet — arming later is a loosening", () => {
   it("adding an arm to a live trail is refused for an agent", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
-      before: [rung({ kind: "TRAILING_FROM_HIGH", pct: 12 })],
+      before: [rung({ watch: "move", is: "below", value: 12, variable: "peak" })],
       after: [rung(armed12)],
       inherited: [],
     });

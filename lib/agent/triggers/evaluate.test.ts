@@ -8,8 +8,9 @@
 import { evaluateTrigger, shouldFire } from "./evaluate";
 import type { EvaluationContext } from "./evaluate";
 import type { EarningsReport } from "./earnings";
-import type { Trigger, TriggerPredicate } from "./types";
+import type { Trigger } from "./types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
+import type { When } from "@/lib/agent/triggers/condition";
 
 const NOW = new Date("2026-04-29T14:30:00Z");
 const THESIS_CREATED = new Date("2026-04-01T00:00:00Z"); // 28 days before NOW
@@ -26,7 +27,7 @@ describe("evaluateTrigger", () => {
   // ── Price-based ─────────────────────────────────────────────────────
 
   describe("PRICE_ABOVE", () => {
-    const predicate: TriggerPredicate = { kind: "PRICE_ABOVE", level: 100 };
+    const predicate: When = { watch: "price", is: "above", value: 100 };
 
     it("fires when latestQuote.price > level", () => {
       const ctx = makeCtx({ latestQuote: { price: 105, changePct: 5 } });
@@ -44,7 +45,7 @@ describe("evaluateTrigger", () => {
   });
 
   describe("PRICE_BELOW", () => {
-    const predicate: TriggerPredicate = { kind: "PRICE_BELOW", level: 100 };
+    const predicate: When = { watch: "price", is: "below", value: 100 };
 
     it("fires when latestQuote.price < level", () => {
       const ctx = makeCtx({ latestQuote: { price: 95, changePct: -5 } });
@@ -75,45 +76,25 @@ describe("evaluateTrigger", () => {
     //    candle history. This is the path the cron actually exercises.
     describe("1D daily move via changePct (no recentPrices)", () => {
       it("UP fires when the day's change ≥ pct", () => {
-        const predicate: TriggerPredicate = {
-          kind: "PRICE_MOVE_PCT",
-          pct: 5,
-          direction: "UP",
-          window: "1D",
-        };
+        const predicate: When = { watch: "move", is: "above", value: 5, variable: "prev_close" };
         const ctx = makeCtx({ latestQuote: { price: 105, changePct: 5.2 } });
         expect(evaluateTrigger(predicate, ctx)).toBe(true);
       });
 
       it("UP does not fire when the day's change is below pct", () => {
-        const predicate: TriggerPredicate = {
-          kind: "PRICE_MOVE_PCT",
-          pct: 5,
-          direction: "UP",
-          window: "1D",
-        };
+        const predicate: When = { watch: "move", is: "above", value: 5, variable: "prev_close" };
         const ctx = makeCtx({ latestQuote: { price: 103, changePct: 3 } });
         expect(evaluateTrigger(predicate, ctx)).toBe(false);
       });
 
       it("DOWN fires when the day's change ≤ -pct", () => {
-        const predicate: TriggerPredicate = {
-          kind: "PRICE_MOVE_PCT",
-          pct: 5,
-          direction: "DOWN",
-          window: "1D",
-        };
+        const predicate: When = { watch: "move", is: "below", value: 5, variable: "prev_close" };
         const ctx = makeCtx({ latestQuote: { price: 94, changePct: -6 } });
         expect(evaluateTrigger(predicate, ctx)).toBe(true);
       });
 
       it("DOWN does not fire on an UP day", () => {
-        const predicate: TriggerPredicate = {
-          kind: "PRICE_MOVE_PCT",
-          pct: 5,
-          direction: "DOWN",
-          window: "1D",
-        };
+        const predicate: When = { watch: "move", is: "below", value: 5, variable: "prev_close" };
         const ctx = makeCtx({ latestQuote: { price: 106, changePct: 6 } });
         expect(evaluateTrigger(predicate, ctx)).toBe(false);
       });
@@ -121,16 +102,8 @@ describe("evaluateTrigger", () => {
   });
 
   describe("GAIN_FROM_ENTRY", () => {
-    const up10: TriggerPredicate = {
-      kind: "GAIN_FROM_ENTRY",
-      pct: 10,
-      direction: "UP",
-    };
-    const down10: TriggerPredicate = {
-      kind: "GAIN_FROM_ENTRY",
-      pct: 10,
-      direction: "DOWN",
-    };
+    const up10: When = { watch: "move", is: "above", value: 10, variable: "entry" };
+    const down10: When = { watch: "move", is: "below", value: 10, variable: "entry" };
 
     it("UP fires when cumulative gain from avgCost reaches pct (LONG)", () => {
       const ctx = makeCtx({
@@ -212,7 +185,7 @@ describe("evaluateTrigger", () => {
   });
 
   describe("TRAILING_FROM_HIGH", () => {
-    const trail8: TriggerPredicate = { kind: "TRAILING_FROM_HIGH", pct: 8 };
+    const trail8: When = { watch: "move", is: "below", value: 8, variable: "peak" };
 
     it("LONG fires when price gives back pct from the peak", () => {
       // peak 120 → trail 110.4
@@ -293,27 +266,27 @@ describe("evaluateTrigger", () => {
 
   describe("VS_SMA", () => {
     it("fires off the snapshot's average — the kind that never had one", () => {
-      const p: TriggerPredicate = { kind: "VS_SMA", period: 50, direction: "ABOVE" };
+      const p: When = { watch: "price", is: "above", variable: "sma50" };
       expect(evaluateTrigger(p, at(140))).toBe(true);
       expect(evaluateTrigger(p, at(130))).toBe(false);
     });
 
     it("reads BELOW the 200-day", () => {
-      const p: TriggerPredicate = { kind: "VS_SMA", period: 200, direction: "BELOW" };
+      const p: When = { watch: "price", is: "below", variable: "sma200" };
       expect(evaluateTrigger(p, at(115))).toBe(true);
     });
 
     it("is false with no snapshot, or no average for the period", () => {
-      const p: TriggerPredicate = { kind: "VS_SMA", period: 150, direction: "ABOVE" };
+      const p: When = { watch: "price", is: "above", variable: "sma150" };
       expect(evaluateTrigger(p, at(200))).toBe(false);
       expect(
-        evaluateTrigger({ kind: "VS_SMA", period: 50, direction: "ABOVE" }, makeCtx({ latestQuote: { price: 200, changePct: 0 } })),
+        evaluateTrigger({ watch: "price", is: "above", variable: "sma50" }, makeCtx({ latestQuote: { price: 200, changePct: 0 } })),
       ).toBe(false);
     });
   });
 
   describe("NEAR_SMA", () => {
-    const p: TriggerPredicate = { kind: "NEAR_SMA", period: 50, withinPct: 2 };
+    const p: When = { watch: "move", is: "near", value: 2, variable: "sma50" };
     it("fires within the band on either side", () => {
       expect(evaluateTrigger(p, at(136))).toBe(true);
       expect(evaluateTrigger(p, at(132))).toBe(true);
@@ -324,7 +297,7 @@ describe("evaluateTrigger", () => {
   });
 
   describe("VOLUME_RATIO", () => {
-    const p: TriggerPredicate = { kind: "VOLUME_RATIO", min: 1.5 };
+    const p: When = { watch: "volume", value: 1.5 };
     it("fires on today's volume ÷ the 20-day average", () => {
       expect(evaluateTrigger(p, at(150, { today: { volume: 1_600_000 } }))).toBe(true);
       expect(evaluateTrigger(p, at(150, { today: { volume: 1_400_000 } }))).toBe(false);
@@ -336,19 +309,19 @@ describe("evaluateTrigger", () => {
 
   describe("NEW_HIGH", () => {
     it("20D: above the prior 20 sessions' high", () => {
-      const p: TriggerPredicate = { kind: "NEW_HIGH", window: "20D" };
+      const p: When = { watch: "price", is: "above", variable: "high20" };
       expect(evaluateTrigger(p, at(161))).toBe(true);
       expect(evaluateTrigger(p, at(159))).toBe(false);
     });
     it("52W: above the 52-week high", () => {
-      const p: TriggerPredicate = { kind: "NEW_HIGH", window: "52W" };
+      const p: When = { watch: "price", is: "above", variable: "high52" };
       expect(evaluateTrigger(p, at(181))).toBe(true);
       expect(evaluateTrigger(p, at(170))).toBe(false);
     });
   });
 
   describe("PCT_FROM_52W_HIGH", () => {
-    const p: TriggerPredicate = { kind: "PCT_FROM_52W_HIGH", max: 5 };
+    const p: When = { watch: "move", is: "near", value: 5, variable: "high52" };
     it("fires within 5% of the high, and above it", () => {
       expect(evaluateTrigger(p, at(172))).toBe(true);
       expect(evaluateTrigger(p, at(190))).toBe(true);
@@ -360,60 +333,60 @@ describe("evaluateTrigger", () => {
 
   describe("RS_VS_SPY", () => {
     it("reads the window's excess return", () => {
-      expect(evaluateTrigger({ kind: "RS_VS_SPY", window: "3M", min: 10 }, at(150))).toBe(true);
-      expect(evaluateTrigger({ kind: "RS_VS_SPY", window: "6M", min: 0 }, at(150))).toBe(false);
-      expect(evaluateTrigger({ kind: "RS_VS_SPY", window: "6M", min: -5 }, at(150))).toBe(true);
+      expect(evaluateTrigger({ watch: "strength", value: 10, settings: { window: "3M" } }, at(150))).toBe(true);
+      expect(evaluateTrigger({ watch: "strength", value: 0, settings: { window: "6M" } }, at(150))).toBe(false);
+      expect(evaluateTrigger({ watch: "strength", value: -5, settings: { window: "6M" } }, at(150))).toBe(true);
     });
   });
 
   describe("GAP_UP", () => {
     it("fires on today's gap: open vs prior close, on volume", () => {
-      const p: TriggerPredicate = { kind: "GAP_UP", minPct: 8, minVolRatio: 3 };
+      const p: When = { watch: "gap", value: 8, settings: { volume: 3 } };
       expect(evaluateTrigger(p, at(175, { today: { open: 172, volume: 3_500_000 } }))).toBe(true);
       expect(evaluateTrigger(p, at(175, { today: { open: 172, volume: 2_000_000 } }))).toBe(false);
       expect(evaluateTrigger(p, at(165, { today: { open: 163, volume: 5_000_000 } }))).toBe(false);
     });
     it("withinDays reaches back to a recent gap in the snapshot", () => {
-      expect(evaluateTrigger({ kind: "GAP_UP", minPct: 8, minVolRatio: 3, withinDays: 3 }, at(155))).toBe(true);
-      expect(evaluateTrigger({ kind: "GAP_UP", minPct: 8, minVolRatio: 3, withinDays: 2 }, at(155))).toBe(false);
-      expect(evaluateTrigger({ kind: "GAP_UP", minPct: 10, minVolRatio: 3, withinDays: 3 }, at(155))).toBe(false);
+      expect(evaluateTrigger({ watch: "gap", value: 8, settings: { volume: 3, withinDays: 3 } }, at(155))).toBe(true);
+      expect(evaluateTrigger({ watch: "gap", value: 8, settings: { volume: 3, withinDays: 2 } }, at(155))).toBe(false);
+      expect(evaluateTrigger({ watch: "gap", value: 10, settings: { volume: 3, withinDays: 3 } }, at(155))).toBe(false);
     });
   });
 
   describe("RSI — computed, not stubbed", () => {
     it("RSI(14) is high after a straight climb", () => {
-      expect(evaluateTrigger({ kind: "RSI", threshold: 70, direction: "ABOVE" }, at(160))).toBe(true);
+      expect(evaluateTrigger({ watch: "rsi", is: "above", value: 70 }, at(160))).toBe(true);
     });
     it("RSI(2) drops under 10 on a sharp two-day flush", () => {
       const flush = { ...snap, closes: [...closes.slice(0, 58), 150, 140] };
       expect(
-        evaluateTrigger({ kind: "RSI", period: 2, threshold: 10, direction: "BELOW" }, at(135, { indicators: flush })),
+        evaluateTrigger({ watch: "rsi", is: "below", value: 10, settings: { period: 2 } }, at(135, { indicators: flush })),
       ).toBe(true);
     });
     it("is false with no snapshot", () => {
-      expect(evaluateTrigger({ kind: "RSI", threshold: 30, direction: "BELOW" }, makeCtx({ latestQuote: { price: 1, changePct: 0 } }))).toBe(false);
+      expect(evaluateTrigger({ watch: "rsi", is: "below", value: 30 }, makeCtx({ latestQuote: { price: 1, changePct: 0 } }))).toBe(false);
     });
   });
 
   describe("PRICE_MOVE_PCT 5D / 20D — off the snapshot's closes", () => {
     it("5D: the live price vs the close five sessions back", () => {
       // closes[55] = 155 → 170 is +9.7%.
-      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 9, direction: "UP", window: "5D" }, at(170))).toBe(true);
-      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 10, direction: "UP", window: "5D" }, at(170))).toBe(false);
+      expect(evaluateTrigger({ watch: "move", is: "above", value: 9, variable: "close_5d" }, at(170))).toBe(true);
+      expect(evaluateTrigger({ watch: "move", is: "above", value: 10, variable: "close_5d" }, at(170))).toBe(false);
     });
     it("20D DOWN", () => {
       // closes[40] = 140 → 126 is −10%.
-      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 10, direction: "DOWN", window: "20D" }, at(126))).toBe(true);
+      expect(evaluateTrigger({ watch: "move", is: "below", value: 10, variable: "close_20d" }, at(126))).toBe(true);
     });
     it("is false with no snapshot (1D still reads the quote)", () => {
       const ctx = makeCtx({ latestQuote: { price: 170, changePct: 3 } });
-      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 1, direction: "UP", window: "5D" }, ctx)).toBe(false);
-      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 1, direction: "UP", window: "1D" }, ctx)).toBe(true);
+      expect(evaluateTrigger({ watch: "move", is: "above", value: 1, variable: "close_5d" }, ctx)).toBe(false);
+      expect(evaluateTrigger({ watch: "move", is: "above", value: 1, variable: "prev_close" }, ctx)).toBe(true);
     });
   });
 
   describe("PRICE_ABOVE basis: close", () => {
-    const p: TriggerPredicate = { kind: "PRICE_ABOVE", level: 160, basis: "close" };
+    const p: When = { watch: "price", is: "above", value: 160, settings: { close: true } };
     it("never fires on an intraday pass", () => {
       expect(evaluateTrigger(p, at(165, { session: "INTRADAY" }))).toBe(false);
     });
@@ -427,13 +400,7 @@ describe("evaluateTrigger", () => {
   });
 
   describe("composites of the new kinds", () => {
-    const breakout: TriggerPredicate = {
-      kind: "AND",
-      predicates: [
-        { kind: "PRICE_ABOVE", level: 160, basis: "close" },
-        { kind: "VOLUME_RATIO", min: 1.5 },
-      ],
-    };
+    const breakout: When = { match: "all", conditions: [{ watch: "price", is: "above", value: 160, settings: { close: true } }, { watch: "volume", value: 1.5 }] };
     it("the D1 breakout fires at the close on volume, not on the intraday cross", () => {
       const heavy = { today: { volume: 2_000_000 } };
       expect(evaluateTrigger(breakout, at(165, { ...heavy, session: "INTRADAY" }))).toBe(false);
@@ -441,13 +408,7 @@ describe("evaluateTrigger", () => {
       expect(evaluateTrigger(breakout, at(165, { today: { volume: 900_000 }, session: "CLOSE" }))).toBe(false);
     });
     it("the D5 pullback: near the 50-day OR near the 20-day", () => {
-      const pullback: TriggerPredicate = {
-        kind: "OR",
-        predicates: [
-          { kind: "NEAR_SMA", period: 20, withinPct: 2 },
-          { kind: "NEAR_SMA", period: 50, withinPct: 2 },
-        ],
-      };
+      const pullback: When = { match: "any", conditions: [{ watch: "move", is: "near", value: 2, variable: "sma20" }, { watch: "move", is: "near", value: 2, variable: "sma50" }] };
       expect(evaluateTrigger(pullback, at(148))).toBe(true);
       expect(evaluateTrigger(pullback, at(135))).toBe(true);
       expect(evaluateTrigger(pullback, at(142))).toBe(false);
@@ -480,7 +441,7 @@ describe("evaluateTrigger", () => {
     }
 
     it("fires EARNINGS_BEAT off a reported beat", () => {
-      const predicate: TriggerPredicate = { kind: "EARNINGS_BEAT" };
+      const predicate: When = { watch: "surprise", is: "beat", value: 0 };
       expect(evaluateTrigger(predicate, makeCtx({ earnings: report() }))).toBe(
         true,
       );
@@ -489,40 +450,40 @@ describe("evaluateTrigger", () => {
     it("respects minSurprisePct on the calendar path", () => {
       const ctx = makeCtx({ earnings: report({ surprisePct: 3.8159 }) });
       expect(
-        evaluateTrigger({ kind: "EARNINGS_BEAT", minSurprisePct: 3 }, ctx),
+        evaluateTrigger({ watch: "surprise", is: "beat", value: 3 }, ctx),
       ).toBe(true);
       expect(
-        evaluateTrigger({ kind: "EARNINGS_BEAT", minSurprisePct: 5 }, ctx),
+        evaluateTrigger({ watch: "surprise", is: "beat", value: 5 }, ctx),
       ).toBe(false);
     });
 
     it("does not fire EARNINGS_BEAT on a reported miss", () => {
       const ctx = makeCtx({ earnings: report({ surprisePct: -4 }) });
-      expect(evaluateTrigger({ kind: "EARNINGS_BEAT" }, ctx)).toBe(false);
-      expect(evaluateTrigger({ kind: "EARNINGS_MISS" }, ctx)).toBe(true);
+      expect(evaluateTrigger({ watch: "surprise", is: "beat", value: 0 }, ctx)).toBe(false);
+      expect(evaluateTrigger({ watch: "surprise", is: "miss", value: 0 }, ctx)).toBe(true);
     });
 
     it("compares EARNINGS_MISS thresholds on the absolute surprise", () => {
       const ctx = makeCtx({ earnings: report({ surprisePct: -5 }) });
       expect(
-        evaluateTrigger({ kind: "EARNINGS_MISS", minSurprisePct: 3 }, ctx),
+        evaluateTrigger({ watch: "surprise", is: "miss", value: 3 }, ctx),
       ).toBe(true);
       expect(
-        evaluateTrigger({ kind: "EARNINGS_MISS", minSurprisePct: 8 }, ctx),
+        evaluateTrigger({ watch: "surprise", is: "miss", value: 8 }, ctx),
       ).toBe(false);
     });
 
     it("does not fire when the report has no computable surprise", () => {
       const ctx = makeCtx({ earnings: report({ surprisePct: null }) });
-      expect(evaluateTrigger({ kind: "EARNINGS_BEAT" }, ctx)).toBe(false);
-      expect(evaluateTrigger({ kind: "EARNINGS_MISS" }, ctx)).toBe(false);
+      expect(evaluateTrigger({ watch: "surprise", is: "beat", value: 0 }, ctx)).toBe(false);
+      expect(evaluateTrigger({ watch: "surprise", is: "miss", value: 0 }, ctx)).toBe(false);
     });
 
     it("does not fire when nothing reported", () => {
       expect(
-        evaluateTrigger({ kind: "EARNINGS_BEAT" }, makeCtx({ earnings: null })),
+        evaluateTrigger({ watch: "surprise", is: "beat", value: 0 }, makeCtx({ earnings: null })),
       ).toBe(false);
-      expect(evaluateTrigger({ kind: "EARNINGS_BEAT" }, makeCtx())).toBe(false);
+      expect(evaluateTrigger({ watch: "surprise", is: "beat", value: 0 }, makeCtx())).toBe(false);
     });
 
     // ── The heads-up BEFORE a report ─────────────────────────────────
@@ -539,26 +500,26 @@ describe("evaluateTrigger", () => {
 
       it("fires when the report is inside the window", () => {
         // 3 days out, window 3 → fires. Window 2 → not yet.
-        expect(evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 3 }, ctxAt(NOW_SEP_27))).toBe(true);
-        expect(evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 2 }, ctxAt(NOW_SEP_27))).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "before", value: 3 }, ctxAt(NOW_SEP_27))).toBe(true);
+        expect(evaluateTrigger({ watch: "report", is: "before", value: 2 }, ctxAt(NOW_SEP_27))).toBe(false);
       });
 
       it("fires on the report day itself", () => {
         expect(
-          evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 1 }, ctxAt(new Date("2026-09-30T15:00:00Z"))),
+          evaluateTrigger({ watch: "report", is: "before", value: 1 }, ctxAt(new Date("2026-09-30T15:00:00Z"))),
         ).toBe(true);
       });
 
       it("does not fire once the date has passed", () => {
         expect(
-          evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 5 }, ctxAt(new Date("2026-10-02T15:00:00Z"))),
+          evaluateTrigger({ watch: "report", is: "before", value: 5 }, ctxAt(new Date("2026-10-02T15:00:00Z"))),
         ).toBe(false);
       });
 
       it("does not fire with no scheduled report in the context", () => {
-        expect(evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 7 }, makeCtx({ now: NOW_SEP_27 }))).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "before", value: 7 }, makeCtx({ now: NOW_SEP_27 }))).toBe(false);
         expect(
-          evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 7 }, makeCtx({ now: NOW_SEP_27, upcomingEarnings: null })),
+          evaluateTrigger({ watch: "report", is: "before", value: 7 }, makeCtx({ now: NOW_SEP_27, upcomingEarnings: null })),
         ).toBe(false);
       });
 
@@ -566,7 +527,7 @@ describe("evaluateTrigger", () => {
         // Last quarter's beat is in `earnings`; the next report is in
         // `upcomingEarnings`. The heads-up reads only the latter.
         const ctx = makeCtx({ earnings: report({ surprisePct: 8 }), upcomingEarnings: null, now: NOW_SEP_27 });
-        expect(evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 7 }, ctx)).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "before", value: 7 }, ctx)).toBe(false);
       });
     });
 
@@ -576,33 +537,27 @@ describe("evaluateTrigger", () => {
       const at = (iso: string) => makeCtx({ earnings: reported, now: new Date(`${iso}T15:00:00Z`) });
 
       it("fires inside the window, counting the report day as 0", () => {
-        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 1, max: 3 }, at("2026-08-27"))).toBe(true);
-        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 1, max: 3 }, at("2026-08-29"))).toBe(true);
-        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 0, max: 0 }, at("2026-08-26"))).toBe(true);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-27"))).toBe(true);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-29"))).toBe(true);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 0, settings: { fromDay: 0 } }, at("2026-08-26"))).toBe(true);
       });
 
       it("does not fire before min or after max", () => {
-        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 1, max: 3 }, at("2026-08-26"))).toBe(false);
-        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 1, max: 3 }, at("2026-08-30"))).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-26"))).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-30"))).toBe(false);
       });
 
       it("does not fire on an upcoming row or with nothing reported", () => {
         const upcoming = { ...report({ reportDate: "2026-09-30" }), epsActual: null, surprisePct: null };
-        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 0, max: 3 }, makeCtx({ earnings: upcoming, now: new Date("2026-09-30T15:00:00Z") }))).toBe(false);
-        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 0, max: 3 }, makeCtx())).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 0 } }, makeCtx({ earnings: upcoming, now: new Date("2026-09-30T15:00:00Z") }))).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 0 } }, makeCtx())).toBe(false);
       });
     });
 
     it("composes with price predicates", () => {
       // "Missed AND broke the floor" — the composite the cron path can now
       // evaluate end-to-end, because both halves need no signal.
-      const predicate: TriggerPredicate = {
-        kind: "AND",
-        predicates: [
-          { kind: "EARNINGS_MISS", minSurprisePct: 3 },
-          { kind: "PRICE_BELOW", level: 100 },
-        ],
-      };
+      const predicate: When = { match: "all", conditions: [{ watch: "surprise", is: "miss", value: 3 }, { watch: "price", is: "below", value: 100 }] };
       expect(
         evaluateTrigger(
           predicate,
@@ -631,7 +586,7 @@ describe("evaluateTrigger", () => {
     // Counted from the last ACTUAL review, not from a date someone typed.
     // The old REVIEW_DATE_HIT read a stored review-date column, which was a
     // second store of the same idea and the one nothing fired on.
-    const cadence: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 7 };
+    const cadence: When = { watch: "repeat", value: 7 };
 
     it("fires once the cadence has elapsed since the last review", () => {
       const ctx = makeCtx({
@@ -672,7 +627,7 @@ describe("evaluateTrigger", () => {
     });
 
     it("honours a tighter cadence from a level above", () => {
-      const daily: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 1 };
+      const daily: When = { watch: "repeat", value: 1 };
       const ctx = makeCtx({
         thesis: {
           createdAt: THESIS_CREATED,
@@ -688,25 +643,13 @@ describe("evaluateTrigger", () => {
 
   describe("AND", () => {
     it("fires when all sub-predicates fire", () => {
-      const predicate: TriggerPredicate = {
-        kind: "AND",
-        predicates: [
-          { kind: "PRICE_ABOVE", level: 100 },
-          { kind: "REVIEW_CADENCE", days: 7 },
-        ],
-      };
+      const predicate: When = { match: "all", conditions: [{ watch: "price", is: "above", value: 100 }, { watch: "repeat", value: 7 }] };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
       expect(evaluateTrigger(predicate, ctx)).toBe(true);
     });
 
     it("does not fire when any sub-predicate is false", () => {
-      const predicate: TriggerPredicate = {
-        kind: "AND",
-        predicates: [
-          { kind: "PRICE_ABOVE", level: 100 },
-          { kind: "REVIEW_CADENCE", days: 90 }, // 28d < 90d → not due
-        ],
-      };
+      const predicate: When = { match: "all", conditions: [{ watch: "price", is: "above", value: 100 }, { watch: "repeat", value: 90 }] };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
       expect(evaluateTrigger(predicate, ctx)).toBe(false);
     });
@@ -714,43 +657,19 @@ describe("evaluateTrigger", () => {
 
   describe("OR", () => {
     it("fires when any sub-predicate fires", () => {
-      const predicate: TriggerPredicate = {
-        kind: "OR",
-        predicates: [
-          { kind: "PRICE_ABOVE", level: 200 }, // false (price 110)
-          { kind: "REVIEW_CADENCE", days: 7 }, // true
-        ],
-      };
+      const predicate: When = { match: "any", conditions: [{ watch: "price", is: "above", value: 200 }, { watch: "repeat", value: 7 }] };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
       expect(evaluateTrigger(predicate, ctx)).toBe(true);
     });
 
     it("does not fire when all sub-predicates are false", () => {
-      const predicate: TriggerPredicate = {
-        kind: "OR",
-        predicates: [
-          { kind: "PRICE_ABOVE", level: 200 },
-          { kind: "REVIEW_CADENCE", days: 90 },
-        ],
-      };
+      const predicate: When = { match: "any", conditions: [{ watch: "price", is: "above", value: 200 }, { watch: "repeat", value: 90 }] };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
       expect(evaluateTrigger(predicate, ctx)).toBe(false);
     });
 
     it("recurses through nested AND/OR", () => {
-      const predicate: TriggerPredicate = {
-        kind: "OR",
-        predicates: [
-          {
-            kind: "AND",
-            predicates: [
-              { kind: "PRICE_ABOVE", level: 200 }, // false
-              { kind: "REVIEW_CADENCE", days: 7 }, // true → AND false
-            ],
-          },
-          { kind: "PRICE_BELOW", level: 200 }, // true → OR true
-        ],
-      };
+      const predicate: When = { match: "any", conditions: [{ match: "all", conditions: [{ watch: "price", is: "above", value: 200 }, { watch: "repeat", value: 7 }] }, { watch: "price", is: "below", value: 200 }] };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
       expect(evaluateTrigger(predicate, ctx)).toBe(true);
     });
@@ -760,7 +679,7 @@ describe("evaluateTrigger", () => {
 describe("shouldFire", () => {
   const baseTrigger: Trigger = {
     id: "trig_test",
-    predicate: { kind: "PRICE_ABOVE", level: 100 },
+    predicate: { watch: "price", is: "above", value: 100 },
     action: "REVIEW",
     rationale: "test",
   };
@@ -943,14 +862,14 @@ describe("shouldFire", () => {
 describe("shouldFire — a buy fires on the crossing, a sell is a standing order (DAV-229)", () => {
   const enterRung: Trigger = {
     id: "enter-1",
-    predicate: { kind: "PRICE_ABOVE", level: 128.47 },
+    predicate: { watch: "price", is: "above", value: 128.47 },
     action: "ENTER",
     rationale: "entry",
     cooldownDays: 1,
   };
   const exitRung: Trigger = {
     id: "exit-1",
-    predicate: { kind: "PRICE_BELOW", level: 400 },
+    predicate: { watch: "price", is: "below", value: 400 },
     action: "EXIT",
     rationale: "floor",
     cooldownDays: 1,
@@ -977,7 +896,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
   it("a close-basis ENTER crosses on the close pass: above today, not at yesterday's close", () => {
     const closeRung: Trigger = {
       ...enterRung,
-      predicate: { kind: "PRICE_ABOVE", level: 128.47, basis: "close" },
+      predicate: { watch: "price", is: "above", value: 128.47, settings: { close: true } },
     };
     const closePass = (price: number, prevClose: number): EvaluationContext => ({
       ...at(price, day1, prevClose),
@@ -1001,7 +920,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
   it("ENTER minted with the level already true fires only on a re-cross", () => {
     // TOST: buy above $35.15 written against a $35.16 tape. Day 1 the
     // prior close was under the level, so a crossing genuinely happened.
-    const tost: Trigger = { ...enterRung, predicate: { kind: "PRICE_ABOVE", level: 35.15 } };
+    const tost: Trigger = { ...enterRung, predicate: { watch: "price", is: "above", value: 35.15 } };
     expect(shouldFire(tost, at(35.16, day1, 34.9)).fires).toBe(true);
     // Day 2 it closed above and still sits above — silent, not asked again.
     expect(shouldFire(tost, at(35.4, day2, 35.16)).reason).toBe("no-crossing");
@@ -1013,7 +932,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
   it("a pullback ENTER mirrors: fires on the way down through the level", () => {
     const dip: Trigger = {
       ...enterRung,
-      predicate: { kind: "PRICE_BELOW", level: 203 },
+      predicate: { watch: "price", is: "below", value: 203 },
     };
     expect(shouldFire(dip, at(201, day1, 206)).fires).toBe(true);
     expect(shouldFire(dip, at(199, day2, 201)).reason).toBe("no-crossing");
@@ -1022,13 +941,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
   it("crossing applies inside a composite ENTER predicate", () => {
     const composite: Trigger = {
       ...enterRung,
-      predicate: {
-        kind: "AND",
-        predicates: [
-          { kind: "PRICE_ABOVE", level: 128.47 },
-          { kind: "PRICE_MOVE_PCT", pct: 1, direction: "UP", window: "1D" },
-        ],
-      },
+      predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: 128.47 }, { watch: "move", is: "above", value: 1, variable: "prev_close" }] },
     };
     const up = (price: number, prevClose: number): EvaluationContext => ({
       latestQuote: { price, changePct: 2, prevClose },
@@ -1043,7 +956,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
     // Nothing to cross: a time-based entry is true or it isn't.
     const timed: Trigger = {
       ...enterRung,
-      predicate: { kind: "REVIEW_CADENCE", days: 10 },
+      predicate: { watch: "repeat", value: 10 },
     };
     expect(shouldFire(timed, at(171, day1, 170)).fires).toBe(true);
   });
@@ -1081,7 +994,7 @@ describe("REVIEW_CADENCE — counting from the buy or the thesis's event date (o
   const AGIO_EVENT = new Date("2026-11-01T04:00:00.000Z");
 
   it("60 days after the buy: MU on 09-15 is day 60 — fires; on 09-14 it does not", () => {
-    const sixty: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 60, from: "BUY" };
+    const sixty: When = { watch: "from_date", is: "after", value: 60, variable: "buy" };
     const at = (iso: string) =>
       makeCtx({
         now: new Date(iso),
@@ -1093,12 +1006,12 @@ describe("REVIEW_CADENCE — counting from the buy or the thesis's event date (o
   });
 
   it("a count from the buy is false on a watch — it starts counting at the fill", () => {
-    const twenty: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 20, from: "BUY" };
+    const twenty: When = { watch: "from_date", is: "after", value: 20, variable: "buy" };
     expect(evaluateTrigger(twenty, makeCtx({ now: new Date("2026-09-16T00:00:00Z"), position: null }))).toBe(false);
   });
 
   it("3 days before the event: SRRK fires from 09-27 through the date, not before, not after", () => {
-    const before: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" };
+    const before: When = { watch: "from_date", is: "before", value: 3, variable: "event" };
     const at = (iso: string) =>
       makeCtx({ now: new Date(iso), thesis: { createdAt: THESIS_CREATED, catalystDate: SRRK_EVENT } });
     expect(evaluateTrigger(before, at("2026-09-26T14:00:00Z"))).toBe(false);
@@ -1108,7 +1021,7 @@ describe("REVIEW_CADENCE — counting from the buy or the thesis's event date (o
   });
 
   it("30 days after the event: AGIO fires on 12-01, not on 11-30", () => {
-    const after: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 30, from: "EVENT", side: "AFTER" };
+    const after: When = { watch: "from_date", is: "after", value: 30, variable: "event" };
     const at = (iso: string) =>
       makeCtx({ now: new Date(iso), thesis: { createdAt: THESIS_CREATED, catalystDate: AGIO_EVENT } });
     expect(evaluateTrigger(after, at("2026-11-30T14:00:00Z"))).toBe(false);
@@ -1116,9 +1029,9 @@ describe("REVIEW_CADENCE — counting from the buy or the thesis's event date (o
   });
 
   it("no event date on the thesis: an event count never fires; the review clock is untouched", () => {
-    const before: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" };
+    const before: When = { watch: "from_date", is: "before", value: 3, variable: "event" };
     expect(evaluateTrigger(before, makeCtx({ now: new Date("2026-09-28T14:00:00Z") }))).toBe(false);
-    const clock: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 7 };
+    const clock: When = { watch: "repeat", value: 7 };
     expect(
       evaluateTrigger(clock, makeCtx({ thesis: { createdAt: THESIS_CREATED, lastReviewedAt: new Date(NOW.getTime() - 8 * 86_400_000) } })),
     ).toBe(true);

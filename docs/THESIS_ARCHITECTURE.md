@@ -81,7 +81,7 @@ Every thesis carries a **trigger ladder** — a set of `(condition → action)` 
 - **Tactical run re-ladders on every fire.** A rung firing never changes a level by itself; the tactical run validates the move and then *re-earns the ladder* (raises the floor, arms the next milestone, refits the trail). This is the fix for the write-once failure: without it a holding runs up and the day-one floor never moves.
 - **Daily run is the auditor.** Every morning it reads `resolved.ladderHealth` and the `UNPROTECTED_GAIN` needsAction flag (a winner whose tightest floor lags its gain), and it must act or explicitly attest. `complete_run` warn-gates unprotected holdings so a no-op review can't quietly pass.
 
-**Standing minimums make protection automatic.** Every HOLDING auto-carries three code-stamped protection rungs — **+10% checkpoint REVIEW / 8% trail EXIT / −12% loser REVIEW** — plus ±7% scale rungs, stamped at mint AND re-seeded at the buy fill (`place-trade.ts` held-side re-seed). Two predicates carry the gain protection: `GAIN_FROM_ENTRY` (cumulative % vs `avgCost`) and `TRAILING_FROM_HIGH` (give-back off `Position.peakPrice`, ratcheting with no agent memory required). See [`TRIGGERS.md`](./TRIGGERS.md) §2a.
+**Standing minimums make protection automatic.** Every HOLDING auto-carries three code-stamped protection rungs — **+10% checkpoint REVIEW / 8% trail EXIT / −12% loser REVIEW** — plus ±7% scale rungs, stamped at mint AND re-seeded at the buy fill (`place-trade.ts` held-side re-seed). Two conditions carry the gain protection: the move from our entry (cumulative % vs `avgCost`) and the trail (the move from the high since we bought, off `Position.peakPrice`, ratcheting with no agent memory required). See [`TRIGGERS.md`](./TRIGGERS.md) §2a.
 
 The motivating failure (IONS): bought $73.83, day-one floor at $65, ran +17%, three rubber-stamp reviews, then crashed and fired the day-one floor for a LOSS — no level was ever re-earned. The living ladder makes that impossible to do silently.
 
@@ -119,7 +119,7 @@ In the code, these four parts are encoded across **structured triggers** (the ac
 
 | Status         | Meaning                                                                 | On watchlist? |
 |----------------|-------------------------------------------------------------------------|---------------|
-| `WATCHING`     | On the watchlist. Reviewed on a schedule **iff** it carries a `REVIEW_CADENCE` trigger (the review clock); otherwise it waits for one of its own triggers to fire, and a name with no triggers at all waits for a person. Nothing stamps a clock — it is an ordinary trigger you add or remove like any other (DAV-209). `docs/plans/WATCHLIST_STATES.md` describes the superseded tier model. | **Yes**       |
+| `WATCHING`     | On the watchlist. Reviewed on a schedule **iff** it carries a review clock (`{ watch: "repeat" }`); otherwise it waits for one of its own triggers to fire, and a name with no triggers at all waits for a person. Nothing stamps a clock — it is an ordinary trigger you add or remove like any other (DAV-209). `docs/plans/WATCHLIST_STATES.md` describes the superseded tier model. | **Yes**       |
 | `ACTIVE`       | Position open via Alpaca.                                               | No — in Positions |
 | `PROMOTED`     | Conviction-pause. ACTIVE+held → user promoted analyst PAPER→LIVE → paper position force-closed → awaiting first-live-run resolution. Set only by the promote-analyst action; rejected by `record_thesis` / `update_thesis` at the Zod layer. | Surfaces as "Awaiting live entry" |
 | `CLOSED`       | Position was opened and closed.                                         | No            |
@@ -461,26 +461,26 @@ The horizon doesn't just label the trade — it constrains the shape of every ot
 - `catalyst_date` REQUIRED
 - `target_price` = pre-event accumulation level (the ENTER trigger threshold)
 - `stop_loss` = invalidation level
-- Default triggers: PRICE_ABOVE(target) → ENTER (cd=1), OR(8-K, 10-Q, 10-K) → REVIEW (cd=1), EARNINGS_BEAT/MISS → REVIEW (cd=7), 14d hygiene
+- Default triggers: above the target → ENTER (cd=1), any of the filings → REVIEW (cd=1), earnings beat / miss → REVIEW (cd=7), 14d hygiene
 - `key_assumptions` must include something falsifiable about the event
 - `invalidation_conditions` must include "event canceled / event already played"
 
 ### CATALYST / ACTIVE / LONG
 - ENTER fired and the agent promoted via `place_trade`
-- Triggers: PRICE_BELOW(stop) → EXIT (cd=0); OR(filings) → REVIEW; "30d past catalystDate" exit policy
+- Triggers: below the stop → EXIT (cd=0); any of the filings → REVIEW; "30d past catalystDate" exit policy
 
 ### TRADE / ACTIVE / LONG (swing breakout)
 - `max_hold_days` REQUIRED (no default; agent declares the window)
-- Triggers: PRICE_BELOW(stop) → EXIT (cd=0), PRICE_ABOVE(target) → EXIT (cd=0), REVIEW_CADENCE → REVIEW
+- Triggers: below the stop → EXIT (cd=0), above the target → EXIT (cd=0), the review clock → REVIEW
 - `core_belief` is setup-specific ("$NVDA breaks $185 base on volume")
 
 ### TARGET / ACTIVE / LONG (the 6-month / +150% / -5% anchor)
 - `target_price` = entry × 2.5; `stop_loss` = entry × 0.95
-- Triggers: PRICE_BELOW(stop) → EXIT (cd=0), PRICE_ABOVE(target) → REVIEW, EARNINGS_BEAT/MISS → REVIEW (cd=7), 30d hygiene
+- Triggers: below the stop → EXIT (cd=0), above the target → REVIEW, earnings beat / miss → REVIEW (cd=7), 30d hygiene
 - `max_hold_days` not set (TARGET is open-ended)
 
 ### TARGET / WATCHING / SHORT
-- ENTER trigger is PRICE_BELOW(target) — mirror of LONG
+- ENTER trigger is below the target — mirror of LONG
 - Note: support-REVIEW path is LONG-only today; SHORT mirror remains a known gap
 
 ### COMPOUNDER / ACTIVE / LONG (megacap secular)
@@ -525,10 +525,10 @@ The **structural-belief gate** (`record_thesis`) enforces the three fields on a 
 | `horizon` | Required for LONG/SHORT. CATALYST/TRADE/TARGET/COMPOUNDER. Null for PENDING/PASS. |
 | `entryPrice`, `targetPrice`, `stopLoss` | Required for LONG/SHORT WATCHING. Validated via [`thesis-shape.ts`](../lib/agent/thesis-shape.ts) (LONG: target > entry > stop). |
 | `confidenceScore` | 0-100. Calibration tracking. |
-| `triggers` | JSONB array of structured predicates — the **living ladder** (§1a), NOT a write-once field: authored at mint, re-earned on every tactical fire, audited every daily run. **Full mechanics — predicate catalog (incl. `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH`), the standing protection minimums, the cron-vs-signal firing matrix, fire modes (TACTICAL/DIRECT), cooldown, and the per-trigger edit contract — live in [`TRIGGERS.md`](./TRIGGERS.md).** `record_thesis` auto-merges with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts); `update_thesis` edits one trigger at a time by id (`lib/agent/triggers/ops.ts`). **Empty for PENDING and PASS theses.** |
+| `triggers` | JSONB array of conditions in one shape — the **living ladder** (§1a), NOT a write-once field: authored at mint, re-earned on every tactical fire, audited every daily run. **Full mechanics — the measures (incl. the move from our entry and the trail), the standing protection minimums, the firing matrix, fire modes (TACTICAL/DIRECT), cooldown, and the per-trigger edit contract — live in [`TRIGGERS.md`](./TRIGGERS.md).** `record_thesis` auto-merges with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts); `update_thesis` edits one trigger at a time by id (`lib/agent/triggers/ops.ts`). **Empty for PENDING and PASS theses.** |
 | `catalystDate` | REQUIRED when `horizon=CATALYST`. |
 | `maxHoldDays` | REQUIRED when `horizon=TRADE` (no silent default). |
-| `nextReviewAt` | Derived from horizon if not supplied. Drives the overdue-review cron + `REVIEW_DATE_HIT` trigger. For PENDING, set to `createdAt` so first review fires immediately. |
+| `nextReviewAt` | Derived from horizon if not supplied. Drives the overdue-review cron (the old review-date trigger kind is removed; stored ones read as a removed condition). For PENDING, set to `createdAt` so first review fires immediately. |
 | `targetSizePct` | Optional. Position sizing intent at full position. (`scalingPlan` was deleted 2026-09-02 — written on 69 rows, read by nothing; scaling in is an ADD rung on the ladder.) |
 
 ### Provenance

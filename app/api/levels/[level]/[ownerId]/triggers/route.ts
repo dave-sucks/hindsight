@@ -25,7 +25,8 @@ import {
   type WritableLevel,
 } from "@/lib/actions/level-triggers";
 import { statusForEditError, ThesisEditError } from "@/lib/actions/thesis-edit";
-import type { TriggerAction, TriggerPredicate } from "@/lib/agent/triggers/types";
+import type { TriggerAction } from "@/lib/agent/triggers/types";
+import type { When } from "@/lib/agent/triggers/condition";
 
 /** "account" | "analyst" → the cascade level. Anything else is a 404. */
 function parseLevel(raw: string): WritableLevel | null {
@@ -155,7 +156,7 @@ export async function POST(
       ownerId,
       {
         action: body.action as TriggerAction,
-        predicate: body.predicate as TriggerPredicate,
+        predicate: body.predicate as When,
         fireMode:
           body.fireMode === "TACTICAL" || body.fireMode === "DIRECT"
             ? body.fireMode

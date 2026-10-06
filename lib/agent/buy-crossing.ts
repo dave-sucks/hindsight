@@ -21,14 +21,14 @@
  * once it has room the question is "the crossing is spent — now what?"
  *
  * **Which way "past the level" runs is the PREDICATE's to say, never the
- * trade direction's.** A LONG can be bought on a breakout (`PRICE_ABOVE`) or
- * on a pullback (`PRICE_BELOW`), and the two are opposites: LUXE buys at
- * `PRICE_BELOW $9.10` — "the non-chase PEAD entry" — and traded at $10.08 on
+ * trade direction's.** A LONG can be bought on a breakout (price-above) or
+ * on a pullback (price-below), and the two are opposites: LUXE buys at
+ * `buy below $9.10` — "the non-chase PEAD entry" — and traded at $10.08 on
  * 2026-09-21. Reading that as a spent crossing would have told the run to
  * re-anchor a deliberate pullback level up onto the tape, which is the exact
  * chase the level exists to avoid. AGIO ($31.50) and NOW ($130) are the same
- * shape. Only a plain price level can be read this way at all; a `VS_SMA`,
- * `NEAR_SMA` or composite entry (GD, GEV, SYK) returns nothing.
+ * shape. Only a plain price level can be read this way at all; a vs-average,
+ * near-average or composite entry (GD, GEV, SYK) returns nothing.
  *
  * Judgment stays with the analyst. This states the arithmetic and hands over
  * the setup's own chase rule; the run re-anchors, re-prices or sets the plan
@@ -40,7 +40,9 @@
  */
 
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
-import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+
+import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
+import type { When } from "@/lib/agent/triggers/condition";
 
 export interface SpentBuyCrossing {
   /** The level the buy trigger actually fires on, and the price has left behind. */
@@ -72,16 +74,13 @@ export const SPENT_CROSSING_WINDOW_DAYS = 30;
  * "past", and guessing one is how a pullback entry gets read backwards.
  */
 function crossingLevel(
-  p: TriggerPredicate | null | undefined,
+  p: When | null | undefined,
 ): { level: number; crossing: "ABOVE" | "BELOW" } | null {
   if (!p) return null;
-  if (p.kind === "PRICE_ABOVE" && typeof p.level === "number" && p.level > 0) {
-    return { level: p.level, crossing: "ABOVE" };
-  }
-  if (p.kind === "PRICE_BELOW" && typeof p.level === "number" && p.level > 0) {
-    return { level: p.level, crossing: "BELOW" };
-  }
-  return null;
+  const w = shapeOf(p);
+  const level = w == null ? null : levelOf(w);
+  if (level == null || !(level.value > 0)) return null;
+  return { level: level.value, crossing: level.above ? "ABOVE" : "BELOW" };
 }
 
 export function spentBuyCrossing(input: {
@@ -92,7 +91,7 @@ export function spentBuyCrossing(input: {
    * The stock's own buy trigger — its predicate (which decides the level and
    * the direction of the crossing) and its last fire. Null when it has none.
    */
-  enter: { predicate: TriggerPredicate | null; lastFiredAt?: string | null } | null;
+  enter: { predicate: When | null; lastFiredAt?: string | null } | null;
   /** The setup's chase limit with the account's numbers already applied. */
   chaseLimitPct: number | null;
   /** The thesis's own audit rows; only ones after the fire are read. */

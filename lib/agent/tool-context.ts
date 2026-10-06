@@ -176,8 +176,8 @@ export interface ToolContext {
   /**
    * Deterministic close reason for a protective/price EXIT tactical run
    * (P1-28). Set by lib/inngest/functions/tactical-run.ts when THIS run was
-   * woken by a price-level protective EXIT trigger (TRAILING_FROM_HIGH,
-   * GAIN_FROM_ENTRY, PRICE_BELOW/PRICE_ABOVE, PRICE_MOVE_PCT). When present,
+   * woken by a price-level protective EXIT trigger (trail,
+   * move-from-entry, price levels, move-from-a-close). When present,
    * close_position tags the close with this STOP/TARGET reason INSTEAD of the
    * model-chosen `reason` arg — so the close is treated as a material risk
    * event and stays exempt from the unapproved-exit cooldown (a rejected

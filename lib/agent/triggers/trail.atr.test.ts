@@ -17,7 +17,10 @@
  * evaluator (which sells), ladder health (which the agents read), and the
  * thesis columns (which the sheet draws).
  */
-import { effectiveTrailPct, trailFireLevel, trailWidenedByRange } from "./trail";
+jest.mock("@/lib/prisma", () => ({ prisma: {} }));
+jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})) } }));
+
+import { effectiveTrailPct, trailFireLevel, trailOf, trailWidenedByRange } from "./trail";
 import { evaluateTrigger } from "./evaluate";
 import { canonicalLevels } from "./price-levels";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
@@ -26,13 +29,13 @@ import type { Trigger } from "./types";
 
 describe("MU 2026-09-18 — a $50-a-day stock", () => {
   it("three ATR is 14.5% of the peak, so the give-back widens from 12%", () => {
-    expect(effectiveTrailPct(PEAD_TRAIL, { peak: MU.peak, atr: MU.atr })).toBe(14.5);
-    expect(trailWidenedByRange(PEAD_TRAIL, { peak: MU.peak, atr: MU.atr })).toBe(true);
+    expect(effectiveTrailPct(trailOf(PEAD_TRAIL), { peak: MU.peak, atr: MU.atr })).toBe(14.5);
+    expect(trailWidenedByRange(trailOf(PEAD_TRAIL), { peak: MU.peak, atr: MU.atr })).toBe(true);
   });
 
   it("the line moves from $910.43 to $884.56", () => {
-    const written = trailFireLevel(PEAD_TRAIL, { peak: MU.peak, avgCost: MU.avgCost, isLong: true });
-    const widened = trailFireLevel(PEAD_TRAIL, { peak: MU.peak, avgCost: MU.avgCost, isLong: true, atr: MU.atr });
+    const written = trailFireLevel(trailOf(PEAD_TRAIL), { peak: MU.peak, avgCost: MU.avgCost, isLong: true });
+    const widened = trailFireLevel(trailOf(PEAD_TRAIL), { peak: MU.peak, avgCost: MU.avgCost, isLong: true, atr: MU.atr });
     expect(written).toBeCloseTo(910.43, 2);
     expect(widened).toBeCloseTo(884.57, 1);
   });
@@ -95,25 +98,25 @@ describe("MU 2026-09-18 — a $50-a-day stock", () => {
 });
 
 describe("ABT 2026-09-18 — a quiet compounder", () => {
-  const COMPOUNDER_TRAIL = { kind: "TRAILING_FROM_HIGH", pct: 25, atrMultiple: 3 } as const;
+  const COMPOUNDER_TRAIL = { watch: "move", is: "below", value: 25, variable: "peak", settings: { widenAtr: 3 } } as const;
   it("three ATR is 7.5% of the peak, under the written 25% — the line does not move", () => {
-    expect(effectiveTrailPct(COMPOUNDER_TRAIL, { peak: ABT.peak, atr: ABT.atr })).toBe(25);
-    expect(trailWidenedByRange(COMPOUNDER_TRAIL, { peak: ABT.peak, atr: ABT.atr })).toBe(false);
-    expect(trailFireLevel(COMPOUNDER_TRAIL, { peak: ABT.peak, avgCost: ABT.avgCost, isLong: true, atr: ABT.atr })).toBeCloseTo(77.66, 2);
+    expect(effectiveTrailPct(trailOf(COMPOUNDER_TRAIL), { peak: ABT.peak, atr: ABT.atr })).toBe(25);
+    expect(trailWidenedByRange(trailOf(COMPOUNDER_TRAIL), { peak: ABT.peak, atr: ABT.atr })).toBe(false);
+    expect(trailFireLevel(trailOf(COMPOUNDER_TRAIL), { peak: ABT.peak, avgCost: ABT.avgCost, isLong: true, atr: ABT.atr })).toBeCloseTo(77.66, 2);
   });
 });
 
 describe("the rule itself", () => {
   it("a trail with no multiple is untouched, and the multiple never tightens", () => {
-    const plain = { kind: "TRAILING_FROM_HIGH", pct: 12 } as const;
-    expect(effectiveTrailPct(plain, { peak: 1000, atr: 50 })).toBe(12);
-    expect(effectiveTrailPct({ ...plain, atrMultiple: 3 }, { peak: 1000, atr: 1 })).toBe(12);
+    const plain = { watch: "move", is: "below", value: 12, variable: "peak" } as const;
+    expect(effectiveTrailPct(trailOf(plain), { peak: 1000, atr: 50 })).toBe(12);
+    expect(effectiveTrailPct(trailOf({ ...plain, settings: { widenAtr: 3 } }), { peak: 1000, atr: 1 })).toBe(12);
   });
   it("an unarmed trail still has no line, however volatile the stock", () => {
-    expect(trailFireLevel(PEAD_TRAIL, { peak: 1000, avgCost: 990, isLong: true, atr: 50 })).toBeNull();
+    expect(trailFireLevel(trailOf(PEAD_TRAIL), { peak: 1000, avgCost: 990, isLong: true, atr: 50 })).toBeNull();
   });
   it("SHORT widens upward", () => {
-    expect(trailFireLevel({ kind: "TRAILING_FROM_HIGH", pct: 10, atrMultiple: 3 }, { peak: 100, isLong: false, atr: 5 })).toBeCloseTo(115, 2);
+    expect(trailFireLevel(trailOf({ watch: "move", is: "below", value: 10, variable: "peak", settings: { widenAtr: 3 } }), { peak: 100, isLong: false, atr: 5 })).toBeCloseTo(115, 2);
   });
 });
 
@@ -121,8 +124,8 @@ describe("the ratchet counts the range multiple", () => {
   it("widening the multiple on a held stock is a loosening, like widening the percent", async () => {
     const { protectiveRatchetViolations } = await import("./ratchet");
     const before = [{ id: "t", action: "EXIT" as const, predicate: PEAD_TRAIL, rationale: "Trail." }];
-    const wider = [{ ...before[0], predicate: { ...PEAD_TRAIL, atrMultiple: 5 } }];
-    const tighter = [{ ...before[0], predicate: { ...PEAD_TRAIL, atrMultiple: 2 } }];
+    const wider = [{ ...before[0], predicate: { ...PEAD_TRAIL, settings: { ...PEAD_TRAIL.settings, widenAtr: 5 } } }];
+    const tighter = [{ ...before[0], predicate: { ...PEAD_TRAIL, settings: { ...PEAD_TRAIL.settings, widenAtr: 2 } } }];
     expect(protectiveRatchetViolations({ direction: "LONG", before, after: wider, inherited: [] })).toHaveLength(1);
     expect(protectiveRatchetViolations({ direction: "LONG", before, after: tighter, inherited: [] })).toEqual([]);
   });
@@ -139,17 +142,17 @@ describe("the ratchet counts the range multiple", () => {
  */
 describe("the evaluator loads the snapshot for a range-widened trail", () => {
   it("a trail with a multiple needs indicators; a plain one does not", async () => {
-    const { needsIndicators } = await import("./indicator-needs");
+    const { needsIndicators } = (await import("@/lib/inngest/functions/trigger-evaluator")).__test__;
     expect(needsIndicators(PEAD_TRAIL)).toBe(true);
-    expect(needsIndicators({ kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 10 })).toBe(false);
+    expect(needsIndicators({ watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10 } })).toBe(false);
   });
 
   it("MU's ladder asks for a snapshot even though the trail is its only chart rung", async () => {
-    const { needsIndicators } = await import("./indicator-needs");
+    const { needsIndicators } = (await import("@/lib/inngest/functions/trigger-evaluator")).__test__;
     const MU_LADDER = [
-      { kind: "PRICE_BELOW", level: 969 },
-      { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },
-      { kind: "REVIEW_CADENCE", days: 7 },
+      { watch: "price", is: "below", value: 969 },
+      { watch: "move", is: "above", value: 10, variable: "entry" },
+      { watch: "repeat", value: 7 },
       PEAD_TRAIL,
     ] as const;
     expect(MU_LADDER.some((p) => needsIndicators(p))).toBe(true);
@@ -157,7 +160,7 @@ describe("the evaluator loads the snapshot for a range-widened trail", () => {
   });
 
   it("the evaluator and the sheet land on the same line for MU once the snapshot is loaded", () => {
-    const withAtr = trailFireLevel(PEAD_TRAIL, { peak: MU.peak, avgCost: MU.avgCost, isLong: true, atr: MU.atr });
+    const withAtr = trailFireLevel(trailOf(PEAD_TRAIL), { peak: MU.peak, avgCost: MU.avgCost, isLong: true, atr: MU.atr });
     const sheet = canonicalLevels({
       triggers: [{ id: "trail", action: "EXIT", predicate: PEAD_TRAIL, rationale: "Trail.", level: "THESIS" as const, inherited: false }],
       direction: "LONG",

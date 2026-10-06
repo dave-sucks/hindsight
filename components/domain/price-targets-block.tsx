@@ -12,7 +12,6 @@ export interface CardLevel {
   projected: boolean;
   /** What reaching it does. A floor always sells; a target may sell or ask. */
   action?: string;
-  predicateKind: string;
 }
 
 /**

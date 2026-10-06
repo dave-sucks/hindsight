@@ -46,7 +46,7 @@ const at = (days: number, hour: number) => {
 
 const reviewRung = {
   id: REVIEW_RUNG_ID,
-  predicate: { kind: "VS_SMA", period: 200, direction: "BELOW" },
+  predicate: { watch: "price", is: "below", variable: "sma200" },
   action: "REVIEW",
   rationale: "Below the 200-day — review",
   cooldownDays: 1,
@@ -211,7 +211,7 @@ describe("DAV-329 — a state asks weekly; a buy on the same state still asks da
       ...reviewRung,
       id: "buy_rung",
       action: "ENTER",
-      predicate: { kind: "VS_SMA", period: 50, direction: "ABOVE" },
+      predicate: { watch: "price", is: "above", variable: "sma50" },
       lastFiredAt: at(1, 13),
     } as unknown as Trigger;
     // Above the 50-day now, below it at the prior close — a real crossing.
@@ -254,13 +254,7 @@ describe("DAV-329 — a state asks weekly; a buy on the same state still asks da
     const withPriceLine = {
       ...reviewRung,
       id: "review_and_line",
-      predicate: {
-        kind: "AND",
-        predicates: [
-          { kind: "VS_SMA", period: 200, direction: "BELOW" },
-          { kind: "PRICE_BELOW", level: 100 },
-        ],
-      },
+      predicate: { match: "all", conditions: [{ watch: "price", is: "below", variable: "sma200" }, { watch: "price", is: "below", value: 100 }] },
       lastFiredAt: at(1, 13),
     } as unknown as Trigger;
     expect(shouldFire(withPriceLine, ctx(1)).fires).toBe(true);
@@ -268,13 +262,7 @@ describe("DAV-329 — a state asks weekly; a buy on the same state still asks da
     const twoStates = {
       ...reviewRung,
       id: "review_two_states",
-      predicate: {
-        kind: "OR",
-        predicates: [
-          { kind: "VS_SMA", period: 200, direction: "BELOW" },
-          { kind: "VS_SMA", period: 50, direction: "BELOW" },
-        ],
-      },
+      predicate: { match: "any", conditions: [{ watch: "price", is: "below", variable: "sma200" }, { watch: "price", is: "below", variable: "sma50" }] },
       lastFiredAt: at(1, 13),
     } as unknown as Trigger;
     expect(shouldFire(twoStates, ctx(1))).toEqual({ fires: false, reason: "cooldown" });
@@ -289,7 +277,7 @@ describe("DAV-329 — a state asks weekly; a buy on the same state still asks da
     // A longer stored cooldown is left alone.
     expect(flooredCooldownDays(reviewRung, 30)).toBe(30);
     // The sheet's wire type (kind: string) goes through the same function.
-    expect(flooredCooldownDays({ action: "REVIEW", predicate: { kind: "PRICE_BELOW" } }, 1)).toBe(1);
+    expect(flooredCooldownDays({ action: "REVIEW", predicate: { watch: "price", is: "below" } }, 1)).toBe(1);
   });
 });
 

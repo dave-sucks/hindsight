@@ -29,8 +29,8 @@
  * Pure — no DB, no clock, no fetches.
  */
 
-import { trailFireLevel } from "./trail";
-import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
+import { isLevel, levelOf, lineOf, shapeOf, type Condition } from "./condition";
+import type { Trigger, TriggerAction } from "./types";
 import type { ResolvedTrigger, TriggerLevel } from "./levels";
 
 // ── Shape ──────────────────────────────────────────────────────────────
@@ -54,7 +54,6 @@ export interface PriceLevel {
    * kept out of the cached columns.
    */
   projected: boolean;
-  predicateKind: TriggerPredicate["kind"];
 }
 
 export interface CanonicalLevels {
@@ -107,13 +106,14 @@ export interface LevelInputs {
   atr14?: number | null;
 }
 
-const ABSOLUTE = new Set<TriggerPredicate["kind"]>(["PRICE_ABOVE", "PRICE_BELOW"]);
-const PROJECTED = new Set<TriggerPredicate["kind"]>([
-  "TRAILING_FROM_HIGH",
-  "GAIN_FROM_ENTRY",
-]);
-
 const isLong = (d: string | null | undefined) => d !== "SHORT";
+
+/** A typed price level's number and side of the trade, or null when the trigger isn't one. */
+function typedLevel(t: Pick<Trigger, "predicate">, direction: string | null) {
+  const w = shapeOf(t.predicate);
+  const level = w == null ? null : levelOf(w);
+  return level ? { ...level, side: level.above === isLong(direction) ? ("UPSIDE" as const) : ("DOWNSIDE" as const) } : null;
+}
 
 // ── Read ───────────────────────────────────────────────────────────────
 
@@ -135,24 +135,20 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
 
   const all: PriceLevel[] = [];
   for (const t of triggers) {
-    const kind = t.predicate.kind;
-    const absolute = ABSOLUTE.has(kind);
-    if (!absolute && !PROJECTED.has(kind)) continue;
-    const side = levelSide(t.predicate, direction);
-    if (side == null) continue;
-    const price = predicatePrice(t.predicate, { direction, avgCost, peakPrice, atr14 });
+    // A typed level, or a % from our position (./condition: each measure's `line`).
+    const w = shapeOf(t.predicate);
+    const line = w == null ? null : lineOf(w, { isLong: long, avgCost, peakPrice, atr14 });
     // A projected level with no position state genuinely is not at a price.
-    if (price == null || !Number.isFinite(price) || price <= 0) continue;
+    if (line?.price == null || !Number.isFinite(line.price) || line.price <= 0) continue;
     all.push({
       slot: null,
-      price,
-      side,
+      price: line.price,
+      side: line.side,
       action: t.action,
       triggerId: t.id,
       storedAt: t.level,
       inherited: t.inherited,
-      projected: !absolute,
-      predicateKind: kind,
+      projected: line.projected,
     });
   }
   all.sort((a, b) => a.price - b.price);
@@ -169,7 +165,6 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
       storedAt: "THESIS",
       inherited: false,
       projected: false,
-      predicateKind: "PRICE_ABOVE",
     };
   } else {
     const e = all.find((l) => l.action === "ENTER");
@@ -311,10 +306,10 @@ function isDirectional(direction: string | null): boolean {
  * REVIEW). One trigger per slot is the rule every write path keeps.
  */
 export function levelSlotOf(t: Trigger, direction: string | null): LevelSlot | null {
-  if (!ABSOLUTE.has(t.predicate.kind)) return null;
+  const level = typedLevel(t, direction);
+  if (!level) return null;
   if (t.action === "ENTER") return "ENTRY";
-  const side = levelSide(t.predicate, direction);
-  if (side === "DOWNSIDE") return t.action === "EXIT" ? "FLOOR" : null;
+  if (level.side === "DOWNSIDE") return t.action === "EXIT" ? "FLOOR" : null;
   return t.action === "EXIT" || t.action === "REVIEW" ? "TARGET" : null;
 }
 
@@ -341,7 +336,7 @@ function setLevel(
   if (price == null) return stored.filter((t) => !occupies(t));
 
   const sided = predicateFor(slot, price, direction, currentPrice);
-  const fresh = basis === "close" ? { ...sided, basis: "close" as const } : sided;
+  const fresh: Condition = basis === "close" ? { ...sided, settings: { close: true } } : sided;
   const said = note?.trim() || null;
 
   const matches = stored.filter(occupies);
@@ -375,11 +370,11 @@ function setLevel(
         const before = priceOf(t);
         const rationale = said
           ? said
-          : t.predicate.kind !== predicate.kind
-            ? rationaleFor(slot, price, direction, held, predicate.kind)
+          : typedLevel(t, direction)?.above !== (predicate.is === "above")
+            ? rationaleFor(slot, price, direction, held, predicate.is === "above")
             : before != null && before !== price
               ? (moveNumberInText(t.rationale, "level", before, price) ??
-                rationaleFor(slot, price, direction, held, predicate.kind))
+                rationaleFor(slot, price, direction, held, predicate.is === "above"))
               : t.rationale;
         return { ...t, predicate, rationale };
       });
@@ -412,7 +407,7 @@ function setLevel(
           : slot === "FLOOR"
             ? "EXIT"
             : "REVIEW",
-      rationale: said ?? rationaleFor(slot, price, direction, held, fresh.kind),
+      rationale: said ?? rationaleFor(slot, price, direction, held, fresh.is === "above"),
       ...(source ? { source } : {}),
     },
   ];
@@ -473,10 +468,11 @@ export function levelLabelState(
  * rather than a plan level, so it stays too.
  */
 export function isPlanLevel(t: Trigger, direction: string | null): boolean {
-  if (!ABSOLUTE.has(t.predicate.kind)) return false;
+  const level = typedLevel(t, direction);
+  if (!level) return false;
   if (t.action === "ENTER" || t.action === "EXIT") return true;
   if (t.action !== "REVIEW") return false;
-  return levelSide(t.predicate, direction) === "UPSIDE";
+  return level.side === "UPSIDE";
 }
 
 /**
@@ -499,56 +495,6 @@ export function isPlanLevelOnList(
 
 // ── Internals ──────────────────────────────────────────────────────────
 
-/** Which side of the trade a price predicate sits on. Null if not a level. */
-function levelSide(
-  p: TriggerPredicate,
-  direction: string | null,
-): "UPSIDE" | "DOWNSIDE" | null {
-  const long = isLong(direction);
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-      return long ? "UPSIDE" : "DOWNSIDE";
-    case "PRICE_BELOW":
-      return long ? "DOWNSIDE" : "UPSIDE";
-    case "TRAILING_FROM_HIGH":
-      return "DOWNSIDE"; // a give-back is always the losing side
-    case "GAIN_FROM_ENTRY":
-      return p.direction === "UP" ? "UPSIDE" : "DOWNSIDE";
-    default:
-      return null;
-  }
-}
-
-/** The dollar price a predicate currently sits at, or null. */
-function predicatePrice(
-  p: TriggerPredicate,
-  ctx: {
-    direction: string | null;
-    avgCost?: number | null;
-    peakPrice?: number | null;
-    atr14?: number | null;
-  },
-): number | null {
-  const long = isLong(ctx.direction);
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-      return p.level;
-    case "TRAILING_FROM_HIGH":
-      // Null until armed — an unarmed trail has no live line to draw.
-      return trailFireLevel(p, { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: long, atr: ctx.atr14 });
-    case "GAIN_FROM_ENTRY": {
-      const avg = ctx.avgCost;
-      if (avg == null || avg <= 0) return null;
-      const up = p.direction === "UP";
-      const favourable = long ? up : !up;
-      return favourable ? avg * (1 + p.pct / 100) : avg * (1 - p.pct / 100);
-    }
-    default:
-      return null;
-  }
-}
-
 /**
  * Which side of the tape a buy level sits on says which shape the analyst
  * meant: above the price is a breakout
@@ -562,15 +508,14 @@ function predicatePrice(
  * and removed 2026-08-16 — see ENTRY_TRIGGER_SEMANTICS.md, don't rebuild it.
  */
 /**
- * A rebuilt level predicate keeps the `basis` of the one it replaces — the
- * number moved, not the rule about when it fires. Only a price level has a
- * basis; anything else passes through.
+ * A rebuilt level keeps "only on the close" from the one it replaces — the
+ * number moved, not the rule about when it fires. Only a typed price level
+ * has it; anything else passes through.
  */
-export function withBasisOf<P extends TriggerPredicate>(prior: TriggerPredicate, next: P): P {
-  const basis =
-    (prior.kind === "PRICE_ABOVE" || prior.kind === "PRICE_BELOW") ? prior.basis : undefined;
-  if (basis == null || (next.kind !== "PRICE_ABOVE" && next.kind !== "PRICE_BELOW")) return next;
-  return { ...next, basis } as P;
+export function withBasisOf(prior: unknown, next: Condition): Condition {
+  const w = shapeOf(prior);
+  if (!(w && levelOf(w)?.close) || !isLevel(next)) return next;
+  return { ...next, settings: { ...next.settings, close: true } };
 }
 
 export function predicateFor(
@@ -578,7 +523,7 @@ export function predicateFor(
   price: number,
   direction: string | null,
   currentPrice?: number | null,
-): Extract<TriggerPredicate, { kind: "PRICE_ABOVE" | "PRICE_BELOW" }> {
+): Condition {
   const long = isLong(direction);
   const readsTheTape =
     slot === "ENTRY" &&
@@ -592,8 +537,8 @@ export function predicateFor(
       ? !long
       : long;
   return wantsAbove
-    ? { kind: "PRICE_ABOVE", level: price }
-    : { kind: "PRICE_BELOW", level: price };
+    ? { watch: "price", is: "above", value: price }
+    : { watch: "price", is: "below", value: price };
 }
 
 export function rationaleFor(
@@ -601,19 +546,20 @@ export function rationaleFor(
   price: number,
   direction: string | null,
   held: boolean,
-  kind: "PRICE_ABOVE" | "PRICE_BELOW",
+  /** The level sits above the price (a breakout buy, a short's stop). */
+  above: boolean,
 ): string {
   const long = isLong(direction);
   const p = `$${price.toFixed(2)}`;
   if (slot === "ENTRY") {
     if (long) {
-      return kind === "PRICE_ABOVE"
-        ? `Buy level — start the position when the price breaks above ${p}.`
-        : `Buy level — start the position when the price comes back down to ${p}.`;
+      return above
+        ? `I buy when it breaks above ${p}.`
+        : `I buy when it comes back down to ${p}.`;
     }
-    return kind === "PRICE_BELOW"
-      ? `Short entry — start the position when the price breaks below ${p}.`
-      : `Short entry — start the position when the price rallies to ${p}.`;
+    return !above
+      ? `I short when it breaks below ${p}.`
+      : `I short when it rallies to ${p}.`;
   }
   if (slot === "FLOOR") {
     // On a thesis we don't own, "sell" is meaningless — a floor break
@@ -621,14 +567,14 @@ export function rationaleFor(
     // Write the wording that matches what actually happens (DAV-226).
     if (!held) {
       return long
-        ? `Floor — below ${p} the setup is wrong, so the plan comes down rather than waiting to be bought.`
-        : `Floor — above ${p} the setup is wrong, so the plan comes down rather than waiting to be entered.`;
+        ? `Below ${p} the setup is wrong, so the plan comes down instead of waiting to buy.`
+        : `Above ${p} the setup is wrong, so the plan comes down instead of waiting to short.`;
     }
     return long
-      ? `Floor — sell if the price drops to ${p}. Below this the plan is wrong.`
-      : `Floor — cover if the price rises to ${p}. Above this the plan is wrong.`;
+      ? `I sell at ${p}: below it, the reason I own this is wrong.`
+      : `I cover at ${p}: above it, the reason I'm short is wrong.`;
   }
-  return `Target ${p} — decide here: take it, trim it, or raise the target.`;
+  return `Target ${p}: when it gets there, I take it, trim, or raise the target.`;
 }
 
 /**
@@ -666,9 +612,7 @@ function furthest(levels: PriceLevel[], long: boolean): PriceLevel | null {
 }
 
 function priceOf(t: Trigger): number | null {
-  return t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW"
-    ? t.predicate.level
-    : null;
+  return typedLevel(t, null)?.value ?? null;
 }
 
 /**

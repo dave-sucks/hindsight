@@ -34,8 +34,10 @@
  */
 
 import { triggerBucket } from "./bucket";
+import { loosens, sentenceOf, shapeOf } from "./condition";
 import { protectiveExitCloseReason } from "./types";
-import type { Trigger, TriggerPredicate } from "./types";
+import type { Trigger } from "./types";
+import type { When } from "@/lib/agent/triggers/condition";
 
 export type RatchetViolation = {
   bucket: string;
@@ -58,9 +60,7 @@ function isWellFormed(t: Trigger | null | undefined): t is Trigger {
     !!t &&
     typeof t === "object" &&
     typeof t.action === "string" &&
-    !!t.predicate &&
-    typeof t.predicate === "object" &&
-    typeof t.predicate.kind === "string"
+    shapeOf(t.predicate) != null
   );
 }
 
@@ -89,46 +89,16 @@ function isProtectiveStop(t: Trigger, direction: string | null): boolean {
 }
 
 /**
- * Does `next` protect LESS than `prev`? Same bucket ⇒ same predicate kind
- * (triggerBucket only collapses kinds for ENTER rungs, which are never
- * STOP-classified), so a kind mismatch is defensively treated as unchanged.
- *
- * Direction is implicit in the STOP classification: PRICE_BELOW is only a
- * STOP on LONG (lower level = weaker floor), PRICE_ABOVE only on SHORT
- * (higher level = weaker ceiling). The percentage kinds all weaken when the
- * band widens — a bigger drop, give-back, or move required before firing.
+ * Does `next` protect LESS than `prev`? Same bucket ⇒ the same rule at a new
+ * value (triggerBucket only merges different rules for a buy, which is never a
+ * STOP). A floor moved away from the price, a wider give-back or drawdown,
+ * waiting for the close, arming later or a wider range multiple each protect
+ * less; the catalog says which (./condition/rules `loosens`).
  */
-function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean {
-  if (prev.kind !== next.kind) return false;
-  // Moving a stop from "trades below $X" to "CLOSES below $X" loosens it —
-  // the stock can spend all day under the line and never fire (DAV-247
-  // review). Same level, weaker protection.
-  const toCloseBasis = (p: TriggerPredicate, n: TriggerPredicate) =>
-    (p as { basis?: string }).basis !== "close" && (n as { basis?: string }).basis === "close";
-  switch (prev.kind) {
-    case "PRICE_BELOW":
-      return (next as { level: number }).level < prev.level || toCloseBasis(prev, next);
-    case "PRICE_ABOVE":
-      return (next as { level: number }).level > prev.level || toCloseBasis(prev, next);
-    case "TRAILING_FROM_HIGH": {
-      // A wider give-back, arming later, or a bigger range multiple — each
-      // protects less. The multiple counts because it can only widen the
-      // trail (DAV-294): raising it moves the line further from the peak
-      // exactly as raising the percent does.
-      const n = next as { pct: number; armAtGainPct?: number; atrMultiple?: number };
-      const p = prev as { pct: number; armAtGainPct?: number; atrMultiple?: number };
-      return (
-        n.pct > p.pct ||
-        (n.armAtGainPct ?? 0) > (p.armAtGainPct ?? 0) ||
-        (n.atrMultiple ?? 0) > (p.atrMultiple ?? 0)
-      );
-    }
-    case "PRICE_MOVE_PCT":
-    case "GAIN_FROM_ENTRY":
-      return (next as { pct: number }).pct > prev.pct;
-    default:
-      return false;
-  }
+function weakens(prev: When, next: When): boolean {
+  const a = shapeOf(prev);
+  const b = shapeOf(next);
+  return a != null && b != null && loosens(a, b);
 }
 
 /**
@@ -192,25 +162,9 @@ export function stopMoveWeakensProtection(args: {
   return isLong ? newStop < oldStop : newStop > oldStop;
 }
 
-/** Plain-language name for a protective rung, for refusal messages. */
+/** Plain-language name for a protective rung, for refusal messages: "Sell if below $65". */
 export function describeProtectiveRung(t: Trigger): string {
-  const p = t.predicate;
-  switch (p.kind) {
-    case "PRICE_BELOW":
-      return `sell if the price drops below $${p.level}`;
-    case "PRICE_ABOVE":
-      return `sell (cover) if the price rises above $${p.level}`;
-    case "TRAILING_FROM_HIGH":
-      return `sell if the stock gives back ${p.pct}% from its high`;
-    case "GAIN_FROM_ENTRY":
-      return p.direction === "DOWN"
-        ? `sell if the stock is down ${p.pct}% from what we paid`
-        : `sell to lock in the gain once up ${p.pct}%`;
-    case "PRICE_MOVE_PCT":
-      return `sell on a ${p.pct}% ${p.direction === "DOWN" ? "drop" : "spike"} in a ${p.window} window`;
-    default:
-      return `the ${p.kind} sell rule`;
-  }
+  return sentenceOf(t);
 }
 
 /** One refusal line per violation, in product language. */

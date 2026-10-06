@@ -114,7 +114,7 @@ function thesisRow(over: Record<string, unknown>) {
       {
         id: "trig-buy",
         action: "ENTER",
-        predicate: { kind: "PRICE_ABOVE", level: 100 },
+        predicate: { watch: "price", is: "above", value: 100 },
         rationale: "the plan's buy",
         cooldownDays: 1,
       },
@@ -310,7 +310,7 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
           {
             id: "trig-floor",
             action: "EXIT",
-            predicate: { kind: "PRICE_BELOW", level: 90 },
+            predicate: { watch: "price", is: "below", value: 90 },
             rationale: "protective floor",
             cooldownDays: 0,
           },
@@ -385,14 +385,14 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
           {
             id: "trig-floor",
             action: "EXIT",
-            predicate: { kind: "PRICE_BELOW", level: 90 },
+            predicate: { watch: "price", is: "below", value: 90 },
             rationale: "protective floor",
             cooldownDays: 0,
           },
           {
             id: "trig-cadence",
             action: "REVIEW",
-            predicate: { kind: "REVIEW_CADENCE", days: 7 },
+            predicate: { watch: "repeat", value: 7 },
             rationale: "weekly look",
             cooldownDays: 7,
           },
@@ -475,7 +475,7 @@ describe("get_theses — a stock with no setup named, and a buy that fired into 
       targetPrice: 480,
       stopLoss: 395,
       setupId: "COMPOUNDER_ACCUMULATION",
-      triggers: [{ id: "enter", action: "ENTER", predicate: { kind: "PRICE_ABOVE", level: 418 }, rationale: "Buy above $418.", lastFiredAt: fired, cooldownDays: 7 }],
+      triggers: [{ id: "enter", action: "ENTER", predicate: { watch: "price", is: "above", value: 418 }, rationale: "Buy above $418.", lastFiredAt: fired, cooldownDays: 7 }],
     });
     const eme = thesisRow({ id: "t_EME", ticker: "EME", setupId: "COMPOUNDER_ACCUMULATION" });
     mockThesisFindMany.mockResolvedValue([...holds, etn, eme]);

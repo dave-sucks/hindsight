@@ -8,9 +8,7 @@
  * docs/plans/TRIGGER_TYPES.md §7.
  */
 import { useEffect, useState } from "react";
-import { editableTriggerParts } from "@/lib/agent/triggers/editable";
-import { actionGroupLabel } from "@/lib/agent/triggers/format";
-import type { TriggerPredicate as SharedTriggerPredicate } from "@/lib/agent/triggers/types";
+import { actionLabel, carriesNumber, shapeOf } from "@/lib/agent/triggers/condition";
 import { AddTrigger } from "@/components/agent/triggers/TriggerDialog";
 import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 
@@ -19,7 +17,6 @@ import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 // the same shape. Re-exported here so existing component-side import paths
 // keep working; new code should import from the lib module.
 export type {
-  TriggerPredicate,
   Trigger,
   ThesisStatePosition,
   ThesisPendingProposal,
@@ -74,7 +71,7 @@ export function TriggerGroups({
         if (items.length === 0) return null;
         return (
           <div key={action} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-            <span className="shrink-0 text-sm text-muted-foreground">{actionGroupLabel(action, level === "THESIS" ? held : undefined)}</span>
+            <span className="shrink-0 text-sm text-muted-foreground">{actionLabel(action, level === "THESIS" ? held : undefined)}</span>
             {items.map((t) => (
               <TriggerPill
                 key={t.id}
@@ -166,7 +163,10 @@ export function ThesisTriggersSection({
   // In editableOnly mode, show just the stock's own triggers with a number.
   const shownTriggers = editableOnly
     ? data.triggers.filter(
-        (t) => !t.inherited && editableTriggerParts(t.predicate as unknown as SharedTriggerPredicate).length > 0,
+        (t) => {
+          const w = shapeOf(t.predicate);
+          return !t.inherited && w != null && carriesNumber(w);
+        },
       )
     : data.triggers;
 

@@ -35,6 +35,13 @@
 import { prisma } from "@/lib/prisma";
 import { parseTriggerState } from "./load-levels";
 import type { Trigger } from "./types";
+import { levelOf, shapeOf } from "./condition";
+
+/** A typed price level's number, side and timing; null for anything else. */
+function typedLevel(t: Pick<Trigger, "predicate">) {
+  const w = shapeOf(t.predicate);
+  return w == null ? null : levelOf(w);
+}
 
 /** How many times a day one buy is re-armed after a pass on the price. */
 export const MAX_REARMS_PER_DAY = 3;
@@ -52,8 +59,8 @@ export function rearmsOn(rearmedAt: readonly string[] | undefined, now: Date): s
 
 /** A WATCHING stock's buy on an intraday price level — the only kind a quote can be back under. */
 function isIntradayPriceBuy(t: Pick<Trigger, "action" | "predicate">): boolean {
-  const p = t.predicate;
-  return t.action === "ENTER" && (p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW") && p.basis !== "close";
+  const level = typedLevel(t);
+  return t.action === "ENTER" && level != null && !level.close;
 }
 
 export type RearmDecision =
@@ -88,8 +95,8 @@ export function decideBuyRearm(input: {
   now: Date;
 }): RearmDecision {
   const { trigger } = input;
-  const p = trigger.predicate;
-  if (!isIntradayPriceBuy(trigger) || (p.kind !== "PRICE_ABOVE" && p.kind !== "PRICE_BELOW")) {
+  const level = typedLevel(trigger);
+  if (!isIntradayPriceBuy(trigger) || level == null) {
     return { rearm: false, why: "not-an-intraday-price-buy" };
   }
   if (input.status !== "WATCHING") return { rearm: false, why: "not-watching" };
@@ -103,12 +110,12 @@ export function decideBuyRearm(input: {
   if (input.triedToBuy) return { rearm: false, why: "tried-to-buy" };
 
   // The same comparison the check fires on (evaluateTrigger).
-  const holds = p.kind === "PRICE_ABOVE" ? row.priceAtTime > p.level : row.priceAtTime < p.level;
+  const holds = level.above ? row.priceAtTime > level.value : row.priceAtTime < level.value;
   if (holds) return { rearm: false, why: "level-still-held" };
 
   const today = rearmsOn(input.rearmedAt, input.now).length;
   if (today >= MAX_REARMS_PER_DAY) return { rearm: false, why: "day-limit" };
-  return { rearm: true, level: p.level, priceAtPass: row.priceAtTime, rearmsToday: today + 1 };
+  return { rearm: true, level: level.value, priceAtPass: row.priceAtTime, rearmsToday: today + 1 };
 }
 
 /**
@@ -172,7 +179,7 @@ export async function rearmBuyAfterPass(args: {
     };
     await tx.thesis.update({ where: { id: args.thesisId }, data: { triggerState: state as unknown as object } });
 
-    const side = args.trigger.predicate.kind === "PRICE_ABOVE" ? "under" : "over";
+    const side = typedLevel(args.trigger)?.above ? "under" : "over";
     await tx.runEvent.create({
       data: {
         runId: args.runId,

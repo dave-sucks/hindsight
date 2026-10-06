@@ -7,6 +7,7 @@
  * amended activist stake.
  */
 
+import type { When } from "@/lib/agent/triggers/condition";
 import fixture from "./__fixtures__/edgar-search-2026-09.json";
 import { parseSearchHits } from "./sec-filings";
 import {
@@ -66,8 +67,8 @@ describe("the tier table on real filings", () => {
 });
 
 describe("matching a trigger", () => {
-  const material = { kind: "SEC_EVENT" as const, tier: "MATERIAL" as const };
-  const red = { kind: "SEC_EVENT" as const, tier: "RED" as const };
+  const material = { tier: "MATERIAL" as const };
+  const red = { tier: "RED" as const };
 
   it("tier is 'at least': material matches serious, serious doesn't match material", () => {
     expect(filingMatches(material, by("NCPL")[0])).toBe(true);
@@ -77,8 +78,8 @@ describe("matching a trigger", () => {
 
   it("a named event matches its code even when the tier is routine", () => {
     const pressRelease = by("NVDA").find((f) => f.filedDate === "2026-09-03")!;
-    expect(filingMatches({ kind: "SEC_EVENT", items: ["8.01"] }, pressRelease)).toBe(true);
-    expect(filingMatches({ kind: "SEC_EVENT", forms: ["SCHEDULE 13D"] }, by("MG")[0])).toBe(true);
+    expect(filingMatches({ items: ["8.01"] }, pressRelease)).toBe(true);
+    expect(filingMatches({ forms: ["SCHEDULE 13D"] }, by("MG")[0])).toBe(true);
   });
 
   it("a filing already fired on never matches that trigger again", () => {
@@ -87,7 +88,7 @@ describe("matching a trigger", () => {
   });
 
   it("NVDA's filings each fire once — no cooldown swallows the second", () => {
-    const anyEvent = { kind: "SEC_EVENT" as const, items: ["1.01", "2.02", "8.01"] };
+    const anyEvent = { items: ["1.01", "2.02", "8.01"] };
     const first = unfiredMatches(anyEvent, by("NVDA"), []);
     expect(first).toHaveLength(3);
     const remembered = rememberFired([], [first[0].accession]);
@@ -96,7 +97,7 @@ describe("matching a trigger", () => {
 
   it("the filings behind a composite fire come from its SEC leaf", () => {
     const trigger = {
-      predicate: { kind: "AND" as const, predicates: [material, { kind: "PRICE_MOVE_PCT" as const, pct: 3, direction: "DOWN" as const, window: "1D" as const }] },
+      predicate: { match: "all", conditions: [{ watch: "filing", variable: "tier:MATERIAL" }, { watch: "move", is: "below", value: 3, variable: "prev_close" }] } as When,
     };
     expect(filingsBehindFire(trigger, by("MU")).map((f) => f.accession)).toEqual(["0001104659-26-101067"]);
   });

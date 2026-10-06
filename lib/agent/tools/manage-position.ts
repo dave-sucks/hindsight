@@ -163,8 +163,8 @@ const schema = z.object({
  * changed a number and protected nothing at all — the agent reported a
  * tightened stop and the ladder was untouched.
  *
- * Writes the same shape `applyTriggerValueEdit` does, which is the reference:
- * the TRIGGER (what fires), the thesis columns (what is displayed), and an
+ * Writes the same shape the trigger edit path does (ops.ts): the TRIGGER
+ * (what fires), the thesis columns (what is displayed), and an
  * audit row. The position column keeps being written by the caller so the
  * digest stays consistent.
  *

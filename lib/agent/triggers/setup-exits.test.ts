@@ -6,6 +6,7 @@
  * no beat-that-sold review.
  */
 import { setupExitTriggers, heldSetupExitOps, BEAT_AND_FADE_DOWN_PCT } from "./setup-exits";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 
 let n = 0;
@@ -14,45 +15,33 @@ const mintId = () => `t${++n}`;
 describe("setupExitTriggers", () => {
   it("IOT on PEAD: the 60-day limit from the buy, a partial at 2R (+15.5%) and the beat-that-sold review", () => {
     const out = setupExitTriggers({ setup: getSetup("PEAD")!, horizon: "TARGET", entry: 39.83, stop: 36.74, mintId });
-    expect(out.map((t) => [t.action, t.predicate.kind])).toEqual([
+    expect(out.map((t) => [t.action, kindOf(t.predicate)])).toEqual([
       ["REVIEW", "REVIEW_CADENCE"],
       ["TRIM", "GAIN_FROM_ENTRY"],
       ["REVIEW", "AND"],
     ]);
-    expect(out[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 60, from: "BUY" });
+    expect(out[0].predicate).toEqual({ watch: "from_date", is: "after", value: 60, variable: "buy" });
     // The partial carries the big-winner switch: once IOT has run 20% off
     // the buy inside three weeks it is held and managed on the trail, not
     // cut in half. A slower climb to the same gain is still de-risked.
-    expect(out[1].predicate).toEqual({
-      kind: "GAIN_FROM_ENTRY",
-      pct: 15.5,
-      direction: "UP",
-      skipIfPeakGainPct: 20,
-      skipIfPeakWithinDays: 21,
-    });
-    expect(out[2].predicate).toEqual({
-      kind: "AND",
-      predicates: [
-        { kind: "EARNINGS_BEAT" },
-        { kind: "PRICE_MOVE_PCT", pct: BEAT_AND_FADE_DOWN_PCT, direction: "DOWN", window: "1D" },
-      ],
-    });
+    expect(out[1].predicate).toEqual({ watch: "move", is: "above", value: 15.5, variable: "entry", settings: { fastWinnerPct: 20, fastWinnerDays: 21 } });
+    expect(out[2].predicate).toEqual({ match: "all", conditions: [{ watch: "surprise", is: "beat", value: 0 }, { watch: "move", is: "below", value: BEAT_AND_FADE_DOWN_PCT, variable: "prev_close" }] });
     expect(out.every((t) => t.source === "DEFAULT")).toBe(true);
   });
 
   it("a compounder gets only the 60-day business checkpoint — its sells are the analyst's rules and a named invalidation", () => {
     const out = setupExitTriggers({ setup: getSetup("COMPOUNDER_ACCUMULATION")!, horizon: "COMPOUNDER", entry: 100, stop: 80, mintId });
-    expect(out.map((t) => [t.action, t.predicate])).toEqual([["REVIEW", { kind: "REVIEW_CADENCE", days: 60, from: "BUY" }]]);
+    expect(out.map((t) => [t.action, t.predicate])).toEqual([["REVIEW", { watch: "from_date", is: "after", value: 60, variable: "buy" }]]);
   });
 
   it("a pullback on a TARGET horizon gets the beat-that-sold review but no partial", () => {
     const out = setupExitTriggers({ setup: getSetup("MA_PULLBACK")!, horizon: "TARGET", entry: 54.48, stop: 50.7, mintId });
-    expect(out.map((t) => t.predicate.kind)).toEqual(["REVIEW_CADENCE", "AND"]);
+    expect(out.map((t) => kindOf(t.predicate))).toEqual(["REVIEW_CADENCE", "AND"]);
   });
 
   it("no stop → no partial (there is no R to measure)", () => {
     const out = setupExitTriggers({ setup: getSetup("PEAD")!, horizon: "TARGET", entry: 39.83, stop: null, mintId });
-    expect(out.map((t) => t.predicate.kind)).toEqual(["REVIEW_CADENCE", "AND"]);
+    expect(out.map((t) => kindOf(t.predicate))).toEqual(["REVIEW_CADENCE", "AND"]);
   });
 });
 
@@ -63,7 +52,7 @@ describe("heldSetupExitOps — a held stock whose review just named its setup", 
   let n = 0;
   const mintId = () => `held-${++n}`;
   const kinds = (ops: ReturnType<typeof heldSetupExitOps>) =>
-    ops.map((o) => (o.op === "add" ? `${o.trigger.action}:${o.trigger.predicate.kind}` : o.op));
+    ops.map((o) => (o.op === "add" ? `${o.trigger.action}:${kindOf(o.trigger.predicate)}` : o.op));
 
   it("MU (production 2026-09-17: cost $895.94, floor already raised to $969): no partial sale from a floor above cost", () => {
     const ops = heldSetupExitOps({ setup: pead, horizon: "TRADE", entry: 895.935, stop: 969, direction: "LONG", stored: [], mintId });
@@ -74,14 +63,7 @@ describe("heldSetupExitOps — a held stock whose review just named its setup", 
   it("a floor still under cost writes the partial from the real cost and floor", () => {
     const ops = heldSetupExitOps({ setup: pead, horizon: "TRADE", entry: 100, stop: 94, direction: "LONG", stored: [], mintId });
     const trim = ops.find((o) => o.op === "add" && o.trigger.action === "TRIM");
-    expect(trim && trim.op === "add" ? trim.trigger.predicate : null).toEqual({
-      kind: "GAIN_FROM_ENTRY",
-      pct: pead.manage.partialAtR! * 6,
-      direction: "UP",
-      // A big winner is not trimmed (DAV-294).
-      skipIfPeakGainPct: 20,
-      skipIfPeakWithinDays: 21,
-    });
+    expect(trim && trim.op === "add" ? trim.trigger.predicate : null).toEqual({ watch: "move", is: "above", value: pead.manage.partialAtR! * 6, variable: "entry", settings: { fastWinnerPct: 20, fastWinnerDays: 21 } });
   });
 
   it("leaves a trigger already in the same bucket alone", () => {

@@ -45,14 +45,14 @@ const msft = () =>
       {
         id: "t1",
         action: "REVIEW",
-        predicate: { kind: "REVIEW_CADENCE", days: 30 },
+        predicate: { watch: "repeat", value: 30 },
         rationale: "Monthly look.",
         cooldownDays: 30,
       },
       {
         id: "t2",
         action: "REVIEW",
-        predicate: { kind: "EARNINGS_BEAT" },
+        predicate: { watch: "surprise", is: "beat", value: 0 },
         rationale: "Beat.",
         cooldownDays: 7,
       },
@@ -80,7 +80,7 @@ const exel = (triggers: unknown[]) =>
 const plainClock = {
   id: "x1",
   action: "REVIEW",
-  predicate: { kind: "REVIEW_CADENCE", days: 112 },
+  predicate: { watch: "repeat", value: 112 },
   rationale: "Look again in a while.",
   cooldownDays: 112,
 };
@@ -94,8 +94,8 @@ const flagRows = (result: unknown, ticker: string): FlagRow[] => {
 };
 
 const earningsWakes = [
-  { id: "e1", action: "REVIEW", predicate: { kind: "EARNINGS_BEAT" }, rationale: "Beat.", cooldownDays: 7 },
-  { id: "e2", action: "REVIEW", predicate: { kind: "EARNINGS_MISS" }, rationale: "Miss.", cooldownDays: 7 },
+  { id: "e1", action: "REVIEW", predicate: { watch: "surprise", is: "beat", value: 0 }, rationale: "Beat.", cooldownDays: 7 },
+  { id: "e2", action: "REVIEW", predicate: { watch: "surprise", is: "miss", value: 0 }, rationale: "Miss.", cooldownDays: 7 },
 ];
 
 const watch = (over: Record<string, unknown>) =>
@@ -133,7 +133,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
               {
                 id: "g1",
                 action: "ENTER",
-                predicate: { kind: "VS_SMA", period: 50, direction: "ABOVE" },
+                predicate: { watch: "price", is: "above", variable: "sma50" },
                 rationale: "Reclaim the 50-day.",
                 cooldownDays: 1,
               },
@@ -224,7 +224,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
 });
 
 describe("DAV-321 ruling 4 — a buy still live inside the last 21 days", () => {
-  const buy = { id: "b1", action: "ENTER", predicate: { kind: "PRICE_ABOVE", level: 97.5 }, rationale: "Reclaim.", cooldownDays: 1 };
+  const buy = { id: "b1", action: "ENTER", predicate: { watch: "price", is: "above", value: 97.5 }, rationale: "Reclaim.", cooldownDays: 1 };
 
   it("MIRM on 09-17: a $97.50 buy nine days before the decision is flagged", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
@@ -239,7 +239,7 @@ describe("DAV-321 ruling 4 — a buy still live inside the last 21 days", () => 
 
   it("AGIO at 34 days, with its buy, is inside the window and outside the cut-off — no flag", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
-      seed: { thesis: [watch({ id: "t_agio", ticker: "AGIO", horizon: "CATALYST", setupId: "PRE_CATALYST", catalystDate: inDays(34), entryPrice: 31.5, targetPrice: 40, stopLoss: 27.5, triggers: [{ ...buy, predicate: { kind: "PRICE_ABOVE", level: 31.5 } }] })] },
+      seed: { thesis: [watch({ id: "t_agio", ticker: "AGIO", horizon: "CATALYST", setupId: "PRE_CATALYST", catalystDate: inDays(34), entryPrice: 31.5, targetPrice: 40, stopLoss: 27.5, triggers: [{ ...buy, predicate: { watch: "price", is: "above", value: 31.5 } }] })] },
       args: { tickers: ["AGIO"] },
       quotes: { AGIO: 30 },
     });
@@ -249,7 +249,7 @@ describe("DAV-321 ruling 4 — a buy still live inside the last 21 days", () => 
 
   it("a compounder with a buy is never flagged for a date it does not have", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
-      seed: { thesis: [watch({ id: "t_gd", ticker: "GD", horizon: "COMPOUNDER", setupId: "COMPOUNDER_ACCUMULATION", catalystDate: null, entryPrice: 356, targetPrice: 435, stopLoss: 315, triggers: [{ ...buy, predicate: { kind: "PRICE_ABOVE", level: 356 } }] })] },
+      seed: { thesis: [watch({ id: "t_gd", ticker: "GD", horizon: "COMPOUNDER", setupId: "COMPOUNDER_ACCUMULATION", catalystDate: null, entryPrice: 356, targetPrice: 435, stopLoss: 315, triggers: [{ ...buy, predicate: { watch: "price", is: "above", value: 356 } }] })] },
       args: { tickers: ["GD"] },
       quotes: { GD: 340 },
     });
@@ -303,9 +303,9 @@ describe("a watched stock waiting on a review at a price, with no buy", () => {
     // silenced this row's "price the buy now" (and EME's, whose buy was lost
     // to the #732 save bug, not chosen).
     const bbio = [
-      { id: "b1", action: "REVIEW", predicate: { kind: "PRICE_BELOW", basis: "close", level: 48.78 }, rationale: "A close below the 52-week low invalidates the pre-PDUFA accumulation thesis." },
-      { id: "b2", action: "REVIEW", predicate: { kind: "REVIEW_CADENCE", days: 21, from: "LAST_REVIEW" }, rationale: "Three-week cadence." },
-      { id: "b3", action: "REVIEW", predicate: { kind: "REVIEW_CADENCE", days: 14, from: "EVENT", side: "BEFORE" }, rationale: "Two weeks before the PDUFA." },
+      { id: "b1", action: "REVIEW", predicate: { watch: "price", is: "below", value: 48.78, settings: { close: true } }, rationale: "A close below the 52-week low invalidates the pre-PDUFA accumulation thesis." },
+      { id: "b2", action: "REVIEW", predicate: { watch: "repeat", value: 21 }, rationale: "Three-week cadence." },
+      { id: "b3", action: "REVIEW", predicate: { watch: "from_date", is: "before", value: 14, variable: "event" }, rationale: "Two weeks before the PDUFA." },
     ];
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch({ id: "t_bbio", ticker: "BBIO", horizon: "CATALYST", setupId: "PRE_CATALYST", catalystDate: inDays(59), triggers: bbio })] },
@@ -323,7 +323,7 @@ describe("a watched stock waiting on a review at a price, with no buy", () => {
         agentConfig: [
           {
             id: REPLAY_ANALYST_ID,
-            triggers: [{ id: "a1", action: "REVIEW", predicate: { kind: "PRICE_ABOVE", level: 146 }, rationale: "Seat-wide look." }],
+            triggers: [{ id: "a1", action: "REVIEW", predicate: { watch: "price", is: "above", value: 146 }, rationale: "Seat-wide look." }],
           },
         ],
       },

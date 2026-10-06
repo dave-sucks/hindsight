@@ -26,6 +26,7 @@ import {
 } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { filingsOnBook } from "@/lib/agent/filings-on-book";
 import { listOpenRefusalsForAnalyst, type OpenRefusal } from "@/lib/agent/gate-rejections";
 import { describeEarningsReport, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
@@ -759,7 +760,7 @@ export async function buildRunInput(
         `ticker=${f.thesis.ticker}`,
       ) as unknown[];
       const t = triggers.find(
-        (x): x is { id: string; action: string; predicate: { kind: string } } =>
+        (x): x is { id: string; action: string; predicate: unknown } =>
           typeof x === "object" &&
           x != null &&
           "id" in (x as object) &&
@@ -777,7 +778,7 @@ export async function buildRunInput(
         action: isSyntheticOverdue ? "REVIEW" : (t?.action ?? "REVIEW"),
         predicateSummary: isSyntheticOverdue
           ? "scheduled review overdue"
-          : (t?.predicate.kind ?? "(predicate removed)"),
+          : t ? sentenceOf(t, f.thesis.status === "HOLDING") : "(predicate removed)",
         rationale: f.rationale ?? f.summary ?? "",
         firedAt: f.timestamp.toISOString(),
       };

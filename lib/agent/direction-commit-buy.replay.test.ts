@@ -17,6 +17,7 @@
  * breakout and a buy on a pullback): a plan with two different buys saves,
  * shown here on the CRWD writer mint of the same day.
  */
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 
 type Trig = { id: string; action: string; predicate: Record<string, unknown> };
@@ -49,13 +50,7 @@ const smmt = () =>
         id: SMMT_AND_BUY,
         action: "ENTER",
         source: "AGENT",
-        predicate: {
-          kind: "AND",
-          predicates: [
-            { kind: "PRICE_ABOVE", basis: "close", level: 17.1 },
-            { kind: "VS_SMA", period: 20, direction: "ABOVE" },
-          ],
-        },
+        predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: 17.1, settings: { close: true } }, { watch: "price", is: "above", variable: "sma20" }] },
         rationale: "Reclaim entry: a close above $17.10 and above the 20-day, inside the buy window.",
         cooldownDays: 1,
         writtenAt: "2026-10-02T18:45:55.686Z",
@@ -65,7 +60,7 @@ const smmt = () =>
         id: "129c7fe1-63e0-4c87-a715-782ba8bd1aeb",
         action: "EXIT",
         source: "AGENT",
-        predicate: { kind: "PRICE_BELOW", level: 15.9 },
+        predicate: { watch: "price", is: "below", value: 15.9 },
         rationale: "Under the September 29 gap-day low; 1.04 ATR below the $17.10 entry.",
         cooldownDays: 1,
       },
@@ -73,7 +68,7 @@ const smmt = () =>
         id: "95bbcef7-519e-4372-89e8-72f9be753888",
         action: "REVIEW",
         source: "AGENT",
-        predicate: { kind: "PRICE_ABOVE", level: 19.55 },
+        predicate: { watch: "price", is: "above", value: 19.55 },
         rationale: "Gap-day high and the 61.8% retracement bracket the target; 2.04R from $17.10.",
         cooldownDays: 1,
       },
@@ -81,7 +76,7 @@ const smmt = () =>
         id: "b2abd6e2-4207-40aa-b8f4-f217861e7f69",
         action: "REVIEW",
         source: "AGENT",
-        predicate: { kind: "REVIEW_CADENCE", days: 7, from: "LAST_REVIEW" },
+        predicate: { watch: "repeat", value: 7 },
         rationale: "Weekly, with 43 days to the decision.",
         cooldownDays: 7,
       },
@@ -89,7 +84,7 @@ const smmt = () =>
         id: "0bf77aac-99b1-465c-979b-94079264fe21",
         action: "REVIEW",
         source: "AGENT",
-        predicate: { kind: "REVIEW_CADENCE", days: 14, from: "EVENT", side: "BEFORE" },
+        predicate: { watch: "from_date", is: "before", value: 14, variable: "event" },
         rationale: "Two weeks before the decision: hold through it, or take the run-up.",
         cooldownDays: 14,
       },
@@ -162,22 +157,22 @@ const crwdMint = {
   triggers: [
     {
       action: "ENTER",
-      predicate: { kind: "NEAR_SMA", period: 20, withinPct: 2 },
+      predicate: { watch: "move", is: "near", value: 2, variable: "sma20" },
       rationale: "Pulled back to within 2% of the rising 20-day — the setup's entry condition.",
     },
     {
       action: "REVIEW",
-      predicate: { kind: "PRICE_ABOVE", basis: "close", level: 275 },
+      predicate: { watch: "price", is: "above", value: 275, settings: { close: true } },
       rationale: "Closed above $275 without the pullback — re-evaluate a breakout entry.",
     },
     {
       action: "REVIEW",
-      predicate: { kind: "REVIEW_CADENCE", days: 30, from: "LAST_REVIEW" },
+      predicate: { watch: "repeat", value: 30 },
       rationale: "30-day watch clock.",
     },
     {
       action: "REVIEW",
-      predicate: { kind: "EARNINGS_WITHIN", days: 7 },
+      predicate: { watch: "report", is: "before", value: 7 },
       rationale: "Earnings December 1 — review the entry plan ahead of the print.",
     },
   ],
@@ -214,6 +209,6 @@ describe("committing a direction uses the buy already on the stock", () => {
     expect(refused).toBe(false);
     const rows = db.store.thesis as Array<Record<string, unknown>>;
     expect(rows).toHaveLength(1);
-    expect(buysOf(rows[0].triggers).map((t) => t.predicate.kind).sort()).toEqual(["NEAR_SMA", "PRICE_BELOW"]);
+    expect(buysOf(rows[0].triggers).map((t) => kindOf(t.predicate)).sort()).toEqual(["NEAR_SMA", "PRICE_BELOW"]);
   });
 });

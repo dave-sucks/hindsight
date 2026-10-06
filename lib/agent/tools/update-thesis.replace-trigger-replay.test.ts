@@ -24,6 +24,7 @@
  * $146 review is a wake, and the target column stays empty.
  */
 import raw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { applyTriggerOps, type TriggerOp } from "@/lib/agent/triggers/ops";
@@ -42,7 +43,7 @@ const fx = raw as unknown as {
   savedOps: Op[];
 };
 
-const REVIEW_146 = "Added: review above $146";
+const REVIEW_146 = "Added: Review if above $146 · only on the close";
 
 /** The thesis as the writer's call found it, on the Compounder's rules. */
 const seed = () => ({
@@ -128,8 +129,19 @@ describe("the fixture is the production call", () => {
       stored = out.triggers;
       lines.push(...out.results.filter((r) => r.ok).map(({ op, id, text }) => ({ op, id, text })));
     }
-    expect(lines).toEqual(fx.savedOps.map(({ op, id, text }) => ({ op, id, text })));
-    expect(stored.map((t) => t.predicate.kind)).toEqual(["EARNINGS_SINCE"]);
+    // The same nine lines on the same ids, in the order production wrote
+    // them; each trigger now reads the way its pill does.
+    const SAID_NOW: Record<string, string> = {
+      "Price below $132: wording updated": "Review if below $132: wording updated",
+      "Added: 0–2 days after the report → review": "Added: Review if within 2 days after earnings",
+      "Removed: review every 30 days": "Removed: Review every 30 days",
+      "Removed: buy above $146": "Removed: Buy if above $146 · only on the close",
+      "Removed: Price below $132 → review": "Removed: Review if below $132",
+      "Removed: sell below $132": "Removed: Take the plan down if below $132",
+      "Removed: review above $146": "Removed: Review if above $146",
+    };
+    expect(lines).toEqual(fx.savedOps.map(({ op, id, text }) => ({ op, id, text: SAID_NOW[text] ?? text })));
+    expect(stored.map((t) => kindOf(t.predicate))).toEqual(["EARNINGS_SINCE"]);
   });
 });
 
@@ -143,9 +155,9 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     // All four new triggers, the $132 review on the close as written.
     expect(opsOf(check).filter((o) => o.op === "add").map((o) => o.text)).toEqual([
       REVIEW_146,
-      "Added: review every 30 days",
-      "Added: Closes below $132 → review",
-      "Added: 0–2 days after the report → review",
+      "Added: Review every 30 days",
+      "Added: Review if below $132 · only on the close",
+      "Added: Review if within 2 days after earnings",
     ]);
     expect(check.db.store.thesisUpdate ?? []).toHaveLength(0);
 
@@ -153,13 +165,13 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     expect(saved.refused).toBe(false);
     const row = (saved.db.store.thesis as Array<Record<string, unknown>>).find((t) => t.id === fx.thesisBefore.id)!;
     const now = row.triggers as Trigger[];
-    expect(now.map((t) => [t.action, t.predicate.kind])).toEqual([
+    expect(now.map((t) => [t.action, kindOf(t.predicate)])).toEqual([
       ["REVIEW", "PRICE_ABOVE"],
       ["REVIEW", "REVIEW_CADENCE"],
       ["REVIEW", "PRICE_BELOW"],
       ["REVIEW", "EARNINGS_SINCE"],
     ]);
-    expect(now[0].predicate).toMatchObject({ kind: "PRICE_ABOVE", level: 146 });
+    expect(now[0].predicate).toMatchObject({ watch: "price", is: "above", value: 146 });
     // A wake, not a target: no plan columns on a stock with no buy.
     expect(row.entryPrice).toBeNull();
     expect(row.targetPrice).toBeNull();
@@ -173,16 +185,16 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     // landed on the old ones and were deleted with them.
     const submit: Submit = {
       ...fx.submit,
-      add_triggers: fx.submit.add_triggers?.filter((t) => t.predicate.kind !== "PRICE_ABOVE"),
+      add_triggers: fx.submit.add_triggers?.filter((t) => kindOf(t.predicate) !== "PRICE_ABOVE"),
     };
     const saved = await save(await writerSaveArgs(decision(submit)), false);
     expect(saved.refused).toBe(false);
     const row = (saved.db.store.thesis as Array<Record<string, unknown>>).find((t) => t.id === fx.thesisBefore.id)!;
     const now = row.triggers as Trigger[];
     expect(now.map((t) => [t.action, t.predicate])).toEqual([
-      ["REVIEW", { kind: "REVIEW_CADENCE", days: 30, from: "LAST_REVIEW" }],
-      ["REVIEW", { kind: "PRICE_BELOW", level: 132, basis: "close" }],
-      ["REVIEW", { kind: "EARNINGS_SINCE", min: 0, max: 2 }],
+      ["REVIEW", { watch: "repeat", value: 30 }],
+      ["REVIEW", { watch: "price", is: "below", value: 132, settings: { close: true } }],
+      ["REVIEW", { watch: "report", is: "after", value: 2, settings: { fromDay: 0 } }],
     ]);
     const old = new Set(fx.thesisBefore.triggers.map((t) => t.id));
     expect(now.some((t) => old.has(t.id))).toBe(false);

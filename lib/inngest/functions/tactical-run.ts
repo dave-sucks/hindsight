@@ -25,7 +25,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
-import { describeTriggerFire, predicateSentence } from "@/lib/agent/triggers/format";
+import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { listOpenRefusalsForAnalyst, listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
@@ -57,7 +57,6 @@ interface FiredPayload {
   analystId: string;
   ticker: string;
   action: Trigger["action"];
-  predicateKind: string;
   /** Quote that fired the predicate (see evaluator). */
   firedPrice?: number | null;
   /**
@@ -69,7 +68,7 @@ interface FiredPayload {
    */
   firedContext?: string | null;
   /** Other protective triggers that fired with this one on the same pass (DAV-254). */
-  coFired?: Array<{ triggerId: string; predicateKind: string; sentence: string }>;
+  coFired?: Array<{ triggerId: string; sentence: string }>;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -209,7 +208,7 @@ export const tacticalRun = inngest.createFunction(
             openedAt: true,
             // The price-monitor-maintained watermark (high for LONG, low for
             // SHORT). Handed to the tactical prompt as the AUTHORITATIVE
-            // reference for TRAILING_FROM_HIGH validation — DAV-186: the HPE
+            // reference for trail validation — DAV-186: the HPE
             // agent re-derived a "peak" from a short chart window and
             // declined a genuine trail fire.
             peakPrice: true,
@@ -461,7 +460,6 @@ export const tacticalRun = inngest.createFunction(
             triggerId: trigger.id,
             ticker: thesis.ticker,
             action: trigger.action,
-            predicateKind: fired.predicateKind,
             agentMode: true,
             analystName: agentConfig.name,
           } as object,
@@ -480,8 +478,8 @@ export const tacticalRun = inngest.createFunction(
     await step.run("write-trigger-fired", async () => {
       // Persist a human-readable sentence — same format the sheet's
       // banner renders. Old SCREAMING_SNAKE_CASE summaries were
-      // unreadable ("REVIEW trigger matched: PRICE_BELOW (price/time)").
-      const summary = describeTriggerFire(trigger as Trigger);
+      // unreadable ("REVIEW trigger matched: price-below (price/time)").
+      const summary = sentenceOf(trigger as Trigger);
       // A co-fired protective trigger gets its own audit row — the record
       // says both fired — but shares this one run.
       for (const co of fired.coFired ?? []) {
@@ -530,15 +528,15 @@ export const tacticalRun = inngest.createFunction(
     // as every other fire (evaluator → event → here); we just don't spawn the
     // model. Non-EXIT / unheld DIRECT can't happen (the add-path coerces those
     // to TACTICAL) but we guard anyway and fall through to the agent.
-    // The predicate-kind gate is defensive: applyTriggerAdd /
-    // applyTriggerFireModeChange already refuse DIRECT on a non-deterministic
+    // The condition gate is defensive: applyTriggerAdd and the trigger
+    // dialog's replace already refuse DIRECT on a non-deterministic
     // EXIT, but a stale/agent-written trigger could still carry it. A
     // judgment-bearing exit (earnings, signal) must fall through to the agent,
     // not be auto-closed by directExitReason's STOP fallback.
     if (
       trigger.fireMode === "DIRECT" &&
       trigger.action === "EXIT" &&
-      isDirectEligiblePredicate(trigger.predicate.kind) &&
+      isDirectEligiblePredicate(trigger.predicate) &&
       position
     ) {
       const direct = await step.run("direct-close", async () => {
@@ -647,7 +645,7 @@ export const tacticalRun = inngest.createFunction(
       // threaded alongside the tag so the close tools can name WHY the label
       // was corrected in the audit note they write (DAV-192).
       const protectiveExitTriggerLabel = protectiveExitReason
-        ? predicateSentence((trigger as Trigger).predicate)
+        ? conditionSentence((trigger as Trigger).predicate)
         : undefined;
       const allTools = createResearchTools({
         runId: run.id,
@@ -743,7 +741,7 @@ export const tacticalRun = inngest.createFunction(
       // Casts mirror the existing pattern in this file — ctx is loaded
       // via step.run which Inngest types as unknown.
       const triggerTyped = trigger as Trigger;
-      const fireSentence = describeTriggerFire(triggerTyped);
+      const fireSentence = sentenceOf(triggerTyped);
       // The numbers behind an earnings fire, when the evaluator sent them.
       const contextSuffix = fired.firedContext ? ` ${fired.firedContext}` : "";
       const coFiredSuffix = fired.coFired?.length

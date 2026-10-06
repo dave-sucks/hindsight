@@ -70,8 +70,8 @@ const gdBefore = () => {
     targetPrice: 435,
     triggers: [
       ...(row.triggers as unknown[]),
-      { id: floorId, action: "EXIT", predicate: { kind: "PRICE_BELOW", level: 315 }, rationale: "Floor — sell if the price drops to $315.", cooldownDays: 1, source: "AGENT" },
-      { id: targetId, action: "REVIEW", predicate: { kind: "PRICE_ABOVE", level: 435 }, rationale: "Target — review above $435.", cooldownDays: 1, source: "AGENT" },
+      { id: floorId, action: "EXIT", predicate: { watch: "price", is: "below", value: 315 }, rationale: "Floor — sell if the price drops to $315.", cooldownDays: 1, source: "AGENT" },
+      { id: targetId, action: "REVIEW", predicate: { watch: "price", is: "above", value: 435 }, rationale: "Target — review above $435.", cooldownDays: 1, source: "AGENT" },
     ],
   };
 };

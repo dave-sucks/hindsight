@@ -19,6 +19,8 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import type { Condition } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
   parseLevelTriggers,
@@ -32,7 +34,7 @@ import type { Trigger } from "./types";
 
 const trail = (pct: number, id: string): Trigger => ({
   id,
-  predicate: { kind: "TRAILING_FROM_HIGH", pct },
+  predicate: { watch: "move", is: "below", value: pct, variable: "peak" },
   action: "EXIT",
   rationale: "trail",
 });
@@ -160,16 +162,16 @@ describe("resolveThesisLadder", () => {
     const acct = resolveThesisLadder(base, {
       analyst: [],
       account: [trail(6, "acc-trail")],
-    }).find((t) => t.predicate.kind === "TRAILING_FROM_HIGH")!;
+    }).find((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH")!;
     expect(acct.level).toBe("ACCOUNT");
-    expect((acct.predicate as { pct: number }).pct).toBe(6);
+    expect((acct.predicate as Condition).value).toBe(6);
 
     const analyst = resolveThesisLadder(base, {
       analyst: [trail(5, "an-trail")],
       account: [trail(6, "acc-trail")],
-    }).find((t) => t.predicate.kind === "TRAILING_FROM_HIGH")!;
+    }).find((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH")!;
     expect(analyst.level).toBe("ANALYST");
-    expect((analyst.predicate as { pct: number }).pct).toBe(5);
+    expect((analyst.predicate as Condition).value).toBe(5);
   });
 
   it("lets the thesis override every level above it", () => {
@@ -181,11 +183,11 @@ describe("resolveThesisLadder", () => {
         horizon: "TARGET",
       },
       { analyst: [trail(5, "an-trail")], account: [trail(6, "acc-trail")] },
-    ).find((t) => t.predicate.kind === "TRAILING_FROM_HIGH")!;
+    ).find((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH")!;
 
     expect(own.level).toBe("THESIS");
     expect(own.inherited).toBe(false);
-    expect((own.predicate as { pct: number }).pct).toBe(4);
+    expect((own.predicate as Condition).value).toBe(4);
   });
 
   it("drops position-scoped rungs on a WATCHING thesis, whatever level they came from", () => {
@@ -195,8 +197,8 @@ describe("resolveThesisLadder", () => {
       { triggers: [], triggerState: {}, status: "WATCHING", horizon: "TARGET" },
       { analyst: [], account: accountSeedTriggers() },
     );
-    expect(ladder.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH")).toBe(false);
-    expect(ladder.some((t) => t.predicate.kind === "GAIN_FROM_ENTRY")).toBe(false);
+    expect(ladder.some((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH")).toBe(false);
+    expect(ladder.some((t) => kindOf(t.predicate) === "GAIN_FROM_ENTRY")).toBe(false);
     // The daily-move scale-ins are ADD rungs — a position action — and go
     // too (2026-09-03: they spawned five "scale in" runs on un-held names).
     expect(ladder.some((t) => t.action === "ADD")).toBe(false);

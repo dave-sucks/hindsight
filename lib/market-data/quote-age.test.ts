@@ -20,13 +20,13 @@ const etnQuote = { c: 425.41, pc: 409.15, t: FRIDAY_CLOSE_T };
 
 const etnBuy: Trigger = {
   id: "etn-buy",
-  predicate: { kind: "PRICE_ABOVE", level: 418 },
+  predicate: { watch: "price", is: "above", value: 418 },
   action: "ENTER",
   rationale: "Buy on a clean breakout above the recent repair range near $418.",
   source: "AGENT",
   lastFiredAt: "2026-09-11T13:45:00.000Z",
 };
-const etnFloor: Trigger = { id: "etn-floor", predicate: { kind: "PRICE_BELOW", level: 430 }, action: "EXIT", rationale: "floor", source: "AGENT" };
+const etnFloor: Trigger = { id: "etn-floor", predicate: { watch: "price", is: "below", value: 430 }, action: "EXIT", rationale: "floor", source: "AGENT" };
 
 const ctxFor = (quote: { c: number; pc: number; t: number }) => ({
   thesis: { createdAt: new Date("2026-06-01T00:00:00Z"), direction: "LONG" as const },
@@ -53,7 +53,7 @@ describe("ETN at 09:30 on 2026-09-14 — Friday's close served as today's price"
   });
 
   it("an add on the same stale quote waits too", () => {
-    const add: Trigger = { ...etnBuy, id: "etn-add", action: "ADD", predicate: { kind: "PRICE_MOVE_PCT", pct: 3, direction: "UP", window: "1D" } };
+    const add: Trigger = { ...etnBuy, id: "etn-add", action: "ADD", predicate: { watch: "move", is: "above", value: 3, variable: "prev_close" } };
     expect(shouldFire(add, ctxFor(etnQuote))).toEqual({ fires: false, reason: "stale-quote" });
   });
 

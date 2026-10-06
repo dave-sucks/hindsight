@@ -1,10 +1,10 @@
 /**
  * Two reads for the stock page, from the same code the triggers use:
  *   • volume — today's consolidated volume against the 20-session average,
- *     the comparison VOLUME_RATIO fires on;
+ *     the comparison volume fires on;
  *   • insider buying — open-market purchases (Form 4 code P) in the last
  *     90 days and how many distinct people bought in the last 30, the read
- *     INSIDER_CLUSTER fires on.
+ *     insider-buying fires on.
  * Live, nothing stored. A read that failed says so.
  */
 

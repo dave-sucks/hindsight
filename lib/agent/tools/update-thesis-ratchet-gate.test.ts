@@ -75,7 +75,7 @@ const FLOOR_948 = floorAt(948);
 function floorAt(level: number) {
   return {
     id: "trig_floor",
-    predicate: { kind: "PRICE_BELOW", level },
+    predicate: { watch: "price", is: "below", value: level },
     action: "EXIT",
     rationale: "Hard floor.",
     fireMode: "DIRECT",
@@ -210,8 +210,8 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
 
     expect(result.data.ok).not.toBe(false);
     expect(result.data.trigger_ops[0]).toMatchObject({ ok: true, text: "Stop $948 → $980 (tightened)" });
-    const data = mockThesisUpdate.mock.calls[0][0].data as { triggers: Array<{ id: string; predicate: { level: number } }> };
-    expect(data.triggers.find((t) => t.id === "trig_floor")?.predicate.level).toBe(980);
+    const data = mockThesisUpdate.mock.calls[0][0].data as { triggers: Array<{ id: string; predicate: { value: number } }> };
+    expect(data.triggers.find((t) => t.id === "trig_floor")?.predicate.value).toBe(980);
   });
 
   it("allows raising the stop_loss column (the legal direction)", async () => {
@@ -241,7 +241,7 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
         triggers: [
           {
             id: "trig_enter",
-            predicate: { kind: "PRICE_ABOVE", level: 950 },
+            predicate: { watch: "price", is: "above", value: 950 },
             action: "ENTER",
             rationale: "Entry.",
           },

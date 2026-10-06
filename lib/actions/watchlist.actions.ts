@@ -273,7 +273,7 @@ function buildSeedTriggers(
   if (wake?.below != null) {
     out.push({
       id: randomUUID(),
-      predicate: { kind: "PRICE_BELOW", level: wake.below },
+      predicate: { watch: "price", is: "below", value: wake.below },
       action: "REVIEW",
       rationale: `Look again if it drops to $${wake.below}.`,
       source: "PRINCIPAL",
@@ -283,7 +283,7 @@ function buildSeedTriggers(
   if (wake?.above != null) {
     out.push({
       id: randomUUID(),
-      predicate: { kind: "PRICE_ABOVE", level: wake.above },
+      predicate: { watch: "price", is: "above", value: wake.above },
       action: "REVIEW",
       rationale: `Look again if it reaches $${wake.above}.`,
       source: "PRINCIPAL",
@@ -298,7 +298,7 @@ function buildSeedTriggers(
  *
  * Fires the same `app/thesis.write.requested` event `dispatch_thesis_research`
  * emits — until now only agents and the promote dialog could dispatch.
- * `reviewCadenceDays` rides along and lands as an ordinary REVIEW_CADENCE
+ * `reviewCadenceDays` rides along and lands as an ordinary review-clock
  * rung, so the result comes back scheduled only when you asked for that.
  */
 export async function sendToThesisWriter(

@@ -251,6 +251,8 @@ describe("one kind per row, then one table each", () => {
     expect(k("STATUS_CHANGED", { status: { to: "WATCHING" } })).toBe("back-to-watching");
     expect(k("UPDATED", {}, "The run's own words")).toBe("updated");
     expect(k("UPDATED", {}, "[USER] Principal set Price = 248")).toBe("edited-by-you");
+    // Since 2026-10-06 your own edit's note is plain words; the row is marked in fieldChanges.
+    expect(k("UPDATED", { source: { from: null, to: "USER" } }, "You added this trigger: Sell if below $150. It stands until you change it.")).toBe("edited-by-you");
   });
 
   it("green in, red out, amber for proposals that didn't trade", () => {

@@ -54,7 +54,7 @@ const ANALYST_ID = "analyst_1";
 function firedEnterThesis() {
   const enterTrigger = {
     id: "trig_enter",
-    predicate: { kind: "PRICE_ABOVE", level: 27.5 },
+    predicate: { watch: "price", is: "above", value: 27.5 },
     action: "ENTER",
     rationale: "entry",
     cooldownDays: 1,

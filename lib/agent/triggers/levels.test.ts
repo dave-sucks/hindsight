@@ -1,5 +1,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import type { Condition } from "@/lib/agent/triggers/condition";
 import {
   resolveLadder,
   LEVEL_PRECEDENCE,
@@ -19,12 +21,12 @@ function rung(over: Partial<Trigger> & Pick<Trigger, "predicate" | "action">): T
 }
 
 const trail = (pct: number, id?: string) =>
-  rung({ id, predicate: { kind: "TRAILING_FROM_HIGH", pct }, action: "EXIT" });
+  rung({ id, predicate: { watch: "move", is: "below", value: pct, variable: "peak" }, action: "EXIT" });
 
 const gainReview = (pct: number, id?: string) =>
   rung({
     id,
-    predicate: { kind: "GAIN_FROM_ENTRY", pct, direction: "UP" },
+    predicate: { watch: "move", is: "above", value: pct, variable: "entry" },
     action: "REVIEW",
   });
 
@@ -38,7 +40,7 @@ describe("resolveLadder — precedence", () => {
 
     expect(resolved).toHaveLength(1);
     expect(resolved[0].level).toBe("THESIS");
-    expect((resolved[0].predicate as { pct: number }).pct).toBe(5);
+    expect((resolved[0].predicate as Condition).value).toBe(5);
   });
 
   it("falls through one level at a time as each is removed", () => {
@@ -51,7 +53,7 @@ describe("resolveLadder — precedence", () => {
     for (const { input, level, pct } of levels) {
       const [only] = resolveLadder(input);
       expect(only.level).toBe(level);
-      expect((only.predicate as { pct: number }).pct).toBe(pct);
+      expect((only.predicate as Condition).value).toBe(pct);
     }
   });
 
@@ -63,7 +65,7 @@ describe("resolveLadder — precedence", () => {
     const afterDelete = resolveLadder({ thesis: [], account: [trail(7)] });
     expect(afterDelete[0].level).toBe("ACCOUNT");
     expect(afterDelete[0].inherited).toBe(true);
-    expect((afterDelete[0].predicate as { pct: number }).pct).toBe(7);
+    expect((afterDelete[0].predicate as Condition).value).toBe(7);
   });
 
   it("different buckets coexist — an override does not suppress unrelated rungs", () => {
@@ -80,7 +82,7 @@ describe("resolveLadder — precedence", () => {
   it("distinguishes GAIN_FROM_ENTRY UP from DOWN (they are separate buckets)", () => {
     const up = gainReview(10);
     const down = rung({
-      predicate: { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" },
+      predicate: { watch: "move", is: "below", value: 12, variable: "entry" },
       action: "REVIEW",
     });
     const resolved = resolveLadder({ thesis: [up], account: [down] });
@@ -92,7 +94,7 @@ describe("resolveLadder — precedence", () => {
   it("dedupes within a single level, keeping the first", () => {
     const resolved = resolveLadder({ thesis: [trail(5), trail(9)] });
     expect(resolved).toHaveLength(1);
-    expect((resolved[0].predicate as { pct: number }).pct).toBe(5);
+    expect((resolved[0].predicate as Condition).value).toBe(5);
   });
 
   it("returns most-specific level first", () => {
@@ -224,7 +226,7 @@ describe("resolveLadder — override annotation", () => {
     });
     expect(only.level).toBe("THESIS");
     expect(only.overrides?.level).toBe("ACCOUNT");
-    expect((only.overrides?.predicate as { pct: number }).pct).toBe(10);
+    expect((only.overrides?.predicate as Condition).value).toBe(10);
   });
 
   it("names the NEAREST level below, not the bottom of the chain", () => {
@@ -234,7 +236,7 @@ describe("resolveLadder — override annotation", () => {
       account: [trail(6)],
     });
     expect(only.overrides?.level).toBe("ANALYST");
-    expect((only.overrides?.predicate as { pct: number }).pct).toBe(5);
+    expect((only.overrides?.predicate as Condition).value).toBe(5);
   });
 
   it("leaves `overrides` absent when nothing was displaced", () => {
@@ -256,7 +258,7 @@ describe("resolveLadder — override annotation", () => {
 
 describe("analyst sell rules reach its held stocks (2026-09-14)", () => {
   const compounder: Trigger[] = [
-    { id: "c25", predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 }, action: "EXIT", rationale: "catastrophe line" },
+    { id: "c25", predicate: { watch: "move", is: "below", value: 25, variable: "peak" }, action: "EXIT", rationale: "catastrophe line" },
   ];
   const sources = { analyst: compounder, account: [] };
 
@@ -268,7 +270,7 @@ describe("analyst sell rules reach its held stocks (2026-09-14)", () => {
   });
 
   it("the stock's own rule still beats the analyst's", () => {
-    const own: Trigger[] = [{ id: "own8", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, action: "EXIT", rationale: "pinned" }];
+    const own: Trigger[] = [{ id: "own8", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, action: "EXIT", rationale: "pinned" }];
     const sell = resolveThesisLadder({ triggers: own, status: "HOLDING", horizon: "COMPOUNDER" }, sources)
       .filter((t) => t.action === "EXIT")
       .map((t) => t.id);
@@ -306,7 +308,7 @@ describe("splitFiresByLevel", () => {
 
 describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
   const cadence = (days: number, id?: string) =>
-    rung({ id, predicate: { kind: "REVIEW_CADENCE", days }, action: "REVIEW" });
+    rung({ id, predicate: { watch: "repeat", value: days }, action: "REVIEW" });
 
   it("drops inherited REVIEW_CADENCE on a WATCHING thesis (all levels)", () => {
     const resolved = resolveLadder({
@@ -315,7 +317,7 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       account: [cadence(7, "account-cadence")],
       state: "WATCHING",
     });
-    expect(resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE")).toEqual([]);
+    expect(resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toEqual([]);
   });
 
   it("keeps a thesis-level cadence on WATCHING — the opt-in survives, unannotated", () => {
@@ -324,7 +326,7 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       account: [cadence(7, "account-cadence")],
       state: "WATCHING",
     });
-    const kept = resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE");
+    const kept = resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
     expect(kept).toHaveLength(1);
     expect(kept[0].id).toBe("own-cadence");
     expect(kept[0].level).toBe("THESIS");
@@ -339,7 +341,7 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       account: [cadence(7, "account-cadence")],
       state: "HELD",
     });
-    const kept = resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE");
+    const kept = resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
     expect(kept).toHaveLength(1);
     expect(kept[0].level).toBe("ACCOUNT");
   });
@@ -351,7 +353,7 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       state: "PROMOTED",
     });
     expect(
-      resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toHaveLength(1);
   });
 
@@ -362,7 +364,7 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       viewLevel: "ACCOUNT",
     });
     expect(
-      resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      resolved.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toHaveLength(1);
   });
 
@@ -375,17 +377,17 @@ describe("resolveLadder — position actions never reach an un-held thesis (2026
   // exist (HPE, RARE, PLTR, NOW on 2026-09-03).
   const scaleIn = rung({
     id: "acct-scale-in",
-    predicate: { kind: "PRICE_MOVE_PCT", pct: 7, direction: "UP", window: "1D" },
+    predicate: { watch: "move", is: "above", value: 7, variable: "prev_close" },
     action: "ADD",
   });
   const trim = rung({
     id: "acct-trim",
-    predicate: { kind: "PRICE_ABOVE", level: 200 },
+    predicate: { watch: "price", is: "above", value: 200 },
     action: "TRIM",
   });
   const floor = rung({
     id: "acct-floor",
-    predicate: { kind: "PRICE_BELOW", level: 100 },
+    predicate: { watch: "price", is: "below", value: 100 },
     action: "EXIT",
   });
 

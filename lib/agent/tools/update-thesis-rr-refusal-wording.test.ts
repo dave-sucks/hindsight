@@ -80,10 +80,10 @@ function msft() {
     lastReviewedAt: null,
     researchUpdatedAt: new Date(),
     triggers: [
-      { id: CADENCE, predicate: { kind: "REVIEW_CADENCE", days: 30 }, action: "REVIEW", rationale: "Monthly review.", source: "DEFAULT", cooldownDays: 7 },
-      { id: BUY, predicate: { kind: "PRICE_ABOVE", level: 518 }, action: "ENTER", rationale: "Buy the reclaim above $518.", source: "AGENT", cooldownDays: 1 },
-      { id: FLOOR, predicate: { kind: "PRICE_BELOW", level: 448 }, action: "EXIT", rationale: "Floor — sell if the price drops to $448.", source: "DEFAULT", cooldownDays: 1 },
-      { id: TARGET, predicate: { kind: "PRICE_ABOVE", level: 600 }, action: "REVIEW", rationale: "Target $600 — decide here.", source: "AGENT", cooldownDays: 1 },
+      { id: CADENCE, predicate: { watch: "repeat", value: 30 }, action: "REVIEW", rationale: "Monthly review.", source: "DEFAULT", cooldownDays: 7 },
+      { id: BUY, predicate: { watch: "price", is: "above", value: 518 }, action: "ENTER", rationale: "Buy the reclaim above $518.", source: "AGENT", cooldownDays: 1 },
+      { id: FLOOR, predicate: { watch: "price", is: "below", value: 448 }, action: "EXIT", rationale: "Floor — sell if the price drops to $448.", source: "DEFAULT", cooldownDays: 1 },
+      { id: TARGET, predicate: { watch: "price", is: "above", value: 600 }, action: "REVIEW", rationale: "Target $600 — decide here.", source: "AGENT", cooldownDays: 1 },
     ],
     triggerState: {},
   };

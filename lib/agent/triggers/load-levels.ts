@@ -99,7 +99,7 @@ export async function loadLevelSources(
 /**
  * The thesis-state axis the default templates key off. `HELD` is the only
  * state that carries position-scoped rungs (gain-from-entry, trail,
- * scale-ins) — see `POSITION_SCOPED_KINDS` in ./levels.
+ * scale-ins) — see `measuresOffPosition` in ./levels.
  */
 export function thesisStateFor(status: string | null): ThesisState {
   if (status === "HOLDING") return "HELD";
@@ -191,9 +191,9 @@ export function resolveThesisLadder(
  */
 export interface TriggerStateEntry {
   firedAt?: string;
-  /** SEC_EVENT: the filing IDs this inherited rung has fired on for this thesis. */
+  /** filing: the filing IDs this inherited rung has fired on for this thesis. */
   firedFilings?: string[];
-  /** EARNINGS_WITHIN: the report dates this inherited heads-up has fired for. */
+  /** before-earnings: the report dates this inherited heads-up has fired for. */
   firedReports?: string[];
   /**
    * ENTER, any level: when a trigger run passed on this buy because the price

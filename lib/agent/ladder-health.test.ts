@@ -16,7 +16,7 @@ const NOW = new Date("2026-07-09T12:00:00Z");
 function exitBelow(level: number, id = "trig-stop"): Trigger {
   return {
     id,
-    predicate: { kind: "PRICE_BELOW", level },
+    predicate: { watch: "price", is: "below", value: level },
     action: "EXIT",
     rationale: "stop",
     cooldownDays: 0,
@@ -26,7 +26,7 @@ function exitBelow(level: number, id = "trig-stop"): Trigger {
 function exitAbove(level: number, id = "trig-cover"): Trigger {
   return {
     id,
-    predicate: { kind: "PRICE_ABOVE", level },
+    predicate: { watch: "price", is: "above", value: level },
     action: "EXIT",
     rationale: "cover stop",
     cooldownDays: 0,
@@ -36,7 +36,7 @@ function exitAbove(level: number, id = "trig-cover"): Trigger {
 function trailExit(pct: number, id = "trig-trail"): Trigger {
   return {
     id,
-    predicate: { kind: "TRAILING_FROM_HIGH", pct },
+    predicate: { watch: "move", is: "below", value: pct, variable: "peak" },
     action: "EXIT",
     rationale: "gain ratchet",
     cooldownDays: 0,
@@ -137,7 +137,7 @@ describe("computeLadderHealth — the flag rule (LONG)", () => {
   it("TRIM / MOVE_STOP / REVIEW rungs do NOT count as protection", () => {
     const trim: Trigger = {
       id: "trig-trim",
-      predicate: { kind: "PRICE_BELOW", level: 108 },
+      predicate: { watch: "price", is: "below", value: 108 },
       action: "TRIM",
       rationale: "partial de-risk",
     };
@@ -227,13 +227,7 @@ describe("computeLadderHealth — predicate composition", () => {
   it("finds a floor inside an OR (any branch fires alone)", () => {
     const orExit: Trigger = {
       id: "trig-or",
-      predicate: {
-        kind: "OR",
-        predicates: [
-          { kind: "PRICE_BELOW", level: 105 },
-          { kind: "PRICE_ABOVE", level: 140 },
-        ],
-      },
+      predicate: { match: "any", conditions: [{ watch: "price", is: "below", value: 105 }, { watch: "price", is: "above", value: 140 }] },
       action: "EXIT",
       rationale: "stop or take-profit",
     };
@@ -250,13 +244,7 @@ describe("computeLadderHealth — predicate composition", () => {
   it("does NOT count a level inside an AND (conditional, not standalone protection)", () => {
     const andExit: Trigger = {
       id: "trig-and",
-      predicate: {
-        kind: "AND",
-        predicates: [
-          { kind: "PRICE_BELOW", level: 105 },
-          { kind: "VOLUME_RATIO", min: 1.5 },
-        ],
-      },
+      predicate: { match: "all", conditions: [{ watch: "price", is: "below", value: 105 }, { watch: "volume", value: 1.5 }] },
       action: "EXIT",
       rationale: "conditional exit",
     };
@@ -272,7 +260,7 @@ describe("computeLadderHealth — predicate composition", () => {
   it("counts a GAIN_FROM_ENTRY DOWN EXIT as a floor at avgCost × (1 − pct/100)", () => {
     const drawdownExit: Trigger = {
       id: "trig-dd",
-      predicate: { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" },
+      predicate: { watch: "move", is: "below", value: 12, variable: "entry" },
       action: "EXIT",
       rationale: "drawdown cut",
     };
@@ -292,7 +280,7 @@ describe("computeLadderHealth — nearest forward rung", () => {
   it("picks the closest not-yet-matching rung across all actions", () => {
     const add: Trigger = {
       id: "trig-add",
-      predicate: { kind: "PRICE_ABOVE", level: 120 },
+      predicate: { watch: "price", is: "above", value: 120 },
       action: "ADD",
       rationale: "breakout add",
     };
@@ -311,7 +299,7 @@ describe("computeLadderHealth — nearest forward rung", () => {
   it("excludes already-matching rungs (a PRICE_ABOVE below the current price)", () => {
     const stale: Trigger = {
       id: "trig-stale",
-      predicate: { kind: "PRICE_ABOVE", level: 105 },
+      predicate: { watch: "price", is: "above", value: 105 },
       action: "ADD",
       rationale: "already crossed",
     };
@@ -327,7 +315,7 @@ describe("computeLadderHealth — nearest forward rung", () => {
   it("maps a GAIN_FROM_ENTRY UP rung to its implied price", () => {
     const milestone: Trigger = {
       id: "trig-up10",
-      predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },
+      predicate: { watch: "move", is: "above", value: 10, variable: "entry" },
       action: "REVIEW",
       rationale: "gain checkpoint",
     };

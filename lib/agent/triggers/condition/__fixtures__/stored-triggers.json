@@ -1,5 +1,5 @@
 {
-"note": "Every distinct (predicate, action) stored in production on 2026-10-04: thesis triggers (live and retired), analyst rules, account rules. Conditions only: no ids, tickers or fire history. Regenerate with the query in condition.test.ts.",
+"note": "Every distinct (predicate, action) stored in production on 2026-10-04 or 2026-10-05: thesis triggers (live and retired), analyst rules, account rules. Conditions only: no ids, tickers or fire history. To refresh, run the query in condition.test.ts and add the rows that aren't here; never remove one, so a condition stays covered after it leaves the book. count = triggers carrying it the day it was added.",
 "rows": [
 {"action":"ADD","predicate":{"kind":"PRICE_ABOVE","level":21},"scopes":["retired"],"count":1},
 {"action":"ADD","predicate":{"kind":"PRICE_ABOVE","level":29.5},"scopes":["retired"],"count":1},
@@ -487,5 +487,10 @@
 {"action":"TRIM","predicate":{"kind":"PRICE_ABOVE","level":1150},"scopes":["live"],"count":1},
 {"action":"TRIM","predicate":{"kind":"PRICE_ABOVE","level":1700},"scopes":["retired"],"count":1},
 {"action":"TRIM","predicate":{"pct":15.6,"kind":"GAIN_FROM_ENTRY","direction":"UP","skipIfPeakGainPct":20,"skipIfPeakWithinDays":21},"scopes":["live"],"count":1},
-{"action":"TRIM","predicate":{"pct":16.6,"kind":"GAIN_FROM_ENTRY","direction":"UP","skipIfPeakGainPct":20,"skipIfPeakWithinDays":21},"scopes":["live"],"count":1}
-]}
+{"action":"TRIM","predicate":{"pct":16.6,"kind":"GAIN_FROM_ENTRY","direction":"UP","skipIfPeakGainPct":20,"skipIfPeakWithinDays":21},"scopes":["live"],"count":1},
+{"action":"REVIEW","predicate":{"kind":"PRICE_ABOVE","level":47},"scopes":["live"],"count":1},
+{"action":"EXIT","predicate":{"kind":"PRICE_BELOW","level":39.9},"scopes":["live"],"count":1},
+{"action":"EXIT","predicate":{"kind":"PRICE_BELOW","level":352.5},"scopes":["live"],"count":1},
+{"action":"ENTER","predicate":{"kind":"PRICE_ABOVE","basis":"close","level":522.85},"scopes":["live"],"count":1}
+]
+}

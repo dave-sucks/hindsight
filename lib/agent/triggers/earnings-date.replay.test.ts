@@ -58,7 +58,7 @@ const AIR_CATALYST_DATE = new Date("2026-09-29T00:00:00.000Z");
 /** The account's standing heads-up, inherited by every watched name. */
 const headsUp = (over: Partial<Trigger> = {}): Trigger => ({
   id: "seed:earnings-within",
-  predicate: { kind: "EARNINGS_WITHIN", days: 3 },
+  predicate: { watch: "report", is: "before", value: 3 },
   action: "REVIEW",
   rationale: "Reports within 3 days — decide the size before the print, not after.",
   ...over,

@@ -45,6 +45,7 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 import { recordThesis } from "./record-thesis";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -112,7 +113,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
 
     const triggers = createdTriggers();
     expect(
-      triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      triggers.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toHaveLength(0);
     // The plan itself is intact — no clock is not no triggers.
     expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
@@ -126,7 +127,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
         triggers: [
           {
             id: "agent-enter",
-            predicate: { kind: "PRICE_ABOVE", level: 186 },
+            predicate: { watch: "price", is: "above", value: 186 },
             action: "ENTER",
             rationale: "Buy the confirmed break above $186.",
           },
@@ -137,7 +138,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
 
     const triggers = createdTriggers();
     expect(
-      triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      triggers.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toHaveLength(0);
     expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
   });
@@ -149,7 +150,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
         triggers: [
           {
             id: "agent-clock",
-            predicate: { kind: "REVIEW_CADENCE", days: 3 },
+            predicate: { watch: "repeat", value: 3 },
             action: "REVIEW",
             rationale: "Heating into the print — look daily-ish.",
           },
@@ -159,11 +160,11 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
     expect(result.ok).toBe(true);
 
     const cadences = createdTriggers().filter(
-      (t) => t.predicate.kind === "REVIEW_CADENCE",
+      (t) => kindOf(t.predicate) === "REVIEW_CADENCE",
     );
     expect(cadences).toHaveLength(1);
     // 3, not the TARGET horizon's 7 — nothing overrides the caller.
-    expect(cadences[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 3 });
+    expect(cadences[0].predicate).toEqual({ watch: "repeat", value: 3 });
   });
 
   it("a CATALYST mint gets no clock either unless one is asked for", async () => {
@@ -173,7 +174,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
     expect(result.ok).toBe(true);
 
     expect(
-      createdTriggers().filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      createdTriggers().filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
     ).toHaveLength(0);
   });
 
@@ -183,7 +184,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
         triggers: [
           {
             id: "agent-cadence",
-            predicate: { kind: "REVIEW_CADENCE", days: 14 },
+            predicate: { watch: "repeat", value: 14 },
             action: "REVIEW",
             rationale: "Slow-moving drift; every two weeks is enough.",
           },
@@ -193,10 +194,10 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
     expect(result.ok).toBe(true);
 
     const cadences = createdTriggers().filter(
-      (t) => t.predicate.kind === "REVIEW_CADENCE",
+      (t) => kindOf(t.predicate) === "REVIEW_CADENCE",
     );
     expect(cadences).toHaveLength(1);
-    expect(cadences[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 14 });
+    expect(cadences[0].predicate).toEqual({ watch: "repeat", value: 14 });
     expect(cadences[0].source).toBe("AGENT");
   });
 

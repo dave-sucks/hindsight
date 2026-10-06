@@ -52,8 +52,9 @@ means it cannot drift from reality. Two consequences worth knowing:
 - **Deleting a thesis rung reveals the inherited rung beneath it.** That is
   the only "revert to default", and it needs no separate affordance.
 - **Only constant rungs can live above the thesis.** "Trail 6%" means the
-  same on every name; "exit below $64.00" does not. `LEVEL_ELIGIBLE_PREDICATE_KINDS`
-  (`lib/actions/level-triggers`) enforces it server-side.
+  same on every name; "exit below $64.00" does not. `addProblem`
+  (`lib/agent/triggers/condition/check.ts`, called by `lib/actions/level-triggers`)
+  refuses a typed price at the analyst or account level server-side.
 
 Because a rung above the thesis is SHARED by every thesis under it, its
 `lastFiredAt` cannot live on the rung — one thesis firing would put every
@@ -118,10 +119,10 @@ protection strip on the dashboard; (3) PR8 feed slice; (4) PR-E settings.
 
 ## 5. Additional trigger/data primitives actually justified
 
-- **RSI implementation** — predicate exists, hard-coded `false` since v1. Unlocks "trim into RSI>70" (principal's 7/07 ask). Needs candle history on the evaluation path.
-- **Earnings-date awareness** — a holding should never be surprised by its own earnings. Cheapest: pin `nextReviewAt` ahead of the next confirmed report date during reviews (data already in `get_earnings_data`). Alternative: an `EARNINGS_IN_N_DAYS` predicate (cron-evaluable off a cached calendar).
+- **RSI** — built: the `rsi` measure reads the daily snapshot's closes with the live price as today's ("trim into RSI above 70" is one trigger).
+- **Earnings-date awareness** — built: the `report` measure ("within N days before earnings") fires off the earnings calendar on the five-minute check.
 - **Portfolio-level conditions** (P1-31's second half): "any holding" standing rules, concentration/%-deployed guards. Design with PR-E.
-- **Volume-confirmation rung** (`VOLUME_RATIO_ABOVE`) — optional; today volume lives in tactical confirmation gates, which may be enough.
+- **Volume-confirmation rung** — built: the `volume` measure (today's volume against the 20-day average) fires on the five-minute check and the close pass.
 - Explicitly NOT needed now: more % predicate variants (5D/30D windows exist but don't fire on the cron — wire candles before inventing new kinds).
 
 ## 6. The signals / news rethink — FRAMED, not solved (own session — P1-34)

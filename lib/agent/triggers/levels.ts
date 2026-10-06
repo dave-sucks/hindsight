@@ -41,6 +41,7 @@
  */
 
 import { triggerBucket } from "./bucket";
+import { fromPosition, reviewClockDays, shapeOf, tightness } from "./condition";
 import { protectiveExitCloseReason } from "./types";
 import type { Trigger } from "./types";
 
@@ -113,7 +114,7 @@ export interface LadderLevels {
    */
   triggerState?: Record<string, string | null | undefined>;
   /**
-   * The same per-thesis bookkeeping for a filing trigger (SEC_EVENT): the
+   * The same per-thesis bookkeeping for a filing trigger: the
    * filings an INHERITED rung has already fired on for this thesis.
    * Thesis-level rungs keep `firedFilings` inline.
    */
@@ -141,7 +142,7 @@ export interface LadderLevels {
   /**
    * The thesis's state, for gating position-scoped predicates.
    *
-   * `GAIN_FROM_ENTRY` and `TRAILING_FROM_HIGH` measure off an open
+   * the move from our entry and the trail measure off an open
    * position's avgCost / peak, so on a WATCHING or PROMOTED thesis they
    * evaluate false forever. Those rungs live on the ACCOUNT (where there
    * is no per-thesis state), so the gate belongs here —
@@ -158,11 +159,20 @@ export interface LadderLevels {
   direction?: string | null;
 }
 
-/** Predicates that measure off an open position and are inert without one. */
-const POSITION_SCOPED_KINDS = new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH"]);
+/** The review clock, counted from the last review. */
+function isReviewClock(t: Trigger): boolean {
+  const w = shapeOf(t.predicate);
+  return w != null && reviewClockDays(w) != null;
+}
+
+/** A condition measured from an open position (our entry, the high since we bought) is inert without one. */
+function measuresOffPosition(t: Trigger): boolean {
+  const w = shapeOf(t.predicate);
+  return w != null && fromPosition(w);
+}
 // Actions that operate on a position. A rung with one of these on a thesis
 // we don't hold is not a plan, it is a spawn: the account's ±7% scale-in
-// rules are PRICE_MOVE_PCT, so the predicate gate above let them through
+// rules are move-from-a-close, so the predicate gate above let them through
 // onto WATCHING rows, and on 2026-09-03 five of eight tactical runs were
 // "scale in" on names with no position (HPE, RARE, PLTR, NOW; two of them
 // were then retired by an agent that had been asked to add). EXIT is not
@@ -198,20 +208,9 @@ function protectiveTightestFirst(
     if (protectiveExitCloseReason(t.predicate, direction ?? null) !== "STOP") {
       return null;
     }
-    switch (t.predicate.kind) {
-      // A higher floor on a long (lower ceiling on a short) is hit sooner.
-      case "PRICE_BELOW":
-        return isLong ? -t.predicate.level : t.predicate.level;
-      case "PRICE_ABOVE":
-        return isLong ? t.predicate.level : -t.predicate.level;
-      // A smaller give-back / drawdown fires sooner.
-      case "TRAILING_FROM_HIGH":
-      case "GAIN_FROM_ENTRY":
-      case "PRICE_MOVE_PCT":
-        return t.predicate.pct;
-      default:
-        return null;
-    }
+    // A higher floor on a long (lower ceiling on a short) is hit sooner; so is a smaller give-back.
+    const w = shapeOf(t.predicate);
+    return w == null ? null : tightness(w, isLong);
   };
 
   // Reorder WITHIN each bucket only, and leave the buckets themselves in
@@ -290,8 +289,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
     for (const t of byLevel[level]) {
       if (
         dropPositionScoped &&
-        (POSITION_SCOPED_KINDS.has(t.predicate.kind) ||
-          POSITION_SCOPED_ACTIONS.has(t.action))
+        (measuresOffPosition(t) || POSITION_SCOPED_ACTIONS.has(t.action))
       ) {
         continue;
       }
@@ -302,8 +300,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
       // buy is false with no position, so it is harmless either way.
       if (
         dropInheritedCadence &&
-        t.predicate.kind === "REVIEW_CADENCE" &&
-        (t.predicate.from ?? "LAST_REVIEW") === "LAST_REVIEW" &&
+        isReviewClock(t) &&
         level !== "THESIS"
       ) {
         continue;

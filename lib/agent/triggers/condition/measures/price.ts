@@ -5,10 +5,12 @@
  * these two measures with a variable, not kinds of their own.
  */
 
-import type { TriggerPredicate } from "../../types";
+
 import { BELOW_ABOVE, withSettings, type MeasureDef } from "../measure";
 import { PRICE_VARIABLES, variableDef } from "../variables";
 import { num } from "../words";
+import { trailFireLevel, trailOf } from "../../trail";
+import type { LegacyPredicate } from "../legacy-types";
 
 const SMA_VARIABLE = { 20: "sma20", 50: "sma50", 150: "sma150", 200: "sma200" } as const;
 const SMA_PERIOD: Readonly<Record<string, 20 | 50 | 150 | 200>> = { sma20: 20, sma50: 50, sma150: 150, sma200: 200 };
@@ -26,6 +28,8 @@ export const price: MeasureDef = {
     {
       key: "close",
       label: "When it is checked",
+      // A line that waits for the close lets the stock trade under it all day.
+      looser: true,
       default: false,
       options: [
         { value: false, label: "Any time in the day" },
@@ -34,7 +38,16 @@ export const price: MeasureDef = {
     },
   ],
   direct: (c) => !c.variable,
-  oneEnter: (c) => !c.variable,
+  level: (c) => !c.variable,
+  // A typed price is a line at that price; with a variable (an average, a high) it has no one price.
+  line: (c, ctx) =>
+    !c.variable && c.value != null && (c.is === "above" || c.is === "below")
+      ? { price: c.value, side: (c.is === "above") === ctx.isLong ? "UPSIDE" : "DOWNSIDE", projected: false }
+      : null,
+  closeReason: (c, isLong) => ((c.is === "below") === isLong ? "STOP" : "TARGET"),
+  // A price line: one nudge a day. Under an average is a state a review asks about weekly (a buy fires on its crossing, a sale is a standing order).
+  cooldownDays: (c, action) => (c.variable && SMA_PERIOD[c.variable] && action === "REVIEW" ? 7 : 1),
+  state: (c) => c.variable != null && SMA_PERIOD[c.variable] != null,
   fresh: () => ({ watch: "price", is: "below" }),
   check: (c, ctx) => {
     if (!c.variable && c.value === 0) return "Enter a price, or use a price variable.";
@@ -51,7 +64,7 @@ export const price: MeasureDef = {
       VS_SMA: (p) => ({ watch: "price", is: p.direction === "ABOVE" ? "above" : "below", variable: SMA_VARIABLE[p.period] }),
       NEW_HIGH: (p) => ({ watch: "price", is: "above", variable: p.window === "20D" ? "high20" : "high52" }),
     },
-    to: (c): TriggerPredicate | null => {
+    to: (c): LegacyPredicate | null => {
       if (c.is !== "above" && c.is !== "below") return null;
       if (!c.variable) {
         if (c.value == null) return null;
@@ -86,6 +99,24 @@ export const move: MeasureDef = {
     required: "Choose what the % is measured from.",
   },
   direct: (c) => c.variable != null && variableDef(c.variable).direct === true,
+  // A % from our position is a line that moves with it: a give-back off the high (null until armed), a gain or loss off our entry.
+  line: (c, ctx) => {
+    if (c.value == null || (c.is !== "above" && c.is !== "below")) return null;
+    const side = c.is === "above" ? "UPSIDE" : "DOWNSIDE";
+    if (c.variable === "peak") {
+      return { price: trailFireLevel(trailOf(c), { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: ctx.isLong, atr: ctx.atr14 }), side, projected: true };
+    }
+    if (c.variable !== "entry") return null;
+    const avg = ctx.avgCost;
+    if (avg == null || avg <= 0) return { price: null, side, projected: true };
+    const favourable = (c.is === "above") === ctx.isLong;
+    return { price: favourable ? avg * (1 + c.value / 100) : avg * (1 - c.value / 100), side, projected: true };
+  },
+  // A give-back from our entry or the high protects a gain (STOP); a day's move with the position is a TARGET.
+  closeReason: (c, isLong) => (variableDef(c.variable ?? "prev_close").position ? "STOP" : (c.is === "above") === isLong ? "TARGET" : "STOP"),
+  // A gain milestone latches (up 10% stays up 10%), so a week; near the 52-week high is a state a review asks weekly; the rest daily.
+  cooldownDays: (c, action) => (c.variable === "entry" ? 7 : c.is === "near" && c.variable === "high52" && action === "REVIEW" ? 7 : 1),
+  state: (c) => c.is === "near" && c.variable === "high52",
   fresh: () => ({ watch: "move", is: "below", variable: "prev_close" }),
   check: (c) => {
     if (c.is === "near" && (c.value ?? 0) === 0) return "Within needs a distance, such as 2%.";
@@ -105,7 +136,7 @@ export const move: MeasureDef = {
       NEAR_SMA: (p) => ({ watch: "move", is: "near", value: p.withinPct, variable: SMA_VARIABLE[p.period] }),
       PCT_FROM_52W_HIGH: (p) => ({ watch: "move", is: "near", value: p.max, variable: "high52" }),
     },
-    to: (c): TriggerPredicate | null => {
+    to: (c): LegacyPredicate | null => {
       const v = c.value;
       const s = c.settings ?? {};
       if (!c.variable || v == null) return null;

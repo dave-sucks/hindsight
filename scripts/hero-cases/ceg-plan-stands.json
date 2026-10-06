@@ -11,7 +11,8 @@
    "update_thesis {\"thesis_id\":\"cmspld5md000504l72u7ft9ve\",\"rationale\":\"ABT remains a hold. The stock is still digesting below the 200-day, but the business evidence that got me "
   ],
   "notes": [
-   "promptArgs.runInput is the account as it is today, trimmed to what the prompt builder reads; the stock rows the run read are in messages"
+   "promptArgs.runInput is the account as it is today, trimmed to what the prompt builder reads; the stock rows the run read are in messages",
+   "Ends at the CEG step: the account's open research refusals (AAPL, TRV, V, 2026-09-29) and the 2026-10-01 digest came after this run, so they are left out. With them in, most replays spent their turns on that later work and never reached CEG (2026-10-06, both sides)."
   ]
  },
  "expect": {
@@ -321,10 +322,7 @@
      "utilizationPct": 46.35
     }
    },
-   "latestDigest": {
-    "narrative": "The portfolio closed today with a modest gain of $1,047.16, marking a 0.94% increase for the day and bringing the total deposit-adjusted P&L to $5,007.58, or 4.64%. The book is currently holding $113,007.58 in equity, with $21,915.56 in idle cash, and a gross exposure of $91,092.02, all in long positions. With 10 out of 19 slots filled, the portfolio is not fully deployed, leaving room for additional positions.\n\nToday's activity was spread across three daily runs and two tactical runs, with no discovery runs executed. The [PEAD Specialist](analyst:cmnhxpjio000004jvox6kl6c7) and [Secular Compounder](analyst:cmmqxola3000004lbj7c11bfn) were particularly active, with the latter opening a new position in ISRG at $412.18, although the proposal was initially rejected. The [Catalyst Event PM](analyst:cmmmh0wxu000004js7yoyzvlf) also took action, promoting CORT from watching to holding.\n\nKey trades included opening positions in [DOCU](thesis:cmtu9lfhw000004i575f6xyig) and [CORT](thesis:cmuhp4n4e000e04kx3vkxm5lr), both of which were approved and executed. The [PEAD Specialist](analyst:cmnhxpjio000004jvox6kl6c7) updated several theses, including [NVDA](thesis:cmtg9nbdy000204jpc6cwawgg) and [IOT](thesis:cmu062bge000004jtd1aqp304), reflecting a proactive stance in managing risk and opportunity.\n\nIn terms of performance, [MU](thesis:cmrp6chyu000h04l5roqq5ha1) leads the pack with a 21.68% gain since entry, while [NVDA](thesis:cmtg9nbdy000204jpc6cwawgg) and [ASML](thesis:cmpyl6ho1001l04jm4824vyr7) have also performed well, up 6.08% and 5.59%, respectively. On the downside, [ABT](thesis:cmspld5md000504l72u7ft9ve) and CEG are lagging, with declines of 6.57% and 6.29% since entry. The recent passes have not resulted in significant regret, with no major MISSES to report.\n\nLooking forward, the portfolio has room to grow with nine slots still available and significant idle cash. However, the current concentration in tech and healthcare names suggests a need for diversification. The cadence remains active, with no pending proposals, indicating a readiness to seize new opportunities as they arise.",
-    "date": "2026-10-01T00:00:00.000Z"
-   },
+   "latestDigest": null,
    "earnings": {
     "reportingSoon": [],
     "justReported": []
@@ -415,38 +413,7 @@
      "matchDetail": "current price $144.10"
     }
    ],
-   "openRefusals": [
-    {
-     "id": "cmum2uy1v000o04jfunl2y8ve",
-     "tool": "thesis_writer",
-     "ticker": "AAPL",
-     "thesisId": null,
-     "summary": "Thesis research on $AAPL produced no thesis (mint)",
-     "detail": "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
-     "runId": "cmum2rvsv000104jfrbehs6ol",
-     "createdAt": "2026-09-29T02:48:59.107Z"
-    },
-    {
-     "id": "cmum2uyyi000r04jfq2aouvzp",
-     "tool": "thesis_writer",
-     "ticker": "TRV",
-     "thesisId": null,
-     "summary": "Thesis research on $TRV produced no thesis (mint)",
-     "detail": "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
-     "runId": "cmum2sg0a000404jfapr55aaj",
-     "createdAt": "2026-09-29T02:49:00.282Z"
-    },
-    {
-     "id": "cmum2v129000504jpx3fy8xpg",
-     "tool": "thesis_writer",
-     "ticker": "V",
-     "thesisId": null,
-     "summary": "Thesis research on $V produced no thesis (mint)",
-     "detail": "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
-     "runId": "cmum2s53e000304jfj5vvbboz",
-     "createdAt": "2026-09-29T02:49:03.009Z"
-    }
-   ]
+   "openRefusals": []
   }
  },
  "toolCtx": {

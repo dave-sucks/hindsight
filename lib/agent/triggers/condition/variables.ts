@@ -30,6 +30,8 @@ export interface VariableDef {
   position?: boolean;
   /** A sale measured from it has nothing to judge, so it can be proposed with no analyst. */
   direct?: boolean;
+  /** Its number comes off the daily indicator snapshot, so the check loads it. */
+  snapshot?: boolean;
   /** Variables that are one rule at different values share a slot ("any material filing" and "a red flag"). */
   slot?: string;
   /** Settings that belong to this variable. None has a select: an agent writes them, the form carries them. */
@@ -38,8 +40,8 @@ export interface VariableDef {
 
 export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] = [
   { id: "prev_close", label: "Yesterday's close", group: "Recent closes", chip: "yesterday's close", words: "yesterday's close", direct: true },
-  { id: "close_5d", label: "Close 5 days ago", group: "Recent closes", chip: "5 days ago", words: "the close 5 days ago", direct: true },
-  { id: "close_20d", label: "Close 20 days ago", group: "Recent closes", chip: "20 days ago", words: "the close 20 days ago", direct: true },
+  { id: "close_5d", label: "Close 5 days ago", group: "Recent closes", chip: "5 days ago", words: "the close 5 days ago", direct: true, snapshot: true },
+  { id: "close_20d", label: "Close 20 days ago", group: "Recent closes", chip: "20 days ago", words: "the close 20 days ago", direct: true, snapshot: true },
   {
     id: "entry",
     label: "Our entry",
@@ -66,18 +68,18 @@ export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] =
     position: true,
     direct: true,
     settings: [
-      { key: "startOnceUpPct", words: (v) => `, once it has been up ${pct(Number(v))}` },
-      { key: "widenAtr", words: (v) => ` (or ${v}× its daily range, if wider)` },
+      { key: "startOnceUpPct", looser: true, words: (v) => `, once it has been up ${pct(Number(v))}` },
+      { key: "widenAtr", looser: true, snapshot: true, words: (v) => ` (or ${v}× its daily range, if wider)` },
     ],
   },
-  { id: "sma20", label: "20-day average", group: "Averages", chip: "20-day average", words: "the 20-day average" },
-  { id: "sma50", label: "50-day average", group: "Averages", chip: "50-day average", words: "the 50-day average" },
-  { id: "sma150", label: "150-day average", group: "Averages", chip: "150-day average", words: "the 150-day average" },
-  { id: "sma200", label: "200-day average", group: "Averages", chip: "200-day average", words: "the 200-day average" },
-  { id: "high20", label: "20-day high", group: "Highs and lows", chip: "20-day high", words: "the 20-day high" },
-  { id: "low20", label: "20-day low", group: "Highs and lows", chip: "20-day low", words: "the 20-day low" },
-  { id: "high52", label: "52-week high", group: "Highs and lows", chip: "52-week high", words: "the 52-week high" },
-  { id: "low52", label: "52-week low", group: "Highs and lows", chip: "52-week low", words: "the 52-week low" },
+  { id: "sma20", label: "20-day average", group: "Averages", chip: "20-day average", words: "the 20-day average", snapshot: true },
+  { id: "sma50", label: "50-day average", group: "Averages", chip: "50-day average", words: "the 50-day average", snapshot: true },
+  { id: "sma150", label: "150-day average", group: "Averages", chip: "150-day average", words: "the 150-day average", snapshot: true },
+  { id: "sma200", label: "200-day average", group: "Averages", chip: "200-day average", words: "the 200-day average", snapshot: true },
+  { id: "high20", label: "20-day high", group: "Highs and lows", chip: "20-day high", words: "the 20-day high", snapshot: true },
+  { id: "low20", label: "20-day low", group: "Highs and lows", chip: "20-day low", words: "the 20-day low", snapshot: true },
+  { id: "high52", label: "52-week high", group: "Highs and lows", chip: "52-week high", words: "the 52-week high", snapshot: true },
+  { id: "low52", label: "52-week low", group: "Highs and lows", chip: "52-week low", words: "the 52-week low", snapshot: true },
 ];
 
 export const DATE_VARIABLES: readonly (VariableDef & { id: DateVariable })[] = [

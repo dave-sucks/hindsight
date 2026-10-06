@@ -21,16 +21,10 @@ describe("applySetupOverride", () => {
   it("a changed partial changes what IOT's fill writes: 3R on a 7.76% stop is +23.3%", () => {
     const pead = getSetup("PEAD", { PEAD: { partialAtR: 3, timeTradingDays: 45 } })!;
     const out = setupExitTriggers({ setup: pead, horizon: "TARGET", entry: 39.83, stop: 36.74, mintId });
-    expect(out[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 45, from: "BUY" });
+    expect(out[0].predicate).toEqual({ watch: "from_date", is: "after", value: 45, variable: "buy" });
     // The partial also carries the big-winner switch (DAV-294): a changed R
     // multiple changes the level, not the rule that a runner is not trimmed.
-    expect(out[1].predicate).toEqual({
-      kind: "GAIN_FROM_ENTRY",
-      pct: 23.3,
-      direction: "UP",
-      skipIfPeakGainPct: 20,
-      skipIfPeakWithinDays: 21,
-    });
+    expect(out[1].predicate).toEqual({ watch: "move", is: "above", value: 23.3, variable: "entry", settings: { fastWinnerPct: 20, fastWinnerDays: 21 } });
   });
   it("a widened trade stop cap changes what the writer accepts", () => {
     const decision = {

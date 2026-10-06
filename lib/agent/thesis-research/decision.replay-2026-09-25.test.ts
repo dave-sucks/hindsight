@@ -16,6 +16,7 @@
  * the stock.
  */
 import raw from "@/lib/agent/__fixtures__/writer-and-trade-refusals-2026-09-25.json";
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
 
@@ -37,13 +38,13 @@ describe("the 2026-09-25 catalyst decisions are accepted, with the fixes written
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
     expect(v.decision?.conviction_rationale?.length).toBeGreaterThan(400);
-    expect(v.decision?.triggers?.map((t) => t.predicate.kind)).toEqual(["REVIEW_CADENCE"]);
+    expect(v.decision?.triggers?.map((t) => kindOf(t.predicate))).toEqual(["REVIEW_CADENCE"]);
     expect(v.decision?.notes).toBeUndefined();
   });
 
   it.each(["IBRX", "BBIO"] as const)("%s: the invented REVIEW_AFTER_DAYS becomes the review cadence it meant, and says so", (t) => {
     const input = fx[t].last.input;
-    const sent = (input.triggers as Array<{ predicate: { kind: string; days: number } }>)[0].predicate;
+    const sent = (input.triggers as unknown as Array<{ predicate: { kind: string; days: number } }>)[0].predicate;
     expect(sent.kind).toBe("REVIEW_AFTER_DAYS");
 
     const v = validateThesisDecision(input, opts);
@@ -51,7 +52,7 @@ describe("the 2026-09-25 catalyst decisions are accepted, with the fixes written
     expect(v.ok).toBe(true);
     const trig = v.decision?.triggers ?? [];
     expect(trig).toHaveLength(1);
-    expect(trig[0].predicate).toMatchObject({ kind: "REVIEW_CADENCE", days: sent.days });
+    expect(trig[0].predicate).toMatchObject({ watch: "repeat", value: sent.days });
     expect(trig[0].action).toBe("REVIEW");
     expect(v.decision?.notes?.join(" ")).toMatch(/REVIEW_AFTER_DAYS.*saved as a review in \d+ days/);
   });

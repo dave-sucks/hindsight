@@ -3,12 +3,14 @@
  *
  * A watched name the agent revisits on a cadence is an "Agent Watch"; one
  * that just sits on the list is a plain "Watching". The difference is a
- * single `REVIEW_CADENCE` trigger, and this is where every surface asks the
+ * single review schedule, and this is where every surface asks the
  * question so the row, the sheet and the agent can't disagree.
  *
  * Separate from `defaults.ts` because that module pulls `node:crypto` and
  * the watch row renders on the client.
  */
+
+import { scheduleDays, shapeOf } from "./condition";
 
 /** True when the agent reviews this name on a schedule of its own. */
 export function isAgentWatched(triggers: unknown): boolean {
@@ -19,9 +21,8 @@ export function isAgentWatched(triggers: unknown): boolean {
 export function agentWatchDays(triggers: unknown): number | null {
   if (!Array.isArray(triggers)) return null;
   for (const t of triggers) {
-    const p = (t as { predicate?: { kind?: string; days?: unknown } })?.predicate;
-    if (p?.kind !== "REVIEW_CADENCE") continue;
-    if (typeof p.days === "number" && p.days > 0) return p.days;
+    const days = scheduleDays(shapeOf((t as { predicate?: unknown })?.predicate));
+    if (days != null && days > 0) return days;
   }
   return null;
 }

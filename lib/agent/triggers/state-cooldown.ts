@@ -5,8 +5,9 @@
  * would say "once a day" on a rule that asks once a week.
  */
 
-/** Loose on purpose: the evaluator's strict predicate and the sheet's wire type both fit. */
-type PredicateLike = { kind: string; predicates?: readonly PredicateLike[] };
+import { shapeOf } from "./condition/legacy";
+import { isState } from "./condition/rules";
+
 
 /**
  * Predicates that describe a STATE rather than a moment.
@@ -19,20 +20,10 @@ type PredicateLike = { kind: string; predicates?: readonly PredicateLike[] };
  * A composite counts only when every child does, so a state ANDed with a
  * price line keeps the faster clock.
  */
-export function isStatePredicate(p: PredicateLike): boolean {
-  switch (p.kind) {
-    case "VS_SMA":
-    case "PCT_FROM_52W_HIGH":
-    case "RS_VS_SPY":
-      return true;
-    case "AND":
-    case "OR": {
-      const children = p.predicates ?? [];
-      return children.length > 0 && children.every(isStatePredicate);
-    }
-    default:
-      return false;
-  }
+export function isStatePredicate(p: unknown): boolean {
+  // Each measure says whether it is a state (./condition/measures).
+  const w = shapeOf(p);
+  return w != null && isState(w);
 }
 
 /** A state rung that is a review asks once a week, not once a day. */
@@ -44,7 +35,7 @@ export const STATE_PREDICATE_MIN_COOLDOWN_DAYS = 7;
  * sale is a standing order that asks every day its condition holds.
  */
 export function flooredCooldownDays(
-  trigger: { action: string; predicate: PredicateLike },
+  trigger: { action: string; predicate: unknown },
   days: number,
 ): number {
   return trigger.action === "REVIEW" && isStatePredicate(trigger.predicate)

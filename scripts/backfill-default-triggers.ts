@@ -17,6 +17,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   defaultTriggersForHorizon,
   type Horizon,
@@ -86,7 +87,7 @@ async function main() {
       );
       for (const d of defaults) {
         console.log(
-          `      ${d.action.padEnd(9)} ${d.predicate.kind.padEnd(20)} ${d.rationale.slice(0, 70)}`,
+          `      ${sentenceOf(d).padEnd(40)} ${d.rationale.slice(0, 70)}`,
         );
       }
 

@@ -27,6 +27,7 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 
+import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
 import { armHeldLadderOnFill } from "./thesis-flips";
 
 const BASE = {
@@ -84,8 +85,8 @@ describe("armHeldLadderOnFill", () => {
       // Rationales because the fill parses the stored list (one rung without
       // one used to be cast through raw and would now be dropped as malformed).
       triggers: [
-        { id: "a", action: "ENTER", predicate: { kind: "PRICE_ABOVE", level: 50 }, rationale: "buy" },
-        { id: "b", action: "REVIEW", predicate: { kind: "PRICE_BELOW", level: 40 }, rationale: "support" },
+        { id: "a", action: "ENTER", predicate: { watch: "price", is: "above", value: 50 }, rationale: "buy" },
+        { id: "b", action: "REVIEW", predicate: { watch: "price", is: "below", value: 40 }, rationale: "support" },
       ],
     });
 
@@ -129,11 +130,11 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
     horizon: "COMPOUNDER",
     catalystDate: null,
     triggers: [
-      { id: "enter", action: "ENTER", source: "AGENT", predicate: { kind: "PRICE_ABOVE", level: 1710 }, rationale: "buy" },
-      { id: "target", action: "REVIEW", source: "AGENT", predicate: { kind: "PRICE_ABOVE", level: 2800 }, rationale: "target" },
-      { id: "support", action: "REVIEW", source: "AGENT", predicate: { kind: "PRICE_BELOW", level: 1625 }, rationale: "support" },
-      { id: "floor", action: "EXIT", source: "AGENT", predicate: { kind: "PRICE_BELOW", level: 1580 }, rationale: "floor" },
-      { id: "watch-tmpl", action: "REVIEW", source: "DEFAULT", predicate: { kind: "REVIEW_CADENCE", days: 30 }, rationale: "watch template clock" },
+      { id: "enter", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: "above", value: 1710 }, rationale: "buy" },
+      { id: "target", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "above", value: 2800 }, rationale: "target" },
+      { id: "support", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "below", value: 1625 }, rationale: "support" },
+      { id: "floor", action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 1580 }, rationale: "floor" },
+      { id: "watch-tmpl", action: "REVIEW", source: "DEFAULT", predicate: { watch: "repeat", value: 30 }, rationale: "watch template clock" },
     ],
   };
 
@@ -173,16 +174,16 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
       ...asml,
       triggers: [
         ...asml.triggers,
-        { id: "my-trail", action: "EXIT", source: "AGENT", predicate: { kind: "TRAILING_FROM_HIGH", pct: 6 }, rationale: "tight trail" },
+        { id: "my-trail", action: "EXIT", source: "AGENT", predicate: { watch: "move", is: "below", value: 6, variable: "peak" }, rationale: "tight trail" },
       ],
     });
     await armHeldLadderOnFill({ ...BASE, ticker: "ASML", fillPrice: 1716.09, targetPrice: 2800, stopLoss: 1580 });
-    const triggers = thesisUpdate.mock.calls[0][0].data.triggers as Array<{ id: string; action: string; predicate: { kind: string; pct?: number } }>;
-    const trails = triggers.filter((t) => t.predicate.kind === "TRAILING_FROM_HIGH" && t.action === "EXIT");
-    expect(trails).toEqual([expect.objectContaining({ id: "my-trail", predicate: { kind: "TRAILING_FROM_HIGH", pct: 6 } })]);
+    const triggers = thesisUpdate.mock.calls[0][0].data.triggers as Array<{ id: string; action: string; predicate: unknown }>;
+    const trails = triggers.filter((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH" && t.action === "EXIT");
+    expect(trails).toEqual([expect.objectContaining({ id: "my-trail", predicate: { watch: "move", is: "below", value: 6, variable: "peak" } })]);
     // The audit row lists each op — one line per change.
     const fc = thesisUpdateCreate.mock.calls[0][0].data.fieldChanges as { triggerOps: { to: Array<{ op: string; text: string }> } };
-    expect(fc.triggerOps.to.map((o) => o.text)).toEqual(expect.arrayContaining(["Removed: buy above $1710"]));
+    expect(fc.triggerOps.to.map((o) => o.text)).toEqual(expect.arrayContaining(["Removed: Buy if above $1710"]));
     expect(fc.triggerOps.to.every((o) => o.op !== "edit" || !/Target/.test(o.text))).toBe(true);
   });
 });

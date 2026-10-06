@@ -2,6 +2,7 @@
  * batch-fixes.replay.test.ts — DAV-328, DAV-332 and DAV-329, each through
  * the real entry point, each from a shape that exists on the book.
  */
+import type { When } from "@/lib/agent/triggers/condition";
 import {
   replayTool,
   prismaDouble,
@@ -334,16 +335,16 @@ describe("DAV-329 — a state re-asks weekly, a crossing daily", () => {
   it("below-the-200-day and near-the-52-week-high REVIEW on a week", () => {
     // ABT sat under its 200-day for nine trading days and the Compounder's
     // review rule fired all nine.
-    const below200 = { kind: "VS_SMA" as const, period: 200 as const, direction: "BELOW" as const };
+    const below200: When = { watch: "price", is: "below", variable: "sma200" };
     expect(defaultCooldownDaysForPredicate(below200, "REVIEW")).toBe(7);
-    expect(defaultCooldownDaysForPredicate({ kind: "PCT_FROM_52W_HIGH", max: 5 }, "REVIEW")).toBe(7);
+    expect(defaultCooldownDaysForPredicate({ watch: "move", is: "near", value: 5, variable: "high52" } as When, "REVIEW")).toBe(7);
   });
 
   it("a SALE on the same state stays daily — a standing order (DAV-229)", () => {
     // Amended 2026-09-27: this shipped as `ENTER ? 1 : 7`, which put an
     // EXIT on a weekly clock too. A protective rung asks every day its
     // condition holds; slowing it turns a declined sell into a silent one.
-    const below200 = { kind: "VS_SMA" as const, period: 200 as const, direction: "BELOW" as const };
+    const below200: When = { watch: "price", is: "below", variable: "sma200" };
     expect(defaultCooldownDaysForPredicate(below200, "EXIT")).toBe(1);
     expect(defaultCooldownDaysForPredicate(below200, "TRIM")).toBe(1);
     // No action given, no way to tell a review from a sale: take the safe
@@ -355,22 +356,19 @@ describe("DAV-329 — a state re-asks weekly, a crossing daily", () => {
   it("a BUY on the same kinds keeps the day: it fires on the crossing, once, by itself", () => {
     // GD, GEV and SYK buy on "back above the 50-day". A week's cooldown on
     // a buy swallows the second crossing; it quiets nothing.
-    const above50 = { kind: "VS_SMA" as const, period: 50 as const, direction: "ABOVE" as const };
+    const above50: When = { watch: "price", is: "above", variable: "sma50" };
     expect(defaultCooldownDaysForPredicate(above50, "ENTER")).toBe(1);
     expect(defaultCooldownDaysForPredicate(above50, "REVIEW")).toBe(7);
-    expect(defaultCooldownDaysForPredicate({ kind: "PCT_FROM_52W_HIGH", max: 5 }, "ENTER")).toBe(1);
+    expect(defaultCooldownDaysForPredicate({ watch: "move", is: "near", value: 5, variable: "high52" } as When, "ENTER")).toBe(1);
     // The pullback setup's entry is a composite holding a VS_SMA.
-    const pullback = {
-      kind: "AND" as const,
-      predicates: [{ kind: "NEAR_SMA" as const, period: 50 as const, withinPct: 2 }, above50],
-    };
+    const pullback: When = { match: "all", conditions: [{ watch: "move", is: "near", value: 2, variable: "sma50" }, above50] };
     expect(defaultCooldownDaysForPredicate(pullback, "ENTER")).toBe(1);
     expect(defaultCooldownDaysForPredicate(pullback, "REVIEW")).toBe(7);
 
     // …and that is what the write path stores on a new rung.
     const written = applyTriggerCooldownDefaults([
       { id: "buy", action: "ENTER", predicate: above50 },
-      { id: "review", action: "REVIEW", predicate: { kind: "VS_SMA", period: 200, direction: "BELOW" } },
+      { id: "review", action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma200" } },
     ] as unknown as Trigger[]);
     expect(written.map((t) => [t.id, t.cooldownDays])).toEqual([
       ["buy", 1],
@@ -379,8 +377,8 @@ describe("DAV-329 — a state re-asks weekly, a crossing daily", () => {
   });
 
   it("a real crossing still asks the day it happens", () => {
-    expect(defaultCooldownDaysForPredicate({ kind: "PRICE_ABOVE", level: 100 })).toBe(1);
-    expect(defaultCooldownDaysForPredicate({ kind: "NEW_HIGH", window: "20D" })).toBe(1);
-    expect(defaultCooldownDaysForPredicate({ kind: "NEAR_SMA", period: 50, withinPct: 2 })).toBe(1);
+    expect(defaultCooldownDaysForPredicate({ watch: "price", is: "above", value: 100 })).toBe(1);
+    expect(defaultCooldownDaysForPredicate({ watch: "price", is: "above", variable: "high20" })).toBe(1);
+    expect(defaultCooldownDaysForPredicate({ watch: "move", is: "near", value: 2, variable: "sma50" })).toBe(1);
   });
 });

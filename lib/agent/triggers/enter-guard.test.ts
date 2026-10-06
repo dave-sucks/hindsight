@@ -13,7 +13,7 @@ import type { Trigger } from "./types";
 
 const ENTER_LONG: Trigger = {
   id: "trig-enter-long",
-  predicate: { kind: "PRICE_ABOVE", level: 100 },
+  predicate: { watch: "price", is: "above", value: 100 },
   action: "ENTER",
   rationale: "Entry on breakout",
   cooldownDays: 1,
@@ -21,7 +21,7 @@ const ENTER_LONG: Trigger = {
 
 const ENTER_SHORT: Trigger = {
   id: "trig-enter-short",
-  predicate: { kind: "PRICE_BELOW", level: 50 },
+  predicate: { watch: "price", is: "below", value: 50 },
   action: "ENTER",
   rationale: "Short entry on breakdown",
   cooldownDays: 1,
@@ -29,7 +29,7 @@ const ENTER_SHORT: Trigger = {
 
 const EXIT_STOP: Trigger = {
   id: "trig-exit-stop",
-  predicate: { kind: "PRICE_BELOW", level: 80 },
+  predicate: { watch: "price", is: "below", value: 80 },
   action: "EXIT",
   rationale: "Stop at $80",
   cooldownDays: 0,
@@ -37,7 +37,7 @@ const EXIT_STOP: Trigger = {
 
 const REVIEW_EARNINGS: Trigger = {
   id: "trig-review-earnings",
-  predicate: { kind: "EARNINGS_BEAT" },
+  predicate: { watch: "surprise", is: "beat", value: 0 },
   action: "REVIEW",
   rationale: "Earnings beat — re-score",
   cooldownDays: 7,
@@ -45,7 +45,7 @@ const REVIEW_EARNINGS: Trigger = {
 
 const REVIEW_HYGIENE: Trigger = {
   id: "trig-review-hygiene",
-  predicate: { kind: "REVIEW_CADENCE", days: 14 },
+  predicate: { watch: "repeat", value: 14 },
   action: "REVIEW",
   rationale: "Catalyst-window hygiene",
   cooldownDays: 12,
@@ -79,7 +79,7 @@ describe("validateEnterTriggerRequired", () => {
   it("WATCHING LONG with multiple ENTER triggers (price + event): ok", () => {
     const eventEnter: Trigger = {
       id: "trig-enter-event",
-      predicate: { kind: "EARNINGS_BEAT" },
+      predicate: { watch: "surprise", is: "beat", value: 0 },
       action: "ENTER",
       rationale: "Entry on catalyst",
       cooldownDays: 7,
@@ -150,7 +150,7 @@ describe("validateEnterTriggerRequired", () => {
         ENTER_LONG,
         {
           id: "trig-trim",
-          predicate: { kind: "PRICE_ABOVE", level: 150 },
+          predicate: { watch: "price", is: "above", value: 150 },
           action: "TRIM",
           rationale: "Trim at +50%",
         },
@@ -195,7 +195,7 @@ describe("validateEnterTriggerRequired", () => {
       triggers: [
         {
           id: "trig-wake-level",
-          predicate: { kind: "PRICE_ABOVE", level: 120 },
+          predicate: { watch: "price", is: "above", value: 120 },
           action: "REVIEW",
           rationale: "Squeeze risk — look again above $120.",
         },
@@ -217,7 +217,7 @@ describe("validateEnterTriggerRequired", () => {
       triggers: [
         {
           id: "trig-upside-review",
-          predicate: { kind: "PRICE_ABOVE", level: 150 },
+          predicate: { watch: "price", is: "above", value: 150 },
           action: "REVIEW",
           rationale: "Reassess at $150.",
         },
@@ -234,7 +234,7 @@ describe("validateEnterTriggerRequired", () => {
       triggers: [
         {
           id: "trig-upside-exit",
-          predicate: { kind: "PRICE_ABOVE", level: 150 },
+          predicate: { watch: "price", is: "above", value: 150 },
           action: "EXIT",
           rationale: "Sell at $150.",
         },
@@ -296,7 +296,7 @@ describe("validateEnterTriggerRequired", () => {
   it("ACTIVE SHORT with HELD-template triggers (EXIT + REVIEW, no ENTER): ok", () => {
     const exitShort: Trigger = {
       id: "trig-exit-short",
-      predicate: { kind: "PRICE_ABOVE", level: 60 },
+      predicate: { watch: "price", is: "above", value: 60 },
       action: "EXIT",
       rationale: "Stop at $60 for SHORT",
       cooldownDays: 0,
@@ -376,7 +376,7 @@ describe("validateEnterTriggerRequired", () => {
     // an automated full-exit predicate too.
     const trim: Trigger = {
       id: "trig-trim",
-      predicate: { kind: "PRICE_ABOVE", level: 150 },
+      predicate: { watch: "price", is: "above", value: 150 },
       action: "TRIM",
       rationale: "Trim at +50%",
     };
@@ -394,19 +394,19 @@ describe("validateEnterTriggerRequired", () => {
   it("ACTIVE LONG with EXIT + TRIM + ADD + MOVE_STOP + REVIEW (full HELD set): ok", () => {
     const trim: Trigger = {
       id: "trig-trim",
-      predicate: { kind: "PRICE_ABOVE", level: 150 },
+      predicate: { watch: "price", is: "above", value: 150 },
       action: "TRIM",
       rationale: "Trim at +50%",
     };
     const add: Trigger = {
       id: "trig-add",
-      predicate: { kind: "EARNINGS_BEAT" },
+      predicate: { watch: "surprise", is: "beat", value: 0 },
       action: "ADD",
       rationale: "Add on beat",
     };
     const moveStop: Trigger = {
       id: "trig-move-stop",
-      predicate: { kind: "PRICE_ABOVE", level: 120 },
+      predicate: { watch: "price", is: "above", value: 120 },
       action: "MOVE_STOP",
       rationale: "Trail stop up",
     };
@@ -517,8 +517,8 @@ describe("the held-name notes name the ops that exist (DAV-262)", () => {
 
   it("a buy trigger on a stock we own: remove it by id with remove_trigger_ids", () => {
     const r = held([
-      { id: "buy-ceg-1", predicate: { kind: "PRICE_ABOVE", level: 280 }, action: "ENTER", rationale: "buy" },
-      { id: "floor-ceg", predicate: { kind: "PRICE_BELOW", level: 220 }, action: "EXIT", rationale: "floor" },
+      { id: "buy-ceg-1", predicate: { watch: "price", is: "above", value: 280 }, action: "ENTER", rationale: "buy" },
+      { id: "floor-ceg", predicate: { watch: "price", is: "below", value: 220 }, action: "EXIT", rationale: "floor" },
     ]);
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -529,7 +529,7 @@ describe("the held-name notes name the ops that exist (DAV-262)", () => {
 
   it("no sell trigger on a stock we own: add one with add_triggers", () => {
     const r = held([
-      { id: "review-ceg", predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "look" },
+      { id: "review-ceg", predicate: { watch: "repeat", value: 7 }, action: "REVIEW", rationale: "look" },
     ]);
     expect(r.ok).toBe(false);
     if (r.ok) return;

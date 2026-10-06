@@ -37,6 +37,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { parseTriggersResilient } from "./schema";
 import type { Trigger } from "./types";
 import { isPlanLevel, isPlanLevelOnList } from "./price-levels";
+import { levelOf, shapeOf } from "./condition";
 import { describeTrigger } from "./ops";
 
 export { isPlanLevel };
@@ -82,10 +83,10 @@ export async function demoteThesisPlan(args: {
   const kept = current.filter((t) => !isPlanLevelOnList(t, current, thesis.direction));
   const removed = doomed.map((t) => ({
     action: t.action,
-    price:
-      t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW"
-        ? t.predicate.level
-        : 0,
+    price: (() => {
+      const w = shapeOf(t.predicate);
+      return (w == null ? null : levelOf(w))?.value ?? 0;
+    })(),
   }));
 
   await prisma.thesis.update({
@@ -121,7 +122,7 @@ export async function demoteThesisPlan(args: {
         to: doomed.map((t) => ({
           op: "remove",
           id: t.id,
-          text: `Removed: ${describeTrigger(t, thesis.direction)}`,
+          text: `Removed: ${describeTrigger(t, false)}`,
         })),
       },
     },
