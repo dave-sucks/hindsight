@@ -1183,10 +1183,12 @@ export const getTheses = defineTool({
     //     WATCHING row with no ENTER trigger and price ≈ entry; hiding it
     //     would strand an intended entry indefinitely)
     //   • priceFetchFailed — fail open; degraded data must not hide winners
-    //   • resolved.planSanity non-empty — the plan contradicts the live
-    //     tape (DAV-188: buy level far from price / target passed / stop
+    //   • resolved.planSanity — the plan contradicts the live tape
+    //     (DAV-188: buy level far from price / target passed / stop
     //     breached). A flagged-but-quiet row is the exact "wrong through 5
     //     runs" failure this exists to end; the flag forces the full row.
+    //     Except "no buy level" and "score under the minimum" on their own
+    //     (listsTheStock, below).
     //   • a decision of the principal's that wants an answer and has none
     //     — a decline with a written reason, a resized approval, a direct
     //     edit (stock-context.ts). It must reach the agent's work list on
