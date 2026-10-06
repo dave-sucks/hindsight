@@ -178,7 +178,7 @@ function measuresOffPosition(t: Trigger): boolean {
 // were then retired by an agent that had been asked to add). EXIT is not
 // here — an un-held floor resolves to DEMOTE (effectiveTriggerAction), which
 // is a real verdict, not a position action.
-const POSITION_SCOPED_ACTIONS = new Set(["ADD", "TRIM", "MOVE_STOP"]);
+const POSITION_SCOPED_ACTIONS = new Set(["ADD", "TRIM"]);
 
 /**
  * Order the triggers WITHIN one level so that, when two of them land in the

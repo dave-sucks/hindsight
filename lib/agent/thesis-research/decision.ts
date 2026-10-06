@@ -451,11 +451,11 @@ export function validateThesisDecision(
       const actions = new Set(parsed.data.map((t) => t.action));
       if (held) {
         if (actions.has("ENTER")) {
-          errors.push("triggers: this thesis is HOLDING (position open) — ENTER triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD/MOVE_STOP.");
+          errors.push("triggers: this thesis is HOLDING (position open) — ENTER triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD.");
         }
       } else {
         // Mint, WATCHING refresh, PROMOTED refresh: no position exists.
-        const forbidden = ["EXIT", "TRIM", "ADD", "MOVE_STOP"].filter((a) =>
+        const forbidden = ["EXIT", "TRIM", "ADD"].filter((a) =>
           actions.has(a as never),
         );
         if (forbidden.length > 0) {

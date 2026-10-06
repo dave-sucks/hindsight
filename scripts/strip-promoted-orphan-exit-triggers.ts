@@ -2,7 +2,7 @@
  * strip-promoted-orphan-exit-triggers.ts
  *
  * One-shot cleanup: every PROMOTED thesis with leftover HELD-template
- * triggers (EXIT, TRIM, ADD, MOVE_STOP) gets them stripped and replaced
+ * triggers (EXIT, TRIM, ADD) gets them stripped and replaced
  * with the PROMOTED-side template for its horizon.
  *
  * Why: pre-P1-21 (this PR), the promote-analyst action flipped a thesis
@@ -41,7 +41,7 @@ import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 
 const DRY_RUN = process.env.DRY_RUN === "1";
 
-const ORPHAN_ACTIONS: TriggerAction[] = ["EXIT", "TRIM", "ADD", "MOVE_STOP"];
+const ORPHAN_ACTIONS: TriggerAction[] = ["EXIT", "TRIM", "ADD"];
 
 async function main() {
   console.log(
@@ -87,7 +87,7 @@ async function main() {
     const analystName = t.researchRun?.agentConfig?.name ?? "(unknown)";
     console.log(
       `  ${t.ticker} (${analystName}) — ${existingTriggers.length} triggers, ` +
-        `${orphanCount} orphan (EXIT/TRIM/ADD/MOVE_STOP)`,
+        `${orphanCount} orphan (EXIT/TRIM/ADD)`,
     );
 
     try {
@@ -133,7 +133,7 @@ async function main() {
             type: "UPDATED",
             summary: `Stripped orphan HELD-template triggers as part of P1-21 cleanup; replaced with PROMOTED-template set.`,
             rationale:
-              "Pre-P1-21 promote-analyst left HELD-side triggers (EXIT/TRIM/ADD/MOVE_STOP) " +
+              "Pre-P1-21 promote-analyst left HELD-side triggers (EXIT/TRIM/ADD) " +
               "on theses transitioned ACTIVE→PROMOTED. Those triggers would spawn orphan " +
               "tactical EXIT runs on a thesis with no position to close. Regenerated for " +
               "PROMOTED-side template (ENTER + REVIEW only).",

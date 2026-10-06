@@ -543,7 +543,7 @@ function watchingDefaults(thesis: ThesisShape, enterCooldownDays: number): Trigg
  * Trigger shape mirrors WATCHING — ENTER on the target level so a
  * matching price crossing wakes tactical-run which calls place_trade
  * (place_trade auto-flips PROMOTED → ACTIVE in the same tx per PR #324).
- * Critically, NO EXIT/TRIM/ADD/MOVE_STOP — those operate on positions
+ * Critically, NO EXIT/TRIM/ADD — those operate on positions
  * and a PROMOTED thesis has none.
  */
 export function defaultTriggersForHorizon(

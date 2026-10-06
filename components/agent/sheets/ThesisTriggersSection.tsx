@@ -39,7 +39,7 @@ type Level = "THESIS" | "ANALYST" | "ACCOUNT";
 
 // One row per action — Buy if / Add if / Review if / Trim if / Sell if.
 // Rows with no triggers don't render.
-const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = ["ENTER", "ADD", "REVIEW", "MOVE_STOP", "TRIM", "EXIT"];
+const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = ["ENTER", "ADD", "REVIEW", "TRIM", "EXIT"];
 
 /** The pill rows. A pill opens its trigger in a popover. */
 export function TriggerGroups({

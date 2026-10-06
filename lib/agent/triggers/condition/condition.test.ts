@@ -122,7 +122,7 @@ describe("every stored trigger", () => {
  * retired theses, and it never fires.
  */
 describe("the rules the kinds answered, from the catalog", () => {
-  const ACTIONS: TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW", "MOVE_STOP", "DEMOTE"];
+  const ACTIONS: TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW", "DEMOTE"];
   const DIRECTIONS = ["LONG", "SHORT", null];
   const live = ([...rows.map((r) => r.predicate), ...UNSTORED] as StoredRow[]).filter((p) => !isRetired(fromLegacy(p)));
   const grid = live.flatMap((predicate) => ACTIONS.map((action) => ({ predicate, action })));

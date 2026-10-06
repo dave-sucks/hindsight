@@ -68,7 +68,7 @@ A thesis is not a paragraph of vibes. It's a structured object with:
 - **Core belief** — the one-sentence claim that's either true or false.
 - **Key assumptions** — the things that have to remain true for the belief to hold.
 - **Invalidation conditions** — the specific things that would prove the belief wrong.
-- **Triggers** — structured predicates (price levels, earnings outcomes, filings, time elapsed) that fire to promote WATCHING → ACTIVE, EXIT, TRIM, MOVE_STOP, ADD, REVIEW.
+- **Triggers** — structured predicates (price levels, earnings outcomes, filings, time elapsed) that fire to promote WATCHING → ACTIVE, EXIT, TRIM, ADD, REVIEW.
 - **Target + stop** — the bounds.
 - **Sources** — which signals + monitors fed this thesis (used by the trade evaluator to credit success).
 

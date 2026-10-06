@@ -26,7 +26,7 @@ import { protectiveRatchetViolations } from "../ratchet";
 import type { Trigger, TriggerAction } from "../types";
 import type { LegacyPredicate } from "./legacy-types";
 
-const ACTIONS: TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW", "MOVE_STOP", "DEMOTE"];
+const ACTIONS: TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW", "DEMOTE"];
 const DIRECTIONS = ["LONG", "SHORT", null];
 const all = ([...(stored as { rows: { predicate: LegacyPredicate }[] }).rows.map((r) => r.predicate), ...UNSTORED] as StoredRow[]).filter(
   (p) => shapeOf(p) != null,

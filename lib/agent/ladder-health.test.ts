@@ -134,7 +134,7 @@ describe("computeLadderHealth — the flag rule (LONG)", () => {
     expect(h.isUnprotectedGain).toBe(false);
   });
 
-  it("TRIM / MOVE_STOP / REVIEW rungs do NOT count as protection", () => {
+  it("TRIM / REVIEW rungs do NOT count as protection", () => {
     const trim: Trigger = {
       id: "trig-trim",
       predicate: { watch: "price", is: "below", value: 108 },

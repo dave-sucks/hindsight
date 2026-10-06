@@ -21,7 +21,7 @@ import { money } from "./words";
 
 export { money } from "./words";
 
-const ACTION_LABEL: Readonly<Record<string, string>> = { ENTER: "Buy if", ADD: "Add if", TRIM: "Trim if", EXIT: "Sell if", MOVE_STOP: "Move the stop if" };
+const ACTION_LABEL: Readonly<Record<string, string>> = { ENTER: "Buy if", ADD: "Add if", TRIM: "Trim if", EXIT: "Sell if" };
 
 /** "Sell if", "Review if". A sale on a stock we don't own takes the plan down. */
 export function actionLabel(action: string, sells = true): string {

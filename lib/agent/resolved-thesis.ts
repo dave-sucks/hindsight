@@ -216,7 +216,7 @@ export function buildResolvedEnvelope(args: {
   // for triggerState + actionability.
   const enterTrigger = thesis.parsedTriggers.find((t) => t.action === "ENTER");
   const exitTriggers = thesis.parsedTriggers.filter(
-    (t) => t.action === "EXIT" || t.action === "TRIM" || t.action === "MOVE_STOP",
+    (t) => t.action === "EXIT" || t.action === "TRIM",
   );
 
   // ── Trigger state (against live price) ────────────────────────────

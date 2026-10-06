@@ -449,12 +449,12 @@ async function transitionThesisToPromoted(input: {
   const promotedAt = new Date();
 
   // Regenerate triggers against the PROMOTED template (P1-21). HELD-side
-  // EXIT/TRIM/ADD/MOVE_STOP triggers carried over from the predecessor
+  // EXIT/TRIM/ADD triggers carried over from the predecessor
   // ACTIVE row would otherwise spawn orphan tactical EXIT runs on a
   // thesis with no open position. The PROMOTED template emits ENTER
   // (the re-entry path — place_trade auto-flips PROMOTED→ACTIVE per
   // PR #324) + REVIEW only; no EXIT. Falls back to a conservative
-  // strip of EXIT/TRIM/ADD/MOVE_STOP if horizon is missing (rare).
+  // strip of EXIT/TRIM/ADD if horizon is missing (rare).
   const horizon = thesis.horizon as Horizon | null;
   let promotedTriggers: Trigger[] | undefined;
   if (horizon) {

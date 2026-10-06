@@ -286,8 +286,7 @@ DECISION FRAMEWORK
    - Default: execute the declared action (${trigger.action}). REVIEW means
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
-     manage_position (scale up). TRIM means manage_position (partial close). MOVE_STOP
-     means manage_position (adjust stop).
+     manage_position (scale up). TRIM means manage_position (partial close).
    - **On a protective exit (reason=STOP) you MUST answer \`belief_survived\`.**
      You are the agent closest to this exit — nobody else can judge it. Did
      the STORY break, or did you sell on PRICE? A trailing give-back or a

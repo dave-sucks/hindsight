@@ -95,7 +95,7 @@ describe("buildWriterResearchPrompt — status branching", () => {
     });
 
     it("forbids position-management trigger actions (no position exists)", () => {
-      expect(prompt).toContain("NEVER EXIT/TRIM/ADD/MOVE_STOP");
+      expect(prompt).toContain("NEVER EXIT/TRIM/ADD");
     });
 
     it("keeps the role split — the writer does not decide re-entry, status stays PROMOTED", () => {
@@ -140,7 +140,7 @@ describe("buildWriterResearchPrompt — status branching", () => {
 
     it("declares the WATCHING trigger block", () => {
       expect(prompt).toContain("WATCHING thesis (no position");
-      expect(prompt).toContain("NEVER EXIT/TRIM/ADD/MOVE_STOP");
+      expect(prompt).toContain("NEVER EXIT/TRIM/ADD");
     });
 
     it("does NOT include the PROMOTED or HELD blocks", () => {

@@ -9,7 +9,7 @@
 
 import { zodSchema } from "ai";
 import { toStoredPredicate, waitsForClose } from "./condition";
-import { parseTriggersResilient, predicateInputSchema, triggerPredicateSchema, triggersArraySchema } from "./schema";
+import { parseTriggersResilient, predicateInputSchema, triggerActionSchema, triggerPredicateSchema, triggersArraySchema } from "./schema";
 
 const good = {
   id: "t1",
@@ -126,5 +126,14 @@ describe("a setting the measure doesn't take is dropped at the gate", () => {
     expect(toStoredPredicate(undeclared)).toEqual({ watch: "move", is: "below", value: 7, variable: "prev_close" });
     const group = { match: "all", conditions: [undeclared, { watch: "volume", value: 1.5, settings: { window: "3M" } }] };
     expect(toStoredPredicate(group)).toEqual({ match: "all", conditions: [{ watch: "move", is: "below", value: 7, variable: "prev_close" }, { watch: "volume", value: 1.5 }] });
+  });
+});
+
+describe("the actions a trigger can take", () => {
+  // No stored trigger ever carried MOVE_STOP (production, 2026-10-06: 0 of 943
+  // theses, every analyst, every account). A stop moves by editing the floor.
+  it("are buy, add, trim, sell and review; there is no stop-move action", () => {
+    expect(triggerActionSchema.options.filter((a) => a !== "DEMOTE")).toEqual(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM"]);
+    expect(triggerActionSchema.safeParse("MOVE_STOP").success).toBe(false);
   });
 });

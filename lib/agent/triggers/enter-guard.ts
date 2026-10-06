@@ -75,7 +75,7 @@ export type EnterTriggerGuardResult =
 /**
  * Returns ok:true unless the resulting thesis is LONG/SHORT and one of:
  *   - WATCHING with no ENTER trigger, or carrying HELD-only actions
- *     (EXIT/TRIM/ADD/MOVE_STOP) that can't fire without a position
+ *     (EXIT/TRIM/ADD) that can't fire without a position
  *   - ACTIVE with an ENTER trigger (already in), or with no EXIT trigger
  *     (no automated stop-loss path)
  * PASS and unresearched seeds (direction null/new or 'PENDING'/legacy) never
@@ -121,7 +121,7 @@ export function validateEnterTriggerRequired(
           `\n\nFix: remove the buy trigger(s) by id — remove_trigger_ids: [${enterOffenders
             .map((t) => `"${t.id}"`)
             .join(", ")}]. A stock we own carries sells (EXIT), partial sales (TRIM), ` +
-          `adds (ADD), stop moves (MOVE_STOP) and reviews (REVIEW); add those with add_triggers.`,
+          `adds (ADD) and reviews (REVIEW); add those with add_triggers.`,
       };
     }
     const hasExit = args.triggers.some((t) => t.action === "EXIT");
@@ -146,7 +146,7 @@ export function validateEnterTriggerRequired(
 
   // The HELD-action guard that used to sit here is GONE (DAV-195 L5).
   //
-  // It refused EXIT/TRIM/ADD/MOVE_STOP on a WATCHING thesis, and its own
+  // It refused EXIT/TRIM/ADD on a WATCHING thesis, and its own
   // reason said why: "the trigger evaluator will spawn orphan tactical runs
   // that fail cleanly ('no position to close')". That was true — the system
   // had no verb for a price level firing on something we don't own, so the
@@ -163,7 +163,7 @@ export function validateEnterTriggerRequired(
   // the gate is deleted rather than relaxed. Per DAV-210: the missing thing
   // was a verb, not another rule.
   //
-  // TRIM/ADD/MOVE_STOP on a watch item stay meaningless, but they are inert
+  // TRIM/ADD on a watch item stay meaningless, but they are inert
   // rather than harmful (position-scoped, they evaluate false), and the
   // shape gate below still requires a real ENTER.
 

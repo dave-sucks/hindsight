@@ -682,8 +682,9 @@ catalog at the entry point the app calls:
 - Not done here, from the PR 3 row above: deleting the `MOVE_STOP` action
   (no stored trigger carries it; 34 references) and moving fire history into
   `triggerState`. Both are follow-ups; neither touches the shape.
-  `MOVE_STOP` is deleted in its own PR (#772); fire history is part of the
-  storage proposal, a document on the `claude/trigger-storage-plan` branch (#773).
+  `MOVE_STOP` is deleted (#772): nothing stored carries it, and a stop moves
+  through `update_thesis` (an edit of the floor), never through a trigger
+  that fires. Fire history is part of the storage proposal (#773).
 - The §12.3 options (a sale below our entry on a stock we watch, a % move or
   volume read on the close, a review every N weeks) are **not on**. The save
   still accepts only what an old kind could say, because its check is the
