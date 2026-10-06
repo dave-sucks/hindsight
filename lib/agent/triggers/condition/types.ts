@@ -4,7 +4,7 @@
  *   watch (the measure) · is (its button) · value (what you type) or variable (what you insert) · settings
  *
  * Everything about a measure (its tab, buttons, input, settings, words,
- * slot, the actions it can take, and how it is stored until the cutover)
+ * slot, the actions it can take, and how it reads a row stored as a kind)
  * lives on its catalog entry in ./measures. Nothing else branches on a
  * measure. docs/plans/TRIGGER_TYPES.md §3, §5 and §6.
  *

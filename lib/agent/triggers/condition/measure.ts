@@ -60,7 +60,7 @@ export interface PillPart {
 
 type Kind = LegacyPredicate["kind"];
 
-/** Until the cutover: how a measure reads the stored kinds, one reader per kind. A reader returns null for a predicate another measure owns. */
+/** How a measure reads a row stored as a kind (before the backfill), one reader per kind. A reader returns null for a predicate another measure owns. Goes with the translator in PR 4. */
 export type LegacyReaders = { [K in Kind]?: (p: Extract<LegacyPredicate, { kind: K }>) => When | null };
 
 /** Where a condition sits on the chart: its price now (null until it has one), which side of the trade, and whether the price moves. */

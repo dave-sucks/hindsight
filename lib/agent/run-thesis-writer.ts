@@ -1505,6 +1505,10 @@ export function makeSubmitThesisTool(opts: {
     // schema (every trigger kind by name), the validator coerces or drops
     // what it still gets wrong with a note, and a refused decision is
     // repaired once. That is the guarantee; a grammar is not available.
+    // (The chat's tools hit a different limit first: strict refuses a range on
+    // an integer, "For 'integer' type, properties maximum, minimum are not
+    // supported" (req_011CfmMgGCGJBUrYGBYDZxHS, 2026-10-06). Strict there
+    // would mean moving every range into a description.)
     inputSchema: thesisDecisionSchema,
     execute: async (raw: z.infer<typeof thesisDecisionSchema>) => {
       const attempt = opts.onAttempt();

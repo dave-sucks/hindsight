@@ -10,6 +10,12 @@
  * A condition no kind can say is left in the shape and listed: nothing writes
  * one until the agents and the form can, so the list should be empty.
  *
+ * Not byte-exact. A kind's field that only restated its default is not
+ * written back. Production, read-only, 2026-10-06: 16 of 950 rows (17
+ * triggers) come back without `from: "LAST_REVIEW"` (10), `minSurprisePct`
+ * 0 / -3 / -5 (7) or `side: "AFTER"` (1). The old checker read each of them
+ * as the default, so every trigger decides the same.
+ *
  * Usage:
  *   npx tsx --env-file=.env.local scripts/down-trigger-shape.ts           # dry run
  *   npx tsx --env-file=.env.local scripts/down-trigger-shape.ts --apply   # write
