@@ -33,7 +33,7 @@
  * run this gate.
  */
 
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { loosens, sentenceOf, shapeOf } from "./condition";
 import { protectiveExitCloseReason } from "./types";
 import type { Trigger } from "./types";
@@ -75,7 +75,7 @@ function effectiveByBucket(
   const out = new Map<string, Trigger>();
   for (const t of [...thesis, ...inherited]) {
     if (!isWellFormed(t)) continue;
-    const bucket = triggerBucket(t);
+    const bucket = triggerSlot(t);
     if (!out.has(bucket)) out.set(bucket, t);
   }
   return out;
@@ -90,7 +90,7 @@ function isProtectiveStop(t: Trigger, direction: string | null): boolean {
 
 /**
  * Does `next` protect LESS than `prev`? Same bucket ⇒ the same rule at a new
- * value (triggerBucket only merges different rules for a buy, which is never a
+ * value (triggerSlot only merges different rules for a buy, which is never a
  * STOP). A floor moved away from the price, a wider give-back or drawdown,
  * waiting for the close, arming later or a wider range multiple each protect
  * less; the catalog says which (./condition/rules `loosens`).

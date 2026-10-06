@@ -15,7 +15,7 @@
 // test reads is pure. Same shape as defaults.test.ts.
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
+import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import {
   frozenCopies,
   sharedRationalesAcross,
@@ -23,7 +23,7 @@ import {
 } from "@/lib/agent/triggers/frozen-copy";
 import { defaultTriggersForHorizon } from "@/lib/agent/triggers/defaults";
 import { accountSeedTriggers } from "@/lib/agent/triggers/seed-account";
-import { triggerBucket } from "@/lib/agent/triggers/bucket";
+import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const t = (over: Partial<Trigger> & { predicate: Trigger["predicate"]; action: Trigger["action"] }) =>
@@ -122,7 +122,7 @@ describe("DAV-322 — the copies come off", () => {
 
   it("2. the 25% sale goes because it is the Compounder's number, not ABT's", () => {
     const copies = frozenCopies({ own: ABT, analyst: COMPOUNDER, account: ACCOUNT, sharedRationales: shared });
-    const trail = copies.find((c) => c.bucket === triggerBucket({ predicate: { watch: "move", is: "below", value: 25, variable: "peak" }, action: "EXIT" }));
+    const trail = copies.find((c) => c.bucket === triggerSlot({ predicate: { watch: "move", is: "below", value: 25, variable: "peak" }, action: "EXIT" }));
     expect(trail?.reason).toBe("SAME_RUNG_SAME_NUMBER");
     expect(trail?.governedBy).toBe("ANALYST");
   });
@@ -171,7 +171,7 @@ describe("DAV-322 — the copies come off", () => {
  */
 describe("DAV-322 — a new holding is not given a copy in the first place", () => {
   it("8. no horizon's held template stamps a rung the account already carries", () => {
-    const accountBuckets = new Set(accountSeedTriggers().map(triggerBucket));
+    const accountBuckets = new Set(accountSeedTriggers().map(triggerSlot));
     const thesis = {
       ticker: "X",
       direction: "LONG" as const,
@@ -182,12 +182,12 @@ describe("DAV-322 — a new holding is not given a copy in the first place", () 
     };
     for (const horizon of ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const) {
       const stamped = defaultTriggersForHorizon(horizon, thesis as never, "HELD");
-      const clash = stamped.filter((s) => accountBuckets.has(triggerBucket(s)));
+      const clash = stamped.filter((s) => accountBuckets.has(triggerSlot(s)));
       // The review clock is the one shared bucket that is legitimately the
       // thesis's own — a CATALYST name reviews on its own schedule, not the
       // account's 7 days. Everything else is the account's to own.
       const notTheClock = clash.filter((c) => shapeName(c.predicate) !== "repeat");
-      expect({ horizon, stamped: notTheClock.map(triggerBucket) }).toEqual({
+      expect({ horizon, stamped: notTheClock.map(triggerSlot) }).toEqual({
         horizon,
         stamped: [],
       });

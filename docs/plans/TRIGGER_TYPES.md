@@ -692,7 +692,14 @@ catalog at the entry point the app calls:
   combinations; each option is then one catalog change of its own.
 
 **PR 4 as built.** The catalog decides what a condition may hold (`fits`,
-`valid`, `validAny` on each entry; `whenValid` for a trigger). A parity test
+`problem`, `problemAny` on each entry; `refusalOf` for a trigger). A refusal
+is the measure's own sentence naming the number and its range, and the save,
+the agents' schema and the form all refuse with it, so the form can't accept
+what the save refuses; the review's edge values (within 15% of the 50-day, a
+0.5% trail, the report day as days before it, 7 days after earnings, volume
+60×, 12 insiders, every 400 days, a gap within 12 days) are the test. The
+ranges are the old schema's. The cascade key has one name, `triggerSlot` in
+`condition/slot.ts` (`bucket.ts` folded in). A parity test
 ran it against the old spelling and schema over every stored condition, every
 measure × direction × variable × number edge, filing groups of every size and
 250,000 generated cases, and they agreed on all of them; it was deleted with

@@ -38,7 +38,7 @@
 import type { ResolvedTrigger } from "./levels";
 import type { Trigger, TriggerAction } from "./types";
 import { isDirectEligiblePredicate } from "./types";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { samePredicate } from "./condition/stored";
 import {
   conditionSentence,
@@ -210,8 +210,8 @@ function collision(
 ): Trigger | undefined {
   const slot = levelSlotOf(t, direction);
   if (slot) return stored.find((s) => levelSlotOf(s, direction) === slot);
-  const bucket = triggerBucket(t);
-  return stored.find((s) => triggerBucket(s) === bucket);
+  const bucket = triggerSlot(t);
+  return stored.find((s) => triggerSlot(s) === bucket);
 }
 
 const MAX_TRIGGERS = 20;
@@ -224,7 +224,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   let stored = input.stored;
   const results: TriggerOpResult[] = [];
 
-  const inheritedByBucket = new Map(inherited.map((t) => [triggerBucket(t), t]));
+  const inheritedByBucket = new Map(inherited.map((t) => [triggerSlot(t), t]));
 
   // What a call deletes applies before what it writes (VST 2026-09-28). A
   // call that removes a trigger and adds its replacement means "replace".
@@ -461,7 +461,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     const id = trigger.id || mintId();
     const text = `Added: ${describeTrigger(trigger, held)}`;
-    const above = inheritedByBucket.get(triggerBucket(trigger));
+    const above = inheritedByBucket.get(triggerSlot(trigger));
     if (
       above &&
       samePredicate(above.predicate, trigger.predicate) &&
@@ -486,8 +486,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const doReplace = (id: string, trigger: Trigger) => {
     const target = stored.find((t) => t.id === id);
     if (!target) return refuse("edit", id, `Change trigger ${id}`, notStored(id));
-    const sameSlot = triggerBucket(target) === triggerBucket(trigger);
-    const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerBucket(s) === triggerBucket(trigger));
+    const sameSlot = triggerSlot(target) === triggerSlot(trigger);
+    const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerSlot(s) === triggerSlot(trigger));
     const text = `Changed: ${describeTrigger(target, held)} → ${describeTrigger(trigger, held)}`;
     if (clash) {
       return refuse("edit", id, text, `This stock already has "${describeTrigger(clash, held)}". Edit that one instead.`);

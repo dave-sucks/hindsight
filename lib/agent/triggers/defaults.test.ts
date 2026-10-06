@@ -18,7 +18,7 @@
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
+import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { Condition, When } from "@/lib/agent/triggers/condition";
 import {
   applyTriggerCooldownDefaults,
@@ -31,7 +31,7 @@ import {
 } from "./defaults";
 import { accountSeedTriggers } from "./seed-account";
 import { triggersArraySchema } from "./schema";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
 
 function base(overrides: Partial<ThesisShape> = {}): ThesisShape {
@@ -336,7 +336,7 @@ describe("defaultTriggersForHorizon — WATCHING carries only the author's level
 
 // ── ENTER dedup bucket ────────────────────────────────────────────────
 
-describe("triggerBucket — ENTER on a price level is one bucket", () => {
+describe("triggerSlot — ENTER on a price level is one bucket", () => {
   it("treats breakout and dip entry rungs as the same intent", () => {
     // An ENTER rung on an absolute price is ONE decision — "where I start
     // this position" — however it's phrased. Without collapsing them, a
@@ -351,7 +351,7 @@ describe("triggerBucket — ENTER on a price level is one bucket", () => {
       predicate: { watch: "price", is: "below", value: 262 } as When,
     };
 
-    expect(triggerBucket(breakout)).toBe(triggerBucket(dip));
+    expect(triggerSlot(breakout)).toBe(triggerSlot(dip));
     expect(mergeTriggers([dip], [breakout]).filter((t) => t.action === "ENTER")).toHaveLength(1);
   });
 });
