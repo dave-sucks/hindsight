@@ -7,7 +7,6 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
 import {
   collapseCloseReason,
   enforceCloseReason,
@@ -44,8 +43,7 @@ export const closePosition = defineTool({
       .string()
       .optional()
       .describe(
-        "Notes explaining the close decision. Surfaced as Order.rationale on the approval proposal, so the principal reads this when deciding whether to approve the sell — always supply it." +
-          PROPOSAL_RATIONALE_VOICE,
+        "Why you're selling, always supplied: the sale and the price first, then the reason in a sentence or two. Shown to the owner on the sale proposal and in the approval email; write it by How you write.",
       ),
     belief_survived: z
       .boolean()

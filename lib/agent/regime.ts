@@ -23,6 +23,9 @@ import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import type { Regime } from "@/lib/agent/position-sizing";
 
 export const BREADTH_RISK_ON_PCT = 60;
+
+/** The regime in the words the line uses. */
+const MARKET_WORD: Record<Regime, string> = { RISK_ON: "risk-on", CAUTION: "cautious", RISK_OFF: "risk-off" };
 /** SPY must be this far under an average before it counts as below it. */
 export const REGIME_BUFFER_PCT = 1;
 
@@ -54,15 +57,16 @@ export function computeRegime(
     ? Math.round((withAvg.filter((b) => b.closes[b.closes.length - 1] > (b.sma[50] as number)).length / withAvg.length) * 100)
     : null;
 
+  // In plain words (lib/agent/voice.ts): no codes.
   const pos = (v: number, avg: number, label: string) => `${v >= avg ? "above" : "below"} its ${label} ($${avg.toFixed(2)})`;
   const what =
     regime === "RISK_OFF"
-      ? "new longs for event trades and mean-reversion only"
+      ? "new buys only for event trades and mean-reversion"
       : regime === "CAUTION"
-        ? "half size on new entries; breakouts fail most here"
+        ? "half size on new buys; breakouts fail most here"
         : "full size";
   const line =
-    `Regime ${regime}: SPY $${close.toFixed(2)}, ${pos(close, s50, "50-day")}, ${pos(close, s200, "200-day")} — ${what}.` +
-    (breadthPct != null ? ` ${breadthPct}% of the book is above its 50-day${regime === "RISK_ON" && breadthPct < BREADTH_RISK_ON_PCT ? ` (under ${BREADTH_RISK_ON_PCT}% — thin leadership)` : ""}.` : "");
+    `Market ${MARKET_WORD[regime]}: SPY $${close.toFixed(2)}, ${pos(close, s50, "50-day")} and ${pos(close, s200, "200-day")}, so ${what}.` +
+    (breadthPct != null ? ` ${breadthPct}% of our stocks are above their 50-day${regime === "RISK_ON" && breadthPct < BREADTH_RISK_ON_PCT ? ` (under ${BREADTH_RISK_ON_PCT}%: few are leading)` : ""}.` : "");
   return { regime, spyClose: close, spy50: s50, spy200: s200, breadthPct, line };
 }

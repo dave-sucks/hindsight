@@ -26,7 +26,6 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
-import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
 import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -125,8 +124,7 @@ const schema = z.object({
     .string()
     .min(20)
     .describe(
-      "Required: 1–3 sentences explaining your decision. Written to the audit log visible to the user, and surfaced as Order.rationale on the approval proposal for add / trim / move-stop actions. Be specific — cite the price, catalyst, and expected outcome." +
-        PROPOSAL_RATIONALE_VOICE,
+      "Required: what you're doing and why, in 1–3 sentences, with the price, the catalyst and what you expect. Shown to the owner on the Activity line and, for an add or a trim, on the proposal and in the approval email; write it by How you write.",
     ),
 
   // partial_close
@@ -757,7 +755,7 @@ export const managePosition = defineTool({
             if (sized) {
               const shares = Math.max(1, Math.floor(sized.shares * ADD_RISK_FRACTION));
               notional = shares * sizingPrice;
-              addSizingLine = `Add sized by the rules at half the entry risk: ${sized.line} Half of that for an add → ${shares} shares ($${Math.round(notional).toLocaleString()}).`;
+              addSizingLine = `Add: ${shares} shares ($${Math.round(notional).toLocaleString()}), half the size of a new buy. A new buy would be ${sized.line}`;
             } else {
               notional = Math.max(1, entrySizeForConviction({ conviction: convictionRow?.conviction ?? null, band }) * ADD_RISK_FRACTION);
               addSizingLine =

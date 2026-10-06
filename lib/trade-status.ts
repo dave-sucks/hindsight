@@ -85,6 +85,14 @@ export function pickProposalOrder<T extends { status: string }>(
   return null;
 }
 
+/** "the buy", "the sale" — a proposal named in an Activity line. */
+export const PROPOSAL_NOUN: Record<string, string> = {
+  OPEN: "buy",
+  ADD: "add",
+  CLOSE: "sale",
+  PARTIAL_CLOSE: "trim",
+};
+
 const PROPOSAL_VERB: Record<string, string> = {
   OPEN: "Buy",
   ADD: "Add",

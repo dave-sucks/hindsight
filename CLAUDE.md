@@ -56,6 +56,7 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 | **The trigger CONCEPTUAL model (condition·action·mode·timing; what is/isn't a trigger)** | **`docs/plans/TRIGGER_MODEL.md`** |
 | **Trigger authority + visibility contract (who sets which level, when; what wakes an agent)** | **`docs/plans/TRIGGER_LIFECYCLE.md`** |
 | **Why the trigger ladder exists (conviction management: press winners / protect gains)** | **`docs/plans/THESIS_GAME_PLAN.md`** |
+| Change how agents write what the user reads (notes, proposal reasons, Activity lines, run-summary lines) | `lib/agent/voice.ts` (the rules) and the field description that points at them |
 | Track open work (issues, not markdown) | Linear — team Davesucks |
 | Note a code smell outside the rework | `docs/TECH_DEBT.md` |
 | Spec a big multi-PR plan | `docs/plans/<NAME>.md` |

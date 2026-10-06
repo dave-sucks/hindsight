@@ -57,7 +57,7 @@ export const recordRunSummary = defineTool({
           ticker: z.string(),
           direction: z.enum(["LONG", "SHORT", "PASS"]),
           confidence: z.number(),
-          reasoning: z.string().describe("One-line rationale (<= 80 chars)"),
+          reasoning: z.string().describe('One line, 80 characters or fewer: "Holding; ugly chart, nothing wrong with the business." Shown to the owner on the run page; write it by How you write.'),
           action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS", "FAILED"])
             .describe(
               "What ACTUALLY happened to this ticker this run. Choose by what you have, not what you thought:\n" +

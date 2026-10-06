@@ -20,6 +20,7 @@
  * weeks without scanning the universe.
  */
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
+import { VOICE_RULES } from "@/lib/agent/voice";
 
 /**
  * Per-discovery-run dispatch cap for the thesis-writer sub-agent.
@@ -533,6 +534,11 @@ HARD CONSTRAINTS
     (the tools hide them anyway, so this should be impossible).
   • You cannot buy. A setup already true today is written by the writer
     as a buy at or near the price; it fires like any other.
+
+═══════════════════════════════════════════════════════════════════
+HOW YOU WRITE
+═══════════════════════════════════════════════════════════════════
+${VOICE_RULES}
 
 ═══════════════════════════════════════════════════════════════════
 FORMATTING

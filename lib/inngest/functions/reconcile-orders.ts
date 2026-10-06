@@ -514,8 +514,8 @@ async function restampThesisEntryOnFill(
       summary: `${thesis.ticker} buy price set to what was paid — $${paidPrice.toFixed(2)}`,
       rationale:
         thesis.entryPrice != null
-          ? `The buy filled at $${paidPrice.toFixed(2)}; the thesis carried the planned $${thesis.entryPrice.toFixed(2)}. Once the stock is owned the buy price is what was paid, not the plan.`
-          : `The buy filled at $${paidPrice.toFixed(2)} and the thesis carried no buy price.`,
+          ? `Filled at $${paidPrice.toFixed(2)} against the planned $${thesis.entryPrice.toFixed(2)}. Now that we own it, the buy price on the thesis is what we paid.`
+          : `Filled at $${paidPrice.toFixed(2)}; the thesis had no buy price, so it is now what we paid.`,
       fieldChanges: {
         entryPrice: { from: thesis.entryPrice, to: paidPrice },
       },

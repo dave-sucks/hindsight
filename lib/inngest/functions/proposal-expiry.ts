@@ -21,6 +21,7 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
+import { PROPOSAL_NOUN } from "@/lib/trade-status";
 
 // Mon-Fri 4 AM-8 PM ET, every 30 min — covers any proposal expiring during
 // the trading day. Off-hours expiries roll over to the next ET open.
@@ -134,7 +135,7 @@ export const proposalExpiry = inngest.createFunction(
             thesisId,
             type: "PROPOSAL_EXPIRED",
             summary: `${intent} proposal on ${order.symbol} expired without user decision`,
-            rationale: `Proposed ${order.quantity} ${order.symbol} (${intent}) — no approve / reject within the expiry window. ${order.rationale ? `Original rationale: ${order.rationale.slice(0, 240)}` : ""}`.trim(),
+            rationale: `The ${PROPOSAL_NOUN[intent] ?? "trade"} of ${order.quantity} ${order.symbol} expired without an answer. ${order.rationale ? `Its reason: ${order.rationale.slice(0, 240)}` : ""}`.trim(),
             fieldChanges: {
               proposal: {
                 from: { orderId: order.id, status: "AWAITING_APPROVAL" },

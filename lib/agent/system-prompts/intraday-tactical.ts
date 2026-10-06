@@ -18,6 +18,7 @@ import { describePredicate } from "@/lib/agent/needs-action";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
+import { VOICE_RULES } from "@/lib/agent/voice";
 
 interface TacticalPromptArgs {
   analyst: { name: string; mandate: string | null };
@@ -328,9 +329,8 @@ DECISION FRAMEWORK
        (a) **Live quote still confirms the breakout.** ALWAYS applies.
            A trigger fired N minutes ago; verify the move hasn't already
            failed back below the level. If the breakout is unwinding
-           right now, pass — write update_thesis(REVIEWED) with
-           rationale "trigger fired but level no longer holds at
-           execution time".
+           right now, pass — write update_thesis(REVIEWED) saying so
+           plainly: "Not acting yet: it hit $X, then slipped back to $Y."
 
        (b) **The setup's own confirmation.** Read THE SETUP block above
            and check what it says to confirm — a breakout needs a close
@@ -343,7 +343,8 @@ DECISION FRAMEWORK
            setup recorded, the price holding is the confirmation.
            **Chased:** if the live price is more than the setup's chase
            limit past the level, pass — write update_thesis(REVIEWED) with
-           "chased: X% past the level"; the daily run re-anchors the plan.
+           "Not buying: it's already X% past my buy level"; the daily run
+           re-anchors the plan.
 
        (c) **No contradicting headline.** ALWAYS applies. Use
            get_stock_data's news field to check the last hour. A trigger that fires INTO
@@ -360,13 +361,13 @@ DECISION FRAMEWORK
            signal you have.
 
      If any APPLICABLE gate fails, do NOT place_trade. update_thesis(REVIEWED)
-     with the specific gate that failed, in the setup's words. "Volume too
+     saying in plain words which check failed. "Volume too
      low" is a reason only when the setup's confirmation asks for volume
      (a breakout, a flag) and the session is past mid-day; on a pullback,
      a compounder or a pre-catalyst entry it is not a reason.
    - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
-     instead). State the override reasoning explicitly in update_thesis.
+     instead). Say in the note what you did instead of the trigger's action, and why.
 
    **ADD on a HELD position (scale-in / press) — press / hold / take, not an
    auto-buy.** When the fired action is ADD and the thesis is already HOLDING
@@ -412,8 +413,8 @@ DECISION FRAMEWORK
 
 3. If validation FAILS:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
-     patch) and rationale: "trigger fired but predicate validation
-     failed because <reason>. False fire."
+     patch) and a rationale that says why in plain words: "Not acting
+     yet: <reason>."
    - If validation reveals the thesis itself is no longer applicable
      (ticker fell outside this analyst's edge/universe, the original
      premise has broken structurally, the name is no longer worth
@@ -442,7 +443,7 @@ DECISION FRAMEWORK
    on a held stock may only tighten — a loosening edit is refused by
    itself and the rest of your update still lands; read \`trigger_ops\`
    in the result. If nothing went stale, say so in one sentence in the
-   rationale ("ladder intact: floor $X still under structure").
+   rationale ("Floor stays $X, still under the last swing low.").
 ${fired?.coFired?.length ? `   Two protective triggers fired together (marked ALSO FIRED above). One decision covers both: sell all, sell some, or hold — and say which trigger's rule you followed.\n` : ""}
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
@@ -452,6 +453,11 @@ ${fired?.coFired?.length ? `   Two protective triggers fired together (marked AL
      fired since the last answer, your update_thesis answers them too: say
      what you decided on each, by name.
    - Then complete_run.
+
+═══════════════════════════════════════════════════════════════════
+HOW YOU WRITE
+═══════════════════════════════════════════════════════════════════
+${VOICE_RULES}
 
 ═══════════════════════════════════════════════════════════════════
 HARD CONSTRAINTS

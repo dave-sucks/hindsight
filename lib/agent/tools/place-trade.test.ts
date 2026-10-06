@@ -646,7 +646,7 @@ describe("place_trade — sized by risk when no size is given (DAV-251)", () => 
       equity: 100_000,
       holdings: [],
       open: { riskDollars: 3_000, riskPct: 3, perName: [{ symbol: "MU", riskDollars: 3_000 }], unstopped: [], byIndustry: new Map() },
-      regime: { regime: "RISK_ON", line: "Regime RISK_ON: SPY above both averages — full size." },
+      regime: { regime: "RISK_ON", line: "Market risk-on: SPY above both averages, so full size." },
     });
 
     mockThesisFindUnique.mockReset();
@@ -698,9 +698,9 @@ describe("place_trade — sized by risk when no size is given (DAV-251)", () => 
     expect(mockPositionCreate.mock.calls[0][0].data.quantity).toBe(100);
     const rationale: string = mockMaybeAwaitApproval.mock.calls[0][0].rationale;
     expect(rationale.split("\n\n")[0]).toBe("Closed above the pivot on 1.8× volume.");
-    expect(rationale).toContain("Sized by risk: 1% of $100,000 × 1 (HIGH) = $1,000 at risk over a $10.00 stop distance → 100 shares ($10,000).");
-    expect(rationale).toContain("Open risk after this buy: 4.0% of equity (cap 6%)");
-    expect(rationale).toContain("Regime RISK_ON");
+    expect(rationale).toContain("100 shares, $10,000, sized by risk: 1% of the $100,000 account at high conviction = $1,000 at risk, over $10.00 to the stop.");
+    expect(rationale).toContain("If every open stop hit after this buy, the account would lose 4.0% (the limit is 6%).");
+    expect(rationale).toContain("Market risk-on");
   });
 });
 

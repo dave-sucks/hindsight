@@ -57,23 +57,22 @@ export function openRisk(holdings: RiskHolding[], equity: number): OpenRisk {
 
 const $ = (n: number) => `$${Math.round(n).toLocaleString()}`;
 
-/** "Open risk after this buy: 5.8% of equity (cap 6%)…" */
+/** "If every open stop hit after this buy, the account would lose 5.8% (the limit is 6%)…" */
 export function heatLine(current: OpenRisk, equity: number, addedRisk = 0): string {
   const after = equity > 0 ? ((current.riskDollars + addedRisk) / equity) * 100 : 0;
   const top = current.perName.slice(0, 3).map((p) => `${p.symbol} ${$(p.riskDollars)}`).join(", ");
   return (
-    `Open risk ${addedRisk > 0 ? "after this buy" : "now"}: ${after.toFixed(1)}% of equity (cap ${PORTFOLIO_HEAT_PCT}%)` +
-    (after > PORTFOLIO_HEAT_PCT ? " — OVER the cap" : "") +
-    (top ? `; largest: ${top}` : "") +
-    (current.unstopped.length ? `; no stop, not counted: ${current.unstopped.join(", ")}` : "") +
-    "."
+    `If every open stop hit ${addedRisk > 0 ? "after this buy" : "now"}, the account would lose ${after.toFixed(1)}%` +
+    (after > PORTFOLIO_HEAT_PCT ? `, over the ${PORTFOLIO_HEAT_PCT}% limit.` : ` (the limit is ${PORTFOLIO_HEAT_PCT}%).`) +
+    (top ? ` Biggest: ${top}.` : "") +
+    (current.unstopped.length ? ` Not counted, no stop: ${current.unstopped.join(", ")}.` : "")
   );
 }
 
-/** "Third name in Semiconductors (MU, NVDA)…" — only when the buy reaches the limit. */
+/** "This would be stock 3 in Semiconductors, with MU, NVDA…" — only when the buy reaches the limit. */
 export function industryLine(current: OpenRisk, industry: string | null | undefined, symbol: string): string | null {
   if (!industry) return null;
   const held = (current.byIndustry.get(industry) ?? []).filter((s) => s !== symbol);
   if (held.length < MAX_NAMES_PER_INDUSTRY) return null;
-  return `This would be name ${held.length + 1} in ${industry} (${held.join(", ")}) — the playbook's limit is ${MAX_NAMES_PER_INDUSTRY}; they move as one bet.`;
+  return `This would be stock ${held.length + 1} in ${industry}, with ${held.join(", ")}; the limit is ${MAX_NAMES_PER_INDUSTRY} because they move as one bet.`;
 }

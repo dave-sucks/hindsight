@@ -436,6 +436,19 @@ grade. The IONS replay (raise the floor on the +10% checkpoint, bank the gain on
 the crash instead of eating the day-one stop) is the acceptance test for the
 whole system.
 
+### J. How the notes read
+
+Read what the owner reads from this run: the newest Activity line on each stock it touched, every proposal reason (buy, add, trim, sell), and the run-summary lines. A miss is any of:
+- a tool or field name (`place_trade`, `entry_rationale`), an all-caps code (ENTER, PEAD, RISK_ON) or a bracket (`[Belief unchanged: …]`);
+- "the principal" or "this seat" where it should say "you" or "I";
+- a rule-4 number left out: price, buy level, stop, target, the dollars at risk, event date, share count.
+
+Where each is fixed:
+- the analyst wrote it → the rules in `lib/agent/voice.ts`, or the description of the field it wrote, in that tool's file under `lib/agent/tools/`;
+- the app wrote it → the line's own builder: `lib/agent/position-sizing.ts`, `lib/agent/portfolio-risk.ts`, `lib/agent/regime.ts`, `lib/proposals/execute.ts`, `lib/proposals/thesis-flips.ts`, `lib/proposals/held-through-context.ts`, `lib/inngest/functions/proposal-expiry.ts`, `lib/inngest/functions/reconcile-orders.ts`.
+
+A wrong decision is not a voice bug. A note that reads well but buys, sells or holds the wrong way goes to checks A–I above.
+
 ## Canonical SQL — top of every review
 
 Substitute today's ET date for `<TODAY>`. Most reviews will copy these into the

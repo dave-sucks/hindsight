@@ -112,7 +112,7 @@ describe("2026-09-28 08:00 ET — the market check the PEAD Specialist's run rea
     // On main: NEUTRAL, from VIXY's price read against VIX thresholds.
     expect(result.data).toMatchObject({ regime: "RISK_ON", regimeAsOf: "2026-09-25" });
     expect(result.summary).toContain(
-      "Regime RISK_ON: SPY $771.35, above its 50-day ($761.57), above its 200-day ($718.45) — full size (as of the 2026-09-25 close)",
+      "Market risk-on: SPY $771.35, above its 50-day ($761.57) and above its 200-day ($718.45), so full size (as of the 2026-09-25 close)",
     );
     // What was right that morning is unchanged.
     expect(result.summary).toContain("SPY $771.35 (+0.54%)");

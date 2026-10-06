@@ -101,7 +101,7 @@ describe("sizeByRisk — shares from the stop distance (DAV-251)", () => {
     expect(r.notional).toBe(8_900);
     expect(r.clampedBy).toBeNull();
     expect(r.riskDollars).toBe(1_246);
-    expect(r.line).toContain("1% of $100,000 × 1.25 (STRONG) = $1,250 at risk over a $14.00 stop distance → 89 shares ($8,900)");
+    expect(r.line).toBe("89 shares, $8,900, sized by risk: 1% of the $100,000 account × 1.25 for strong conviction = $1,250 at risk, over $14.00 to the stop.");
   });
 
   it("the MU case: ~$16k over a 14% stop becomes a ~$7k position at MEDIUM", () => {
@@ -117,7 +117,7 @@ describe("sizeByRisk — shares from the stop distance (DAV-251)", () => {
     expect(r.formulaNotional).toBe(50_000);
     expect(r.clampedBy).toBe("LARGEST_TRADE");
     expect(r.notional).toBe(16_000);
-    expect(r.line).toContain("Capped at the largest trade");
+    expect(r.line).toContain("capped at this analyst's largest trade. Risk alone said 500 shares ($50,000)");
   });
 
   it("a wide stop is raised to the smallest trade, and the line says the risk is above target", () => {
@@ -127,7 +127,7 @@ describe("sizeByRisk — shares from the stop distance (DAV-251)", () => {
     expect(r.notional).toBe(5_000);
     expect(r.riskPctOfEquity).toBeCloseTo(2, 5);
     // Target was 1% × 0.5 (LOW) = 0.50%; the floor pushed it to 2%.
-    expect(r.line).toMatch(/2\.00% of equity, above this trade's 0\.50% target/);
+    expect(r.line).toMatch(/loses \$2,000, 2\.00% of the account, above the 0\.50% this trade aims for/);
   });
 
   // No smallest trade here, so the halving isn't hidden by the floor clamp.
@@ -137,7 +137,7 @@ describe("sizeByRisk — shares from the stop distance (DAV-251)", () => {
     const normal = sizeByRisk({ equity: 100_000, riskPct: 1, conviction: "HIGH", entry: 50, stop: 40, band: open });
     const binary = sizeByRisk({ equity: 100_000, riskPct: 1, conviction: "HIGH", entry: 50, stop: 40, band: open, binary: true });
     expect(binary.shares).toBe(normal.shares / 2);
-    expect(binary.line).toContain("(binary catalyst)");
+    expect(binary.line).toContain("× 0.5 for an all-or-nothing event");
   });
 
   it("a CAUTION market halves the size; RISK_OFF does not change the arithmetic", () => {
@@ -159,6 +159,6 @@ describe("sizeByRisk — shares from the stop distance (DAV-251)", () => {
 
   it("no riskPct → the 1% default; unknown conviction → MEDIUM", () => {
     const r = sizeByRisk({ equity: 100_000, riskPct: null, conviction: "WHATEVER", entry: 100, stop: 90, band });
-    expect(r.line).toContain("1% of $100,000 × 0.75 (WHATEVER)");
+    expect(r.line).toContain("1% of the $100,000 account × 0.75 for whatever conviction");
   });
 });

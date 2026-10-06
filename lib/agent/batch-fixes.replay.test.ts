@@ -97,7 +97,7 @@ describe("DAV-328 — a buy into a dated event is half, a buy after it is not", 
     });
 
     expect(refused).toBe(false);
-    expect(sizingText(result)).toMatch(/binary/i);
+    expect(sizingText(result)).toMatch(/all-or-nothing event/i);
   });
 
   it("an ordinary drift name is NOT halved for having its next print on the row", async () => {
@@ -136,7 +136,7 @@ describe("DAV-328 — a buy into a dated event is half, a buy after it is not", 
     });
 
     expect(refused).toBe(false);
-    expect(sizingText(result)).not.toMatch(/binary/i);
+    expect(sizingText(result)).not.toMatch(/all-or-nothing event/i);
   });
 });
 
@@ -154,7 +154,7 @@ describe("DAV-328 — the same answer on every path that sizes a buy", () => {
     });
 
     expect(refused).toBe(false);
-    expect(sizingText(result)).not.toMatch(/binary/i);
+    expect(sizingText(result)).not.toMatch(/all-or-nothing event/i);
   });
 
   it("CYTK — a CATALYST row where no setup fits — stays halved", async () => {
@@ -166,7 +166,7 @@ describe("DAV-328 — the same answer on every path that sizes a buy", () => {
     });
 
     expect(refused).toBe(false);
-    expect(sizingText(result)).toMatch(/binary/i);
+    expect(sizingText(result)).toMatch(/all-or-nothing event/i);
   });
 
   it("the real book, row by row", () => {
