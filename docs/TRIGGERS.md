@@ -32,6 +32,13 @@ what it is measured from or what stands in for it (the `{x}` button), and
 `settings` the measure's options. The pill, the popover, the dialog, the
 agents' tools and the trigger check all read this one shape.
 
+The agents spell it the way the form's input works. A price's one input is
+`value`: a dollar number or a line (`sma50`, `low20`). A filing's `value` is
+which filing. `variable` is only what a % move or a day count is measured
+from. So a model can't send a price and a line together. A field the measure
+doesn't take is dropped, the same as a setting it doesn't take, and the schema
+maps the result onto the stored shape. The condition is defined once per tool.
+
 **One catalog entry per measure, no switches** (`lib/agent/triggers/condition/catalog.ts`
 and `condition/measures/*`). Each entry carries everything about its measure:
 its words, its number, its variables and settings, the actions it allows,

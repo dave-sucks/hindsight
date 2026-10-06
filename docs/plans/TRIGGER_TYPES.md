@@ -660,9 +660,14 @@ catalog at the entry point the app calls:
   variables and settings are listed once, on `predicate`, from the catalog.
   `settings` lists its keys, because the AI SDK writes a record as an object
   that allows none; a model reading the old definition could not have said
-  "on the close". An edit is `{ id, value, variable, … }`; a model that still
-  sends `level`, `pct` or `days` has it read as the value, and the old
-  unit check stands (a dollar figure on a % trigger is refused).
+  "on the close". An edit is `{ id, value, … }`: it moves the number and never
+  changes what a trigger is measured from. A model that still sends `level`,
+  `pct` or `days` has it read as the value, and the old unit check stands (a
+  dollar figure on a % trigger is refused).
+- Review fixes: a price's line goes in `value`, so price-or-line is one input
+  a model can't send both halves of; `variable` is only what a move or a day
+  count is measured from. The condition is defined once per tool. DOCU's
+  trigger run saved nothing in 6 of 8 runs before this.
 - Every trigger reads as one sentence from `describe.ts`, in the variables'
   own words: "Sell if below 25% from the high since we bought", "Review every
   30 days", "Review if within 2 days after earnings". Activity, needs-action,
