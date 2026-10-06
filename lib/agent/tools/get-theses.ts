@@ -125,7 +125,7 @@ const schema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Also return the lower-priority deep-research sections (researchData, recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical). A read of named stocks already includes the snapshot, the bull and bear cases and the score notes.",
+      "Also return the lower-priority deep-research sections (researchData, recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical). The snapshot and the bull and bear cases are already on every row.",
     ),
   history_limit: z
     .number()
@@ -151,7 +151,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book); each row says when its research was written and at what price. The research text itself (snapshot, bull and bear cases, score notes) and the raw activity log come back when you read named stocks (tickers or ids). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
+    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book); each row carries the snapshot and the bull and bear cases, and says when that research was written and at what price. The raw activity log comes back when you read named stocks (tickers or ids). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
@@ -159,12 +159,12 @@ export const getTheses = defineTool({
   // read in the recorded cases, re-sent on every later step. The screen
   // keeps them; the model reads the rows.
   //
-  // The raw history and the writer's research text (snapshot, bull and bear
-  // cases, score notes) come back only on a read of named stocks: 29% and
-  // 29% of the morning read on 2026-10-02, and the row's `context` already
-  // sums up the history. Each row keeps a one-line `research` note instead:
-  // when it was written and at what price. How to read it is said once, in
-  // the tool's description.
+  // The raw history comes back only on a read of named stocks: 29% of the
+  // morning read on 2026-10-02, and the row's `context` already sums it up.
+  // The writer's research text stays on every full row: a run left to ask
+  // for it never did (now-needs-research, 0/12 with and without a line
+  // saying how). Each row also says when its research was written and at
+  // what price.
   forModel: (result, input) => {
     if (!result.ok) return result;
     const data = result.data as Record<string, unknown> | undefined;
@@ -1621,20 +1621,7 @@ export function rowForModel(row: Record<string, unknown>, named: boolean): Recor
     : "No research written yet.";
   delete out.researchPriceThen;
   delete out.researchUpdatedAt;
-  if (!named) {
-    delete out.history;
-    delete out.snapshot;
-    delete out.bullCase;
-    delete out.bearCase;
-    const scoring = row.scoring as Record<string, unknown> | null | undefined;
-    if (scoring && typeof scoring === "object") {
-      const scores: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(scoring)) {
-        scores[k] = v && typeof v === "object" && "score" in (v as Record<string, unknown>) ? (v as Record<string, unknown>).score : v;
-      }
-      out.scoring = scores;
-    }
-  }
+  if (!named) delete out.history;
   return out;
 }
 
