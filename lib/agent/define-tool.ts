@@ -49,7 +49,7 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
   /**
    * What the model reads of the result, when it differs from what the
    * screen gets. The full result still streams to the chat and is what a
-   * saved run replays (`withScreenOutputs`); the model gets this. For copy
+   * saved run replays (`saveRunThread`); the model gets this. For copy
    * that exists only to render a card — the model never needs it, and it is
    * re-sent on every step that follows. `input` is the call's arguments, so
    * what the model reads can depend on what it asked for.
