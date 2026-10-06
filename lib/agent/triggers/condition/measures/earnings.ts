@@ -1,7 +1,7 @@
 /** Earnings: before or after the report date, and the result. docs/plans/TRIGGER_TYPES.md §3.3. */
 
 
-import { withSettings, type MeasureDef } from "../measure";
+import type { MeasureDef } from "../measure";
 import { isNum, num, shown, wholeIn } from "../words";
 
 export const report: MeasureDef = {

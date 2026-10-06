@@ -2,7 +2,7 @@
 
 
 import type { MeasureDef } from "../measure";
-import type { Condition, FilingVariable } from "../types";
+import type { Condition } from "../types";
 import { FILING_VARIABLES } from "../variables";
 import { num, shown, wholeIn } from "../words";
 

@@ -17,7 +17,7 @@ import { insiderCluster } from "@/lib/market-data/insider-cluster";
 import { unfiredMatches } from "@/lib/market-data/sec-events";
 import { shapeOf } from "./valid";
 import type { Condition, Watch, When } from "./types";
-import { conditionsOf, isGroup, isRetired } from "./types";
+import { conditionsOf, isGroup } from "./types";
 import { num } from "./words";
 
 interface Reader {
