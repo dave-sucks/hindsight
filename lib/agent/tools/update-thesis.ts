@@ -142,7 +142,7 @@ const updateSchema = z.object({
     .optional()
     .describe(
       "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
-        "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead. " +
+        "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead, when it has them. " +
         "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). " +
         "Holding and sold are not set here: place_trade and close_position flip them when the order fills. A researched decline is direction: \"PASS\".",
     ),
@@ -1076,7 +1076,7 @@ export const updateThesis = defineTool({
                 ok: false,
                 error: "goalpost_moving_blocked",
                 message:
-                  `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${Number(existing.targetPrice).toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${check.columns.targetPrice.toFixed(2)} and walk away. If you genuinely think the setup has changed, document a concrete rejection reason in record_run_summary's decision_rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1) and leave the target untouched. Or close the thesis with change_status: "INVALIDATED".`,
+                  `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${Number(existing.targetPrice).toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${check.columns.targetPrice.toFixed(2)} and walk away. If you genuinely think the setup has changed, leave the target untouched and give the concrete reason in your rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1). Or close the thesis with change_status: "INVALIDATED".`,
                 trigger_ops: notApplied(opResults, "goalpost_moving_blocked"),
               },
               sources: [],

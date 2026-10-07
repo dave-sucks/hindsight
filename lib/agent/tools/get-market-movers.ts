@@ -42,7 +42,7 @@ export const getMarketMovers = defineTool({
       .enum(["universe", "coverage", "all"])
       .optional()
       .describe(
-        "'all' = full firm top-list (default). 'universe' = full top-list MINUS tickers you already cover (the discovery set — use this in weekly discovery). 'coverage' = top-list intersected with your watchlist + open positions (the 'my book' set).",
+        "'all' = full firm top-list (default). 'universe' = full top-list MINUS tickers you already cover (the discovery set). 'coverage' = top-list intersected with your watchlist + open positions (the 'my book' set).",
       ),
   }),
   ui: "tool-ui" as const,

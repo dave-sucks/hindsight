@@ -18,9 +18,10 @@
  *   CHOSEN    The model picks from a closed list. The wire schema must be an
  *             enum / const / boolean — never a free string.
  *   JUDGED    The model's number, date or plan under a rule the tools
- *             enforce. The rule is named here, and the prompt of every mode
- *             that offers the tool must state it up front (the marker
- *             text). A refusal names the bound and the next legal move.
+ *             enforce. The rule is named here. A mode whose prompt states it
+ *             declares a marker (the text the prompt must keep); a mode whose
+ *             tool description and refusal carry the rule needs no marker.
+ *             A refusal names the bound and the next legal move.
  *   IDENTITY  A reference to something that exists (a thesis id, a ticker,
  *             a trigger id). A wrong one is refused by name.
  *   TEXT      Prose the model writes (a rationale, bullets). No rule; no
@@ -30,7 +31,8 @@
  * A field that is not in this registry fails the suite: a new field cannot
  * ship without an answer to the question. A COMPUTED field that shows up in
  * a run's schema fails. A CHOSEN field that is a string fails. A JUDGED
- * field whose rule is not stated in a mode's prompt fails.
+ * field whose rule a mode declares a marker for, and whose prompt drops that
+ * marker, fails.
  */
 
 export type FieldKind = "COMPUTED" | "CHOSEN" | "JUDGED" | "IDENTITY" | "TEXT" | "CARRIED";
@@ -62,7 +64,10 @@ const RULE_DEFS = {
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
     refusal: "protective_level_locked — names the level, the direction, and that the rest of the update lands.",
-    markers: { daily: "only tightens", tactical: "may only tighten", chat: "only tighten" },
+    // The morning and trigger runs read it on update_thesis's description and
+    // on manage_position's new_stop_loss, and in the refusal; their prompts
+    // no longer say it a third time.
+    markers: { chat: "only tighten" },
   },
   MIN_CONFIDENCE: {
     says: "A buy needs the analyst's minimum confidence (the composite score).",
@@ -217,7 +222,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("reason", "TEXT"),
     f("setup_id", "CHOSEN"),
     f("screen_row", "TEXT"),
-    f("promotion_context", "CARRIED"),
   ],
   /** The writer's own submit tool — the decision, before the save. */
   submit_thesis: [

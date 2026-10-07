@@ -26,7 +26,7 @@ import { prisma } from "@/lib/prisma";
 
 export const recordRunSummary = defineTool({
   description:
-    "STAGE 5. Fires after all execution tools, before complete_run. Pass every ticker you researched (ranked by conviction) with the action that ACTUALLY happened. Your IMMEDIATE next step after this is Stage 6 — call complete_run.",
+    "The run's summary, recorded once after its actions and before complete_run: what the run did overall, why, and each stock it worked on with the action that actually happened.",
   schema: z.object({
     // Decision-framework v1 — required field. The agent's overall capital
     // allocation decision for this run. Persisted in ResearchRun.parameters
@@ -36,19 +36,13 @@ export const recordRunSummary = defineTool({
     primary_decision: z
       .enum(["HOLD", "ADJUST", "ROTATE", "ADD", "WATCH"])
       .describe(
-        "The run's primary capital allocation decision: HOLD (current portfolio is optimal, no changes), ADJUST (modify existing positions only), ROTATE (close a current position to fund a clearly better entry), ADD (open a new position that beats existing options AND cash), WATCH (log a candidate for later, no trade today). HOLD is a successful run; do not force a trade to fill a quota.",
+        "What the run did with the money overall: HOLD (no change to positions), ADJUST (changed existing positions only), ROTATE (sold a holding to fund a better buy), ADD (opened a new position), WATCH (watchlist work only, no trade). HOLD is a successful run; do not force a trade.",
       ),
     decision_rationale: z
       .string()
       .min(120)
       .describe(
-        "STRUCTURED rationale. Required content depends on primary_decision: " +
-        "HOLD → must cite (a) weakest holding's composite score with dimension breakdown, (b) best candidate's composite, (c) why each evaluated candidate failed (composite < 7, quality-bar gate, didn't beat weakest by ≥+2, leader extended). " +
-        "ADD/ROTATE → must cite (a) candidate's composite breakdown by dimension (3+3+2+2), (b) which holding it beats (or whether it's an addition not rotation), (c) why leader-first isn't blocking, (d) R/R ratio. " +
-        "ADJUST → must cite which holding(s) and what changed in the score that triggered the adjustment. " +
-        "WATCH → must cite what's promising AND what's missing. " +
-        "Vague rationales like 'holdings still working' or 'no good setups today' are INSUFFICIENT — every score and every PASS reason must be explicit and auditable. " +
-        "Example HOLD: 'Weakest holding NVDA 8/10 (3+3+1+1, entryQuality dinged for extended intraday). Best candidate INTC 5/10 (2+1+1+1) — fails leader-first (NVDA leads), fails entryQuality (post-earnings gap already faded). ON Semi 6/10 — fails extended-chase gate at +12% intraday. No candidate clears bar; HOLD.'",
+        "Why the run did what it did, in a few plain sentences: the buys, sales and plan changes it made and the reason for each, or why it changed nothing. Name the stocks and the numbers that decided it.",
       ),
     ranked_picks: z
       .array(
@@ -63,10 +57,10 @@ export const recordRunSummary = defineTool({
               "What ACTUALLY happened to this ticker this run. Choose by what you have, not what you thought:\n" +
               "  INITIATE = opened a new position (the buy order went through).\n" +
               "  ADD      = added to an existing position.\n" +
-              "  HOLD     = you currently HOLD an open position in this ticker and kept it. Do NOT use HOLD for a watched/tracked thesis where you have no position — that is WATCH.\n" +
+              "  HOLD     = you currently HOLD an open position in this ticker and kept it.\n" +
               "  REDUCE   = trimmed an existing position.\n" +
               "  EXIT     = closed an existing position (the sale went through).\n" +
-              "  WATCH    = you do NOT have a position; you maintained or updated the thesis to keep tracking. This is the right verb whenever you edited a thesis on a ticker you don't own.\n" +
+              "  WATCH    = you do NOT have a position; you maintained or updated the thesis to keep tracking.\n" +
               "  REMOVE_WATCH = removed from watchlist / dropped tracking.\n" +
               "  PASS     = researched and rejected; no thesis maintained.\n" +
               "  FAILED   = the buy order was refused (by the broker, as a duplicate, etc).",
@@ -82,7 +76,7 @@ export const recordRunSummary = defineTool({
         }),
       )
       .describe(
-        "Every ticker you researched in Step 3, ranked by composite_score (or by conviction if composite unavailable), with the action that ACTUALLY happened in Step 5. HOLD is reserved for tickers you currently own. For a thesis edit on a ticker you don't own, use WATCH. Use FAILED for tickers whose buy order was refused.",
+        "Every stock the run worked on, ranked by composite_score (or by conviction when there is no score), with the action that actually happened.",
       ),
     exposure_breakdown: z
       .object({

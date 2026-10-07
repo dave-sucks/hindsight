@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 
 export const readAnalystConfig = defineTool({
   description:
-    "Read the full configuration for one analyst — analystPrompt, universe (sectors/industries/themes/marketCap/feeds), watchlist, exclusionList, position sizing rules, intelligence policy, and monitor counts. Pass analyst_id (preferred) or analyst_name (case-insensitive). Use this when the user asks 'what does this analyst do' or before suggesting changes.",
+    "Read the full configuration for one analyst — analystPrompt, universe (sectors/industries/themes/marketCap), watchlist, exclusionList, position sizing rules and intelligence policy. Pass analyst_id (preferred) or analyst_name (case-insensitive). Use this when the user asks 'what does this analyst do' or before suggesting changes.",
   schema: z.object({
     analyst_id: z.string().optional().describe("AgentConfig.id"),
     analyst_name: z
@@ -42,7 +42,6 @@ export const readAnalystConfig = defineTool({
       include: {
         _count: {
           select: {
-            monitors: true,
             positions: { where: { status: "OPEN" } },
           },
         },
@@ -82,7 +81,7 @@ export const readAnalystConfig = defineTool({
       },
       {
         kind: "generic" as const,
-        text: `Watchlist: ${watchlist.length} tickers · Exclusion: ${analyst.exclusionList.length} · Monitors: ${analyst._count.monitors}`,
+        text: `Watchlist: ${watchlist.length} tickers · Exclusion: ${analyst.exclusionList.length}`,
       },
     ];
 
@@ -112,7 +111,6 @@ export const readAnalystConfig = defineTool({
           maxPositionSize: analyst.maxPositionSize,
           maxOpenPositions: analyst.maxOpenPositions,
           intelligencePolicy: analyst.intelligencePolicy,
-          monitorCount: analyst._count.monitors,
           openPositions: analyst._count.positions,
           watchlistItemCount: watchlist.length,
           createdAt: analyst.createdAt,

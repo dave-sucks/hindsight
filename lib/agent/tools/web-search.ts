@@ -17,7 +17,7 @@ const liveSearchCounts = new Map<string, number>();
 
 export const webSearch = defineTool({
   description:
-    "Search the web for real-time information via Perplexity Sonar. Use when pre-gathered intelligence is insufficient and you need live data — breaking news, recent developments, or niche topics not covered by the signal pipeline. Respects your intelligence policy's allowLiveSearch and liveSearchBudget.",
+    "Search the web for real-time information via Perplexity Sonar: breaking news, recent developments, or niche topics.",
   schema: z.object({
     query: z.string().describe("Search query — be specific and financial-context-aware"),
     recency: z
