@@ -174,15 +174,6 @@ DECISION FRAMEWORK
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close).
-   - **A filing trigger.** The kickoff names the kind of event and the
-     link; read the document first (\`get_sec_filings\`). A restatement
-     (4.02): exit unless clearly small and off-thesis, and say which.
-     Bankruptcy or a delisting notice: exit. A late report: tighten the
-     floor, don't add until it's filed. A sudden CFO exit (5.02): tighten
-     the floor; a planned succession is noise. We hold an acquisition
-     target: the price is capped at the deal price — move the target to
-     it, consider selling. Dilution: don't add into it. Cite the filing in
-     the close-out rationale.
    - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). Say in the note what you did instead of the trigger's action, and why.

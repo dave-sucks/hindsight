@@ -2,6 +2,7 @@
  * system-prompt.test.ts — the daily run as a portfolio manager (DAV-253).
  * What the prompt deletes and adds, pinned; the prompt builder is pure.
  */
+import { filings } from "@/lib/agent/playbooks/filings";
 import { buyArrives } from "@/lib/agent/playbooks/buy-arrives";
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
 import type { RunInput } from "./run-input";
@@ -47,7 +48,8 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("## Filings on your book this week");
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
     expect(prompt).toContain("A held name's review runs its setup's checklist");
-    expect(prompt).toContain("REVIEW from a filing trigger");
+    expect(prompt).not.toContain("REVIEW from a filing trigger");
+    expect(filings.text).toContain("Read it first (get_sec_filings gives the link).");
   });
 });
 
