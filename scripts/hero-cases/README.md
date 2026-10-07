@@ -115,5 +115,5 @@ main at `8fb21cb8` (before #765–#768); "merged" is `2157e708`.
 
 Main is `1b99a4ec` run with its own runner, which sends the recorded kickoff;
 a branch with this runner rebuilds the kickoff from `promptArgs.stock`. The
-runner stops at the first call that decides the stock, so a deletion made in a
+runner stops at the first call that decides the stock, so a removal made in a
 later call (what the 2026-09-14 run did after proposing the sale) is not seen.
