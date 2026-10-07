@@ -79,7 +79,10 @@ trigger case is scored:
   (a one-off conversion; the runner no longer translates them at load). The
   trigger and writer cases send the same bytes as before; the morning and
   chat cases' recorded stock rows now show their triggers in the condition
-  shape instead of the old kinds.
+  shape instead of the old kinds. Triggers of kinds deleted from production
+  were dropped from the recorded rows the same day (59, all in
+  wst-buy-level-arrives, with those rows' trigger counts), because
+  production holds none.
 - A trigger case runs to the end of the run (complete_run, a turn with no
   call, or `maxTurns`, default 6), every call answered by a stub, and its
   `call` / `never` rules are scored over all of it. It used to stop at the
