@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Info, ArrowRight, ChevronDownIcon } from "lucide-react";
+import { Info, ArrowRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -23,12 +23,6 @@ import {
   useComboboxAnchor,
 } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { WatchlistRow, AddStockRow } from "@/components/ui/trade-row";
 import { StockSearch } from "@/components/stocks/StockSearch";
 import {
@@ -381,6 +375,19 @@ function WatchlistTab({
 // at the bottom. Without handlers, it falls back to a read-only tooltip
 // view (used by preview surfaces that don't have a backing analystId).
 
+// The words these two rows show. Stored values are enums; the panel reads in
+// English, like every other row in it.
+const DIRECTION_LABELS: Record<string, string> = {
+  LONG: "Long",
+  SHORT: "Short",
+  BOTH: "Both",
+};
+const HOLD_LABELS: Record<string, string> = {
+  DAY: "Day",
+  SWING: "Swing",
+  POSITION: "Position",
+};
+
 function SettingsTab({
   values,
   onChange,
@@ -413,12 +420,15 @@ function SettingsTab({
               }
             >
               <SelectTrigger size="sm" variant="ghost">
-                <SelectValue />
+                {/* The LABEL, not the stored enum. A bare <SelectValue /> shows
+                    base-ui's raw value, so this row read "LONG" while every
+                    other row read like English. */}
+                <SelectValue>{DIRECTION_LABELS[values.directionBias] ?? values.directionBias}</SelectValue>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="LONG">Long</SelectItem>
-                <SelectItem value="SHORT">Short</SelectItem>
-                <SelectItem value="BOTH">Both</SelectItem>
+              <SelectContent alignItemWithTrigger={false} align="end">
+                {Object.entries(DIRECTION_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -436,12 +446,15 @@ function SettingsTab({
               }}
             >
               <SelectTrigger size="sm" variant="ghost">
-                <SelectValue />
+                <SelectValue>
+                  {HOLD_LABELS[values.holdDurations[0] ?? "SWING"] ??
+                    values.holdDurations[0]}
+                </SelectValue>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DAY">Day</SelectItem>
-                <SelectItem value="SWING">Swing</SelectItem>
-                <SelectItem value="POSITION">Position</SelectItem>
+              <SelectContent alignItemWithTrigger={false} align="end">
+                {Object.entries(HOLD_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -467,13 +480,7 @@ function SettingsTab({
                 label="Daily run days"
                 tooltip="ISO weekdays the 8 AM ET morning run executes for this analyst. Fewer days = lower cost. Intraday triggers are unaffected."
               />
-              {/* Wrapper is load-bearing: base-ui DropdownMenu injects
-                  data-base-ui-focus-guard <span>s as in-flow SIBLINGS of the
-                  trigger while open. Without this div those guards become
-                  direct children of the grid, shifting the nth-child(even)
-                  alignment count and reflowing every row (the whole sheet
-                  "jumps right" on open). The div keeps the trigger + its
-                  guards as ONE stable grid cell. */}
+              {/* Wrapped for the same base-ui hidden-input reason as Direction. */}
               <div className="justify-self-end">
                 <RunDaysControl
                   value={values.runDaysOfWeek}
@@ -695,14 +702,15 @@ function SettingsTab({
 }
 
 // ─── Run days control ────────────────────────────────────────────────────────
-// Dropdown multi-select (Mon–Fri) driving AgentConfig.runDaysOfWeek (ISO
-// weekdays 1=Mon..5=Fri). The morning-research cron gates on this array; the
-// 5-min trigger cron ignores it, so intraday reactivity fires every day.
+// Multi-select (Mon–Fri) driving AgentConfig.runDaysOfWeek (ISO weekdays
+// 1=Mon..5=Fri). The morning-research cron gates on this array; the 5-min
+// trigger cron ignores it, so intraday reactivity fires every day.
 //
-// Visually a peer of the Direction / Hold-Duration trading-rule dropdowns —
-// a ghost-button trigger + chevron summarizing the current selection, with a
-// checkbox menu (check on the RIGHT via DropdownMenuCheckboxItem, stays open
-// on toggle so multiple days can be picked in one pass).
+// It is the SAME `Select` as Direction and Hold Duration, in `multiple` mode —
+// not a lookalike built out of DropdownMenu. base-ui appends on select and
+// does not close the popup when `multiple`, which is the whole reason the
+// hand-rolled checkbox menu existed. One component means one trigger, one
+// popup and one check indicator, so these rows can't drift apart again.
 //
 // An empty stored value means "all weekdays" (the cron's defensive default),
 // so a null/empty/unset value renders as all five selected. To keep the stored
@@ -734,80 +742,72 @@ function RunDaysControl({
           .map((d) => d.label)
           .join(", ");
 
-  const toggle = (iso: number, checked: boolean) => {
-    const set = new Set(selected);
-    if (checked) {
-      set.add(iso);
-    } else {
-      // Never allow zero days — an empty array would be read as "all
-      // weekdays", the opposite of what deselecting the last day looks like.
-      if (set.size <= 1) return;
-      set.delete(iso);
-    }
-    onChange([...set].sort((a, b) => a - b));
-  };
-
   return (
-    // modal={false}: a modal menu locks scroll + compensates for the
-    // scrollbar on open, which shifts the whole config sheet sideways
-    // (the Select-based Direction/Hold-Duration dropdowns are non-modal and
-    // don't). Non-modal matches them and keeps the panel from reflowing.
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="sm">
-            {summary}
-            <ChevronDownIcon className="text-muted-foreground" />
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="end">
+    <Select
+      multiple
+      value={selected}
+      onValueChange={(next: number[]) => {
+        // Never allow zero days — an empty array is read as "all weekdays",
+        // the opposite of what deselecting the last day looks like.
+        if (next.length === 0) return;
+        onChange([...next].sort((a, b) => a - b));
+      }}
+    >
+      <SelectTrigger size="sm" variant="ghost">
+        <SelectValue>{summary}</SelectValue>
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} align="end">
         {RUN_DAYS.map((day) => (
-          <DropdownMenuCheckboxItem
-            key={day.iso}
-            checked={selected.includes(day.iso)}
-            onCheckedChange={(checked) => toggle(day.iso, checked === true)}
-          >
+          <SelectItem key={day.iso} value={day.iso}>
             {day.label}
-          </DropdownMenuCheckboxItem>
+          </SelectItem>
         ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </SelectContent>
+    </Select>
   );
 }
 
 // ─── Setups (DAV-280) ────────────────────────────────────────────────────────
-// The same checkbox menu as the run days. Order is the order chosen: the
-// first setup is the analyst's signature, whose rules seed its Triggers tab.
+// The same multi-`Select` as the run days. Order is the order chosen — base-ui
+// appends each newly selected value — so the first setup stays the analyst's
+// signature, whose rules seed its Triggers tab.
 const SETUP_CHOICES = setupIndex();
 
-function SetupsControl({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+function SetupsControl({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
   const chosen = value.filter((id) => SETUP_CHOICES.some((s) => s.id === id));
   const summary =
     chosen.length === 0
       ? "Whole playbook"
-      : chosen.map((id) => SETUP_CHOICES.find((s) => s.id === id)?.code ?? id).join(", ");
-  const toggle = (id: string, checked: boolean) => {
-    onChange(checked ? [...chosen.filter((x) => x !== id), id] : chosen.filter((x) => x !== id));
-  };
+      : chosen
+          .map((id) => SETUP_CHOICES.find((s) => s.id === id)?.code ?? id)
+          .join(", ");
+
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="sm">
-            {summary}
-            <ChevronDownIcon className="text-muted-foreground" />
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="end">
+    <Select
+      multiple
+      value={chosen}
+      onValueChange={(next: string[]) => onChange(next)}
+    >
+      <SelectTrigger size="sm" variant="ghost">
+        <SelectValue>{summary}</SelectValue>
+      </SelectTrigger>
+      {/* The option labels ("D8 · Breakout continuation") are far wider than
+          the trigger, so the popup sizes to its content rather than the
+          anchor. Same component, same styling — just not squeezed. */}
+      <SelectContent width="content" alignItemWithTrigger={false} align="end">
         {SETUP_CHOICES.map((s) => (
-          <DropdownMenuCheckboxItem key={s.id} checked={chosen.includes(s.id)} onCheckedChange={(checked) => toggle(s.id, checked === true)}>
+          <SelectItem key={s.id} value={s.id}>
             {s.code} · {s.name}
-          </DropdownMenuCheckboxItem>
+          </SelectItem>
         ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </SelectContent>
+    </Select>
   );
 }
 
