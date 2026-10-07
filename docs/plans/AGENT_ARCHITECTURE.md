@@ -626,7 +626,20 @@ becomes true the moment they move into the kickoff.
    one case confirms the printed input is what the model received.
 
 This also retires the old-shape triggers frozen in rows of cases cut before
-the cutover, since a rebuilt row is written by today's code.
+the cutover: the case files hold the one condition shape on disk, converted
+once while the translator existed, and the runner no longer translates them.
+
+Two things a case keeps as written on its day, so a wording change in the
+code that wrote them reaches only cases recorded after the change:
+
+- A stock's `context`. A recorded row carries what's been said as a
+  rendered block, not the activity rows it was built from, and the brief
+  takes the block as it was built (the live path, the recorder and the
+  back-fill all pass it that way). A change to `stock-context.ts` reaches no
+  case already recorded.
+- A trigger case's `promptArgs.kickoff.extras`: the earnings numbers, the
+  buying-window line, the co-fired sentences and the open-refusal lines, as
+  written on the day. The fire sentence before them is today's.
 
 ### 10.3 The stock brief (PR 6.0)
 
@@ -780,6 +793,15 @@ two kinds: an inherited review schedule (`repeat`) or report wake
 price-state review may stay silent for a year and counts as "may wake", and
 the flag's sentence says which the stock has. It changes when the flag
 shows, not what may be traded, and is judged on the real book (10.8).
+
+With it the flag is rare by design. The account's review before earnings
+reaches every watched stock and comes every quarter, so a watched stock
+with no plan of its own gets its look before each report rather than every
+morning, which is the owner's standing ruling that a stock with no clock is
+looked at when one of its triggers fires. On 2026-10-07 the fix took the
+flag off all three stocks that carried it (BBIO, JBL, KMX). A stock whose
+next report date is not known would be the case for counting a report wake
+only when its date is known.
 
 **The default review is written now**, as its own playbook under the same
 five parts, not left for step 7: 77 of 236 reviews in the month measured (section 2.1)
