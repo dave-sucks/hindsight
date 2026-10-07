@@ -23,6 +23,7 @@ import { buildRunInput } from "@/lib/agent/run-input";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { saveRunThread } from "@/lib/agent/run-thread";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
@@ -988,7 +989,7 @@ export async function POST(
         resolveOnFinish!();
       },
 
-      async onFinish({ response, finishReason, usage }) {
+      async onFinish({ response, steps, finishReason, usage }) {
         const elapsed = Date.now() - t0;
         console.log(
           `[agent/${agentMode}] ✅ onFinish elapsed=${elapsed}ms reason=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
@@ -1085,31 +1086,9 @@ export async function POST(
           // `parameters`; this adds to the turns before it.
           await recordTokenUsage(runId, tokenUsage, effectiveModel);
 
-          // Persist messages — shared for research-run and podcast-segment-run.
-          // Defensive: response.messages may be undefined if the stream ended
-          // abnormally or the SDK version changed.
-          const responseMessages = response?.messages ?? [];
-          const inputMessages = messages ?? [];
-          const allMessages = [...inputMessages, ...responseMessages];
-          if (allMessages.length > 0) {
-            try {
-              await prisma.$transaction(async (tx) => {
-                await tx.runMessage.deleteMany({ where: { runId: runId! } });
-                await tx.runMessage.create({
-                  data: {
-                    runId: runId!,
-                    role: "thread",
-                    content: JSON.stringify(allMessages),
-                  },
-                });
-              });
-              console.log(`[agent/${agentMode}] Persisted ${allMessages.length} messages (input=${inputMessages.length}, response=${responseMessages.length})`);
-            } catch (err) {
-              console.error(`[agent/${agentMode}] Failed to persist messages:`, err);
-            }
-          } else {
-            console.warn(`[agent/${agentMode}] ⚠️ No messages to persist for run ${runId} (input=${inputMessages.length}, response=${responseMessages.length})`);
-          }
+          // Persist messages (run-thread.ts): the turns the client sent, as
+          // the screen holds them, then this turn's.
+          await saveRunThread(runId!, { opening: messages ?? [], messages: response?.messages, steps }, `agent/${agentMode}`);
 
           // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
           // continuity now comes from the account-level PortfolioDigest read

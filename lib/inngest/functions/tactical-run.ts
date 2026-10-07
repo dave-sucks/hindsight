@@ -20,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import { generateText, stepCountIs } from "ai";
+import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -797,6 +798,9 @@ export const tacticalRun = inngest.createFunction(
           `[tactical-run] thesis=${thesis.id} trigger=${trigger.id} ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`,
         );
 
+        // Every step whose messages are saved, for the thread's tool results.
+        const threadSteps: RunStep[] = [...steps];
+
         // ── Compute responseMessages with step-flatten fallback ────────────
         // AI SDK v6 sometimes returns response.messages empty on a text-only
         // tail (the same shape morning-research's prematureExitViolation
@@ -893,6 +897,7 @@ export const tacticalRun = inngest.createFunction(
               }) as typeof retryMessages;
             }
             if (retryMessages && retryMessages.length > 0) {
+              threadSteps.push(...retryResp.steps);
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               responseMessages = [
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -962,6 +967,7 @@ export const tacticalRun = inngest.createFunction(
               }) as typeof refusalMessages;
             }
             if (refusalMessages && refusalMessages.length > 0) {
+              threadSteps.push(...refusalResp.steps);
               responseMessages = [
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 ...(responseMessages as any[]),
@@ -981,31 +987,14 @@ export const tacticalRun = inngest.createFunction(
         await recordOpenRefusalsEvent(run.id, await listOpenRefusalsForRun(run.id));
 
         // ── Persist conversation messages ──────────────────────────────────
-        // /runs/[id] replays from this row. Includes any retry sequence so
-        // the user sees the full recovery, not just the original tail.
-        try {
-          const userMessage = {
-            role: "user",
-            content: [{ type: "text", text: userPrompt }],
-          };
-          const allMessages = [userMessage, ...(responseMessages ?? [])];
-          const json = JSON.stringify(allMessages);
-          await prisma.$transaction(async (tx) => {
-            await tx.runMessage.deleteMany({ where: { runId: run.id } });
-            await tx.runMessage.create({
-              data: {
-                runId: run.id,
-                role: "thread",
-                content: json,
-              },
-            });
-          });
-        } catch (msgErr) {
-          console.error(
-            `[tactical-run] failed to persist messages for run=${run.id}:`,
-            msgErr instanceof Error ? msgErr.message : msgErr,
-          );
-        }
+        // /runs/[id] replays from this row (run-thread.ts). Includes any
+        // retry sequence so the user sees the full recovery, not just the
+        // original tail.
+        await saveRunThread(
+          run.id,
+          { opening: [{ role: "user", content: [{ type: "text", text: userPrompt }] }], messages: responseMessages, steps: threadSteps },
+          "tactical-run",
+        );
 
         await recordTokenUsage(run.id, tokenUsage, MODES["tactical"].model);
         await prisma.researchRun.update({
