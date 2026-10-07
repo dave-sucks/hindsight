@@ -205,7 +205,8 @@ describe("stockBrief — why the stock is on the list, gathered in the code's or
       }),
       { named: false },
     );
-    expect(Object.keys(b).slice(6, 13)).toEqual(["needsAction", "planSanity", "buyBlockedByFull", "nameTheSetup", "researchAge", "actionability", "context"]);
+    expect(Object.keys(b).slice(6, 14)).toEqual(["playbooks", "needsAction", "planSanity", "buyBlockedByFull", "nameTheSetup", "researchAge", "actionability", "context"]);
+    expect(b.playbooks).toEqual(["stale-research"]);
     expect(b.researchAge).toEqual({ daysOld: 120, threshold: 90, freshness: "stale" });
     expect(b.actionability).toBe("STALE_PAST_CATALYST");
     // Not held: no position numbers.

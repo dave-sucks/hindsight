@@ -28,7 +28,7 @@ import { PLAYBOOKS, playbooksForFire } from "@/lib/agent/playbooks";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  daily: 17_559,
+  daily: 16_138,
   tactical: 7_166,
   writer: 11_027,
   discovery: 20_773,
@@ -71,7 +71,7 @@ describe("the five agent prompts, by size", () => {
  * and the stock's brief. Its system prompt is the job alone, so the stock it
  * used to carry is counted here.
  */
-const KICKOFF = 2_723;
+const KICKOFF = 2_691;
 function sampleKickoff(): string {
   const trail = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." } as Trigger;
   const stock = stockBrief(
@@ -81,7 +81,7 @@ function sampleKickoff(): string {
       position: { quantity: 60, avgCost: 53.1, openedAt: "2026-09-21T14:00:00Z", peakPrice: 62.7 },
       needsAction: { kind: "TRIGGER_FIRED", triggerId: "trig_trail", action: "EXIT", summary: "", firedAt: "2026-10-01T15:00:00Z" },
     },
-    { named: true, inherited: true },
+    { named: true, inherited: true, playbooks: false },
   );
   return tacticalKickoff({
     ticker: "HPE",
@@ -109,6 +109,7 @@ const RECORDED_PLAYBOOKS: Record<string, number> = {
   earnings: 1_193,
   filings: 1_105,
   protection: 1_144,
+  "stale-research": 889,
 };
 
 describe("the playbooks, by size", () => {

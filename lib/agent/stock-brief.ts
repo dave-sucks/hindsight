@@ -206,13 +206,13 @@ function worded(flag: Obj, row: StockRow): Obj {
  * the code ranks it: the lead flag first (`needs-action.ts` ranks it), then
  * the rest. A flag that only repeats the lead is left out.
  */
-function situations(row: StockRow): Obj {
+function situations(row: StockRow, withPlaybooks: boolean): Obj {
   const out: Obj = {};
   const r = row.resolved ?? {};
   const lead = row.needsAction ?? null;
   const leadKind = typeof lead?.kind === "string" ? lead.kind : null;
   // The playbooks for its situations; the read carries each one's text once.
-  const playbooks = playbooksForRow(row);
+  const playbooks = withPlaybooks ? playbooksForRow(row) : [];
   if (playbooks.length) out.playbooks = playbooks;
   if (lead) out.needsAction = stamped(worded(lead, row));
   const floor = r.floorRisk as Obj | null | undefined;
@@ -247,12 +247,14 @@ const MORE_RESEARCH = ["researchData", "recentCatalysts", "fundamentals", "lates
  * the setup; the research. History only on a read of named stocks; the
  * score's notes and the rest of the research only when asked for.
  *
- * `inherited` adds the analyst's and the account's triggers that apply to
+ * `playbooks: false` leaves out the playbook keys, for a reader that carries
+ * its playbooks some other way (the trigger run's kickoff: the ones for what
+ * fired). `inherited` adds the analyst's and the account's triggers that apply to
  * the stock. A read of one stock wants them (the trigger run); a read of the
  * book would repeat the same rules on every row, and the setup's manage line
  * and `ladderHealth` already say what protects a holding.
  */
-export function stockBrief(row: StockRow, opts: { named: boolean; research?: boolean; inherited?: boolean }): Obj {
+export function stockBrief(row: StockRow, opts: { named: boolean; research?: boolean; inherited?: boolean; playbooks?: boolean }): Obj {
   const r = row.resolved ?? {};
   const price = num(r.currentPrice);
   const held = row.status === "HOLDING";
@@ -263,7 +265,7 @@ export function stockBrief(row: StockRow, opts: { named: boolean; research?: boo
     direction: row.direction,
     ...(row.horizon ? { horizon: row.horizon } : {}),
     price: priceLine(r),
-    ...situations(row),
+    ...situations(row, opts.playbooks !== false),
   };
   if (row.context) out.context = row.context;
   // A thesis that ended (a read of RETIRED or PASSED): when, and why.

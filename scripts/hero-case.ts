@@ -229,7 +229,7 @@ function kickoffFor(name: string, c: HeroCase): ModelMessage {
   const ticker = args.thesis.ticker;
   const fireSentence = sentenceOf(args.trigger);
   const setup = row.setup ?? setupChecklist(row.setupId as string | null, row.horizon ?? null);
-  const stock = stockBrief({ ...row, setup: setup as StockRow["setup"], nameTheSetup: null }, { named: true, inherited: true });
+  const stock = stockBrief({ ...row, setup: setup as StockRow["setup"], nameTheSetup: null }, { named: true, inherited: true, playbooks: false });
   const situation = tacticalSituation(args);
   const playbooks = playbooksForFire({ action: args.trigger.action, held: args.position != null, predicate: args.trigger.predicate });
   return { role: "user", content: [{ type: "text", text: tacticalKickoff({ ticker, fireSentence, extras: kickoff.extras ?? "", situation, playbooks, stock }) }] };

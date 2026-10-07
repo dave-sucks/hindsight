@@ -683,7 +683,7 @@ export const tacticalRun = inngest.createFunction(
           if (!r.ok) return { error: r.error ?? "get_theses failed" };
           const row = r.data?.theses?.[0];
           if (!row) return { error: "get_theses returned no row for the stock" };
-          return { stock: stockBrief({ ...row, nameTheSetup: null }, { named: true, inherited: true }) };
+          return { stock: stockBrief({ ...row, nameTheSetup: null }, { named: true, inherited: true, playbooks: false }) };
         } catch (err) {
           return { error: err instanceof Error ? err.message : String(err) };
         }

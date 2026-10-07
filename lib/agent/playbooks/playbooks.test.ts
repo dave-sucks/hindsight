@@ -119,3 +119,15 @@ describe("protection: when it attaches", () => {
     expect(playbooksForFire({ action: "EXIT", held: true }).map((p) => p.key)).not.toContain("protection");
   });
 });
+
+describe("stale research: when it attaches", () => {
+  it("the lead flag, or stale or missing research on any listed row with a committed view", () => {
+    expect(playbooksForRow(row({ needsAction: { kind: "RESEARCH_STALE" } }))).toEqual(["stale-research"]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "REVIEW_DUE" }, researchAge: { freshness: "stale", daysOld: 90 } }))).toEqual(["stale-research"]);
+  });
+  it("not fresh research, not a seed or a watch with no view, never a trigger run", () => {
+    expect(playbooksForRow(row({ needsAction: { kind: "REVIEW_DUE" }, researchAge: { freshness: "fresh", daysOld: 3 } }))).toEqual([]);
+    expect(playbooksForRow(row({ direction: null, status: "WATCHING", researchAge: { freshness: "missing" } }))).toEqual([]);
+    expect(playbooksForFire({ action: "REVIEW", held: true }).map((p) => p.key)).not.toContain("stale-research");
+  });
+});

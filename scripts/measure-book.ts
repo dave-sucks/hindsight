@@ -115,7 +115,7 @@ async function main() {
               fired: { price: null, coFired: [] },
             }),
             playbooks: playbooksForFire({ action: trigger.action, held: raw.status === "HOLDING", predicate: trigger.predicate }),
-            stock: stockBrief({ ...raw, nameTheSetup: null }, { named: true, inherited: true }),
+            stock: stockBrief({ ...raw, nameTheSetup: null }, { named: true, inherited: true, playbooks: false }),
           }).length
         : null;
       return {
