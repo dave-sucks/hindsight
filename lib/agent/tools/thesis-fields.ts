@@ -14,9 +14,11 @@
  * update_thesis for conviction, thesis-shape.ts for a priced plan, the
  * trigger ops for a refused trigger edit).
  *
- * `strict` is the writer's form: it is sent in Anthropic strict mode, which
- * refuses numeric ranges, so the score parts carry their range in words and
- * the save enforces it.
+ * `writer` is the writer's form: its score parts carry no number range in the
+ * schema, as the writer's fields never did. The range is in the words, and the
+ * writer's decision check refuses a score outside it (thesis-research/
+ * decision.ts). The writer's tool is not sent in Anthropic's strict mode, on
+ * purpose (run-thesis-writer.ts says why).
  */
 import { z } from "zod";
 import { NO_SETUP_FITS, SETUP_IDS } from "@/lib/agent/knowledge/setups";
@@ -51,8 +53,8 @@ export const TRIGGER_EDITS = {
   remove: "Triggers to remove, by id.",
 } as const;
 
-export function thesisFields(opts: { strict?: boolean } = {}) {
-  const score = (max: number) => (opts.strict ? z.number() : z.number().min(0).max(max));
+export function thesisFields(opts: { writer?: boolean } = {}) {
+  const score = (max: number) => (opts.writer ? z.number() : z.number().min(0).max(max));
   const part = (max: number) => z.object({ score: score(max), note: z.string() });
   return {
     direction: z.enum(["LONG", "SHORT", "PASS"]).describe("LONG, SHORT, or PASS: a stock you researched and won't trade."),
@@ -65,7 +67,10 @@ export function thesisFields(opts: { strict?: boolean } = {}) {
     setup_id: z.enum(SETUP_IDS).describe("The setup the plan is written on. The trigger run confirms a buy by it and results are grouped by it."),
     setup_id_or_none: z
       .enum([...SETUP_IDS, NO_SETUP_FITS])
-      .describe("The setup the plan is written on. The trigger run confirms a buy by it and results are grouped by it. NONE: no setup fits; say why in the rationale."),
+      .describe(
+        "The setup the plan is written on. The trigger run confirms a buy by it and results are grouped by it. NONE: no setup fits; say why in the rationale. " +
+          "On a stock we hold, naming a setup writes that setup's exit triggers, one Activity line each.",
+      ),
     entry_price: z
       .number()
       .describe(
