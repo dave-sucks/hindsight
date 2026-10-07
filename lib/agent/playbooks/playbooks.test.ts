@@ -101,7 +101,7 @@ describe("earnings: when it attaches", () => {
 });
 
 describe("filings: when it attaches", () => {
-  const filed = { id: "s1", level: "ACCOUNT", action: "REVIEW", predicate: { watch: "filing", is: "material" } };
+  const filed = { id: "s1", level: "ACCOUNT", action: "REVIEW", predicate: { watch: "filing", variable: "tier:MATERIAL" } };
   it("the lead flag is a fire of a trigger watching the stock's filings", () => {
     expect(playbooksForRow(row({ inheritedTriggers: [filed], needsAction: { kind: "TRIGGER_FIRED", triggerId: "s1", action: "REVIEW" } }))).toEqual(["filings"]);
     expect(playbooksForFire({ action: "REVIEW", held: true, predicate: filed.predicate }).map((p) => p.key)).toEqual(["filings"]);
