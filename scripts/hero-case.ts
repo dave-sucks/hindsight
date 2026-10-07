@@ -35,7 +35,6 @@ import { createOpenAI, openai } from "@ai-sdk/openai";
 import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
 import { MODES, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
-import { toStoredPredicate } from "@/lib/agent/triggers/condition/stored";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
@@ -95,15 +94,6 @@ function describedTools(c: HeroCase): ToolSet {
       .filter((name) => all[name] && (scoped || !UNSCOPED_BLOCKED.includes(name)))
       .map((name) => [name, { description: all[name].description, inputSchema: all[name].inputSchema, toModelOutput: all[name].toModelOutput }]),
   ) as ToolSet;
-}
-
-/** Every trigger in the case's data with its predicate as storage holds it (lib/prisma.ts). */
-function inStoredShape(o: unknown): unknown {
-  if (Array.isArray(o)) return o.map(inStoredShape);
-  if (!o || typeof o !== "object") return o;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(o)) out[k] = k === "predicate" ? toStoredPredicate(v) : inStoredShape(v);
-  return out;
 }
 
 function systemFor(c: HeroCase): string {
@@ -241,9 +231,8 @@ interface RunOptions {
 async function runCase(name: string, runs: number, opts: RunOptions): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const { writtenPath } = opts;
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
-  // The triggers a case recorded are read as the app reads stored ones: the
-  // database client hands every trigger back in the condition shape.
-  c.promptArgs = inStoredShape(c.promptArgs) as HeroCase["promptArgs"];
+  // A case's triggers are on disk in the condition shape storage holds
+  // (converted 2026-10-07), so they are read as they are.
   const mode = MODES[c.mode];
   const system = systemFor(c);
   const tools = describedTools(c);
