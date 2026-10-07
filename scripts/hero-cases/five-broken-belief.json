@@ -553,8 +553,9 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 226.8
+             "watch": "price",
+             "is": "below",
+             "value": 226.8
             },
             "rationale": "Price dropped to support level $226.8. Better entry, or thesis weakening?",
             "lastFiredAt": "2026-09-24T19:00:19.947Z",
@@ -565,7 +566,9 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "kind": "EARNINGS_BEAT"
+             "watch": "surprise",
+             "is": "beat",
+             "value": 0
             },
             "rationale": "Beat — possible entry catalyst. Validate before INITIATE.",
             "cooldownDays": 7
@@ -575,8 +578,9 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "kind": "EARNINGS_MISS",
-             "minSurprisePct": 3
+             "watch": "surprise",
+             "is": "miss",
+             "value": 3
             },
             "rationale": "Miss — entry conditions worsening. Consider removing.",
             "cooldownDays": 7
@@ -586,8 +590,9 @@
             "action": "EXIT",
             "source": "AGENT",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 229.9
+             "watch": "price",
+             "is": "below",
+             "value": 229.9
             },
             "rationale": "Just under the rising 50-day SMA ($230.96) and near the base floor; if FIVE loses this support, the PEAD drift is no longer behaving like a winner.",
             "lastFiredAt": "2026-09-24T13:35:06.915Z",
@@ -598,8 +603,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "PRICE_ABOVE",
-             "level": 290
+             "watch": "price",
+             "is": "above",
+             "value": 290
             },
             "rationale": "Guggenheim PT $290 (raised post-Q2 print); independently confirmed by the 1.272 Fib extension of the $173.10→$263.88 up-leg at $288.57 — two levels converging near $290.",
             "cooldownDays": 1
@@ -609,8 +615,8 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "days": 7,
-             "kind": "REVIEW_CADENCE"
+             "watch": "repeat",
+             "value": 7
             },
             "rationale": "Look at this every 7 days, counting from the last real review.",
             "cooldownDays": 7
@@ -620,10 +626,10 @@
             "action": "ADD",
             "source": "DEFAULT",
             "predicate": {
-             "pct": 7,
-             "kind": "PRICE_MOVE_PCT",
-             "window": "1D",
-             "direction": "UP"
+             "watch": "move",
+             "is": "above",
+             "value": 7,
+             "variable": "prev_close"
             },
             "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
             "cooldownDays": 3
@@ -633,10 +639,10 @@
             "action": "ADD",
             "source": "DEFAULT",
             "predicate": {
-             "pct": 7,
-             "kind": "PRICE_MOVE_PCT",
-             "window": "1D",
-             "direction": "DOWN"
+             "watch": "move",
+             "is": "below",
+             "value": 7,
+             "variable": "prev_close"
             },
             "rationale": "Down 7% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.",
             "cooldownDays": 3
@@ -646,9 +652,10 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "pct": 10,
-             "kind": "GAIN_FROM_ENTRY",
-             "direction": "UP"
+             "watch": "move",
+             "is": "above",
+             "value": 10,
+             "variable": "entry"
             },
             "rationale": "Up 10% from entry — gain milestone checkpoint. Re-underwrite at the new price: raise the floor to lock the gain in, and arm the next milestone.",
             "cooldownDays": 7
@@ -658,9 +665,10 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "pct": 12,
-             "kind": "GAIN_FROM_ENTRY",
-             "direction": "DOWN"
+             "watch": "move",
+             "is": "below",
+             "value": 12,
+             "variable": "entry"
             },
             "rationale": "Down 12% from entry — loser attention. Decide hold-vs-cut deliberately, before the hard stop decides for us.",
             "lastFiredAt": "2026-09-23T14:05:03.274Z",
@@ -1037,8 +1045,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_BEAT",
-             "minSurprisePct": 5
+             "watch": "surprise",
+             "is": "beat",
+             "value": 5
             },
             "rationale": "A ≥5% EPS beat on September 29 opens the PEAD entry window — price the drift entry (Days 1-3 post-print) only if gap-day volume >1.5× avg and stock closes in upper half of day range.",
             "cooldownDays": 7
@@ -1048,7 +1057,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_MISS"
+             "watch": "surprise",
+             "is": "miss",
+             "value": 0
             },
             "rationale": "A miss or sub-5% beat invalidates the PEAD thesis — document as PASS, do not enter.",
             "cooldownDays": 7
@@ -1339,8 +1350,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "PRICE_ABOVE",
-             "level": 1100
+             "watch": "price",
+             "is": "above",
+             "value": 1100
             },
             "rationale": "Original pre-earnings drift objective remains the first decision zone; above it I re-underwrite rather than mechanically extend into next week's print.",
             "lastFiredAt": "2026-08-25T13:35:20.867Z",
@@ -1352,8 +1364,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "PRICE_ABOVE",
-             "level": 1150
+             "watch": "price",
+             "is": "above",
+             "value": 1150
             },
             "rationale": "Trim into a push toward and through the upper target zone if price nears $1,150.",
             "cooldownDays": 1
@@ -1364,8 +1377,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 880
+             "watch": "price",
+             "is": "below",
+             "value": 880
             },
             "rationale": "A break below $880 would signal deeper technical damage — review whether the thesis is weakening structurally.",
             "cooldownDays": 1
@@ -1376,8 +1390,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 1041
+             "watch": "price",
+             "is": "below",
+             "value": 1041
             },
             "rationale": "Under the recent breakout pivot at $1,042 and above the Sep. 17 gap low $953.50; this tightens protection to the current post-breakout structure before the Sep. 30 print.",
             "lastFiredAt": "2026-09-16T13:40:12.077Z",
@@ -1389,10 +1404,10 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "pct": 4,
-             "kind": "PRICE_MOVE_PCT",
-             "window": "1D",
-             "direction": "UP"
+             "watch": "move",
+             "is": "above",
+             "value": 4,
+             "variable": "prev_close"
             },
             "rationale": "A sharp 1-day gain could confirm momentum repair — review whether the drift is re-accelerating.",
             "lastFiredAt": "2026-09-22T18:20:10.100Z",
@@ -1404,10 +1419,10 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "pct": 4,
-             "kind": "PRICE_MOVE_PCT",
-             "window": "1D",
-             "direction": "DOWN"
+             "watch": "move",
+             "is": "below",
+             "value": 4,
+             "variable": "prev_close"
             },
             "rationale": "A sharp 1-day drop could be either normal volatility or early thesis damage — review the cause.",
             "lastFiredAt": "2026-09-14T13:35:04.471Z",
@@ -1419,9 +1434,10 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "pct": 15,
-             "kind": "GAIN_FROM_ENTRY",
-             "direction": "UP"
+             "watch": "move",
+             "is": "above",
+             "value": 15,
+             "variable": "entry"
             },
             "rationale": "At +15% from entry, reassess whether trend repair is durable enough to add or tighten risk.",
             "lastFiredAt": "2026-09-21T13:30:26.232Z",
@@ -1433,9 +1449,10 @@
             "source": "AGENT",
             "fireMode": "DIRECT",
             "predicate": {
-             "pct": 8,
-             "kind": "GAIN_FROM_ENTRY",
-             "direction": "DOWN"
+             "watch": "move",
+             "is": "below",
+             "value": 8,
+             "variable": "entry"
             },
             "rationale": "Exit if the position falls 8% below entry; that is the hard loss cap for this PEAD setup.",
             "cooldownDays": 0
@@ -1446,8 +1463,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "EARNINGS_BEAT",
-             "minSurprisePct": 5
+             "watch": "surprise",
+             "is": "beat",
+             "value": 5
             },
             "rationale": "If $MU again beats EPS by at least 5%, review whether the earnings-upgrade cycle remains intact and whether targets should rise.",
             "cooldownDays": 7
@@ -1457,9 +1475,10 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "days": 60,
-             "from": "BUY",
-             "kind": "REVIEW_CADENCE"
+             "watch": "from_date",
+             "is": "after",
+             "value": 60,
+             "variable": "buy"
             },
             "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
             "lastFiredAt": "2026-09-23T13:30:08.094Z",
@@ -1470,16 +1489,18 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "kind": "AND",
-             "predicates": [
+             "match": "all",
+             "conditions": [
               {
-               "kind": "EARNINGS_BEAT"
+               "watch": "surprise",
+               "is": "beat",
+               "value": 0
               },
               {
-               "pct": 3,
-               "kind": "PRICE_MOVE_PCT",
-               "window": "1D",
-               "direction": "DOWN"
+               "watch": "move",
+               "is": "below",
+               "value": 3,
+               "variable": "prev_close"
               }
              ]
             },

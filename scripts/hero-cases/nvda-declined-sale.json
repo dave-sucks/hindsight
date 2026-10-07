@@ -98,8 +98,10 @@
      "action": "EXIT",
      "source": "PRINCIPAL",
      "predicate": {
-      "kind": "TRAILING_FROM_HIGH",
-      "pct": 8
+      "watch": "move",
+      "is": "below",
+      "value": 8,
+      "variable": "peak"
      },
      "rationale": "Gave back 8% from the high — mechanical gain ratchet. Kept on this stock when the account's 8% sell moved to the analysts (2026-09-14).",
      "cooldownDays": 0
@@ -107,8 +109,8 @@
     {
      "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4",
      "predicate": {
-      "kind": "REVIEW_CADENCE",
-      "days": 7
+      "watch": "repeat",
+      "value": 7
      },
      "action": "REVIEW",
      "rationale": "Look at this every 7 days, counting from the last real review.",
@@ -119,16 +121,17 @@
      "overrides": {
       "level": "ACCOUNT",
       "predicate": {
-       "kind": "REVIEW_CADENCE",
-       "days": 7
+       "watch": "repeat",
+       "value": 7
       }
      }
     },
     {
      "id": "6306936b-bb02-4298-9ca0-90f586772512",
      "predicate": {
-      "kind": "PRICE_BELOW",
-      "level": 200.15
+      "watch": "price",
+      "is": "below",
+      "value": 200.15
      },
      "action": "EXIT",
      "rationale": "Hard stop at $200.15.",
@@ -140,8 +143,9 @@
     {
      "id": "8f58e347-64c5-41bf-90f3-b17ac4466ae7",
      "predicate": {
-      "kind": "PRICE_ABOVE",
-      "level": 322
+      "watch": "price",
+      "is": "above",
+      "value": 322
      },
      "action": "REVIEW",
      "rationale": "Target $322 hit. Decide: close at target or trail higher with confidence intact.",
@@ -153,9 +157,10 @@
     {
      "id": "1f2454ae-1a4d-4123-8502-fdcb85006401",
      "predicate": {
-      "kind": "REVIEW_CADENCE",
-      "days": 60,
-      "from": "BUY"
+      "watch": "from_date",
+      "is": "after",
+      "value": 60,
+      "variable": "buy"
      },
      "action": "REVIEW",
      "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
@@ -167,11 +172,14 @@
     {
      "id": "5fbb5cdb-e4b3-4559-8703-eaf75798ae79",
      "predicate": {
-      "kind": "GAIN_FROM_ENTRY",
-      "skipIfPeakGainPct": 20,
-      "skipIfPeakWithinDays": 21,
-      "pct": 16.6,
-      "direction": "UP"
+      "watch": "move",
+      "is": "above",
+      "value": 16.6,
+      "variable": "entry",
+      "settings": {
+       "fastWinnerPct": 20,
+       "fastWinnerDays": 21
+      }
      },
      "action": "TRIM",
      "rationale": "Up 16.6% from entry — 2R on a 8.3% stop. The prior high or a measured move; partial at 2R. Off for good once the stock has run 20% off the buy within 21 days: a winner that fast is held and managed on the trail, not cut in half.",
@@ -183,16 +191,18 @@
     {
      "id": "ce4de003-2bc2-438d-a3cf-1b786d72f88f",
      "predicate": {
-      "kind": "AND",
-      "predicates": [
+      "match": "all",
+      "conditions": [
        {
-        "kind": "EARNINGS_BEAT"
+        "watch": "surprise",
+        "is": "beat",
+        "value": 0
        },
        {
-        "kind": "PRICE_MOVE_PCT",
-        "pct": 3,
-        "direction": "DOWN",
-        "window": "1D"
+        "watch": "move",
+        "is": "below",
+        "value": 3,
+        "variable": "prev_close"
        }
       ]
      },
@@ -206,9 +216,13 @@
     {
      "id": "f552414c-ff2a-455d-b779-d5401ac9ea98",
      "predicate": {
-      "kind": "TRAILING_FROM_HIGH",
-      "pct": 12,
-      "armAtGainPct": 10
+      "watch": "move",
+      "is": "below",
+      "value": 12,
+      "variable": "peak",
+      "settings": {
+       "startOnceUpPct": 10
+      }
      },
      "action": "EXIT",
      "rationale": "Gave back 12% from the high, once the position had been up 10% — bank the run.",
@@ -221,9 +235,10 @@
     {
      "id": "8d64ad2b-b2b5-4202-9724-ec984efad75e",
      "predicate": {
-      "kind": "GAIN_FROM_ENTRY",
-      "pct": 10,
-      "direction": "UP"
+      "watch": "move",
+      "is": "above",
+      "value": 10,
+      "variable": "entry"
      },
      "action": "REVIEW",
      "rationale": "Up 10% from entry — re-underwrite: raise the floor under real structure and arm the next milestone.",
@@ -235,9 +250,10 @@
     {
      "id": "56be49ac-b01b-4101-8c51-377aa1bab0ac",
      "predicate": {
-      "kind": "GAIN_FROM_ENTRY",
-      "pct": 12,
-      "direction": "DOWN"
+      "watch": "move",
+      "is": "below",
+      "value": 12,
+      "variable": "entry"
      },
      "action": "REVIEW",
      "rationale": "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us.",
@@ -249,10 +265,10 @@
     {
      "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
      "predicate": {
-      "kind": "PRICE_MOVE_PCT",
-      "pct": 7,
-      "direction": "UP",
-      "window": "1D"
+      "watch": "move",
+      "is": "above",
+      "value": 7,
+      "variable": "prev_close"
      },
      "action": "ADD",
      "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
@@ -265,8 +281,9 @@
     {
      "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
      "predicate": {
-      "kind": "EARNINGS_WITHIN",
-      "days": 5
+      "watch": "report",
+      "is": "before",
+      "value": 5
      },
      "action": "REVIEW",
      "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
@@ -278,7 +295,9 @@
     {
      "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
      "predicate": {
-      "kind": "EARNINGS_BEAT"
+      "watch": "surprise",
+      "is": "beat",
+      "value": 0
      },
      "action": "REVIEW",
      "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
@@ -290,7 +309,9 @@
     {
      "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
      "predicate": {
-      "kind": "EARNINGS_MISS"
+      "watch": "surprise",
+      "is": "miss",
+      "value": 0
      },
      "action": "REVIEW",
      "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
@@ -302,8 +323,8 @@
     {
      "id": "30059604-b755-4848-b938-b636464815c3",
      "predicate": {
-      "kind": "SEC_EVENT",
-      "tier": "MATERIAL"
+      "watch": "filing",
+      "variable": "tier:MATERIAL"
      },
      "action": "REVIEW",
      "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",
@@ -318,8 +339,10 @@
    "action": "EXIT",
    "source": "PRINCIPAL",
    "predicate": {
-    "kind": "TRAILING_FROM_HIGH",
-    "pct": 8
+    "watch": "move",
+    "is": "below",
+    "value": 8,
+    "variable": "peak"
    },
    "rationale": "Gave back 8% from the high — mechanical gain ratchet. Kept on this stock when the account's 8% sell moved to the analysts (2026-09-14).",
    "cooldownDays": 0
@@ -406,8 +429,10 @@
      "action": "EXIT",
      "source": "PRINCIPAL",
      "predicate": {
-      "kind": "TRAILING_FROM_HIGH",
-      "pct": 8
+      "watch": "move",
+      "is": "below",
+      "value": 8,
+      "variable": "peak"
      },
      "rationale": "Gave back 8% from the high — mechanical gain ratchet. Kept on this stock when the account's 8% sell moved to the analysts (2026-09-14).",
      "cooldownDays": 0
@@ -415,8 +440,8 @@
     {
      "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4",
      "predicate": {
-      "kind": "REVIEW_CADENCE",
-      "days": 7
+      "watch": "repeat",
+      "value": 7
      },
      "action": "REVIEW",
      "rationale": "Look at this every 7 days, counting from the last real review.",
@@ -427,16 +452,17 @@
      "overrides": {
       "level": "ACCOUNT",
       "predicate": {
-       "kind": "REVIEW_CADENCE",
-       "days": 7
+       "watch": "repeat",
+       "value": 7
       }
      }
     },
     {
      "id": "6306936b-bb02-4298-9ca0-90f586772512",
      "predicate": {
-      "kind": "PRICE_BELOW",
-      "level": 200.15
+      "watch": "price",
+      "is": "below",
+      "value": 200.15
      },
      "action": "EXIT",
      "rationale": "Hard stop at $200.15.",
@@ -448,8 +474,9 @@
     {
      "id": "8f58e347-64c5-41bf-90f3-b17ac4466ae7",
      "predicate": {
-      "kind": "PRICE_ABOVE",
-      "level": 322
+      "watch": "price",
+      "is": "above",
+      "value": 322
      },
      "action": "REVIEW",
      "rationale": "Target $322 hit. Decide: close at target or trail higher with confidence intact.",
@@ -461,9 +488,10 @@
     {
      "id": "1f2454ae-1a4d-4123-8502-fdcb85006401",
      "predicate": {
-      "kind": "REVIEW_CADENCE",
-      "days": 60,
-      "from": "BUY"
+      "watch": "from_date",
+      "is": "after",
+      "value": 60,
+      "variable": "buy"
      },
      "action": "REVIEW",
      "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
@@ -475,11 +503,14 @@
     {
      "id": "5fbb5cdb-e4b3-4559-8703-eaf75798ae79",
      "predicate": {
-      "kind": "GAIN_FROM_ENTRY",
-      "skipIfPeakGainPct": 20,
-      "skipIfPeakWithinDays": 21,
-      "pct": 16.6,
-      "direction": "UP"
+      "watch": "move",
+      "is": "above",
+      "value": 16.6,
+      "variable": "entry",
+      "settings": {
+       "fastWinnerPct": 20,
+       "fastWinnerDays": 21
+      }
      },
      "action": "TRIM",
      "rationale": "Up 16.6% from entry — 2R on a 8.3% stop. The prior high or a measured move; partial at 2R. Off for good once the stock has run 20% off the buy within 21 days: a winner that fast is held and managed on the trail, not cut in half.",
@@ -491,16 +522,18 @@
     {
      "id": "ce4de003-2bc2-438d-a3cf-1b786d72f88f",
      "predicate": {
-      "kind": "AND",
-      "predicates": [
+      "match": "all",
+      "conditions": [
        {
-        "kind": "EARNINGS_BEAT"
+        "watch": "surprise",
+        "is": "beat",
+        "value": 0
        },
        {
-        "kind": "PRICE_MOVE_PCT",
-        "pct": 3,
-        "direction": "DOWN",
-        "window": "1D"
+        "watch": "move",
+        "is": "below",
+        "value": 3,
+        "variable": "prev_close"
        }
       ]
      },
@@ -516,9 +549,13 @@
     {
      "id": "f552414c-ff2a-455d-b779-d5401ac9ea98",
      "predicate": {
-      "kind": "TRAILING_FROM_HIGH",
-      "pct": 12,
-      "armAtGainPct": 10
+      "watch": "move",
+      "is": "below",
+      "value": 12,
+      "variable": "peak",
+      "settings": {
+       "startOnceUpPct": 10
+      }
      },
      "action": "EXIT",
      "rationale": "Gave back 12% from the high, once the position had been up 10% — bank the run.",
@@ -531,9 +568,10 @@
     {
      "id": "8d64ad2b-b2b5-4202-9724-ec984efad75e",
      "predicate": {
-      "kind": "GAIN_FROM_ENTRY",
-      "pct": 10,
-      "direction": "UP"
+      "watch": "move",
+      "is": "above",
+      "value": 10,
+      "variable": "entry"
      },
      "action": "REVIEW",
      "rationale": "Up 10% from entry — re-underwrite: raise the floor under real structure and arm the next milestone.",
@@ -545,9 +583,10 @@
     {
      "id": "56be49ac-b01b-4101-8c51-377aa1bab0ac",
      "predicate": {
-      "kind": "GAIN_FROM_ENTRY",
-      "pct": 12,
-      "direction": "DOWN"
+      "watch": "move",
+      "is": "below",
+      "value": 12,
+      "variable": "entry"
      },
      "action": "REVIEW",
      "rationale": "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us.",
@@ -559,10 +598,10 @@
     {
      "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
      "predicate": {
-      "kind": "PRICE_MOVE_PCT",
-      "pct": 7,
-      "direction": "UP",
-      "window": "1D"
+      "watch": "move",
+      "is": "above",
+      "value": 7,
+      "variable": "prev_close"
      },
      "action": "ADD",
      "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
@@ -575,8 +614,9 @@
     {
      "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
      "predicate": {
-      "kind": "EARNINGS_WITHIN",
-      "days": 5
+      "watch": "report",
+      "is": "before",
+      "value": 5
      },
      "action": "REVIEW",
      "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
@@ -588,7 +628,9 @@
     {
      "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
      "predicate": {
-      "kind": "EARNINGS_BEAT"
+      "watch": "surprise",
+      "is": "beat",
+      "value": 0
      },
      "action": "REVIEW",
      "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
@@ -600,7 +642,9 @@
     {
      "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
      "predicate": {
-      "kind": "EARNINGS_MISS"
+      "watch": "surprise",
+      "is": "miss",
+      "value": 0
      },
      "action": "REVIEW",
      "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
@@ -612,8 +656,8 @@
     {
      "id": "30059604-b755-4848-b938-b636464815c3",
      "predicate": {
-      "kind": "SEC_EVENT",
-      "tier": "MATERIAL"
+      "watch": "filing",
+      "variable": "tier:MATERIAL"
      },
      "action": "REVIEW",
      "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",

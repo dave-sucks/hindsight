@@ -590,8 +590,9 @@
             "source": "AGENT",
             "fireMode": "DIRECT",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 35.9
+             "watch": "price",
+             "is": "below",
+             "value": 35.9
             },
             "rationale": "Below the Sep. 2 swing low $36.67 with room under the retracement shelf; if it breaks there after a reclaim, the post-earnings drift structure has genuinely failed.",
             "lastFiredAt": "2026-09-25T13:45:13.322Z",
@@ -602,8 +603,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "PRICE_ABOVE",
-             "level": 45
+             "watch": "price",
+             "is": "above",
+             "value": 45
             },
             "rationale": "Prior swing-high zone and failed September peak retest area; if IOT reclaims the 50-day, a drift back toward $45 is the first realistic objective.",
             "cooldownDays": 1
@@ -613,8 +615,8 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "days": 7,
-             "kind": "REVIEW_CADENCE"
+             "watch": "repeat",
+             "value": 7
             },
             "rationale": "Look at this every 7 days, counting from the last real review.",
             "cooldownDays": 7
@@ -624,9 +626,10 @@
             "action": "ADD",
             "source": "AGENT",
             "predicate": {
-             "pct": 12,
-             "kind": "GAIN_FROM_ENTRY",
-             "direction": "UP"
+             "watch": "move",
+             "is": "above",
+             "value": 12,
+             "variable": "entry"
             },
             "rationale": "Up 12% from entry and through the current rebound zone — reassess pressing the winner only if the move is still being confirmed by structure or estimate/news follow-through.",
             "cooldownDays": 7
@@ -636,9 +639,10 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "days": 60,
-             "from": "BUY",
-             "kind": "REVIEW_CADENCE"
+             "watch": "from_date",
+             "is": "after",
+             "value": 60,
+             "variable": "buy"
             },
             "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
             "cooldownDays": 60
@@ -648,16 +652,18 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "kind": "AND",
-             "predicates": [
+             "match": "all",
+             "conditions": [
               {
-               "kind": "EARNINGS_BEAT"
+               "watch": "surprise",
+               "is": "beat",
+               "value": 0
               },
               {
-               "pct": 3,
-               "kind": "PRICE_MOVE_PCT",
-               "window": "1D",
-               "direction": "DOWN"
+               "watch": "move",
+               "is": "below",
+               "value": 3,
+               "variable": "prev_close"
               }
              ]
             },
@@ -669,11 +675,14 @@
             "action": "TRIM",
             "source": "DEFAULT",
             "predicate": {
-             "pct": 15.6,
-             "kind": "GAIN_FROM_ENTRY",
-             "direction": "UP",
-             "skipIfPeakGainPct": 20,
-             "skipIfPeakWithinDays": 21
+             "watch": "move",
+             "is": "above",
+             "value": 15.6,
+             "variable": "entry",
+             "settings": {
+              "fastWinnerPct": 20,
+              "fastWinnerDays": 21
+             }
             },
             "rationale": "Up 15.6% from entry — 2R on a 7.8% stop. The prior high or a measured move; partial at 2R. Off for good once the stock has run 20% off the buy within 21 days: a winner that fast is held and managed on the trail, not cut in half.",
             "cooldownDays": 7
@@ -1007,8 +1016,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "PRICE_ABOVE",
-             "level": 1100
+             "watch": "price",
+             "is": "above",
+             "value": 1100
             },
             "rationale": "Original pre-earnings drift objective remains the first decision zone; above it I re-underwrite rather than mechanically extend into next week's print.",
             "lastFiredAt": "2026-09-25T13:40:03.840Z",
@@ -1020,8 +1030,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "PRICE_ABOVE",
-             "level": 1150
+             "watch": "price",
+             "is": "above",
+             "value": 1150
             },
             "rationale": "Trim into a push toward and through the upper target zone if price nears $1,150.",
             "cooldownDays": 1
@@ -1032,8 +1043,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 880
+             "watch": "price",
+             "is": "below",
+             "value": 880
             },
             "rationale": "A break below $880 would signal deeper technical damage — review whether the thesis is weakening structurally.",
             "cooldownDays": 1
@@ -1044,8 +1056,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 1041
+             "watch": "price",
+             "is": "below",
+             "value": 1041
             },
             "rationale": "Under the recent breakout pivot at $1,042 and above the Sep. 17 gap low $953.50; this tightens protection to the current post-breakout structure before the Sep. 30 print.",
             "lastFiredAt": "2026-10-01T14:05:50.321Z",
@@ -1057,10 +1070,10 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "pct": 4,
-             "kind": "PRICE_MOVE_PCT",
-             "window": "1D",
-             "direction": "UP"
+             "watch": "move",
+             "is": "above",
+             "value": 4,
+             "variable": "prev_close"
             },
             "rationale": "A sharp 1-day gain could confirm momentum repair — review whether the drift is re-accelerating.",
             "lastFiredAt": "2026-09-22T18:20:10.100Z",
@@ -1072,10 +1085,10 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "pct": 4,
-             "kind": "PRICE_MOVE_PCT",
-             "window": "1D",
-             "direction": "DOWN"
+             "watch": "move",
+             "is": "below",
+             "value": 4,
+             "variable": "prev_close"
             },
             "rationale": "A sharp 1-day drop could be either normal volatility or early thesis damage — review the cause.",
             "lastFiredAt": "2026-09-28T14:45:05.101Z",
@@ -1087,9 +1100,10 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "pct": 15,
-             "kind": "GAIN_FROM_ENTRY",
-             "direction": "UP"
+             "watch": "move",
+             "is": "above",
+             "value": 15,
+             "variable": "entry"
             },
             "rationale": "At +15% from entry, reassess whether trend repair is durable enough to add or tighten risk.",
             "lastFiredAt": "2026-09-28T13:35:04.491Z",
@@ -1101,9 +1115,10 @@
             "source": "AGENT",
             "fireMode": "DIRECT",
             "predicate": {
-             "pct": 8,
-             "kind": "GAIN_FROM_ENTRY",
-             "direction": "DOWN"
+             "watch": "move",
+             "is": "below",
+             "value": 8,
+             "variable": "entry"
             },
             "rationale": "Exit if the position falls 8% below entry; that is the hard loss cap for this PEAD setup.",
             "cooldownDays": 0
@@ -1114,8 +1129,9 @@
             "source": "AGENT",
             "fireMode": "TACTICAL",
             "predicate": {
-             "kind": "EARNINGS_BEAT",
-             "minSurprisePct": 5
+             "watch": "surprise",
+             "is": "beat",
+             "value": 5
             },
             "rationale": "If $MU again beats EPS by at least 5%, review whether the earnings-upgrade cycle remains intact and whether targets should rise.",
             "cooldownDays": 7
@@ -1125,9 +1141,10 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "days": 60,
-             "from": "BUY",
-             "kind": "REVIEW_CADENCE"
+             "watch": "from_date",
+             "is": "after",
+             "value": 60,
+             "variable": "buy"
             },
             "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
             "lastFiredAt": "2026-09-23T13:30:08.094Z",
@@ -1138,16 +1155,18 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "kind": "AND",
-             "predicates": [
+             "match": "all",
+             "conditions": [
               {
-               "kind": "EARNINGS_BEAT"
+               "watch": "surprise",
+               "is": "beat",
+               "value": 0
               },
               {
-               "pct": 3,
-               "kind": "PRICE_MOVE_PCT",
-               "window": "1D",
-               "direction": "DOWN"
+               "watch": "move",
+               "is": "below",
+               "value": 3,
+               "variable": "prev_close"
               }
              ]
             },
@@ -1772,8 +1791,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_BEAT",
-             "minSurprisePct": 5
+             "watch": "surprise",
+             "is": "beat",
+             "value": 5
             },
             "rationale": "KMX beat consensus by ≥5% — check GPU trend, CAF credit quality, and gap-day tape; price the PEAD entry if the gap holds in the upper half of the range on ≥1.5x volume.",
             "lastFiredAt": "2026-09-29T13:30:18.747Z",
@@ -1784,7 +1804,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_MISS"
+             "watch": "surprise",
+             "is": "miss",
+             "value": 0
             },
             "rationale": "KMX missed — PEAD thesis is invalidated; assess whether the miss is structural (GPU collapse, CAF provision spike) or one-time; likely PASS this cycle.",
             "cooldownDays": 7
@@ -1794,9 +1816,8 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "days": 14,
-             "from": "LAST_REVIEW",
-             "kind": "REVIEW_CADENCE"
+             "watch": "repeat",
+             "value": 14
             },
             "rationale": "Periodic check before the print — confirm no pre-announcement, guidance change, or material SEC filing that changes the earnings setup.",
             "cooldownDays": 14
@@ -2122,9 +2143,10 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "days": 5,
-             "from": "EVENT",
-             "kind": "REVIEW_CADENCE"
+             "watch": "from_date",
+             "is": "after",
+             "value": 5,
+             "variable": "event"
             },
             "rationale": "Five sessions post-print review: if the beat was clean, price the PEAD entry at current tape; if the drift has already run 10%+ without a pause, assess MA_PULLBACK as the next setup.",
             "cooldownDays": 5
@@ -2487,7 +2509,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_BEAT"
+             "watch": "surprise",
+             "is": "beat",
+             "value": 0
             },
             "rationale": "DOCU beat ≥5% — fresh PEAD triage required immediately. Check: revenue beat, ARR guidance raised, IAM mix still expanding, volume on gap day ≥1.5x. If all four conditions met, this is a new 60-day drift window. Do NOT enter on the gap day itself — wait 1-3 days.",
             "cooldownDays": 7
@@ -2497,8 +2521,9 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "kind": "EARNINGS_MISS",
-             "minSurprisePct": 3
+             "watch": "surprise",
+             "is": "miss",
+             "value": 3
             },
             "rationale": "Miss — entry conditions worsening. Consider removing.",
             "cooldownDays": 7
@@ -2508,8 +2533,9 @@
             "action": "EXIT",
             "source": "AGENT",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 63
+             "watch": "price",
+             "is": "below",
+             "value": 63
             },
             "rationale": "Under the Sep 9 swing low $63.63 and the Sep 3 gap-day low $64.16 — if both break, the MA_PULLBACK thesis is wrong. -8% from entry would be $61.64; the structural level is tighter at $63.00.",
             "cooldownDays": 1
@@ -2519,8 +2545,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "PRICE_ABOVE",
-             "level": 83
+             "watch": "price",
+             "is": "above",
+             "value": 83
             },
             "rationale": "Prior 52-week high $83.29 / 1.272 Fibonacci extension from the June low to Sep high = $82.96. R/R 4:1 from entry $67 with floor $63.",
             "cooldownDays": 1
@@ -2530,8 +2557,8 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "days": 7,
-             "kind": "REVIEW_CADENCE"
+             "watch": "repeat",
+             "value": 7
             },
             "rationale": "Look at this every 7 days, counting from the last real review.",
             "cooldownDays": 7
@@ -2541,9 +2568,10 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "days": 14,
-             "from": "BUY",
-             "kind": "REVIEW_CADENCE"
+             "watch": "from_date",
+             "is": "after",
+             "value": 14,
+             "variable": "buy"
             },
             "rationale": "10 sessions after the buy — 14 calendar days from this one — 10 sessions to reclaim the prior high, else review.",
             "cooldownDays": 14
@@ -2553,16 +2581,18 @@
             "action": "REVIEW",
             "source": "DEFAULT",
             "predicate": {
-             "kind": "AND",
-             "predicates": [
+             "match": "all",
+             "conditions": [
               {
-               "kind": "EARNINGS_BEAT"
+               "watch": "surprise",
+               "is": "beat",
+               "value": 0
               },
               {
-               "pct": 3,
-               "kind": "PRICE_MOVE_PCT",
-               "window": "1D",
-               "direction": "DOWN"
+               "watch": "move",
+               "is": "below",
+               "value": 3,
+               "variable": "prev_close"
               }
              ]
             },
@@ -2895,7 +2925,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_BEAT"
+             "watch": "surprise",
+             "is": "beat",
+             "value": 0
             },
             "rationale": "HPE beat ≥5% — run full PEAD triage. HPE has beaten ≥5% in 3 of 4 recent quarters (18%, 46%, 9%). Check: revenue beat, FY27 framework raised, gap-day volume ≥1.5x. If clean, set up a 1-3 day post-print entry plan. Do not enter on the gap day.",
             "cooldownDays": 7
@@ -2905,8 +2937,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_MISS",
-             "minSurprisePct": 3
+             "watch": "surprise",
+             "is": "miss",
+             "value": 3
             },
             "rationale": "Miss trigger retained as-is — an EPS miss would invalidate the drift thesis.",
             "cooldownDays": 7

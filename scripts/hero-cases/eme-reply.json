@@ -300,8 +300,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "PRICE_BELOW",
-             "level": 700
+             "watch": "price",
+             "is": "below",
+             "value": 700
             },
             "rationale": "Kept near-term; $700 is below the 61.8% Fibonacci retracement ($712.77) of the prior up-leg and signals further structural deterioration.",
             "cooldownDays": 1
@@ -311,8 +312,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_BEAT",
-             "minSurprisePct": 3
+             "watch": "surprise",
+             "is": "beat",
+             "value": 3
             },
             "rationale": "A clean earnings beat would test whether record RPO and margin discipline are still translating into upside evidence after the reset.",
             "cooldownDays": 7
@@ -322,8 +324,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "EARNINGS_MISS",
-             "minSurprisePct": 3
+             "watch": "surprise",
+             "is": "miss",
+             "value": 3
             },
             "rationale": "A meaningful earnings miss would force a re-check on backlog conversion and project-margin durability.",
             "cooldownDays": 7
@@ -333,8 +336,8 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "days": 14,
-             "kind": "REVIEW_CADENCE"
+             "watch": "repeat",
+             "value": 14
             },
             "rationale": "Biweekly watch while chart is broken; re-assess whether Trend Template checks are improving and RS is recovering before sizing in.",
             "cooldownDays": 14
@@ -344,9 +347,9 @@
             "action": "REVIEW",
             "source": "AGENT",
             "predicate": {
-             "kind": "VS_SMA",
-             "period": 50,
-             "direction": "ABOVE"
+             "watch": "price",
+             "is": "above",
+             "variable": "sma50"
             },
             "rationale": "EME is testing the 50-day/200-day cluster at ~$769-770. A reclaim and close above the 50-day is the first chart repair signal — re-score at that point. If composite reaches 7+, arm a buy trigger at the base pivot $807 with stop at $724. Do not buy automatically; chart must prove it.",
             "lastFiredAt": "2026-09-28T14:00:11.889Z",
@@ -1070,9 +1073,12 @@
        {
         "id": "094c3106-a3d5-49fc-b04b-dc67924053bd",
         "predicate": {
-         "kind": "PRICE_ABOVE",
-         "level": 807.42,
-         "basis": "close"
+         "watch": "price",
+         "is": "above",
+         "value": 807.42,
+         "settings": {
+          "close": true
+         }
         },
         "action": "ENTER",
         "rationale": "A confirmed close above the base pivot at $807.42 is the first chart repair signal that clears the broken-trend flag. At that point the 50-day and 200-day will have been reclaimed, the base will have broken out on confirmation, and the composite will likely reach 7+. Entry at the close above $807.42, stop $724, target $980."
@@ -1080,8 +1086,9 @@
        {
         "id": "201b3aea-27a6-4017-8186-25e6b72e2dce",
         "predicate": {
-         "kind": "EARNINGS_WITHIN",
-         "days": 5
+         "watch": "report",
+         "is": "before",
+         "value": 5
         },
         "action": "REVIEW",
         "rationale": "Q3 earnings are the next fundamental test of RPO conversion, margin expansion, and the 2026 guide. Review the thesis 5 days before the print to decide whether to hold, trim, or stand pat through the event."
