@@ -15,15 +15,17 @@
  *
  * Each case is a recorded conversation up to one decision. The system prompt
  * is built by TODAY'S code from the case's inputs, so a prompt, setup or
- * tool change shows up here. The model gets ONE turn, several times, because
- * one run of a model proves nothing. The tools are described to it and never
- * run: nothing is executed, nothing touches the database or the account.
+ * tool change shows up here. Each run is repeated several times, because one
+ * run of a model proves nothing. A run is one turn, or until the stock is
+ * decided (`scoreOn`), or for a trigger case until complete_run. The tools
+ * are described to the model and never run: every call gets a stub reply,
+ * and nothing touches the database or the account.
  *
  * A case names the decision the right answer makes (`expect`), and a run
- * passes when the turn's tool calls and text match it:
+ * passes when its tool calls and text match it:
  *   call:  at least one of these calls is made (any one of the list)
  *   never: none of these calls is made
- *   text / neverText: the turn's prose does / does not match a pattern
+ *   text / neverText: the run's prose does / does not match a pattern
  * A `where` names fields of the call's input by path ("edit_triggers.*.level",
  * "scoring.$sum") and what each must be: "present", "absent", a value, or
  * { lt, gt, regex }. Not in CI; the pass rate is read by a person and
@@ -57,6 +59,7 @@ interface HeroCase {
    * the model updates, trades or dispatches on this stock. Nothing is run.
    */
   scoreOn?: { ticker?: string; thesisId?: string };
+  /** The most model turns a run gets. A trigger case runs to complete_run or this, default 6. */
   maxTurns?: number;
   mode: "principal" | "tactical" | "thesis-writer" | "research-run";
   runMode: string;
@@ -292,7 +295,14 @@ async function runCase(name: string, runs: number, opts: RunOptions): Promise<{ 
         : undefined
       : { openai: { strictJsonSchema: true, promptCacheKey: `hero-${name}` } };
   // A refused call gets the refusal back and one more turn, as it does in production.
-  const maxTurns = c.scoreOn ? (c.maxTurns ?? 3) : 2;
+  // A trigger run is about one stock, so its case runs to the end of the run —
+  // complete_run, a turn with no call, or maxTurns — with every call answered
+  // by a stub, and `call` / `never` are scored over all of it. Stopping at the
+  // first decision hid the NVDA 2026-09-14 shape: the sale proposed, then the
+  // trigger that fired deleted in the next call. Other cases stop at the
+  // first call that decides their stock.
+  const through = c.mode === "tactical";
+  const maxTurns = through ? (c.maxTurns ?? 6) : c.scoreOn ? (c.maxTurns ?? 3) : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
@@ -321,8 +331,10 @@ async function runCase(name: string, runs: number, opts: RunOptions): Promise<{ 
       }
       calls.push(...turnCalls);
       text += (text ? "\n" : "") + result.text;
-      const decided = !c.scoreOn || turnCalls.length === 0 || turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!));
-      if (refusals.size === 0 && (decided || turn >= (c.scoreOn ? maxTurns : 1))) break;
+      const decided = through
+        ? turnCalls.length === 0 || turnCalls.some((t) => t.toolName === "complete_run")
+        : !c.scoreOn || turnCalls.length === 0 || turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!));
+      if (refusals.size === 0 && (decided || turn >= (through || c.scoreOn ? maxTurns : 1))) break;
       // Not there yet: answer every call with a stub and let the model go on.
       // Nothing is run. Ending the run is refused the way complete_run
       // refuses it when a stock on the list has not been answered.
