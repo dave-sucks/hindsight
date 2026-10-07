@@ -214,6 +214,12 @@ describe("stockBrief — why the stock is on the list, gathered in the code's or
     expect(b).not.toHaveProperty("unrealizedGainPct");
   });
 
+  it("a reader that carries its playbooks another way gets no row keys (the trigger run's kickoff)", () => {
+    const stale = held({ needsAction: { kind: "RESEARCH_STALE", daysOld: 120, threshold: 90 }, researchAge: { daysOld: 120, freshness: "stale", horizonThreshold: 90 } });
+    expect(stockBrief(stale, { named: true }).playbooks).toEqual(["stale-research"]);
+    expect(stockBrief(stale, { named: true, inherited: true, playbooks: false })).not.toHaveProperty("playbooks");
+  });
+
   it("stale research is said once: not again when it is the lead", () => {
     const b = stockBrief(held({ needsAction: { kind: "RESEARCH_STALE", daysOld: 120, threshold: 90, freshness: "stale" }, researchAge: { daysOld: 120, freshness: "stale", horizonThreshold: 90 } }), { named: false });
     expect(b).not.toHaveProperty("researchAge");
