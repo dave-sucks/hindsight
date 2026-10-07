@@ -109,11 +109,18 @@ main at `8fb21cb8` (before #765–#768); "merged" is `2157e708`.
 
 ## Cases added 2026-10-07
 
-| Case | Agent | Main | Looks for |
-|---|---|---|---|
-| nvda-trailing-sale | trigger run | 6/6 | After the give-back sale fires on a held stock: proposes the sale (STOP, belief stated) or re-plans that same trigger, and does not delete it. All six proposed the sale. |
+Scored over the whole run (the trigger-case scoring above). Six runs a side,
+both started the same minute. "Before" is #785 at `cfb55b7d` (main's prompts
+with this runner); "after" is 6.1 at `ccf3223d`.
 
-Main is `1b99a4ec` run with its own runner, which sends the recorded kickoff;
-a branch with this runner rebuilds the kickoff from `promptArgs.stock`. The
-runner stops at the first call that decides the stock, so a removal made in a
-later call (what the 2026-09-14 run did after proposing the sale) is not seen.
+| Case | Agent | Before | After | Looks for |
+|---|---|---|---|---|
+| nvda-trailing-sale | trigger run | 5/6 | 6/6 | After the give-back sale fires on a held stock: proposes the sale (STOP, belief stated) or re-plans that same trigger, and does not delete it. Every run proposed the sale; one run before then removed the trigger that fired in its close-out, as the 2026-09-14 run did. |
+
+Tokens: before 336,126 in (318,464 cached), 6,391 out, about $0.22; after
+316,399 in (304,128 cached), 5,329 out, about $0.19. Each run took three
+turns (the sale, the close-out, complete_run).
+
+Scored at the first decision earlier the same morning, both sides were 6/6
+(main `1b99a4ec` with its own runner, 6.1 at `43bb563f`); those read only
+against each other.
