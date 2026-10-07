@@ -41,7 +41,6 @@ function describe(e: CatalystEvent): string {
 export const getCatalystCalendar = defineTool({
   description:
     "Dated FDA decisions, taken from the filings the companies themselves made — the PDUFA date a sponsor announced in its own 8-K, with the sentence it wrote and a link to the document. " +
-    "This is the Catalyst seat's calendar, the way get_earnings_calendar is the earnings seat's. " +
     "Defaults to decisions landing in the next 70 days; pass `days` for a different horizon, or `from`/`to` for a specific stretch (\"the catalysts in June\"). " +
     "`scope: \"universe\"` (default) is names you don't already cover — the discovery set; `\"coverage\"` is your watchlist and holdings; `\"all\"` is both. " +
     `WHAT TO DO WITH A ROW: a dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out is a WATCH with a catalyst date and a review before it, not a buy today — and never enter the day before. ` +

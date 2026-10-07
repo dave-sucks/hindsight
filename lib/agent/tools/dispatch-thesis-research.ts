@@ -71,7 +71,7 @@ export const dispatchThesisResearch = defineTool({
     setup_id: z
       .enum(SETUP_IDS)
       .optional()
-      .describe("The setup you think this is (read_knowledge_library topic:\"setup\"). The writer checks it against the chart; omit to let it choose."),
+      .describe("The setup you think this is. The writer checks it against the chart; omit to let it choose."),
     // Seed context for the writer's prompt — nothing downstream depends on
     // its length, so a long one is trimmed, never a reason to refuse the
     // whole dispatch (LUXE 2026-09-17: a 400+ character row killed the call).

@@ -10,7 +10,7 @@ import { stampWrittenPrice } from "@/lib/agent/triggers/written-price";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { thesisFields } from "@/lib/agent/tools/thesis-fields";
+import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 import { RECENTLY_SOLD_WINDOW_DAYS } from "@/lib/agent/sold-review";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
@@ -49,7 +49,7 @@ const recordFields = z.object({
     .string()
     .optional()
     .describe(
-      "2-3 sentence summary of your thesis. For PASS: explain what you found AND why it doesn't fit your strategy right now. Legacy plain-string shape — V2 agents prefer `snapshot: { text, citations }`.",
+      "The thesis in two or three sentences; on a PASS, what you found and why it doesn't fit.",
     ),
   thesis_bullets: z
     .array(z.string())
@@ -70,11 +70,7 @@ const recordFields = z.object({
   stop_basis: F.stop_basis.optional(),
   target_basis: F.target_basis.optional(),
   entry_on_close: F.entry_on_close.optional(),
-  current_price: z.number().optional().describe(
-    "The live price you researched at (get_stock_data's quote). Pass it whenever you set entry_price: " +
-    "it decides which SIDE of the price the buy level sits on. A fresh quote is tried first and this is the fallback; " +
-    "with neither, a priced mint is refused (NO_LIVE_PRICE) — the side is never guessed.",
-  ),
+  current_price: F.live_price.optional(),
   // `hold_duration` arg removed 2026-05-18 (THESIS_CLEANUP PR-4). The
   // value is derived from horizon at render time via
   // holdDurationFromHorizon() — agents shouldn't have to think about it,
@@ -111,9 +107,9 @@ const recordFields = z.object({
       analyst_consensus: z.object({ buy: z.number(), hold: z.number(), sell: z.number() }).nullable().optional(),
     })
     .optional()
-    .describe("Structured stock metrics from get_stock_data — populates the Data tab in the inline thesis card. Distinct from the V2 `fundamentals` narrative section below."),
+    .describe("The stock's numbers from get_stock_data, shown on the thesis card."),
   parent_thesis_id: z.string().optional()
-    .describe("ID of the prior thesis being updated or invalidated. Links thesis chain."),
+    .describe("The thesis this one replaces, on a direction flip."),
   // Where the idea came from. The routed-signal kind and its ids went with
   // the signal router (deleted 2026-09-15); the stored column keeps the old
   // values on old rows.
@@ -138,7 +134,7 @@ const recordFields = z.object({
   triggers: triggersInputArraySchema
     .optional()
     .describe(
-      "The trigger ladder. Omit it to accept the horizon defaults. The review clock lives here like any other rung — include a review schedule ({ watch: 'repeat', value: days }) to have this name reviewed on a schedule, and leave it out to have nothing review it until one of its other triggers fires. Nothing adds a clock for you.",
+      `${TRIGGER_EDITS.ladder} A review schedule ({ watch: 'repeat', value: days }) is a trigger like any other: without one, nothing reviews the stock until another of its triggers fires.`,
     ),
   catalyst_date: F.catalyst_date.optional(),
   // next_review_at is gone (DAV-221). Review timing is a review-clock
@@ -160,8 +156,8 @@ const recordFields = z.object({
     .enum(["WATCHING", "ARCHIVED", "PASSED"])
     .optional()
     .describe(
-      "A LONG/SHORT mint lands WATCHING (a buy happens through place_trade, never here). " +
-        "PASS alone = terminal (recorded as Passed, no triggers, never woken). PASS + status:'WATCHING' = 'no view yet, but keep the name in view' — it stores no direction and no committed plan, carries whatever triggers you give it (including none), and is reviewed on a schedule only if you include a review schedule ({ watch: 'repeat', value: days }) in `triggers` — the review clock is an ordinary trigger, and omitting it means nothing looks at the name until one of its other triggers fires. Use it when you're out of dispatch slots or the setup isn't ripe — a capacity rejection keeps the name, it isn't a terminal PASS.",
+      "A LONG or SHORT thesis lands WATCHING. PASS alone is a terminal pass: no triggers, never woken. " +
+        "PASS with WATCHING keeps the stock in view with no view yet: no direction, no plan, only the triggers you give it, and it is reviewed on a schedule only if one of them is a review schedule ({ watch: 'repeat', value: days }).",
     ),
 
   // ── Recently-sold acknowledgment (P1-35 Half B — the XENE re-buy guard) ──
@@ -171,12 +167,7 @@ const recordFields = z.object({
   // entry $67, and re-bought LIVE the next day — the minting writer never
   // knew the sale happened. The guard surfaces the prior exit and requires
   // this explicit engagement with it before minting at/above the exit.
-  acknowledge_prior_exit: z
-    .string()
-    .optional()
-    .describe(
-      "Required when re-minting a ticker this analyst SOLD within the last 14 days at an entry_price at or above that exit price. Pass a one-line rationale that engages with the prior exit (e.g. 'sold on the trailing stop at $66.53; re-entering above $70 only on a confirmed reclaim of the 20-day — different setup, not a re-buy of the dip'). The rejection message carries the exit details. Ignored when there is no recent sale.",
-    ),
+  acknowledge_prior_exit: F.prior_exit.optional(),
   research_data: F.research_data.optional(),
   snapshot: F.snapshot.optional(),
   recent_catalysts: F.recent_catalysts.optional(),
@@ -229,8 +220,7 @@ const agentThesisSchema = recordFields.omit(WRITER_ONLY_FIELDS).superRefine(refi
 
 export const recordThesis = defineTool({
   description:
-    "Write a new thesis on a stock. Direction is LONG, SHORT, or PASS — a PASS documents a stock you researched and won't trade. Never write a verdict as narration text instead of calling this tool. " +
-    "Structural-belief gate: directional theses (LONG/SHORT) MUST include core_belief (1 sentence), key_assumptions (≥2 specific items), and invalidation_conditions (≥2 specific items). Without all three the call is rejected — these fields drive the trade evaluator's post-mortem, the tactical agent's invalidation reasoning, and the daily run's assumption-drift checks. PASS theses are exempt.",
+    "Write a new thesis on a stock. Direction is LONG, SHORT, or PASS — a PASS documents a stock you researched and won't trade. Never write a verdict as narration text instead of calling this tool.",
   schema: thesisSchema,
   schemaFor: (ctx) => (ctx.runMode === "THESIS_WRITER" ? thesisSchema : agentThesisSchema),
   ui: "thesis-card" as const,
@@ -464,7 +454,7 @@ export const recordThesis = defineTool({
 
       // ── Conviction Expression v4 — field-presence gates (§3) ──────────
       // Directional theses (LONG/SHORT) require conviction + rationale +
-      // size. STRONG/HIGH additionally require variantView. PASS/PENDING
+      // size. STRONG/HIGH without a variantView are stored as MEDIUM (below). PASS/PENDING
       // bypass. See docs/plans/CONVICTION_EXPRESSION.md §3.
       if (isDirectional) {
         if (!args.conviction) {
@@ -480,7 +470,7 @@ export const recordThesis = defineTool({
                 `Every directional thesis (LONG/SHORT) requires a conviction tier — STRONG / HIGH / MEDIUM / LOW. ` +
                 `STRONG = top-tier (your best 2-3 calls per cycle); HIGH = solid conviction with variant view; ` +
                 `MEDIUM = normal; LOW = weak. Pair with conviction_rationale (one sentence why this tier). ` +
-                `STRONG and HIGH additionally require variant_view ("consensus thinks X, I think Y").`,
+                `A STRONG or HIGH call without a variant_view ("consensus thinks X, I think Y") is stored as MEDIUM.`,
             },
             sources: [],
           };

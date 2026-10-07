@@ -27,7 +27,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { thesisFields } from "@/lib/agent/tools/thesis-fields";
+import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 import { prisma } from "@/lib/prisma";
 import {
   parseTriggersResilient,
@@ -95,13 +95,7 @@ const updateSchema = z.object({
     .describe(
       "If this update was prompted by a trigger firing, the id of that trigger. Optional.",
     ),
-  price_at_time: z
-    .number()
-    .optional()
-    .describe(
-      "Current price for this ticker at the moment of update (get_stock_data's quote). Captured into the activity log row, and it decides which SIDE of the price a buy level sits on: " +
-        "pass it whenever you set entry_price or move a buy trigger's level. A fresh quote is tried first; with neither, that update is refused (no_live_price) — the side is never guessed.",
-    ),
+  price_at_time: F.live_price.optional(),
   core_belief: F.core_belief.optional(),
   key_assumptions: F.key_assumptions.optional(),
   invalidation_conditions: F.invalidation_conditions.optional(),
@@ -121,23 +115,9 @@ const updateSchema = z.object({
   catalyst_date: F.catalyst_date.nullable().optional(),
 
   // ── Trigger ops (DAV-242) — one trigger at a time, never a whole list ──
-  add_triggers: triggersInputArraySchema
-    .optional()
-    .describe(
-      "Triggers to ADD. Each is { predicate, action, rationale, cooldownDays?, fireMode? }; ids are minted here. " +
-        "Adding where one already exists (a second buy trigger, target, floor, or review cadence) EDITS the existing one — a stock never carries two buy triggers.",
-    ),
-  edit_triggers: z
-    .array(editTriggerOpSchema)
-    .optional()
-    .describe(
-      "Triggers to EDIT by id. Change the number, the action, the fire mode, or the wording. A level change needs a rationale. " +
-        "On a held stock a protective sell level may only tighten — a loosening edit is refused by itself; the rest of the call lands.",
-    ),
-  remove_trigger_ids: z
-    .array(z.string())
-    .optional()
-    .describe("Triggers to REMOVE by id. On a held stock a protective sell trigger cannot be removed."),
+  add_triggers: triggersInputArraySchema.optional().describe(TRIGGER_EDITS.add),
+  edit_triggers: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
+  remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
   snapshot: F.snapshot.optional(),
   recent_catalysts: F.recent_catalysts.optional(),
   fundamentals: F.fundamentals.optional(),
@@ -164,7 +144,7 @@ const updateSchema = z.object({
       "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
         "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead. " +
         "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). " +
-        "Holding and sold are not set here: place_trade and close_position flip them when the order fills. A researched decline is direction: \"PASS\"; a direction flip goes through record_thesis with parent_thesis_id.",
+        "Holding and sold are not set here: place_trade and close_position flip them when the order fills. A researched decline is direction: \"PASS\".",
     ),
   research_data: F.research_data.optional(),
 });
@@ -276,14 +256,32 @@ const WRITER_ONLY_UPDATE_FIELDS = {
   research_data: true,
 } as const;
 
+/**
+ * Fields the trigger run never writes: in its 72 update_thesis calls in the
+ * 30 days to 2026-10-06 none sent one, and its text asks only for the belief,
+ * the levels and the triggers. Conviction, the variant view and the setup are
+ * the writer's and the morning run's.
+ */
+const NOT_THE_TRIGGER_RUNS = { conviction: true, conviction_rationale: true, variant_view: true, setup_id: true } as const;
+
+/** The chat never answers a fired trigger, so it has no trigger to name (0 of its 58 calls in the same 30 days). */
+const NOT_THE_CHATS = { trigger_id: true } as const;
+
 export const updateThesis = defineTool({
   description:
-    "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
-    "Two hard-reject conditions to know about: " +
-    "(1) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
-    "(2) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, removing a protective sell trigger, or switching one from automatic to judgment-first is refused per trigger (the rest of the call still lands; every op comes back in `trigger_ops` with accepted/refused and why). Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
+    "Change a thesis you already have. Pass thesis_id, the fields that change and a rationale; every call writes one line to the stock's Activity. " +
+    "entry_price, target_price and stop_loss are the levels of the buy, target and floor triggers, and null removes one. " +
+    "Each trigger edit comes back in `trigger_ops`, accepted or refused with the reason; a refused one leaves the rest of the call in place. " +
+    "On a stock we hold, only the principal moves a safety line down: if you think one is wrong, keep it and give the number you'd suggest in the rationale.",
   schema: updateSchema,
-  schemaFor: (ctx) => (ctx.runMode === "THESIS_WRITER" ? updateSchema : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS)),
+  schemaFor: (ctx) =>
+    ctx.runMode === "THESIS_WRITER"
+      ? updateSchema
+      : ctx.runMode === "INTRADAY_TACTICAL"
+        ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_TRIGGER_RUNS })
+        : ctx.runMode === "PRINCIPAL_CHAT"
+          ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_CHATS })
+          : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 

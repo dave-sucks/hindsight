@@ -64,7 +64,7 @@ export const getSecFilings = defineTool({
     "take a date from it or act on it; quote only words the returned text contains, and if the read failed or was " +
     "cut, say so. Example — {read:\"https://www.sec.gov/Archives/edgar/data/…/….htm\"}. " +
     "Market-wide results carry no company size — check it with get_stock_data " +
-    "before researching a name. For insider buying use get_insider_activity.",
+    "before researching a name.",
   schema: z.object({
     symbol: z.string().optional().describe("One company, e.g. MU."),
     symbols: z.array(z.string()).max(50).optional().describe("Several companies at once."),

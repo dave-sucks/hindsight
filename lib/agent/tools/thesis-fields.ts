@@ -11,7 +11,8 @@
  * A description says what the field is and what the save does with it. How
  * to choose a value is not here: when a value is wrong, the tool's reply says
  * why (thesis-belief.ts for the belief fields, record_thesis and
- * update_thesis for conviction, thesis-shape.ts for a priced plan).
+ * update_thesis for conviction, thesis-shape.ts for a priced plan, the
+ * trigger ops for a refused trigger edit).
  *
  * `strict` is the writer's form: it is sent in Anthropic strict mode, which
  * refuses numeric ranges, so the score parts carry their range in words and
@@ -42,6 +43,14 @@ const SCORING =
   "relativeStrength 0-3 (0 a laggard, 3 the sector leader), entryQuality 0-2 (0 extended or no setup, 2 a clean defined setup), " +
   "catalystFreshness 0-2 (0 already played, 2 still ahead). They add up to the composite out of 10; a buy is refused when it is under this analyst's minimum confidence.";
 
+/** The trigger edits, worded once for update_thesis and the writer's submit_thesis (their shapes come from lib/agent/triggers/schema.ts). */
+export const TRIGGER_EDITS = {
+  ladder: "The trigger ladder for a new thesis. Omit it for the horizon's defaults.",
+  add: "Triggers to add. Where the stock already has one of the same kind (a buy, a target, a floor, a review schedule), adding edits that one.",
+  edit: "Triggers to edit, by the id shown on the thesis: the number, the action, the fire mode or the wording. A number change needs a rationale.",
+  remove: "Triggers to remove, by id.",
+} as const;
+
 export function thesisFields(opts: { strict?: boolean } = {}) {
   const score = (max: number) => (opts.strict ? z.number() : z.number().min(0).max(max));
   const part = (max: number) => z.object({ score: score(max), note: z.string() });
@@ -50,8 +59,8 @@ export function thesisFields(opts: { strict?: boolean } = {}) {
     horizon: z
       .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
       .describe(
-        "How the trade ends, and which default triggers it gets: CATALYST (a dated event; needs catalyst_date), TARGET (a price objective, weeks to months), " +
-          "TRADE (a short setup, days to weeks), COMPOUNDER (business quality, months to years).",
+        "How the trade ends, and which default triggers a new thesis gets: CATALYST (a dated event; needs catalyst_date), TARGET (a price objective, weeks to months), " +
+          "TRADE (a short setup, days to weeks), COMPOUNDER (business quality, months to years). Changing it later leaves the stock's triggers as they are.",
       ),
     setup_id: z.enum(SETUP_IDS).describe("The setup the plan is written on. The trigger run confirms a buy by it and results are grouped by it."),
     setup_id_or_none: z
@@ -60,13 +69,13 @@ export function thesisFields(opts: { strict?: boolean } = {}) {
     entry_price: z
       .number()
       .describe(
-        "Where you'd buy. Below the price it is a pullback you wait for, above it a breakout you want confirmed, at or just past it a buy now. " +
-          "Entry, target and stop go together; leave all three out when no level is worth waiting for yet. On a thesis that exists it edits the buy trigger, and null removes it.",
+        "Where you'd buy: the buy trigger's level. Below the price it is a pullback you wait for, above it a breakout you want confirmed, at or just past it a buy now. " +
+          "A plan has entry, target and stop, or none of them.",
       ),
     entry_on_close: z.boolean().describe("true: the buy fires only on a close past entry_price, not an intraday cross."),
-    target_price: z.number().describe("Where you'd take profit. On a thesis that exists it edits the target trigger, and null removes it."),
+    target_price: z.number().describe("Where you'd take profit: the target trigger's level."),
     target_basis: z.string().describe("Why the target is there, with the rule and the numbers (\"prior high $236.54\"). It becomes the target trigger's sentence."),
-    stop_loss: z.number().describe("Where the thesis breaks: the floor. On a thesis that exists it edits the floor trigger, and null removes it."),
+    stop_loss: z.number().describe("Where the thesis breaks: the floor trigger's level."),
     stop_basis: z
       .string()
       .describe("Why the stop is there, with the chart number it sits under (\"under the base low $207.25, 1.6 ATR from entry\"). It becomes the floor trigger's sentence."),
@@ -92,6 +101,14 @@ export function thesisFields(opts: { strict?: boolean } = {}) {
     variant_view: z
       .string()
       .describe("Where you differ from consensus: 'consensus expects X, I think Y, because Z'. A STRONG or HIGH call without one is stored as MEDIUM."),
+    live_price: z
+      .number()
+      .describe(
+        "The live price you read (get_stock_data's quote). It decides which side of the price a buy level sits on when the server's own quote fails; with neither, a change that sets a buy level is refused.",
+      ),
+    prior_exit: z
+      .string()
+      .describe("One line on how this plan differs from this analyst's sale of the stock in the last 14 days. Needed only when the buy is at or above that sale's price."),
 
     // The writer's research note, saved section by section.
     research_data: z.string().describe("The writer's raw data block, passed through verbatim for the card's data tab."),
