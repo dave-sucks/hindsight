@@ -77,7 +77,7 @@ himself on 09-15 18:01 and set it to fire automatically.
 
 | Date | Fired at | Dave |
 |---|---|---|
-| 09-16 19:15 | $41.39 | rejected — *"its moving here and there. Im gonna see if theres any chance it picks back up."* |
+| 09-16 19:15 | $41.39 | rejected — *(paraphrased) "Holding to see whether it recovers."* |
 | 09-17 19:15 | $40.20 | expired |
 | 09-21 17:30 | $39.56 | expired |
 | 09-23 17:40 | $38.82 | expired |

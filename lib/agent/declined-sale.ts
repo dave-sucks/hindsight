@@ -6,9 +6,9 @@
  * IOT was bought at $39.83 and the principal set the floor to $41.40 himself.
  * The floor broke on 09-16 and a sale was proposed. He declined it:
  *
- *   "its moving here and there. Im gonna see if theres any chance it picks
- *    back up. ... If you don't approve this, I'd immediately raise the stop
- *    to around $40.50 (just below the gap-day close)."
+ *   (paraphrased) Holding to see whether it recovers. If this sale is
+ *   declined, the stop should move up to about $40.50, just below the
+ *   gap-day close.
  *
  * The same $41.40 ask came back on 09-17, 09-21, 09-23 and 09-25. Three of
  * the four expired. On 09-25 he took it, at $39.32 — 5.0% below the price at
