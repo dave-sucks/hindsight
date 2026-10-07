@@ -17,6 +17,7 @@ import { fireExtras, tacticalKickoff } from "./tactical-kickoff";
 import { stockBrief } from "@/lib/agent/stock-brief";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { protectiveSale } from "@/lib/agent/playbooks/protective-sale";
+import { buyArrives } from "@/lib/agent/playbooks/buy-arrives";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const trailTrigger: Trigger = {
@@ -88,18 +89,18 @@ describe("tracked peak on trail fires (DAV-186)", () => {
 describe("confirm by the setup, one run per fire, the fired price (DAV-254, DAV-265)", () => {
   const stop: Trigger = { id: "stop-969", predicate: { watch: "price", is: "below", value: 969 }, action: "EXIT", rationale: "Stop." };
 
-  it("the brief carries the setup's own confirmation; the system prompt says to read it, with no horizon volume table", () => {
+  it("the brief carries the setup's own confirmation; the buy playbook says to read it, with no horizon volume table", () => {
     const setup = setupChecklist("PEAD", "TARGET")!;
     expect(setup.confirm.join("; ")).toContain("Gap held");
     const stock = stockBrief({ id: "t", ticker: "MU", status: "WATCHING", direction: "LONG", setup: setup as never }, { named: true });
     expect((stock.setup as { confirm: string[] }).confirm).toEqual(setup.confirm);
-    expect(system).toContain("(b) **The setup's own confirmation.** Read the stock's `setup`");
-    expect(system).not.toContain("Volume — horizon-conditional");
-    expect(system).not.toContain("COMPOUNDER horizon:** volume is irrelevant");
+    expect(buyArrives.text).toContain("The stock's setup says what confirms a buy and its chase limit.");
+    expect(system + buyArrives.text).not.toContain("Volume — horizon-conditional");
+    expect(system + buyArrives.text).not.toContain("COMPOUNDER horizon:** volume is irrelevant");
   });
 
   it("with no setup recorded, the price holding is the confirmation", () => {
-    expect(system).toContain("With no\n           setup recorded, the price holding is the confirmation.");
+    expect(buyArrives.text).toContain("With no setup named, the price holding is the confirmation.");
   });
 
   it("MU 09-14: a stop and a trail that fired together are named in the kickoff and the run decides once", () => {
@@ -177,10 +178,11 @@ describe("a declined sale is asked again", () => {
     expect(situation()).not.toContain(PASS);
     expect(system).not.toContain(PASS);
   });
-  it("a buy or add fire keeps it: a declined buy is not re-proposed unchanged", () => {
+  it("a buy or add fire keeps it: a declined buy is not re-proposed unchanged (a buy through its playbook)", () => {
     const enter: Trigger = { id: "trig_buy", predicate: { watch: "price", is: "above", value: 60 }, action: "ENTER", rationale: "Buy the breakout." };
     const add: Trigger = { ...enter, id: "trig_add", action: "ADD" };
-    expect(situation({ trigger: enter, position: null })).toContain(PASS);
+    expect(situation({ trigger: enter, position: null })).not.toContain(PASS);
+    expect(buyArrives.text).toContain(PASS);
     expect(situation({ trigger: add })).toContain(PASS);
   });
 });

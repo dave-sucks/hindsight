@@ -112,7 +112,8 @@ export function tacticalSituation(args: TacticalSituationArgs): string[] {
     );
   }
 
-  if (trigger.action === "ENTER" || trigger.action === "ADD") {
+  // A buy has the buy-arrives playbook, which carries this; an add has none yet.
+  if (trigger.action === "ADD") {
     out.push("If the principal declined this same buy and nothing they named has changed, say so and pass.");
   }
 
@@ -196,49 +197,6 @@ DECISION FRAMEWORK
      target: the price is capped at the deal price — move the target to
      it, consider selling. Dilution: don't add into it. Cite the filing in
      the close-out rationale.
-   - **Confirmation gate before place_trade.** A price level firing is
-     necessary but not sufficient. Before place_trade, confirm using
-     get_stock_data:
-
-       (a) **Live quote still confirms the breakout.** ALWAYS applies.
-           A trigger fired N minutes ago; verify the move hasn't already
-           failed back below the level. If the breakout is unwinding
-           right now, pass — write update_thesis(REVIEWED) saying so
-           plainly: "Not acting yet: it hit $X, then slipped back to $Y."
-
-       (b) **The setup's own confirmation.** Read the stock's \`setup\`
-           and check what it says to confirm — a breakout needs a close
-           above the level on the volume its setup asks for (\`technicals.today.volumeVsAvg20\`,
-           informational before ~14:00 ET when the session is young); a
-           pullback needs the touch to have held (a close above the prior
-           day's high); an earnings gap needs the gap to have held; a
-           compounder needs the thesis intact and cares little for volume;
-           a pre-catalyst entry is never the day before the event. With no
-           setup recorded, the price holding is the confirmation.
-           **Chased:** if the live price is more than the setup's chase
-           limit past the level, pass — write update_thesis(REVIEWED) with
-           "Not buying: it's already X% past my buy level"; the daily run
-           re-anchors the plan.
-
-       (c) **No contradicting headline.** ALWAYS applies. Use
-           get_stock_data's news field to check the last hour. A trigger that fires INTO
-           bad news (pulled guidance, downgrade hitting the tape) is a
-           fade-the-pop setup, not a chase-the-breakout setup. Pass
-           and document.
-
-       (d) **Outside-market-hours fires** — if the tactical run is firing
-           pre-market (before 09:30 ET) or after the close (after 16:00
-           ET), volume data reflects the prior session or is mid-day
-           accumulation, neither of which is decision-relevant. Skip the
-           volume gate entirely; confirm with gates (a) and (c) and act
-           if both pass. The trigger fired on a live quote — that's the
-           signal you have.
-
-     If any APPLICABLE gate fails, do NOT place_trade. update_thesis(REVIEWED)
-     saying in plain words which check failed. "Volume too
-     low" is a reason only when the setup's confirmation asks for volume
-     (a breakout, a flag) and the session is past mid-day; on a pullback,
-     a compounder or a pre-catalyst entry it is not a reason.
    - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). Say in the note what you did instead of the trigger's action, and why.
@@ -280,14 +238,15 @@ DECISION FRAMEWORK
        If momentum is exhausting or R/R is now poor,
        manage_position(partial_close) to bank part, or close_position.
 
-   The confirmation gates above (live quote still confirms; no contradicting
-   headline) apply to an add just as to an entry. Every add and target-raise is
+   An add needs what a buy needs: the live quote still confirms, and no
+   headline contradicts it. Every add and target-raise is
    approval-gated — you propose, the principal approves.
 
 3. If validation FAILS:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
      patch) and a rationale that says why in plain words: "Not acting
-     yet: <reason>."
+     yet: <reason>." A fired buy is the exception: its playbook says what
+     a pass needs.
    - If validation reveals the thesis itself is no longer applicable
      (ticker fell outside this analyst's edge/universe, the original
      premise has broken structurally, the name is no longer worth

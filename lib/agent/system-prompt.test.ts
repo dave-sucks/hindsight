@@ -2,6 +2,7 @@
  * system-prompt.test.ts — the daily run as a portfolio manager (DAV-253).
  * What the prompt deletes and adds, pinned; the prompt builder is pure.
  */
+import { buyArrives } from "@/lib/agent/playbooks/buy-arrives";
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
 import type { RunInput } from "./run-input";
 
@@ -29,10 +30,11 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).not.toContain("THREE legal paths");
     expect(prompt).not.toContain("Retune the buy trigger");
   });
-  it("a fired buy has two answers, and a raise away is named as a flag, not refused", () => {
-    expect(prompt).toContain("a fired buy is a decision with two answers");
-    expect(prompt).toContain("Set the plan down with the reason");
-    expect(prompt).toContain("ENTRY_RAISED_AWAY");
+  it("a fired buy is its playbook's: the morning text points at the playbooks and no longer carries the buy bullet", () => {
+    expect(prompt).toContain("A row that names `playbooks`");
+    expect(prompt).not.toContain("a fired buy is a decision with two answers");
+    expect(buyArrives.text).toContain("Set the plan down");
+    expect(buyArrives.text).toContain("it comes back the next day as a plan flag, with the count");
   });
   it("regime and cash are inputs: the cash line names today's names at their buy level", () => {
     expect(prompt).toContain("## Regime and cash");

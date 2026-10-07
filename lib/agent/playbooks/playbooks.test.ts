@@ -37,11 +37,29 @@ describe("protective sale: when it attaches", () => {
   it("a trigger run carries it for a sale fired on a stock we hold, and only then", () => {
     expect(playbookForFire({ action: "EXIT", held: true })?.key).toBe("protective-sale");
     expect(playbookForFire({ action: "EXIT", held: false })).toBeNull();
-    expect(playbookForFire({ action: "ENTER", held: false })).toBeNull();
+    expect(playbookForFire({ action: "REVIEW", held: true })).toBeNull();
   });
 
-  it("a read carries each named playbook once", () => {
+  it("a read carries each named playbook once, in ranking order", () => {
+    expect(Object.keys(playbookTexts(["buy-arrives", "protective-sale"]))).toEqual(["protective-sale", "buy-arrives"]);
     const texts = playbookTexts(["protective-sale", "protective-sale", "no-such"]);
     expect(Object.keys(texts)).toEqual(["protective-sale"]);
+  });
+});
+
+describe("buy arrives: when it attaches", () => {
+  it("a watched stock whose lead flag is a fired or matching buy, or whose buy level the price has reached", () => {
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "TRIGGER_FIRED", action: "ENTER" } }))).toEqual(["buy-arrives"]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "TRIGGER_MATCHING_NOW", action: "ENTER" } }))).toEqual(["buy-arrives"]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: null, resolved: { actionability: "ENTER_NOW" } }))).toEqual(["buy-arrives"]);
+  });
+  it("not a held stock, a review, or a watch still waiting", () => {
+    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", action: "ENTER" } }))).toEqual([]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "TRIGGER_FIRED", action: "REVIEW" } }))).toEqual([]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: null, resolved: { actionability: "WAIT_FOR_TRIGGER" } }))).toEqual([]);
+  });
+  it("a trigger run carries it for a buy on a stock we don't hold", () => {
+    expect(playbookForFire({ action: "ENTER", held: false })?.key).toBe("buy-arrives");
+    expect(playbookForFire({ action: "ENTER", held: true })).toBeNull();
   });
 });
