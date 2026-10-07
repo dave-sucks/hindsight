@@ -14,7 +14,8 @@ npx tsx --env-file=.env.local scripts/hero-case.ts docu-trigger --runs 6
 
 Each run gives the model one turn at the recorded decision point, with the
 system prompt built by today's code and the tools described but never run.
-Nothing is executed and nothing touches the database or the account. Six
+Nothing is executed and nothing touches the database or the account, except
+the reads a case names to run (below), which only read. Six
 runs per case, because one run of a model proves nothing. The script prints
 each run's calls and a pass/fail with the reason, then a table.
 
@@ -39,12 +40,33 @@ the repo is public, so paraphrase them.
 
 - `call`: at least one of these calls is made (any one of the list);
 - `never`: none of these calls is made;
-- `text` / `neverText`: the turn's prose does / does not match a pattern.
+- `text` / `neverText`: the turn's prose does / does not match a pattern;
+- `read`: a read the case ran for real (below) returned every one of the
+  `has` paths, not empty (`data.positions.*.stopLoss`).
 
 A `where` names fields of the call's input by path (`edit_triggers.*.level`,
 `scoring.$sum` for the sum of the score parts sent, `scoring.$count` for how
 many) and what each must be: `"present"`, `"absent"`, a value, or
 `{ lt, gt, regex }`.
+
+## A case that runs a read
+
+A case may list read-only tools under `execute` (only `get_portfolio_context`,
+`get_theses`, `list_proposals`, `get_market_context` and `get_stock_data`).
+When the model calls one, it runs for real, as the owner of the case's
+`source.runId`, on the account as it is today, and the model reads its
+real reply; every other call still gets the stub. The turn repeats until the
+model answers without a call, up to `maxTurns`. It is how a case checks what
+a read returns, not only that it was made.
+
+While the market is open the runner refuses such a case: the reads spend the
+market-data budget the five-minute trigger check has first claim on, and the
+prices move between runs. Run it after the close, or pass
+`--live-reads-in-session` to run it anyway.
+
+For a chat with no analyst selected, give `-` for the ticker:
+`hero-case-from-run.ts <runId> - <case-name>` cuts before the model's first
+turn.
 
 ## Baseline
 

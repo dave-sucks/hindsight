@@ -36,7 +36,7 @@ const runInput = () =>
     },
     watchlist: [], activeTheses: [], performance: null, recentClosedTrades: [],
     priorityReviews: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [],
-    latestDigest: null, earnings: { reportingSoon: [], justReported: [] },
+    earnings: { reportingSoon: [], justReported: [] },
     filings: { recent: [] }, intelligencePolicy: { maxSignalsPerRun: 0 },
   }) as unknown as RunInput;
 

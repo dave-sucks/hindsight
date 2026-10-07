@@ -17,6 +17,10 @@
  * by the id the run recorded, and a trigger removed since is reported so the
  * case can be finished by hand. `what`, `lookFor` and `expect` are left for
  * the person writing the case.
+ *
+ * A chat with no analyst selected has no stock decision to cut before: give
+ * `-` for the ticker and the conversation is cut before the model's first
+ * turn, so the case replays its answer to the opening question.
  */
 import { writeFileSync } from "fs";
 import { prisma } from "@/lib/prisma";
@@ -43,12 +47,13 @@ function mentions(part: Part, ticker: string, thesisId: string | null): boolean 
 
 async function main() {
   const [runId, tickerArg, name] = process.argv.slice(2);
-  if (!runId || !tickerArg || !name) throw new Error("usage: hero-case-from-run.ts <runId> <TICKER> <case-name>");
+  if (!runId || !tickerArg || !name) throw new Error("usage: hero-case-from-run.ts <runId> <TICKER|-> <case-name>");
   const ticker = tickerArg.toUpperCase();
-  const run = await prisma.researchRun.findUniqueOrThrow({ where: { id: runId }, select: { mode: true, parameters: true, agentConfigId: true, userId: true, startedAt: true } });
+  const run = await prisma.researchRun.findUniqueOrThrow({ where: { id: runId }, select: { mode: true, parameters: true, agentConfigId: true, userId: true, startedAt: true, environment: true } });
   const thread = await prisma.runMessage.findFirst({ where: { runId, role: "thread" }, select: { content: true } });
   if (!thread) throw new Error("no saved conversation on this run");
   const messages = JSON.parse(thread.content) as Msg[];
+  if (run.mode === "PRINCIPAL_CHAT" && run.agentConfigId == null) return unscopedChat(runId, run, messages, name);
   const analyst = await prisma.agentConfig.findUniqueOrThrow({ where: { id: run.agentConfigId! } });
   const thesis = await prisma.thesis.findFirst({
     where: { ticker, researchRun: { agentConfigId: analyst.id }, status: { in: ["WATCHING", "HOLDING"] } },
@@ -141,6 +146,29 @@ async function main() {
   console.log(`${file}: ${kept.length} messages kept of ${messages.length}, ${JSON.stringify(kept).length.toLocaleString("en-US")} characters`);
   console.log(`the run then did: ${decided.join(" | ")}`);
   for (const n of notes) console.log(`note: ${n}`);
+}
+
+/** A chat with no analyst selected: cut before the model's first turn. */
+function unscopedChat(runId: string, run: { startedAt: Date; environment: string }, messages: Msg[], name: string) {
+  const cut = messages.findIndex((m) => m.role === "assistant");
+  if (cut <= 0) throw new Error("no assistant turn in this chat");
+  const answered = (messages[cut].content as Part[]).filter((p) => p.type === "tool-call").map((p) => `${p.toolName} ${JSON.stringify(p.input).slice(0, 160)}`);
+  const out = {
+    what: `${run.startedAt.toISOString().slice(0, 10)}, a chat with no analyst selected, run ${runId}. FILL IN: the question, paraphrased (the repo is public).`,
+    lookFor: "FILL IN: the question the replay answers.",
+    source: { runId, cutBeforeMessage: cut, theRunDid: answered, notes: [`the chat ran in the ${run.environment} book; set toolCtx.runEnvironment to the book the question is about`] },
+    expect: { call: [], never: [] },
+    mode: "principal", runMode: "PRINCIPAL_CHAT", promptArgs: { scopedAnalyst: null }, toolCtx: { runEnvironment: run.environment },
+    // The chat saves the owner's turns as the screen sent them (`parts`); the replay sends the model's form.
+    messages: messages.slice(0, cut).map((m) => {
+      const parts = (m as { parts?: Part[] }).parts;
+      return parts ? { role: m.role, content: parts.filter((p) => p.type === "text").map((p) => ({ type: "text", text: p.text ?? "" })) } : m;
+    }),
+  };
+  const file = `scripts/hero-cases/${name}.json`;
+  writeFileSync(file, JSON.stringify(out, null, 1));
+  console.log(`${file}: ${cut} messages kept of ${messages.length}; the chat then did: ${answered.join(" | ")}`);
+  console.log("note: the owner's words are copied as they are — paraphrase them before the file is committed.");
 }
 
 main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });

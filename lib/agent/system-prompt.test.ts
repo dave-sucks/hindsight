@@ -15,7 +15,6 @@ const runInput = {
   priorityReviews: [],
   triggersFiredSinceLastRun: [],
   triggersMatchingNow: [{ thesisId: "t", ticker: "IOT", triggerId: "b", action: "ENTER", predicateSummary: "price above $39.55", rationale: "", matchDetail: "" }],
-  latestDigest: null,
   earnings: { reportingSoon: [], justReported: [] },
   filings: { recent: [{ ticker: "PRAX", date: "2026-07-02", tier: "serious" as const, summary: "8-K — auditor change (4.01)", url: "https://www.sec.gov/prax" }] },
   intelligencePolicy: { maxSignalsPerRun: 0 },

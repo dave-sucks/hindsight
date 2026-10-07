@@ -1,14 +1,13 @@
 /**
- * get_portfolio_context — returns live situational awareness of the analyst's
- * entire portfolio. Called at the start of Stage 2 (holdings review) to give
- * the agent real-time P&L, days held, peak price, and original thesis context.
+ * get_portfolio_context — the account as it stands: every open position with
+ * its live price, gain and stop, the cash, the equity, the open risk against
+ * the limit and the market line. One shape for every caller: with an analyst
+ * in the run it covers that analyst's positions; with none (the chat when no
+ * analyst is selected) it covers the account, each position names its
+ * analyst, and the latest end-of-day digest comes with it.
  *
- * The system prompt already has a static portfolio table injected, but this
- * tool provides:
- *   - Live prices (not snapshot from run start)
- *   - Peak price and distance from peak (for trailing stop decisions)
- *   - Original thesis reasoning per position
- *   - Capital summary (slots, buying power, utilization)
+ * The stop and target are the thesis's: the position row's copy can lag a
+ * moved floor (MU on 2026-10-05: 969 on the position, 1048 on the plan).
  */
 
 import { z } from "zod";
@@ -27,6 +26,8 @@ import {
 interface PositionDetail {
   positionId: string;
   symbol: string;
+  /** The analyst that holds it. */
+  analyst: string | null;
   direction: string;
   qty: number;
   initialQty: number;
@@ -50,12 +51,14 @@ interface PositionDetail {
 
 interface CapitalSummary {
   totalEquity: number;
+  cash: number;
   buyingPower: number;
   deployedCapital: number;
   deployedPct: number;
   openPositionCount: number;
-  maxPositions: number;
-  slotsRemaining: number;
+  /** The analyst's position limit; null for the whole account. */
+  maxPositions: number | null;
+  slotsRemaining: number | null;
 }
 
 type PortfolioContextData = {
@@ -64,17 +67,18 @@ type PortfolioContextData = {
   summaryLines: string[];
   tickers: { ticker: string; tag: string; summary: string }[];
   /**
-   * Account-wide book lines (DAV-251): open risk vs the 6% cap, the regime.
+   * Account-wide book lines (DAV-251): open risk vs the 6% cap, the market.
    * Inputs for the run's judgment, never gates. Absent when unreadable.
    */
-  book?: { openRiskPct: number | null; lines: string[] };
+  book: { openRiskPct: number | null; market: string | null; lines: string[] };
+  /** The latest end-of-day portfolio digest for this book; whole-account reads only. */
+  digest: { date: string; narrative: string } | null;
 };
 
 export const getPortfolioContext = defineTool({
   description:
-    "Returns live portfolio context: all open positions with current P&L, " +
-    "days held, distance from peak, exit levels, and the original thesis reasoning. " +
-    "Call this at the start of your holdings review to get real-time data before making management decisions.",
+    "Open positions with live price, gain, days held, distance from peak, stop and target; cash, equity, open risk and the market line. " +
+    "Covers the run's analyst, or with none selected the whole account, naming each position's analyst, plus the daily digest.",
   schema: z.object({
     include_thesis: z
       .boolean()
@@ -86,104 +90,46 @@ export const getPortfolioContext = defineTool({
   progressLabel: () => "Checking live portfolio P&L and exit levels",
 
   execute: async (args, ctx) => {
-    const analystId = ctx.analystId;
-    if (!analystId) {
-      return {
-        summary: "No analyst context — portfolio context unavailable",
-        data: { positions: [] as PositionDetail[], capitalSummary: null, summaryLines: [], tickers: [] } satisfies PortfolioContextData,
-        sources: [],
-      };
-    }
-
+    const analystId = ctx.analystId ?? null;
     const runEnvironment = ctx.runEnvironment ?? "PAPER";
     const creds =
       ctx.alpacaCreds ??
       (await resolveAlpacaCredentials(ctx.userId, runEnvironment)) ??
       undefined;
 
-    // Load open positions for THIS run's environment only. A LIVE run must
-    // never see PAPER positions and vice versa — they live in different
-    // Alpaca accounts, so mixing them would cause every manage_position /
-    // close_position call to hit the wrong account.
+    // This run's book only. A LIVE run must never see PAPER positions and
+    // vice versa — they live in different Alpaca accounts.
     const openPositions = await prisma.position.findMany({
-      where: { analystId, status: "OPEN", environment: runEnvironment },
+      where: { accountId: ctx.accountId, status: "OPEN", environment: runEnvironment, ...(analystId ? { analystId } : {}) },
+      include: { analyst: { select: { name: true } } },
       orderBy: { openedAt: "asc" },
     });
 
-    if (openPositions.length === 0) {
-      let capitalSummary = null;
-      try {
-        const account = await getAccount(creds);
-        capitalSummary = {
-          totalEquity: parseFloat(account.equity),
-          buyingPower: parseFloat(account.buying_power),
-          deployedCapital: 0,
-          deployedPct: 0,
-          openPositionCount: 0,
-          maxPositions: ctx.maxOpenPositions ?? 5,
-          slotsRemaining: ctx.maxOpenPositions ?? 5,
-        };
-      } catch { /* non-fatal */ }
-
-      return {
-        summary: "No open positions",
-        data: { positions: [] as PositionDetail[], capitalSummary, summaryLines: [], tickers: [] } satisfies PortfolioContextData,
-        sources: [],
-      };
-    }
-
-    // Fetch live prices
-    const symbols = openPositions.map((p) => p.symbol);
     let lookup: PriceLookup | null = null;
-    try {
-      lookup = await getLatestPricesWithMeta(symbols, creds);
-    } catch { /* every position is then shown at cost, and says so */ }
+    if (openPositions.length > 0) {
+      try {
+        lookup = await getLatestPricesWithMeta(openPositions.map((p) => p.symbol), creds);
+      } catch { /* every position is then shown at cost, and says so */ }
+    }
     const prices = lookup?.prices ?? {};
 
-    // Load theses if requested
-    const thesisMap = new Map<string, { id: string; reasoning: string; confidence: number; signalTypes: string[]; status: string } | null>();
-    if (args.include_thesis) {
-      for (const pos of openPositions) {
-        try {
-          const thesis = await prisma.thesis.findFirst({
-            where: {
-              ticker: pos.symbol,
-              status: { in: ["HOLDING"] },
-              researchRun: { agentConfigId: analystId },
-            },
-            orderBy: { createdAt: "desc" },
-            select: {
-              id: true,
-              snapshot: true,
-              scoring: true,
-              status: true,
-            },
-          });
-          // PR-9: legacy 0-100 confidence + signalTypes column dropped.
-          // Conviction lives in scoring.composite (/10) — multiply by 10
-          // for the agent-facing shape which still expects 0-100.
-          // signalTypes is derivable from sourceSignalIds → drop for now.
-          const composite = thesis ? getThesisComposite(thesis) : null;
-          thesisMap.set(pos.id, thesis
-            ? {
-                id: thesis.id,
-                reasoning: getThesisSnapshotText(thesis),
-                confidence: composite != null ? composite * 10 : 0,
-                signalTypes: [],
-                status: thesis.status,
-              }
-            : null);
-        } catch { thesisMap.set(pos.id, null); }
-      }
+    // Each position's thesis: its stop and target are the plan's, and its reasoning on request.
+    const theses = new Map<string, { id: string; snapshot: unknown; scoring: unknown; status: string; stopLoss: number | null; targetPrice: number | null }>();
+    for (const pos of openPositions) {
+      try {
+        const thesis = await prisma.thesis.findFirst({
+          where: { ticker: pos.symbol, status: "HOLDING", researchRun: { agentConfigId: pos.analystId } },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, snapshot: true, scoring: true, status: true, stopLoss: true, targetPrice: true },
+        });
+        if (thesis) theses.set(pos.id, thesis);
+      } catch { /* the position's own levels stand in */ }
     }
 
-    // Build enriched position objects
     const now = Date.now();
     const positionDetails: PositionDetail[] = openPositions.map((pos) => {
       const currentPrice = prices[pos.symbol] ?? pos.avgCost;
-      // How old the price is, in words when it isn't live (quote-age). A
-      // missing price used to show the position at cost, flat, with nothing
-      // said.
+      // How old the price is, in words when it isn't live (quote-age).
       const at = lookup?.asOf[pos.symbol];
       const reading = readPrice({
         ticker: pos.symbol,
@@ -205,7 +151,6 @@ export const getPortfolioContext = defineTool({
         : 0;
       const daysHeld = Math.max(0, Math.floor((now - new Date(pos.openedAt).getTime()) / 86_400_000));
 
-      // Distance from peak (for trailing stop context)
       let distanceFromPeak: number | null = null;
       if (pos.peakPrice) {
         distanceFromPeak = isLong
@@ -213,9 +158,13 @@ export const getPortfolioContext = defineTool({
           : ((pos.peakPrice - currentPrice) / pos.peakPrice) * 100;
       }
 
+      const thesis = theses.get(pos.id) ?? null;
+      // PR-9: conviction lives in scoring.composite (/10); the 0-100 shape here is ×10.
+      const composite = thesis ? getThesisComposite(thesis as never) : null;
       return {
         positionId: pos.id,
         symbol: pos.symbol,
+        analyst: pos.analyst?.name ?? null,
         direction: pos.direction,
         qty: pos.quantity,
         initialQty: pos.initialQty ?? pos.quantity,
@@ -224,40 +173,51 @@ export const getPortfolioContext = defineTool({
         unrealizedPnl,
         unrealizedPnlPct: Math.round(unrealizedPnlPct * 100) / 100,
         daysHeld,
-        targetPrice: pos.targetPrice ?? null,
-        stopLoss: pos.stopLoss ?? null,
+        targetPrice: thesis?.targetPrice ?? pos.targetPrice ?? null,
+        stopLoss: thesis?.stopLoss ?? pos.stopLoss ?? null,
         exitStrategy: pos.exitStrategy,
         trailPct: pos.trailingStopPct ?? null,
         peakPrice: pos.peakPrice ?? null,
         distanceFromPeak: distanceFromPeak !== null ? Math.round(distanceFromPeak * 100) / 100 : null,
         priceAsOf: reading.asOf,
         ...(priceWarning ? { priceWarning } : {}),
-        thesis: thesisMap.get(pos.id) ?? null,
+        thesis:
+          args.include_thesis && thesis
+            ? {
+                id: thesis.id,
+                reasoning: getThesisSnapshotText(thesis as never),
+                confidence: composite != null ? composite * 10 : 0,
+                signalTypes: [],
+                status: thesis.status,
+              }
+            : null,
       };
     });
 
-    // Capital summary from Alpaca
-    let capitalSummary = null;
+    let capitalSummary: CapitalSummary | null = null;
     try {
       const account = await getAccount(creds);
       const deployedCapital = positionDetails.reduce((sum, p) => sum + p.avgCost * p.qty, 0);
       const totalEquity = parseFloat(account.equity);
+      const maxPositions = analystId ? (ctx.maxOpenPositions ?? 5) : null;
       capitalSummary = {
         totalEquity,
+        cash: parseFloat(account.cash),
         buyingPower: parseFloat(account.buying_power),
         deployedCapital,
         deployedPct: totalEquity > 0 ? Math.round((deployedCapital / totalEquity) * 100) : 0,
         openPositionCount: openPositions.length,
-        maxPositions: ctx.maxOpenPositions ?? 5,
-        slotsRemaining: (ctx.maxOpenPositions ?? 5) - openPositions.length,
+        maxPositions,
+        slotsRemaining: maxPositions != null ? maxPositions - openPositions.length : null,
       };
     } catch { /* non-fatal */ }
 
-    // Build summary text for the agent to read
     const summaryLines = positionDetails.map((p) => {
       const pnlSign = p.unrealizedPnlPct >= 0 ? "+" : "";
       const peakStr = p.distanceFromPeak !== null ? ` | ${p.distanceFromPeak >= 0 ? "+" : ""}${p.distanceFromPeak}% from peak` : "";
-      return `${p.priceWarning ? `⚠ ${p.priceWarning} ` : ""}${p.symbol} ${p.direction} ${p.qty}sh @ $${p.avgCost.toFixed(2)} | now $${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.daysHeld}d held${peakStr}`;
+      const stopStr = p.stopLoss != null ? ` | stop $${p.stopLoss}` : " | no stop";
+      const who = !analystId && p.analyst ? ` (${p.analyst})` : "";
+      return `${p.priceWarning ? `⚠ ${p.priceWarning} ` : ""}${p.symbol}${who} ${p.direction} ${p.qty}sh @ $${p.avgCost.toFixed(2)} | now $${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.daysHeld}d held${peakStr}${stopStr}`;
     });
 
     // Ticker rows for UI rendering — portfolio data, not stock data
@@ -271,29 +231,49 @@ export const getPortfolioContext = defineTool({
       };
     });
 
-    // Account-wide book lines — open risk across every seat, and the regime.
+    // Account-wide book lines — open risk across every seat, and the market.
     const risk = await loadAccountRisk({
       accountId: ctx.accountId,
       environment: runEnvironment,
       creds,
     }).catch(() => null);
+    const market = risk?.regime?.line ?? null;
     const bookLines = [
       ...(risk?.open && risk.equity ? [heatLine(risk.open, risk.equity)] : []),
-      ...(risk?.regime ? [risk.regime.line] : []),
+      ...(market ? [market] : []),
     ];
 
+    // The latest end-of-day digest for this book (PAPER and LIVE have one
+    // each). It narrates the whole account, other analysts' trades included,
+    // so it comes with a read of the whole account only: an analyst's own
+    // run does not get it (docs/plans/AGENT_ARCHITECTURE.md, step 3).
+    let digest: PortfolioContextData["digest"] = null;
+    if (ctx.accountId && !analystId) {
+      try {
+        const row = await prisma.portfolioDigest.findFirst({
+          where: { accountId: ctx.accountId, environment: runEnvironment },
+          orderBy: { date: "desc" },
+          select: { narrative: true, date: true },
+        });
+        if (row?.narrative) digest = { date: row.date.toISOString().slice(0, 10), narrative: row.narrative };
+      } catch { /* no digest; the rest stands */ }
+    }
+
+    const data: PortfolioContextData = {
+      positions: positionDetails,
+      capitalSummary,
+      summaryLines: [...summaryLines, ...bookLines],
+      tickers,
+      book: { openRiskPct: risk?.open ? Math.round(risk.open.riskPct * 10) / 10 : null, market, lines: bookLines },
+      digest,
+    };
     return {
       summary:
         positionDetails.filter((p) => p.priceWarning).map((p) => `⚠ ${p.priceWarning} `).join("") +
-        `Portfolio: ${openPositions.length} open position${openPositions.length !== 1 ? "s" : ""}${capitalSummary ? ` | ${capitalSummary.deployedPct}% deployed | $${capitalSummary.buyingPower.toFixed(0)} buying power` : ""}` +
+        (openPositions.length === 0 ? "No open positions" : `Portfolio: ${openPositions.length} open position${openPositions.length !== 1 ? "s" : ""}`) +
+        (capitalSummary ? ` | $${capitalSummary.cash.toFixed(0)} cash | ${capitalSummary.deployedPct}% deployed | $${capitalSummary.buyingPower.toFixed(0)} buying power` : "") +
         (bookLines.length ? ` | ${bookLines.join(" ")}` : ""),
-      data: {
-        positions: positionDetails,
-        capitalSummary,
-        summaryLines: [...summaryLines, ...bookLines],
-        tickers,
-        book: { openRiskPct: risk?.open ? Math.round(risk.open.riskPct * 10) / 10 : null, lines: bookLines },
-      },
+      data,
       sources: [],
     };
   },

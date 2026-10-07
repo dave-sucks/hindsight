@@ -25,6 +25,7 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
@@ -281,7 +282,6 @@ export async function POST(
             priorityReviews: null,
             triggersFiredSinceLastRun: [],
             triggersMatchingNow: [],
-            latestDigest: null,
             earnings: { reportingSoon: [], justReported: [] },
             filings: { recent: [] },
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
@@ -509,6 +509,12 @@ export async function POST(
         // block that used to exist here (the sentinel runId FK-violated on
         // TradeDecision). The block is now explicit — see
         // UNSCOPED_BLOCKED_WRITES where the tool allowlist is filtered.
+        //
+        // Its book is the one the app has selected, the book every page
+        // shows (environment.actions.ts). It used to stay PAPER whatever the
+        // screen showed, so on a LIVE account its portfolio read was empty.
+        runEnvironment = await getCurrentEnvironment();
+        alpacaCreds = (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
         if (!runId && chatSessionId) {
           const bySession = await prisma.researchRun.findFirst({
             where: {

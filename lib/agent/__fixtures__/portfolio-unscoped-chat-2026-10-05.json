@@ -1,0 +1,11 @@
+{
+  "_source": "The account's open LIVE book on 2026-10-05, read by a chat with no analyst selected (run cmuw09ivh000504jy77wnixw0). Four of its twelve positions, one or more per analyst. Symbols, analysts, average costs, peaks, stops and targets are the rows as they stood; prices are what that chat read. Quantities are not the account's: every position is 10 shares here. The digest narrative is a stand-in.",
+  "runId": "cmuw09ivh000504jy77wnixw0",
+  "positions": [
+    { "symbol": "MU", "analyst": "PEAD Specialist", "analystId": "cmnhxpjio000004jvox6kl6c7", "avgCost": 895.94, "positionStop": 969, "positionTarget": 1100, "peakPrice": 1091.66, "openedAt": "2026-07-17", "thesisId": "cmrp6chyu000h04l5roqq5ha1", "thesisStop": 1048, "thesisTarget": 1100, "price": 1063.96 },
+    { "symbol": "NVDA", "analyst": "PEAD Specialist", "analystId": "cmnhxpjio000004jvox6kl6c7", "avgCost": 218.23, "positionStop": 200.15, "positionTarget": 322, "peakPrice": 239.43, "openedAt": "2026-08-31", "thesisId": "cmtg9nbdy000204jpc6cwawgg", "thesisStop": 200.15, "thesisTarget": 322, "price": 238.9 },
+    { "symbol": "CEG", "analyst": "Secular Compounder", "analystId": "cmmqxola3000004lbj7c11bfn", "avgCost": 276.9, "positionStop": 248, "positionTarget": 360, "peakPrice": 303.4, "openedAt": "2026-08-13", "thesisId": "cmqb2ku1a000q04l6jtquuqr6", "thesisStop": 248, "thesisTarget": 360, "price": 267.62 },
+    { "symbol": "CORT", "analyst": "Catalyst Event PM", "analystId": "cmmmh0wxu000004js7yoyzvlf", "avgCost": 116.03, "positionStop": 103.9, "positionTarget": 152, "peakPrice": 121.475, "openedAt": "2026-09-30", "thesisId": "cmuhp4n4e000e04kx3vkxm5lr", "thesisStop": 103.9, "thesisTarget": 152, "price": 122.03 }
+  ],
+  "digest": { "date": "2026-10-05", "narrative": "Stand-in for the end-of-day digest: what moved, what was sold, what is near a level." }
+}
