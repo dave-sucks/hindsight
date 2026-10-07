@@ -131,3 +131,11 @@ describe("stale research: when it attaches", () => {
     expect(playbooksForFire({ action: "REVIEW", held: true }).map((p) => p.key)).not.toContain("stale-research");
   });
 });
+
+describe("plan problems: when it attaches", () => {
+  it("any plan flag on the row; none without one; never a trigger run", () => {
+    expect(playbooksForRow(row({ status: "WATCHING", resolved: { planSanity: [{ kind: "ENTRY_FAR_FROM_PRICE", text: "x" }] } }))).toEqual(["plan-problems"]);
+    expect(playbooksForRow(row({ status: "WATCHING", resolved: { planSanity: null } }))).toEqual([]);
+    expect(playbooksForFire({ action: "ENTER", held: false }).map((p) => p.key)).not.toContain("plan-problems");
+  });
+});

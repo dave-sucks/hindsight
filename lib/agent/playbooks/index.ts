@@ -15,10 +15,11 @@ import { earnings } from "./earnings";
 import { filings } from "./filings";
 import { protection } from "./protection";
 import { staleResearch } from "./stale-research";
+import { planProblems } from "./plan-problems";
 
 export type { Playbook } from "./types";
 
-export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner, earnings, filings, protection, staleResearch];
+export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner, earnings, filings, protection, staleResearch, planProblems];
 
 export function playbooksForRow(row: StockRow): string[] {
   return PLAYBOOKS.filter((p) => p.appliesToRow(row)).map((p) => p.key);

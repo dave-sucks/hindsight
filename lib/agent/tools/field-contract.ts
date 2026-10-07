@@ -61,7 +61,10 @@ const RULE_DEFS = {
   RISK_REWARD_FLOOR: {
     says: "A plan pays at least 2:1: (target − entry) ÷ (entry − stop). Below it the plan is refused with the arithmetic and the three legal answers (a real level, PASS, or set the plan down).",
     refusal: "invalid_thesis_shape — names the ratio, the three levels, and the fix.",
-    markers: { daily: "2:1", discovery: "2:1", chat: "2:1", writer: "2:1" },
+    // The morning text said it only in its list of plan flags, now the
+    // plan-problems playbook, which reaches a row with a flag. Writing a plan
+    // under 2:1 is refused with the arithmetic and the fix.
+    markers: { discovery: "2:1", chat: "2:1", writer: "2:1" },
   },
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
