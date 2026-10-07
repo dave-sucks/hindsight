@@ -34,9 +34,11 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 jest.mock("@/lib/alpaca", () => ({
-  getLatestPrices: jest.fn().mockResolvedValue({}),
-  getLatestPricesWithMeta: jest.fn().mockResolvedValue({ prices: {}, sources: {}, asOf: {}, fetchedAt: "2026-09-29T14:00:00.000Z" }),
   getBars: jest.fn().mockResolvedValue([]),
+}));
+// The live price (lib/market-data/live-quote): none, for every stock.
+jest.mock("@/lib/market-data/live-quote", () => ({
+  getLiveQuotes: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("@/lib/proposals/pending-entry", () => ({
   getPendingEntryTickers: jest.fn().mockResolvedValue(new Set()),

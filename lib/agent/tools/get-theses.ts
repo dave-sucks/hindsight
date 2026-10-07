@@ -33,7 +33,8 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { getAccount, getBars, getDailyRangePcts, getLatestPricesWithMeta } from "@/lib/alpaca";
+import { getAccount, getBars, getDailyRangePcts } from "@/lib/alpaca";
+import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
 import { readPrice } from "@/lib/market-data/quote-age";
@@ -443,6 +444,34 @@ export const getTheses = defineTool({
         t.status === "WATCHING" ||
         t.status === "PROMOTED",
     );
+
+    // The live price, once for the read, from the one place it comes from
+    // (lib/market-data/live-quote): the tape in the session, the last close
+    // outside it. The latest trade it replaces served a pre-market print as
+    // the price at 08:00 — DOCU 2026-10-06: $70.69 from one 100-share trade
+    // at 07:49, against a $70.03 close and a $68.22 day.
+    const livePrice: Record<string, number> = {};
+    if (liveTheses.length > 0) {
+      try {
+        const quotes = await getLiveQuotes(
+          liveTheses.map((t) => t.ticker),
+          { caller: "other", creds: ctx.alpacaCreds },
+        );
+        for (const [ticker, { quote }] of Object.entries(quotes)) {
+          if (!quote) continue;
+          livePrice[ticker] = quote.c;
+          if (quote.t > 0) priceAsOf[ticker] = new Date(quote.t * 1000).toISOString();
+        }
+      } catch (err) {
+        // getLiveQuotes answers every symbol — null where neither vendor had
+        // a price — and does not throw. If it ever does, the read stays
+        // alive and shows the book in full (review finding #3): without
+        // prices the price-dependent flags are null, and the actionable
+        // split would hide every row behind them.
+        priceFetchFailed = true;
+        console.warn("[get_theses] live quote fetch failed; matching-now skipped:", err);
+      }
+    }
 
     // ── The resolved ladder per thesis (the trigger cascade) ────────────
     // Every trigger consumer below reads from here rather than parsing
@@ -876,28 +905,7 @@ export const getTheses = defineTool({
         console.warn("[get_theses] activity scan failed; open fires read from the newest line only:", err);
       }
 
-      // Live quotes — one Alpaca call per unique ticker.
-      const uniqueTickers = Array.from(
-        new Set(liveTheses.map((t) => t.ticker)),
-      );
-      let priceByTicker: Record<string, number> = {};
-      try {
-        const lookup = await getLatestPricesWithMeta(uniqueTickers, ctx.alpacaCreds);
-        priceByTicker = lookup.prices;
-        Object.assign(priceAsOf, lookup.asOf);
-      } catch (err) {
-        // Review finding #3: when quotes are down, every price-dependent
-        // needsAction kind (TRIGGER_MATCHING_NOW / UNPROTECTED_GAIN /
-        // RUNNING_WINNER) degrades to null — under actionable detail that
-        // would silently collapse the whole winner book to quiet index rows
-        // on exactly the mornings data is flaky. Fail OPEN: degraded data
-        // forces full-book detail (see isFullDetail below).
-        priceFetchFailed = true;
-        console.warn(
-          "[get_theses] live quote fetch failed; matching-now skipped:",
-          err,
-        );
-      }
+      const priceByTicker = livePrice;
 
       const now = new Date();
       const pendingEntryTickers = ctx.analystId
@@ -998,20 +1006,7 @@ export const getTheses = defineTool({
     // ── Resolver: compute the per-row resolved envelope ──────────────
     // Reuses the live-price map already fetched for needsAction above.
     // Synchronous + cheap once the upstream queries are done.
-    const resolverPriceMap: Record<string, number> = {};
-    if (liveTheses.length > 0) {
-      // Reuse the price lookups from the needsAction block. Repeat the
-      // fetch here only if liveTheses was empty (i.e. no needsAction
-      // computation ran) but theses still need resolution.
-      const tickers = Array.from(new Set(liveTheses.map((t) => t.ticker)));
-      try {
-        const lookup = await getLatestPricesWithMeta(tickers, ctx.alpacaCreds);
-        Object.assign(resolverPriceMap, lookup.prices);
-        Object.assign(priceAsOf, lookup.asOf);
-      } catch {
-        /* degraded gracefully; envelope renders with currentPrice=null */
-      }
-    }
+    const resolverPriceMap: Record<string, number> = livePrice;
     // Daily ranges for the plan-sanity noise check (DAV-188): one batched
     // snapshot call, only for WATCHING rows that actually carry a stop +
     // entry to compare. Fail-open — absence just skips that one check.

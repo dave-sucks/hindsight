@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { finnhub } from "@/lib/agent/research-helpers";
+import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 
 export const getEarningsData = defineTool({
   description:
@@ -22,33 +22,24 @@ export const getEarningsData = defineTool({
   progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()} earnings`,
 
   execute: async ({ ticker }) => {
-    const [earningsResult, surprisesResult] = await Promise.all([
-      finnhub(`/calendar/earnings?symbol=${ticker}`, 2),
-      finnhub(`/stock/earnings?symbol=${ticker}&limit=8`, 2),
-    ]);
+    // One source for a stock's reports: lib/market-data/earnings-calendar,
+    // which the stock page reads too. It asks the calendar for a window, 100
+    // days back to 180 ahead: a quarter is about 91 days, so a stock that
+    // reports in 13 weeks is inside it, and Finnhub lists the quarter after
+    // as well. Asked by symbol alone, Finnhub answers with the last report
+    // only — JBL on 2026-10-07 came back as its 2026-09-30 report, which this
+    // tool called "next", while 2026-12-15 was scheduled. The next report is
+    // the earliest one dated today or later, Eastern, not yet reported.
+    const { next, latest, recent: history } = await getEarningsForSymbol(ticker);
+    const beats = history.filter((e) => e.actual != null && e.estimate != null && e.actual > e.estimate);
 
-    const earnings = earningsResult.data as {
-      earningsCalendar?: { date: string; epsEstimate: number | null }[];
-    } | null;
-    const surprises = surprisesResult.data;
-
-    const upcoming = earnings?.earningsCalendar?.[0];
-    const history = Array.isArray(surprises) ? surprises : [];
-    const beats = history.filter(
-      (e: { actual: number; estimate: number }) =>
-        e.actual != null && e.estimate != null && e.actual > e.estimate,
-    );
-
-    const nextEarnings = upcoming
-      ? { date: upcoming.date as string, epsEstimate: upcoming.epsEstimate as number | null }
-      : null;
+    const nextEarnings = next ? { date: next.reportDate, epsEstimate: next.epsEstimate } : null;
+    const lastReported = latest?.reportDate ?? null;
 
     const beatRate =
       history.length > 0
         ? (() => {
-            const periods = history
-              .map((e: { period?: string }) => e.period)
-              .filter(Boolean) as string[];
+            const periods = history.map((e) => e.period).filter(Boolean);
             const range =
               periods.length >= 2
                 ? `${periods[periods.length - 1]}–${periods[0]}`
@@ -57,21 +48,13 @@ export const getEarningsData = defineTool({
           })()
         : "no history";
 
-    const recentQuarters = history.slice(0, 4).map(
-      (e: {
-        period: string;
-        actual: number;
-        estimate: number;
-        surprise: number;
-        surprisePercent: number;
-      }) => ({
-        period: e.period,
-        actualEps: e.actual,
-        estimatedEps: e.estimate,
-        surprise: e.surprise,
-        surprisePct: e.surprisePercent,
-      }),
-    );
+    const recentQuarters = history.slice(0, 4).map((e) => ({
+      period: e.period,
+      actualEps: e.actual,
+      estimatedEps: e.estimate,
+      surprise: e.actual != null && e.estimate != null ? Math.round((e.actual - e.estimate) * 10_000) / 10_000 : null,
+      surprisePct: e.surprisePct,
+    }));
 
     const sParts: string[] = [ticker];
     if (nextEarnings) {
@@ -80,12 +63,16 @@ export const getEarningsData = defineTool({
           nextEarnings.epsEstimate != null ? ` (est. $${nextEarnings.epsEstimate})` : ""
         }`,
       );
+    } else if (lastReported) {
+      sParts.push(`last reported ${lastReported}; next date not yet announced`);
     }
     if (beatRate !== "no history") sParts.push(`Beat rate: ${beatRate}`);
 
     const tickerSummary = nextEarnings
       ? `Next earnings ${nextEarnings.date}. Beat rate: ${beatRate}`
-      : `No upcoming earnings. Beat rate: ${beatRate}`;
+      : lastReported
+        ? `Last reported ${lastReported}; next date not yet announced. Beat rate: ${beatRate}`
+        : `No upcoming earnings. Beat rate: ${beatRate}`;
 
     return {
       summary: sParts.join(" — ") + ".",

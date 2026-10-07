@@ -210,7 +210,9 @@ interface HistoryRow {
  */
 export async function getEarningsForSymbol(ticker: string, now = new Date()): Promise<SymbolEarnings> {
   const T = ticker.toUpperCase();
-  const today = isoDay(now);
+  // Today in Eastern: after 8 PM ET the UTC date is already tomorrow, and a
+  // report dated today would drop out of `next`.
+  const today = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const [calendar, history] = await Promise.all([
     fetchCalendarRows({ symbol: T, from: isoDay(addDays(now, -100)), to: isoDay(addDays(now, 180)) }),
     finnhub(`/stock/earnings?symbol=${T}&limit=8`, 1),
