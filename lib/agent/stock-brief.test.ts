@@ -269,3 +269,17 @@ describe("stockLine — one stock, one line", () => {
     });
   });
 });
+
+describe("standingRules — the analyst's and the account's rules, once for a read", () => {
+  it("each as its sentence and id, where it is set, and which stocks it reaches when not all", () => {
+    const { standingRules } = jest.requireActual("@/lib/agent/stock-brief") as typeof import("@/lib/agent/stock-brief");
+    const rules = standingRules([
+      { trigger: { id: "a1", level: "ANALYST", action: "EXIT", predicate: { watch: "move", is: "below", value: 25, variable: "peak" }, rationale: "The only automatic sale." }, appliesTo: "held" },
+      { trigger: { id: "c1", level: "ACCOUNT", action: "REVIEW", predicate: { watch: "report", is: "before", value: 5 } } },
+    ]);
+    expect(rules).toEqual([
+      { id: "a1", says: "Sell if below 25% from the high since we bought", setOn: "analyst", appliesTo: "held" },
+      { id: "c1", says: "Review if within 5 days before earnings", setOn: "account" },
+    ]);
+  });
+});

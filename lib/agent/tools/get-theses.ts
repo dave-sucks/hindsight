@@ -24,7 +24,7 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { stockBrief, stockLine, type StockLineFacts, type StockRow } from "@/lib/agent/stock-brief";
+import { standingRules, stockBrief, stockLine, type StandingRule, type StockLineFacts, type StockRow } from "@/lib/agent/stock-brief";
 import { prisma } from "@/lib/prisma";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
@@ -33,6 +33,7 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
+import { resolveLadder } from "@/lib/agent/triggers/levels";
 import { getAccount, getBars, getDailyRangePcts, getLatestPricesWithMeta } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
@@ -168,10 +169,14 @@ export const getTheses = defineTool({
     const { cards, ...rest } = data;
     const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
     const research = input?.include_research === true;
+    // The analyst's and the account's standing rules, once, first; the rows
+    // carry only their own triggers.
+    const { analystRules, ...others } = rest as { analystRules?: StandingRule[] } & Record<string, unknown>;
     return {
       ...result,
       data: {
-        ...rest,
+        ...(analystRules?.length ? { analystRules: standingRules(analystRules) } : {}),
+        ...others,
         ...(Array.isArray(rest.theses) ? { theses: (rest.theses as StockRow[]).map((row) => stockBrief(row, { named, research })) } : {}),
         ...(Array.isArray(rest.quiet_theses) ? { quiet_theses: (rest.quiet_theses as StockLineFacts[]).map(stockLine) } : {}),
         ...(!named && input?.include_history
@@ -452,6 +457,22 @@ export const getTheses = defineTool({
     const levelSources = ctx.analystId
       ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId)
       : undefined;
+    // The rules every stock inherits, as they resolve on a holding and on a
+    // watch (a position's rules do not reach a watch): each once, marked when
+    // it reaches only one of them.
+    const analystRules: StandingRule[] = (() => {
+      if (!levelSources) return [];
+      const on = (state: "HELD" | "WATCHING") =>
+        resolveLadder({ thesis: [], analyst: levelSources.analyst, account: levelSources.account, state, direction: "LONG" });
+      const held = on("HELD");
+      const watched = on("WATCHING");
+      const heldIds = new Set(held.map((t) => t.id));
+      const watchedIds = new Set(watched.map((t) => t.id));
+      return [...held, ...watched.filter((t) => !heldIds.has(t.id))].map((t) => ({
+        trigger: t,
+        ...(heldIds.has(t.id) && !watchedIds.has(t.id) ? { appliesTo: "held" as const } : !heldIds.has(t.id) ? { appliesTo: "watched" as const } : {}),
+      }));
+    })();
     const ladderByThesisId = new Map<string, Trigger[]>(
       theses.map((t) => [
         t.id,
@@ -1584,6 +1605,7 @@ export const getTheses = defineTool({
       summary: summaryWithSold,
       data: {
         ...(priceWarnings.length > 0 ? { priceWarnings } : {}),
+        ...(analystRules.length > 0 ? { analystRules } : {}),
         count: theses.length,
         active: activeCount,
         watching: watchingCount,

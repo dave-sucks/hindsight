@@ -146,3 +146,28 @@ describe("get_theses — the read", () => {
     expect(screenRow.bearCase).toEqual(bear);
   });
 });
+
+describe("get_theses — the analyst's rules in a read", () => {
+  it("come once, first, as sentences; the rows carry only their own triggers", async () => {
+    const { getTheses } = await import("@/lib/agent/tools/get-theses");
+    const tool = getTheses({ runId: "r", userId: "u", analystId: "a" } as never) as unknown as {
+      toModelOutput: (o: { toolCallId: string; input: unknown; output: unknown }) => { value: { data: Record<string, unknown> } };
+    };
+    const trail = { id: "a1", level: "ANALYST", action: "EXIT", predicate: { watch: "move", is: "below", value: 25, variable: "peak" } };
+    const own = { id: "o1", action: "EXIT", predicate: { watch: "price", is: "below", value: 280 }, rationale: "Under the 200-day." };
+    const output = {
+      ok: true, ui: "thesis-card", summary: "", sources: [],
+      data: {
+        analystRules: [{ trigger: trail, appliesTo: "held" }],
+        count: 1,
+        theses: [{ id: "t1", ticker: "CEG", status: "HOLDING", direction: "LONG", triggers: [own], inheritedTriggers: [trail], resolved: {} }],
+        quiet_theses: [],
+        cards: [],
+      },
+    };
+    const data = tool.toModelOutput({ toolCallId: "c", input: {}, output }).value.data;
+    expect(Object.keys(data)[0]).toBe("analystRules");
+    expect(data.analystRules).toEqual([{ id: "a1", says: "Sell if below 25% from the high since we bought", setOn: "analyst", appliesTo: "held" }]);
+    expect((data.theses as Array<{ triggers: Array<{ id: string }> }>)[0].triggers.map((t) => t.id)).toEqual(["o1"]);
+  });
+});

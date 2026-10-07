@@ -318,6 +318,28 @@ export function stockBrief(row: StockRow, opts: { named: boolean; research?: boo
   return out;
 }
 
+/** A standing rule of the analyst's or the account's, with the stocks it applies to when that is not all of them. */
+export interface StandingRule {
+  trigger: unknown;
+  /** "held" or "watched" when the rule applies to only one. */
+  appliesTo?: "held" | "watched";
+}
+
+/**
+ * The analyst's and the account's standing rules, once for a read, each as
+ * its sentence and id, the way a row's triggers read. Every stock carries
+ * them unless it sets its own in the same place; rows do not repeat them.
+ */
+export function standingRules(rules: StandingRule[]): Obj[] {
+  return rules
+    .map((r) => {
+      const level = String((r.trigger as Obj)?.level);
+      const entry = triggerEntry(r.trigger, r.appliesTo !== "watched", LEVEL_WORDS[level] ?? "analyst");
+      return entry ? { ...entry, ...(r.appliesTo ? { appliesTo: r.appliesTo } : {}) } : null;
+    })
+    .filter((e): e is Obj => e != null);
+}
+
 /** The facts a one-line stock is written from. */
 export interface StockLineFacts {
   id: string;
