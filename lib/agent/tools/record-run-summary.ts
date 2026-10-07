@@ -61,15 +61,15 @@ export const recordRunSummary = defineTool({
           action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS", "FAILED"])
             .describe(
               "What ACTUALLY happened to this ticker this run. Choose by what you have, not what you thought:\n" +
-              "  INITIATE = opened a new position (place_trade fired success).\n" +
+              "  INITIATE = opened a new position (the buy order went through).\n" +
               "  ADD      = added to an existing position.\n" +
               "  HOLD     = you currently HOLD an open position in this ticker and kept it. Do NOT use HOLD for a watched/tracked thesis where you have no position — that is WATCH.\n" +
               "  REDUCE   = trimmed an existing position.\n" +
-              "  EXIT     = closed an existing position (close_position fired).\n" +
+              "  EXIT     = closed an existing position (the sale went through).\n" +
               "  WATCH    = you do NOT have a position; you maintained or updated the thesis to keep tracking. This is the right verb whenever you edited a thesis on a ticker you don't own.\n" +
               "  REMOVE_WATCH = removed from watchlist / dropped tracking.\n" +
               "  PASS     = researched and rejected; no thesis maintained.\n" +
-              "  FAILED   = place_trade returned success: false (rejected by broker, duplicate, etc).",
+              "  FAILED   = the buy order was refused (by the broker, as a duplicate, etc).",
             ),
           composite_score: z
             .number()
@@ -77,12 +77,12 @@ export const recordRunSummary = defineTool({
             .max(10)
             .optional()
             .describe(
-              "Composite of the six decision-framework dimensions from record_thesis.scoring (avg, 0-10). Required when scoring was provided to record_thesis.",
+              "The thesis's score out of 10, when it has one.",
             ),
         }),
       )
       .describe(
-        "Every ticker you researched in Step 3, ranked by composite_score (or by conviction if composite unavailable), with the action that ACTUALLY happened in Step 5. HOLD is reserved for tickers you currently own. For a thesis edit on a ticker you don't own, use WATCH. Use FAILED for tickers where place_trade returned success: false.",
+        "Every ticker you researched in Step 3, ranked by composite_score (or by conviction if composite unavailable), with the action that ACTUALLY happened in Step 5. HOLD is reserved for tickers you currently own. For a thesis edit on a ticker you don't own, use WATCH. Use FAILED for tickers whose buy order was refused.",
       ),
     exposure_breakdown: z
       .object({

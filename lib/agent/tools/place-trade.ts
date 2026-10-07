@@ -79,7 +79,7 @@ const placeTradeSchema = z.object({
     // model typed ($11,222 on PLTR, 2026-09-25) is what killed a fired buy.
     notional: z.number().optional().describe("The dollar amount you want. Omit it and the buy is sized by the analyst's rules (risk per trade over the stop distance, inside its smallest / largest trade)."),
     shares: z.number().optional().describe("A share count, if you want a specific one; prefer notional."),
-    thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
+    thesis_id: z.string().describe("The thesis this trade is for. Every trade links to one."),
     entry_rationale: z
       .string()
       .optional()
@@ -96,7 +96,7 @@ const placeTradeSchema = z.object({
 
 export const placeTrade = defineTool({
   description:
-    "Place a paper trade on Alpaca. The trade will be executed immediately. Requires thesis_id from record_thesis. Will fail if any analyst already holds an open position in this ticker.",
+    "Place a paper trade on Alpaca. The trade will be executed immediately. Requires the thesis_id. Will fail if any analyst already holds an open position in this ticker.",
   schema: placeTradeSchema,
   // A run's model never sees a size field. The analyst's rules size the
   // buy; there is one way to size a buy (DAV-317).

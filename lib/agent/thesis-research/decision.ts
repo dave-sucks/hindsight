@@ -21,7 +21,7 @@ import { editNumber, editTriggerOpSchema, triggerInputSchema, triggerSchema, tri
 import { shapeOf } from "@/lib/agent/triggers/condition";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { type Setup } from "@/lib/agent/knowledge/setups";
-import { thesisFields } from "@/lib/agent/tools/thesis-fields";
+import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
 /** The fields the writer shares with record_thesis and update_thesis, defined once; strict: no numeric ranges (Anthropic strict mode). */
 const W = thesisFields({ strict: true });
@@ -63,32 +63,13 @@ export const thesisDecisionSchema = z.object({
   conviction: W.conviction.optional(),
   conviction_rationale: W.conviction_rationale.optional(),
   variant_view: W.variant_view.optional(),
-  prior_exit_acknowledgment: z
-    .string()
-    .optional()
-    .describe(
-      "REQUIRED when this analyst SOLD this ticker within the last 14 days and your entry_price is at/above that exit price (the exit details are in your prompt). One line that genuinely engages with the sale — why this is a new setup, not a re-buy of the dip just sold. Omit when no recent sale applies.",
-    ),
-  triggers: z
-    .array(writerTrigger)
-    .optional()
-    .describe(
-      "MINT ONLY. Optional custom trigger ladder; omit to accept the horizon-default template (right answer for most theses). " +
-        "On a refresh use add_triggers / edit_triggers / remove_trigger_ids instead.",
-    ),
-  // ── Refresh: triggers change one at a time (DAV-242) ─────────────────
-  add_triggers: z
-    .array(writerTrigger)
-    .optional()
-    .describe("REFRESH ONLY. Triggers to add. Adding where one exists in the same bucket edits that one."),
-  edit_triggers: z
-    .array(editTriggerOpSchema)
-    .optional()
-    .describe("REFRESH ONLY. Edit a trigger by the id shown in EXISTING THESIS. A value change REQUIRES rationale."),
-  remove_trigger_ids: z
-    .array(z.string())
-    .optional()
-    .describe("REFRESH ONLY. Trigger ids to remove. To set a priced plan down, remove the buy, floor and target triggers and keep a REVIEW wake."),
+  prior_exit_acknowledgment: W.prior_exit.optional(),
+  // A mint sends `triggers`; a refresh edits one at a time (DAV-242). Sending
+  // the wrong one is refused with the right one named (validateThesisDecision).
+  triggers: z.array(writerTrigger).optional().describe(TRIGGER_EDITS.ladder),
+  add_triggers: z.array(writerTrigger).optional().describe(TRIGGER_EDITS.add),
+  edit_triggers: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
+  remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
 });
 
 export type ThesisDecisionInput = z.infer<typeof thesisDecisionSchema>;
