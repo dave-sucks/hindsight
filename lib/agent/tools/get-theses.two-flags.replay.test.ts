@@ -46,11 +46,13 @@ async function openingRead(rows: Record<string, unknown>[], quotes: Record<strin
     args: {},
     quotes,
   });
-  const data = result.data as { theses: Array<{ ticker: string; resolved?: { planSanity?: Array<{ kind: string }> | null } }>; quiet_theses: Array<{ ticker: string }> };
+  const data = result.data as { theses: Array<{ ticker: string; resolved?: { planSanity?: Array<{ kind: string; text: string }> | null } }>; quiet_theses: Array<{ ticker: string }> };
+  const planSanity = (ticker: string) => data.theses.find((t) => t.ticker === ticker)?.resolved?.planSanity ?? [];
   return {
     full: data.theses.map((t) => t.ticker),
     quiet: (data.quiet_theses ?? []).map((t) => t.ticker),
-    flags: (ticker: string) => (data.theses.find((t) => t.ticker === ticker)?.resolved?.planSanity ?? []).map((f) => f.kind),
+    flags: (ticker: string) => planSanity(ticker).map((f) => f.kind),
+    text: (ticker: string, kind: string) => planSanity(ticker).find((f) => f.kind === kind)?.text ?? "",
   };
 }
 
@@ -107,5 +109,7 @@ describe("decision 4 — two flags stop listing a stock by themselves", () => {
     const r = await openingRead([watched({ id: "t_luxe", ticker: "LUXE", triggers: [] })], { LUXE: 12 });
     expect(r.full).toContain("LUXE");
     expect(r.flags("LUXE")).toContain("NOTHING_CAN_WAKE");
+    // "Let it go" names its call: with no level to remove, an update that sets nothing lets nothing go.
+    expect(r.text("LUXE", "NOTHING_CAN_WAKE")).toContain('or let it go (`change_status: "ARCHIVED"`).');
   });
 });

@@ -33,6 +33,9 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("Set the plan down with the reason");
     expect(prompt).toContain("ENTRY_RAISED_AWAY");
   });
+  it("a stock nothing can wake is let go by its call, in the flag's own words", () => {
+    expect(prompt).toContain('give it a wake, or let it go (`change_status: "ARCHIVED"`))');
+  });
   it("regime and cash are inputs: the cash line names today's names at their buy level", () => {
     expect(prompt).toContain("## Regime and cash");
     expect(prompt).toContain("Cash is $31,000 (31% of equity)");

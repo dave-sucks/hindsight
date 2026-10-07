@@ -203,7 +203,7 @@ export function computePlanSanity(args: {
   if (args.ownTriggerCount === 0 && entryPrice == null) {
     flags.push({
       kind: "NOTHING_CAN_WAKE",
-      text: `${direction} with no buy price, no trigger and no review of its own: nothing can bring this stock back. Price the level you are waiting for (the pullback to a rising average, the base's pivot) with its stop and a target at 2:1 or better, or give it the wake that brings it back (a REVIEW at a price, or a short day-count review), or let it go.`,
+      text: `${direction} with no buy price, no trigger and no review of its own: nothing can bring this stock back. Price the level you are waiting for (the pullback to a rising average, the base's pivot) with its stop and a target at 2:1 or better, or give it the wake that brings it back (a REVIEW at a price, or a short day-count review), or let it go (\`change_status: "ARCHIVED"\`).`,
     });
   }
   // ── NO_BUY_LEVEL (DAV-321) ──────────────────────────────────────────

@@ -142,7 +142,7 @@ const updateSchema = z.object({
     .optional()
     .describe(
       "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
-        "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead. " +
+        "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead, when it has them. " +
         "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). " +
         "Holding and sold are not set here: place_trade and close_position flip them when the order fills. A researched decline is direction: \"PASS\".",
     ),
