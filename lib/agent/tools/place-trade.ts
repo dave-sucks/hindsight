@@ -96,7 +96,7 @@ const placeTradeSchema = z.object({
 
 export const placeTrade = defineTool({
   description:
-    "Place a paper trade on Alpaca. The trade will be executed immediately. Requires the thesis_id. Will fail if any analyst already holds an open position in this ticker.",
+    "Place a trade on Alpaca. Requires the thesis_id.",
   schema: placeTradeSchema,
   // A run's model never sees a size field. The analyst's rules size the
   // buy; there is one way to size a buy (DAV-317).

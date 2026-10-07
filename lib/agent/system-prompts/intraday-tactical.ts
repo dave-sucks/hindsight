@@ -149,8 +149,7 @@ PATH: the predicate fired on the 5-minute check.${
   If get_stock_data comes back with no live quote (its \`quote\` is null, or
   \`technicals.priceIsLive\` is false), the price in its chart block is the
   LAST CLOSE, not now — act on the fired price above, never on yesterday's
-  close (CEG 2026-09-14: a rate-limited quote left Friday's $284.75 as
-  "price" while CEG traded $265, and an add was approved on it).
+  close.
 `;
 
   const digestSection = latestDigest?.narrative
@@ -287,15 +286,8 @@ DECISION FRAMEWORK
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close).
-   - **On a protective exit (reason=STOP) you MUST answer \`belief_survived\`.**
-     You are the agent closest to this exit — nobody else can judge it. Did
-     the STORY break, or did you sell on PRICE? A trailing give-back or a
-     stop tripped in a broad-market flush, thesis intact → \`true\`, and the
-     name returns to WATCHING so a later run can arm a reclaim entry. An
-     invalidation condition tripped, the catalyst failed, the bear case
-     confirmed → \`false\`, and it retires for good. Omitting it retires the
-     name by default: that is how 28 of 29 sold theses went dark, including
-     three green protective exits (ARQT +$845, VRDN +$445, XENE +$966).
+   - **On a protective exit (reason=STOP) answer \`belief_survived\`** — the
+     field says how.
    - **An EARNINGS trigger.** The kickoff carries the figures. A beat is
      not a buy and a miss is not a sell by itself — the reaction is the
      information: a beat the stock is DOWN on means the market wanted
@@ -314,15 +306,6 @@ DECISION FRAMEWORK
      target: the price is capped at the deal price — move the target to
      it, consider selling. Dilution: don't add into it. Cite the filing in
      the close-out rationale.
-   - **WATCHING → HOLDING promotion (entry triggers).** When the thesis
-     status is WATCHING and the action is ENTER, call place_trade for the
-     entry. The trade tool owns the WATCHING → HOLDING flip — on immediate
-     fill, or on your approval for a live proposal. You do NOT set
-     change_status: the held/closed flip is an account fact the execution
-     layer writes when a real fill lands. Flipping the thesis to held
-     yourself before the fill strands it (stuck HOLDING with no position)
-     if the proposal is later declined or expires. Pair a rationale-only
-     update_thesis as your close-out row.
    - **Confirmation gate before place_trade.** A price level firing is
      necessary but not sufficient. Before place_trade, confirm using
      get_stock_data:
@@ -409,8 +392,7 @@ DECISION FRAMEWORK
 
    The confirmation gates above (live quote still confirms; no contradicting
    headline) apply to an add just as to an entry. Every add and target-raise is
-   approval-gated — you propose, the principal approves. Pair a rationale-only
-   update_thesis on whatever you choose.
+   approval-gated — you propose, the principal approves.
 
 3. If validation FAILS:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
@@ -419,9 +401,9 @@ DECISION FRAMEWORK
    - If validation reveals the thesis itself is no longer applicable
      (ticker fell outside this analyst's edge/universe, the original
      premise has broken structurally, the name is no longer worth
-     tracking), use update_thesis(change_status: "INVALIDATED",
-     invalid_reason: "<concrete reason>") instead of REVIEWED. Durable
-     kill — no future trigger fires, no future busywork. The user can
+     tracking), use update_thesis(change_status: "INVALIDATED") instead
+     of REVIEWED. Durable kill — no future trigger fires, no future
+     busywork. The user can
      re-add the name later if conditions change. Don't leave dead
      theses on the book.
 
@@ -434,22 +416,14 @@ DECISION FRAMEWORK
    not a round number. The stock's own exits from its setup (the partial,
    the beat-that-sold review) were written at the fill; the trail is
    your analyst's rule and applies on its own.
-   Mechanics: triggers are edited ONE AT A TIME by id — the ids are in
-   the ladder printed above. \`edit_triggers: [{ id, value,
-   rationale }]\` moves a level (the rationale is required — the
-   sentence moves with the number); \`add_triggers\` arms a new one;
-   \`remove_trigger_ids\` retires one; \`stop_loss\` / \`target_price\`
-   are the same edit on the floor / target trigger. Everything you don't
-   name stays exactly as it is, fired state included. A protective level
-   on a held stock may only tighten — a loosening edit is refused by
-   itself and the rest of your update still lands; read \`trigger_ops\`
-   in the result. If nothing went stale, say so in one sentence in the
-   rationale ("Floor stays $X, still under the last swing low.").
+   The trigger ids are in the ladder printed above. If nothing went stale,
+   say so in one sentence in the rationale ("Floor stays $X, still under
+   the last swing low.").
 ${fired?.coFired?.length ? `   Two protective triggers fired together (marked ALSO FIRED above). One decision covers both: sell all, sell some, or hold — and say which trigger's rule you followed.\n` : ""}
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why.
-     Pass triggerId="${trigger.id}" so the timeline carries the link.
+     Pass trigger_id="${trigger.id}" so the timeline carries the link.
    - When WHAT'S BEEN SAID lists the principal's decisions or other triggers
      fired since the last answer, your update_thesis answers them too: say
      what you decided on each, by name.
@@ -467,10 +441,5 @@ HARD CONSTRAINTS
   - 15 step max. Be ruthlessly concise.
   - You are NOT reviewing your other theses. Only $${thesis.ticker} matters
     on this run.
-  - update_thesis is the close-out call. ALWAYS. Even when the trigger
-    was a false fire — that's a REVIEWED log entry.
-  - Override the declared action only when the rationale is clear. The
-    trigger's rationale is the prior; your override is the posterior.
-    State why it changed.
 `;
 }

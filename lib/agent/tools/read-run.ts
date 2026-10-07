@@ -2,7 +2,7 @@
  * read_run — Principal-chat read tool.
  *
  * Pulls one ResearchRun in detail: status, mode, parameters snapshot,
- * theses produced, trade decisions taken, briefing standup, and the
+ * theses produced, trade decisions taken, and the
  * toolStats observability bundle. The agent uses this to answer
  * "why did that run fail" / "what did $analyst's morning run decide".
  */
@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 
 export const readRun = defineTool({
   description:
-    "Read one ResearchRun in detail — status, mode, theses produced, decisions taken, briefing standup, tool stats. Pass run_id from list_runs. Use this to triage a specific run: 'why did the 8 AM Catalyst run fail', 'what did discovery mint on Sunday'.",
+    "Read one ResearchRun in detail — status, mode, theses produced, decisions taken, tool stats. Pass run_id from list_runs. Use this to triage a specific run: 'why did the 8 AM Catalyst run fail'.",
   schema: z.object({
     run_id: z.string(),
   }),

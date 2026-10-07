@@ -38,7 +38,7 @@ import {
 
 export const completeRun = defineTool({
   description:
-    "STAGE 6. Mark the run complete. This is your absolute final tool call. No arguments needed.",
+    "Mark the run complete. This is your final tool call. No arguments needed.",
   schema: z.object({}),
   ui: "tool-ui" as const,
   gateLog: "complete_run",

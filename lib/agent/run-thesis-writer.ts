@@ -375,11 +375,7 @@ decision by the orchestrator — you are writing the research and the plan.`;
   • At least one EXIT rung on the stop ({ watch: "price", is: "below",
     value: stop } for LONG, is: "above" for SHORT) — that's the
     automated stop-loss path.
-  • Triggers are edited ONE AT A TIME: edit_triggers by the ids listed
-    under EXISTING THESIS (a value change needs a rationale),
-    add_triggers for a new one, remove_trigger_ids to retire one.
-    Everything you don't name stays exactly as it is. Most refreshes
-    need no trigger ops at all.
+  • Most refreshes need no trigger ops at all.
   • PROTECTIVE LEVELS ONLY TIGHTEN on a stock we own. The stop on record
     is $${opts.existingThesis?.stopLoss ?? "—"}: submit that number or a
     tighter one. A looser stop is refused by itself — the rest of the
@@ -400,15 +396,15 @@ decision by the orchestrator — you are writing the research and the plan.`;
     there is no position.
   • The ENTER rung follows the level: { watch: "price", is: "above",
     value: entry_price } for a breakout above the tape, is: "below" for
-    a pullback below it (mirror for SHORT). A setup already true today
-    is an entry at or a few cents past the live price.
+    a pullback below it (mirror for SHORT).
   • A chart condition from the setup's entry rule that isn't a price
     (within 2% of the 50-day for a pullback: { watch: "move", is:
     "near", value: 2, variable: "sma50" }; the days after the report
     for PEAD; a gap) can be added as its own ENTER trigger next to the
     price level — whichever comes true first wakes the buy decision.
   • Most theses need NO custom triggers — omit the field and the
-    horizon-default template (entry/stop/review) is applied for you.
+    horizon-default template (entry/stop/target, no review clock) is
+    applied for you.
   • Setting an existing priced plan DOWN on a refresh (levels no longer
     worth holding): omit entry/target/stop AND send remove_trigger_ids
     naming the buy, floor and target trigger ids from EXISTING THESIS,
@@ -489,7 +485,7 @@ occurred. Frame future catalysts as "expected" / "consensus expects" —
 NEVER "reported" / "beat" / "missed". If a web search result claims a
 future-dated catalyst already printed (past-tense verbs + specific
 actuals), it is a hallucination — discard the ENTIRE claim, do not
-"fix" the number (production incident 2026-05-26, PR #354). Cross-check
+"fix" the number. Cross-check
 every earnings claim against the Earnings History rows in the
 ground-truth data: if the quarter isn't there, it hasn't reported.
 
@@ -554,9 +550,7 @@ every field; the judgment rules:
      use it when the research doesn't support a directional edge from
      YOUR strategy's angle${opts.mode === "refresh" ? " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)" : ""}.
    • R/R FLOOR — 2:1 MANDATORY. LONG: (target−entry)/(entry−stop);
-     SHORT: (entry−target)/(stop−entry). Below 2:1 the tool rejects:
-     tighten the stop to a REAL technical level, raise the target to a
-     CITED level, or go PASS. Never fabricate levels to clear the gate.
+     SHORT: (entry−target)/(stop−entry).
    • SETUP FIRST. Name the setup (setup_id) from YOUR SETUPS, then take
      every number from its rules and the Price structure block — never a
      round number, never a feel:
@@ -602,12 +596,8 @@ every field; the judgment rules:
      mechanism ("NVDA prints ≥$50B DC revenue by Q4 FY26 as Blackwell
      replaces Hopper"). It is THE claim of record every other agent
      reads. Current-state descriptions belong in Snapshot, not here.
-   • conviction is YOUR REAL VIEW, independent of composite: STRONG =
-     top 2-3 calls per cycle, urgent; HIGH = clear edge, want it in
-     size; MEDIUM = the honest middle (most theses); LOW = tracking,
-     not enthusiastic. STRONG/HIGH require a variant_view — no variant
-     view means your tier is MEDIUM. conviction_rationale is the
-     judgment in plain speech, NOT a paraphrase of the scoring object.
+   • conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest
+     middle (most theses).
    • You do not size the trade. place_trade sizes it by risk from your
      stop: the account loses about the analyst's risk per trade if the
      stop hits, scaled by conviction (LOW ×0.5 … STRONG ×1.25). A tight,

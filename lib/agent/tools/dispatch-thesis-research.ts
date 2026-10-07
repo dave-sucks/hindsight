@@ -80,21 +80,6 @@ export const dispatchThesisResearch = defineTool({
       .transform(trimScreenRow)
       .optional()
       .describe("The numbers that put this name in front of you, one line (\"reported 09-10, EPS +22% vs est, revenue +6%, gapped 9% on 3.1× volume, holding above the gap-day low $41.20\")."),
-    promotion_context: z
-      .object({
-        paperTenureDays: z.number().nullable(),
-        paperRealizedPnl: z.number().nullable(),
-        paperReviewCount: z.number().nullable(),
-        promotedAt: z.string().nullable(),
-      })
-      .optional()
-      .describe(
-        "PAPER→LIVE promotion framing. Usually you don't pass this — when mode='refresh' " +
-          "and the existing thesis is in PROMOTED status, this tool auto-populates from the " +
-          "Thesis row (paperTenureDays / paperRealizedPnl / paperReviewCount / promotedAt). " +
-          "Forwarded to the thesis-writer worker so its research call can frame the " +
-          "Decision Fields block around RE-ENTER / DOWNGRADE / INVALIDATE.",
-      ),
   }),
   ui: "thesis-card" as const,
   groupId: "thesis-dispatch",
@@ -148,18 +133,15 @@ export const dispatchThesisResearch = defineTool({
       };
     }
 
-    // Auto-populate promotion_context for refreshes on PROMOTED theses. This
-    // is the path the promote-analyst action takes when fanning out rewrites
-    // for the first live run. The caller doesn't need to know whether the
-    // thesis is PROMOTED — we read the four context fields off the row and
-    // thread them into the worker so its research prompt
-    // gets the RE-ENTER / DOWNGRADE / INVALIDATE framing.
-    let effectivePromotionContext = args.promotion_context;
-    if (
-      args.mode === "refresh" &&
-      args.existing_thesis_id &&
-      !effectivePromotionContext
-    ) {
+    // Promotion context for refreshes on PROMOTED theses, read off the row.
+    // The model is never shown a field for it: no stock has ever been
+    // promoted, and the row is the only source of these numbers. We read the
+    // four context fields and thread them into the worker so its research
+    // prompt gets the RE-ENTER / DOWNGRADE / INVALIDATE framing.
+    let effectivePromotionContext:
+      | { paperTenureDays: number | null; paperRealizedPnl: number | null; paperReviewCount: number | null; promotedAt: string | null }
+      | undefined;
+    if (args.mode === "refresh" && args.existing_thesis_id) {
       const existing = await prisma.thesis.findUnique({
         where: { id: args.existing_thesis_id },
         select: {
