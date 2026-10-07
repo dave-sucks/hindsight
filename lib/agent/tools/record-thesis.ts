@@ -6,11 +6,11 @@
  */
 
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
-import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
 import { stampWrittenPrice } from "@/lib/agent/triggers/written-price";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { thesisFields } from "@/lib/agent/tools/thesis-fields";
 import { RECENTLY_SOLD_WINDOW_DAYS } from "@/lib/agent/sold-review";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
@@ -30,41 +30,14 @@ import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 
-// ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
-// Two content shapes for the 9 sections, mirroring the parsed output of
-// write_thesis_research. See docs/plans/THESIS_CLEANUP.md §1.2.
-const sectionCitationSchema = z
-  .object({
-    url: z.string().optional(),
-    title: z.string().optional(),
-    domain: z.string().optional(),
-    kind: z.enum(["STRUCTURED", "WEB"]).optional(),
-  })
-  .describe("Citation chip (one URL or [STRUCTURED:...] reference).");
+// The fields record_thesis shares with update_thesis and submit_thesis are defined once (thesis-fields.ts).
+const F = thesisFields();
 
-const sectionTextSchema = z
-  .object({
-    text: z.string(),
-    citations: z.array(sectionCitationSchema).optional(),
-  })
-  .describe("Prose paragraph with optional citations.");
-
-const sectionBulletSchema = z
-  .object({
-    bullets: z.array(
-      z.object({
-        text: z.string(),
-        citation: sectionCitationSchema.optional(),
-      }),
-    ),
-  })
-  .describe("Bulleted list, one citation per bullet.");
-
-const thesisFields = z.object({
+const recordFields = z.object({
   ticker: z.string(),
   company_name: z.string().optional().describe("Company name from get_stock_data"),
   exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
-  direction: z.enum(["LONG", "SHORT", "PASS"]),
+  direction: F.direction,
   // ── Narrative fields ─────────────────────────────────────────────────
   // Legacy plain-string args. Kept on the Zod schema so the daily-run +
   // discovery agents that haven't been migrated to the V2 narrative shape
@@ -90,20 +63,13 @@ const thesisFields = z.object({
     .describe(
       "2-4 key risks. Legacy shape — V2 agents prefer `bear_case: { bullets: [{ text, citation }] }`.",
     ),
-  entry_price: z.number().optional().describe(
-    "WHERE YOU'D BUY IN — the level the setup's entry rule gives (the base pivot for a breakout, the 50-day for a pullback). " +
-    "The ENTER trigger reads the SIDE from where you put this level relative to the tape: " +
-    "BELOW the current price is a pullback you want to buy (fires when price comes back down to it), ABOVE it is a breakout you want confirmed first (fires when price clears it). " +
-    "When the setup's condition is already true today, set the entry at or a few cents past the current price — that is how you buy now: it fires on the first tick through it and becomes the ordinary approval-gated proposal. " +
-    "A priced plan needs all three of entry/target/stop (2:1 floor). If there is NO level worth waiting for YET (entry window opens later, setup not formed), omit all three — the thesis stays LONG/SHORT + WATCHING on its review wakes and is priced later. PASS is for a view the research doesn't support. " +
-    "Also include for PASS to enable shadow tracking."
-  ),
-  target_price: z.number().optional().describe("Price target. Required with entry_price."),
-  stop_loss: z.number().optional().describe("Stop-loss price. Required with entry_price."),
-  setup_id: z.enum(SETUP_IDS).optional().describe("The setup this plan is written on (read_knowledge_library topic:\"setup\"). Stored on the thesis; the scorecard groups results by it."),
-  stop_basis: z.string().optional().describe("Why the stop is where it is, with the chart number it sits under (\"under the base low $207.25, 1.6 ATR from entry\"). Becomes the floor trigger's sentence."),
-  target_basis: z.string().optional().describe("Why the target is where it is (\"measured move: base depth added to the pivot\", \"prior high $236.54\"). Becomes the target trigger's sentence."),
-  entry_on_close: z.boolean().optional().describe("true = the buy fires only on a CLOSE past entry_price, not an intraday poke (breakouts: intraday crosses fail about half the time)."),
+  entry_price: F.entry_price.optional(),
+  target_price: F.target_price.optional(),
+  stop_loss: F.stop_loss.optional(),
+  setup_id: F.setup_id.optional(),
+  stop_basis: F.stop_basis.optional(),
+  target_basis: F.target_basis.optional(),
+  entry_on_close: F.entry_on_close.optional(),
   current_price: z.number().optional().describe(
     "The live price you researched at (get_stock_data's quote). Pass it whenever you set entry_price: " +
     "it decides which SIDE of the price the buy level sits on. A fresh quote is tried first and this is the fallback; " +
@@ -161,151 +127,20 @@ const thesisFields = z.object({
     .string()
     .optional()
     .describe("One line on how you got to this ticker. Required with source_kind."),
-  // ── Decision-framework scoring (added 2026-04-25) ────────────────────────
-  // Four weighted dimensions summing to 10. Locked structure: don't add
-  // freeform "7/10 because vibes" — every score is the SUM of explicit
-  // sub-scores with caps that force the agent to allocate attention across
-  // the dimensions that actually matter for a setup-grade decision.
-  //
-  // Dimension caps:
-  //   trendStrength      0-3   (1pt = trending; 3pts = clean multi-week trend)
-  //   relativeStrength   0-3   (3pts = sector leader; 0 = laggard with leader available)
-  //   entryQuality       0-2   (2pts = clean setup; 0 = extended chase / no setup)
-  //   catalystFreshness  0-2   (2pts = catalyst still ahead; 0 = already played)
-  //
-  // R/R and portfolioFit are NOT scoring components — they're QUALITY-BAR
-  // gates and PORTFOLIO-COMPARISON rules, applied separately in the
-  // workflow. R/R < 2:1 = PASS regardless of composite. Worse than weakest
-  // holding = WATCH or PASS regardless of composite.
-  //
-  // Required for Decision Framework v1 once the prompt lands. Optional for
-  // this rollout commit so existing call sites don't break.
-  scoring: z
-    .object({
-      trendStrength: z.object({
-        score: z
-          .number()
-          .min(0)
-          .max(3)
-          .describe("0-3. Trend strength + structure. 0 = no trend / breaking down. 1 = sideways but constructive. 2 = trending. 3 = clean multi-week uptrend with rising MAs and no distribution."),
-        note: z.string().describe("One sentence citing concrete trend evidence (e.g. 'multi-week uptrend, rising 50d, no major distribution candles')"),
-      }),
-      relativeStrength: z.object({
-        score: z
-          .number()
-          .min(0)
-          .max(3)
-          .describe("0-3. Leader vs laggard within cohort. 0 = laggard while a leader has the same setup (PASS in favor of leader). 1 = mid-cohort. 2 = strong relative strength. 3 = clear sector leader, outperforming peers."),
-        note: z.string().describe("Concrete relative-strength call (e.g. 'NVDA leads AI semis, +28% YTD vs AMD +14%, INTC -3%')"),
-      }),
-      entryQuality: z.object({
-        score: z
-          .number()
-          .min(0)
-          .max(2)
-          .describe("0-2. Defined setup vs late-stage chase. 0 = extended >10% intraday / parabolic / no setup. 1 = OK setup with caveats. 2 = clean defined setup (breakout from base on volume, pullback to 20d in trend, post-earnings drift)."),
-        note: z.string().describe("Setup name + entry context (e.g. 'pullback to 20d in trend, $185 entry vs $200 prior high — NOT a chase')"),
-      }),
-      catalystFreshness: z.object({
-        score: z
-          .number()
-          .min(0)
-          .max(2)
-          .describe("0-2. Catalyst timing. 0 = already played (reported, moved, faded). 1 = mixed (catalyst behind but follow-through pattern visible). 2 = catalyst still ahead (earnings next week, FDA decision pending, upcoming product launch)."),
-        note: z.string().describe("Specific catalyst + timing (e.g. 'Q1 earnings 4/29, expecting beat-and-raise on AI demand')"),
-      }),
-    })
-    .optional()
-    .describe(
-      "Required composite scoring: trendStrength (0-3) + relativeStrength (0-3) + entryQuality (0-2) + catalystFreshness (0-2) = composite /10. A buy is refused when the composite is under this analyst's minimum confidence. R/R and portfolio fit are separate quality-bar gates, NOT scoring components — apply them in the workflow."
-    ),
-
-  // ── Thesis Durable State (PR 1 + cleanup PR) ──────────────────────────
-  // REQUIRED on every thesis. Drives the auto-default trigger merge + the
-  // review cadence + the tactical agent's exit policy.
-  // Without horizon, the thesis is "naked" — no triggers, no review schedule,
-  // no way for the trigger evaluator to do its job. We're not letting that
-  // ship anymore.
-  horizon: z
-    .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
-    .describe(
-      "REQUIRED. Exit policy + trigger template for this thesis. Pick the kind that matches your reasoning, not just the holding period:\n" +
-        "  • CATALYST — trade is built around a binary event (FDA decision, M&A close, court ruling, named earnings catalyst). Hold until the event resolves; ignore inter-event price drift.\n" +
-        "  • TARGET — swing trade with a defined upside number from setup/fundamentals. Weeks-to-months. Exit at target, stop, or invalidation.\n" +
-        "  • TRADE — momentum/pattern setup with a tight stop. Days-to-weeks; the template mints a review cadence that bounds it.\n" +
-        "  • COMPOUNDER — long-term hold based on durable business quality. Months-to-years. Quarterly hygiene only; never time-exits on price alone.\n" +
-        "If you can't pick one, you don't have a thesis — write PASS instead.",
-    ),
-  core_belief: z
-    .string()
-    .optional()
-    .describe(
-      "REQUIRED for LONG/SHORT. ONE sentence stating WHAT you believe will happen and why — the durable claim that, if it stops being true, the thesis is broken (e.g. \"AI capex sustains $200B/quarter through 2026, driving NVDA's gross margin above 75%\"). Distinct from reasoning_summary (the current-state framing, refreshed often); core_belief is the load-bearing claim. Optional only for direction=PASS.",
-    ),
-  key_assumptions: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "REQUIRED for LONG/SHORT — must contain ≥2 specific premises. Each item is a single checkable claim that must remain true for core_belief to hold (e.g. \"Datacenter capex stays above $200B/yr through 2027\", \"No breakup of preferred customer relationship\"). Generic prose like \"strong fundamentals\" is insufficient — the tactical agent re-evaluates these against fresh signals to decide whether a trigger fire is thesis-breaking. Optional only for direction=PASS.",
-    ),
-  invalidation_conditions: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "REQUIRED for LONG/SHORT — must contain ≥2 specific items. Concrete things that would prove this thesis wrong (e.g. \"Guidance cut on next print\", \"Gross margin below 70% on next print\", \"CFO departure\"). Generic risks like \"market volatility\" are insufficient. Used by the trade evaluator to grade exits and by the daily-run prompt to decide when a signal counts as thesis-breaking. Optional only for direction=PASS.",
-    ),
-  // ── Conviction Expression v4 (writer-side) ──────────────────────────
-  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Three new fields:
-  //   conviction          — STRONG / HIGH / MEDIUM / LOW tier verdict
-  //   conviction_rationale — the judgment in plain speech
-  //   variant_view        — "consensus thinks X, I think Y"
-  // All three optional at the Zod layer; Layer-1 gates in execute()
-  // enforce required-when-directional, variantView-on-STRONG/HIGH, and
-  // the two consistency gates (Gate A: STRONG requires composite ≥ 7;
-  // Gate B: STRONG/HIGH require entryQuality ≥ 2).
-  conviction: z
-    .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
-    .optional()
-    .describe(
-      "YOUR REAL VIEW on this thesis. Not a function of composite, not a label on the rubric. The tier you'd say out loud if asked 'how do you actually feel about this trade.' REQUIRED for LONG/SHORT (Layer-1).\n" +
-        "  STRONG — 'We should urgently buy this. Most obvious trade I'm looking at.' Reserved for your top 2-3 calls per cycle. The kind of conviction where you'd put real money in size, today.\n" +
-        "  HIGH   — 'I really like this. Solid setup, clear edge, would be a good position.' One step below your best calls — high conviction but not the trade of the cycle.\n" +
-        "  MEDIUM — 'Decent. Probably works. Won't blow my mind either way.' The honest middle. Most theses should be MEDIUM. If you're tempted to call it HIGH because you researched it, that's bias not conviction.\n" +
-        "  LOW    — 'Eh. Tracking it but I'm not enthusiastic. Would need real confirmation to act.' Be willing to use this. LOW theses are valid — sometimes you research something and the honest answer is 'I don't love it but want to keep eyes on.'\n" +
-        "Conviction is INDEPENDENT of composite. You can be HIGH conviction on a composite-6 thesis if the variant view is strong and the math is wrong. You can be MEDIUM on a composite-9 if the setup is mechanically fine but you don't believe the catalyst will land. The composite is rubric-based; the conviction is YOUR call.",
-    ),
-  conviction_rationale: z
-    .string()
-    .optional()
-    .describe(
-      "WRITE IT LIKE YOU'RE TALKING TO A PERSON. Not 'composite 7/10, R/R 2.5:1, post-print drift setup' — that just restates the scoring fields and is useless. REQUIRED whenever conviction is set. Express the JUDGMENT, not the math.\n" +
-        "Good examples:\n" +
-        "  STRONG: 'We should urgently buy this. The Trainium 3 ramp is a multi-quarter mispricing that the next print will start to expose. Real money, sized up.'\n" +
-        "  HIGH: 'I really like this setup. Earnings is the catalyst and the consensus is too conservative. Not my biggest call this cycle but I want it in size.'\n" +
-        "  MEDIUM: 'Probably works. Decent upside if everything goes right, but the variant view isn't sharp enough to size it big. If it pulls back 5% I'd add; if it runs 5% from here I'm fine being absent.'\n" +
-        "  LOW: 'Honestly not that interesting. Would be a buy if the macro cleared up and they actually raise guidance, but right now that's a stretch. Tracking, not trading.'\n" +
-        "Bad (don't do this): 'Composite 7/10, R/R 2.5:1, first day of consolidation above breakout.' That's just a paraphrase of the scoring object. Tells me nothing I couldn't read from the data.",
-    ),
-  variant_view: z
-    .string()
-    .optional()
-    .describe(
-      "One sentence stating the writer's contrarian take: 'consensus expects X, I think Y, here's the falsifiable reason.' " +
-        "A STRONG or HIGH call without one is stored as MEDIUM. Optional on MEDIUM/LOW. " +
-        "Example: 'Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 program is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus.'",
-    ),
+  scoring: F.scoring.optional(),
+  horizon: F.horizon,
+  core_belief: F.core_belief.optional(),
+  key_assumptions: F.key_assumptions.optional(),
+  invalidation_conditions: F.invalidation_conditions.optional(),
+  conviction: F.conviction.optional(),
+  conviction_rationale: F.conviction_rationale.optional(),
+  variant_view: F.variant_view.optional(),
   triggers: triggersInputArraySchema
     .optional()
     .describe(
       "The trigger ladder. Omit it to accept the horizon defaults. The review clock lives here like any other rung — include a review schedule ({ watch: 'repeat', value: days }) to have this name reviewed on a schedule, and leave it out to have nothing review it until one of its other triggers fires. Nothing adds a clock for you.",
     ),
-  catalyst_date: z
-    .string()
-    .datetime()
-    .optional()
-    .describe(
-      "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (time-bounded by its review rung) or TARGET (open-ended).",
-    ),
+  catalyst_date: F.catalyst_date.optional(),
   // next_review_at is gone (DAV-221). Review timing is a review-clock
   // trigger counted from the last actual review; the mint templates stamp it.
   // Explicit status arg. Daily watchlist-review and weekly discovery both
@@ -342,71 +177,16 @@ const thesisFields = z.object({
     .describe(
       "Required when re-minting a ticker this analyst SOLD within the last 14 days at an entry_price at or above that exit price. Pass a one-line rationale that engages with the prior exit (e.g. 'sold on the trailing stop at $66.53; re-entering above $70 only on a confirmed reclaim of the 20-day — different setup, not a re-buy of the dip'). The rejection message carries the exit details. Ignored when there is no recent sale.",
     ),
-
-  // ── Deep-research artifacts (THESIS_RESEARCH_V2 Phase 1) ───────────────
-  // Populated by the thesis-writer pipeline (run-thesis-writer.ts Phase P
-  // pulls it, Phase Z passes it through). researchData is the raw markdown
-  // data block (~3-5KB) the research call consumed; lands on
-  // Thesis.researchData for audit/debug. The 9 narrative
-  // sections below each persist to their own first-class JSONB column —
-  // PR-9 flattened the researchSections blob (see CLEANUP §1.3).
-  research_data: z
-    .string()
-    .optional()
-    .describe(
-      "Raw structured-data markdown block from the thesis-writer's data pull. " +
-        "Pass through verbatim. Lands on Thesis.researchData for the card's data tab.",
-    ),
-
-  // ── 9 narrative sections (PR-9 flat schema) ──────────────────────────
-  // Three of these (snapshot/bull_case/bear_case) take precedence over the
-  // legacy plain-string args (reasoning_summary/thesis_bullets/risk_flags)
-  // when both are supplied. The other six don't have legacy counterparts.
-  snapshot: sectionTextSchema
-    .optional()
-    .describe(
-      "Snapshot section (V2): 1 paragraph current-state framing with citations. Supersedes `reasoning_summary` when present.",
-    ),
-  recent_catalysts: sectionTextSchema
-    .optional()
-    .describe(
-      "Recent Catalysts section (V2): 1 paragraph covering the 1-2 week catalyst window for this ticker.",
-    ),
-  fundamentals: sectionTextSchema
-    .optional()
-    .describe(
-      "Fundamentals section (V2): 1 paragraph + optional segment-breakdown narrative. Lands on Thesis.fundamentals (JSONB column). Distinct from `stock_fundamentals` (the structured market_cap / pe_ratio / etc. arg) — that's UI-only inline-card data.",
-    ),
-  latest_earnings: sectionBulletSchema
-    .optional()
-    .describe(
-      "Latest Earnings section (V2): 5 specific earnings-call-derived bullets.",
-    ),
-  catalysts_and_events: sectionBulletSchema
-    .optional()
-    .describe(
-      "Catalysts & Events section (V2): 3-5 dated upcoming-catalyst bullets.",
-    ),
-  bull_case: sectionBulletSchema
-    .optional()
-    .describe(
-      "Bull Case section (V2): 3-5 cited bull bullets. Supersedes `thesis_bullets` when present.",
-    ),
-  bear_case: sectionBulletSchema
-    .optional()
-    .describe(
-      "Bear Case section (V2): 3-5 cited bear bullets (mandatory even on LONG). Supersedes `risk_flags` when present.",
-    ),
-  analyst_consensus: sectionTextSchema
-    .optional()
-    .describe(
-      "Analyst Consensus section (V2): 1 paragraph firm-by-firm consensus synthesis.",
-    ),
-  insider_technical: sectionTextSchema
-    .optional()
-    .describe(
-      "Insider & Technical section (V2): 1 paragraph insider activity + technical setup.",
-    ),
+  research_data: F.research_data.optional(),
+  snapshot: F.snapshot.optional(),
+  recent_catalysts: F.recent_catalysts.optional(),
+  fundamentals: F.fundamentals.optional(),
+  latest_earnings: F.latest_earnings.optional(),
+  catalysts_and_events: F.catalysts_and_events.optional(),
+  bull_case: F.bull_case.optional(),
+  bear_case: F.bear_case.optional(),
+  analyst_consensus: F.analyst_consensus.optional(),
+  insider_technical: F.insider_technical.optional(),
 });
 
 function refineThesis(val: { source_kind?: string; source_rationale?: string }, ctx: z.RefinementCtx) {
@@ -422,7 +202,7 @@ function refineThesis(val: { source_kind?: string; source_rationale?: string }, 
   }
 }
 
-export const thesisSchema = thesisFields.superRefine(refineThesis);
+export const thesisSchema = recordFields.superRefine(refineThesis);
 
 /**
  * The research sections only the writer's save fills (step 5 of
@@ -445,7 +225,7 @@ const WRITER_ONLY_FIELDS = {
   thesis_bullets: true,
   risk_flags: true,
 } as const;
-const agentThesisSchema = thesisFields.omit(WRITER_ONLY_FIELDS).superRefine(refineThesis);
+const agentThesisSchema = recordFields.omit(WRITER_ONLY_FIELDS).superRefine(refineThesis);
 
 export const recordThesis = defineTool({
   description:
