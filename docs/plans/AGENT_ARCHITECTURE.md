@@ -774,7 +774,7 @@ the same PR. Morning lines are `system-prompt.ts`; trigger-run lines are
 | 9 | A sold stock, or a quiet watch that woke | `sold_to_review`; a wake on a watch with no clock, defined in `needs-action.ts` as: direction null, a fired trigger, no review trigger of its own. It is an attachment key; the fire already lists the row | Morning: the sold-stock duty, the wake on a watch with no clock | **new:** a sold stock answered; a no-clock wake |
 | 10 | First research on a seed | `REVIEW_DUE` with `pendingFirstReview` | Morning: the seed bullet | **new:** a seed's first review (5 seeds were made in the 30 days to 2026-10-07; the morning run committed one, a PASS) |
 | 11 | Chat discovery | The chat's discovery kickoff; otherwise the lookup topic (10.1) | Chat: batched discovery (10,561) | **new:** a chat discovery session |
-| — | The default review: no flag | Every listed row a playbook does not claim | Morning: the review on a LONG or SHORT, the held review's setup checklist, "every review re-earns the ladder", the cadence, the generic fired review. Trigger run: the belief anchor and the re-ladder duty | ceg-plan-stands, mu-earnings-review |
+| — | The default review: no flag | A row whose lead is a review (a REVIEW fire or match, or `REVIEW_DUE`) on a LONG or SHORT, whatever else the row carries; and any listed row no other playbook claims. Not a seed's `REVIEW_DUE` (row 10) or a fired wake on a watch with no direction (row 9) | Morning: the review on a LONG or SHORT, the held review's setup checklist, "every review re-earns the ladder", the cadence, the generic fired review. The trigger run keeps its belief anchor and re-ladder duty in its system prompt | ceg-plan-stands, mu-earnings-review |
 
 **The order on a row** is the code's: a promoted stock, a declined sale, a
 fired or matching trigger that moves money, a holding's floor too far, a
@@ -788,25 +788,38 @@ all; no playbook restates it.
 flag counts only the stock's own triggers (`ownTriggerCount` in
 `plan-sanity.ts`). VST on 2026-09-23 carried it while an inherited "below
 the 200-day" review fired that morning. The fix counts inherited rules, in
-two kinds: an inherited review schedule (`repeat`) or report wake
-(`report`) always fires in time and counts as a wake; an inherited
-price-state review may stay silent for a year and counts as "may wake", and
-the flag's sentence says which the stock has. It changes when the flag
-shows, not what may be traded, and is judged on the real book (10.8).
+three kinds: an inherited review schedule (`repeat`) always fires in time
+and counts as a wake; an inherited review before the report (`report`)
+counts only when the stock's next report date is known and ahead, read
+where the stock page reads it (`getEarningsForSymbol`); an inherited
+price-state review may stay silent for a year and counts as "may wake". The
+flag's sentence says which the stock has, and says so in words when its
+earnings wake has no known date yet. It changes when the flag shows, not
+what may be traded, and is judged on the real book (10.8).
 
-With it the flag is rare by design. The account's review before earnings
-reaches every watched stock and comes every quarter, so a watched stock
-with no plan of its own gets its look before each report rather than every
-morning, which is the owner's standing ruling that a stock with no clock is
-looked at when one of its triggers fires. On 2026-10-07 the fix took the
-flag off all three stocks that carried it (BBIO, JBL, KMX). A stock whose
-next report date is not known would be the case for counting a report wake
-only when its date is known.
+With it the flag is rare, not dead, and the one thing that makes it rare is
+a known date. The account's review before earnings reaches every watched
+stock and comes every quarter, so a watched stock with no plan of its own
+gets its look before each report rather than every morning, which is the
+owner's standing ruling that a stock with no clock is looked at when one of
+its triggers fires. On 2026-10-07 the flag showed on none of the three
+stocks that carried it before (BBIO, JBL, KMX): each has a scheduled report
+(BBIO 2026-10-29, JBL 2026-12-15, KMX 2026-12-16). A stock whose next date
+is not published keeps the flag until it is.
 
 **The default review is written now**, as its own playbook under the same
 five parts, not left for step 7: 77 of 236 reviews in the month measured (section 2.1)
-said the plan stands, so it is the most common path. Its source paragraphs
-are deleted from both prompts in the same PR.
+said the plan stands, so it is the most common path. Its cap is 2,000.
+Ruling (2026-10-07): in the morning it attaches to every row whose lead is a
+review (a REVIEW fire or match, or `REVIEW_DUE`) and whose direction is LONG
+or SHORT, whatever else the row carries, and to any listed row no other
+playbook claims. A seed's `REVIEW_DUE` belongs to first research and a
+fired wake on a watch with no direction to the quiet watch: neither has a
+view to review. A row can carry it beside another: a stale row with a due
+review carries stale research for the research and the default review for
+the review. The trigger run keeps its belief anchor and re-ladder duty in
+its system prompt, as the job for every fire, until step 7. Its morning
+source paragraphs are deleted in the same PR.
 
 **When to change a horizon** is not written into any playbook. #780 removed
 it from the field descriptions; morning runs changed a horizon in 0 of 267
