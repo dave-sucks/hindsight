@@ -3,6 +3,7 @@
  * What the prompt deletes and adds, pinned; the prompt builder is pure.
  */
 import { filings } from "@/lib/agent/playbooks/filings";
+import { defaultReview } from "@/lib/agent/playbooks/default-review";
 import { buyArrives } from "@/lib/agent/playbooks/buy-arrives";
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
 import type { RunInput } from "./run-input";
@@ -44,10 +45,11 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("Cautious** (SPY more than 1% under its 50-day)");
     expect(prompt).toContain("Risk-off** (SPY more than 1% under its 200-day)");
   });
-  it("filings on the book this week are listed, and a held name's review runs its setup's checklist", () => {
+  it("filings on the book this week are listed, and a held name's review runs its setup's checklist (in the default review)", () => {
     expect(prompt).toContain("## Filings on your book this week");
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
-    expect(prompt).toContain("A held name's review runs its setup's checklist");
+    expect(prompt).not.toContain("A held name's review runs its setup's checklist");
+    expect(defaultReview.text).toContain("Is the setup still working? Its failure signs");
     expect(prompt).not.toContain("REVIEW from a filing trigger");
     expect(filings.text).toContain("Read it first (get_sec_filings gives the link).");
   });

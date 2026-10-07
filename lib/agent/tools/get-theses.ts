@@ -169,13 +169,17 @@ export const getTheses = defineTool({
     const data = result.data as Record<string, unknown> | undefined;
     if (!data) return result;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { cards, ...rest } = data;
+    const { cards, detail, ...rest } = data;
     const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
+    // The morning's work list: a row on it that no other playbook claims
+    // gets the default review (plan 10.5). A read of the whole book is not
+    // a work list.
+    const listed = !named && detail === "actionable";
     const research = input?.include_research === true;
     // The analyst's and the account's standing rules, once, first; the rows
     // carry only their own triggers.
     const { analystRules, ...others } = rest as { analystRules?: StandingRule[] } & Record<string, unknown>;
-    const theses = Array.isArray(rest.theses) ? (rest.theses as StockRow[]).map((row) => stockBrief(row, { named, research })) : null;
+    const theses = Array.isArray(rest.theses) ? (rest.theses as StockRow[]).map((row) => stockBrief(row, { named, research, listed })) : null;
     // Each playbook a row names, once for the whole read.
     const playbooks = playbookTexts((theses ?? []).flatMap((t) => (t.playbooks as string[] | undefined) ?? []));
     // The playbooks go just before the rows that name them.
@@ -1643,7 +1647,9 @@ export const getTheses = defineTool({
         active: activeCount,
         watching: watchingCount,
         // Full rows: the work list (needsAction non-null / PROMOTED), or
-        // the whole book under detail="book".
+        // the whole book under detail="book". `detail` says which; the model
+        // reads it on each row's playbooks, not as a field.
+        detail: detailMode,
         theses: enriched,
         // One-line roster entries for quiet rows (actionable mode only —
         // empty array under "book"). Drill down on any of them with

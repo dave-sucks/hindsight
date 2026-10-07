@@ -30,7 +30,7 @@ describe("protective sale: when it attaches", () => {
 
   it("not a watched stock's floor (the plan comes down; nothing is sold), a review, or a quiet holding", () => {
     expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "TRIGGER_FIRED", action: "EXIT" } }))).toEqual([]);
-    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", action: "REVIEW" } }))).toEqual([]);
+    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", action: "REVIEW" } }))).toEqual(["default-review"]);
     expect(playbooksForRow(row({ needsAction: null }))).toEqual([]);
   });
 
@@ -55,7 +55,7 @@ describe("buy arrives: when it attaches", () => {
   });
   it("not a held stock, a review, or a watch still waiting", () => {
     expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", action: "ENTER" } }))).toEqual([]);
-    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "TRIGGER_FIRED", action: "REVIEW" } }))).toEqual([]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "TRIGGER_FIRED", action: "REVIEW" } }))).toEqual(["default-review"]);
     expect(playbooksForRow(row({ status: "WATCHING", needsAction: null, resolved: { actionability: "WAIT_FOR_TRIGGER" } }))).toEqual([]);
   });
   it("a trigger run carries it for a buy on a stock we don't hold", () => {
@@ -86,13 +86,13 @@ describe("earnings: when it attaches", () => {
   const beatSold = { id: "e1", action: "REVIEW", predicate: { match: "all", conditions: [{ watch: "surprise", is: "beat" }, { watch: "move", is: "below", value: 3 }] } };
   const reportSoon = { id: "e2", level: "ACCOUNT", action: "REVIEW", predicate: { watch: "report", is: "before", value: 5 } };
   it("the lead flag is a fire of a trigger watching a surprise or a report date, its own or inherited", () => {
-    expect(playbooksForRow(row({ triggers: [beatSold], needsAction: { kind: "TRIGGER_FIRED", triggerId: "e1", action: "REVIEW" } }))).toEqual(["earnings"]);
-    expect(playbooksForRow(row({ status: "WATCHING", inheritedTriggers: [reportSoon], needsAction: { kind: "TRIGGER_FIRED", triggerId: "e2", action: "REVIEW" } }))).toEqual(["earnings"]);
+    expect(playbooksForRow(row({ triggers: [beatSold], needsAction: { kind: "TRIGGER_FIRED", triggerId: "e1", action: "REVIEW" } }))).toEqual(["earnings", "default-review"]);
+    expect(playbooksForRow(row({ status: "WATCHING", inheritedTriggers: [reportSoon], needsAction: { kind: "TRIGGER_FIRED", triggerId: "e2", action: "REVIEW" } }))).toEqual(["earnings", "default-review"]);
   });
   it("not another review, and not when the row does not carry the trigger", () => {
     const floor = { id: "f", action: "REVIEW", predicate: { watch: "price", is: "below", value: 10 } };
-    expect(playbooksForRow(row({ triggers: [floor], needsAction: { kind: "TRIGGER_FIRED", triggerId: "f", action: "REVIEW" } }))).toEqual([]);
-    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", triggerId: "e1", action: "REVIEW" } }))).toEqual([]);
+    expect(playbooksForRow(row({ triggers: [floor], needsAction: { kind: "TRIGGER_FIRED", triggerId: "f", action: "REVIEW" } }))).toEqual(["default-review"]);
+    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", triggerId: "e1", action: "REVIEW" } }))).toEqual(["default-review"]);
   });
   it("a trigger run carries it for an earnings fire; a sale on a miss carries both", () => {
     expect(playbooksForFire({ action: "REVIEW", held: true, predicate: beatSold.predicate }).map((p) => p.key)).toEqual(["earnings"]);
@@ -103,7 +103,7 @@ describe("earnings: when it attaches", () => {
 describe("filings: when it attaches", () => {
   const filed = { id: "s1", level: "ACCOUNT", action: "REVIEW", predicate: { watch: "filing", variable: "tier:MATERIAL" } };
   it("the lead flag is a fire of a trigger watching the stock's filings", () => {
-    expect(playbooksForRow(row({ inheritedTriggers: [filed], needsAction: { kind: "TRIGGER_FIRED", triggerId: "s1", action: "REVIEW" } }))).toEqual(["filings"]);
+    expect(playbooksForRow(row({ inheritedTriggers: [filed], needsAction: { kind: "TRIGGER_FIRED", triggerId: "s1", action: "REVIEW" } }))).toEqual(["filings", "default-review"]);
     expect(playbooksForFire({ action: "REVIEW", held: true, predicate: filed.predicate }).map((p) => p.key)).toEqual(["filings"]);
   });
 });
@@ -123,10 +123,10 @@ describe("protection: when it attaches", () => {
 describe("stale research: when it attaches", () => {
   it("the lead flag, or stale or missing research on any listed row with a committed view", () => {
     expect(playbooksForRow(row({ needsAction: { kind: "RESEARCH_STALE" } }))).toEqual(["stale-research"]);
-    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "REVIEW_DUE" }, researchAge: { freshness: "stale", daysOld: 90 } }))).toEqual(["stale-research"]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "REVIEW_DUE" }, researchAge: { freshness: "stale", daysOld: 90 } }))).toEqual(["stale-research", "default-review"]);
   });
   it("not fresh research, not a seed or a watch with no view, never a trigger run", () => {
-    expect(playbooksForRow(row({ needsAction: { kind: "REVIEW_DUE" }, researchAge: { freshness: "fresh", daysOld: 3 } }))).toEqual([]);
+    expect(playbooksForRow(row({ needsAction: { kind: "REVIEW_DUE" }, researchAge: { freshness: "fresh", daysOld: 3 } }))).toEqual(["default-review"]);
     expect(playbooksForRow(row({ direction: null, status: "WATCHING", researchAge: { freshness: "missing" } }))).toEqual([]);
     expect(playbooksForFire({ action: "REVIEW", held: true }).map((p) => p.key)).not.toContain("stale-research");
   });
@@ -149,10 +149,35 @@ describe("quiet watch and first research: when they attach", () => {
   });
   it("a seed's first review is due", () => {
     expect(playbooksForRow(row({ status: "WATCHING", direction: null, triggers: [clock], needsAction: { kind: "REVIEW_DUE", daysOverdue: 0, pendingFirstReview: true } }))).toEqual(["first-research"]);
-    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "REVIEW_DUE", daysOverdue: 0 } }))).toEqual([]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "REVIEW_DUE", daysOverdue: 0 } }))).toEqual(["default-review"]);
   });
   it("the two share an 1,800-character cap", () => {
     const pair = PLAYBOOKS.filter((p) => p.key === "quiet-watch" || p.key === "first-research");
     expect(pair.reduce((s, p) => s + p.cap, 0)).toBe(1_800);
+  });
+});
+
+describe("default review: when it attaches", () => {
+  it("a review leads a LONG or SHORT row, fired, matching or due, whatever else the row carries", () => {
+    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", action: "REVIEW" } }))).toEqual(["default-review"]);
+    expect(playbooksForRow(row({ direction: "SHORT", needsAction: { kind: "TRIGGER_MATCHING_NOW", action: "REVIEW" } }))).toEqual(["default-review"]);
+    expect(playbooksForRow(row({ needsAction: { kind: "REVIEW_DUE" }, researchAge: { freshness: "stale", daysOld: 90 } }))).toEqual(["stale-research", "default-review"]);
+  });
+
+  it("not a seed's first review or a wake on a watch with no direction: those have no view to review", () => {
+    expect(playbooksForRow(row({ status: "WATCHING", direction: null, needsAction: { kind: "REVIEW_DUE", pendingFirstReview: true } }))).toEqual(["first-research"]);
+    expect(playbooksForRow(row({ status: "WATCHING", direction: null, needsAction: { kind: "TRIGGER_FIRED", action: "REVIEW" } }))).toEqual(["quiet-watch"]);
+  });
+
+  it("a listed row no other playbook claims gets it on the morning list, not on a read of named stocks", () => {
+    const unclaimed = row({ status: "PROMOTED", needsAction: { kind: "PROMOTED_AWAITING_RESOLUTION" } });
+    expect(playbooksForRow(unclaimed, { listed: true })).toEqual(["default-review"]);
+    expect(playbooksForRow(unclaimed)).toEqual([]);
+    const claimed = row({ needsAction: { kind: "SALE_DECLINED", declineCount: 1 } });
+    expect(playbooksForRow(claimed, { listed: true })).toEqual(["protective-sale"]);
+  });
+
+  it("never rides on a fire: the trigger run keeps its belief anchor and re-ladder duty in its job", () => {
+    expect(playbooksForFire({ action: "REVIEW", held: true }).map((p) => p.key)).not.toContain("default-review");
   });
 });

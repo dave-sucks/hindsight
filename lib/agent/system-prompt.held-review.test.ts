@@ -19,6 +19,7 @@
  */
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
 import { SYSTEM_PROMPT_TEMPLATE } from "./system-prompt-template";
+import { defaultReview } from "@/lib/agent/playbooks/default-review";
 import type { RunInput } from "./run-input";
 import { replayTool, thesisRow, positionRow, thesisUpdateRow } from "@/lib/replay";
 
@@ -50,32 +51,32 @@ const built = () =>
 const reviewLine = (prompt: string) =>
   prompt.split("\n").find((l) => l.trimStart().startsWith("- **REVIEW** →")) ?? "";
 
-describe("the built daily prompt — answering a fired review", () => {
+// Since 6.9 the review's answer is the default-review playbook, which the
+// read carries once and every review-led row names. The prompt only points.
+describe("the default review — answering a fired review", () => {
   it("asks for the trigger id and the sentence", () => {
-    const line = reviewLine(built());
-    expect(line).toContain("pass `trigger_id`");
-    expect(line).toContain("what you checked and why the plan still stands");
+    expect(defaultReview.text).toContain("Pass trigger_id when a review fired");
+    expect(defaultReview.text).toContain("saying what you checked and why");
   });
 
-  it("says what to do when the row reports a repeat", () => {
-    const line = reviewLine(built());
-    expect(line).toContain("has fired several times and the plan has not changed since");
-    expect(line).toContain("say what is different from the last time you answered it");
+  it("says what to do when the same review fires again", () => {
+    expect(defaultReview.text).toContain("The same answer to a review that fired again: change the plan, or say what differs from last time.");
   });
 
   it("threatens no refusal — none exists", () => {
-    expect(reviewLine(built())).not.toMatch(/does not answer a fire|will refuse|is refused/i);
+    expect(defaultReview.text).not.toMatch(/does not answer a fire|will refuse|is refused/i);
   });
 
   it("tells a held stock's review to go down its invalidation conditions", () => {
-    const line = reviewLine(built());
-    expect(line).toContain("`invalidationConds`");
-    expect(line).toContain("say, for each one, whether it has happened");
-    expect(line).toContain("a condition that has happened is an exit");
+    expect(defaultReview.text).toContain("go down invalidationConds and say for each whether it has happened");
+    expect(defaultReview.text).toContain("A condition that happened is an exit: close_position with belief_survived false.");
   });
 
-  it("the preview on the workflow page carries the same line", () => {
-    expect(reviewLine(SYSTEM_PROMPT_TEMPLATE).trim()).toBe(reviewLine(built()).trim());
+  it("the built prompt and the workflow page's preview point at it, and neither carries its own review answer", () => {
+    expect(reviewLine(built())).toBe("");
+    expect(built()).toContain("A row that names `playbooks`");
+    expect(reviewLine(SYSTEM_PROMPT_TEMPLATE)).toContain("the row names the default-review playbook");
+    expect(SYSTEM_PROMPT_TEMPLATE).not.toContain("Deciding nothing needs to change is a legal answer");
   });
 });
 

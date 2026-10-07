@@ -18,13 +18,21 @@ import { staleResearch } from "./stale-research";
 import { planProblems } from "./plan-problems";
 import { quietWatch } from "./quiet-watch";
 import { firstResearch } from "./first-research";
+import { defaultReview } from "./default-review";
 
 export type { Playbook } from "./types";
 
-export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner, earnings, filings, protection, staleResearch, planProblems, quietWatch, firstResearch];
+export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner, earnings, filings, protection, staleResearch, planProblems, quietWatch, firstResearch, defaultReview];
 
-export function playbooksForRow(row: StockRow): string[] {
-  return PLAYBOOKS.filter((p) => p.appliesToRow(row)).map((p) => p.key);
+/**
+ * The playbooks a row names. `listed`: the row is on the morning's work list
+ * (not a read of named stocks), where a row no other playbook claims gets
+ * the default review.
+ */
+export function playbooksForRow(row: StockRow, opts: { listed?: boolean } = {}): string[] {
+  const keys = PLAYBOOKS.filter((p) => p.appliesToRow(row)).map((p) => p.key);
+  if (opts.listed && keys.length === 0) keys.push(defaultReview.key);
+  return keys;
 }
 
 /** The playbooks for what fired, in ranking order. */

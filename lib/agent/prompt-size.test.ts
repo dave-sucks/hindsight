@@ -28,7 +28,7 @@ import { PLAYBOOKS, playbooksForFire } from "@/lib/agent/playbooks";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  daily: 11_605,
+  daily: 7_357,
   tactical: 7_166,
   writer: 11_027,
   discovery: 20_773,
@@ -113,6 +113,8 @@ const RECORDED_PLAYBOOKS: Record<string, number> = {
   "plan-problems": 1_181,
   "quiet-watch": 847,
   "first-research": 911,
+
+  "default-review": 1_688,
 };
 
 describe("the playbooks, by size", () => {
