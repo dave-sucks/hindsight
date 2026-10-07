@@ -285,3 +285,27 @@ describe("computePlanSanity — COMPOSITE_BELOW_MINIMUM (VST 2026-09-08)", () =>
     expect(computePlanSanity({ ...base, entryPrice: 75, targetPrice: 91, stopLoss: 67, currentPrice: 72, composite: 5 }).some((x) => x.kind === "COMPOSITE_BELOW_MINIMUM")).toBe(false);
   });
 });
+
+// "Nothing can wake it" counted only the stock's own triggers. VST on
+// 2026-09-23 carried the flag while an inherited 200-day review fired that
+// morning (docs/plans/AGENT_ARCHITECTURE.md, 10.5). On 2026-10-07 BBIO, JBL
+// and KMX carried it, each inheriting the account's review before earnings.
+describe("computePlanSanity — NOTHING_CAN_WAKE counts what the stock inherits", () => {
+  const bare = { ...base, ownTriggerCount: 0 };
+  it("an inherited review on a schedule, or before a report whose date is known, reaches the stock: no flag", () => {
+    expect(computePlanSanity({ ...bare, inheritedWakes: { always: true, mayWake: [] } }).map((f) => f.kind)).not.toContain("NOTHING_CAN_WAKE");
+  });
+  it("an inherited review that waits on the price only may: the flag names it", () => {
+    const flag = computePlanSanity({ ...bare, inheritedWakes: { always: false, mayWake: ["Review if below the 200-day average"] } }).find((f) => f.kind === "NOTHING_CAN_WAKE");
+    expect(flag?.text).toContain("The reviews it inherits wait on the price (Review if below the 200-day average), so they may stay silent for months.");
+  });
+  it("an inherited review before the report with no known date: the flag says so in words", () => {
+    const flag = computePlanSanity({ ...bare, inheritedWakes: { always: false, mayWake: [], reportWithoutDate: true } }).find((f) => f.kind === "NOTHING_CAN_WAKE");
+    expect(flag?.text).toContain("Its earnings wake has no known date yet.");
+    expect(flag?.text).not.toContain("nothing can bring this stock back");
+  });
+  it("nothing inherited: as before", () => {
+    const flag = computePlanSanity({ ...bare, inheritedWakes: { always: false, mayWake: [] } }).find((f) => f.kind === "NOTHING_CAN_WAKE");
+    expect(flag?.text).toContain("nothing can bring this stock back");
+  });
+});

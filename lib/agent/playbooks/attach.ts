@@ -2,20 +2,10 @@
  * What a playbook attaches by, read off a row or a fire: the lead flag's
  * trigger, and the measures a trigger's condition watches.
  */
-import { isGroup, shapeOf, type When } from "@/lib/agent/triggers/condition";
 import type { StockRow } from "@/lib/agent/stock-brief";
+import { measuresOf } from "@/lib/agent/trigger-measures";
 
-/** Every measure a condition watches, groups included. */
-export function measuresOf(predicate: unknown): string[] {
-  const out: string[] = [];
-  const walk = (w: When | null) => {
-    if (!w) return;
-    if (isGroup(w)) for (const c of w.conditions) walk(c);
-    else out.push(w.watch);
-  };
-  walk(shapeOf(predicate));
-  return out;
-}
+export { measuresOf };
 
 /** The lead flag's trigger, when the row carries it as stored. */
 export function leadTrigger(row: StockRow): { action?: string; predicate?: unknown } | null {

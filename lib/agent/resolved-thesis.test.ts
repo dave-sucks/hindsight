@@ -314,3 +314,24 @@ describe("buildSupersessionMap", () => {
     expect(map.get("AAPL")).toBeUndefined();
   });
 });
+
+describe("inheritedWakes", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { inheritedWakes } = require("@/lib/agent/resolved-thesis") as typeof import("@/lib/agent/resolved-thesis");
+  const t = (id: string, level: string, action: string, predicate: unknown) => ({ id, level, action, predicate, rationale: "" }) as never;
+  const report = t("a", "ACCOUNT", "REVIEW", { watch: "report", is: "before", value: 5 });
+  it("a schedule always reaches the stock; a price review only may; the stock's own and non-reviews don't count", () => {
+    expect(inheritedWakes([t("b", "ANALYST", "REVIEW", { watch: "repeat", value: 30 })]).always).toBe(true);
+    const may = inheritedWakes([t("c", "ANALYST", "REVIEW", { watch: "price", is: "below", variable: "sma200" })]);
+    expect(may.always).toBe(false);
+    expect(may.mayWake).toHaveLength(1);
+    expect(inheritedWakes([t("d", "THESIS", "REVIEW", { watch: "report", is: "before", value: 5 }), t("e", "ACCOUNT", "EXIT", { watch: "price", is: "below", value: 5 })])).toEqual({ always: false, mayWake: [], reportWithoutDate: false });
+  });
+  // 2026-10-07: BBIO had no report date; JBL's (09-30) and KMX's (09-29) were past.
+  it("a review before the report reaches the stock only when the next report date is known and ahead", () => {
+    expect(inheritedWakes([report], "2026-11-05", "2026-10-07")).toEqual({ always: true, mayWake: [], reportWithoutDate: false });
+    expect(inheritedWakes([report], "2026-10-07", "2026-10-07").always).toBe(true);
+    expect(inheritedWakes([report], null, "2026-10-07")).toEqual({ always: false, mayWake: [], reportWithoutDate: true });
+    expect(inheritedWakes([report], "2026-09-30", "2026-10-07")).toEqual({ always: false, mayWake: [], reportWithoutDate: true });
+  });
+});

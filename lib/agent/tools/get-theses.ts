@@ -48,8 +48,10 @@ import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for"
 import {
   buildResolvedEnvelope,
   buildSupersessionMap,
+  inheritedWakes,
   type ResolvedEnvelope,
 } from "@/lib/agent/resolved-thesis";
+import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 import { entryRaisesAway, type EntryRaiseAway } from "@/lib/agent/entry-raises";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
 import { buyBlockedByFull, isFull, type AnalystCapacity, type BuyBlockedByFull } from "@/lib/agent/capacity";
@@ -1132,6 +1134,26 @@ export const getTheses = defineTool({
       }
     }
 
+    // The next report, for a watched stock with no plan whose only wake is an
+    // inherited review before the report: that wake counts only when the date
+    // is known and ahead (plan 10.5). Read where the stock page and
+    // get_earnings_data read it (getEarningsForSymbol), only for such stocks.
+    const nextReportByTicker = new Map<string, string>();
+    {
+      const today = resolverNow.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+      const asking = theses.filter((t) => {
+        const ladder = ladderByThesisId.get(t.id) ?? [];
+        const own = ladder.filter((x) => ((x as { level?: string }).level ?? "THESIS") === "THESIS");
+        return t.entryPrice == null && own.length === 0 && inheritedWakes(ladder, null, today).reportWithoutDate;
+      });
+      await Promise.all(
+        Array.from(new Set(asking.map((t) => t.ticker.toUpperCase()))).map(async (ticker) => {
+          const next = (await getEarningsForSymbol(ticker, resolverNow).catch(() => null))?.next ?? null;
+          if (next) nextReportByTicker.set(ticker, next.reportDate);
+        }),
+      );
+    }
+
     const resolvedByThesisId = new Map<string, ResolvedEnvelope>();
     for (const t of theses) {
       const parsedTriggers = ladderByThesisId.get(t.id) ?? [];
@@ -1166,6 +1188,7 @@ export const getTheses = defineTool({
             minConfidence: ctx.minConfidence ?? null,
             parsedTriggers,
             positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
+            nextReportDate: nextReportByTicker.get(t.ticker.toUpperCase()) ?? null,
           },
           currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
           priceAsOf: priceAsOf[t.ticker] ?? null,

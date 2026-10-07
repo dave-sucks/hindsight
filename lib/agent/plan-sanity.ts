@@ -167,6 +167,13 @@ export function computePlanSanity(args: {
    * line and does not count. Optional; absent ⇒ no wake.
    */
   hasPriceWake?: boolean | null;
+  /**
+   * The reviews the stock inherits from its analyst or the account. One on a
+   * schedule or at a report date always comes in time, so the stock can come
+   * back; one that waits on the price may stay silent for months, so it
+   * only may. Optional; absent ⇒ only the stock's own triggers count.
+   */
+  inheritedWakes?: { always: boolean; mayWake: string[]; reportWithoutDate?: boolean } | null;
   /** The setup the plan is written on, for the pre-catalyst parking rule. */
   setupId?: string | null;
   /** The dated event, for the same rule. */
@@ -200,11 +207,21 @@ export function computePlanSanity(args: {
   // day). No buy price, no level to look again at, no review. The only
   // things that can touch it are the account's generic wakes. Needs no
   // live price, so it runs before the price guard.
-  if (args.ownTriggerCount === 0 && entryPrice == null) {
-    flags.push({
-      kind: "NOTHING_CAN_WAKE",
-      text: `${direction} with no buy price, no trigger and no review of its own: nothing can bring this stock back. Price the level you are waiting for (the pullback to a rising average, the base's pivot) with its stop and a target at 2:1 or better, or give it the wake that brings it back (a REVIEW at a price, or a short day-count review), or let it go.`,
-    });
+  // An inherited review on a schedule or at a report date does reach it
+  // (VST on 2026-09-23 carried this flag while an inherited review fired):
+  // no flag then. One that waits on the price only may, and the flag says so.
+  if (args.ownTriggerCount === 0 && entryPrice == null && !args.inheritedWakes?.always) {
+    const may = args.inheritedWakes?.mayWake ?? [];
+    const noDate = args.inheritedWakes?.reportWithoutDate ?? false;
+    const ask = `Price the level you are waiting for (the pullback to a rising average, the base's pivot) with its stop and a target at 2:1 or better, or give it the wake that brings it back (a REVIEW at a price, or a short day-count review), or let it go.`;
+    const head = may.length || noDate
+      ? `${direction} with no buy price, no trigger and no review of its own.${
+          noDate ? " Its earnings wake has no known date yet." : ""
+        }${
+          may.length ? ` The reviews it inherits wait on the price (${may.join("; ")}), so they may stay silent for months.` : ""
+        }`
+      : `${direction} with no buy price, no trigger and no review of its own: nothing can bring this stock back.`;
+    flags.push({ kind: "NOTHING_CAN_WAKE", text: `${head} ${ask}` });
   }
   // ── NO_BUY_LEVEL (DAV-321) ──────────────────────────────────────────
   // A watched LONG/SHORT with no ENTER trigger cannot become a position, no

@@ -23,13 +23,41 @@
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
-import { conditionSentence, levelOf, shapeOf } from "@/lib/agent/triggers/condition";
+import { conditionSentence, levelOf, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
 import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
 import { floorTooFar, type FloorRisk, type FloorStructure } from "@/lib/agent/floor-risk";
 import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
+import { measuresOf } from "@/lib/agent/trigger-measures";
+
+/**
+ * The reviews a stock inherits, sorted into the ones that always reach it and
+ * the ones that may not. A schedule always comes. A review before the report
+ * comes only when the next report date is known and ahead: BBIO had none on
+ * 2026-10-07, and JBL's and KMX's were already past, so a report wake was
+ * not yet real for any of them. A review that waits on the price may stay
+ * silent for months.
+ */
+export function inheritedWakes(
+  parsed: Trigger[],
+  /** The next scheduled report, YYYY-MM-DD; null or absent = not known. */
+  nextReportDate?: string | null,
+  /** Today, YYYY-MM-DD, Eastern. */
+  today?: string,
+): { always: boolean; mayWake: string[]; reportWithoutDate: boolean } {
+  const reviews = parsed.filter((t) => ((t as { level?: string }).level ?? "THESIS") !== "THESIS" && t.action === "REVIEW");
+  const watches = (t: Trigger, m: string) => measuresOf(t.predicate).includes(m);
+  const reportKnown = nextReportDate != null && today != null && nextReportDate >= today;
+  const always = reviews.some((t) => watches(t, "repeat") || (watches(t, "report") && reportKnown));
+  const reportWithoutDate = !always && reviews.some((t) => watches(t, "report"));
+  return {
+    always,
+    mayWake: always ? [] : reviews.filter((t) => !watches(t, "report")).map((t) => sentenceOf(t)),
+    reportWithoutDate,
+  };
+}
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -178,6 +206,11 @@ export interface ResolverThesisInput {
    * caller didn't resolve a position.
    */
   positionOpenedAt?: Date | null;
+  /**
+   * The next scheduled report, YYYY-MM-DD, for a stock whose only wake is an
+   * inherited review before the report. Null or absent = not known.
+   */
+  nextReportDate?: string | null;
 }
 
 /**
@@ -364,6 +397,11 @@ export function buildResolvedEnvelope(args: {
     // price on a LONG) — the wake it is waiting for, the level #737 stopped
     // reading as a target. A review below is a "something broke" line, not
     // a way in (BBIO, EME on 2026-09-29).
+    inheritedWakes: inheritedWakes(
+      thesis.parsedTriggers,
+      thesis.nextReportDate ?? null,
+      now.toLocaleDateString("en-CA", { timeZone: "America/New_York" }),
+    ),
     hasPriceWake: thesis.parsedTriggers.some(
       (t) =>
         ((t as { level?: string }).level ?? "THESIS") === "THESIS" &&
