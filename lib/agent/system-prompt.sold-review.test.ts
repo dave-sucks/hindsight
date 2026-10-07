@@ -13,6 +13,7 @@
  */
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
 import type { RunInput } from "./run-input";
+import { soldReview } from "./sold-review";
 
 const runInput = () =>
   ({
@@ -43,28 +44,32 @@ describe("the built prompt names the sold-stock review", () => {
     expect(prompt()).toContain("`sold_to_review`");
   });
 
-  it("says it is work today, and that each row gets one answer", () => {
-    const p = prompt();
-    expect(p).toContain("Every one of them is work today, and each gets exactly one answer");
+  it("says it is work today, and that each row's own line says what it needs", () => {
+    expect(prompt()).toContain("each is work today, and its own line says what it needs");
   });
 
-  it("names all four answers the run already has", () => {
-    const p = prompt();
-    expect(p).toContain("keep watching with a re-entry level priced off today's chart");
-    expect(p).toContain("keep watching on a review cadence");
-    expect(p).toContain("keep watching with nothing set (legal, and it costs nothing)");
-    expect(p).toContain("or let it go");
+  // The answers live on each row's own line (sold-review.ts); the prompt no
+  // longer repeats them.
+  const ask = () =>
+    soldReview({
+      ticker: "SMMT", status: "RETIRED", retiredReason: "SOLD", closedAt: new Date("2026-09-21T15:00:00Z"), closeReason: "STOP",
+      exitPrice: 16.92, realizedPnl: 1157.94, realizedPnlPct: 8.2, beliefSurvived: null, catalystDate: new Date("2026-11-14T00:00:00Z"),
+      answered: false, now: new Date("2026-09-22T12:00:00Z"),
+    })!.text;
+
+  it("each row names all four answers, the call that puts one back on watch, and the sale's facts", () => {
+    const a = ask();
+    expect(a).toContain("keep watching with a re-entry level priced off today's chart");
+    expect(a).toContain("keep watching on a review cadence");
+    expect(a).toContain("keep watching with nothing set (legal, and it costs nothing)");
+    expect(a).toContain("or let it go");
+    expect(a).toContain('update_thesis(change_status: "WATCHING")');
+    expect(a).toContain("at $16.92 for +$1,158 (+8.2%) on a stop");
+    expect(a).not.toContain("does not");
   });
 
-  it("names the exact call that puts one back on watch, and how to clear the rest", () => {
-    const p = prompt();
-    expect(p).toContain('update_thesis(change_status: "WATCHING")');
-    expect(p).toContain("write the one-line reason on an `update_thesis` and it clears");
-  });
-
-  it("says what each row carries, so the run knows it has the sale's facts", () => {
-    const p = prompt();
-    expect(p).toContain("the exit price, the date, why it sold, whether the belief survived");
+  it("the prompt no longer repeats them", () => {
+    expect(prompt()).not.toContain("keep watching on a review cadence");
   });
 
   // The paragraph it was added to still has to say what it said before.

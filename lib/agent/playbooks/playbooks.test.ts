@@ -139,3 +139,20 @@ describe("plan problems: when it attaches", () => {
     expect(playbooksForFire({ action: "ENTER", held: false }).map((p) => p.key)).not.toContain("plan-problems");
   });
 });
+
+describe("quiet watch and first research: when they attach", () => {
+  const wake = { id: "w", action: "REVIEW", predicate: { watch: "price", is: "below", value: 40 } };
+  const clock = { id: "c", action: "REVIEW", predicate: { watch: "repeat", value: 7 } };
+  it("a fired wake on a watch with no direction and no clock of its own", () => {
+    expect(playbooksForRow(row({ status: "WATCHING", direction: null, triggers: [wake], needsAction: { kind: "TRIGGER_FIRED", triggerId: "w", action: "REVIEW" } }))).toEqual(["quiet-watch"]);
+    expect(playbooksForRow(row({ status: "WATCHING", direction: null, triggers: [wake, clock], needsAction: { kind: "TRIGGER_FIRED", triggerId: "w", action: "REVIEW" } }))).toEqual([]);
+  });
+  it("a seed's first review is due", () => {
+    expect(playbooksForRow(row({ status: "WATCHING", direction: null, triggers: [clock], needsAction: { kind: "REVIEW_DUE", daysOverdue: 0, pendingFirstReview: true } }))).toEqual(["first-research"]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "REVIEW_DUE", daysOverdue: 0 } }))).toEqual([]);
+  });
+  it("the two share an 1,800-character cap", () => {
+    const pair = PLAYBOOKS.filter((p) => p.key === "quiet-watch" || p.key === "first-research");
+    expect(pair.reduce((s, p) => s + p.cap, 0)).toBe(1_800);
+  });
+});

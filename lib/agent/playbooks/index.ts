@@ -16,10 +16,12 @@ import { filings } from "./filings";
 import { protection } from "./protection";
 import { staleResearch } from "./stale-research";
 import { planProblems } from "./plan-problems";
+import { quietWatch } from "./quiet-watch";
+import { firstResearch } from "./first-research";
 
 export type { Playbook } from "./types";
 
-export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner, earnings, filings, protection, staleResearch, planProblems];
+export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner, earnings, filings, protection, staleResearch, planProblems, quietWatch, firstResearch];
 
 export function playbooksForRow(row: StockRow): string[] {
   return PLAYBOOKS.filter((p) => p.appliesToRow(row)).map((p) => p.key);
