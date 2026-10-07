@@ -30,7 +30,7 @@ What you can do:
 - Set the plan down: update_thesis with remove_trigger_ids naming the buy, floor and target, keeping a review, and one sentence on what made this not the entry.
 - Stop watching: update_thesis with change_status ARCHIVED; INVALIDATED only when the thesis should not exist for you at all.
 
-Answered: place_trade, a re-priced buy, or the plan set down. A chased or unconfirmed buy is re-priced to the next structure or set down, not bought and not left as a note. While the price holds the level a note alone is not the answer: a buy left as a note comes back on the next morning run as a plan flag or live match. A note does answer two cases: a buy whose price has slipped back, and a buy fired into a full analyst, which the one update its row or message asks for answers.
+Answered: place_trade, a re-priced buy, or the plan set down. A chased or unconfirmed buy is re-priced to the next structure or set down, not bought and not left as a note. While the price holds the level a note alone is not the answer: a buy left as a note comes back on the next morning run as a plan flag or live match. A note does answer two cases: a buy whose price has slipped back, and a buy fired into a full analyst: the one update its row or message asks for answers it.
 
 Mistakes:
 - Calling place_trade after a check failed.
