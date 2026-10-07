@@ -47,6 +47,14 @@ export function rangeWords(r: Range): string {
   return r.integer ? `a whole number ${words.startsWith("from") ? words : `that is ${words}`}` : words;
 }
 
+/** A range in a few characters, for a tool definition: ">0 to 50×", "1 to 14 days", "1% to <100%". The refusal says it in full. */
+export function rangeShort(r: Range): string {
+  const at = (n: number, last: boolean) => shownIn(n, r.unit, last);
+  const low = r.over != null ? `>${at(r.over, false)}` : r.min != null ? at(r.min, false) : null;
+  const high = r.under != null ? `<${at(r.under, true)}` : r.max != null ? at(r.max, true) : null;
+  return low && high ? `${low} to ${high}` : low ? (r.over != null ? low : `${low} or more`) : high ? `up to ${high}` : "a number";
+}
+
 /** The sentence for a number outside its range, or null when it is inside. */
 export function rangeProblem(v: unknown, r: Range): string | null {
   const ok =

@@ -13,7 +13,7 @@ import type { Condition, Direction, VariableId, Watch, When } from "./condition/
 import type { MeasureDef } from "./condition/measure";
 import { MEASURES, declaredOnly } from "./condition/catalog";
 import { notACondition, refusalOf } from "./condition/valid";
-import { rangeWords } from "./condition/range";
+import { rangeShort } from "./condition/range";
 
 /**
  * A trigger's condition, in the condition shape (./condition): one its
@@ -71,7 +71,7 @@ function buildPredicateInputSchema() {
     .union([stored, z.object({ match: group.shape.match, conditions: z.array(z.union([stored, group])).min(2).max(8) })], {
       error: (iss) => explain(iss.input),
     })
-    .describe("One condition, or { match, conditions } for two or more. `watch` picks the measure; a condition takes only the fields listed under its measure.")
+    .describe("One condition, or { match, conditions } for two or more.")
     .superRefine((w, ctx) => {
       const refused = refusalOf(w);
       if (refused) ctx.addIssue({ code: "custom", message: refused });
@@ -96,34 +96,42 @@ function measureSettings(m: MeasureDef) {
 
 /** One measure's condition: its own fields only, each saying its range. */
 function measureBranch(m: MeasureDef) {
-  const shape: Record<string, z.ZodTypeAny> = { watch: z.literal(m.id).describe(m.shape) };
+  // The branch's fields say what the measure takes; its sentence (`m.shape`) is for a refusal, not repeated here.
+  const shape: Record<string, z.ZodTypeAny> = { watch: z.literal(m.id) };
   if (m.buttons) shape.is = z.enum(m.buttons.map((b) => b.is) as [Direction, ...Direction[]]);
   const fitting = fittingVariables(m);
   const ids = fitting.map((o) => o.id) as [VariableId, ...VariableId[]];
-  const ranges = [m.value.ranges?.map((r) => `${r.range.what}: ${rangeWords(r.range)}`).join("; "), m.value.range && `otherwise ${rangeWords(m.value.range)}`]
-    .filter(Boolean)
-    .join("; ");
+  // Each button's or variable's range, named by its own field values ("near sma*", "below peak"), then the
+  // measure's own where a button still reads it.
+  const covered = m.buttons != null && m.buttons.every((b) => m.value.ranges?.some((r) => r.is === b.is && r.variables == null));
+  const named = (r: NonNullable<MeasureDef["value"]["ranges"]>[number]) =>
+    [r.is, r.variables && (r.variables.length > 2 ? `${r.variables[0].replace(/\d+$/, "")}*` : r.variables.join("|"))].filter(Boolean).join(" ");
+  const ranges = [
+    ...(m.value.ranges ?? []).map((r) => `${named(r)} ${rangeShort(r.range)}`),
+    ...(m.value.range && !covered ? [`${m.value.ranges?.length ? "else " : ""}${rangeShort(m.value.range)}`] : []),
+  ].join("; ");
   if (m.value.none) {
-    shape.value = z.enum(ids).describe("Which filing: a tier, an 8-K item or a form.");
+    shape.value = z.enum(ids);
   } else if (m.variables?.mode === "replace") {
-    shape.value = z.union([z.number(), z.enum(ids)]).describe(`A dollar price (${ranges}), or a line instead of one.`);
+    shape.value = z.union([z.number(), z.enum(ids)]).describe(`A price ${ranges}, or a line.`);
   } else {
-    const n = z.number().describe(`${m.value.suffix ?? "The number"}: ${ranges}.`);
+    const n = z.number().describe(ranges);
     shape.value = m.value.zero != null ? n.optional() : n;
   }
-  if (m.variables?.mode === "from") shape.variable = z.enum(ids).describe("What it is measured from.");
-  const settings = measureSettings(m).map(({ d }) => d);
+  if (m.variables?.mode === "from") shape.variable = z.enum(ids);
+  const settings = measureSettings(m);
   if (settings.length) {
     const fields: Record<string, z.ZodTypeAny> = {};
-    for (const d of settings) {
+    for (const { d, with: from } of settings) {
       if (fields[d.key]) continue;
       const sample = d.options?.[0]?.value ?? d.default;
-      const type = d.options ? z.enum(d.options.map((o) => String(o.value)) as [string, ...string[]]) : typeof sample === "boolean" ? z.boolean() : typeof sample === "string" ? z.string() : z.number();
-      const typed = d.options && typeof sample !== "string" ? (typeof sample === "boolean" ? z.boolean() : z.number()) : type;
-      const owner = m.settings?.includes(d) ? "" : ` Only with variable ${fitting.find((o) => o.settings?.includes(d))?.id}.`;
-      const said = d.options ? `One of ${d.options.map((o) => String(o.value)).join(", ")}.` : d.range ? `${rangeWords(d.range)}.` : "";
-      const name = (d.label ?? d.range?.what ?? d.key).replace(/ \(\w+\)$/, "");
-      fields[d.key] = typed.describe(`${name}: ${said}${owner}`).optional();
+      // A setting with choices is its enum; a number says its range; one that belongs to a variable says which.
+      const typed = d.options
+        ? typeof sample === "boolean"
+          ? z.boolean().describe(`true: ${d.options.find((o) => o.value === true)?.label.toLowerCase()}.`)
+          : z.literal(d.options.map((o) => o.value) as [string | number, ...(string | number)[]])
+        : z.number().describe(`${d.range ? rangeShort(d.range) : "a number"}${from ? `, with ${from}` : ""}`);
+      fields[d.key] = typed.optional();
     }
     shape.settings = z.object(fields).optional();
   }
