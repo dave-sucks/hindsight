@@ -532,7 +532,7 @@ What the reviews raised, and where each point is handled:
    pullback plan scores low and is refused on the day its level arrives.
    **Approved at step 6, pending the owner's veto** (QB ruling, 2026-10-06).
    It is the one trading change in step 6 and is built as its own PR, only
-   after the owner's yes. Section 10.6 has the design.
+   after the owner's yes. Section 10.9 has the design.
 4. **Two flags stop listing a stock by themselves.** "No buy level" and
    "score under the analyst's minimum" still show on the stock whenever it
    is opened. A stock with no buy price comes onto the morning list on its
@@ -553,123 +553,313 @@ What the reviews raised, and where each point is handled:
 
 ## 10. Step 6, written up: each situation onto its flag
 
-Read from main after the trigger cutover (2026-10-06). Nothing here is built
-yet. Sizes are characters in the sample prompts the size test builds.
+Read from main after the trigger cutover (2026-10-06) and checked against the
+code on 2026-10-07. Nothing here is built yet. Sizes are characters in the
+sample prompts the size test builds.
 
-### 10.1 What moves, and how it attaches
+Each situation's text reaches a stock only when that situation is present,
+by code, from something the app already computes. A playbook is one file per
+situation. Everything that moves is deleted from where it was in the same PR.
+Before any of it, one builder makes the stock brief every agent reads,
+because playbooks attach to the stock, and the cases learn to rebuild what
+step 6 changes, or no case score says anything about it.
 
-A **playbook** is one file per situation under `lib/agent/playbooks/`. Code
-decides which apply, from what it already knows about the stock: the trigger
-that fired, the `needsAction` flag, the plan flags (`planSanity`). A
-playbook's text is deleted from every prompt that carried it in the same PR.
+### 10.1 How a playbook attaches
 
-- **Trigger run:** the kickoff carries the one playbook for what fired.
-  Nothing else rides along, because code knows what fired.
-- **Morning run and chat:** the read carries each playbook that applies
-  **once**, in a `playbooks` block, and each row names the ones that apply
-  to it. Twelve flagged rows never carry twelve copies.
-- **No flag:** a short default review stays in the job until step 7. It is
-  the review text in 10.3 that no flag claims.
+A **playbook** is one file under `lib/agent/playbooks/`. Code decides which
+apply from the fired trigger, the `needsAction` flag, the plan flags
+(`planSanity`) and the computed numbers on the row.
+
+- **Trigger run.** The kickoff carries the stock brief and the one playbook
+  for what fired. Today the stock's blocks (the thesis, the setup, the
+  research excerpt, the position, what's been said, the ladder, the fired
+  trigger) sit in the *system* prompt (`intraday-tactical.ts`) and the
+  kickoff is one sentence (`tactical-run.ts`). After step 6 the system
+  prompt is the job alone and identical for every fire; the stock and its
+  situation are the kickoff.
+- **Morning run and chat.** The `get_theses` reply carries a `playbooks`
+  block with each playbook that applies once, keyed by name, and each row
+  names its keys. Twelve flagged rows carry twelve keys, not twelve copies.
+- **Chat, when code cannot know.** A pasted list of tickers or a question
+  about a proposal is not a flag. `read_knowledge_library` gets a `playbook`
+  topic, and the chat's job says once: for discovery, for a proposals review,
+  or for a stock with a flag you have not read, read the playbook first. The
+  PR that adds the topic also trims that tool's description to the chat's
+  use: it carries the builder's and podcast editor's instructions today and
+  names tools the chat does not have.
+- **The writer.** Already built per case. Its duplicates came out in the
+  dead-text PR (#784): the buy-now sentence, the conviction tiers, the 2:1
+  remedy, and the contradiction on whether a watch's defaults carry a review
+  (they do not). Of its earnings-trigger block, only the two lines defining
+  the `report` and `surprise` measures repeat the trigger schema's guide;
+  the guidance under them (the account already wakes every stock on a
+  report, never buy on a beat alone) is the writer's and stays.
 
 Today 27,855 of the morning text's 32,084 characters, and 12,437 of the
-trigger run's 17,698, are situation text.
+trigger run's 17,698, are situation text (before #784).
 
-### 10.2 First, one stock brief (PR 6.0)
+### 10.2 The cases must see step 6 (PR 6.h, before 6.0 merges)
 
-Playbooks attach *with the stock*, so the stock has to be built in one place
-first. Today four places build it, four ways:
+`scripts/hero-case.ts` rebuilds the system prompt from today's code and
+replays the recorded conversation as it was: the kickoff and every tool
+result, `get_theses` rows included (only a tool's `toModelOutput` hook runs
+on them). Step 6 puts playbooks in the kickoff and in the read, so without
+this a step-6 PR could change every word a run sees and every case would
+score as before. For the trigger run that is not yet true, because its
+stock blocks are in the system prompt the runner already rebuilds; it
+becomes true the moment they move into the kickoff.
+
+1. **The trigger run's kickoff** is built by one pure function,
+   `tacticalKickoff(input)`, called by `tactical-run.ts` and by the case
+   runner from the case's `promptArgs`. The recorder stores its input.
+2. **A stock row in the read** is rebuilt through the brief builder (10.3)
+   from a snapshot of that stock's facts. The builder's input is the facts,
+   not database rows: the live path computes them from the database, the
+   recorder stores them for new cases, and the cases cut before step 6 are
+   back-filled by reading the same facts off the row they recorded (every
+   fact the brief needs is on today's row). The database as it was on a
+   case's day cannot be re-read, so re-cutting old cases is not an option.
+3. **Proof without spending.** The runner gets `--print-input`: it prints
+   the first request it would send and stops. Change one word in the kickoff
+   builder (6.h) and one in a brief label (6.0); the word shows in the
+   printed input of a trigger-run case and a morning case. One model run of
+   one case confirms the printed input is what the model received.
+
+This also retires the old-shape triggers frozen in rows of cases cut before
+the cutover, since a rebuilt row is written by today's code.
+
+### 10.3 The stock brief (PR 6.0)
+
+Today four places build a stock, four ways:
 
 | Builder | What it gives an agent about a stock |
 |---|---|
 | `get_theses` (morning, trigger run, chat) | The full row: `context` (via `stockContextFor`), the plan, the flags, the score, the research line |
-| The trigger run's kickoff (`tactical-run.ts`, `intraday-tactical.ts`) | Its own blocks: the thesis, the setup, a research excerpt, the position, `context` (the same `stockContextFor`), the ladder, the fired trigger |
+| The trigger run's system prompt (`intraday-tactical.ts`) | Its own blocks: the thesis, the setup, a research excerpt, the position, `context` (the same `stockContextFor`), the ladder, the fired trigger |
 | `list_theses_all` (chat) | The levels and status only: no context, no flags |
 | `list_proposals` (chat) | The plan and score of the stock behind a proposal, and the stop from the **position row**, which can lag a floor moved on the thesis |
 
-PR 6.0 builds one `stockBrief` and points all four at it. The fields stay as
-they are on the full row today. The morning text that teaches how to read a
-row moves into the brief's own labels and is deleted: the resolver envelope
-(1,284) and ladder health (421). Cases: every morning, trigger-run and chat
-case, because all three read stocks through it.
+**One builder.** `stockBrief(facts)` is a pure function: no database call,
+no clock. Its input is the thesis row and its triggers as sentences, its
+activity rows, its position, the live quote with its age, the inherited
+rules, the analyst's numbers, and the flags already computed
+(`needs-action.ts`, `plan-sanity.ts`, `ladder-health.ts`). All four builders
+above call it; `stock-context.ts` becomes part of it. `get_theses` today is
+one 1,643-line function in which the reads, the quotes and the row are
+interleaved; the PR separates the facts (database) from the brief (pure).
 
-### 10.3 Every situation
+**The field table.** The PR carries one row per field: its name, what reads
+it (a playbook, a check, or the owner's screen) and its size on the real
+book. A field with no reader goes. Today's full row carries at least
+`context`, the thesis columns, `triggers`, `triggerCount`, `history`,
+`needsAction`, `resolved` (`currentPrice`, `entryQualityScore`,
+`unrealizedGainPct`, `progressToTarget`, `ladderHealth`, `planSanity`,
+`floorRisk`, `triggerState`, `triggerDetail`, `actionability`,
+`supersededBy`, `staleness`, `resolvedAt`, `quoteAgeMs`), `setup`,
+`nameTheSetup`, `buyBlockedByFull` and `researchAge`. Overlaps to settle in
+the table: `triggerState`/`triggerDetail` against `needsAction` and the
+fires in `context`; `actionability` against the flags; `staleness` against
+`researchAge`; `triggerCount` against the trigger list.
 
-"Moves" is the text that becomes the playbook. "Deleted" is every other copy,
-removed in the same PR. Morning lines are `lib/agent/system-prompt.ts`;
-trigger-run lines are `lib/agent/system-prompts/intraday-tactical.ts`.
+**What it carries, in this order:**
 
-| # | Situation | Rides on | Moves | Deleted in the same PR | Cases |
-|---|---|---|---|---|---|
-| 1 | A protective sale fired, including one declined before | Fired EXIT (stop or trail); `SALE_DECLINED` | Trigger run: whether the belief survived (671). Morning: the fired-sale bullet with the held-through-the-floor duty (1,005) | The EXIT line in the trigger run's "execute the declared action" list | nvda-declined-sale, five-broken-belief; **new:** a trailing-sale fire on the trigger run |
-| 2 | A buy level arrived | Fired or matching ENTER; `ENTER_NOW` | Trigger run: the move to held (620) and the confirmation gate (2,777). Morning: the fired-buy bullet with re-pricing (1,804), the low-conviction buy (205), the variant view at a buy (329) | The ENTER line in the trigger run's list | docu-trigger, wst-buy-level-arrives |
-| 3 | An add fired, or a winner nears its target | Fired ADD; `progressToTarget` ≥ 0.75 | Trigger run: adding to a holding (2,748). Morning: press, hold or take (1,718), the TRIM/ADD line (91) | The ADD and TRIM lines in the trigger run's list | mu-earnings-review; **new:** an add fire on the trigger run |
-| 4 | An earnings trigger fired | Fired trigger on the report or result measure | Trigger run (614). Morning (1,273) | — | mu-earnings-review; **new:** an earnings fire on the trigger run |
-| 5 | A filing trigger fired | Fired trigger on the filing measure | Trigger run (603). Morning (952) | — | **new:** a filing fire |
-| 6 | A holding's protection lags its gain or risks too much | `UNPROTECTED_GAIN`, `FLOOR_TOO_FAR` | Morning: unprotected gain (1,221), floor too far (919) | The trigger run's "hold still means protecting the gain" lines inside the add text | **new:** an unprotected-gain row |
-| 7 | The research is old | `RESEARCH_STALE`; a stale `researchAge` on a review | Morning: research stale (1,650), staleness on a review (889). The two say the same thing, so it is one playbook | — | now-needs-research (re-scored for "refresh or re-affirm on what the research says", since #777 put the text back on the row) |
-| 8 | A plan contradicts the tape | Any `planSanity` flag | Morning: plan sanity (1,739). Each flag already carries its own sentence with the numbers; the playbook keeps only the three answers and "archiving is not an answer" | — | pbh-two-flags, ceg-plan-stands |
-| 9 | A sold stock, or a quiet watch that woke | `sold_to_review`; a fired wake on a watch with no clock | Morning: the sold-stock duty (1,940), the wake on a watch with no clock (827), "stop reviewing this" (752) | — | **new:** a sold stock answered; a wake on a watch with no clock |
-| 10 | First research on a seed | `REVIEW_DUE` with `pendingFirstReview` | Morning (1,735) | — | **new:** a seed's first review, if one still occurs (seeds come from the app and the builder only) |
-| 11 | Chat discovery | The chat's batched-discovery mode (the kickoff already says so) | Chat: batched discovery (10,561) becomes the one discovery playbook | The discovery agent's prompt (`system-prompts/discovery.ts`, 20,774) and its run function: last run 2026-05-31, none since. `DISPATCH_CAP` moves to the dispatch tool | **new:** a chat discovery session |
+1. Ticker, status, direction, horizon, setup. The price now with its age, and
+   the price at the last review.
+2. Why it is on the list today: every situation on the row, in the order the
+   code ranks them, each with its one-line arithmetic and the key of the
+   playbook it carries, under one line: answer them in this order; one save
+   answers all. Today a row has one `needsAction` kind plus, separately, its
+   plan flags, its floor risk, its research age and, for a sold stock, its
+   own list; the brief gathers them in one place.
+3. What has been said: `context` as today, capped at 1,600 characters
+   (`CONTEXT_CHAR_CAP`).
+4. The plan: buy, target and floor with the live price beside each, the risk
+   to reward, and for a holding the gain, what the floor locks in and the
+   trail.
+5. The triggers, each as its sentence and id.
+6. Belief, assumptions, invalidation conditions.
+7. The score with its date and the price when scored; conviction; variant
+   view.
+8. For a holding, the setup's checklist; with no setup named, the ask to
+   name one.
+9. Research on the row (#777): snapshot, bull case, bear case, with the date
+   written and the price then. The rest on request.
+10. History only on a named read, as today.
 
-Not a playbook:
-- **The owner's words and decisions on a stock** (1,826). They live in the
-  brief's `context` and in the house rules (step 7).
-- **The cash duty and the market regime** (744). They go to the house rules.
-- **The default review**, the text no flag claims: the review on a LONG or
-  SHORT (858), the held review's setup checklist (1,032), "every review
-  re-earns the ladder" (1,109), the cadence (695), the generic fired review
-  (837), and the trigger run's belief anchor (783) and re-ladder duty
-  (1,369). It is the default until step 7 cuts each job. Its duplicates go
-  then.
+**Deleted in the same PR:** the morning text's resolver-envelope paragraph
+(1,281 characters) and ladder-health paragraph (418), the lines in step 1 of
+the morning text that teach how to read a row, the matching sentences in
+`get_theses`'s description and its `detail` field, and the trigger run's
+stock blocks (they become the brief, in the kickoff).
 
-**"Nothing can wake it" is wrong about some stocks**, and row 8's PR fixes
-it. The flag counts only the stock's own triggers (`ownTriggerCount` in
-`plan-sanity.ts`). The rules a stock inherits from its analyst and the
-account show on the same stock and fire on it. VST on 2026-09-23 carried
-"nothing can wake it" while an inherited "below the 200-day" review fired
-that morning. The fix counts the inherited rules that can wake a watched
-stock. It changes when the flag shows, not what may be traded.
+**Deterministic.** The same facts give the same bytes: no per-call
+timestamp, no reordering. Within a run the provider's cache is not at risk
+(a tool result keeps its bytes once returned, and the trigger run's kickoff
+is built once), but a case rebuilt twice must read the same, and a
+`resolvedAt` that moves would make every comparison noisy.
 
-### 10.4 The order
+**Size, measured.** The PR prints the brief's size for every live row and
+the read's total per analyst on the real book, against today's (the
+Compounder's read was 153,296 characters on 2026-10-06). The read is sent
+again on every step of a morning run, so this is the number that decides
+what a morning run costs in tokens.
 
-1. **6.0 The stock brief.** Nothing attaches until it exists.
-2. **The trigger run first, rows 1 to 5.** Code knows what fired, so the run
-   gets only the answer for that. Each PR also deletes the morning copy and
-   attaches the same playbook to the morning rows with that flag, so a
-   situation moves whole.
-3. **The morning-only situations, rows 6 to 10.**
-4. **Row 11, discovery.**
-5. **The score check (10.6)**, after row 2 and only after the owner's yes.
+### 10.4 Playbooks are rewritten, not moved
 
-One situation per PR, merged alone (Appendix D).
+The situation text today carries incident stories, version labels and field
+jargon (#784 cut the ones in the prompts). A playbook is written for the
+model, once, under five parts in this order:
 
-### 10.5 What the cases cost
+1. When it applies: the flag, the fired action or the computed condition, in
+   one line.
+2. The questions to answer, in order, each with the data that answers it and
+   the tool that reads it.
+3. The actions available: tools and fields named exactly as the agent's tool
+   list has them. The test that no tool names a tool its agent lacks
+   (`descriptions-agree.test.ts`) extends to playbooks.
+4. What counts as answered: the test its case scores. If a rationale alone
+   is not an answer, it says what is.
+5. Known mistakes, as rules, never stories.
 
-Recorded per run on 2026-10-06. Dollars are gpt-5.4 list price ($2.50 per
-million input, $0.25 cached, $15 output) for the OpenAI agents. Chat cases
-run on the chat's model without a cache; they are given in tokens.
+**Caps.** Each playbook's size is recorded in the size test when it is
+written and the file states its cap; a line added later means a line
+removed. Starting caps, to be set from the first draft: protective sale
+1,500; a buy arrives 2,500; add or winner 2,000; earnings 1,200; filings
+1,200; protection 1,200; stale research 900; plan problems 1,200; sold,
+quiet watch and first research 1,800; the default review 2,000; discovery
+6,000; proposals and one-off requests 2,500. A draft over its cap is a
+review finding.
 
-| Case | Agent | Tokens in per run | Cached | One 12-run pair (24 runs) |
+**Voice.** Plain and exact; no bold, no all-caps warnings, no field names in
+prose except the tool call to make. The twelve voice rules govern what the
+model writes for the owner, not the playbook's own text.
+
+**Deleted, with proof.** The PR body lists each sentence that moved, the
+file and line it left, and a `grep` over `lib/agent` for a distinctive
+phrase from each that finds only the playbook. Where a tool field already
+says a thing (`close_position.belief_survived`,
+`manage_position.new_stop_loss`), the field is its home and the playbook
+points at it in one line.
+
+### 10.5 Every situation
+
+"Rides on" is checked against `needs-action.ts` and `plan-sanity.ts` on
+main. "Moves" is the text the playbook is rewritten from; every copy goes in
+the same PR. Morning lines are `system-prompt.ts`; trigger-run lines are
+`system-prompts/intraday-tactical.ts`.
+
+| # | Situation | Rides on | Rewritten from | Cases |
 |---|---|---|---|---|
-| ceg-plan-stands (8 turns) | morning | 388,000 | 95% | about $4 |
-| now-needs-research | morning | 76,000 | 88% | about $1.10 |
-| wst-buy-level-arrives | morning | 66,000 | 83% | about $1.25 |
-| mu-earnings-review | morning | 38,000 | 95% | about $0.45 |
-| pbh-two-flags | morning | 38,000 | 90% | about $0.50 |
-| five-broken-belief | morning | 33,000 | 94% | about $0.40 |
-| account-what-we-own | chat | 78,000 | — | 1.9M tokens |
-| eme-reply | chat | 55,000 | — | 1.3M tokens |
-| eme-arm | chat | 51,000 | — | 1.2M tokens |
-| docu-chat | chat | 30,000 | — | 0.7M tokens |
+| 1 | A protective sale fired, including one declined before | `SALE_DECLINED`; a fired EXIT | Trigger run: the belief-survived line (the field is the home). Morning: the fired-sale bullet with the held-through-the-floor duty | nvda-declined-sale, five-broken-belief; **new:** a trailing-sale fire |
+| 2 | A buy level arrived | `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` with action ENTER (`ENTER_NOW` is only the resolver's label) | Trigger run: the confirmation gate. Morning: the fired-buy bullet with re-pricing, the low-conviction buy, the variant view at a buy | docu-trigger, wst-buy-level-arrives |
+| 3 | An add fired, or a winner nears its target | A fired ADD; or a held row with `progressToTarget` ≥ 0.75. There is no flag for the second: `RUNNING_WINNER` was deleted 2026-08-25, so the attachment reads the resolver's number and the threshold stays in code, not in the text | Trigger run: adding to a holding. Morning: press, hold or take; the TRIM/ADD line | mu-earnings-review; **new:** an add fire |
+| 4 | An earnings trigger fired | The fired trigger's measure is `report` or `surprise` | Both earnings blocks | mu-earnings-review; **new:** an earnings fire |
+| 5 | A filing trigger fired | Measure `filing` | Both filing blocks | **new:** a filing fire |
+| 6 | A holding's protection lags its gain or risks too much | `UNPROTECTED_GAIN`; `FLOOR_TOO_FAR` (and `resolved.floorRisk`, answered even when another flag holds the row) | Morning: both bullets. Trigger run: "hold still means protecting the gain" inside the add text | **new:** an unprotected-gain row |
+| 7 | The research is old | `RESEARCH_STALE`; a stale or missing `researchAge` on any review. One duty, two sources, one playbook (#784 already says it once) | Morning: the stale-research bullet | now-needs-research, re-scored |
+| 8 | A plan contradicts the tape | Any of the 15 `planSanity` kinds; each keeps its own arithmetic on the flag | Morning: plan sanity | pbh-two-flags, ceg-plan-stands |
+| 9 | A sold stock, or a quiet watch that woke | `sold_to_review`; a wake on a watch with no clock, defined in `needs-action.ts` as: direction null, a fired trigger, no review trigger of its own. It is an attachment key; the fire already lists the row | Morning: the sold-stock duty, the wake on a watch with no clock | **new:** a sold stock answered; a no-clock wake |
+| 10 | First research on a seed | `REVIEW_DUE` with `pendingFirstReview` | Morning: the seed bullet | **new:** a seed's first review (5 seeds were made in the 30 days to 2026-10-07; the morning run committed one, a PASS) |
+| 11 | Chat discovery | The chat's discovery kickoff; otherwise the lookup topic (10.1) | Chat: batched discovery (10,561) | **new:** a chat discovery session |
+| — | The default review: no flag | Every listed row a playbook does not claim | Morning: the review on a LONG or SHORT, the held review's setup checklist, "every review re-earns the ladder", the cadence, the generic fired review. Trigger run: the belief anchor and the re-ladder duty | ceg-plan-stands, mu-earnings-review |
 
-The trigger-run and writer cases (docu-trigger, nvda-declined-sale,
-bwxt-writer) were not run today; they are smaller than the morning cases.
-Each PR runs its rows' cases plus one case of every other agent it touches,
-12 runs main against branch in the same hour. The new cases in 10.3 are each
-cut from a real run before their PR, at about the cost of their neighbours.
+**The order on a row** is the code's: a promoted stock, a declined sale, a
+fired or matching trigger that moves money, a holding's floor too far, a
+review fire, an unprotected gain, a review due, stale research. The ranking
+comment at the top of `needs-action.ts` is out of date (it lists
+`RUNNING_WINNER` and leaves out three kinds) and is corrected in 6.0. The
+brief orders the playbooks this way and says once that one save answers
+all; no playbook restates it.
 
-### 10.6 The score check at a buy fire (decision 3), its own PR
+**"Nothing can wake it" is wrong about some stocks**, fixed with row 8. The
+flag counts only the stock's own triggers (`ownTriggerCount` in
+`plan-sanity.ts`). VST on 2026-09-23 carried it while an inherited "below
+the 200-day" review fired that morning. The fix counts inherited rules, in
+two kinds: an inherited review schedule (`repeat`) or report wake
+(`report`) always fires in time and counts as a wake; an inherited
+price-state review may stay silent for a year and counts as "may wake", and
+the flag's sentence says which the stock has. It changes when the flag
+shows, not what may be traded, and is judged on the real book (10.8).
+
+**The default review is written now**, as its own playbook under the same
+five parts, not left for step 7: 77 of 236 reviews in the month measured (section 2.1)
+said the plan stands, so it is the most common path. Its source paragraphs
+are deleted from both prompts in the same PR.
+
+**When to change a horizon** is not written into any playbook. #780 removed
+it from the field descriptions; morning runs changed a horizon in 0 of 267
+saves in the 30 days to 2026-10-06.
+
+**Not a playbook:** the owner's words and decisions on a stock (the brief's
+`context`, and the house rules at step 7); the cash duty and the market
+regime (the house rules).
+
+### 10.6 The order, and what each PR shows
+
+| PR | What | Deletes in the same PR | Cases |
+|---|---|---|---|
+| 6.pre | Dead and doubled text (#784) | Dead field names, deleted-pipeline wording, stage numbering, stories | With #780's batch |
+| 6.h | The cases rebuild the kickoff and the rows (10.2) | Nothing | The printed-input proof |
+| 6.0 | The brief, one builder, four readers (10.3) | Resolver, ladder health and row-reading text; the trigger run's stock blocks | Every morning, trigger-run and chat case |
+| 6.1 | Protective sale (row 1) | Its morning and trigger-run copies | nvda-declined-sale, five-broken-belief, new trail fire |
+| 6.2 | A buy arrives (row 2) | The confirmation gate; the fired-buy, low-conviction and variant-view lines | docu-trigger, wst-buy-level-arrives |
+| 6.3 | Add or winner (row 3) | The add block; press, hold or take | mu-earnings-review, new add fire |
+| 6.4 | Earnings (row 4) | Both earnings blocks | mu-earnings-review, new earnings fire |
+| 6.5 | Filings (row 5) | Both filing blocks | new filing fire |
+| 6.6 | Protection (row 6) | Both morning bullets; the trigger run's lines | new unprotected-gain row |
+| 6.7 | Stale research (row 7) | The stale-research bullet | now-needs-research |
+| 6.8 | Plan problems (row 8) with the wake fix | Plan sanity in the morning text | pbh-two-flags, ceg-plan-stands |
+| 6.9 | Sold, quiet watch, first research (rows 9, 10) and the default review | Their bullets and the default-review paragraphs | new sold, no-clock wake and first-review cases |
+| 6.10 | Discovery (row 11) | The chat's batched-discovery section; `system-prompts/discovery.ts` and its run function; `DISPATCH_CAP` moves to the dispatch tool | new chat discovery case |
+| 6.11 | Proposals and one-off requests; the chat's system and data-model sections | The depth-bar examples, trade-as-proposal, the notes procedure, the system description, the data model | docu-chat, eme-reply, account-what-we-own |
+| 6.12 | The score check (10.9), only after the owner's yes | Three sums become one function | eme-arm and the row-2 cases |
+
+One situation per PR. A PR that changes what the morning run reads merges
+alone, before a run day that can be watched (Appendix D, rule 5). Removing
+the discovery run function changes the Inngest registration; the re-sync is
+the owner's click.
+
+**Every PR body carries, before a hunk is read:**
+
+1. The net line delta, and the deletions by file and line.
+2. The `grep` proof that each moved sentence exists only in its playbook.
+3. The size test before and after, and the real-book counts (10.8).
+4. The cases table: case, main, branch, same hour, runs a side, cost.
+5. "No new refusal in `place_trade` or `complete_run`", and no new
+   instruction text beyond the playbook's five parts.
+6. Rebased onto main. A PR built while its predecessor is still open is
+   stacked on it and rebased onto main the moment the predecessor merges,
+   before review.
+
+### 10.7 Cases and what they cost
+
+1. Every new case in 10.5 is cut from a real run **before** its PR is opened
+   and scored on main first. A case with no baseline has no before.
+2. `expect` names the decision (the tool call and its fields), never the
+   prose, except where the decision is prose, as in the chat cases.
+3. Main against branch in the same hour (section 7). Twelve runs a side
+   where the two must be told apart (a case under 6/6 on main); six a side
+   where main is already 6/6 and the question is "not worse".
+4. Cost, from the recorded case runs of 2026-10-05/06 at list price: the six
+   morning cases together about $5 to $6 per 24-run pair, most of it
+   ceg-plan-stands; the four chat cases about 4.9 million Sonnet tokens per
+   24-run pair, about $16 before #783 and roughly a third less after; the
+   trigger-run and writer cases are smaller. Thirteen PRs with a batch each
+   plus the nine new cases is a few hundred dollars over the step. Each PR
+   states its batch's cost before it runs.
+5. No case runs for a step-6 PR until 6.h is merged, or its score is not
+   about the PR.
+
+### 10.8 Measure the real book, every PR
+
+Each step-6 PR runs the brief and the playbook attachment over every live
+thesis on the account (production, read-only) and prints how many rows carry
+each playbook and which; the brief's size per row and the read's total per
+analyst; and the morning, trigger-run and tool-definition sizes before and
+after. The same rule the flags were held to: run the real function over the
+real rows before claiming what it does.
+
+### 10.9 The score check at a buy fire (decision 3), its own PR
 
 - **What it fixes.** Today the score is taken when the thesis is written,
   before the entry exists. A pullback plan scores low on its entry part and
@@ -682,18 +872,29 @@ cut from a real run before their PR, at about the cost of their neighbours.
 - **Status.** It is the one trading change in step 6. The QB ruled approve;
   it waits for the owner's yes, or veto, before anyone builds it.
 
-### 10.7 Totals expected after
+### 10.10 Totals expected after
 
-Estimates from the measured sizes, not yet measured on built code:
+Estimates from the measured sizes, replaced by measurements as each PR lands
+(10.8):
 
-- **Morning text:** 32,084 today. About 8,000 to 9,000 always (the job, the
-  default review, the house rules), plus only the playbooks for the flags
-  present. A typical morning has three to six situations, about 5,000 to
-  9,000 more.
-- **Trigger run:** 17,698 today. About 6,000 always, plus the one playbook
-  for what fired (600 to 3,500).
-- **Chat:** 32,698 today. Batched discovery (10,561) only when discovering.
-- **The discovery agent:** 20,774 today, then none.
+- **Morning text:** 32,084 before #784, 27,995 after it. About 8,000 to
+  9,000 always (the job, the house rules), plus only the playbooks for the
+  situations present, the default review among them.
+- **Trigger run:** 17,698 before #784, 15,410 after it. About 6,000 always,
+  plus the brief and the one playbook for what fired.
+- **Chat:** 32,159 after #784. Batched discovery (10,561) only when
+  discovering.
+- **The discovery agent:** 20,773, then none.
+
+### 10.11 What the owner still decides
+
+1. Decision 3, the score check at a buy fire. Approved by the QB, pending
+   the owner's veto. 6.12 is not opened until a yes.
+2. The discovery agent's deletion (6.10) removes an Inngest function; the
+   re-sync is a click.
+3. Whether the chat keeps any description of the app and its tables (6.11).
+   The recommendation is none on every message, and a lookup topic if a case
+   shows the chat needed it.
 
 ---
 
@@ -703,13 +904,13 @@ Estimates from the measured sizes, not yet measured on built code:
 |---|---|---|
 | House rules | `lib/agent/knowledge/house-rules.ts` | In the unopened stock-rules PR, one sentence |
 | Jobs | `lib/agent/system-prompt.ts`, `system-prompts/intraday-tactical.ts`, `run-thesis-writer.ts`, `modes.ts` | Each also holds rules and situations today |
-| Situation playbooks | On the flags: `needs-action.ts` (8 kinds) and `plan-sanity.ts` (13 kinds) | The plan flags already carry text. The rest moves from the morning and trigger-run texts |
+| Situation playbooks | On the flags: `needs-action.ts` (8 kinds) and `plan-sanity.ts` (15 kinds) | The plan flags already carry text. The rest moves from the morning and trigger-run texts |
 | Setup playbooks | `lib/agent/knowledge/setups.ts` | Exists. Add known mistakes |
 | Stock brief | `stock-context.ts` and `stock-rules.ts` (unopened), read by `get-theses.ts`, `list-proposals.ts` and the trigger run | Becomes one builder |
 | Order of flags on a stock | `needs-action.ts`, "Precedence when multiple match" | Exists |
 | A smaller reply for the model than the screen | `toModelOutput` on a tool, in the installed SDK | Unused today |
-| Thesis fields, defined once | New, used by `update-thesis.ts`, `record-thesis.ts` and the writer's `submit_thesis` | 30 shared fields, 1 worded the same |
-| Model-facing trigger shape | `lib/agent/triggers/model-schema.ts` | Exists. The writer uses it. The two thesis tools do not |
+| Thesis fields, defined once | `lib/agent/tools/thesis-fields.ts`, used by `update-thesis.ts`, `record-thesis.ts` and the writer's `submit_thesis` | In #780 |
+| Model-facing trigger shape | `triggerInputSchema` in `lib/agent/triggers/schema.ts` | Exists. The writer and both thesis tools use it |
 | Per-agent tool fields | `schemaFor` on `defineTool` | Exists. Used only for sizing fields |
 | Lookup tool | `read-knowledge-library.ts` | Exists. Topics: archetype, setup, source, signal |
 | Random id | `lib/agent/triggers/schema.ts:215` | The cache bug |
