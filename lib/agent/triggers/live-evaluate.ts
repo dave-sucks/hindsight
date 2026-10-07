@@ -18,7 +18,8 @@
  * snapshot, loaded once for the batch (DAV-247).
  */
 import { prisma } from "@/lib/prisma";
-import { getLatestPrices, type AlpacaCredentials } from "@/lib/alpaca";
+import type { AlpacaCredentials } from "@/lib/alpaca";
+import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -128,19 +129,18 @@ export async function evaluateLiveTriggerMatches({
     }
   }
 
-  // Batch quote fetch — one call per unique ticker.
+  // The live price, from the one place it comes from (lib/market-data/
+  // live-quote): the tape in the session, the last close outside it. The
+  // latest trade this replaced matched the 08:00 run's triggers against
+  // pre-market prints. A stock with no price matches no price trigger.
   const tickers: string[] = Array.from(
     new Set(theses.map((t: { ticker: string }) => t.ticker)),
   );
-  let prices: Record<string, number> = {};
-  try {
-    prices = await getLatestPrices(tickers, alpacaCreds);
-  } catch (err) {
-    console.warn(
-      "[live-evaluate] Failed to fetch prices, skipping price-side matches:",
-      err,
-    );
-    return [];
+  const prices: Record<string, number> = {};
+  for (const [ticker, { quote }] of Object.entries(
+    await getLiveQuotes(tickers, { caller: "other", creds: alpacaCreds }),
+  )) {
+    if (quote) prices[ticker] = quote.c;
   }
 
   const matches: LiveMatch[] = [];
