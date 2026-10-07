@@ -10,6 +10,7 @@
  */
 
 import { streamText, convertToModelMessages, stepCountIs, hasToolCall } from "ai";
+import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
@@ -897,10 +898,10 @@ export async function POST(
       // Low temperature for research-run consistency — the agent should follow
       // the stage contract deterministically, not riff on it.
       ...(agentMode === "research-run" && { temperature: 0.2 }),
-      system: systemPrompt,
+      system: cachedSystem(effectiveProvider, systemPrompt),
       messages: modelMessages,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: tools as any,
+      tools: cachedTools(effectiveProvider, tools) as any,
       // Stop the run when:
       //   • we hit the per-mode step ceiling, OR
       //   • the agent calls ask_question (the user must answer before

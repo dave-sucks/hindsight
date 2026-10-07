@@ -51,6 +51,7 @@ import { openai } from "@ai-sdk/openai";
 import { prisma } from "@/lib/prisma";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
+import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import {
   getThesisComposite,
@@ -956,10 +957,10 @@ Write the research note now, then call submit_thesis.`;
     try {
       await generateText({
         model,
-        system: systemPrompt,
+        system: cachedSystem(modeConfig.provider, systemPrompt),
         prompt: userPrompt,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tools: tools as any,
+        tools: cachedTools(modeConfig.provider, tools) as any,
         stopWhen: [stepCountIs(modeConfig.maxSteps), () => accepted !== null],
         abortSignal: AbortSignal.timeout(RESEARCH_TIMEOUT_MS),
         onStepFinish(step) {
@@ -1613,7 +1614,7 @@ async function resubmitWithFeedback(input: {
   try {
     const res = await generateText({
       model,
-      system: input.systemPrompt,
+      system: cachedSystem(modeConfig.provider, input.systemPrompt),
       messages: [
         { role: "user", content: input.userPrompt },
         { role: "assistant", content: input.noteText || "(research note)" },
@@ -1626,7 +1627,7 @@ async function resubmitWithFeedback(input: {
         },
       ],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: { submit_thesis: submit } as any,
+      tools: cachedTools(modeConfig.provider, { submit_thesis: submit }) as any,
       stopWhen: [stepCountIs(SAVE_RETRY_MAX_STEPS), () => accepted !== null],
       abortSignal: AbortSignal.timeout(SAVE_RETRY_TIMEOUT_MS),
     });
