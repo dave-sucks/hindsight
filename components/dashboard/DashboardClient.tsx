@@ -91,6 +91,7 @@ import { cn, PNL_HEX } from '@/lib/utils';
 import { formatCurrency, formatDateLabel } from '@/lib/format';
 import { realizedSince } from '@/lib/portfolio/range-realized';
 import { windowReachesInception } from '@/lib/portfolio/inception';
+import { oneDayWindow } from '@/lib/portfolio/one-day-window';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -177,13 +178,14 @@ function pointLabel(v: string): string {
 }
 
 function filterByRange<T extends { date: string }>(data: T[], range: Range): T[] {
-  // 1D means the last SESSION, not the last 24 hours. On a Sunday the newest
-  // point is Friday afternoon, so a rolling day window is empty and the chart
-  // fell back to two points — a straight line. Take the newest day present in
-  // the data and keep everything on it.
+  // 1D runs from the PREVIOUS SESSION'S CLOSE to now — not the last 24 hours
+  // (empty on a Sunday, which drew a straight line), and not today's points
+  // alone. Alpaca's intraday series starts at 09:30, so a today-only window
+  // measured from the OPEN and dropped the overnight gap, while every
+  // per-stock 1D on the same page is measured against the previous close.
+  // The header read −$423.41 on 2026-10-06 over a screen of green rows.
   if (range === '1D' && data.length > 0) {
-    const newestDay = data[data.length - 1].date.slice(0, 10);
-    const session = data.filter((d) => d.date.slice(0, 10) === newestDay);
+    const session = oneDayWindow(data);
     if (session.length > 1) return session;
   }
   const ms = cutoffMs(range);
