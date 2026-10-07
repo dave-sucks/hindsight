@@ -108,7 +108,7 @@ const RECORDED_PLAYBOOKS: Record<string, number> = {
   "add-or-winner": 1_866,
   earnings: 1_193,
   filings: 1_105,
-  protection: 1_179,
+  protection: 1_144,
 };
 
 describe("the playbooks, by size", () => {

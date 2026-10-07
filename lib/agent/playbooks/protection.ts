@@ -9,6 +9,13 @@
  * add-or-winner playbook. Neither situation is a trigger, so a trigger run
  * never carries this one.
  *
+ * One path for the floor, update_thesis stop_loss: the thesis's floor is the
+ * true one, and the position's stop is a copy that lags it. The old bullet's
+ * "tighten the trail" is gone: a trail is nearly always the analyst's
+ * inherited rule, which a stock cannot edit, so the stock's own cure is the
+ * floor. A stock that carries its own trail can still tighten it with
+ * edit_triggers, as any of its triggers.
+ *
  * Cap: 1,200 characters. A line added means a line removed.
  */
 import type { Playbook } from "./types";
@@ -20,7 +27,7 @@ Answer, in order:
 2. Where is real structure? The 20-day low, a swing low, the breakout level, an average (get_stock_data).
 
 What you can do:
-- Raise the floor under that structure: update_thesis with stop_loss, or manage_position update_targets. Tightening is always allowed. A compounder breathes wider than a trade.
+- Raise the floor under that structure: update_thesis with stop_loss. Tightening is always allowed. A compounder breathes wider than a trade.
 - Or protect by taking: manage_position partial_close so the loss at the floor fits, or close_position when the structure is breaking or the reward is gone.
 - Or say in one sentence why this floor stands and why the risk is worth it (a binary event this week that any trail would shake out).
 
