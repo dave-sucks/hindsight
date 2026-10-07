@@ -29,19 +29,22 @@ jest.mock("@/lib/prisma", () => ({
     account: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
-jest.mock("@/lib/alpaca", () => {
-  const getLatestPrices = jest.fn().mockResolvedValue({});
+jest.mock("@/lib/alpaca", () => ({
+  getLatestPrices: jest.fn().mockResolvedValue({}),
+  // P1-39: daily bars for the HELD_THROUGH_FLOOR recent-low fetch.
+  getBars: jest.fn().mockResolvedValue([]),
+}));
+// get_theses reads each price, with the time it printed, from
+// lib/market-data/live-quote. The cases below set prices on
+// `getLatestPrices`; this hands them over printed "now".
+jest.mock("@/lib/market-data/live-quote", () => {
+  const { getLatestPrices } = jest.requireMock("@/lib/alpaca");
   return {
-    getLatestPrices,
-    // get_theses reads each price with the time it printed. The cases below
-    // set prices on `getLatestPrices`; this hands them over printed "now".
-    getLatestPricesWithMeta: jest.fn(async (...args: unknown[]) => {
-      const prices = (await getLatestPrices(...args)) as Record<string, number>;
-      const at = new Date().toISOString();
-      return { prices, sources: {}, asOf: Object.fromEntries(Object.keys(prices).map((k) => [k, at])), fetchedAt: at };
+    getLiveQuotes: jest.fn(async (symbols: string[]) => {
+      const prices = (await getLatestPrices(symbols)) as Record<string, number>;
+      const t = Math.floor(Date.now() / 1000);
+      return Object.fromEntries(Object.entries(prices).map(([s, c]) => [s, { quote: { c, t, pc: null, d: null, dp: null, o: null, h: null, l: null, source: "alpaca" } }]));
     }),
-    // P1-39: daily bars for the HELD_THROUGH_FLOOR recent-low fetch.
-    getBars: jest.fn().mockResolvedValue([]),
   };
 });
 jest.mock("@/lib/proposals/pending-entry", () => ({
