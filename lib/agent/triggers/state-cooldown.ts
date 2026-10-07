@@ -5,7 +5,7 @@
  * would say "once a day" on a rule that asks once a week.
  */
 
-import { shapeOf } from "./condition/legacy";
+import { shapeOf } from "./condition/valid";
 import { isState } from "./condition/rules";
 
 

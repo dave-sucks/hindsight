@@ -5,10 +5,10 @@
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { reseedDiff, describeSeatRule } from "./seed-analyst";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { analystStandingTriggers, SETUP_STANDING_RULES } from "@/lib/agent/knowledge/seat-rules";
 import { triggersArraySchema } from "./schema";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { addProblem } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "./types";
 
@@ -31,8 +31,8 @@ describe("the seat templates", () => {
     for (const seat of Object.keys(SETUP_STANDING_RULES)) {
       const t = analystStandingTriggers([seat], mintId);
       expect(triggersArraySchema.safeParse(t).success).toBe(true);
-      expect(new Set(t.map(triggerBucket)).size).toBe(t.length);
-      for (const r of t) expect({ seat, kind: kindOf(r.predicate), ok: addProblem(r.predicate, "ANALYST") === null }).toMatchObject({ ok: true });
+      expect(new Set(t.map(triggerSlot)).size).toBe(t.length);
+      for (const r of t) expect({ seat, kind: shapeName(r.predicate), ok: addProblem(r.predicate, "ANALYST") === null }).toMatchObject({ ok: true });
       expect(t.every((r) => r.source === "DEFAULT")).toBe(true);
     }
   });

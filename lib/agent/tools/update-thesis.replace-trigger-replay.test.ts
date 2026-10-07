@@ -24,7 +24,7 @@
  * $146 review is a wake, and the target column stays empty.
  */
 import raw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { applyTriggerOps, type TriggerOp } from "@/lib/agent/triggers/ops";
@@ -141,7 +141,7 @@ describe("the fixture is the production call", () => {
       "Removed: review above $146": "Removed: Review if above $146",
     };
     expect(lines).toEqual(fx.savedOps.map(({ op, id, text }) => ({ op, id, text: SAID_NOW[text] ?? text })));
-    expect(stored.map((t) => kindOf(t.predicate))).toEqual(["EARNINGS_SINCE"]);
+    expect(stored.map((t) => shapeName(t.predicate))).toEqual(["report:after"]);
   });
 });
 
@@ -165,11 +165,11 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     expect(saved.refused).toBe(false);
     const row = (saved.db.store.thesis as Array<Record<string, unknown>>).find((t) => t.id === fx.thesisBefore.id)!;
     const now = row.triggers as Trigger[];
-    expect(now.map((t) => [t.action, kindOf(t.predicate)])).toEqual([
-      ["REVIEW", "PRICE_ABOVE"],
-      ["REVIEW", "REVIEW_CADENCE"],
-      ["REVIEW", "PRICE_BELOW"],
-      ["REVIEW", "EARNINGS_SINCE"],
+    expect(now.map((t) => [t.action, shapeName(t.predicate)])).toEqual([
+      ["REVIEW", "price:above"],
+      ["REVIEW", "repeat"],
+      ["REVIEW", "price:below"],
+      ["REVIEW", "report:after"],
     ]);
     expect(now[0].predicate).toMatchObject({ watch: "price", is: "above", value: 146 });
     // A wake, not a target: no plan columns on a stock with no buy.
@@ -185,7 +185,7 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     // landed on the old ones and were deleted with them.
     const submit: Submit = {
       ...fx.submit,
-      add_triggers: fx.submit.add_triggers?.filter((t) => kindOf(t.predicate) !== "PRICE_ABOVE"),
+      add_triggers: fx.submit.add_triggers?.filter((t) => shapeName(t.predicate) !== "price:above"),
     };
     const saved = await save(await writerSaveArgs(decision(submit)), false);
     expect(saved.refused).toBe(false);

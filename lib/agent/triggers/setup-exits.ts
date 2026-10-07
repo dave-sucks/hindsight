@@ -26,7 +26,7 @@ import {
 } from "@/lib/agent/knowledge/setups";
 import type { Trigger } from "./types";
 import type { TriggerOp } from "./ops";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { sessionsToCalendarDays } from "@/lib/market-hours";
 
 /** A beat the market sold: down at least this much on the day of the reaction. */
@@ -156,7 +156,7 @@ export function heldSetupExitOps(input: {
   // beat-the-market-sold review still are.
   const riskSide =
     input.stop != null && (input.direction === "SHORT" ? input.stop > input.entry : input.stop < input.entry);
-  const taken = new Set(input.stored.map(triggerBucket));
+  const taken = new Set(input.stored.map(triggerSlot));
   return setupExitTriggers({
     setup: input.setup,
     horizon: input.horizon,
@@ -165,6 +165,6 @@ export function heldSetupExitOps(input: {
     mintId: input.mintId,
     boughtAt: input.boughtAt,
   })
-    .filter((t) => !taken.has(triggerBucket(t)))
+    .filter((t) => !taken.has(triggerSlot(t)))
     .map((trigger) => ({ op: "add" as const, trigger }));
 }

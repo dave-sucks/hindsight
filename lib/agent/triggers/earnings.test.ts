@@ -1,8 +1,7 @@
 /**
  * earnings.test.ts — the calendar-side earnings source.
  *
- * The arithmetic is the whole point of this module: EARNINGS_BEAT /
- * EARNINGS_MISS spent months inert because nothing computed a surprise
+ * The arithmetic is the whole point of this module: earnings beat / miss spent months inert because nothing computed a surprise
  * figure, so the surprise math and the "has it actually reported" filter
  * both get real coverage here.
  */
@@ -97,7 +96,7 @@ describe("fetchEarningsWindow", () => {
 
   it("extends the window forward only when asked", async () => {
     // The scheduled half triples the payload; the cron only asks for it
-    // when some thesis carries an EARNINGS_WITHIN.
+    // when some thesis carries an before-earnings.
     mockCalendar([]);
     await fetchEarningsWindow({ now: NOW, lookaheadDays: 14 });
     const path = String(finnhubMock.mock.calls[0][0]);
@@ -189,7 +188,7 @@ describe("fetchEarningsWindow", () => {
   });
 
   it("keeps a report whose estimate is missing, with a null surprise", async () => {
-    // It reported; we just can't score it. EARNINGS_BEAT/MISS then return
+    // It reported; we just can't score it. earnings beat / miss then return
     // false, which is honest — better than inventing a percentage.
     mockCalendar([
       { symbol: "BBN", date: "2026-09-02", epsEstimate: null, epsActual: 0.42 },
@@ -349,7 +348,7 @@ describe("upcoming reports", () => {
   });
 
   it("the schema's 14-day cap matches the fetch lookahead", () => {
-    // An EARNINGS_WITHIN longer than the lookahead would ask about reports
+    // An before-earnings longer than the lookahead would ask about reports
     // the cron never fetches — it would silently never fire.
     expect(EARNINGS_LOOKAHEAD_DAYS).toBe(14);
   });

@@ -39,16 +39,19 @@
         "action": "REVIEW",
         "source": "AGENT",
         "predicate": {
-          "kind": "AND",
-          "predicates": [
+          "match": "all",
+          "conditions": [
             {
-              "kind": "PRICE_ABOVE",
-              "basis": "close",
-              "level": 126.5
+              "watch": "price",
+              "is": "above",
+              "value": 126.5,
+              "settings": {
+                "close": true
+              }
             },
             {
-              "min": 1.5,
-              "kind": "VOLUME_RATIO"
+              "watch": "volume",
+              "value": 1.5
             }
           ]
         },
@@ -60,9 +63,12 @@
         "action": "REVIEW",
         "source": "AGENT",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "basis": "close",
-          "level": 108.1
+          "watch": "price",
+          "is": "below",
+          "value": 108.1,
+          "settings": {
+            "close": true
+          }
         },
         "rationale": "Close below the base low $108.08 invalidates the basing structure; reassess whether any thesis remains before the December PDUFA.",
         "cooldownDays": 1
@@ -72,9 +78,8 @@
         "action": "REVIEW",
         "source": "AGENT",
         "predicate": {
-          "days": 21,
-          "from": "LAST_REVIEW",
-          "kind": "REVIEW_CADENCE"
+          "watch": "repeat",
+          "value": 21
         },
         "rationale": "Routine 3-week check: confirm PDUFA date unchanged, base structure intact, insider picture and stop/R/R math before pricing the entry.",
         "cooldownDays": 21
@@ -84,10 +89,10 @@
         "action": "REVIEW",
         "source": "AGENT",
         "predicate": {
-          "days": 14,
-          "from": "EVENT",
-          "kind": "REVIEW_CADENCE",
-          "side": "BEFORE"
+          "watch": "from_date",
+          "is": "before",
+          "value": 14,
+          "variable": "event"
         },
         "rationale": "Two weeks before the Dec 17 PDUFA: final decision on whether to price and enter, hold an existing position through the event, or stand aside on the coin flip.",
         "cooldownDays": 14
@@ -97,9 +102,10 @@
         "action": "ENTER",
         "source": "AGENT",
         "predicate": {
-          "kind": "NEAR_SMA",
-          "period": 50,
-          "withinPct": 3
+          "watch": "move",
+          "is": "near",
+          "value": 3,
+          "variable": "sma50"
         },
         "rationale": "Price pulls back within 3% of the rising 50-day (~$110.79 today) — the structural entry for a pre-PDUFA accumulation in a basing stock with Trend Template 8/8. Entry here gives $108.08 stop (2.71 risk) against $152 target (41pt gain), a 15:1 R/R. Fire when this condition is true.",
         "lastFiredAt": "2026-09-29T14:30:10.144Z",
@@ -110,8 +116,9 @@
         "action": "REVIEW",
         "source": "AGENT",
         "predicate": {
-          "days": 7,
-          "kind": "EARNINGS_WITHIN"
+          "watch": "report",
+          "is": "before",
+          "value": 7
         },
         "rationale": "Q3 2026 earnings expected late October — review Korlym + Lifyorli revenue trajectory and Cushing's PDUFA preparation commentary before the print, and again after.",
         "cooldownDays": 30
@@ -121,8 +128,9 @@
         "action": "ENTER",
         "source": "AGENT",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 110.79
+          "watch": "price",
+          "is": "below",
+          "value": 110.79
         },
         "rationale": "Buy level — start the position when the price comes back down to $110.79.",
         "cooldownDays": 1
@@ -132,8 +140,9 @@
         "action": "EXIT",
         "source": "AGENT",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 103.9
+          "watch": "price",
+          "is": "below",
+          "value": 103.9
         },
         "rationale": "Below the 35-session base floor and roughly 1 ATR under the recent 20-day low near $108.25; a break there would mean the base failed, not just that the stock had a normal daily swing.",
         "cooldownDays": 1
@@ -143,8 +152,9 @@
         "action": "REVIEW",
         "source": "AGENT",
         "predicate": {
-          "kind": "PRICE_ABOVE",
-          "level": 152
+          "watch": "price",
+          "is": "above",
+          "value": 152
         },
         "rationale": "1.272 Fib extension of the March-August up-leg ($31.81→$126.38), measured move to $152. Confirmed as the first major overhead extension level.",
         "cooldownDays": 1
@@ -157,9 +167,10 @@
     "action": "ENTER",
     "source": "AGENT",
     "predicate": {
-      "kind": "NEAR_SMA",
-      "period": 50,
-      "withinPct": 3
+      "watch": "move",
+      "is": "near",
+      "value": 3,
+      "variable": "sma50"
     },
     "rationale": "Price pulls back within 3% of the rising 50-day (~$110.79 today) — the structural entry for a pre-PDUFA accumulation in a basing stock with Trend Template 8/8. Entry here gives $108.08 stop (2.71 risk) against $152 target (41pt gain), a 15:1 R/R. Fire when this condition is true.",
     "lastFiredAt": "2026-09-29T14:30:10.144Z",
@@ -203,10 +214,10 @@
         "action": "REVIEW",
         "source": "PRINCIPAL",
         "predicate": {
-          "days": 10,
-          "from": "EVENT",
-          "kind": "REVIEW_CADENCE",
-          "side": "BEFORE"
+          "watch": "from_date",
+          "is": "before",
+          "value": 10,
+          "variable": "event"
         },
         "rationale": "10 days before the event date on the thesis: decide the size into the event — hold, trim, or step aside (DAV-279 ruling).",
         "cooldownDays": 10
@@ -216,10 +227,10 @@
         "action": "REVIEW",
         "source": "PRINCIPAL",
         "predicate": {
-          "days": 30,
-          "from": "EVENT",
-          "kind": "REVIEW_CADENCE",
-          "side": "AFTER"
+          "watch": "from_date",
+          "is": "after",
+          "value": 30,
+          "variable": "event"
         },
         "rationale": "30 days after the event date on the thesis: the catalyst has played; is there a reason to still own it? (DAV-279 ruling)",
         "cooldownDays": 30
@@ -229,10 +240,16 @@
         "action": "REVIEW",
         "source": "PRINCIPAL",
         "predicate": {
-          "kind": "SEC_EVENT",
-          "items": [
-            "8.01",
-            "7.01"
+          "match": "any",
+          "conditions": [
+            {
+              "watch": "filing",
+              "variable": "item:8.01"
+            },
+            {
+              "watch": "filing",
+              "variable": "item:7.01"
+            }
           ]
         },
         "rationale": "An 'other events' or press-release filing — where FDA outcomes and trial readouts land. Read it before the market finishes pricing it.",

@@ -202,7 +202,7 @@ describe("validateEnterTriggerRequired", () => {
       ],
       targetPrice: null,
     });
-    // PRICE_ABOVE on a SHORT is the losing side — a wake, not a plan level.
+    // price above on a SHORT is the losing side — a wake, not a plan level.
     expect(result.ok).toBe(true);
   });
 

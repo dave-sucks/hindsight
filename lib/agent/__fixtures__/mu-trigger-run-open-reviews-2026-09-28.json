@@ -9,8 +9,9 @@
    "source": "AGENT",
    "fireMode": "TACTICAL",
    "predicate": {
-    "kind": "PRICE_BELOW",
-    "level": 1041
+    "watch": "price",
+    "is": "below",
+    "value": 1041
    },
    "rationale": "Under the recent breakout pivot at $1,042 and above the Sep. 17 gap low $953.50; this tightens protection to the current post-breakout structure before the Sep. 30 print.",
    "cooldownDays": 1
@@ -21,10 +22,10 @@
    "source": "AGENT",
    "fireMode": "TACTICAL",
    "predicate": {
-    "pct": 4,
-    "kind": "PRICE_MOVE_PCT",
-    "window": "1D",
-    "direction": "DOWN"
+    "watch": "move",
+    "is": "below",
+    "value": 4,
+    "variable": "prev_close"
    },
    "rationale": "A sharp 1-day drop could be either normal volatility or early thesis damage — review the cause.",
    "cooldownDays": 1
@@ -35,9 +36,10 @@
    "source": "AGENT",
    "fireMode": "TACTICAL",
    "predicate": {
-    "pct": 15,
-    "kind": "GAIN_FROM_ENTRY",
-    "direction": "UP"
+    "watch": "move",
+    "is": "above",
+    "value": 15,
+    "variable": "entry"
    },
    "rationale": "At +15% from entry, reassess whether trend repair is durable enough to add or tighten risk.",
    "cooldownDays": 7
@@ -47,8 +49,9 @@
    "action": "REVIEW",
    "source": "DEFAULT",
    "predicate": {
-    "days": 3,
-    "kind": "EARNINGS_WITHIN"
+    "watch": "report",
+    "is": "before",
+    "value": 3
    },
    "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
    "cooldownDays": 30

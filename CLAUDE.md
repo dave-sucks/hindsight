@@ -39,10 +39,9 @@ two or more — the form's own fields. Each measure (`price`, `move`, `volume`,
 `rsi`, `strength`, `gap`, `report`, `surprise`, `filing`, `insiders`, `repeat`,
 `from_date`) is ONE catalog entry in `lib/agent/triggers/condition/measures/`
 carrying its words, number, variables, settings, default cooldown, what the
-check loads and how it reads; nothing switches on a kind. The old trigger
-kinds are named only in the translator (`condition/legacy*.ts`). `lib/prisma.ts`
-turns every `triggers` write and read into the shape, so the app only holds
-conditions; `prismaRaw` skips that and is for the backfill script only. A
+check loads, how it reads and what numbers it takes (`fits` / `valid`,
+read by `whenValid`); nothing switches on a kind. Storage holds the same
+shape; anything else in a trigger list reads as a removed condition. A
 trigger reads as one sentence everywhere ("Sell if below $150", "Review every
 30 days") from `condition/describe.ts`.
 The chart measures (a price against an average or a high, a move near one,
@@ -716,7 +715,7 @@ When you spot something new, file it there — not here.)
 
 ### Triggers (the living ladder)
 - lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id / a plan level as an op) + checkLadder (the one post-op plan check). update_thesis, the UI popover, a buy fill and a plan set-down all go through it (DAV-242)
-- lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, direct sale + close reason, levels, states), the check (read.ts), the words (describe.ts), and the translator from the old kinds (legacy*.ts)
+- lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, direct sale + close reason, levels, states), the check (read.ts), the words (describe.ts), and what the save accepts (valid.ts)
 - lib/agent/triggers/types.ts — the Trigger type + watchedFloorOnClose
 - lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
 - lib/agent/triggers/defaults.ts — horizon templates + accountStandingRules() (the account's add prompts) + cooldown defaults

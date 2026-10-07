@@ -1458,20 +1458,6 @@ model PinnedTicker {
 // shape in lib/market-data/indicator-snapshot.ts — numbers only, never
 // sentences. One row per ticker per session; the evaluator reads the
 // newest.
-/// The condition shape's trigger checker, run beside today's on every pass of
-/// the trigger check: one row per New York trading day. Telemetry for the
-/// cutover's proof (docs/plans/TRIGGER_TYPES.md, PR 2); nothing reads it to
-/// make a decision.
-model TriggerShadowDay {
-  day           String   @id // YYYY-MM-DD, New York
-  passes        Int      @default(0)
-  compared      Int      @default(0)
-  disagreements Int      @default(0)
-  /// The latest pass's disagreements, up to 25: the trigger and both answers.
-  samples       Json     @default("[]")
-  updatedAt     DateTime @default(now()) @updatedAt
-}
-
 model TickerIndicators {
   id         String   @id @default(cuid())
   ticker     String

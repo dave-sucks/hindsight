@@ -23,7 +23,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { accountStandingRules, reviewCadenceTrigger } from "./defaults";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
 
 /**
@@ -161,9 +161,9 @@ export async function ensureAccountStandingRules(accountId: string): Promise<num
   if (account.triggersSeededAt >= STANDING_RULES_SINCE) return 0;
 
   const current = Array.isArray(account.triggers) ? (account.triggers as unknown as Trigger[]) : [];
-  const have = new Set(current.map(triggerBucket));
+  const have = new Set(current.map(triggerSlot));
   const missing = standingWakeTriggers()
-    .filter((t) => !have.has(triggerBucket(t)))
+    .filter((t) => !have.has(triggerSlot(t)))
     .map((t) => ({ ...t, id: globalThis.crypto.randomUUID() }));
 
   await prisma.account.update({

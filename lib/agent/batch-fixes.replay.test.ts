@@ -360,7 +360,7 @@ describe("DAV-329 — a state re-asks weekly, a crossing daily", () => {
     expect(defaultCooldownDaysForPredicate(above50, "ENTER")).toBe(1);
     expect(defaultCooldownDaysForPredicate(above50, "REVIEW")).toBe(7);
     expect(defaultCooldownDaysForPredicate({ watch: "move", is: "near", value: 5, variable: "high52" } as When, "ENTER")).toBe(1);
-    // The pullback setup's entry is a composite holding a VS_SMA.
+    // The pullback setup's entry is a composite holding a price vs an average.
     const pullback: When = { match: "all", conditions: [{ watch: "move", is: "near", value: 2, variable: "sma50" }, above50] };
     expect(defaultCooldownDaysForPredicate(pullback, "ENTER")).toBe(1);
     expect(defaultCooldownDaysForPredicate(pullback, "REVIEW")).toBe(7);

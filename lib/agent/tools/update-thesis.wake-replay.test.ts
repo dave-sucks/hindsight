@@ -16,7 +16,7 @@
  * still refused.
  */
 import raw from "@/lib/agent/__fixtures__/vst-chat-wake-2026-09-28.json";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import writerRaw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
@@ -34,7 +34,7 @@ const vst = writerRaw as unknown as {
 };
 
 /** VST as the chat found it: no plan, only the 30-day review cadence. */
-const cadence = vst.thesisBefore.triggers.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
+const cadence = vst.thesisBefore.triggers.filter((t) => shapeName(t.predicate) === "repeat");
 const seed = () => ({
   thesis: [
     thesisRow({
@@ -68,7 +68,7 @@ describe("VST 2026-09-27 — the chat's review above $145, with no buy", () => {
   it("the fixture is the refused call", () => {
     expect(fx.answer.error).toBe("missing_enter_trigger");
     expect(fx.args.add_triggers).toHaveLength(1);
-    expect(fx.args.add_triggers[0]).toMatchObject({ action: "REVIEW", predicate: { kind: "PRICE_ABOVE", level: 145 } });
+    expect(fx.args.add_triggers[0]).toMatchObject({ action: "REVIEW", predicate: { watch: "price", is: "above", value: 145 } });
     expect(cadence).toHaveLength(1);
   });
 
@@ -77,9 +77,9 @@ describe("VST 2026-09-27 — the chat's review above $145, with no buy", () => {
     expect(r.refused).toBe(false);
     const row = rowOf(r);
     const now = row.triggers as Trigger[];
-    expect(now.map((t) => [t.action, kindOf(t.predicate)])).toEqual([
-      ["REVIEW", "REVIEW_CADENCE"],
-      ["REVIEW", "PRICE_ABOVE"],
+    expect(now.map((t) => [t.action, shapeName(t.predicate)])).toEqual([
+      ["REVIEW", "repeat"],
+      ["REVIEW", "price:above"],
     ]);
     expect(row.entryPrice).toBeNull();
     expect(row.targetPrice).toBeNull();

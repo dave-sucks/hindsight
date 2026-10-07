@@ -20,7 +20,7 @@
  */
 
 import { canonicalLevels, applyLevelArgs } from "./price-levels";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { resolveLadder } from "./levels";
 import { effectiveTriggerAction } from "./types";
 import { evaluateTrigger } from "./evaluate";
@@ -211,7 +211,7 @@ describe("5. the review cadence", () => {
       account: [reviewCadenceTrigger(7)],
       direction: "LONG",
     });
-    expect(ladder.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(true);
+    expect(ladder.some((t) => shapeName(t.predicate) === "repeat")).toBe(true);
   });
 });
 
@@ -278,7 +278,7 @@ describe("6. the analyst changes its mind", () => {
     // forgot to resend must not linger on screen as protection.
     const out = applyLevelArgs({
       stored: mint().filter(
-        (t) => !(t.action === "EXIT" && kindOf(t.predicate) === "PRICE_BELOW"),
+        (t) => !(t.action === "EXIT" && shapeName(t.predicate) === "price:below"),
       ),
       levels: {},
       direction: "LONG",

@@ -13,7 +13,7 @@ import { liveRsi, movePctOverSessions, volumeRatio, type IndicatorSnapshot } fro
 import { describeCluster, insiderCluster } from "@/lib/market-data/insider-cluster";
 import type { Condition, Watch, When } from "./types";
 import { isGroup } from "./types";
-import { shapeOf } from "./legacy";
+import { shapeOf } from "./valid";
 import { num } from "./words";
 
 interface Today {
