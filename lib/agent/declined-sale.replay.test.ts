@@ -27,9 +27,10 @@ const FLOOR = 41.4;
 const AVG_COST = 39.83;
 /** The price on 09-17, the morning after the first decline. */
 const PRICE_NEXT_DAY = 40.2;
+/** A decline note of the real one's shape (paraphrased): holding, and the level to act on. */
 const NOTE =
-  "its moving here and there. Im gonna see if theres any chance it picks back up. " +
-  "If you don't approve this, I'd immediately raise the stop to around $40.50.";
+  "Holding to see whether it recovers. " +
+  "If this sale is declined, the stop should move up to about $40.50.";
 
 const iotThesis = (over: Record<string, unknown> = {}) =>
   thesisRow({
