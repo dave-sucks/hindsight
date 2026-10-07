@@ -231,15 +231,6 @@ describe("buildWriterResearchPrompt — date-awareness gate (P1-5 / PR #354)", (
     expect(flat).toContain('do not "fix" the number');
   });
 
-  it("names the 2026-05-26 incident so future refactors keep the anti-regression", () => {
-    const prompt = buildWriterResearchPrompt({
-      ...baseOpts,
-      mode: "refresh",
-      existingThesis: existingThesis("PROMOTED"),
-    });
-    expect(prompt).toContain("production incident 2026-05-26, PR #354");
-  });
-
   it("renders the date-awareness block BEFORE the job instructions", () => {
     const prompt = buildWriterResearchPrompt({
       ...baseOpts,

@@ -62,7 +62,10 @@ const RULE_DEFS = {
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
     refusal: "protective_level_locked — names the level, the direction, and that the rest of the update lands.",
-    markers: { daily: "only tightens", tactical: "may only tighten", chat: "only tighten" },
+    // The morning and trigger runs read it on update_thesis's description and
+    // on manage_position's new_stop_loss, and in the refusal; their prompts
+    // no longer say it a third time.
+    markers: { chat: "only tighten" },
   },
   MIN_CONFIDENCE: {
     says: "A buy needs the analyst's minimum confidence (the composite score).",
@@ -217,7 +220,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("reason", "TEXT"),
     f("setup_id", "CHOSEN"),
     f("screen_row", "TEXT"),
-    f("promotion_context", "CARRIED"),
   ],
   /** The writer's own submit tool — the decision, before the save. */
   submit_thesis: [

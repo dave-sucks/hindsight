@@ -48,7 +48,7 @@ export const getEarningsCalendar = defineTool({
       .enum(["universe", "coverage", "all"])
       .optional()
       .describe(
-        "'all' = full firm calendar. 'universe' = full calendar MINUS tickers you already cover (the discovery set — use this in weekly discovery). 'coverage' = calendar intersected with watchlist + open positions (the 'my book' set). Defaults to 'coverage'.",
+        "'all' = full firm calendar. 'universe' = full calendar MINUS tickers you already cover (the discovery set). 'coverage' = calendar intersected with watchlist + open positions (the 'my book' set). Defaults to 'coverage'.",
       ),
   }),
   ui: "tool-ui" as const,

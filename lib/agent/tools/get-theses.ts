@@ -147,7 +147,7 @@ const schema = z.object({
     .enum(["actionable", "book"])
     .optional()
     .describe(
-      "Row weight. \"actionable\" returns FULL rows (narrative excerpts, triggers, resolved envelope) only for theses with a non-null needsAction or status=PROMOTED; every quiet row comes back as a one-line index entry in `quiet_theses` (ticker, status, the plan levels WITH the live price beside them, next review, core belief). \"book\" returns full rows for everything. Default: \"actionable\" on the Daily Run's unfiltered read (the trigger system already decided what needs work today — 2026-08-13 cost fix: full-book reads were ~4k tokens/thesis × every step), \"book\" everywhere else and whenever you filter by ticker/id (drill-down is always full).",
+      "Row weight. \"actionable\": full rows only for stocks with work today, the rest as one-line entries in `quiet_theses`. \"book\": full rows for everything. Default: \"actionable\" on the Daily Run's unfiltered read, \"book\" everywhere else and whenever you filter by ticker or id.",
     ),
 });
 

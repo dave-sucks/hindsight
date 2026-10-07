@@ -97,7 +97,7 @@ export const waitForThesisRefresh = defineTool({
       .max(480)
       .optional()
       .describe(
-        "Max wait. 0 = check the status now and return. Default 300s (covers the ~3-4 min typical V2 worker run + headroom). Caps at 480s — the worker's own worst-case budget — to keep the parent agent's wall-time bounded.",
+        "Max wait. 0 = check the status now and return. Default 300s (covers the writer's typical 3-4 minutes, with headroom). Caps at 480s — the worker's own worst-case budget — to keep the parent agent's wall-time bounded.",
       ),
   }),
   ui: "tool-ui" as const,

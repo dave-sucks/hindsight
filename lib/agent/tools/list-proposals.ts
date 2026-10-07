@@ -47,7 +47,7 @@ export const listProposals = defineTool({
       ])
       .optional()
       .describe(
-        "Default AWAITING_APPROVAL (the live approval queue). Use REJECTED / EXPIRED to see what the principal declined or let lapse — that history is why an exit shouldn't be re-proposed.",
+        "Default AWAITING_APPROVAL (the live approval queue). Use REJECTED / EXPIRED to see what the principal declined or let lapse.",
       ),
     intent: z
       .enum(["OPEN", "ADD", "CLOSE", "PARTIAL_CLOSE"])

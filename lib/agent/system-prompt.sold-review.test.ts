@@ -70,7 +70,7 @@ describe("the built prompt names the sold-stock review", () => {
   // The paragraph it was added to still has to say what it said before.
   it("leaves the rest of the book paragraph intact", () => {
     const p = prompt();
-    expect(p).toContain("`quiet_theses` is the one-line roster");
+    expect(p).toContain("`quiet_theses` rows are NOT your work today");
     expect(p).toContain("buyBlockedByFull");
   });
 });

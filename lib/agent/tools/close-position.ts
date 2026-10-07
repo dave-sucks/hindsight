@@ -20,8 +20,7 @@ import { recordProposalRunEvent } from "@/lib/proposals/maybe-await-approval";
 export const closePosition = defineTool({
   description:
     "Explicitly close an existing open position by symbol. " +
-    "This tool performs one action only: closing the position. " +
-    "Call this during the execution phase when your analysis indicates a position should be exited.",
+    "This tool performs one action only: closing the position.",
   schema: z.object({
     ticker: z.string().describe("Ticker symbol of the position to close"),
     // Vocabulary is deliberately identical to manage_position's `close_reason`
@@ -52,7 +51,7 @@ export const closePosition = defineTool({
         "Did the thesis's CORE BELIEF survive this exit? Answer this on every protective exit (reason=STOP). " +
           "true = you are selling on PRICE while the story is still intact (a trailing give-back, a stop tripped in a broad-market flush, risk trimmed on an unchanged thesis) — the thesis returns to WATCHING with its triggers cleared so the next run can arm a reclaim entry, instead of dying. " +
           "false = the belief itself broke (invalidation condition tripped, catalyst failed, the bear case confirmed) — the thesis retires permanently. " +
-          "Omit only when you genuinely cannot tell. Ignored on reason=TARGET, which always keeps the name on watch.",
+          "Left out, the thesis retires as with false; leave it out only when you genuinely cannot tell. Ignored on reason=TARGET, which always keeps the name on watch.",
       ),
   }),
   ui: "tool-ui" as const,
