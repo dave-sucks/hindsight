@@ -106,3 +106,14 @@ main at `8fb21cb8` (before #765–#768); "merged" is `2157e708`.
 | pbh-two-flags | morning run | — | 6/12 | Gives a stock nothing can wake (scored under the minimum) a way back or lets it go. Six runs archived it; six wrote a note and left it unable to wake. |
 | wst-buy-level-arrives | morning run | — | 12/12 | Answers a buy reached on the morning read (buy, re-price or set down). All twelve bought it. |
 
+
+## Cases added 2026-10-07
+
+| Case | Agent | Main | Looks for |
+|---|---|---|---|
+| nvda-trailing-sale | trigger run | 6/6 | After the give-back sale fires on a held stock: proposes the sale (STOP, belief stated) or re-plans that same trigger, and does not delete it. All six proposed the sale. |
+
+Main is `1b99a4ec` run with its own runner, which sends the recorded kickoff;
+a branch with this runner rebuilds the kickoff from `promptArgs.stock`. The
+runner stops at the first call that decides the stock, so a deletion made in a
+later call (what the 2026-09-14 run did after proposing the sale) is not seen.
