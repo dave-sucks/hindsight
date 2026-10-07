@@ -11,17 +11,24 @@ import type { Playbook } from "./types";
 import { protectiveSale } from "./protective-sale";
 import { buyArrives } from "./buy-arrives";
 import { addOrWinner } from "./add-or-winner";
+import { earnings } from "./earnings";
 
 export type { Playbook } from "./types";
 
-export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner];
+export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner, earnings];
 
 export function playbooksForRow(row: StockRow): string[] {
   return PLAYBOOKS.filter((p) => p.appliesToRow(row)).map((p) => p.key);
 }
 
-export function playbookForFire(fire: { action: string; held: boolean }): Playbook | null {
-  return PLAYBOOKS.find((p) => p.appliesToFire(fire)) ?? null;
+/** The playbooks for what fired, in ranking order. */
+export function playbooksForFire(fire: { action: string; held: boolean; predicate?: unknown }): Playbook[] {
+  return PLAYBOOKS.filter((p) => p.appliesToFire(fire));
+}
+
+/** The first playbook for what fired. */
+export function playbookForFire(fire: { action: string; held: boolean; predicate?: unknown }): Playbook | null {
+  return playbooksForFire(fire)[0] ?? null;
 }
 
 /** Each named playbook's text, once, in ranking order. */

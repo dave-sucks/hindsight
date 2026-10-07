@@ -24,7 +24,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildTacticalSystemPrompt, tacticalSituation } from "@/lib/agent/system-prompts/intraday-tactical";
 import { stockBrief, type StockRow } from "@/lib/agent/stock-brief";
-import { playbookForFire } from "@/lib/agent/playbooks";
+import { playbooksForFire } from "@/lib/agent/playbooks";
 import { fireExtras, tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
@@ -743,7 +743,7 @@ export const tacticalRun = inngest.createFunction(
           fired: { price: fired.firedPrice ?? null, coFired: fired.coFired ?? [] },
           capacity: ctx.capacity ?? null,
         }),
-        playbook: playbookForFire({ action: triggerTyped.action, held: position != null }),
+        playbooks: playbooksForFire({ action: triggerTyped.action, held: position != null, predicate: triggerTyped.predicate }),
         stock,
       });
       // What this run read and wrote, every request counted, recorded on

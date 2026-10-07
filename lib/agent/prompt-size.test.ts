@@ -24,12 +24,12 @@ import { stockBrief } from "@/lib/agent/stock-brief";
 import { tacticalSituation } from "@/lib/agent/system-prompts/intraday-tactical";
 import { tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import { PLAYBOOKS, playbookForFire } from "@/lib/agent/playbooks";
+import { PLAYBOOKS, playbooksForFire } from "@/lib/agent/playbooks";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  daily: 21_910,
-  tactical: 8_385,
+  daily: 20_636,
+  tactical: 7_770,
   writer: 11_027,
   discovery: 20_773,
   chat: 32_159,
@@ -87,7 +87,7 @@ function sampleKickoff(): string {
     ticker: "HPE",
     fireSentence: sentenceOf(trail),
     situation: tacticalSituation({ thesis: { ticker: "HPE", direction: "LONG", researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 } as never }, trigger: trail, position: { peakPrice: 62.7 }, fired: { price: 55, coFired: [] } }),
-    playbook: playbookForFire({ action: "EXIT", held: true }),
+    playbooks: playbooksForFire({ action: "EXIT", held: true, predicate: trail.predicate }),
     stock,
   });
 }
@@ -106,6 +106,7 @@ const RECORDED_PLAYBOOKS: Record<string, number> = {
   "protective-sale": 1_500,
   "buy-arrives": 2_493,
   "add-or-winner": 1_866,
+  earnings: 1_193,
 };
 
 describe("the playbooks, by size", () => {

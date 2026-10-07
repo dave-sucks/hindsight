@@ -39,7 +39,7 @@ import { MODES, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import { buildTacticalSystemPrompt, tacticalSituation, type TacticalSituationArgs } from "@/lib/agent/system-prompts/intraday-tactical";
 import { stockBrief, type StockRow } from "@/lib/agent/stock-brief";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
-import { playbookForFire } from "@/lib/agent/playbooks";
+import { playbooksForFire } from "@/lib/agent/playbooks";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
@@ -231,8 +231,8 @@ function kickoffFor(name: string, c: HeroCase): ModelMessage {
   const setup = row.setup ?? setupChecklist(row.setupId as string | null, row.horizon ?? null);
   const stock = stockBrief({ ...row, setup: setup as StockRow["setup"], nameTheSetup: null }, { named: true, inherited: true });
   const situation = tacticalSituation(args);
-  const playbook = playbookForFire({ action: args.trigger.action, held: args.position != null });
-  return { role: "user", content: [{ type: "text", text: tacticalKickoff({ ticker, fireSentence, extras: kickoff.extras ?? "", situation, playbook, stock }) }] };
+  const playbooks = playbooksForFire({ action: args.trigger.action, held: args.position != null, predicate: args.trigger.predicate });
+  return { role: "user", content: [{ type: "text", text: tacticalKickoff({ ticker, fireSentence, extras: kickoff.extras ?? "", situation, playbooks, stock }) }] };
 }
 
 interface RunOptions {

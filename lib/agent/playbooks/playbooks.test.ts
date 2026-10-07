@@ -2,7 +2,7 @@
  * playbooks.test.ts — a playbook reaches a stock only when its situation is
  * on the row, and each one stays under its cap (docs/plans/AGENT_ARCHITECTURE.md, 10.1, 10.4).
  */
-import { PLAYBOOKS, playbookForFire, playbooksForRow, playbookTexts } from "@/lib/agent/playbooks";
+import { PLAYBOOKS, playbookForFire, playbooksForFire, playbooksForRow, playbookTexts } from "@/lib/agent/playbooks";
 import type { StockRow } from "@/lib/agent/stock-brief";
 
 const row = (over: Partial<StockRow>): StockRow => ({ id: "t", ticker: "MU", status: "HOLDING", direction: "LONG", ...over });
@@ -79,5 +79,23 @@ describe("add or winner: when it attaches", () => {
   });
   it("a trigger run carries it for an add on a stock we hold", () => {
     expect(playbookForFire({ action: "ADD", held: true })?.key).toBe("add-or-winner");
+  });
+});
+
+describe("earnings: when it attaches", () => {
+  const beatSold = { id: "e1", action: "REVIEW", predicate: { match: "all", conditions: [{ watch: "surprise", is: "beat" }, { watch: "move", is: "below", value: 3 }] } };
+  const reportSoon = { id: "e2", level: "ACCOUNT", action: "REVIEW", predicate: { watch: "report", is: "before", value: 5 } };
+  it("the lead flag is a fire of a trigger watching a surprise or a report date, its own or inherited", () => {
+    expect(playbooksForRow(row({ triggers: [beatSold], needsAction: { kind: "TRIGGER_FIRED", triggerId: "e1", action: "REVIEW" } }))).toEqual(["earnings"]);
+    expect(playbooksForRow(row({ status: "WATCHING", inheritedTriggers: [reportSoon], needsAction: { kind: "TRIGGER_FIRED", triggerId: "e2", action: "REVIEW" } }))).toEqual(["earnings"]);
+  });
+  it("not another review, and not when the row does not carry the trigger", () => {
+    const floor = { id: "f", action: "REVIEW", predicate: { watch: "price", is: "below", value: 10 } };
+    expect(playbooksForRow(row({ triggers: [floor], needsAction: { kind: "TRIGGER_FIRED", triggerId: "f", action: "REVIEW" } }))).toEqual([]);
+    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", triggerId: "e1", action: "REVIEW" } }))).toEqual([]);
+  });
+  it("a trigger run carries it for an earnings fire; a sale on a miss carries both", () => {
+    expect(playbooksForFire({ action: "REVIEW", held: true, predicate: beatSold.predicate }).map((p) => p.key)).toEqual(["earnings"]);
+    expect(playbooksForFire({ action: "EXIT", held: true, predicate: { watch: "surprise", is: "miss" } }).map((p) => p.key)).toEqual(["protective-sale", "earnings"]);
   });
 });

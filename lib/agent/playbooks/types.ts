@@ -15,5 +15,5 @@ export interface Playbook {
   /** Whether a stock's row in the morning or chat read carries it. */
   appliesToRow: (row: StockRow) => boolean;
   /** Whether a trigger run carries it, from what fired. */
-  appliesToFire: (fire: { action: string; held: boolean }) => boolean;
+  appliesToFire: (fire: { action: string; held: boolean; predicate?: unknown }) => boolean;
 }

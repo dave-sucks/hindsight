@@ -26,7 +26,7 @@ import { stockBrief, type StockRow } from "@/lib/agent/stock-brief";
 import { buildTacticalSystemPrompt, tacticalSituation } from "@/lib/agent/system-prompts/intraday-tactical";
 import { tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import { playbookForFire } from "@/lib/agent/playbooks";
+import { playbooksForFire } from "@/lib/agent/playbooks";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 /** The trigger a measured trigger run fires: the stock's own buy when watched, its floor when held, else its first. */
@@ -114,7 +114,7 @@ async function main() {
               position: raw.position ? { peakPrice: raw.position.peakPrice } : null,
               fired: { price: null, coFired: [] },
             }),
-            playbook: playbookForFire({ action: trigger.action, held: raw.status === "HOLDING" }),
+            playbooks: playbooksForFire({ action: trigger.action, held: raw.status === "HOLDING", predicate: trigger.predicate }),
             stock: stockBrief({ ...raw, nameTheSetup: null }, { named: true, inherited: true }),
           }).length
         : null;

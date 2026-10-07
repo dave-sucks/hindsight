@@ -111,7 +111,7 @@ describe("confirm by the setup, one run per fire, the fired price (DAV-254, DAV-
       fireSentence: "Sell if below $969",
       extras: fireExtras({ coFired: coFired.map((c) => c.sentence) }),
       situation: tacticalSituation(makeArgs({ trigger: stop, fired: { price: 964.2, coFired } })),
-      playbook: protectiveSale,
+      playbooks: [protectiveSale],
     });
     expect(kickoff).toContain("Also fired on the same pass: Sell if below 8% from the high since we bought — one decision covers both.");
     expect(kickoff).toContain("one decision covers both (sell all, some or none); name the rule you followed.");

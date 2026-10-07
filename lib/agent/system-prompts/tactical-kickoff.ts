@@ -21,8 +21,8 @@ export interface TacticalKickoffInput {
   extras?: string;
   /** The paragraphs that apply to this fire (tacticalSituation). */
   situation?: string[];
-  /** The playbook for what fired (lib/agent/playbooks). */
-  playbook?: { key: string; text: string } | null;
+  /** The playbooks for what fired (lib/agent/playbooks), in ranking order. */
+  playbooks?: Array<{ key: string; text: string }>;
   /** The stock as get_theses reads it (stockBrief). */
   stock?: Record<string, unknown> | null;
 }
@@ -56,7 +56,7 @@ export function tacticalKickoff(input: TacticalKickoffInput): string {
   return [
     head,
     ...situation,
-    ...(input.playbook ? [`The ${input.playbook.key} playbook:\n${input.playbook.text}`] : []),
+    ...(input.playbooks ?? []).map((p) => `The ${p.key} playbook:\n${p.text}`),
     ...(input.stock ? [`$${input.ticker}, as get_theses reads it:\n${JSON.stringify(input.stock)}`] : []),
   ].join("\n\n");
 }

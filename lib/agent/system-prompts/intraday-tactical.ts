@@ -174,15 +174,6 @@ DECISION FRAMEWORK
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close).
-   - **An EARNINGS trigger.** The kickoff carries the figures. A beat is
-     not a buy and a miss is not a sell by itself — the reaction is the
-     information: a beat the stock is DOWN on means the market wanted
-     more (read the call before trusting the number, tighten the floor);
-     a miss the stock shrugged off was priced in. "Reports within N
-     days" is a sizing question — trim or floor for a ±10% open, never
-     add into the print. On a miss with a broken assumption, EXIT and
-     answer belief_survived=false; on a miss with the story intact, keep
-     it and say what would change your mind.
    - **A filing trigger.** The kickoff names the kind of event and the
      link; read the document first (\`get_sec_filings\`). A restatement
      (4.02): exit unless clearly small and off-thesis, and say which.
