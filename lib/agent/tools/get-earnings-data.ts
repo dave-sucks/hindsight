@@ -32,7 +32,13 @@ export const getEarningsData = defineTool({
     } | null;
     const surprises = surprisesResult.data;
 
-    const upcoming = earnings?.earningsCalendar?.[0];
+    // The calendar can hand back a report that already happened (JBL on
+    // 2026-10-07: its 2026-09-30 report, actuals in). The next report is the
+    // first one dated today or later, Eastern; a past one is the last report.
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const dated = [...(earnings?.earningsCalendar ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+    const upcoming = dated.find((e) => e.date >= today);
+    const lastReported = dated.filter((e) => e.date < today).at(-1)?.date ?? null;
     const history = Array.isArray(surprises) ? surprises : [];
     const beats = history.filter(
       (e: { actual: number; estimate: number }) =>
@@ -80,12 +86,16 @@ export const getEarningsData = defineTool({
           nextEarnings.epsEstimate != null ? ` (est. $${nextEarnings.epsEstimate})` : ""
         }`,
       );
+    } else if (lastReported) {
+      sParts.push(`last reported ${lastReported}; next date not yet announced`);
     }
     if (beatRate !== "no history") sParts.push(`Beat rate: ${beatRate}`);
 
     const tickerSummary = nextEarnings
       ? `Next earnings ${nextEarnings.date}. Beat rate: ${beatRate}`
-      : `No upcoming earnings. Beat rate: ${beatRate}`;
+      : lastReported
+        ? `Last reported ${lastReported}; next date not yet announced. Beat rate: ${beatRate}`
+        : `No upcoming earnings. Beat rate: ${beatRate}`;
 
     return {
       summary: sParts.join(" — ") + ".",
