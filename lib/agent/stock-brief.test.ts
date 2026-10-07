@@ -76,7 +76,7 @@ describe("stockBrief — a stock in full", () => {
     const b = stockBrief(held({ needsAction: { kind: "UNPROTECTED_GAIN", unrealizedGainPct: 22 } }), { named: false });
     expect(Object.keys(b)).toEqual([
       "id", "ticker", "status", "direction", "horizon", "price",
-      "needsAction",
+      "playbooks", "needsAction",
       "context",
       "plan", "position", "unrealizedGainPct", "progressToTarget", "ladderHealth", "unapprovedExitCount",
       "triggers",
@@ -171,7 +171,7 @@ describe("stockBrief — why the stock is on the list, gathered in the code's or
       { named: false },
     );
     expect(Object.keys(b).slice(6, 9)).toEqual(["playbooks", "needsAction", "floorRisk"]);
-    expect(b.playbooks).toEqual(["protective-sale"]);
+    expect(b.playbooks).toEqual(["protective-sale", "protection"]);
     // The flag's trigger reads as the trigger list words it, and its time in Eastern.
     expect(b.needsAction).toEqual({ kind: "TRIGGER_FIRED", triggerId: "t_floor", action: "EXIT", summary: "Sell if below $287.30", firedAt: "10-06 15:55" });
     expect(b.floorRisk).toBe("Floor $250 loses 1.8% of the account.");

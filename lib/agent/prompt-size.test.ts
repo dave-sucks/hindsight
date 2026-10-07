@@ -28,7 +28,7 @@ import { PLAYBOOKS, playbooksForFire } from "@/lib/agent/playbooks";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  daily: 19_683,
+  daily: 17_559,
   tactical: 7_166,
   writer: 11_027,
   discovery: 20_773,
@@ -108,6 +108,7 @@ const RECORDED_PLAYBOOKS: Record<string, number> = {
   "add-or-winner": 1_866,
   earnings: 1_193,
   filings: 1_105,
+  protection: 1_179,
 };
 
 describe("the playbooks, by size", () => {

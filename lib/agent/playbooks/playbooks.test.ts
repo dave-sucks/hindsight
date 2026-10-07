@@ -107,3 +107,15 @@ describe("filings: when it attaches", () => {
     expect(playbooksForFire({ action: "REVIEW", held: true, predicate: filed.predicate }).map((p) => p.key)).toEqual(["filings"]);
   });
 });
+
+describe("protection: when it attaches", () => {
+  it("a holding whose lead flag is an unprotected gain or a floor too far, or whose floor's risk rides beside another lead", () => {
+    expect(playbooksForRow(row({ needsAction: { kind: "UNPROTECTED_GAIN" } }))).toEqual(["protection"]);
+    expect(playbooksForRow(row({ needsAction: { kind: "FLOOR_TOO_FAR" } }))).toEqual(["protection"]);
+    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", action: "EXIT" }, resolved: { floorRisk: { line: "x" } } }))).toEqual(["protective-sale", "protection"]);
+  });
+  it("never a watched stock, never a trigger run", () => {
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "UNPROTECTED_GAIN" } }))).toEqual([]);
+    expect(playbooksForFire({ action: "EXIT", held: true }).map((p) => p.key)).not.toContain("protection");
+  });
+});
