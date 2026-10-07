@@ -9,11 +9,11 @@
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import type { Condition, Direction, VariableId, Watch, When } from "./condition/types";
+import type { Condition, Direction, SettingDef, VariableId, Watch, When } from "./condition/types";
 import type { MeasureDef } from "./condition/measure";
-import { MEASURES, declaredOnly } from "./condition/catalog";
+import { MEASURES, declaredOnly, settingDefs } from "./condition/catalog";
 import { notACondition, refusalOf } from "./condition/valid";
-import { rangeShort } from "./condition/range";
+import { rangeShort, settingRefusal } from "./condition/range";
 
 /**
  * A trigger's condition, in the condition shape (./condition): one its
@@ -55,6 +55,19 @@ function buildPredicateInputSchema() {
     const branch = typeof w === "string" ? byWatch[w as Watch] : undefined;
     const issue = branch?.safeParse(input).error?.issues[0];
     if (!issue) return notACondition(input);
+    // A setting out of range or none of its choices: the catalog's own sentence, the one the save and the form say.
+    if (issue.path[0] === "settings" && issue.path.length > 1) {
+      const key = String(issue.path[1]);
+      let defs: readonly SettingDef[] = [];
+      try {
+        defs = settingDefs(input as Condition);
+      } catch {
+        defs = [];
+      }
+      const def = defs.find((d) => d.key === key);
+      const said = def ? settingRefusal(def, (input as { settings?: Record<string, unknown> }).settings?.[key]) : null;
+      if (said) return said;
+    }
     const field = issue.path.join(".") || "condition";
     return `For ${w}, \`${field}\` is wrong: ${issue.message}. ${MEASURES[w as Watch].shape}`;
   };

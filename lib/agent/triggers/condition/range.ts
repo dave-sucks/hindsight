@@ -9,8 +9,8 @@
  */
 
 import { measureOf, settingDefs } from "./catalog";
-import type { Condition, Range } from "./types";
-import { isNum } from "./words";
+import type { Condition, Range, SettingDef } from "./types";
+import { isNum, shown } from "./words";
 
 /** The range that holds for this condition's number: the first button or variable that matches, else the entry's own. */
 export function valueRange(c: Condition): Range | undefined {
@@ -70,6 +70,23 @@ export function rangeProblem(v: unknown, r: Range): string | null {
 }
 
 /**
+ * Why a setting's value is refused, or null: outside its range, or none of
+ * its choices (the RSI's length is 2 or 14). The save and the agents' schema
+ * both say it, so a model reads the same sentence the form shows.
+ */
+export function settingRefusal(s: SettingDef, v: unknown): string | null {
+  if (v === undefined) return null;
+  if (s.range) {
+    const p = rangeProblem(v, s.range);
+    if (p) return `${p} Leave \`${s.key}\` out unless you mean it.`;
+  }
+  if (s.options && !s.options.some((o) => o.value === v)) {
+    return `\`${s.key}\` takes one of ${s.options.map((o) => String(o.value)).join(", ")}; ${shown(v)} isn't. Leave \`${s.key}\` out unless you mean it.`;
+  }
+  return null;
+}
+
+/**
  * Why the save refuses one condition, or null: it doesn't fit its measure,
  * its number or a setting is out of range, or a fact about the numbers fails.
  */
@@ -83,11 +100,8 @@ export function conditionRefusal(c: Condition): string | null {
     if (p) return p;
   }
   for (const s of settingDefs(c)) {
-    const v = c.settings?.[s.key];
-    if (s.range && v !== undefined) {
-      const p = rangeProblem(v, s.range);
-      if (p) return `${p} Leave \`${s.key}\` out unless you mean it.`;
-    }
+    const p = settingRefusal(s, c.settings?.[s.key]);
+    if (p) return p;
   }
   return m.rule?.(c) ?? null;
 }

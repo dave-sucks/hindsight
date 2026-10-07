@@ -53,6 +53,12 @@ const refused: Array<{ name: string; c: Condition; says: RegExp; inside: Conditi
     inside: { watch: "volume", value: 50 },
   },
   {
+    name: "a 7-day RSI",
+    c: { watch: "rsi", is: "below", value: 30, settings: { period: 7 } },
+    says: /^`period` takes one of 14, 2; 7 isn't\. Leave `period` out unless you mean it\.$/,
+    inside: { watch: "rsi", is: "below", value: 30, settings: { period: 2 } },
+  },
+  {
     name: "12 insiders",
     c: { watch: "insiders", value: 12 },
     says: /^Insider buying takes a whole number from 1 to 10 insiders; 12 insiders isn't\.$/,
