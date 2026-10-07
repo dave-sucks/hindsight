@@ -94,8 +94,13 @@ async function at<T>(iso: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** The trigger run's handler for CORT's fire; returns what it sent the model first. */
-async function triggerRunKickoff(): Promise<string> {
+/** CORT's row as get_theses would return it, for the kickoff's brief. */
+const cortRow = { id: fx.thesis.id, ticker: "CORT", status: "WATCHING", direction: "LONG" };
+type GetTheses = { execute: (input: unknown, o: unknown) => Promise<unknown> };
+const reads = (getTheses: GetTheses | undefined) => () => (getTheses ? { get_theses: getTheses } : {});
+
+/** The trigger run's handler for CORT's fire: what it sent the model, and the database after. */
+async function triggerRun(tools: () => Record<string, unknown> = reads({ execute: async () => ({ ok: true, data: { theses: [cortRow] } }) })): Promise<{ prompts: string[]; db: ReturnType<typeof prismaDouble> }> {
   const db = prismaDouble(seed());
   const prompts: string[] = [];
   await jest.isolateModulesAsync(async () => {
@@ -119,7 +124,7 @@ async function triggerRunKickoff(): Promise<string> {
       stepCountIs: () => () => false,
     }));
     jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
-    jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({}) }));
+    jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: tools }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     await import("@/lib/inngest/functions/tactical-run");
     await handler!({
@@ -149,9 +154,33 @@ async function triggerRunKickoff(): Promise<string> {
   for (const m of ["ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) {
     jest.dontMock(m);
   }
+  return { prompts, db };
+}
+
+/** The first message the trigger run sent the model. */
+async function triggerRunKickoff(): Promise<string> {
+  const { prompts } = await triggerRun();
   if (prompts.length === 0) throw new Error("the trigger run never reached the model");
   return prompts[0];
 }
+
+// A trigger run reads its stock through get_theses. Without it the run cannot
+// see the position, the trigger ids or the principal's decisions (a declined
+// sale it would propose again), so it stops before the model is called.
+describe("a trigger run whose stock cannot be read does not start", () => {
+  for (const [why, tools] of [
+    ["the read fails", reads({ execute: async () => ({ ok: false, error: "database unavailable" }) })],
+    ["the read finds no row", reads({ execute: async () => ({ ok: true, data: { theses: [] } }) })],
+    ["the read throws", reads(undefined)],
+  ] as const) {
+    it(`${why}: FAILED with the reason, and the model is never called`, async () => {
+      const { prompts, db } = await at(fx.run.startedAt, () => triggerRun(tools));
+      expect(prompts).toEqual([]);
+      const run = (db.store.researchRun as Array<{ status: string; parameters: { error?: string } }>).find((r) => r.status === "FAILED");
+      expect(run?.parameters.error).toMatch(/^The stock could not be read, so the run did not start: /);
+    });
+  }
+});
 
 describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
   it("the trigger run is told the days to the event and where the setup's window is", async () => {

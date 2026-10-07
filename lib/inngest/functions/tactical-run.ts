@@ -674,18 +674,37 @@ export const tacticalRun = inngest.createFunction(
       // account's triggers on it, since this run reads one stock. The trigger
       // run's update_thesis takes no setup_id, so its brief carries no ask to
       // name one. Read after the fire was written, so the fire is on it.
-      const stock = await (async () => {
+      const read = await (async (): Promise<{ stock: Record<string, unknown> } | { error: string }> => {
         try {
-          const read = (await (allTools.get_theses as unknown as {
-            execute: (input: unknown, o: { toolCallId: string; messages: unknown[] }) => Promise<{ ok: boolean; data?: { theses?: StockRow[] } }>;
+          const r = (await (allTools.get_theses as unknown as {
+            execute: (input: unknown, o: { toolCallId: string; messages: unknown[] }) => Promise<{ ok: boolean; error?: string; data?: { theses?: StockRow[] } }>;
           }).execute({ ids: [thesis.id] }, { toolCallId: "kickoff", messages: [] }));
-          const row = read.ok ? read.data?.theses?.[0] : undefined;
-          return row ? stockBrief({ ...row, nameTheSetup: null }, { named: true, inherited: true }) : null;
+          if (!r.ok) return { error: r.error ?? "get_theses failed" };
+          const row = r.data?.theses?.[0];
+          if (!row) return { error: "get_theses returned no row for the stock" };
+          return { stock: stockBrief({ ...row, nameTheSetup: null }, { named: true, inherited: true }) };
         } catch (err) {
-          console.warn(`[tactical-run] the stock's brief could not be read; the kickoff goes without it:`, err instanceof Error ? err.message : err);
-          return null;
+          return { error: err instanceof Error ? err.message : String(err) };
         }
       })();
+      // Without its stock the run cannot see the position, the trigger ids or
+      // what the principal has said (a declined sale it would propose again),
+      // so it does not start. Run integrity, not a refusal.
+      if ("error" in read) {
+        const msg = `The stock could not be read, so the run did not start: ${read.error}`;
+        console.error(`[tactical-run] thesis=${thesis.id} trigger=${trigger.id} ${msg}`);
+        const fresh = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } });
+        await prisma.researchRun.update({
+          where: { id: run.id },
+          data: {
+            status: "FAILED",
+            completedAt: new Date(),
+            parameters: { ...((fresh?.parameters as object) ?? {}), error: msg, failedAt: new Date().toISOString() } as object,
+          },
+        });
+        return { error: msg, closedOut: false };
+      }
+      const stock = read.stock;
 
       // Build the kickoff message so the chat replay shows WHY this run
       // fired without the user having to dig. Same English sentence the
