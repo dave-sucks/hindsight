@@ -9,6 +9,7 @@
  * file as a finding.
  */
 import { prismaDouble, thesisRow, positionRow, REPLAY_ACCOUNT_ID, REPLAY_USER_ID } from "@/lib/replay";
+import { principalDecision, type ActivityRow } from "@/lib/agent/stock-context";
 
 const trail = {
   id: "trail-25",
@@ -59,5 +60,14 @@ describe("applyTriggerDelete — the line says why when it is not a click", () =
     expect(left).toEqual(["floor"]);
     expect(row.summary).toBe("You removed a trigger on ABT: Sell if below 25% from the high since we bought");
     expect(row.rationale).toContain("Don't add it back unless the thesis changes.");
+  });
+
+  it("what the next run reads from each: the cleanup row nothing, the click its removal and what it asks", async () => {
+    const read = async (why?: string) => principalDecision({ ...(await remove(why)).row, timestamp: new Date(0) } as unknown as ActivityRow);
+    expect(await read("the analyst's rule governs from here")).toBeNull();
+    expect(await read()).toMatchObject({
+      wantsAnswer: true,
+      line: "Set by hand: Removed: Sell if below 25% from the high since we bought. Don't add it back unless the thesis changes.",
+    });
   });
 });

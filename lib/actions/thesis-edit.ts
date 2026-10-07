@@ -37,7 +37,7 @@ import {
 } from "@/lib/agent/triggers/ops";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { KEEP_IT_REMOVED } from "@/lib/agent/stock-context";
+import { COPIED_RULE_CLEANUP, KEEP_IT_REMOVED } from "@/lib/agent/stock-context";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export interface ThesisEditContext {
@@ -512,7 +512,7 @@ export async function applyTriggerDelete(
       const what = sentenceOf(target, thesis.status === "HOLDING");
       if (why) {
         return {
-          summary: `Removed a copied rule from ${thesis.ticker} — ${what}`,
+          summary: `${COPIED_RULE_CLEANUP}${thesis.ticker} — ${what}`,
           rationale: `Removed in the cleanup of copied rules: ${what}. ${why.charAt(0).toUpperCase()}${why.slice(1).replace(/\.$/, "")}. Don't add it back on this stock.`,
         };
       }

@@ -161,8 +161,13 @@ const INTENT: Record<string, string> = { CLOSE: "the sale", PARTIAL_CLOSE: "the 
 /** What a removal by hand asks of the analysts; the app writes it on the row (thesis-edit.ts). */
 export const KEEP_IT_REMOVED = "Don't add it back unless the thesis changes.";
 
-/** The 09-28 cleanup of copied rules took template lines off stocks; it decided nothing about the stock. */
-const COPIED_RULE_CLEANUP = "Removed a copied rule from ";
+/**
+ * How a removal in the cleanup of copied rules (scripts/sweep-frozen-copies.ts)
+ * begins its summary; thesis-edit.ts writes it from here. Those removals took
+ * template lines off stocks and decided nothing about a stock, so the read
+ * leaves them out. The rows carry no other marker.
+ */
+export const COPIED_RULE_CLEANUP = "Removed a copied rule from ";
 
 /**
  * The principal's decision on one line, or null when there is nothing to
