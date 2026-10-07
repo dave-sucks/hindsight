@@ -171,3 +171,20 @@ describe("get_theses — the analyst's rules in a read", () => {
     expect((data.theses as Array<{ triggers: Array<{ id: string }> }>)[0].triggers.map((t) => t.id)).toEqual(["o1"]);
   });
 });
+
+describe("get_theses — the playbooks in a read", () => {
+  it("two stocks with a fired sale name the protective-sale playbook; the read carries its text once, before the rows", async () => {
+    const { getTheses } = await import("@/lib/agent/tools/get-theses");
+    const { protectiveSale } = await import("@/lib/agent/playbooks/protective-sale");
+    const tool = getTheses({ runId: "r", userId: "u", analystId: "a" } as never) as unknown as {
+      toModelOutput: (o: { toolCallId: string; input: unknown; output: unknown }) => { value: { data: Record<string, unknown> } };
+    };
+    const sale = (id: string, ticker: string) => ({ id, ticker, status: "HOLDING", direction: "LONG", needsAction: { kind: "TRIGGER_FIRED", triggerId: "f", action: "EXIT", summary: "Sell if below $10" }, resolved: { currentPrice: 9.5 } });
+    const output = { ok: true, ui: "thesis-card", summary: "", sources: [], data: { count: 3, theses: [sale("t1", "MU"), sale("t2", "IOT"), { id: "t3", ticker: "ABT", status: "WATCHING", direction: "LONG", resolved: {} }], quiet_theses: [], cards: [] } };
+    const data = tool.toModelOutput({ toolCallId: "c", input: {}, output }).value.data;
+    expect(Object.keys(data)).toEqual(["count", "playbooks", "theses", "quiet_theses"]);
+    expect(data.playbooks).toEqual({ "protective-sale": protectiveSale.text });
+    const rows = data.theses as Array<{ ticker: string; playbooks?: string[] }>;
+    expect(rows.map((r) => r.playbooks ?? null)).toEqual([["protective-sale"], ["protective-sale"], null]);
+  });
+});

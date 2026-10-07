@@ -61,9 +61,9 @@ export interface TacticalSituationArgs {
 
 /**
  * What this fire brings that the stock's brief does not, one paragraph each,
- * only when it applies: the fired price and the trigger's id, the tracked
- * peak on a give-back fire, the analyst's room on a buy, the triggers that
- * fired with it, old research, a declined buy, yesterday's digest. They ride
+ * only when it applies: the fired price and the trigger's id, the fire line
+ * on a give-back fire, the analyst's room on a buy, old research, a declined
+ * buy, yesterday's digest. What to do about a sale is its playbook. They ride
  * in the kickoff (tactical-kickoff.ts) so the system prompt is the job alone
  * and the same for every fire.
  */
@@ -88,19 +88,11 @@ export function tacticalSituation(args: TacticalSituationArgs): string[] {
     const isShort = thesis.direction === "SHORT";
     const peak = position?.peakPrice ?? null;
     const threshold = peak != null ? peak * (isShort ? 1 + pct / 100 : 1 - pct / 100) : null;
-    out.push(`⚠ THE PEAK IS AUTHORITATIVE — DO NOT RE-DERIVE IT.
-This trigger measures give-back from the system's tracked ${isShort ? "low" : "high"}${
-      peak != null ? `: $${peak.toFixed(2)}` : ""
-    }, recorded by the hourly price monitor over the position's ENTIRE life.
-${
-  threshold != null
-    ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Validating this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
-    : `Validating this fire means one arithmetic check against that tracked watermark — if it is missing from this message, treat the evaluator's fire as correct rather than reconstructing a peak yourself.`
-}
-Any "recent high" you compute from a chart window has shorter memory than
-the watermark, understates the give-back, and is NOT valid grounds to
-declare a false alarm. Declining this exit requires new fundamental
-evidence — not a different peak.`);
+    out.push(
+      threshold != null
+        ? `This trigger measures give-back from the tracked ${isShort ? "low" : "high"}, $${peak!.toFixed(2)}. The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the high"}): is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
+        : `This trigger measures give-back from the tracked ${isShort ? "low" : "high"}, which is missing from this message. The evaluator fires it only when the tracked ${isShort ? "low" : "high"} exists, so treat the fire as correct rather than reconstructing one yourself.`,
+    );
   }
 
   const room = capacityLine(args.capacity);
@@ -112,10 +104,6 @@ evidence — not a different peak.`);
           : ""
       }`,
     );
-  }
-
-  if (fired?.coFired?.length) {
-    out.push("Sell all, sell some, or hold — and say which trigger's rule you followed.");
   }
 
   if (thesis.researchAge.freshness === "missing" || thesis.researchAge.freshness === "stale") {
@@ -190,8 +178,6 @@ DECISION FRAMEWORK
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close).
-   - **On a protective exit (reason=STOP) answer \`belief_survived\`** — the
-     field says how.
    - **An EARNINGS trigger.** The kickoff carries the figures. A beat is
      not a buy and a miss is not a sell by itself — the reaction is the
      information: a beat the stock is DOWN on means the market wanted

@@ -114,6 +114,12 @@ describe("no tool names a tool its agent doesn't have", () => {
         const text = (all[name].description ?? "") + JSON.stringify(zodSchema(all[name].inputSchema as never).jsonSchema);
         for (const other of Object.keys(all)) if (!allow.includes(other) && new RegExp(`\\b${other}\\b`).test(text)) missing.push(`${name} names ${other}`);
       }
+      // The playbooks reach the morning run and the chat in get_theses, and
+      // the trigger run in its kickoff (plan 10.4).
+      if (mode !== "discovery") {
+        const { PLAYBOOKS } = await import("@/lib/agent/playbooks");
+        for (const p of PLAYBOOKS) for (const other of Object.keys(all)) if (!allow.includes(other) && new RegExp(`\\b${other}\\b`).test(p.text)) missing.push(`playbook ${p.key} names ${other}`);
+      }
       expect(missing).toEqual([]);
     });
   }

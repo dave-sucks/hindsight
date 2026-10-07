@@ -7,8 +7,9 @@
  *
  * It carries everything about this fire: the sentence and the day's facts,
  * the paragraphs that apply to this fire (tacticalSituation in
- * intraday-tactical.ts), and the stock as get_theses reads it (the brief,
- * stock-brief.ts). The system prompt is the job alone.
+ * intraday-tactical.ts), the playbook for what fired (lib/agent/playbooks),
+ * and the stock as get_theses reads it (the brief, stock-brief.ts). The
+ * system prompt is the job alone.
  * Pure: no database, no clock.
  */
 
@@ -20,6 +21,8 @@ export interface TacticalKickoffInput {
   extras?: string;
   /** The paragraphs that apply to this fire (tacticalSituation). */
   situation?: string[];
+  /** The playbook for what fired (lib/agent/playbooks). */
+  playbook?: { key: string; text: string } | null;
   /** The stock as get_theses reads it (stockBrief). */
   stock?: Record<string, unknown> | null;
 }
@@ -53,6 +56,7 @@ export function tacticalKickoff(input: TacticalKickoffInput): string {
   return [
     head,
     ...situation,
+    ...(input.playbook ? [`The ${input.playbook.key} playbook:\n${input.playbook.text}`] : []),
     ...(input.stock ? [`$${input.ticker}, as get_theses reads it:\n${JSON.stringify(input.stock)}`] : []),
   ].join("\n\n");
 }

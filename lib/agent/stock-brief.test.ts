@@ -170,7 +170,8 @@ describe("stockBrief — why the stock is on the list, gathered in the code's or
       }),
       { named: false },
     );
-    expect(Object.keys(b).slice(6, 8)).toEqual(["needsAction", "floorRisk"]);
+    expect(Object.keys(b).slice(6, 9)).toEqual(["playbooks", "needsAction", "floorRisk"]);
+    expect(b.playbooks).toEqual(["protective-sale"]);
     // The flag's trigger reads as the trigger list words it, and its time in Eastern.
     expect(b.needsAction).toEqual({ kind: "TRIGGER_FIRED", triggerId: "t_floor", action: "EXIT", summary: "Sell if below $287.30", firedAt: "10-06 15:55" });
     expect(b.floorRisk).toBe("Floor $250 loses 1.8% of the account.");

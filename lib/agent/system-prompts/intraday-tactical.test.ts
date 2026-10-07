@@ -16,6 +16,7 @@ import { buildTacticalSystemPrompt, tacticalSituation, type TacticalSituationArg
 import { fireExtras, tacticalKickoff } from "./tactical-kickoff";
 import { stockBrief } from "@/lib/agent/stock-brief";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
+import { protectiveSale } from "@/lib/agent/playbooks/protective-sale";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const trailTrigger: Trigger = {
@@ -46,19 +47,19 @@ describe("the trigger run's system prompt is the job alone", () => {
     expect(system).not.toContain("CURRENT TRIGGER LADDER");
   });
   it("the fire's own paragraphs ride only in the kickoff", () => {
-    for (const s of ["THE PEAK IS AUTHORITATIVE", "THE ANALYST'S ROOM", "Act on the trigger anyway", "declined this same buy", "YESTERDAY'S PORTFOLIO DIGEST", "say which trigger's rule you followed", "It fired at $"]) {
+    for (const s of ["give-back from the tracked", "THE ANALYST'S ROOM", "Act on the trigger anyway", "declined this same buy", "YESTERDAY'S PORTFOLIO DIGEST", "It fired at $"]) {
       expect(system).not.toContain(s);
     }
   });
 });
 
 describe("tracked peak on trail fires (DAV-186)", () => {
-  it("hands the agent the tracked peak, the exact fire line, and the do-not-re-derive rule", () => {
+  it("hands the agent the tracked peak and the exact fire line; the sale's playbook says a chart's high is not grounds", () => {
     const text = situation();
     // The HPE numbers: peak 62.70, 12% give-back → fire line 55.176.
     expect(text).toContain("$62.70");
     expect(text).toContain("$55.18");
-    expect(text).toContain("DO NOT RE-DERIVE");
+    expect(protectiveSale.text).toContain("a high read off a chart window is not grounds to call the fire false");
   });
 
   it("inverts the fire line for SHORT positions (peak is the low-water mark)", () => {
@@ -70,13 +71,12 @@ describe("tracked peak on trail fires (DAV-186)", () => {
 
   it("still forbids re-deriving when the peak is missing", () => {
     const text = situation({ position: { peakPrice: null } });
-    expect(text).toContain("DO NOT RE-DERIVE");
-    expect(text).toContain("treat the evaluator's fire as correct");
+    expect(text).toContain("treat the fire as correct rather than reconstructing one yourself");
   });
 
   it("adds no peak block on non-trailing fires; the brief still shows the tracked high", () => {
     const floorTrigger: Trigger = { id: "trig_floor", predicate: { watch: "price", is: "below", value: 50 }, action: "EXIT", rationale: "Hard stop." };
-    expect(situation({ trigger: floorTrigger })).not.toContain("DO NOT RE-DERIVE");
+    expect(situation({ trigger: floorTrigger })).not.toContain("give-back from the tracked");
     const stock = stockBrief(
       { id: "t", ticker: "HPE", status: "HOLDING", direction: "LONG", position: { quantity: 60, avgCost: 53.1, openedAt: "2026-08-01T14:00:00Z", peakPrice: 62.7 } },
       { named: true },
@@ -109,9 +109,10 @@ describe("confirm by the setup, one run per fire, the fired price (DAV-254, DAV-
       fireSentence: "Sell if below $969",
       extras: fireExtras({ coFired: coFired.map((c) => c.sentence) }),
       situation: tacticalSituation(makeArgs({ trigger: stop, fired: { price: 964.2, coFired } })),
+      playbook: protectiveSale,
     });
     expect(kickoff).toContain("Also fired on the same pass: Sell if below 8% from the high since we bought — one decision covers both.");
-    expect(kickoff).toContain("Sell all, sell some, or hold — and say which trigger's rule you followed.");
+    expect(kickoff).toContain("one decision covers both (sell all, some or none); name the rule you followed.");
     expect(kickoff).toContain("The fired trigger's id: stop-969.");
   });
 

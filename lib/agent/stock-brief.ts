@@ -32,6 +32,7 @@ import { riskReward } from "@/lib/agent/thesis-shape";
 import { etStamp } from "@/lib/agent/stock-context";
 import { getSectionBullets, getSectionText } from "@/lib/agent/thesis-narrative";
 import { NO_SETUP_FITS } from "@/lib/agent/knowledge/setups";
+import { playbooksForRow } from "@/lib/agent/playbooks";
 
 type Obj = Record<string, unknown>;
 
@@ -210,6 +211,9 @@ function situations(row: StockRow): Obj {
   const r = row.resolved ?? {};
   const lead = row.needsAction ?? null;
   const leadKind = typeof lead?.kind === "string" ? lead.kind : null;
+  // The playbooks for its situations; the read carries each one's text once.
+  const playbooks = playbooksForRow(row);
+  if (playbooks.length) out.playbooks = playbooks;
   if (lead) out.needsAction = stamped(worded(lead, row));
   const floor = r.floorRisk as Obj | null | undefined;
   if (floor && leadKind !== "FLOOR_TOO_FAR") out.floorRisk = floor.line ?? floor;

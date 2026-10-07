@@ -10,7 +10,8 @@
  *  - the morning opening read (no arguments, as the Daily Run calls it): its
  *    size as the model reads it, and how many stocks come back full and quiet;
  *  - every live stock read full (detail "book"): the size of each stock's row
- *    as the model reads it, and what puts it on the list;
+ *    as the model reads it, what puts it on the list, and the playbooks it
+ *    names (counted over the book at the end);
  *  - every field of those rows: its size summed over the whole book, and on
  *    how many rows it appears (the field table's sizes);
  *  - what a trigger run on each stock would read: the system prompt and the
@@ -25,6 +26,7 @@ import { stockBrief, type StockRow } from "@/lib/agent/stock-brief";
 import { buildTacticalSystemPrompt, tacticalSituation } from "@/lib/agent/system-prompts/intraday-tactical";
 import { tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
+import { playbookForFire } from "@/lib/agent/playbooks";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 /** The trigger a measured trigger run fires: the stock's own buy when watched, its floor when held, else its first. */
@@ -62,6 +64,7 @@ async function main() {
   });
   const report: Array<Record<string, unknown>> = [];
   const fields = new Map<string, { chars: number; rows: number }>();
+  const playbookRows = new Map<string, string[]>();
   for (const a of analysts) {
     const env = ((a as { tradingEnvironment?: string }).tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
     const tools = createResearchTools({
@@ -88,6 +91,7 @@ async function main() {
     const quiet = (morning.model.data?.quiet_theses as unknown[] | undefined) ?? [];
     const bookRows = (book.model.data?.theses as Array<Record<string, unknown>> | undefined) ?? [];
     for (const r of bookRows) {
+      for (const k of (r.playbooks as string[] | undefined) ?? []) playbookRows.set(k, [...(playbookRows.get(k) ?? []), `${a.name}/${r.ticker}`]);
       for (const [k, v] of Object.entries(r)) {
         const f = fields.get(k) ?? { chars: 0, rows: 0 };
         f.chars += JSON.stringify({ [k]: v }).length - 2;
@@ -110,6 +114,7 @@ async function main() {
               position: raw.position ? { peakPrice: raw.position.peakPrice } : null,
               fired: { price: null, coFired: [] },
             }),
+            playbook: playbookForFire({ action: trigger.action, held: raw.status === "HOLDING" }),
             stock: stockBrief({ ...raw, nameTheSetup: null }, { named: true, inherited: true }),
           }).length
         : null;
@@ -117,7 +122,7 @@ async function main() {
         ticker: r.ticker,
         status: r.status,
         chars: JSON.stringify(r).length,
-        onTheList: onTheList(r),
+        onTheList: [...((r.playbooks as string[] | undefined) ?? []).map((k) => `playbook:${k}`), ...onTheList(r)],
         triggerRun: kickoff != null ? { trigger: trigger!.id, system, kickoff, total: system + kickoff } : null,
       };
     });
@@ -141,12 +146,15 @@ async function main() {
     );
     for (const r of rows) console.log(`  ${String(r.ticker).padEnd(6)} ${String(r.status).padEnd(9)} ${String(r.chars).padStart(6)}  trigger run ${r.triggerRun ? String(r.triggerRun.total).padStart(6) : "     —"}  ${r.onTheList.join(", ") || "—"}`);
   }
+  console.log("\nPlaybooks on the book's rows:");
+  for (const [k, rows] of playbookRows) console.log(`  ${k}: ${rows.length} (${rows.join(", ")})`);
+  if (playbookRows.size === 0) console.log("  none");
   const total = [...fields.values()].reduce((s, f) => s + f.chars, 0);
   console.log(`\nEvery field over the whole book (${total.toLocaleString("en-US")} characters):`);
   for (const [k, f] of [...fields.entries()].sort((a, b) => b[1].chars - a[1].chars)) {
     console.log(`  ${k.padEnd(20)} ${String(f.chars).padStart(8)}  ${((f.chars / total) * 100).toFixed(1).padStart(5)}%  on ${f.rows} rows`);
   }
-  if (flag === "--json" && file) writeFileSync(file, JSON.stringify({ analysts: report, fields: Object.fromEntries(fields) }, null, 1));
+  if (flag === "--json" && file) writeFileSync(file, JSON.stringify({ analysts: report, fields: Object.fromEntries(fields), playbooks: Object.fromEntries(playbookRows) }, null, 1));
 }
 
 main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });

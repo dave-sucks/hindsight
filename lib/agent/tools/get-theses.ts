@@ -25,6 +25,7 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { standingRules, stockBrief, stockLine, type StandingRule, type StockLineFacts, type StockRow } from "@/lib/agent/stock-brief";
+import { playbookTexts } from "@/lib/agent/playbooks";
 import { prisma } from "@/lib/prisma";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
@@ -172,12 +173,21 @@ export const getTheses = defineTool({
     // The analyst's and the account's standing rules, once, first; the rows
     // carry only their own triggers.
     const { analystRules, ...others } = rest as { analystRules?: StandingRule[] } & Record<string, unknown>;
+    const theses = Array.isArray(rest.theses) ? (rest.theses as StockRow[]).map((row) => stockBrief(row, { named, research })) : null;
+    // Each playbook a row names, once for the whole read.
+    const playbooks = playbookTexts((theses ?? []).flatMap((t) => (t.playbooks as string[] | undefined) ?? []));
+    // The playbooks go just before the rows that name them.
+    const head: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(others)) {
+      if (k === "theses" && Object.keys(playbooks).length) head.playbooks = playbooks;
+      head[k] = v;
+    }
     return {
       ...result,
       data: {
         ...(analystRules?.length ? { analystRules: standingRules(analystRules) } : {}),
-        ...others,
-        ...(Array.isArray(rest.theses) ? { theses: (rest.theses as StockRow[]).map((row) => stockBrief(row, { named, research })) } : {}),
+        ...head,
+        ...(theses ? { theses } : {}),
         ...(Array.isArray(rest.quiet_theses) ? { quiet_theses: (rest.quiet_theses as StockLineFacts[]).map(stockLine) } : {}),
         ...(!named && input?.include_history
           ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `context` already sums up what's been said." }

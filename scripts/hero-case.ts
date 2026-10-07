@@ -39,6 +39,7 @@ import { MODES, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import { buildTacticalSystemPrompt, tacticalSituation, type TacticalSituationArgs } from "@/lib/agent/system-prompts/intraday-tactical";
 import { stockBrief, type StockRow } from "@/lib/agent/stock-brief";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
+import { playbookForFire } from "@/lib/agent/playbooks";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
@@ -213,8 +214,8 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
 /**
  * The trigger run's kickoff, rebuilt from the case's inputs with today's
  * builders: the fired trigger's sentence (describe.ts), the fire's own
- * paragraphs (tacticalSituation) and the stock's brief (stockBrief, from the
- * stock's row in promptArgs.stock). Only the facts are data: the day's facts
+ * paragraphs (tacticalSituation), the playbook for what fired, and the
+ * stock's brief (stockBrief, from the stock's row in promptArgs.stock). Only the facts are data: the day's facts
  * after the sentence (an earnings fire's numbers, the catalyst window,
  * co-fired triggers, open refusals) and the stock's row.
  */
@@ -230,7 +231,8 @@ function kickoffFor(name: string, c: HeroCase): ModelMessage {
   const setup = row.setup ?? setupChecklist(row.setupId as string | null, row.horizon ?? null);
   const stock = stockBrief({ ...row, setup: setup as StockRow["setup"], nameTheSetup: null }, { named: true, inherited: true });
   const situation = tacticalSituation(args);
-  return { role: "user", content: [{ type: "text", text: tacticalKickoff({ ticker, fireSentence, extras: kickoff.extras ?? "", situation, stock }) }] };
+  const playbook = playbookForFire({ action: args.trigger.action, held: args.position != null });
+  return { role: "user", content: [{ type: "text", text: tacticalKickoff({ ticker, fireSentence, extras: kickoff.extras ?? "", situation, playbook, stock }) }] };
 }
 
 interface RunOptions {

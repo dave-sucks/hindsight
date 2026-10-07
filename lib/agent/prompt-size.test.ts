@@ -24,11 +24,12 @@ import { stockBrief } from "@/lib/agent/stock-brief";
 import { tacticalSituation } from "@/lib/agent/system-prompts/intraday-tactical";
 import { tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
+import { PLAYBOOKS, playbookForFire } from "@/lib/agent/playbooks";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  daily: 25_986,
-  tactical: 13_662,
+  daily: 25_320,
+  tactical: 13_566,
   writer: 11_027,
   discovery: 20_773,
   chat: 32_159,
@@ -70,7 +71,7 @@ describe("the five agent prompts, by size", () => {
  * and the stock's brief. Its system prompt is the job alone, so the stock it
  * used to carry is counted here.
  */
-const KICKOFF = 1_583;
+const KICKOFF = 2_723;
 function sampleKickoff(): string {
   const trail = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." } as Trigger;
   const stock = stockBrief(
@@ -86,6 +87,7 @@ function sampleKickoff(): string {
     ticker: "HPE",
     fireSentence: sentenceOf(trail),
     situation: tacticalSituation({ thesis: { ticker: "HPE", direction: "LONG", researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 } as never }, trigger: trail, position: { peakPrice: 62.7 }, fired: { price: 55, coFired: [] } }),
+    playbook: playbookForFire({ action: "EXIT", held: true }),
     stock,
   });
 }
@@ -94,6 +96,26 @@ describe("the trigger run's kickoff, by size", () => {
   it(`the sample stock: ${KICKOFF.toLocaleString("en-US")} characters`, () => {
     expect(sampleKickoff().length).toBe(KICKOFF);
   });
+});
+
+/**
+ * Each playbook, by size, under the cap its file states (plan 10.4). A line
+ * added to one means a line removed.
+ */
+const RECORDED_PLAYBOOKS: Record<string, number> = {
+  "protective-sale": 1_500,
+};
+
+describe("the playbooks, by size", () => {
+  it("every playbook is recorded here", () => {
+    expect(PLAYBOOKS.map((p) => p.key).sort()).toEqual(Object.keys(RECORDED_PLAYBOOKS).sort());
+  });
+  for (const p of PLAYBOOKS) {
+    it(`${p.key}: ${(RECORDED_PLAYBOOKS[p.key] ?? 0).toLocaleString("en-US")} characters, cap ${p.cap.toLocaleString("en-US")}`, () => {
+      expect(p.text.length).toBe(RECORDED_PLAYBOOKS[p.key]);
+      expect(p.text.length).toBeLessThanOrEqual(p.cap);
+    });
+  }
 });
 
 describe("the four agents' tool definitions, by size", () => {
