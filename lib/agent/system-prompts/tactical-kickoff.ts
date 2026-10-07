@@ -1,0 +1,57 @@
+/**
+ * tactical-kickoff.ts — the trigger run's first user message, built in one
+ * place (docs/plans/AGENT_ARCHITECTURE.md, 10.2). tactical-run.ts sends it;
+ * scripts/hero-case.ts rebuilds it from a case's promptArgs, with the fired
+ * trigger's sentence written by today's code, so a change to either shows up
+ * in every trigger-run case instead of being replayed as it was recorded.
+ * Pure: no database, no clock.
+ */
+
+export interface TacticalKickoffInput {
+  ticker: string;
+  /** The fired trigger's sentence (describe.ts), without a final period. */
+  fireSentence: string;
+  /** The day's facts after the sentence: an earnings fire's numbers, the catalyst window, co-fired triggers, open refusals (fireExtras). */
+  extras?: string;
+}
+
+/** The day's facts that ride after the fire's sentence, joined as the kickoff carries them. */
+export function fireExtras(fire: {
+  /** The numbers behind an earnings fire, when the evaluator sent them. */
+  firedContext?: string | null;
+  /** Where a pre-catalyst buy's event date sits against the setup's window. */
+  windowLine?: string | null;
+  /** The sentences of other triggers that fired on the same pass. */
+  coFired?: string[];
+  /** Refused calls on this stock that were never redone, as the refusal helper writes them (leading space included). */
+  openRefusals?: string;
+}): string {
+  const contextSuffix = fire.firedContext ? ` ${fire.firedContext}` : "";
+  const windowSuffix = fire.windowLine ? ` ${fire.windowLine}` : "";
+  const coFiredSuffix = fire.coFired?.length
+    ? ` Also fired on the same pass: ${fire.coFired.join("; ")} — one decision covers both.`
+    : "";
+  return `${contextSuffix}${windowSuffix}${coFiredSuffix}${fire.openRefusals ?? ""}`;
+}
+
+export function tacticalKickoff(input: TacticalKickoffInput): string {
+  return (
+    `Tactical run on $${input.ticker}. ${input.fireSentence}.${input.extras ?? ""} ` +
+    `Validate, decide, act if warranted, then close out via update_thesis. ` +
+    `You are running unattended — no human will respond. Every turn must call a tool; ` +
+    `text-only turns terminate the run as FAILED.`
+  );
+}
+
+/**
+ * The extras of a recorded kickoff, given the sentence the trigger had when
+ * it fired. Null unless rebuilding the kickoff gives the recorded text byte
+ * for byte, so a case is never built on a guess.
+ */
+export function kickoffExtras(recorded: string, ticker: string, fireSentence: string): string | null {
+  const head = `Tactical run on $${ticker}. ${fireSentence}.`;
+  const tail = tacticalKickoff({ ticker, fireSentence, extras: "" }).slice(head.length);
+  if (!recorded.startsWith(head) || !recorded.endsWith(tail)) return null;
+  const extras = recorded.slice(head.length, recorded.length - tail.length);
+  return tacticalKickoff({ ticker, fireSentence, extras }) === recorded ? extras : null;
+}

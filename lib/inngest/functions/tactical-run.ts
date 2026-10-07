@@ -24,6 +24,7 @@ import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { fireExtras, tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
@@ -741,17 +742,10 @@ export const tacticalRun = inngest.createFunction(
       // Casts mirror the existing pattern in this file — ctx is loaded
       // via step.run which Inngest types as unknown.
       const triggerTyped = trigger as Trigger;
-      const fireSentence = sentenceOf(triggerTyped);
-      // The numbers behind an earnings fire, when the evaluator sent them.
-      const contextSuffix = fired.firedContext ? ` ${fired.firedContext}` : "";
-      const coFiredSuffix = fired.coFired?.length
-        ? ` Also fired on the same pass: ${fired.coFired.map((c) => c.sentence).join("; ")} — one decision covers both.`
-        : "";
       // A pre-catalyst buy is told where the event date sits against the
       // setup's buying window (DAV-338). Information for the decision,
       // never a gate; the proposal carries the same line.
       const windowLine = triggerTyped.action === "ENTER" ? preCatalystWindowLine(thesis) : null;
-      const windowSuffix = windowLine ? ` ${windowLine}` : "";
       // A refused call on this stock from a recent run that was never redone
       // rides the kickoff, so the wake that fires today also settles it.
       const openOnStock = refusalLinesFor(
@@ -759,11 +753,18 @@ export const tacticalRun = inngest.createFunction(
         thesis.id,
         (thesis as { ticker: string }).ticker,
       );
-      const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock} ` +
-        `Validate, decide, act if warranted, then close out via update_thesis. ` +
-        `You are running unattended — no human will respond. Every turn must call a tool; ` +
-        `text-only turns terminate the run as FAILED.`;
+      // One builder for the kickoff (tactical-kickoff.ts): the case runner
+      // rebuilds it from the same input, so a change here reaches the cases.
+      const userPrompt = tacticalKickoff({
+        ticker: (thesis as { ticker: string }).ticker,
+        fireSentence: sentenceOf(triggerTyped),
+        extras: fireExtras({
+          firedContext: fired.firedContext,
+          windowLine,
+          coFired: fired.coFired?.map((c) => c.sentence),
+          openRefusals: openOnStock,
+        }),
+      });
       // What this run read and wrote, every request counted, recorded on
       // the run row at the end (also on the failure path below).
       const tokenUsage = emptyTokenUsage();

@@ -4,6 +4,10 @@
  *
  *   npx tsx --env-file=.env.local scripts/hero-case.ts <case> [--runs 6]
  *   npx tsx --env-file=.env.local scripts/hero-case.ts --all [--runs 6]
+ *   … [--print-input]        print the first request a case would send and stop:
+ *                            no model call, so a text change can be seen
+ *                            in the replayed input for free.
+ *   … [--capture out.jsonl]  append every request body the provider is sent.
  *   … [--written out.jsonl]  also append what each run wrote for the
  *                            owner (narration + shown text fields), for
  *                            scripts/voice-count.ts. Scoring is unchanged.
@@ -27,8 +31,8 @@
  */
 import { appendFileSync, readFileSync, readdirSync } from "fs";
 import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
-import { openai } from "@ai-sdk/openai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { createOpenAI, openai } from "@ai-sdk/openai";
+import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
 import { MODES, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
 import { toStoredPredicate } from "@/lib/agent/triggers/condition/stored";
@@ -36,6 +40,9 @@ import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
+import { tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 type Cond = "present" | "absent" | string | number | boolean | { lt?: number; gt?: number; regex?: string };
 interface Rule { tool: string; where?: Record<string, Cond> }
@@ -209,7 +216,30 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
   return out;
 }
 
-async function runCase(name: string, runs: number, writtenPath: string | null): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
+/**
+ * The trigger run's kickoff, rebuilt from the case's inputs with today's
+ * builder (tactical-kickoff.ts): the fired trigger's sentence is written by
+ * today's code, and only the day's facts after it (an earnings fire's
+ * numbers, the catalyst window, co-fired triggers, open refusals) are data.
+ */
+function kickoffFor(name: string, c: HeroCase): ModelMessage {
+  const kickoff = c.promptArgs.kickoff as { extras?: string } | undefined;
+  if (!kickoff) throw new Error(`${name}: a trigger-run case needs promptArgs.kickoff — scripts/hero-case-from-run.ts writes it`);
+  const ticker = (c.promptArgs.thesis as { ticker: string }).ticker;
+  const fireSentence = sentenceOf(c.promptArgs.trigger as Trigger);
+  return { role: "user", content: [{ type: "text", text: tacticalKickoff({ ticker, fireSentence, extras: kickoff.extras ?? "" }) }] };
+}
+
+interface RunOptions {
+  writtenPath: string | null;
+  /** Print the first request and stop, without calling the model. */
+  printInput: boolean;
+  /** Append every request body the provider is sent to this file. */
+  capturePath: string | null;
+}
+
+async function runCase(name: string, runs: number, opts: RunOptions): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
+  const { writtenPath } = opts;
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   // The triggers a case recorded are read as the app reads stored ones: the
   // database client hands every trigger back in the condition shape.
@@ -217,6 +247,12 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
   const mode = MODES[c.mode];
   const system = systemFor(c);
   const tools = describedTools(c);
+  // The kickoff is today's, not the recorded text: step 6 puts the stock and
+  // its playbook there (docs/plans/AGENT_ARCHITECTURE.md, 10.2).
+  if (c.mode === "tactical") {
+    if (c.messages[0]?.role !== "user") throw new Error(`${name}: a trigger-run case starts with its kickoff`);
+    c.messages = [kickoffFor(name, c), ...c.messages.slice(1)];
+  }
   // A recorded tool result is what the model read on the day. Where a tool
   // now hands the model less than the screen (`forModel`), the replay reads
   // what today's model would read — the same as a live run.
@@ -239,7 +275,19 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
       return { ...m, content } as typeof m;
     }),
   );
-  const model = mode.provider === "anthropic" ? anthropic(mode.model) : c.mode === "research-run" ? openai.chat(mode.model) : openai(mode.model);
+  if (opts.printInput) {
+    console.log(`\n# ${name} — the first request, as the replay would send it\n\n## system (${system.length.toLocaleString("en-US")} characters)\n${system}\n\n## messages\n${JSON.stringify(c.messages, null, 1)}\n\n## tools\n${Object.keys(tools).join(", ")}`);
+    return { name, passes: 0, runs: 0, lookFor: c.lookFor };
+  }
+  const capture = opts.capturePath
+    ? async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        appendFileSync(opts.capturePath!, JSON.stringify({ case: name, url: String(url), body: JSON.parse(String(init?.body ?? "null")) }) + "\n");
+        return fetch(url, init);
+      }
+    : undefined;
+  const anthropicProvider = capture ? createAnthropic({ fetch: capture }) : anthropic;
+  const openaiProvider = capture ? createOpenAI({ fetch: capture }) : openai;
+  const model = mode.provider === "anthropic" ? anthropicProvider(mode.model) : c.mode === "research-run" ? openaiProvider.chat(mode.model) : openaiProvider(mode.model);
 
   console.log(`\n# ${name} — ${mode.model}, ${runs} run${runs === 1 ? "" : "s"}, prompt ${system.length.toLocaleString("en-US")} characters, conversation ${JSON.stringify(c.messages).length.toLocaleString("en-US")}`);
   console.log(c.what);
@@ -336,12 +384,15 @@ async function main() {
   const runs = runsAt >= 0 ? Number(args[runsAt + 1]) : 6;
   const writtenAt = args.indexOf("--written");
   const writtenPath = writtenAt >= 0 ? args[writtenAt + 1] : null;
+  const captureAt = args.indexOf("--capture");
+  const capturePath = captureAt >= 0 ? args[captureAt + 1] : null;
+  const opts: RunOptions = { writtenPath, printInput: args.includes("--print-input"), capturePath };
   const names = args.includes("--all")
     ? readdirSync("scripts/hero-cases").filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, "")).sort()
-    : args.filter((a) => !a.startsWith("--") && a !== String(runs) && a !== writtenPath);
+    : args.filter((a) => !a.startsWith("--") && a !== String(runs) && a !== writtenPath && a !== capturePath);
   if (names.length === 0) throw new Error("usage: hero-case.ts <case>... | --all  [--runs N]");
   const results = [];
-  for (const name of names) results.push(await runCase(name, runs, writtenPath));
+  for (const name of names) results.push(await runCase(name, runs, opts));
   console.log("\n| Case | Pass | Looks for |\n|---|---|---|");
   for (const r of results) console.log(`| ${r.name} | ${r.passes}/${r.runs} | ${r.lookFor} |`);
 }
