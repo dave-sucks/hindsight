@@ -18,9 +18,10 @@
  *   CHOSEN    The model picks from a closed list. The wire schema must be an
  *             enum / const / boolean — never a free string.
  *   JUDGED    The model's number, date or plan under a rule the tools
- *             enforce. The rule is named here, and the prompt of every mode
- *             that offers the tool must state it up front (the marker
- *             text). A refusal names the bound and the next legal move.
+ *             enforce. The rule is named here. A mode whose prompt states it
+ *             declares a marker (the text the prompt must keep); a mode whose
+ *             tool description and refusal carry the rule needs no marker.
+ *             A refusal names the bound and the next legal move.
  *   IDENTITY  A reference to something that exists (a thesis id, a ticker,
  *             a trigger id). A wrong one is refused by name.
  *   TEXT      Prose the model writes (a rationale, bullets). No rule; no
@@ -30,7 +31,8 @@
  * A field that is not in this registry fails the suite: a new field cannot
  * ship without an answer to the question. A COMPUTED field that shows up in
  * a run's schema fails. A CHOSEN field that is a string fails. A JUDGED
- * field whose rule is not stated in a mode's prompt fails.
+ * field whose rule a mode declares a marker for, and whose prompt drops that
+ * marker, fails.
  */
 
 export type FieldKind = "COMPUTED" | "CHOSEN" | "JUDGED" | "IDENTITY" | "TEXT" | "CARRIED";
