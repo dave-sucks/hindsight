@@ -20,21 +20,19 @@ import { z } from "zod";
 import { editNumber, editTriggerOpSchema, triggerInputSchema, triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { shapeOf } from "@/lib/agent/triggers/condition";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
-import { SETUP_IDS, type Setup } from "@/lib/agent/knowledge/setups";
+import { type Setup } from "@/lib/agent/knowledge/setups";
+import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
-const scoringDimSchema = z.object({
-  score: z.number(),
-  note: z.string(),
-});
+/** The fields the writer shares with record_thesis and update_thesis, defined once, in the writer's form: no number ranges on the score parts, as before (validateThesisDecision refuses a score out of range). */
+const W = thesisFields({ writer: true });
 
 /**
- * The submit_thesis tool's input schema. It is handed to the model in
- * Anthropic strict mode, so the shape is enforced at generation time — a
- * trigger kind that doesn't exist cannot be produced. That is also why it
- * carries no string-length or numeric-range constraints: the grammar
- * compiler doesn't support them, so every limit lives in words here and in
- * the save (which trims or clamps rather than refusing). See
- * lib/agent/triggers/model-schema.ts.
+ * The submit_thesis tool's input schema. The tool is not sent in Anthropic's
+ * strict mode, on purpose (makeSubmitThesisTool in run-thesis-writer.ts says
+ * why), so this schema guides the model and does not bind it. It carries no
+ * string-length or number-range limits; those are in the words here and in
+ * validateThesisDecision below, which hands a refused field back with the
+ * reason.
  */
 /**
  * The trigger a writer sends, defined once: \`triggers\` (a mint) and
@@ -44,88 +42,33 @@ const scoringDimSchema = z.object({
 const writerTrigger = triggerInputSchema.meta({ id: "Trigger" });
 
 export const thesisDecisionSchema = z.object({
-  direction: z
-    .enum(["LONG", "SHORT", "PASS"])
-    .describe("Your directional call. PASS is allowed when the research doesn't support a directional view."),
+  direction: W.direction,
   rationale: z
     .string()
     .describe("The decision in two or three sentences: the call and the price first, then why. On a refresh it becomes the stock's newest Activity note, shown to the owner; write it by How you write."),
-  horizon: z
-    .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
-    .describe("Exit policy + trigger template. CATALYST requires catalyst_date."),
-  setup_id: z
-    .enum(SETUP_IDS)
-    .optional()
-    .describe("The setup this plan is written on — one of YOUR SETUPS in the prompt. Required for LONG/SHORT."),
-  entry_price: z.number().optional().describe("The price you'd BUY at, from your setup's entry rule and the Price structure numbers: the base pivot for a breakout, the moving average for a pullback. When the setup's condition is already true today, the entry is at or a few cents past the live price — that is how a buy-now plan is written. A priced plan needs all three of entry/target/stop; a directional view with NO level worth waiting for yet omits all three (the thesis stays LONG/SHORT + WATCHING on its review wakes, and is priced later)."),
-  entry_on_close: z.boolean().optional().describe("true = the buy fires only on a CLOSE past entry_price (breakouts — an intraday poke fails about half the time)."),
-  stop_basis: z.string().optional().describe("Required on a priced plan: the structure the stop sits under and its distance in ATR, with the numbers (\"under the base low $207.25 — 1.6 ATR below entry\")."),
-  target_basis: z.string().optional().describe("Required on a priced plan: which rule produced the target, with the numbers (\"measured move: 11.7% base depth added to the $234.76 pivot\", \"prior high $236.54\")."),
-  target_price: z.number().optional().describe("Take-profit level. Required with entry_price."),
-  stop_loss: z.number().optional().describe("Where the thesis breaks. Required with entry_price."),
-  catalyst_date: z
-    .string()
-    .optional()
-    .describe("YYYY-MM-DD. Required when horizon=CATALYST. The date the company announced — a possible slip goes in the risks, never in the date. When the data block carries an event date on file, use it."),
-  core_belief: z
-    .string()
-    .optional()
-    .describe("ONE falsifiable sentence: outcome + timeframe + mechanism. Required for LONG/SHORT."),
-  key_assumptions: z
-    .array(z.string())
-    .optional()
-    .describe("≥2 specific premises that must remain true. Required for LONG/SHORT."),
-  invalidation_conditions: z
-    .array(z.string())
-    .optional()
-    .describe("≥2 specific trip-wires that would prove the thesis wrong. Required for LONG/SHORT."),
-  scoring: z
-    .object({
-      trendStrength: scoringDimSchema,
-      relativeStrength: scoringDimSchema,
-      entryQuality: scoringDimSchema,
-      catalystFreshness: scoringDimSchema,
-    })
-    .optional()
-    .describe("Composite rubric: trend 0-3 + relative 0-3 + entry 0-2 + catalyst 0-2. Required for LONG/SHORT."),
-  conviction: z
-    .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
-    .optional()
-    .describe("YOUR REAL VIEW, independent of composite. Required for LONG/SHORT."),
-  conviction_rationale: z
-    .string()
-    .optional()
-    .describe("A few sentences, written like you're talking to a person — the judgment, not the math. Required with conviction."),
-  variant_view: z
-    .string()
-    .optional()
-    .describe("'Consensus expects X, I think Y, falsifiable because Z'. STRONG/HIGH conviction without one is stored as MEDIUM."),
-  prior_exit_acknowledgment: z
-    .string()
-    .optional()
-    .describe(
-      "REQUIRED when this analyst SOLD this ticker within the last 14 days and your entry_price is at/above that exit price (the exit details are in your prompt). One line that genuinely engages with the sale — why this is a new setup, not a re-buy of the dip just sold. Omit when no recent sale applies.",
-    ),
-  triggers: z
-    .array(writerTrigger)
-    .optional()
-    .describe(
-      "MINT ONLY. Optional custom trigger ladder; omit to accept the horizon-default template (right answer for most theses). " +
-        "On a refresh use add_triggers / edit_triggers / remove_trigger_ids instead.",
-    ),
-  // ── Refresh: triggers change one at a time (DAV-242) ─────────────────
-  add_triggers: z
-    .array(writerTrigger)
-    .optional()
-    .describe("REFRESH ONLY. Triggers to add. Adding where one exists in the same bucket edits that one."),
-  edit_triggers: z
-    .array(editTriggerOpSchema)
-    .optional()
-    .describe("REFRESH ONLY. Edit a trigger by the id shown in EXISTING THESIS. A value change REQUIRES rationale."),
-  remove_trigger_ids: z
-    .array(z.string())
-    .optional()
-    .describe("REFRESH ONLY. Trigger ids to remove. To set a priced plan down, remove the buy, floor and target triggers and keep a REVIEW wake."),
+  horizon: W.horizon,
+  setup_id: W.setup_id.optional(),
+  entry_price: W.entry_price.optional(),
+  entry_on_close: W.entry_on_close.optional(),
+  stop_basis: W.stop_basis.optional(),
+  target_basis: W.target_basis.optional(),
+  target_price: W.target_price.optional(),
+  stop_loss: W.stop_loss.optional(),
+  catalyst_date: W.catalyst_day.optional(),
+  core_belief: W.core_belief.optional(),
+  key_assumptions: W.key_assumptions.optional(),
+  invalidation_conditions: W.invalidation_conditions.optional(),
+  scoring: W.scoring.optional(),
+  conviction: W.conviction.optional(),
+  conviction_rationale: W.conviction_rationale.optional(),
+  variant_view: W.variant_view.optional(),
+  prior_exit_acknowledgment: W.prior_exit.optional(),
+  // A mint sends `triggers`; a refresh edits one at a time (DAV-242). Sending
+  // the wrong one is refused with the right one named (validateThesisDecision).
+  triggers: z.array(writerTrigger).optional().describe(TRIGGER_EDITS.ladder),
+  add_triggers: z.array(writerTrigger).optional().describe(TRIGGER_EDITS.add),
+  edit_triggers: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
+  remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
 });
 
 export type ThesisDecisionInput = z.infer<typeof thesisDecisionSchema>;

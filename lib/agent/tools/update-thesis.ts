@@ -27,6 +27,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 import { prisma } from "@/lib/prisma";
 import {
   parseTriggersResilient,
@@ -40,7 +41,7 @@ import {
 } from "@/lib/agent/triggers/load-levels";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
-import { SETUP_IDS, NO_SETUP_FITS, getSetup, isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { getSetup, isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { heldSetupExitOps } from "@/lib/agent/triggers/setup-exits";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
@@ -77,34 +78,8 @@ import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { computePlanSanity } from "@/lib/agent/plan-sanity";
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
-// ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
-// Same shape as record_thesis. See lib/agent/tools/record-thesis.ts.
-const sectionCitationSchema = z
-  .object({
-    url: z.string().optional(),
-    title: z.string().optional(),
-    domain: z.string().optional(),
-    kind: z.enum(["STRUCTURED", "WEB"]).optional(),
-  })
-  .describe("Citation chip (one URL or [STRUCTURED:...] reference).");
-
-const sectionTextSchema = z
-  .object({
-    text: z.string(),
-    citations: z.array(sectionCitationSchema).optional(),
-  })
-  .describe("Prose paragraph with optional citations.");
-
-const sectionBulletSchema = z
-  .object({
-    bullets: z.array(
-      z.object({
-        text: z.string(),
-        citation: sectionCitationSchema.optional(),
-      }),
-    ),
-  })
-  .describe("Bulleted list, one citation per bullet.");
+// The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
+const F = thesisFields();
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -120,170 +95,38 @@ const updateSchema = z.object({
     .describe(
       "If this update was prompted by a trigger firing, the id of that trigger. Optional.",
     ),
-  price_at_time: z
-    .number()
-    .optional()
-    .describe(
-      "Current price for this ticker at the moment of update (get_stock_data's quote). Captured into the activity log row, and it decides which SIDE of the price a buy level sits on: " +
-        "pass it whenever you set entry_price or move a buy trigger's level. A fresh quote is tried first; with neither, that update is refused (no_live_price) — the side is never guessed.",
-    ),
-
-  // ── Patchable fields ──────────────────────────────────────────────────
-  // Every field is optional. Whatever's passed gets written; whatever's
-  // omitted is left unchanged.
-  // The three "structural belief" fields. Their discipline gate (P0-1) is
-  // gone; a level move with the belief unchanged says why in `rationale`.
-  core_belief: z
-    .string()
-    .optional()
-    .describe(
-      "The durable claim — one sentence that captures WHAT you believe will happen and why. The snapshot is the current-state framing (refreshed often); this is the underlying claim (rarely changes). Touch this when the actual belief has shifted. If you're moving a level and the belief is unchanged, leave this alone and say why in the rationale.",
-    ),
-  key_assumptions: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "What must be true for the core_belief to hold. Concrete and falsifiable items only: 'AI capex stays >$200B/quarter through 2026', 'no breakup of $TICKER's preferred customer relationship', 'guidance not cut more than 5% on next print'. Generic prose ('strong fundamentals') is insufficient. Touch this when one or more assumptions has been refined, confirmed, or invalidated by new evidence.",
-    ),
-  invalidation_conditions: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "What would prove this thesis wrong. Concrete: 'guidance cut next quarter', 'CFO departure', 'gross margin below 35% on next print'. Generic 'market downturn' is insufficient. Used by the trade evaluator to grade exits. On PASS theses, these double as re-entry criteria — if any flips the other way the PASS becomes a candidate to flip to LONG/SHORT.",
-    ),
-  // PR-9: signal_types / confidence_score columns dropped. Conviction
-  // moves through `scoring` (the 4-dim setup grade, single conviction
-  // number). signalTypes is derivable from sourceSignalIds.
-  scoring: z
-    .object({
-      trendStrength: z.object({ score: z.number().min(0).max(3), note: z.string() }).optional(),
-      relativeStrength: z.object({ score: z.number().min(0).max(3), note: z.string() }).optional(),
-      entryQuality: z.object({ score: z.number().min(0).max(2), note: z.string() }).optional(),
-      catalystFreshness: z.object({ score: z.number().min(0).max(2), note: z.string() }).optional(),
-    })
-    .optional()
-    .describe(
-      "Update the 4-dim composite scoring. Pass all four dims (the tool computes `composite`) to fully replace; pass a subset to merge with the existing scoring. A buy is refused when the composite is under this analyst's minimum confidence.",
-    ),
-  target_price: z.number().nullable().optional()
-    .describe("The target — edits the target trigger (adds one if none, null removes it). One change, one activity line."),
-  stop_loss: z.number().nullable().optional()
-    .describe("The floor — edits the sell-below trigger (adds one if none, null removes it). On a held stock it may only tighten."),
-  setup_id: z.enum([...SETUP_IDS, NO_SETUP_FITS]).optional()
-    .describe("The setup this plan is written on, from the row's `nameTheSetup.choose` or any catalog id. Stored on the thesis; the tactical run confirms by it, the scorecard groups by it. On a stock you hold, naming it also writes that setup's own exits onto the stock (the time limit counted from the real buy, the partial sale from the real cost and floor, the beat-the-market-sold review), one Activity line each; a trigger already there is left alone. \"NONE\" = you looked and no setup fits — say why in `rationale`."),
-  stop_basis: z.string().optional()
-    .describe("Why the stop is where it is, with the chart number (\"under the base low $207.25, 1.6 ATR from entry\"). Sent with stop_loss, it becomes the floor trigger's sentence."),
-  target_basis: z.string().optional()
-    .describe("Why the target is where it is. Sent with target_price, it becomes the target trigger's sentence."),
-  entry_on_close: z.boolean().optional()
-    .describe("With entry_price: true = the buy fires only on a close past it; false = intraday."),
-  entry_price: z.number().nullable().optional()
-    .describe(
-      "WHERE YOU'D BUY IN — edits the buy trigger (adds one if none, null removes it). The level the setup's entry rule gives. " +
-      "The side follows the level: BELOW the current quote is a pullback you want to buy, ABOVE it is a breakout you want confirmed first — the buy trigger is rewritten to match, so you only have to pick the number. " +
-      "When the setup's condition is already true today, set it at or a few cents past the current price — that is how you buy now: it fires on the first tick through it. " +
-      "REQUIRED when promoting an unresearched seed to LONG/SHORT. Not editable on a held stock — there the entry is the fill."
-    ),
-
-  // ── Conviction Expression v4 ─────────────────────────────────────────
-  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Patch-style here:
-  // a tier set without a rationale is rejected; STRONG/HIGH without
-  // variantView is rejected; STRONG with composite<7 or STRONG/HIGH
-  // with entryQuality<2 is rejected (consistency gates §3.5).
-  conviction: z
-    .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
-    .optional()
-    .describe(
-      "YOUR REAL VIEW after this review. STRONG = top calls (urgent buy, real money). HIGH = solid conviction, want it in size. MEDIUM = honest middle, probably works. LOW = tracking but not enthusiastic. " +
-        "Independent of composite. Patch when the picture has materially changed (new evidence validated the variantView → upgrade; consensus caught up to your view → downgrade). When you patch this, you MUST also patch conviction_rationale. STRONG/HIGH with no variant view (in this call or on the row) is stored as MEDIUM.",
-    ),
-  conviction_rationale: z
-    .string()
-    .optional()
-    .describe(
-      "Updated rationale. WRITE LIKE YOU'RE TALKING TO A PERSON — not 'composite 7/10, R/R 2.5:1'. Express the judgment, not the math. Required whenever you patch conviction.",
-    ),
-  variant_view: z
-    .string()
-    .optional()
-    .describe(
-      "Update the writer's contrarian take: 'consensus expects X, I think Y, here's why.' A patch to STRONG/HIGH with no variant view on the row is stored as MEDIUM.",
-    ),
-
-  // ── Direction (PENDING → LONG/SHORT/PASS promotion only) ─────────────
-  // The only legal direction change is OUT of PENDING. Direction flips on
-  // committed (LONG ↔ SHORT) theses go through record_thesis with
-  // parent_thesis_id so the audit trail captures the chain.
-  direction: z
-    .enum(["LONG", "SHORT", "PASS"])
-    .optional()
-    .describe(
-      "Commit a direction on a stock that has none yet (a watchlist seed). " +
-      "LONG/SHORT: requires horizon, target_price, stop_loss, a buy (entry_price, or one ENTER trigger already on the stock or in add_triggers), core_belief, ≥2 key_assumptions, ≥2 invalidation_conditions. Stays WATCHING. " +
-      "PASS: requires invalidation_conditions (≥1). Lands status PASSED and clears triggers. " +
-      "A direction flip on a committed thesis (LONG↔SHORT) goes through record_thesis with parent_thesis_id."
-    ),
-
-  horizon: z
-    .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
-    .optional()
-    .describe(
-      "Change when the trade's structure has changed: a TRADE that is compounding past its window → TARGET; a COMPOUNDER whose moat eroded but isn't dead → TARGET with a tighter exit; a CATALYST that printed and now runs on momentum → TARGET. Retune the review schedule ('every N days') to match (edit_triggers). A fresh record_thesis is for a direction or belief flip, not a horizon change.",
-    ),
-  catalyst_date: z.string().datetime().nullable().optional(),
+  price_at_time: F.live_price.optional(),
+  core_belief: F.core_belief.optional(),
+  key_assumptions: F.key_assumptions.optional(),
+  invalidation_conditions: F.invalidation_conditions.optional(),
+  scoring: F.scoring_patch.optional(),
+  target_price: F.target_price.nullable().optional(),
+  stop_loss: F.stop_loss.nullable().optional(),
+  setup_id: F.setup_id_or_none.optional(),
+  stop_basis: F.stop_basis.optional(),
+  target_basis: F.target_basis.optional(),
+  entry_on_close: F.entry_on_close.optional(),
+  entry_price: F.entry_price.nullable().optional(),
+  conviction: F.conviction.optional(),
+  conviction_rationale: F.conviction_rationale.optional(),
+  variant_view: F.variant_view.optional(),
+  direction: F.direction.optional(),
+  horizon: F.horizon.optional(),
+  catalyst_date: F.catalyst_date.nullable().optional(),
 
   // ── Trigger ops (DAV-242) — one trigger at a time, never a whole list ──
-  add_triggers: triggersInputArraySchema
-    .optional()
-    .describe(
-      "Triggers to ADD. Each is { predicate, action, rationale, cooldownDays?, fireMode? }; ids are minted here. " +
-        "Adding where one already exists (a second buy trigger, target, floor, or review cadence) EDITS the existing one — a stock never carries two buy triggers.",
-    ),
-  edit_triggers: z
-    .array(editTriggerOpSchema)
-    .optional()
-    .describe(
-      "Triggers to EDIT by id. Change the number, the action, the fire mode, or the wording. A level change needs a rationale. " +
-        "On a held stock a protective sell level may only tighten — a loosening edit is refused by itself; the rest of the call lands.",
-    ),
-  remove_trigger_ids: z
-    .array(z.string())
-    .optional()
-    .describe("Triggers to REMOVE by id. On a held stock a protective sell trigger cannot be removed."),
-
-  // ── V2 narrative sections (PR-9 flat schema) ──────────────────────────
-  // Same 9 sections record_thesis accepts. Patching one section leaves the
-  // others untouched (the rename + retype migration backfilled legacy rows
-  // with empty-citation shapes, so partial updates are safe).
-  snapshot: sectionTextSchema
-    .optional()
-    .describe(
-      "Patch the Snapshot section (1 paragraph current-state framing). Supersedes `reasoning_summary` when both are passed.",
-    ),
-  recent_catalysts: sectionTextSchema
-    .optional()
-    .describe("Patch the Recent Catalysts section (1-2 week catalyst window narrative)."),
-  fundamentals: sectionTextSchema
-    .optional()
-    .describe("Patch the Fundamentals section (narrative paragraph; persists to Thesis.fundamentals column)."),
-  latest_earnings: sectionBulletSchema
-    .optional()
-    .describe("Patch the Latest Earnings section (5 specific bullets)."),
-  catalysts_and_events: sectionBulletSchema
-    .optional()
-    .describe("Patch the Catalysts & Events section (3-5 dated bullets)."),
-  bull_case: sectionBulletSchema
-    .optional()
-    .describe("Patch the Bull Case section (3-5 cited bullets). Supersedes `thesis_bullets` when both are passed."),
-  bear_case: sectionBulletSchema
-    .optional()
-    .describe("Patch the Bear Case section (3-5 cited bullets, mandatory even on LONG). Supersedes `risk_flags` when both are passed."),
-  analyst_consensus: sectionTextSchema
-    .optional()
-    .describe("Patch the Analyst Consensus section (firm-by-firm narrative)."),
-  insider_technical: sectionTextSchema
-    .optional()
-    .describe("Patch the Insider & Technical section (insider activity + technical setup)."),
+  add_triggers: triggersInputArraySchema.optional().describe(TRIGGER_EDITS.add),
+  edit_triggers: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
+  remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
+  snapshot: F.snapshot.optional(),
+  recent_catalysts: F.recent_catalysts.optional(),
+  fundamentals: F.fundamentals.optional(),
+  latest_earnings: F.latest_earnings.optional(),
+  catalysts_and_events: F.catalysts_and_events.optional(),
+  bull_case: F.bull_case.optional(),
+  bear_case: F.bear_case.optional(),
+  analyst_consensus: F.analyst_consensus.optional(),
+  insider_technical: F.insider_technical.optional(),
 
   // ── Status transitions (deliberate) ───────────────────────────────────
   // PROMOTED is intentionally excluded — only the promote-analyst action
@@ -301,25 +144,9 @@ const updateSchema = z.object({
       "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
         "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead. " +
         "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). " +
-        "Holding and sold are not set here: place_trade and close_position flip them when the order fills. A researched decline is direction: \"PASS\"; a direction flip goes through record_thesis with parent_thesis_id.",
+        "Holding and sold are not set here: place_trade and close_position flip them when the order fills. A researched decline is direction: \"PASS\".",
     ),
-
-  // ── Deep-research artifact passthrough (THESIS_RESEARCH_V2 refresh) ───
-  // Mirror of record_thesis's research_data arg. Populated by the
-  // thesis-writer pipeline's refresh path (run-thesis-writer.ts).
-  // Persisted on Thesis.researchData (markdown data block, ~3-5KB) for the
-  // card's data tab + audit.
-  //
-  // PR-9: `research_sections` blob arg removed. The 9 parsed sections are
-  // now individual flat args (snapshot / bull_case / bear_case + 6 new
-  // sections defined above) — they land on first-class JSONB columns.
-  research_data: z
-    .string()
-    .optional()
-    .describe(
-      "Raw structured-data markdown block from the thesis-writer's data pull. " +
-        "Pass through verbatim. Lands on Thesis.researchData for the card's data tab.",
-    ),
+  research_data: F.research_data.optional(),
 });
 
 type UpdatePatch = Partial<{
@@ -429,14 +256,32 @@ const WRITER_ONLY_UPDATE_FIELDS = {
   research_data: true,
 } as const;
 
+/**
+ * Fields the trigger run never writes: in its 72 update_thesis calls in the
+ * 30 days to 2026-10-06 none sent one, and its text asks only for the belief,
+ * the levels and the triggers. Conviction, the variant view and the setup are
+ * the writer's and the morning run's.
+ */
+const NOT_THE_TRIGGER_RUNS = { conviction: true, conviction_rationale: true, variant_view: true, setup_id: true } as const;
+
+/** The chat never answers a fired trigger, so it has no trigger to name (0 of its 58 calls in the same 30 days). */
+const NOT_THE_CHATS = { trigger_id: true } as const;
+
 export const updateThesis = defineTool({
   description:
-    "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
-    "Two hard-reject conditions to know about: " +
-    "(1) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
-    "(2) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, removing a protective sell trigger, or switching one from automatic to judgment-first is refused per trigger (the rest of the call still lands; every op comes back in `trigger_ops` with accepted/refused and why). Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
+    "Change a thesis you already have. Pass thesis_id, the fields that change and a rationale; every call writes one line to the stock's Activity. " +
+    "entry_price, target_price and stop_loss are the levels of the buy, target and floor triggers, and null removes one. " +
+    "Each trigger edit comes back in `trigger_ops`, accepted or refused with the reason; a refused one leaves the rest of the call in place. " +
+    "On a stock we hold, only the principal moves a safety line down: if you think one is wrong, keep it and give the number you'd suggest in the rationale.",
   schema: updateSchema,
-  schemaFor: (ctx) => (ctx.runMode === "THESIS_WRITER" ? updateSchema : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS)),
+  schemaFor: (ctx) =>
+    ctx.runMode === "THESIS_WRITER"
+      ? updateSchema
+      : ctx.runMode === "INTRADAY_TACTICAL"
+        ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_TRIGGER_RUNS })
+        : ctx.runMode === "PRINCIPAL_CHAT"
+          ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_CHATS })
+          : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 
