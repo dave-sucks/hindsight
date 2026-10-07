@@ -68,8 +68,9 @@ Six runs per case, about $16 of model calls in all. The production runs share
 the OpenAI key, so check the balance before a batch: a full baseline is about
 a day of morning runs.
 
-**Scores above are not comparable with scores from 2026-10-07 on.** Two
-changes landed then, and both change what a case sends:
+**Scores above are not comparable with scores from 2026-10-07 on.** Three
+changes landed then; the first two change what a case sends, the third how a
+trigger case is scored:
 
 - The runner rebuilds the trigger run's kickoff with today's code
   (`tactical-kickoff.ts`). docu-trigger and nvda-declined-sale now read
@@ -79,8 +80,15 @@ changes landed then, and both change what a case sends:
   trigger and writer cases send the same bytes as before; the morning and
   chat cases' recorded stock rows now show their triggers in the condition
   shape instead of the old kinds.
+- A trigger case runs to the end of the run (complete_run, a turn with no
+  call, or `maxTurns`, default 6), every call answered by a stub, and its
+  `call` / `never` rules are scored over all of it. It used to stop at the
+  first decision, so a run that proposed the sale and then deleted the
+  trigger that fired passed. A trigger run now costs more per run, with the
+  turns; each case's line states its tokens.
 
-A batch after that compares main and a branch, both run with this runner on
+A trigger case's scores before the scoring change read only against each
+other. A batch after that compares main and a branch, both run with this runner on
 these files, in the same hour. Read docu-trigger's 2/6 and nvda-declined-sale's
 4/6 above against nothing newer.
 
