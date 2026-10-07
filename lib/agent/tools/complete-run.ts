@@ -610,14 +610,14 @@ async function runCompleteRunPreflight(
   //                 rationale-only REVIEW counts. Right for "did you look
   //                 at this holding": looking IS the work.
   //   substantive — the same, minus REVIEWED. Something actually changed:
-  //                 a patch (UPDATED), a status move, a trade.
+  //                 a patch (UPDATED), a status move, a trade. Only a
+  //                 declined sale asks for it.
   //
-  // P1-40 (the RARE gap): a fired ENTER used to be satisfied by the weak
-  // bar. The agent validated every condition, wrote "validated, not
-  // entering," and the gate went green. RARE never slipped past a gate —
-  // it SATISFIED one, and the only shot at that entry closed. An ENTER is
-  // the one action whose whole point is ending in a purchase, so writing
-  // about it is not resolving it: buy it, move the bar, or stop watching.
+  // A fired buy no longer does (it did from 2026-08 until 2026-10-07). A buy
+  // a run passes on is not lost: it comes back the next morning as a plan
+  // flag or a live match, and it re-arms on the next crossing. The bar it
+  // had needed exceptions where buying was not an answer at all — a price
+  // back under the level, an analyst at its limit.
   const runUpdates = await prisma.thesisUpdate.findMany({
     where: {
       runId,
@@ -786,18 +786,11 @@ async function runCompleteRunPreflight(
     });
     if (needsAction == null) continue;
 
-    // An ENTER obligation — fired or matching-now — needs the strong bar.
-    // Everything else keeps the historic behavior.
-    const isEnterObligation =
-      (needsAction.kind === "TRIGGER_FIRED" ||
-        needsAction.kind === "TRIGGER_MATCHING_NOW") &&
-      needsAction.action === "ENTER";
-    // A declined sale takes the strong bar too (DAV-315): the ticket's
-    // words are "a note-only REVIEWED row does not clear it." Answering
-    // means re-drawing the floor or proposing the sale again — both write
-    // a non-REVIEWED row. IOT's 09-21 run wrote exactly the weak kind.
-    const needsSubstantiveAnswer =
-      isEnterObligation || needsAction.kind === "SALE_DECLINED";
+    // A declined sale takes the strong bar (DAV-315): the ticket's words are
+    // "a note-only REVIEWED row does not clear it." Answering means
+    // re-drawing the floor or proposing the sale again — both write a
+    // non-REVIEWED row. IOT's 09-21 run wrote exactly the weak kind.
+    const needsSubstantiveAnswer = needsAction.kind === "SALE_DECLINED";
     const resolved = needsSubstantiveAnswer
       ? substantivelyAddressedThesisIds.has(t.id)
       : addressedThesisIds.has(t.id);
@@ -888,7 +881,6 @@ async function runCompleteRunPreflight(
       `${totalCount > 1 ? "them" : "it"} in this run. ` +
       `For PROMOTED rows: call place_trade to re-enter live, or update_thesis(change_status: "WATCHING") to defer. ` +
       `For HOLDING/WATCHING rows: call update_thesis with the action result (or change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
-      `For a fired ENTER: a rationale-only REVIEW does NOT resolve it — either place_trade, or change the entry level via update_thesis(triggers/entry_price), or change_status="ARCHIVED" to stop watching. Declining without moving the bar means the same alert fires again tomorrow. ` +
       `Then call complete_run again. Unaddressed: ${summary}`,
   };
 }

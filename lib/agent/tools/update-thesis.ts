@@ -1426,11 +1426,15 @@ export const updateThesis = defineTool({
       "bearCase",
       "researchUpdatedAt",
     ]);
-    const patchKeysList = Object.keys(patch);
+    // The review stamp above is when we looked, not a change. Since it went
+    // into the patch (2026-08-25) every call counted as a change: runs wrote
+    // no REVIEWED row for six weeks, and the declined-sale bar in
+    // complete_run, which a review must not clear, cleared on any call.
+    const changedKeys = Object.keys(patch).filter((k) => k !== "lastReviewedAt");
     const isNarrativeOnly =
-      patchKeysList.length > 0 &&
+      changedKeys.length > 0 &&
       updateType === "UPDATED" &&
-      patchKeysList.every((k) => NARRATIVE_KEYS.has(k));
+      changedKeys.every((k) => NARRATIVE_KEYS.has(k));
     if (isNarrativeOnly) {
       updateType = "REVIEWED";
     }
@@ -1444,8 +1448,7 @@ export const updateThesis = defineTool({
     // looking IS the event, whether or not anything changed. The horizon
     // cadence lookup that used to live here is gone with the second copy of
     // the review clock; the cadence is a trigger now and it reads this stamp.
-    const patchKeyCount = Object.keys(patch).length;
-    if (patchKeyCount === 0) {
+    if (changedKeys.length === 0) {
       if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults);
       const reviewedAt = new Date();
       await prisma.thesis.update({

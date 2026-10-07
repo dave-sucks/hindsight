@@ -16,7 +16,6 @@ import {
   replayTool,
   thesisRow,
   positionRow,
-  thesisUpdateRow,
   REPLAY_ANALYST_ID,
   REPLAY_RUN_ID,
   REPLAY_USER_ID,
@@ -28,9 +27,10 @@ const FLOOR = 41.4;
 const AVG_COST = 39.83;
 /** The price on 09-17, the morning after the first decline. */
 const PRICE_NEXT_DAY = 40.2;
+/** A decline note of the real one's shape (paraphrased): holding, and the level to act on. */
 const NOTE =
-  "its moving here and there. Im gonna see if theres any chance it picks back up. " +
-  "If you don't approve this, I'd immediately raise the stop to around $40.50.";
+  "Holding to see whether it recovers. " +
+  "If this sale is declined, the stop should move up to about $40.50.";
 
 const iotThesis = (over: Record<string, unknown> = {}) =>
   thesisRow({
@@ -186,31 +186,39 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
     expect(storedStop(result)).toBe(FLOOR);
   });
 
-  it("4. a REVIEWED-only answer leaves the run unfinished", async () => {
+  it("4. a review that changes nothing leaves the run unfinished — the row written by update_thesis itself", async () => {
+    const seed = {
+      researchRun: [runRow()],
+      thesis: [iotThesis()],
+      position: [iotPosition()],
+      order: [declinedSaleOrder()],
+      runEvent: [
+        {
+          id: "ev_summary",
+          runId: REPLAY_RUN_ID,
+          type: "run_summary",
+          title: "Run summary",
+          message: "Reviewed the book.",
+          payload: {},
+          createdAt: new Date(),
+        },
+      ],
+    };
+    // The 09-21 shape: a note and nothing else. This row used to be seeded
+    // by hand, and from 2026-08-25 update_thesis could not write it — every
+    // call counted its own review stamp as a change.
+    const review = await replayTool("update-thesis", "updateThesis", {
+      seed,
+      args: { thesis_id: "t_iot", rationale: "Looked at it again; holding for now." },
+      quotes: { IOT: PRICE_NEXT_DAY },
+    });
+    // The double applies no column defaults; production stamps every row.
+    const written = (review.db.store.thesisUpdate ?? []).map((u: Record<string, unknown>): Record<string, unknown> => ({ ...u, timestamp: u.timestamp ?? new Date() }));
+    expect(written.map((u) => u.type)).toEqual(["REVIEWED"]);
+
     const { result, crashed } = await replayTool("complete-run", "completeRun", {
-      seed: {
-        researchRun: [runRow()],
-        thesis: [
-          iotThesis({ updates: [{ type: "REVIEWED", triggerId: null, timestamp: new Date() }] }),
-        ],
-        position: [iotPosition()],
-        order: [declinedSaleOrder()],
-        runEvent: [
-          {
-            id: "ev_summary",
-            runId: REPLAY_RUN_ID,
-            type: "run_summary",
-            title: "Run summary",
-            message: "Reviewed the book.",
-            payload: {},
-            createdAt: new Date(),
-          },
-        ],
-        // The 09-21 shape: a review row that changed nothing.
-        thesisUpdate: [
-          thesisUpdateRow({ thesisId: "t_iot", runId: REPLAY_RUN_ID, type: "REVIEWED" }),
-        ],
-      },
+      // The double joins nothing: the thesis carries its own audit lines.
+      seed: { ...seed, thesis: [{ ...review.db.store.thesis[0], updates: written }], thesisUpdate: written },
       args: {},
       quotes: { IOT: PRICE_NEXT_DAY },
     });
