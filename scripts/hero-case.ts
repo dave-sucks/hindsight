@@ -36,6 +36,7 @@ import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
+import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 
 type Cond = "present" | "absent" | string | number | boolean | { lt?: number; gt?: number; regex?: string };
 interface Rule { tool: string; where?: Record<string, Cond> }
@@ -265,7 +266,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null): 
     const invalid: Array<{ tool: string; error: string }> = [];
     for (let turn = 1; turn <= maxTurns; turn++) {
       turns = turn;
-      const result = await generateText({ model, system, messages, tools, stopWhen: stepCountIs(1), providerOptions });
+      const result = await generateText({ model, system: cachedSystem(mode.provider, system), messages, tools: cachedTools(mode.provider, tools), stopWhen: stepCountIs(1), providerOptions });
       tokensIn += result.usage.inputTokens ?? 0;
       tokensCached += result.usage.inputTokenDetails?.cacheReadTokens ?? result.usage.cachedInputTokens ?? 0;
       tokensOut += result.usage.outputTokens ?? 0;
