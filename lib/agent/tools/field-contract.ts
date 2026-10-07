@@ -20,7 +20,9 @@
  *   JUDGED    The model's number, date or plan under a rule the tools
  *             enforce. The rule is named here. A mode whose prompt states it
  *             declares a marker (the text the prompt must keep); a mode whose
- *             tool description and refusal carry the rule needs no marker.
+ *             tool description or refusal carries the rule needs no marker
+ *             (for level order on the trigger run and 2:1 on the morning run,
+ *             only the refusal carries it: it names the levels and the fix).
  *             A refusal names the bound and the next legal move.
  *   IDENTITY  A reference to something that exists (a thesis id, a ticker,
  *             a trigger id). A wrong one is refused by name.

@@ -6,7 +6,9 @@
  * line, and the morning run's press-hold-take bullet. There is no flag for a
  * winner near its target (RUNNING_WINNER was deleted 2026-08-25): the row
  * attaches it from the resolver's progressToTarget, and the threshold lives
- * here in code, not in the text.
+ * here in code, not in the text. It names one path for the floor,
+ * update_thesis stop_loss: the thesis's floor is the true one, and the
+ * position's stop is a copy that lags it.
  *
  * Cap: 2,000 characters. A line added means a line removed.
  */
@@ -23,8 +25,8 @@ Answer, in order:
 3. Did the principal decline this same add, with nothing they named changed since? Then say so and pass.
 
 What you can do (one of these):
-- Press: manage_position add_to_position (it sizes the add: half the entry's risk, within the largest trade and the most in one stock), then update_thesis to raise the target, and raise the floor under the bigger position.
-- Hold: raise the floor to lock a real share of the gain, under structure (a recent swing low, the breakout level), with update_thesis stop_loss or manage_position update_targets. Breakeven only guards against a loss: a +20% winner floored at breakeven can give back its whole gain.
+- Press: manage_position add_to_position (it sizes the add: half the entry's risk, within the largest trade and the most in one stock), then update_thesis to raise the target, and the floor (stop_loss) under the bigger position.
+- Hold: raise the floor to lock a real share of the gain, under structure (a recent swing low, the breakout level), with update_thesis stop_loss. Breakeven only guards against a loss: a +20% winner floored at breakeven can give back its whole gain.
 - Take: manage_position partial_close to bank part, or close_position.
 Then one update_thesis saying which and why. Adds and target raises are proposals the principal approves.
 
