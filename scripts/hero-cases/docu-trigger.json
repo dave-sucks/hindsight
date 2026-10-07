@@ -96,6 +96,110 @@
   "capacity": null,
   "kickoff": {
    "extras": ""
+  },
+  "stock": {
+   "id": "cmtu9lfhw000004i575f6xyig",
+   "ticker": "DOCU",
+   "status": "WATCHING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "MA_PULLBACK",
+   "coreBelief": "DOCU drifts to $83 within 60 days of the September 3 print as the 18 HOLD-rated analysts who haven't yet revised absorb the confirmed ARR guide raise and IAM ARR inflection to 15.1% — but only on a pullback to the rising 20-day SMA (~$64.50) where a 2:1 R/R entry can be structured.",
+   "keyAssumptions": [
+    "IAM ARR mix continues to expand from 15.1% toward management's 18%–19% Q4 FY2027 target, validating the platform re-rating thesis",
+    "The remaining 18 HOLD-rated analysts revise estimates upward over the next 4–6 weeks, maintaining the systematic estimate-diffusion bid that drives PEAD continuation"
+   ],
+   "invalidationConds": [
+    "Gap-day low of $64.16 closes below on volume — the gap fills, the PEAD setup is broken",
+    "Analyst consensus price targets fail to move above $75 over the next 30 days, indicating the revision wave has peaked below the stock price and the diffusion edge has expired"
+   ],
+   "entryPrice": 67,
+   "targetPrice": 83,
+   "stopLoss": 63,
+   "snapshot": null,
+   "bullCase": {
+    "bullets": [
+     {
+      "text": "**IAM is a genuine platform shift, not marketing:** IAM ARR rose from 12.6% to 15.1% of total ARR in a single quarter, a 250 bps sequential gain that validates CEO commentary and raises the probability that the 18%–19% exit-rate target is achievable — which would represent a step-function re-rating of DOCU from a single-product e-sign vendor to a multi-product platform."
+     },
+     {
+      "text": "**Estimate revision tail is long:** According to 20 analysts polled, DOCU has a Hold consensus with an average price target near current levels; UBS and BofA moving within 24 hours signals the early movers, but 18 of 29 analysts remain at HOLD [STRUCTURED:analyst_coverage]. The structural PEAD edge is precisely that the slow-moving majority updates over 4–8 weeks, pulling the stock higher."
+     },
+     {
+      "text": "**RSI-adjusted momentum is durable:** DOCU's up/down volume ratio of 2.17 over 20 days and 3-month relative outperformance of +62.2 pts vs. SPY indicates institutional accumulation, not retail speculation [STRUCTURED:volume, relative_strength]."
+     },
+     {
+      "text": "**FCF yield is compelling relative to rate-neutral SaaS:** FCF of $920M–$1.06B on a $13.4B market cap implies a ~7.7%–7.9% FCF yield, making the stock defensible if multiple expansion stalls [STRUCTURED:financials_annual]."
+     },
+     {
+      "text": "**Zero leverage:** D/E of 0.00 means any cash flow upside can be deployed into buybacks, which the peer group confirms are ongoing [STRUCTURED:ratios]."
+     }
+    ]
+   },
+   "bearCase": {
+    "bullets": [
+     {
+      "text": "**The gap has already run 11%+ from the prior base:** DOCU at $71.85 is 11.9% above the gap-day high of $70.40 on an intraday basis; the PEAD edge erodes when most of the reaction is already priced. The existing thesis's original entry at $62.50 is 13% below spot [STRUCTURED:swings]."
+     },
+     {
+      "text": "**Revenue guide mixed on closer read:** DocuSign's Q3 2026 (i.e., an earlier period) EPS beat was overshadowed by a revenue slight miss; the Q4 outlook collectively placed the company's trajectory as \"stable but not accelerating.\" The full-year revenue guide of $3.499B–$3.507B for FY2027 implies a modest deceleration in the back half if Q2's 9% growth doesn't hold."
+     },
+     {
+      "text": "**Consensus PT is near or below spot:** The average analyst price target is approximately $66–$67, which is below the current $71.85 stock price — meaning the stock has already traded through median sell-side expectations, reducing the systematic upward revision pull."
+     },
+     {
+      "text": "**YTD underperformance vs. peers reflects structural concern:** DOCU ranks 4th of 4 peers in YTD performance at -30.3%, versus DT (-7.4%) and PTC (-15.2%) [STRUCTURED:peer_comparison]. Revenue growth of +8.6% ranks 3rd of 4, below DT (+17.9%) and PTC (+19.5%) — the market has consistently penalized the slower growth trajectory."
+     },
+     {
+      "text": "**Insider selling, not buying:** The Form 4 filings in the last 30 days show no open-market purchases; all recent Form 4 activity implies sales or option exercises [STRUCTURED:insider_activity]. Combined with an elevated RSI of 69.3, smart-money behavior is not supporting the bull thesis from the inside."
+     }
+    ]
+   },
+   "triggers": [
+    {
+     "id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 67
+     },
+     "action": "ENTER",
+     "rationale": "Pullback to the rising 20-day: the plan's buy level."
+    },
+    {
+     "id": "hero-floor",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 63
+     },
+     "action": "EXIT",
+     "rationale": "The plan's floor."
+    },
+    {
+     "id": "hero-target",
+     "predicate": {
+      "kind": "PRICE_ABOVE",
+      "level": 83
+     },
+     "action": "REVIEW",
+     "rationale": "The plan's target."
+    }
+   ],
+   "inheritedTriggers": [],
+   "context": null,
+   "needsAction": {
+    "kind": "TRIGGER_FIRED",
+    "triggerId": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+    "action": "ENTER",
+    "summary": "Buy if below $67"
+   },
+   "researchAge": {
+    "daysOld": 0,
+    "freshness": "fresh",
+    "lastWrittenAt": "2026-09-28T01:05:08.000Z",
+    "horizonThreshold": 30
+   },
+   "researchUpdatedAt": "2026-09-28T01:05:08.000Z",
+   "position": null
   }
  },
  "toolCtx": {
@@ -392,6 +496,11 @@
    {
     "tool": "place_trade"
    }
+  ]
+ },
+ "source": {
+  "notes": [
+   "promptArgs.stock is the stock's row built from the facts this case's prompt showed (thesis, triggers, position, context, research); it has no score, conviction or live price, which that prompt did not show."
   ]
  }
 }

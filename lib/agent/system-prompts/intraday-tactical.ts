@@ -14,48 +14,23 @@
 
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { capacityLine, isFull, type AnalystCapacity } from "@/lib/agent/capacity";
-import { conditionSentence, isGroup, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
-import { getSetup } from "@/lib/agent/knowledge/setups";
-import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
+import { isGroup, shapeOf } from "@/lib/agent/triggers/condition";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
 import { VOICE_RULES } from "@/lib/agent/voice";
 
 interface TacticalPromptArgs {
   analyst: { name: string; mandate: string | null };
+}
+
+/** What this one fire brings beyond the stock itself (the stock is its brief, stock-brief.ts). */
+export interface TacticalSituationArgs {
   thesis: {
-    id: string;
     ticker: string;
     direction: string | null;
-    horizon: string | null;
-    /** The setup the plan was written on (Thesis.setupId); null on rows older than #644. */
-    setupId?: string | null;
-    coreBelief: string | null;
-    keyAssumptions: string[];
-    invalidationConds: string[];
-    entryPrice: number | null;
-    targetPrice: number | null;
-    stopLoss: number | null;
-    // Phase 1 read-side fix: deep-research excerpt rendered inline so
-    // the tactical agent reads the analyst's narrative + top bull/bear
-    // bullets + research freshness before executing the trigger's
-    // declared action. snapshotText is the prose paragraph; bullCase /
-    // bearCase are top bullets; researchAge is the freshness annotation.
-    snapshotText: string | null;
-    bullCaseBullets: string[];
-    bearCaseBullets: string[];
     researchAge: ResearchAge;
-    /**
-     * The FULL current trigger ladder (parsed), fired rung included, with
-     * ids: the tactical agent's decision must leave the ladder correct
-     * (re-ladder duty), and it edits triggers one at a time by id.
-     */
-    allTriggers: Trigger[];
   };
   trigger: Trigger;
   position: {
-    quantity: number;
-    avgCost: number;
-    daysHeld: number;
     /**
      * Position.peakPrice — the price-monitor-maintained watermark (high for
      * LONG, low for SHORT) covering the position's whole life. DAV-186:
@@ -66,17 +41,9 @@ interface TacticalPromptArgs {
     peakPrice?: number | null;
   } | null;
   /**
-   * What's been said on the stock (stock-context.ts): the principal's
-   * decisions of the last 30 days word for word, the last two answers, the
-   * fires no agent has answered. Rendered in tactical-run.ts; null when
-   * nothing has been said.
-   */
-  context: string | null;
-  /**
    * Latest account-level PortfolioDigest narrative (Feature A,
    * docs/plans/PORTFOLIO_DIGEST.md). Account-scoped book context for
    * cross-run continuity — optional; null when no digest exists yet.
-   * Replaces the deprecated per-analyst AnalystBriefing.
    */
   latestDigest?: { narrative: string; date: string } | null;
   /**
@@ -88,18 +55,25 @@ interface TacticalPromptArgs {
     price: number | null;
     coFired: Array<{ triggerId: string; sentence: string }>;
   } | null;
-  /** The account's playbook numbers laid over the catalog (DAV-273). */
-  setupOverrides?: SetupOverrides | null;
   /** How full the analyst is, on a buy fire (DAV-292). Null = not a buy, or no limit. */
   capacity?: AnalystCapacity | null;
 }
 
-export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
-  const { analyst, thesis, trigger, position, context, latestDigest, fired } = args;
-  const setup = thesis.setupId ? getSetup(thesis.setupId, args.setupOverrides ?? undefined) : undefined;
-  const coFiredIds = new Set((fired?.coFired ?? []).map((c) => c.triggerId));
+/**
+ * What this fire brings that the stock's brief does not, one paragraph each,
+ * only when it applies: the fired price and the trigger's id, the tracked
+ * peak on a give-back fire, the analyst's room on a buy, the triggers that
+ * fired with it, old research, a declined buy, yesterday's digest. They ride
+ * in the kickoff (tactical-kickoff.ts) so the system prompt is the job alone
+ * and the same for every fire.
+ */
+export function tacticalSituation(args: TacticalSituationArgs): string[] {
+  const { thesis, trigger, position, latestDigest, fired } = args;
+  const out: string[] = [];
 
-  const predicateSummary = conditionSentence(trigger.predicate);
+  out.push(
+    `${fired?.price != null ? `It fired at $${fired.price.toFixed(2)}. ` : ""}The fired trigger's id: ${trigger.id}.`,
+  );
 
   // DAV-186: a fell-from-peak fire is validated against the system's tracked
   // watermark, never a chart-derived high. On 2026-08-18 a genuine HPE trail
@@ -108,62 +82,63 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   // "only down 5%, false alarm." The evaluator only fires this predicate
   // when Position.peakPrice exists, so a missing peak here means OUR context
   // lookup failed — not that the fire was wrong.
-  const trailingPeakBlock = (() => {
-    // A give-back off the high since we bought.
-    const w = shapeOf(trigger.predicate);
-    if (!w || isGroup(w) || w.variable !== "peak" || w.value == null) return "";
+  const w = shapeOf(trigger.predicate);
+  if (w && !isGroup(w) && w.variable === "peak" && w.value != null) {
     const pct = w.value;
     const isShort = thesis.direction === "SHORT";
     const peak = position?.peakPrice ?? null;
-    const threshold =
-      peak != null ? peak * (isShort ? 1 + pct / 100 : 1 - pct / 100) : null;
-    return `
-  ⚠ THE PEAK IS AUTHORITATIVE — DO NOT RE-DERIVE IT.
-  This trigger measures give-back from the system's tracked ${isShort ? "low" : "high"}${
-    peak != null ? `: $${peak.toFixed(2)}` : ""
-  }, recorded by the hourly price monitor over the position's ENTIRE life.
-  ${
-    threshold != null
-      ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Validating this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
-      : `Validating this fire means one arithmetic check against that tracked watermark — if it is missing from this prompt, treat the evaluator's fire as correct rather than reconstructing a peak yourself.`
+    const threshold = peak != null ? peak * (isShort ? 1 + pct / 100 : 1 - pct / 100) : null;
+    out.push(`⚠ THE PEAK IS AUTHORITATIVE — DO NOT RE-DERIVE IT.
+This trigger measures give-back from the system's tracked ${isShort ? "low" : "high"}${
+      peak != null ? `: $${peak.toFixed(2)}` : ""
+    }, recorded by the hourly price monitor over the position's ENTIRE life.
+${
+  threshold != null
+    ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Validating this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
+    : `Validating this fire means one arithmetic check against that tracked watermark — if it is missing from this message, treat the evaluator's fire as correct rather than reconstructing a peak yourself.`
+}
+Any "recent high" you compute from a chart window has shorter memory than
+the watermark, understates the give-back, and is NOT valid grounds to
+declare a false alarm. Declining this exit requires new fundamental
+evidence — not a different peak.`);
   }
-  Any "recent high" you compute from a chart window has shorter memory than
-  the watermark, understates the give-back, and is NOT valid grounds to
-  declare a false alarm. Declining this exit requires new fundamental
-  evidence — not a different peak.`;
-  })();
 
-  const positionLine = position
-    ? `qty ${position.quantity}, avgCost $${position.avgCost.toFixed(2)}, ${position.daysHeld} days held${
-        position.peakPrice != null
-          ? `, tracked peak $${position.peakPrice.toFixed(2)} (the system's remembered ${thesis.direction === "SHORT" ? "low" : "high"} for this position — authoritative)`
+  const room = capacityLine(args.capacity);
+  if (room) {
+    out.push(
+      `THE ANALYST'S ROOM\n${room}${
+        isFull(args.capacity)
+          ? `\nREAD THIS BEFORE YOU RESEARCH. This analyst cannot OPEN a new position, so do not confirm the setup and do not call place_trade — it will be refused. (Adding to a stock it already holds is not capped and never reaches this block.) Your whole run is ONE update_thesis on this thesis, rationale starting "Buy fired into a full analyst (${args.capacity!.open} of ${args.capacity!.max})": say in one or two sentences whether $${thesis.ticker} is a better use of a slot than the weakest of ${args.capacity!.held.map((t) => `$${t}`).join(", ")} and which one it would replace, or "full — waiting" with the reason. Leave the buy trigger as it is. That line is what the principal reads; replacing a holding is their decision.`
           : ""
-      } — current price + unrealized P&L are NOT in this prompt; pull them via get_stock_data`
-    : "no position (thesis is WATCHING — promotion is on the table)";
-
-  const pathSection = `
-PATH: the predicate fired on the 5-minute check.${
-    fired?.price != null ? `\n  It fired at $${fired.price.toFixed(2)}.` : ""
+      }`,
+    );
   }
-  Check the latest quote and any recent news on $${thesis.ticker} via get_stock_data.
-  If get_stock_data comes back with no live quote (its \`quote\` is null, or
-  \`technicals.priceIsLive\` is false), the price in its chart block is the
-  LAST CLOSE, not now — act on the fired price above, never on yesterday's
-  close.
-`;
 
-  const digestSection = latestDigest?.narrative
-    ? `
-═══════════════════════════════════════════════════════════════════
-YESTERDAY'S PORTFOLIO DIGEST (account-level book context)
-═══════════════════════════════════════════════════════════════════
-${latestDigest.narrative.trim()}
-`
-    : "";
+  if (fired?.coFired?.length) {
+    out.push("Sell all, sell some, or hold — and say which trigger's rule you followed.");
+  }
 
+  if (thesis.researchAge.freshness === "missing" || thesis.researchAge.freshness === "stale") {
+    out.push(
+      `⚠ Research is ${thesis.researchAge.freshness === "missing" ? "MISSING (never written)" : `${thesis.researchAge.daysOld} days STALE (horizon threshold ${thesis.researchAge.horizonThreshold ?? "n/a"}d)`}. Act on the trigger anyway; the daily run handles the refresh. The bull/bear case + the read on the current quote + the trigger's declared action is enough to validate or override. If the bear-case bullets have come true since the research was written, that's a REVIEW outcome (write update_thesis with the invalidation reason).`,
+    );
+  }
+
+  if (trigger.action === "ENTER" || trigger.action === "ADD") {
+    out.push("If the principal declined this same buy and nothing they named has changed, say so and pass.");
+  }
+
+  if (latestDigest?.narrative) {
+    out.push(`YESTERDAY'S PORTFOLIO DIGEST (account-level book context)\n${latestDigest.narrative.trim()}`);
+  }
+  return out;
+}
+
+export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
+  const { analyst } = args;
   return `You are ${analyst.name}.${analyst.mandate ? ` ${analyst.mandate}` : ""}
 
-A trigger you set on your $${thesis.ticker} thesis just fired. Your job is to decide what to do about it — fast, focused, one decision.
+A trigger you set on one of your theses just fired. The message below names the stock, the trigger, and the stock as get_theses reads it. Your job is to decide what to do about it — fast, focused, one decision.
 
 ═══════════════════════════════════════════════════════════════════
 TOOL-CALL DISCIPLINE — read first
@@ -185,104 +160,33 @@ Forbidden assistant-turn endings (each = run failure):
   - Any turn that ends without a tool call.
 
 ═══════════════════════════════════════════════════════════════════
-THESIS (id: ${thesis.id})
+READING THE STOCK
 ═══════════════════════════════════════════════════════════════════
-  direction: ${thesis.direction}, horizon: ${thesis.horizon ?? "(unset)"}
-  core belief: ${thesis.coreBelief ?? "(unset)"}
-  key assumptions: ${thesis.keyAssumptions.length ? thesis.keyAssumptions.join("; ") : "(none recorded)"}
-  invalidation conditions: ${thesis.invalidationConds.length ? thesis.invalidationConds.join("; ") : "(none recorded)"}
-  entry: ${thesis.entryPrice != null ? `$${thesis.entryPrice}` : "(unset)"}, target: ${thesis.targetPrice != null ? `$${thesis.targetPrice}` : "(unset)"}, stop: ${thesis.stopLoss != null ? `$${thesis.stopLoss}` : "(unset)"}
-
-${
-  capacityLine(args.capacity)
-    ? `THE ANALYST'S ROOM\n  ${capacityLine(args.capacity)}${
-        isFull(args.capacity)
-          ? `\n  READ THIS BEFORE YOU RESEARCH. This analyst cannot OPEN a new position, so do not confirm the setup and do not call place_trade — it will be refused. (Adding to a stock it already holds is not capped and never reaches this block.) Your whole run is ONE update_thesis on this thesis, rationale starting "Buy fired into a full analyst (${args.capacity!.open} of ${args.capacity!.max})": say in one or two sentences whether $${thesis.ticker} is a better use of a slot than the weakest of ${args.capacity!.held.map((t) => `$${t}`).join(", ")} and which one it would replace, or "full — waiting" with the reason. Leave the buy trigger as it is. That line is what the principal reads; replacing a holding is their decision.`
-          : ""
-      }\n\n`
-    : ""
-}THE SETUP THIS PLAN WAS WRITTEN ON
-${
-  setup
-    ? `  ${setup.id} — ${setup.name} (${thesis.horizon ?? "horizon unset"})
-  Confirm a buy by: ${setup.entry.confirmation.length ? setup.entry.confirmation.join("; ") : "the level holding"}${
-        setup.entry.chaseLimitPct != null ? `; not more than ${setup.entry.chaseLimitPct}% past the level` : ""
-      }
-  Failure looks like: ${setup.failureSigns.join("; ")}
-  Manage: ${setup.trail[(thesis.horizon ?? "TARGET") as keyof typeof setup.trail] ?? Object.values(setup.trail)[0] ?? "the plan's stop and target"}
-  Time: ${setup.time.text}`
-    : `  (none recorded — a plan from before setups were named. Confirm the price holds and no headline contradicts; volume is context, not a gate.)`
-}
-
-DEEP-RESEARCH EXCERPT [${thesis.researchAge.freshness === "missing" ? "research MISSING" : `research ${thesis.researchAge.freshness} (${thesis.researchAge.daysOld}d)`}]:
-${thesis.snapshotText ? `  snapshot: ${thesis.snapshotText.length > 360 ? `${thesis.snapshotText.slice(0, 360)}…` : thesis.snapshotText}` : "  snapshot: (none)"}
-${
-  thesis.bullCaseBullets.length > 0
-    ? `  bull case (top ${Math.min(3, thesis.bullCaseBullets.length)}):\n${thesis.bullCaseBullets
-        .slice(0, 3)
-        .map((b) => `    + ${b.length > 200 ? `${b.slice(0, 200)}…` : b}`)
-        .join("\n")}`
-    : "  bull case: (none recorded)"
-}
-${
-  thesis.bearCaseBullets.length > 0
-    ? `  bear case (top ${Math.min(3, thesis.bearCaseBullets.length)}):\n${thesis.bearCaseBullets
-        .slice(0, 3)
-        .map((b) => `    − ${b.length > 200 ? `${b.slice(0, 200)}…` : b}`)
-        .join("\n")}`
-    : "  bear case: (none recorded)"
-}
-${
-  thesis.researchAge.freshness === "missing" ||
-  thesis.researchAge.freshness === "stale"
-    ? `  ⚠ Research is ${thesis.researchAge.freshness === "missing" ? "MISSING (never written)" : `${thesis.researchAge.daysOld} days STALE (horizon threshold ${thesis.researchAge.horizonThreshold ?? "n/a"}d)`}.
-
-     Act on the trigger anyway; the daily run handles the refresh. The bull/bear case above + the read on the current quote + the trigger's declared action is enough to validate or override. If the bear-case bullets have come true since the research was written, that's a REVIEW outcome (write update_thesis with the invalidation reason).`
-    : ""
-}
 
 **\`coreBelief\` IS your analyst's standing opinion on this name.** It's the one-sentence falsifiable claim the thesis was written around; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action. If material new evidence contradicts coreBelief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
 
-**Anchor your decision to the bull/bear case above, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The bear-case bullets are what would invalidate the trade; check whether any of them have come true since the research was written.
+**Anchor your decision to the bull/bear case, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The bear-case bullets are what would invalidate the trade; check whether any of them have come true since the research was written.
 
-POSITION:
-  ${positionLine}
+The principal's decisions in \`context\` outrank the trigger's own rationale.
 
-${context ?? `WHAT'S BEEN SAID ON $${thesis.ticker}\n  (nothing written on this stock in the lines on record)`}
-The principal's decisions outrank the trigger's own rationale.${trigger.action === "ENTER" || trigger.action === "ADD" ? " If they declined this same buy and nothing they named has changed, say so and pass." : ""}
-${digestSection}
-═══════════════════════════════════════════════════════════════════
-CURRENT TRIGGER LADDER (your standing game plan on $${thesis.ticker})
-═══════════════════════════════════════════════════════════════════
-${
-  thesis.allTriggers.length
-    ? thesis.allTriggers
-        .map(
-          (t) =>
-            `  ${t.id === trigger.id ? "→ FIRED:" : coFiredIds.has(t.id) ? "→ ALSO FIRED:" : "  ·"} ${sentenceOf(t, position != null)}  [id ${t.id}]`,
-        )
-        .join("\n")
-    : "  (no triggers on record — this thesis is unprotected; fix that in your close-out)"
-}
+PATH: the predicate fired on the 5-minute check; the message says the price it fired at.
+  Check the latest quote and any recent news on the stock via get_stock_data.
+  If get_stock_data comes back with no live quote (its \`quote\` is null, or
+  \`technicals.priceIsLive\` is false), the price in its chart block is the
+  LAST CLOSE, not now — act on the fired price, never on yesterday's
+  close.
 
-═══════════════════════════════════════════════════════════════════
-TRIGGER THAT FIRED (id: ${trigger.id})
-═══════════════════════════════════════════════════════════════════
-  predicate: ${predicateSummary}
-  declared action: ${trigger.action}
-  rationale you wrote when you set it: "${trigger.rationale}"${trailingPeakBlock}
-${pathSection}
 ═══════════════════════════════════════════════════════════════════
 DECISION FRAMEWORK
 ═══════════════════════════════════════════════════════════════════
 
 1. Validate the predicate fired correctly.
-   - Pull fresh data with get_stock_data($${thesis.ticker}).
+   - Pull fresh data with get_stock_data on the stock.
    - Confirm the price level / move / reported figure actually holds right
      now, not just at the moment the cron sampled.
 
 2. If validation HOLDS:
-   - Default: execute the declared action (${trigger.action}). REVIEW means
+   - Default: execute the fired trigger's declared action. REVIEW means
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close).
@@ -316,9 +220,9 @@ DECISION FRAMEWORK
            right now, pass — write update_thesis(REVIEWED) saying so
            plainly: "Not acting yet: it hit $X, then slipped back to $Y."
 
-       (b) **The setup's own confirmation.** Read THE SETUP block above
+       (b) **The setup's own confirmation.** Read the stock's \`setup\`
            and check what it says to confirm — a breakout needs a close
-           above the level on ${setup?.id === "BASE_BREAKOUT" || setup?.id === "MOMENTUM_FLAG" ? "1.5× volume" : "real volume"} (\`technicals.today.volumeVsAvg20\`,
+           above the level on the volume its setup asks for (\`technicals.today.volumeVsAvg20\`,
            informational before ~14:00 ET when the session is young); a
            pullback needs the touch to have held (a close above the prior
            day's high); an earnings gap needs the gap to have held; a
@@ -412,19 +316,19 @@ DECISION FRAMEWORK
    must never round-trip into a loss). After a fired gain checkpoint,
    replace it with the next milestone. After a move that blew through a
    level, re-set it off the NEW structure the chart gives (the swing low,
-   the breakout level, the average) using THE SETUP block's Manage line —
+   the breakout level, the average) using the setup's manage line —
    not a round number. The stock's own exits from its setup (the partial,
    the beat-that-sold review) were written at the fill; the trail is
    your analyst's rule and applies on its own.
-   The trigger ids are in the ladder printed above. If nothing went stale,
+   The trigger ids are in the stock's \`triggers\`. If nothing went stale,
    say so in one sentence in the rationale ("Floor stays $X, still under
    the last swing low.").
-${fired?.coFired?.length ? `   Two protective triggers fired together (marked ALSO FIRED above). One decision covers both: sell all, sell some, or hold — and say which trigger's rule you followed.\n` : ""}
+
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why.
-     Pass trigger_id="${trigger.id}" so the timeline carries the link.
-   - When WHAT'S BEEN SAID lists the principal's decisions or other triggers
+     Pass the fired trigger's id as trigger_id (the message gives it).
+   - When \`context\` lists the principal's decisions or other triggers
      fired since the last answer, your update_thesis answers them too: say
      what you decided on each, by name.
    - Then complete_run.
@@ -439,7 +343,7 @@ HARD CONSTRAINTS
 ═══════════════════════════════════════════════════════════════════
 
   - 15 step max. Be ruthlessly concise.
-  - You are NOT reviewing your other theses. Only $${thesis.ticker} matters
-    on this run.
+  - You are NOT reviewing your other theses. Only the stock in the message
+    matters on this run.
 `;
 }

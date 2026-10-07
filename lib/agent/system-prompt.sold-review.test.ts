@@ -71,6 +71,6 @@ describe("the built prompt names the sold-stock review", () => {
   it("leaves the rest of the book paragraph intact", () => {
     const p = prompt();
     expect(p).toContain("`quiet_theses` rows are NOT your work today");
-    expect(p).toContain("buyBlockedByFull");
+    expect(p).toContain("`theses` holds the FULL rows for today's work list");
   });
 });

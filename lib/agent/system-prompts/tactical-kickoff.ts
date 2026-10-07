@@ -4,6 +4,11 @@
  * scripts/hero-case.ts rebuilds it from a case's promptArgs, with the fired
  * trigger's sentence written by today's code, so a change to either shows up
  * in every trigger-run case instead of being replayed as it was recorded.
+ *
+ * It carries everything about this fire: the sentence and the day's facts,
+ * the paragraphs that apply to this fire (tacticalSituation in
+ * intraday-tactical.ts), and the stock as get_theses reads it (the brief,
+ * stock-brief.ts). The system prompt is the job alone.
  * Pure: no database, no clock.
  */
 
@@ -13,6 +18,10 @@ export interface TacticalKickoffInput {
   fireSentence: string;
   /** The day's facts after the sentence: an earnings fire's numbers, the catalyst window, co-fired triggers, open refusals (fireExtras). */
   extras?: string;
+  /** The paragraphs that apply to this fire (tacticalSituation). */
+  situation?: string[];
+  /** The stock as get_theses reads it (stockBrief). */
+  stock?: Record<string, unknown> | null;
 }
 
 /** The day's facts that ride after the fire's sentence, joined as the kickoff carries them. */
@@ -35,12 +44,17 @@ export function fireExtras(fire: {
 }
 
 export function tacticalKickoff(input: TacticalKickoffInput): string {
-  return (
+  const head =
     `Tactical run on $${input.ticker}. ${input.fireSentence}.${input.extras ?? ""} ` +
     `Validate, decide, act if warranted, then close out via update_thesis. ` +
     `You are running unattended — no human will respond. Every turn must call a tool; ` +
-    `text-only turns terminate the run as FAILED.`
-  );
+    `text-only turns terminate the run as FAILED.`;
+  const situation = (input.situation ?? []).filter(Boolean);
+  return [
+    head,
+    ...situation,
+    ...(input.stock ? [`$${input.ticker}, as get_theses reads it:\n${JSON.stringify(input.stock)}`] : []),
+  ].join("\n\n");
 }
 
 /**
@@ -48,7 +62,10 @@ export function tacticalKickoff(input: TacticalKickoffInput): string {
  * it fired. Null unless rebuilding the kickoff gives the recorded text byte
  * for byte, so a case is never built on a guess.
  */
-export function kickoffExtras(recorded: string, ticker: string, fireSentence: string): string | null {
+export function kickoffExtras(recordedKickoff: string, ticker: string, fireSentence: string): string | null {
+  // The first paragraph is the sentence and the day's facts; the situation
+  // and the stock follow it.
+  const recorded = recordedKickoff.split("\n\n")[0];
   const head = `Tactical run on $${ticker}. ${fireSentence}.`;
   const tail = tacticalKickoff({ ticker, fireSentence, extras: "" }).slice(head.length);
   if (!recorded.startsWith(head) || !recorded.endsWith(tail)) return null;

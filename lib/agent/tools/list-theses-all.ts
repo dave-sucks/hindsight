@@ -10,6 +10,7 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
+import { stockLine, type StockLineFacts } from "@/lib/agent/stock-brief";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -29,6 +30,15 @@ export const listThesesAll = defineTool({
   }),
   ui: "tool-ui" as const,
   groupId: "Reading",
+  // Each thesis as one line through the stock brief's builder
+  // (stock-brief.ts), with the analyst that owns it. The screen keeps the
+  // whole row; get_theses reads a stock in full.
+  forModel: (result) => {
+    if (!result.ok) return result;
+    const data = result.data as { theses?: Array<StockLineFacts & { analystId?: string | null; analystName?: string | null }> } | undefined;
+    if (!Array.isArray(data?.theses)) return result;
+    return { ...result, data: { ...data, theses: data.theses.map((t) => ({ ...stockLine(t), analystId: t.analystId ?? null, analyst: t.analystName ?? null })) } };
+  },
 
   progressLabel: (args) =>
     args.ticker
@@ -105,6 +115,9 @@ export const listThesesAll = defineTool({
             analystName: t.researchRun?.agentConfig?.name ?? null,
             direction: t.direction,
             status: t.status,
+            horizon: t.horizon,
+            conviction: t.conviction,
+            coreBelief: t.coreBelief,
             // PR-9: agent-facing shape uses composite (0-10) — distinct
             // from the UI side that multiplies × 10 for legacy renderers.
             composite,

@@ -10,6 +10,9 @@ import type { SetupOverrides } from "./setup-overrides";
 export interface SetupChecklist {
   id: string;
   name: string;
+  /** What confirms a buy on the day, and how far past the level is too far. */
+  confirm: string[];
+  chaseLimitPct: number | null;
   /** What must still be true for the setup to be working. */
   failureSigns: string[];
   /** The horizon's manage rule (the trail is the analyst's; this is the shape). */
@@ -33,6 +36,8 @@ export function setupChecklist(
   return {
     id: s.id,
     name: s.name,
+    confirm: s.entry.confirmation,
+    chaseLimitPct: s.entry.chaseLimitPct,
     failureSigns: s.failureSigns,
     manage: (h && s.trail[h]) ?? Object.values(s.trail)[0] ?? null,
     time: s.time.text,

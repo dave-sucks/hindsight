@@ -13,7 +13,8 @@
  * For a morning run the prompt inputs are the analyst as it is today and the
  * account as it is today (the stock rows the run read are in the recorded
  * conversation, which is what the decision rests on). For a trigger run the
- * stock's details are read as they are today; the fired trigger is looked up
+ * stock's row is read through get_theses as it is today (the runner builds
+ * the kickoff's brief from it); the fired trigger is looked up
  * by the id the run recorded, and a trigger removed since is reported so the
  * case can be finished by hand. The kickoff is not stored as text either:
  * hero-case.ts rebuilds it with today's builder from the fired trigger and
@@ -28,13 +29,12 @@ import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { promptConfigFromAnalyst } from "@/lib/inngest/functions/morning-research";
-import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
+import { createResearchTools } from "@/lib/agent/tools";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import { kickoffExtras } from "@/lib/agent/system-prompts/tactical-kickoff";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { getThesisBearCaseBullets, getThesisBullCaseBullets, getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 
 const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
 
@@ -58,7 +58,7 @@ async function main() {
   const analyst = await prisma.agentConfig.findUniqueOrThrow({ where: { id: run.agentConfigId! } });
   const thesis = await prisma.thesis.findFirst({
     where: { ticker, researchRun: { agentConfigId: analyst.id }, status: { in: ["WATCHING", "HOLDING"] } },
-    include: { researchRun: { select: { agentConfigId: true } }, updates: { orderBy: { timestamp: "desc" }, take: 40, select: ACTIVITY_SELECT } },
+    include: { researchRun: { select: { agentConfigId: true } } },
   });
   // A stock retired since the run is found by the id its own read carried.
   const readId = (() => {
@@ -108,24 +108,30 @@ async function main() {
     const firedPrice = (() => { const m = recordedKickoff.match(/fired at \$([\d.]+)/); return m ? Number(m[1]) : null; })();
     const extras = trigger ? kickoffExtras(recordedKickoff, ticker, sentenceOf(trigger as Trigger)) : null;
     if (extras == null) notes.push("the recorded kickoff does not match the fired trigger's sentence today: set promptArgs.kickoff.extras by hand to the text between the sentence and \"Validate, decide\"");
+    // The stock's row, read through the real get_theses as the trigger run
+    // reads it (tactical-run.ts); the runner builds its brief from it.
+    const creds = (await resolveAlpacaCredentials(analyst.userId, env)) ?? undefined;
+    const tools = createResearchTools({
+      runId: "hero-case-from-run", userId: analyst.userId, accountId: analyst.accountId, analystId: analyst.id, runMode: "INTRADAY_TACTICAL",
+      runEnvironment: env, alpacaCreds: creds, maxOpenPositions: analyst.maxOpenPositions, minConfidence: analyst.minConfidence,
+    } as never) as unknown as { get_theses: { execute: (i: unknown, o: { toolCallId: string; messages: unknown[] }) => Promise<{ ok: boolean; data?: { theses?: unknown[] } }> } };
+    const read = await tools.get_theses.execute({ ids: [thesis.id] }, { toolCallId: "record", messages: [] });
     promptArgs = {
       analyst: { name: analyst.name, mandate: analyst.analystPrompt },
       thesis: {
         id: thesis.id, ticker, direction: thesis.direction, horizon: thesis.horizon, setupId: (thesis as { setupId?: string | null }).setupId ?? null,
-        coreBelief: thesis.coreBelief, keyAssumptions: thesis.keyAssumptions, invalidationConds: thesis.invalidationConds,
-        entryPrice: thesis.entryPrice != null ? Number(thesis.entryPrice) : null, targetPrice: thesis.targetPrice != null ? Number(thesis.targetPrice) : null, stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
-        snapshotText: getThesisSnapshotText(thesis as never) || null, bullCaseBullets: getThesisBullCaseBullets(thesis as never), bearCaseBullets: getThesisBearCaseBullets(thesis as never),
-        researchAge: classifyResearchAge(thesis.researchUpdatedAt, thesis.horizon as never, thesis.status as never), allTriggers: ladder,
+        researchAge: classifyResearchAge(thesis.researchUpdatedAt, thesis.horizon as never, thesis.status as never),
       },
       trigger,
       position: position ? { quantity: Number(position.quantity), avgCost: Number(position.avgCost), daysHeld: Math.floor((run.startedAt.getTime() - position.openedAt.getTime()) / 86400000), peakPrice: position.peakPrice != null ? Number(position.peakPrice) : null } : null,
-      context: stockContextFor({ ticker, rows: thesis.updates.map((u) => ({ ...u, runMode: (u as { run?: { mode?: string } }).run?.mode ?? null })) as never, triggers: ladder, now: run.startedAt, currentPrice: firedPrice }).text,
+      stock: read.ok ? read.data?.theses?.[0] ?? null : null,
       latestDigest: null,
       fired: { price: firedPrice, coFired: [] },
       capacity: null,
       kickoff: { extras: extras ?? "" },
     };
-    notes.push("promptArgs.thesis and context are the stock as it is today; check them against the run's day.");
+    if (!promptArgs.stock) notes.push("get_theses returned no row for the stock: put promptArgs.stock in by hand");
+    notes.push("promptArgs.thesis and promptArgs.stock are the stock as it is today; check them against the run's day.");
   } else if (run.mode === "PRINCIPAL_CHAT") {
     mode = "principal"; runMode = "PRINCIPAL_CHAT";
     promptArgs = {

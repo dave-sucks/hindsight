@@ -20,10 +20,15 @@ import { zodSchema } from "ai";
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
 import { MODES } from "@/lib/agent/modes";
 import { createResearchTools } from "@/lib/agent/tools";
+import { stockBrief } from "@/lib/agent/stock-brief";
+import { tacticalSituation } from "@/lib/agent/system-prompts/intraday-tactical";
+import { tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  daily: 27_995,
-  tactical: 15_410,
+  daily: 25_986,
+  tactical: 13_662,
   writer: 11_027,
   discovery: 20_773,
   chat: 32_159,
@@ -36,10 +41,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
  * by accident just as easily.
  */
 const RECORDED_TOOLS: Record<string, number> = {
-  "research-run": 34_649,
-  tactical: 31_960,
-  discovery: 35_104,
-  principal: 66_740,
+  "research-run": 34_153,
+  tactical: 31_464,
+  discovery: 34_608,
+  principal: 66_244,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", discovery: "DISCOVERY", principal: "PRINCIPAL_CHAT" };
 
@@ -58,6 +63,37 @@ describe("the five agent prompts, by size", () => {
       expect(SAMPLE_PROMPTS[name]().length).toBe(RECORDED[name]);
     });
   }
+});
+
+/**
+ * The trigger run's kickoff for the sample stock: the fire, its paragraphs
+ * and the stock's brief. Its system prompt is the job alone, so the stock it
+ * used to carry is counted here.
+ */
+const KICKOFF = 1_583;
+function sampleKickoff(): string {
+  const trail = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." } as Trigger;
+  const stock = stockBrief(
+    {
+      id: "thesis_1", ticker: "HPE", status: "HOLDING", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"],
+      entryPrice: 53, targetPrice: 70, stopLoss: 50, triggers: [trail], researchAge: { daysOld: 1, freshness: "fresh", horizonThreshold: 7 },
+      position: { quantity: 60, avgCost: 53.1, openedAt: "2026-09-21T14:00:00Z", peakPrice: 62.7 },
+      needsAction: { kind: "TRIGGER_FIRED", triggerId: "trig_trail", action: "EXIT", summary: "", firedAt: "2026-10-01T15:00:00Z" },
+    },
+    { named: true, inherited: true },
+  );
+  return tacticalKickoff({
+    ticker: "HPE",
+    fireSentence: sentenceOf(trail),
+    situation: tacticalSituation({ thesis: { ticker: "HPE", direction: "LONG", researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 } as never }, trigger: trail, position: { peakPrice: 62.7 }, fired: { price: 55, coFired: [] } }),
+    stock,
+  });
+}
+
+describe("the trigger run's kickoff, by size", () => {
+  it(`the sample stock: ${KICKOFF.toLocaleString("en-US")} characters`, () => {
+    expect(sampleKickoff().length).toBe(KICKOFF);
+  });
 });
 
 describe("the four agents' tool definitions, by size", () => {

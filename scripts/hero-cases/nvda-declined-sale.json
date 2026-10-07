@@ -10,7 +10,8 @@
    "close_position {\"ticker\":\"NVDA\",\"reason\":\"STOP\",\"notes\":\"I’m closing $NVDA because the protective trailing stop has been hit and the stock is no longer holding the gain it had"
   ],
   "notes": [
-   "trigger, position, fired price and context rebuilt from the activity rows of 09-14 to 09-16; the principal's decline is paraphrased"
+   "trigger, position, fired price and context rebuilt from the activity rows of 09-14 to 09-16; the principal's decline is paraphrased",
+   "promptArgs.stock is the stock's row built from the facts this case's prompt showed (thesis, triggers, position, context, research); it has no score, conviction or live price, which that prompt did not show."
   ]
  },
  "expect": {
@@ -338,6 +339,309 @@
   "capacity": null,
   "kickoff": {
    "extras": ""
+  },
+  "stock": {
+   "id": "cmtg9nbdy000204jpc6cwawgg",
+   "ticker": "NVDA",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "PEAD",
+   "coreBelief": "NVDA drifts to the analyst consensus median of $322 within 60 days post-print as the Q4 FY2026 $65B revenue guide-raise and FY2028 70%-growth commitment mechanically force 21+ sell-side firms to revise models upward, pulling institutional price targets and fund flows toward the stock.",
+   "keyAssumptions": [
+    "Q4 FY2026 revenue comes in at or above the $65B guided midpoint, confirming no demand collapse between print and report",
+    "Gross margins hold in the mid-70% range through Q4, preventing a margin-compression narrative that would arrest estimate revisions"
+   ],
+   "invalidationConds": [
+    "NVDA closes below $200.15 on any session — automated stop, drift thesis broken",
+    "Any pre-announcement or guidance reduction before the Q4 print signaling revenue below $63B or gross margin below 72%, which would reverse the estimate-revision tailwind that drives the drift"
+   ],
+   "entryPrice": 218.2259,
+   "targetPrice": 322,
+   "stopLoss": 200.15,
+   "snapshot": {
+    "text": "$NVDA trades at $225.73 as of September 9, 2026, down 2.0% on the session but within a tight day range ($224.85–$233.71) that keeps the stock well clear of both its 20-day SMA ($220.52, +2.4%) and 50-day SMA ($211.23, +6.9%) [STRUCTURED:Price levels]. At $5.44T in market cap and a 52-week position at 89% of its range, the stock has recovered decisively from the $164.07 52-week low and is pressing against its all-time high of $236.54 [STRUCTURED:52w range]. RSI sits at a healthy 56.2 — neither overbought nor exhausted — with volume running at 0.83x the 20-day average, consistent with consolidation rather than distribution [STRUCTURED:RSI, Vol]. The PEAD drift window from the August 26 print remains open: the thesis entered around $217.55 and the $200.15 stop has not been threatened. The position is tracking cleanly."
+   },
+   "bullCase": {
+    "bullets": [
+     {
+      "text": "**Guide-raise forces mechanical model resets:** The Q4 $65B guidance midpoint is ~14% above Q3, and the FY2028 70% growth narrative requires 21+ sell-side firms to revise DCF inputs. The S&P Global consensus price target of $325.99 is 41.5% above current levels, and the gap between price and target creates a structural pull for institutional re-weighting."
+     },
+     {
+      "text": "**Networking inflection compounds the Data Center story:** Networking revenue of $8.2B grew 162% YoY — this is not a rounding line; it confirms that the AI infrastructure stack is widening from GPU compute into the full fabric, increasing NVDA's revenue per AI cluster and making switching costs structural."
+     },
+     {
+      "text": "**PEG of 0.58 is value territory for a secular grower:** [STRUCTURED:Latest ratios] A PEG below 1.0 at a 70%+ growth forecast means the stock is growing into its multiple, not away from it. Institutional managers running growth screens will mechanically find NVDA cheap relative to peers: AMD trades at a P/E of 179.8; AVGO at 73.6 [STRUCTURED:Peer Comparison]."
+     },
+     {
+      "text": "**China already stripped from guidance:** No Data Center compute revenue from China is assumed in guidance, which means any export-control relaxation is pure upside optionality; the base case holds even under the current restriction regime."
+     },
+     {
+      "text": "**Technical trend is intact:** RSI 56.2, price above both the 20-day ($220.52) and 50-day ($211.23), and at 89% of the 52-week range — the stock is in a confirmed uptrend with no distribution signal [STRUCTURED:RSI, SMA20, SMA50]."
+     }
+    ]
+   },
+   "bearCase": {
+    "bullets": [
+     {
+      "text": "**EPS beat was only +3.8% — marginal by PEAD standards:** The ground-truth shows Q3 FY2026 EPS beat of 3.8% vs the strategy's 5% clean-signal threshold [STRUCTURED:Earnings History]. The revenue beat (~3.3%) is similarly modest. Drift magnitude is correlated with beat size; a narrow beat narrows the expected drift."
+     },
+     {
+      "text": "**Stock gapped ~4% on the print, partially front-running the drift:** The gap day absorbed some of the immediate surprise premium. While not the 10%+ filter level that disqualifies the trade, a ~4% gap means less drift remains to capture over 60 days than a flat-to-small-gap print would offer."
+     },
+     {
+      "text": "**Margin pressure from Blackwell ramp and memory costs is real:** Management warned margin pressure from memory costs and supply constraints limit meeting full demand. Any sequential gross margin step-down below 73% in Q4 would trigger a negative guidance read and arrest the drift."
+     },
+     {
+      "text": "**$5.44T market cap limits institutional re-weighting magnitude:** At this capitalization, index funds already hold near-maximum weights, and incremental buying from estimate revisions must come from active managers who may be fully allocated. The law of large numbers constrains upside velocity even if the bull thesis is correct."
+     },
+     {
+      "text": "**Peer composite score of 4/4 (bottom of peer group) signals relative underperformance risk:** [STRUCTURED:Peer Comparison] MU (+142.8% YTD, score 95) and AMD (+100.8% YTD, score 95) are materially outperforming NVDA (+17% YTD, score 82). Institutional rotation into higher-momentum peers could suppress NVDA's drift even as fundamentals improve."
+     }
+    ]
+   },
+   "triggers": [
+    {
+     "id": "e9a27456-c604-4ae2-8dd6-5ccb6e96382e",
+     "action": "EXIT",
+     "source": "PRINCIPAL",
+     "predicate": {
+      "kind": "TRAILING_FROM_HIGH",
+      "pct": 8
+     },
+     "rationale": "Gave back 8% from the high — mechanical gain ratchet. Kept on this stock when the account's 8% sell moved to the analysts (2026-09-14).",
+     "cooldownDays": 0
+    },
+    {
+     "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4",
+     "predicate": {
+      "kind": "REVIEW_CADENCE",
+      "days": 7
+     },
+     "action": "REVIEW",
+     "rationale": "Look at this every 7 days, counting from the last real review.",
+     "cooldownDays": 7,
+     "source": "DEFAULT",
+     "level": "THESIS",
+     "inherited": false,
+     "overrides": {
+      "level": "ACCOUNT",
+      "predicate": {
+       "kind": "REVIEW_CADENCE",
+       "days": 7
+      }
+     }
+    },
+    {
+     "id": "6306936b-bb02-4298-9ca0-90f586772512",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 200.15
+     },
+     "action": "EXIT",
+     "rationale": "Hard stop at $200.15.",
+     "cooldownDays": 0,
+     "source": "DEFAULT",
+     "level": "THESIS",
+     "inherited": false
+    },
+    {
+     "id": "8f58e347-64c5-41bf-90f3-b17ac4466ae7",
+     "predicate": {
+      "kind": "PRICE_ABOVE",
+      "level": 322
+     },
+     "action": "REVIEW",
+     "rationale": "Target $322 hit. Decide: close at target or trail higher with confidence intact.",
+     "cooldownDays": 1,
+     "source": "DEFAULT",
+     "level": "THESIS",
+     "inherited": false
+    },
+    {
+     "id": "1f2454ae-1a4d-4123-8502-fdcb85006401",
+     "predicate": {
+      "kind": "REVIEW_CADENCE",
+      "days": 60,
+      "from": "BUY"
+     },
+     "action": "REVIEW",
+     "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
+     "cooldownDays": 60,
+     "source": "DEFAULT",
+     "level": "THESIS",
+     "inherited": false
+    },
+    {
+     "id": "5fbb5cdb-e4b3-4559-8703-eaf75798ae79",
+     "predicate": {
+      "kind": "GAIN_FROM_ENTRY",
+      "skipIfPeakGainPct": 20,
+      "skipIfPeakWithinDays": 21,
+      "pct": 16.6,
+      "direction": "UP"
+     },
+     "action": "TRIM",
+     "rationale": "Up 16.6% from entry — 2R on a 8.3% stop. The prior high or a measured move; partial at 2R. Off for good once the stock has run 20% off the buy within 21 days: a winner that fast is held and managed on the trail, not cut in half.",
+     "cooldownDays": 7,
+     "source": "DEFAULT",
+     "level": "THESIS",
+     "inherited": false
+    },
+    {
+     "id": "ce4de003-2bc2-438d-a3cf-1b786d72f88f",
+     "predicate": {
+      "kind": "AND",
+      "predicates": [
+       {
+        "kind": "EARNINGS_BEAT"
+       },
+       {
+        "kind": "PRICE_MOVE_PCT",
+        "pct": 3,
+        "direction": "DOWN",
+        "window": "1D"
+       }
+      ]
+     },
+     "action": "REVIEW",
+     "rationale": "A beat the market sold — the stock is down 3%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.",
+     "cooldownDays": 7,
+     "source": "DEFAULT",
+     "level": "THESIS",
+     "inherited": false
+    }
+   ],
+   "inheritedTriggers": [
+    {
+     "id": "f552414c-ff2a-455d-b779-d5401ac9ea98",
+     "predicate": {
+      "kind": "TRAILING_FROM_HIGH",
+      "pct": 12,
+      "armAtGainPct": 10
+     },
+     "action": "EXIT",
+     "rationale": "Gave back 12% from the high, once the position had been up 10% — bank the run.",
+     "cooldownDays": 0,
+     "fireMode": "TACTICAL",
+     "source": "PRINCIPAL",
+     "level": "ANALYST",
+     "inherited": true
+    },
+    {
+     "id": "8d64ad2b-b2b5-4202-9724-ec984efad75e",
+     "predicate": {
+      "kind": "GAIN_FROM_ENTRY",
+      "pct": 10,
+      "direction": "UP"
+     },
+     "action": "REVIEW",
+     "rationale": "Up 10% from entry — re-underwrite: raise the floor under real structure and arm the next milestone.",
+     "cooldownDays": 7,
+     "source": "PRINCIPAL",
+     "level": "ANALYST",
+     "inherited": true
+    },
+    {
+     "id": "56be49ac-b01b-4101-8c51-377aa1bab0ac",
+     "predicate": {
+      "kind": "GAIN_FROM_ENTRY",
+      "pct": 12,
+      "direction": "DOWN"
+     },
+     "action": "REVIEW",
+     "rationale": "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us.",
+     "cooldownDays": 7,
+     "source": "PRINCIPAL",
+     "level": "ANALYST",
+     "inherited": true
+    },
+    {
+     "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
+     "predicate": {
+      "kind": "PRICE_MOVE_PCT",
+      "pct": 7,
+      "direction": "UP",
+      "window": "1D"
+     },
+     "action": "ADD",
+     "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+     "cooldownDays": 3,
+     "fireMode": "TACTICAL",
+     "source": "DEFAULT",
+     "level": "ACCOUNT",
+     "inherited": true
+    },
+    {
+     "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+     "predicate": {
+      "kind": "EARNINGS_WITHIN",
+      "days": 5
+     },
+     "action": "REVIEW",
+     "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+     "cooldownDays": 30,
+     "source": "DEFAULT",
+     "level": "ACCOUNT",
+     "inherited": true
+    },
+    {
+     "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
+     "predicate": {
+      "kind": "EARNINGS_BEAT"
+     },
+     "action": "REVIEW",
+     "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
+     "cooldownDays": 7,
+     "source": "DEFAULT",
+     "level": "ACCOUNT",
+     "inherited": true
+    },
+    {
+     "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+     "predicate": {
+      "kind": "EARNINGS_MISS"
+     },
+     "action": "REVIEW",
+     "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+     "cooldownDays": 7,
+     "source": "DEFAULT",
+     "level": "ACCOUNT",
+     "inherited": true
+    },
+    {
+     "id": "30059604-b755-4848-b938-b636464815c3",
+     "predicate": {
+      "kind": "SEC_EVENT",
+      "tier": "MATERIAL"
+     },
+     "action": "REVIEW",
+     "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",
+     "source": "DEFAULT",
+     "level": "ACCOUNT",
+     "inherited": true
+    }
+   ],
+   "context": "WHAT'S BEEN SAID ON $NVDA\nLast look: trigger run, 09-15 10:05 — \"Validated the fired trailing-stop exit on $NVDA: live price is $212.84, which is below the authoritative 8% give-back line at $215.45 from the system-tracked peak of $234.18, so I proposed closing the position on price…\"\nSince then, not yet answered:\n  The principal, 09-15 15:23: Declined the sale (33 shares) at $212.84, now $212.21 (−0.3%): does not want to sell at a loss; asked for the triggers to be adjusted instead.\nFull history: get_theses(tickers: [\"NVDA\"], include_history: true)",
+   "needsAction": {
+    "kind": "TRIGGER_FIRED",
+    "triggerId": "e9a27456-c604-4ae2-8dd6-5ccb6e96382e",
+    "action": "EXIT",
+    "summary": "Sell if below 8% from the high since we bought"
+   },
+   "researchAge": {
+    "daysOld": 23,
+    "freshness": "fresh",
+    "lastWrittenAt": "2026-09-09T03:40:48.296Z",
+    "horizonThreshold": 30
+   },
+   "researchUpdatedAt": "2026-09-09T03:40:48.296Z",
+   "position": {
+    "quantity": 33,
+    "avgCost": 218.2259,
+    "openedAt": null,
+    "peakPrice": 234.18
+   }
   }
  },
  "toolCtx": {

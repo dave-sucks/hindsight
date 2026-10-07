@@ -161,7 +161,8 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     const [head, tail] = production.split(` ${FIRED_CONTEXT} `);
     // The trigger reads as the pill says it now; the rest is production's, word for word.
     const said = head.replace("Within 3% of the 50-day — consider entry.", "Buy if within 3% of the 50-day average.");
-    expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tail}`);
+    // The kickoff's first paragraph; the fire's own paragraphs and the stock follow it.
+    expect(kickoff.split("\n\n")[0]).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tail}`);
   });
 
   it("the proposal it makes carries the same line, and is still a proposal", async () => {

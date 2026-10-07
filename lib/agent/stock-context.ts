@@ -248,7 +248,8 @@ export function buildStockContext(args: {
     lines.push(`  ${etStamp(n.timestamp)}${then}: "${oneLine(n.rationale ?? "")}"`);
   }
   const said = last?.rationale?.trim() ? ` — "${sentences(last.rationale.split(/\n\s*\n\s*\[/)[0])}"` : "";
-  lines.push(last ? `Last look: ${(last.runMode && RUN_WORDS[last.runMode]) ?? "a run"}, ${etStamp(last.timestamp)}${said}` : "Last look: none on record.");
+  const lookedAt = typeof last?.priceAtTime === "number" ? ` at ${money(last.priceAtTime)}` : "";
+  lines.push(last ? `Last look: ${(last.runMode && RUN_WORDS[last.runMode]) ?? "a run"}, ${etStamp(last.timestamp)}${lookedAt}${said}` : "Last look: none on record.");
   const tail = `Full history: get_theses(tickers: ["${T}"], include_history: true)`;
 
   if (decisions.length === 0 && fires.length === 0) {

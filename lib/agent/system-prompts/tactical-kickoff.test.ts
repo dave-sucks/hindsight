@@ -48,6 +48,22 @@ describe("the trigger run's kickoff", () => {
     }
   });
 
+  it("puts the fire's paragraphs and the stock after the sentence, and still reads the extras back", () => {
+    const built = tacticalKickoff({
+      ticker: "HPE",
+      fireSentence: "Sell if below $50",
+      extras: fireExtras({ firedContext: "EPS $1.12 vs $0.98 expected (+14%)." }),
+      situation: ["It fired at $49.80. The fired trigger's id: t1.", ""],
+      stock: { id: "t", ticker: "HPE" },
+    });
+    expect(built.split("\n\n")).toEqual([
+      inlineKickoff("HPE", "Sell if below $50", { firedContext: "EPS $1.12 vs $0.98 expected (+14%).", openOnStock: "" }),
+      "It fired at $49.80. The fired trigger's id: t1.",
+      '$HPE, as get_theses reads it:\n{"id":"t","ticker":"HPE"}',
+    ]);
+    expect(kickoffExtras(built, "HPE", "Sell if below $50")).toBe(" EPS $1.12 vs $0.98 expected (+14%).");
+  });
+
   it("refuses to guess when the recorded sentence is not the one given", () => {
     const recorded = inlineKickoff("DOCU", "Price below $67 — consider entry", { openOnStock: "" });
     expect(kickoffExtras(recorded, "DOCU", "Buy if below $67")).toBeNull();

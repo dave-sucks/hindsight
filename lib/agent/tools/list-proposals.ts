@@ -22,6 +22,7 @@ import {
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
+import { stockLine, type StockLineFacts } from "@/lib/agent/stock-brief";
 
 /** Display tag per intent — TRIM reads better than PARTIAL_CLOSE in a chip. */
 const INTENT_TAG: Record<string, string> = {
@@ -63,6 +64,28 @@ export const listProposals = defineTool({
   }),
   ui: "tool-ui" as const,
   groupId: "Reading",
+  // The thesis behind each proposal reads as one line through the stock
+  // brief's builder (stock-brief.ts): its plan against the live price, its
+  // score. The position's own target and stop are copies that can lag a
+  // floor moved on the thesis, so the model reads the thesis's.
+  forModel: (result) => {
+    if (!result.ok) return result;
+    const data = result.data as { proposals?: Array<Record<string, unknown>> } | undefined;
+    if (!Array.isArray(data?.proposals)) return result;
+    return {
+      ...result,
+      data: {
+        ...data,
+        proposals: data.proposals.map((p) => {
+          const position = { ...(p.position as Record<string, unknown>) };
+          delete position.targetPrice;
+          delete position.stopLoss;
+          const thesis = p.thesis as StockLineFacts | null;
+          return { ...p, position, thesis: thesis ? stockLine({ ...thesis, currentPrice: position.priceIsLive ? (position.currentPrice as number) : null }) : null };
+        }),
+      },
+    };
+  },
 
   progressLabel: (args) =>
     args.ticker
@@ -125,6 +148,8 @@ export const listProposals = defineTool({
               stopLoss: true,
               snapshot: true,
               scoring: true,
+              conviction: true,
+              coreBelief: true,
               updatedAt: true,
               researchRun: { select: { agentConfigId: true } },
             },
@@ -236,7 +261,11 @@ export const listProposals = defineTool({
               entryPrice: thesis.entryPrice,
               targetPrice: thesis.targetPrice,
               stopLoss: thesis.stopLoss,
-              conviction: getThesisComposite(thesis),
+              // The score out of 10 (it was labelled "conviction" here, which
+              // is a different field: LOW to STRONG).
+              composite: getThesisComposite(thesis),
+              conviction: thesis.conviction,
+              coreBelief: thesis.coreBelief,
               snapshot: getThesisSnapshotText(thesis),
             }
           : null,

@@ -11,8 +11,10 @@
  * Now: the raw history comes back on a read of named stocks; every row says
  * when its research was written and at what price. The research text stays on
  * every full row: a run left to ask for it never did (now-needs-research,
- * 0/12, also with a line saying how). The screen gets the whole result as
- * before.
+ * 0/12, also with a line saying how). The model reads it as plain text through
+ * the stock brief (stock-brief.ts): the score as one line with its date and
+ * price, its notes and the other research sections only with include_research.
+ * The screen gets the whole result as before.
  *
  * Through the real get_theses execute and its real model-output hook.
  */
@@ -104,12 +106,16 @@ describe("get_theses — the read", () => {
     expect(modelRow).toBeDefined();
     expect(modelRow.history).toBeUndefined();
     // A run left to ask for the research never did (now-needs-research), so it stays on the row.
-    expect(modelRow.snapshot).toEqual(snapshot);
-    expect(modelRow.bullCase).toEqual(bull);
-    expect(modelRow.bearCase).toEqual(bear);
-    expect((modelRow.scoring as Record<string, { note?: string }>).trendStrength.note).toMatch(/51 days ago/);
-    expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348, 51 days ago\.$/);
+    expect(modelRow.snapshot).toBe(snapshot.text);
+    expect(modelRow.bullCase).toEqual([bull.bullets[0].text]);
+    expect(modelRow.bearCase).toEqual([bear.bullets[0].text]);
+    expect(modelRow.score).toMatch(/^7\/10 — trend 2\/3, relative strength 2\/3, entry 1\/2, catalyst 2\/2; scored \d{4}-\d{2}-\d{2} at \$348\.00$/);
+    expect(modelRow.scoring).toBeUndefined();
+    expect(modelRow.scoreNotes).toBeUndefined();
+    expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348\.00, 51 days ago\.$/);
     expect(modelRow.triggerState).toBeUndefined();
+    expect(modelRow.resolved).toBeUndefined();
+    expect(modelRow.plan).toBe("buy $340.00 (24.5% over the price) · target $420.00 (53.8% over the price) · floor $300.00 (9.9% over the price); pays 2.0:1 from the buy");
     expect(String(model.historyNote)).toMatch(/named stocks/);
   });
 
@@ -125,9 +131,13 @@ describe("get_theses — the read", () => {
   it("a read of a named stock keeps the history and the research text", async () => {
     const { modelRow } = await read({ tickers: ["SYK"], include_history: true });
     expect(Array.isArray(modelRow.history) && (modelRow.history as unknown[]).length).toBeGreaterThan(0);
-    expect(modelRow.snapshot).toEqual(snapshot);
-    expect((modelRow.scoring as Record<string, { note?: string }>).trendStrength.note).toMatch(/51 days ago/);
+    expect(modelRow.snapshot).toBe(snapshot.text);
     expect(String(modelRow.research)).toMatch(/at \$348/);
+  });
+
+  it("the score's notes come back when the research is asked for", async () => {
+    const { modelRow } = await read({ tickers: ["SYK"], include_research: true });
+    expect((modelRow.scoreNotes as Record<string, string>).trend).toMatch(/51 days ago/);
   });
 
   it("the screen still gets the whole row", async () => {

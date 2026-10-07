@@ -130,7 +130,7 @@ describe("the block, counted from the analyst's last answer", () => {
 
   it("09-30 morning read: the last look, and the one review nobody answered — nothing else", () => {
     const { text, unansweredDecision } = block("2026-09-30T12:04:25Z", 261.25);
-    expect(text).toMatch(/^WHAT'S BEEN SAID ON \$CEG\nLast look: morning run, 09-28 08:04 — "CEG's repeated 200-day review/);
+    expect(text).toMatch(/^WHAT'S BEEN SAID ON \$CEG\nLast look: morning run, 09-28 08:04 at \$261\.23 — "CEG's repeated 200-day review/);
     expect(text).toContain("Since then, not yet answered:\n  15% off the high → review — 09-28 11:20 at $257.63.");
     expect(text).toContain("If yes, hold and raise the floor under real structure (the 20-day low, the breakout level).");
     // The cleanup, the answered 09-14 decline, the approval, the bookkeeping: all gone.

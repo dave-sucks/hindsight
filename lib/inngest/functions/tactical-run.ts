@@ -18,14 +18,13 @@ import { inngest } from "@/lib/inngest/client";
 import { enterAlreadyChecked, rearmBuyAfterPass } from "@/lib/agent/triggers/rearm";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { buildTacticalSystemPrompt, tacticalSituation } from "@/lib/agent/system-prompts/intraday-tactical";
+import { stockBrief, type StockRow } from "@/lib/agent/stock-brief";
 import { fireExtras, tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
-import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
@@ -44,11 +43,6 @@ import {
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
 import type { Horizon } from "@/lib/agent/horizon-policy";
-import {
-  getThesisBearCaseBullets,
-  getThesisBullCaseBullets,
-  getThesisSnapshotText,
-} from "@/lib/agent/thesis-narrative";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -144,12 +138,6 @@ export const tacticalRun = inngest.createFunction(
         where: { id: fired.thesisId },
         include: {
           researchRun: { select: { agentConfigId: true } },
-          // What's been said on the stock (stock-context.ts): back past the
-          // last run's answer, so the principal's decisions since and every
-          // fire nobody answered reach this run. It used to be the last 5
-          // lines cut at 120 characters — on CEG 2026-09-14 the principal's
-          // decline was cut mid-word and gone two fires later.
-          updates: { orderBy: { timestamp: "desc" }, take: 40, select: ACTIVITY_SELECT },
         },
       });
       if (!thesis) return null;
@@ -252,23 +240,15 @@ export const tacticalRun = inngest.createFunction(
           )
         : null;
 
-      // Phase 1: precompute deep-research excerpt + age annotation here
-      // so the step.run JSON boundary doesn't strip the Date. Helpers
-      // imported below extract bullet arrays + snapshot text from the
-      // JSONB section columns (the same columns get_theses reads).
+      // The research's age, for the stale-research paragraph (computed here:
+      // the step boundary would turn the Date into a string). The stock
+      // itself reaches the run as its brief, read in the agent step.
       const thesisResearchAge = classifyResearchAge(
         thesis.researchUpdatedAt,
         thesis.horizon as Horizon | null,
         thesis.status,
       );
-      const thesisSnapshotText = getThesisSnapshotText(thesis);
-      const thesisBullBullets = getThesisBullCaseBullets(thesis);
-      const thesisBearBullets = getThesisBearCaseBullets(thesis);
-      // Full ladder for the prompt's CURRENT TRIGGER LADDER section +
-      // re-ladder duty: the agent edits triggers one at a time by id, so
-      // it needs every trigger and its id in view. Resolved (not the raw
-      // column) so inherited triggers are visible — adding one in the same
-      // bucket with a different value is a deliberate per-thesis override.
+      // The resolved ladder, for the co-fired triggers' lookup below.
       const allTriggers = ladder;
       return {
         thesis: {
@@ -280,34 +260,12 @@ export const tacticalRun = inngest.createFunction(
           // The event date, for the buying-window line (DAV-338). ISO here:
           // the step boundary would turn a Date into a string anyway.
           catalystDate: thesis.catalystDate ? thesis.catalystDate.toISOString() : null,
-          coreBelief: thesis.coreBelief,
-          keyAssumptions: thesis.keyAssumptions,
-          invalidationConds: thesis.invalidationConds,
           entryPrice: thesis.entryPrice != null ? Number(thesis.entryPrice) : null,
           targetPrice:
             thesis.targetPrice != null ? Number(thesis.targetPrice) : null,
           stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
-          snapshotText: thesisSnapshotText || null,
-          bullCaseBullets: thesisBullBullets,
-          bearCaseBullets: thesisBearBullets,
           researchAge: thesisResearchAge,
           allTriggers,
-          // Rendered here: the step boundary would turn the Dates to strings.
-          context: stockContextFor({
-            ticker: thesis.ticker,
-            // The principal's notes travel at any age, past the 40 lines.
-            rows: [
-              ...thesis.updates,
-              ...(await prisma.thesisUpdate.findMany({ where: { thesisId: thesis.id, type: "NOTE" }, select: ACTIVITY_SELECT })).filter(
-                (n) => !thesis.updates.some((u) => u.id === n.id),
-              ),
-            ].map((u) => ({ ...u, runMode: u.run?.mode ?? null })),
-            triggers: ladder,
-            now: new Date(),
-            // The price it fired at stands in for "now" beside the
-            // principal's price then; the run pulls a live quote itself.
-            currentPrice: fired.firedPrice ?? null,
-          }).text,
         },
         trigger,
         agentConfig,
@@ -705,36 +663,29 @@ export const tacticalRun = inngest.createFunction(
         );
       }
 
-      const setupOverrides = await loadSetupOverrides(agentConfig.accountId);
+      // The job alone, the same for every fire; everything about this fire
+      // and this stock rides in the kickoff below.
       const systemPrompt = buildTacticalSystemPrompt({
-        setupOverrides,
         analyst: { name: agentConfig.name, mandate: agentConfig.analystPrompt },
-        thesis: {
-          id: thesis.id,
-          ticker: thesis.ticker,
-          direction: thesis.direction,
-          horizon: thesis.horizon,
-          setupId: thesis.setupId,
-          coreBelief: thesis.coreBelief,
-          keyAssumptions: thesis.keyAssumptions,
-          invalidationConds: thesis.invalidationConds,
-          entryPrice: thesis.entryPrice,
-          targetPrice: thesis.targetPrice,
-          stopLoss: thesis.stopLoss,
-          // Phase 1: pre-computed in load-context step.run; passed verbatim.
-          snapshotText: thesis.snapshotText,
-          bullCaseBullets: thesis.bullCaseBullets,
-          bearCaseBullets: thesis.bearCaseBullets,
-          researchAge: thesis.researchAge,
-          allTriggers: thesis.allTriggers,
-        },
-        trigger,
-        position,
-        context: thesis.context,
-        latestDigest,
-        fired: { price: fired.firedPrice ?? null, coFired: fired.coFired ?? [] },
-        capacity: ctx.capacity ?? null,
       });
+
+      // The stock as get_theses reads it — the same builder the morning run
+      // and the chat read (stock-brief.ts), with the analyst's and the
+      // account's triggers on it, since this run reads one stock. The trigger
+      // run's update_thesis takes no setup_id, so its brief carries no ask to
+      // name one. Read after the fire was written, so the fire is on it.
+      const stock = await (async () => {
+        try {
+          const read = (await (allTools.get_theses as unknown as {
+            execute: (input: unknown, o: { toolCallId: string; messages: unknown[] }) => Promise<{ ok: boolean; data?: { theses?: StockRow[] } }>;
+          }).execute({ ids: [thesis.id] }, { toolCallId: "kickoff", messages: [] }));
+          const row = read.ok ? read.data?.theses?.[0] : undefined;
+          return row ? stockBrief({ ...row, nameTheSetup: null }, { named: true, inherited: true }) : null;
+        } catch (err) {
+          console.warn(`[tactical-run] the stock's brief could not be read; the kickoff goes without it:`, err instanceof Error ? err.message : err);
+          return null;
+        }
+      })();
 
       // Build the kickoff message so the chat replay shows WHY this run
       // fired without the user having to dig. Same English sentence the
@@ -764,6 +715,15 @@ export const tacticalRun = inngest.createFunction(
           coFired: fired.coFired?.map((c) => c.sentence),
           openRefusals: openOnStock,
         }),
+        situation: tacticalSituation({
+          thesis: { ticker: thesis.ticker, direction: thesis.direction, researchAge: thesis.researchAge },
+          trigger: triggerTyped,
+          position,
+          latestDigest,
+          fired: { price: fired.firedPrice ?? null, coFired: fired.coFired ?? [] },
+          capacity: ctx.capacity ?? null,
+        }),
+        stock,
       });
       // What this run read and wrote, every request counted, recorded on
       // the run row at the end (also on the failure path below).

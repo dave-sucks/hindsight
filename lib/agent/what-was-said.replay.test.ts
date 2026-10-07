@@ -32,7 +32,10 @@ import {
   REPLAY_ANALYST_ID,
 } from "@/lib/replay";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
-import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { buildTacticalSystemPrompt, tacticalSituation } from "@/lib/agent/system-prompts/intraday-tactical";
+import { tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
+import { stockBrief } from "@/lib/agent/stock-brief";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 type Row = Record<string, unknown>;
@@ -52,6 +55,23 @@ const fl = floorRaw as unknown as {
 };
 
 const DECLINE_ENDS = "Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.";
+
+/** What a trigger run reads: the system prompt, and the kickoff with the stock's brief in it. */
+function triggerRunInput(a: { analyst: string; row: { id: string; ticker: string; status: string; direction: string; horizon: string; context: string | null }; trigger: Trigger; peakPrice: number; firedPrice: number }) {
+  const stock = stockBrief(a.row, { named: true, inherited: true });
+  const kickoff = tacticalKickoff({
+    ticker: a.row.ticker,
+    fireSentence: sentenceOf(a.trigger),
+    situation: tacticalSituation({
+      thesis: { ticker: a.row.ticker, direction: a.row.direction, researchAge: { freshness: "fresh", daysOld: 5, horizonThreshold: 90 } as never },
+      trigger: a.trigger,
+      position: { peakPrice: a.peakPrice },
+      fired: { price: a.firedPrice, coFired: [] },
+    }),
+    stock,
+  });
+  return { system: buildTacticalSystemPrompt({ analyst: { name: a.analyst, mandate: null } }), kickoff, context: String(stock.context ?? "") };
+}
 const RAISE_THE_FLOOR = "hold and raise the floor under real structure (the 20-day low, the breakout level)";
 
 /** CEG's Activity lines before `at`, stored the way the database holds them (the run joined inline). */
@@ -181,45 +201,28 @@ describe("the 09-14 trigger runs", () => {
       currentPrice: firedPrice,
     }).text;
     const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, rationale: "Gave back 8% from the high." } as Trigger;
-    return buildTacticalSystemPrompt({
-      analyst: { name: fl.analyst.name, mandate: null },
-      thesis: {
-        id: fx.thesis0918.id,
-        ticker: "CEG",
-        direction: "LONG",
-        horizon: "COMPOUNDER",
-        setupId: null,
-        coreBelief: "CEG compounds to $360+ over 24 months.",
-        keyAssumptions: [],
-        invalidationConds: [],
-        entryPrice: 280.33,
-        targetPrice: 360,
-        stopLoss: 220,
-        snapshotText: null,
-        bullCaseBullets: [],
-        bearCaseBullets: [],
-        researchAge: { freshness: "fresh", daysOld: 5, horizonThreshold: 90 } as never,
-        allTriggers: [trail],
-      },
+    return triggerRunInput({
+      analyst: fl.analyst.name,
+      row: { id: fx.thesis0918.id, ticker: "CEG", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER", context },
       trigger: trail,
-      position: { quantity: 30, avgCost: 280.33, daysHeld: 32, peakPrice: 303.4 },
-      context,
-      fired: { price: firedPrice, coFired: [] },
+      peakPrice: 303.4,
+      firedPrice,
     });
   };
 
   it("15:30, the first run after the decline: the whole decline, the price then and now, and the rule to answer it by name", () => {
-    const prompt = promptAt(fx.runs.trigger0914_1530.loadedAt, 264.6);
-    expect(prompt).toContain("WHAT'S BEEN SAID ON $CEG");
-    expect(prompt).toContain("The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%)");
-    expect(prompt).toContain(DECLINE_ENDS);
-    expect(prompt).toContain("The principal's decisions outrank the trigger's own rationale.");
-    expect(prompt).toContain("When WHAT'S BEEN SAID lists the principal's decisions or other triggers");
-    expect(prompt).not.toContain("RECENT THESIS ACTIVITY");
+    const { system, kickoff, context } = promptAt(fx.runs.trigger0914_1530.loadedAt, 264.6);
+    expect(context).toContain("WHAT'S BEEN SAID ON $CEG");
+    expect(context).toContain("The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%)");
+    expect(context).toContain(DECLINE_ENDS);
+    expect(kickoff).toContain(JSON.stringify(context));
+    expect(system).toContain("The principal's decisions in `context` outrank the trigger's own rationale.");
+    expect(system).toContain("When `context` lists the principal's decisions or other triggers");
+    expect(system + kickoff).not.toContain("RECENT THESIS ACTIVITY");
   });
 
   it("15:55: the 15:30 run answered it, so it is no longer handed over", () => {
-    expect(promptAt(fx.runs.trigger0914_1555.loadedAt, 264.99)).not.toContain(DECLINE_ENDS);
+    expect(promptAt(fx.runs.trigger0914_1555.loadedAt, 264.99).context).not.toContain(DECLINE_ENDS);
   });
 });
 
@@ -249,38 +252,21 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
 
   it("the prompt lists the three open reviews and tells the run its update_thesis answers each, by name", () => {
     const context = stockContextFor({ ticker: "MU", rows: loaded, triggers: mu.triggers, now: new Date(mu.loadedAt) }).text!;
-    const prompt = buildTacticalSystemPrompt({
-      analyst: { name: "PEAD Specialist", mandate: null },
-      thesis: {
-        id: "cmrp6chyu000h04l5roqq5ha1",
-        ticker: "MU",
-        direction: "LONG",
-        horizon: "TARGET",
-        setupId: null,
-        coreBelief: "MU's HBM-driven earnings-upgrade cycle carries the stock through the next print.",
-        keyAssumptions: [],
-        invalidationConds: [],
-        entryPrice: 895.94,
-        targetPrice: 1100,
-        stopLoss: 1041,
-        snapshotText: null,
-        bullCaseBullets: [],
-        bearCaseBullets: [],
-        researchAge: { freshness: "fresh", daysOld: 3, horizonThreshold: 30 } as never,
-        allTriggers: mu.triggers,
-      },
+    const { system, kickoff } = triggerRunInput({
+      analyst: "PEAD Specialist",
+      row: { id: "cmrp6chyu000h04l5roqq5ha1", ticker: "MU", status: "HOLDING", direction: "LONG", horizon: "TARGET", context },
       trigger: sale,
-      position: { quantity: 13, avgCost: 895.94, daysHeld: 20, peakPrice: 1100 },
-      context,
-      fired: { price: 1038.82, coFired: [] },
+      peakPrice: 1100,
+      firedPrice: 1038.82,
     });
+    const prompt = `${system}\n\n${JSON.parse(kickoff.slice(kickoff.indexOf("\n{") + 1)).context}`;
     expect(prompt).toContain("Last look: morning run, 09-28 08:00");
     expect(prompt).toContain("Since then, not yet answered:");
     expect(prompt).toContain("Reports within 3 days — decide before the print");
     expect(prompt).toContain("At +15% from entry, reassess");
     expect(prompt).toContain("A sharp 1-day drop could be either normal volatility");
     expect(prompt).toContain(
-      "When WHAT'S BEEN SAID lists the principal's decisions or other triggers\n     fired since the last answer, your update_thesis answers them too: say\n     what you decided on each, by name.",
+      "When `context` lists the principal's decisions or other triggers\n     fired since the last answer, your update_thesis answers them too: say\n     what you decided on each, by name.",
     );
   });
 });

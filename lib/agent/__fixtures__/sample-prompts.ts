@@ -19,16 +19,10 @@ const runInput = {
   earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, intelligencePolicy: { maxSignalsPerRun: 0 }, openRefusals: [],
 } as unknown as RunInput;
 
-const trailTrigger = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." };
-
 export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
   daily: () => buildDailyRunSystemPromptV2({ name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),
-  tactical: () =>
-    buildTacticalSystemPrompt({
-      analyst: { name: "PEAD Specialist", mandate: null },
-      thesis: { id: "thesis_1", ticker: "HPE", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"], entryPrice: 53, targetPrice: 70, stopLoss: 50, snapshotText: null, bullCaseBullets: [], bearCaseBullets: [], researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 }, allTriggers: [trailTrigger] },
-      trigger: trailTrigger, signal: null, position: { quantity: 60, avgCost: 53.1, daysHeld: 10, peakPrice: 62.7 }, recentUpdates: [], latestDigest: null,
-    } as never),
+  // The job alone: the stock and the fire ride in the kickoff (tactical-kickoff.ts).
+  tactical: () => buildTacticalSystemPrompt({ analyst: { name: "PEAD Specialist", mandate: null } }),
   discovery: () => buildDiscoverySystemPrompt({ config: { name: "PEAD Specialist", sectors: [], minConfidence: 70, maxPositionSize: 14000 }, analystId: "an", existingTickers: ["MU"] } as never),
   chat: () =>
     buildPrincipalSystemPrompt({

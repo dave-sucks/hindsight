@@ -34,7 +34,9 @@ import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import { createOpenAI, openai } from "@ai-sdk/openai";
 import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
 import { MODES, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
-import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { buildTacticalSystemPrompt, tacticalSituation, type TacticalSituationArgs } from "@/lib/agent/system-prompts/intraday-tactical";
+import { stockBrief, type StockRow } from "@/lib/agent/stock-brief";
+import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { toStoredPredicate } from "@/lib/agent/triggers/condition/stored";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -42,7 +44,6 @@ import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { tacticalKickoff } from "@/lib/agent/system-prompts/tactical-kickoff";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import type { Trigger } from "@/lib/agent/triggers/types";
 
 type Cond = "present" | "absent" | string | number | boolean | { lt?: number; gt?: number; regex?: string };
 interface Rule { tool: string; where?: Record<string, Cond> }
@@ -218,16 +219,25 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
 
 /**
  * The trigger run's kickoff, rebuilt from the case's inputs with today's
- * builder (tactical-kickoff.ts): the fired trigger's sentence is written by
- * today's code, and only the day's facts after it (an earnings fire's
- * numbers, the catalyst window, co-fired triggers, open refusals) are data.
+ * builders: the fired trigger's sentence (describe.ts), the fire's own
+ * paragraphs (tacticalSituation) and the stock's brief (stockBrief, from the
+ * stock's row in promptArgs.stock). Only the facts are data: the day's facts
+ * after the sentence (an earnings fire's numbers, the catalyst window,
+ * co-fired triggers, open refusals) and the stock's row.
  */
 function kickoffFor(name: string, c: HeroCase): ModelMessage {
   const kickoff = c.promptArgs.kickoff as { extras?: string } | undefined;
   if (!kickoff) throw new Error(`${name}: a trigger-run case needs promptArgs.kickoff — scripts/hero-case-from-run.ts writes it`);
-  const ticker = (c.promptArgs.thesis as { ticker: string }).ticker;
-  const fireSentence = sentenceOf(c.promptArgs.trigger as Trigger);
-  return { role: "user", content: [{ type: "text", text: tacticalKickoff({ ticker, fireSentence, extras: kickoff.extras ?? "" }) }] };
+  // The stock's facts, rebuilt into its brief by today's builder.
+  const row = c.promptArgs.stock as StockRow | undefined;
+  if (!row) throw new Error(`${name}: a trigger-run case needs promptArgs.stock (the stock's row) — scripts/hero-case-from-run.ts writes it`);
+  const args = c.promptArgs as unknown as TacticalSituationArgs;
+  const ticker = args.thesis.ticker;
+  const fireSentence = sentenceOf(args.trigger);
+  const setup = row.setup ?? setupChecklist(row.setupId as string | null, row.horizon ?? null);
+  const stock = stockBrief({ ...row, setup: setup as StockRow["setup"], nameTheSetup: null }, { named: true, inherited: true });
+  const situation = tacticalSituation(args);
+  return { role: "user", content: [{ type: "text", text: tacticalKickoff({ ticker, fireSentence, extras: kickoff.extras ?? "", situation, stock }) }] };
 }
 
 interface RunOptions {
@@ -268,7 +278,9 @@ async function runCase(name: string, runs: number, opts: RunOptions): Promise<{ 
         m.content.map(async (p) => {
           const hook = p.type === "tool-result" ? (tools[p.toolName] as { toModelOutput?: (o: { toolCallId: string; input: unknown; output: unknown }) => unknown })?.toModelOutput : undefined;
           if (!hook || p.type !== "tool-result") return p;
-          const raw = p.output && typeof p.output === "object" && "value" in p.output ? (p.output as { value: unknown }).value : p.output;
+          const recorded = p.output && typeof p.output === "object" && "value" in p.output ? (p.output as { value: unknown }).value : p.output;
+          // A row's stored triggers are read in the condition shape, as the database client hands them back.
+          const raw = p.toolName === "get_theses" ? inStoredShape(recorded) : recorded;
           return { ...p, output: (await hook({ toolCallId: p.toolCallId, input: inputs.get(p.toolCallId), output: raw })) as typeof p.output };
         }),
       );

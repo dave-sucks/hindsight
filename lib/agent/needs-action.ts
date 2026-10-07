@@ -1,22 +1,16 @@
 /**
- * `needsAction` — the per-thesis annotation get_theses puts on every row
- * so the daily-run agent doesn't have to cross-reference five different
- * prompt blocks to figure out what needs attention today.
+ * `needsAction` — the one flag get_theses ranks first on a stock: the
+ * reason it is on today's list. The stock brief (stock-brief.ts) puts it
+ * first among the stock's situations and lists the others after it.
  *
- * Six kinds. Three are trigger-driven (FIRED / MATCHING_NOW / REVIEW_DUE);
- * PROMOTED is status-driven (any PROMOTED thesis ALWAYS requires resolution
- * this run); UNPROTECTED_GAIN and RUNNING_WINNER are position-P&L-driven
- * (a held winner whose floor doesn't reflect its gain, and a held winner
- * that reached its target's decision point with no trigger set to catch it).
+ * Eight kinds (the type below says what each carries):
  *
- *   PROMOTED_AWAITING_RESOLUTION — thesis.status === "PROMOTED".
- *                         The user explicitly graduated this analyst to
- *                         live money and the paper position was force-
- *                         closed at promotion. The daily run must decide
- *                         today: re-enter (place_trade) / defer (update_
- *                         thesis change_status: WATCHING) / kill (when
- *                         tool gates allow). Highest precedence — fires
- *                         regardless of other trigger state.
+ *   PROMOTED_AWAITING_RESOLUTION — thesis.status === "PROMOTED". The
+ *                         paper position was force-closed at promotion;
+ *                         the run re-enters, defers or kills it today.
+ *   SALE_DECLINED       — the principal declined (or let expire) a
+ *                         protective sale, the price is still past the
+ *                         line, and no run has answered it (DAV-315).
  *   TRIGGER_FIRED       — a trigger fired after the newest line an AGENT
  *                         wrote on this thesis (stock-context.ts
  *                         `openFires`). The principal's edits, proposal
@@ -25,57 +19,35 @@
  *                         several fired, the lead is the one that moves
  *                         money (not a REVIEW) and the rest ride along in
  *                         `alsoFired`.
- *   TRIGGER_MATCHING_NOW — server-side `shouldFire` evaluation against
- *                         the fresh quote says one of the thesis's
- *                         price/time-side predicates is currently true.
- *                         Catches matches the cron may not have
- *                         delivered yet.
- *   UNPROTECTED_GAIN    — a HOLDING whose cumulative gain is meaningfully
- *                         above what its tightest protective EXIT rung locks
- *                         in: gain ≥ 8% AND (gain − flooredGain) ≥ 6pts, a
- *                         missing floor counting as −infinity. The IONS
- *                         detector (Game Plan PR-B): a +17% position with a
- *                         day-one floor at −12% is flagged every single
- *                         morning until the floor is raised. See
- *                         docs/plans/THESIS_GAME_PLAN.md + ladder-health.ts.
- *   (RUNNING_WINNER was removed 2026-08-25 — the account trigger fires first.
- *                         entry (avgCost) to its target (or blown past it),
- *                         up ≥8%, with no fired/matching trigger already
- *                         catching it. The backstop for the "agent ignores
- *                         winners" gap: an un-laddered winner near its target
- *                         would otherwise resolve to needsAction=null and be
- *                         skipped. Surfaces it as a press/hold/take decision.
- *                         See docs/plans/SCALE_INTO_WINNERS.md + winner-signal.ts.
- *   REVIEW_DUE          — the review cadence (counted from lastReviewedAt)
- *                         elapses within the next 24h (i.e. due today or
- *                         already overdue). Look-ahead window covers
- *                         reviews scheduled for later in the same trading
- *                         day — without it, a thesis coming due at
- *                         today 09:30 ET would be
- *                         skipped by the 08:00 ET morning daily-run
- *                         ("not yet due"), then fire the old review-date
- *                         trigger 90 min later, spawning a tactical run
- *                         that did the same work. 24h is wide enough to
- *                         catch same-day reviews regardless of when the
- *                         agent scheduled them; weekend gaps get caught
- *                         as overdue on the following Monday's daily
- *                         run.
+ *   TRIGGER_MATCHING_NOW — `shouldFire` against the fresh quote says one of
+ *                         the thesis's price or time conditions is true
+ *                         now. Catches matches the cron has not delivered.
+ *   FLOOR_TOO_FAR       — a holding whose floor would lose more than 1.5%
+ *                         of the account, measured from what we paid
+ *                         (DAV-344; ./floor-risk).
+ *   UNPROTECTED_GAIN    — a HOLDING whose gain is meaningfully above what
+ *                         its tightest protective exit locks in: gain ≥ 8%
+ *                         AND (gain − floored gain) ≥ 6 points, no floor
+ *                         counting as −infinity (./ladder-health).
+ *   REVIEW_DUE          — the review clock elapses within the next 24h
+ *                         (due today or overdue). The look-ahead catches a
+ *                         review due at 09:30 on the 08:00 run, so no
+ *                         trigger run is spawned later to do the same work.
+ *   RESEARCH_STALE      — the research behind a committed view is older
+ *                         than its horizon's threshold, and no review is due.
  *
- * Precedence when multiple match:
- *   PROMOTED_AWAITING_RESOLUTION > TRIGGER_FIRED > TRIGGER_MATCHING_NOW >
- *   UNPROTECTED_GAIN > RUNNING_WINNER > REVIEW_DUE
- * (An explicit fired/matching trigger — a stop, a target-EXIT — outranks both
- * P&L flags: it's more specific, and if the protection itself is firing the
- * fire IS the work item. UNPROTECTED_GAIN outranks RUNNING_WINNER because
- * locking the downside precedes pressing the upside — the two often coincide
- * on the same big winner, and floor-first ordering means the agent fixes the
- * ladder now; once the floor reflects the gain the flag self-clears and the
- * press/hold/take decision surfaces on the next read. Both outrank a routine
- * review because they tell the agent WHY to look.)
+ * Precedence, as computeNeedsAction checks it:
+ *   PROMOTED_AWAITING_RESOLUTION > SALE_DECLINED > TRIGGER_FIRED >
+ *   TRIGGER_MATCHING_NOW > FLOOR_TOO_FAR > UNPROTECTED_GAIN > REVIEW_DUE >
+ *   RESEARCH_STALE,
+ * except that a fired or matching REVIEW yields to FLOOR_TOO_FAR: a fired
+ * sale, trim, add or buy moves money now and comes first; a review does
+ * not. SALE_DECLINED outranks the fires because the floor is a standing
+ * order, so while the breach lasts a fire is true every day and would win.
+ * (RUNNING_WINNER was deleted 2026-08-25: the account's "review if up 10%
+ * from entry" fires first in every realistic case.)
  *
- * A thesis with no PROMOTED status, no fires, no matches, and a review
- * not yet due returns `null` — yesterday's thesis stands and the agent
- * doesn't need to touch it.
+ * A thesis with none of these returns `null`: yesterday's thesis stands.
  *
  * Pure function. Caller supplies all data; no DB, no clock, no fetches.
  */
@@ -582,8 +554,8 @@ export function computeNeedsAction(
   // its own MIN_GAIN floor was added to suppress. It was a trigger
   // re-implemented as a morning calculation, permanently second.
   //
-  // What replaced it is not another flag: resolved.unrealizedGainPct and
-  // resolved.progressToTarget sit on every held row the agent reads, so a
+  // What replaced it is not another flag: unrealizedGainPct and
+  // progressToTarget sit on every held row the agent reads, so a
   // stock up 212% is visible without anything pre-deciding that it matters.
 
   // 5) REVIEW_DUE — the review cadence elapsed OR coming due within the
