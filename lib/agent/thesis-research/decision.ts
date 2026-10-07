@@ -23,17 +23,16 @@ import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
-/** The fields the writer shares with record_thesis and update_thesis, defined once; strict: no numeric ranges (Anthropic strict mode). */
-const W = thesisFields({ strict: true });
+/** The fields the writer shares with record_thesis and update_thesis, defined once, in the writer's form: no number ranges on the score parts, as before (validateThesisDecision refuses a score out of range). */
+const W = thesisFields({ writer: true });
 
 /**
- * The submit_thesis tool's input schema. It is handed to the model in
- * Anthropic strict mode, so the shape is enforced at generation time — a
- * trigger kind that doesn't exist cannot be produced. That is also why it
- * carries no string-length or numeric-range constraints: the grammar
- * compiler doesn't support them, so every limit lives in words here and in
- * the save (which trims or clamps rather than refusing). See
- * lib/agent/triggers/model-schema.ts.
+ * The submit_thesis tool's input schema. The tool is not sent in Anthropic's
+ * strict mode, on purpose (makeSubmitThesisTool in run-thesis-writer.ts says
+ * why), so this schema guides the model and does not bind it. It carries no
+ * string-length or number-range limits; those are in the words here and in
+ * validateThesisDecision below, which hands a refused field back with the
+ * reason.
  */
 /**
  * The trigger a writer sends, defined once: \`triggers\` (a mint) and
