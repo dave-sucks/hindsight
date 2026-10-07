@@ -757,7 +757,7 @@ the same PR. Morning lines are `system-prompt.ts`; trigger-run lines are
 | 5 | A filing trigger fired | Measure `filing` | Both filing blocks | **new:** a filing fire |
 | 6 | A holding's protection lags its gain or risks too much | `UNPROTECTED_GAIN`; `FLOOR_TOO_FAR` (and `resolved.floorRisk`, answered even when another flag holds the row) | Morning: both bullets. Trigger run: "hold still means protecting the gain" inside the add text | **new:** an unprotected-gain row |
 | 7 | The research is old | `RESEARCH_STALE`; a stale or missing `researchAge` on any review. One duty, two sources, one playbook (#784 already says it once) | Morning: the stale-research bullet | now-needs-research, re-scored |
-| 8 | A plan contradicts the tape | Any of the 15 `planSanity` kinds; each keeps its own arithmetic on the flag | Morning: plan sanity | pbh-two-flags, ceg-plan-stands |
+| 8 | A plan contradicts the tape | Any of the 13 `planSanity` kinds; each keeps its own arithmetic on the flag | Morning: plan sanity | pbh-two-flags, ceg-plan-stands |
 | 9 | A sold stock, or a quiet watch that woke | `sold_to_review`; a wake on a watch with no clock, defined in `needs-action.ts` as: direction null, a fired trigger, no review trigger of its own. It is an attachment key; the fire already lists the row | Morning: the sold-stock duty, the wake on a watch with no clock | **new:** a sold stock answered; a no-clock wake |
 | 10 | First research on a seed | `REVIEW_DUE` with `pendingFirstReview` | Morning: the seed bullet | **new:** a seed's first review (5 seeds were made in the 30 days to 2026-10-07; the morning run committed one, a PASS) |
 | 11 | Chat discovery | The chat's discovery kickoff; otherwise the lookup topic (10.1) | Chat: batched discovery (10,561) | **new:** a chat discovery session |
@@ -904,7 +904,7 @@ Estimates from the measured sizes, replaced by measurements as each PR lands
 |---|---|---|
 | House rules | `lib/agent/knowledge/house-rules.ts` | In the unopened stock-rules PR, one sentence |
 | Jobs | `lib/agent/system-prompt.ts`, `system-prompts/intraday-tactical.ts`, `run-thesis-writer.ts`, `modes.ts` | Each also holds rules and situations today |
-| Situation playbooks | On the flags: `needs-action.ts` (8 kinds) and `plan-sanity.ts` (15 kinds) | The plan flags already carry text. The rest moves from the morning and trigger-run texts |
+| Situation playbooks | On the flags: `needs-action.ts` (8 kinds) and `plan-sanity.ts` (13 kinds) | The plan flags already carry text. The rest moves from the morning and trigger-run texts |
 | Setup playbooks | `lib/agent/knowledge/setups.ts` | Exists. Add known mistakes |
 | Stock brief | `stock-context.ts` and `stock-rules.ts` (unopened), read by `get-theses.ts`, `list-proposals.ts` and the trigger run | Becomes one builder |
 | Order of flags on a stock | `needs-action.ts`, "Precedence when multiple match" | Exists |
