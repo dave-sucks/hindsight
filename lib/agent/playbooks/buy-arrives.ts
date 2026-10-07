@@ -4,20 +4,21 @@
  * Written once from the text it replaced: the trigger run's confirmation
  * gates and what a failed one means, its declined-buy line, and the morning
  * run's fired-buy bullet with re-pricing, its low-conviction buy line and its
- * variant-view line. Where the two disagreed, it says what complete_run
- * enforces: while the price still holds the level, a note alone does not answer
- * a fired buy (the trigger run's text said to pass with a note and let the
- * morning re-anchor; the check refuses that).
+ * variant-view line. Where the two disagreed, it says what happens: while
+ * the price still holds the level, a note alone is not the answer to a fired
+ * buy, and one left as a note comes back on the next morning run as a plan
+ * flag or a live match (complete_run's fired-buy bar was deleted 2026-10-07;
+ * the trigger run's text had said to pass with a note).
  *
  * Cap: 2,500 characters. A line added means a line removed.
  */
 import type { Playbook } from "./types";
 
-const TEXT = `When: a buy trigger fired or is true now on a stock we watch: the price reached the buy level.
+const TEXT = `When: a buy trigger fired or is true now on a stock we watch.
 
 Answer, in order:
 1. Does the price still hold the level? Check with get_stock_data. If it touched and slipped back, say so ("it hit $X, then slipped back to $Y").
-2. Did the setup's own confirmation happen? The stock's setup says what confirms a buy and its chase limit. A breakout needs a close above the level on the volume its setup names (volume is only a guide before about 14:00 ET); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup named, the price holding is the confirmation. Outside market hours, leave volume out.
+2. Did the setup's own confirmation happen? The stock's setup says what confirms a buy and its chase limit. A breakout needs a close above the level on the volume its setup names; a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup named, the price holding is the confirmation. Outside market hours, leave volume out.
 3. Is it chased, more than the chase limit past the level?
 4. Does a headline from the last hour contradict it (get_stock_data's news)? A buy into bad news is a fade, not a breakout.
 5. Did the principal decline this same buy, with nothing they named changed since? Then say so and pass.
@@ -29,7 +30,7 @@ What you can do:
 - Set the plan down: update_thesis with remove_trigger_ids naming the buy, floor and target, keeping a review, and one sentence on what made this not the entry.
 - Stop watching: update_thesis with change_status ARCHIVED; INVALIDATED only when the thesis should not exist for you at all.
 
-Answered: place_trade, a re-priced buy, or the plan set down. A chased or unconfirmed buy is re-priced to the next structure or set down, not bought and not left as a note. While the price holds the level a note does not answer and the run cannot finish, with two exceptions: a buy whose price has slipped back, and a buy fired into a full analyst, which the one update its row or message asks for answers.
+Answered: place_trade, a re-priced buy, or the plan set down. A chased or unconfirmed buy is re-priced to the next structure or set down, not bought and not left as a note. While the price holds the level a note alone is not the answer: a buy left as a note comes back on the next morning run as a plan flag or live match. A note does answer two cases: a buy whose price has slipped back, and a buy fired into a full analyst, which the one update its row or message asks for answers.
 
 Mistakes:
 - Calling place_trade after a check failed.

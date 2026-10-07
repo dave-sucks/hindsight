@@ -104,7 +104,7 @@ describe("the trigger run's kickoff, by size", () => {
  */
 const RECORDED_PLAYBOOKS: Record<string, number> = {
   "protective-sale": 1_500,
-  "buy-arrives": 2_499,
+  "buy-arrives": 2_496,
 };
 
 describe("the playbooks, by size", () => {
