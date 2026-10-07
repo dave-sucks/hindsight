@@ -2024,51 +2024,6 @@
             },
             "rationale": "An EPS miss breaks the 100% beat-rate streak. Evaluate whether driven by procedure volume deceleration (thesis risk) or temporary opex/system mix (recoverable). If procedure growth falls below 10% or guidance is cut, initiate invalidation review.",
             "cooldownDays": 7
-           },
-           {
-            "id": "56a897fc-9c21-4bae-b1a1-2aff08d105a9",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "Review quarterly 10-Q for da Vinci 5 placement pace, competitive system wins/losses, ASP trends on instruments/accessories, and any hospital capex commentary that could signal procedure volume inflection.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "c9a31d8b-e492-4d4c-b747-ff4c1902e1b9",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "SIGNAL_TYPE",
-             "sentiment": "BEARISH",
-             "minUrgency": "HIGH",
-             "signalType": "NEWS"
-            },
-            "rationale": "High-urgency bearish news (Ottava share gains, procedure volume data from hospital networks, ISRG pricing concessions) warrants immediate thesis review against invalidation conditions.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "03446dd9-c65d-495a-a92f-fcac91fe2836",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 60,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "60-day progress checkpoint: re-read thesis against what the BUSINESS has done. Confirm da Vinci 5 placements on track, procedure growth within guided range, gross margin guidance maintained. If no visible progress on core belief, document what is being waited for and by when.",
-            "cooldownDays": 48
-           },
-           {
-            "id": "f9113363-b45d-4499-bc96-80211cb28119",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Guidance cut on a compounder watch — biggest signal that the long-term thesis is flawed. Re-evaluate.",
-            "cooldownDays": 7
            }
           ],
           "scalingPlan": null,
@@ -2111,7 +2066,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-12T04:33:58.141Z",
-          "triggerCount": 7,
+          "triggerCount": 3,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -2323,38 +2278,6 @@
             },
             "rationale": "A miss of 5%+ requires checking whether it is a repeat cyber/operational event (temporary) or a structural demand signal (thesis-breaking). If organic growth falls below 6% or gross margin falls below 62%, escalate to invalidation review.",
             "cooldownDays": 7
-           },
-           {
-            "id": "57ed5519-b077-48f9-8a3a-ac5545627b0f",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "8-K"
-            },
-            "rationale": "Material 8-K filings (acquisitions, cyber incidents, FDA notices, regulatory actions) require immediate thesis evaluation given SYK's cyber risk history and M&A-driven capital allocation model.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "80399a9f-099a-4473-9418-2b91bc5472fb",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 60,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "60-day progress checkpoint: assess whether Mako RPS commercial data, Q3 earnings setup, and organic growth trajectory are visibly tracking to the core belief. If nothing has started proving out, document what is still being waited for and by when.",
-            "cooldownDays": 48
-           },
-           {
-            "id": "dc30fea2-a1c1-452b-aa0c-8a0f4b03b3f4",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Guidance cut on a compounder watch — biggest signal that the long-term thesis is flawed. Re-evaluate.",
-            "cooldownDays": 7
            }
           ],
           "scalingPlan": [
@@ -2412,7 +2335,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-12T04:33:41.007Z",
-          "triggerCount": 7,
+          "triggerCount": 4,
           "history": [],
           "needsAction": {
            "kind": "TRIGGER_MATCHING_NOW",
@@ -2621,17 +2544,6 @@
             "cooldownDays": 7
            },
            {
-            "id": "b89cf7c2-e244-49e6-afe7-8719d395b984",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "A guidance cut is the single most important invalidation signal — immediately assess whether this is the first of two consecutive cuts (invalidation condition) or an isolated event.",
-            "cooldownDays": 7
-           },
-           {
             "id": "4b1c5792-affb-43ad-b702-6fce13861b5c",
             "action": "REVIEW",
             "fireMode": "TACTICAL",
@@ -2642,28 +2554,6 @@
             },
             "rationale": "Price below $720 (approaching stop territory) warrants a thesis review — assess whether any invalidation conditions have tripped before deciding whether to hold or exit.",
             "cooldownDays": 1
-           },
-           {
-            "id": "354fa2d2-c95d-4fa7-8490-3adfdc74fb4c",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "Each quarterly filing is the primary source of RPO data, margin trajectory, and M&A activity — review to track thesis assumptions.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "ecc5379f-c34d-4938-9251-673c7cb3f868",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "90-day check: re-read the thesis against what the BUSINESS has done (not the price). Assess RPO conversion, margin progression, and M&A cadence. Slow is fine; directionless is not.",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": [
@@ -2722,7 +2612,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-12T04:33:38.985Z",
-          "triggerCount": 7,
+          "triggerCount": 4,
           "history": [],
           "needsAction": {
            "kind": "TRIGGER_MATCHING_NOW",
@@ -2946,41 +2836,6 @@
             },
             "rationale": "An earnings miss of >2% would signal CGM growth deceleration or structural heart competition is worse than modeled — review invalidation conditions before deciding to abandon the watch.",
             "cooldownDays": 7
-           },
-           {
-            "id": "31f254bb-aeb2-413b-8351-5942c49a1ee7",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "A guidance cut is an invalidation condition — review immediately to determine whether to archive this thesis per the mandate that two consecutive guidance cuts trigger exit.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "c735b3aa-923b-4dcd-9b13-b75a14ef6c7d",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "SIGNAL_TYPE",
-             "sentiment": "BEARISH",
-             "minUrgency": "HIGH",
-             "signalType": "NEWS"
-            },
-            "rationale": "High-urgency bearish news (e.g., FDA action on FreeStyle Libre, CGM pricing collapse, Exact Sciences impairment) could invalidate core assumptions — review immediately.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "353caea1-c3f1-43fe-b12a-d5cf2da872b3",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "90-day COMPOUNDER hygiene check: re-read core belief against what the business has done. Has CGM revenue maintained double-digit comparable growth? Has the entry zone been reached? If not, re-assess thesis relevance.",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": null,
@@ -3023,7 +2878,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-12T04:30:55.305Z",
-          "triggerCount": 7,
+          "triggerCount": 4,
           "history": [],
           "needsAction": {
            "kind": "TRIGGER_MATCHING_NOW",
@@ -3237,17 +3092,6 @@
             "cooldownDays": 7
            },
            {
-            "id": "125ce46e-f522-4c70-bd2f-d1ffde4f907a",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "A guidance cut of >5% is a named invalidation condition. If cut is GLP-1-driven or signals pricing pressure, thesis may be broken. Evaluate vs. invalidation conditions before any exit decision.",
-            "cooldownDays": 7
-           },
-           {
             "id": "397b0ab6-1e33-4ea1-9c6d-51042f8db156",
             "action": "REVIEW",
             "fireMode": "TACTICAL",
@@ -3257,28 +3101,6 @@
              "value": 330
             },
             "rationale": "Price below $330 breaks below SMA50 support. Not an automatic exit — a compounder requires naming what broke in the business. Review: has any invalidation condition tripped? If thesis intact, hold or add.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "320540c6-e18d-434e-85c1-62c7950e17ee",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 60,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "60-day progress checkpoint. Re-read thesis against what the business has done, not the price. Has GLP-1 HVP growth remained at high-teens? Is gross margin trajectory intact? If nothing in core belief has started proving out, name what we're still waiting for and by when.",
-            "cooldownDays": 48
-           },
-           {
-            "id": "beb63bf8-0087-4a43-94ee-3b403d82b8e9",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "Each quarterly 10-Q provides updated segment revenue, HVP mix %, gross margin, and GLP-1 disclosure. Review to confirm key assumptions remain intact.",
             "cooldownDays": 1
            }
           ],
@@ -3337,7 +3159,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-12T04:30:40.568Z",
-          "triggerCount": 7,
+          "triggerCount": 4,
           "history": [],
           "needsAction": {
            "kind": "TRIGGER_MATCHING_NOW",
@@ -3537,26 +3359,6 @@
             },
             "rationale": "Miss — does this break the compounder thesis?",
             "cooldownDays": 7
-           },
-           {
-            "id": "2889bb5a-46a4-4c2e-adab-3c32ad266a35",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Guidance cut on a compounder watch — biggest signal that the long-term thesis is flawed. Re-evaluate.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "b0f2bb10-0d37-47de-9635-b5650dbacba1",
-            "action": "REVIEW",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Quarterly hygiene — even compounders get a periodic look.",
-            "cooldownDays": 80
            }
           ],
           "scalingPlan": [
@@ -3614,7 +3416,7 @@
           "paperRealizedPnl": 0,
           "paperReviewCount": 52,
           "researchUpdatedAt": "2026-08-07T13:55:46.303Z",
-          "triggerCount": 5,
+          "triggerCount": 3,
           "history": [],
           "needsAction": {
            "kind": "PROMOTED_AWAITING_RESOLUTION",
@@ -3810,26 +3612,6 @@
             },
             "rationale": "Miss — does this break the compounder thesis?",
             "cooldownDays": 7
-           },
-           {
-            "id": "e6177ab3-6581-440a-a62d-3376172b2e7d",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Guidance cut on a compounder watch — biggest signal that the long-term thesis is flawed. Re-evaluate.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "39598c86-1e25-40a8-98ce-1be5a4453da1",
-            "action": "REVIEW",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Quarterly hygiene — even compounders get a periodic look.",
-            "cooldownDays": 80
            }
           ],
           "scalingPlan": null,
@@ -3872,7 +3654,7 @@
           "paperRealizedPnl": 0,
           "paperReviewCount": 38,
           "researchUpdatedAt": "2026-07-31T12:03:50.352Z",
-          "triggerCount": 5,
+          "triggerCount": 3,
           "history": [],
           "needsAction": {
            "kind": "PROMOTED_AWAITING_RESOLUTION",
@@ -4074,17 +3856,6 @@
             "cooldownDays": 7
            },
            {
-            "id": "cbc21f0a-6e87-447d-9bf9-8b49f7027387",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Any guidance cut directly pressures the core belief that ServiceNow can sustain 20%+ subscription growth and earn a higher multiple.",
-            "cooldownDays": 7
-           },
-           {
             "id": "10edfdf9-d8a0-4251-ba06-c142ea789764",
             "action": "REVIEW",
             "fireMode": "TACTICAL",
@@ -4095,28 +3866,6 @@
             },
             "rationale": "A break below $78 would likely reflect structural thesis damage or a major reset in market confidence and requires a full review.",
             "cooldownDays": 1
-           },
-           {
-            "id": "17ffeffc-c689-4b95-8371-e8d12b0b1acf",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "8-K"
-            },
-            "rationale": "An 8-K could carry material leadership, acquisition, or guidance information that matters to the multi-year underwriting.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "6e4be755-3b7b-403f-9d91-f0891e1bfa3a",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Quarterly review to test whether Now Assist ACV, cRPO, guidance, and FCF conversion still support the compounder case.",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": [
@@ -4174,7 +3923,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-06T13:40:54.238Z",
-          "triggerCount": 7,
+          "triggerCount": 4,
           "history": [],
           "needsAction": {
            "kind": "TRIGGER_MATCHING_NOW",
@@ -4385,39 +4134,6 @@
             },
             "rationale": "A pullback below $145 could create the reset this mandate needs, or could signal the momentum unwind is becoming structural. Re-underwrite the setup there.",
             "cooldownDays": 1
-           },
-           {
-            "id": "92f8e335-546b-4cc4-b8f9-2cfcb196d257",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Any guidance cut would directly pressure the core belief that AIP adoption is broadening and supporting durable compounding.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "611ffbc4-5075-470d-b34b-79e0d6cf472d",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "8-K"
-            },
-            "rationale": "An 8-K could signal leadership changes, major contract developments, or capital allocation actions that matter for a long-duration position.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "ab68a216-ec54-4a48-b398-0d1fcd5e97ef",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "If no decisive entry or invalidation has emerged after 90 days, revisit whether this remains worth tracking for this seat.",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": null,
@@ -4460,7 +4176,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-10T13:31:18.912Z",
-          "triggerCount": 7,
+          "triggerCount": 4,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -4681,39 +4397,6 @@
             },
             "rationale": "Any EPS miss would break a 4-quarter 100% beat streak — review immediately to assess whether it reflects a one-time item or thesis-level demand erosion.",
             "cooldownDays": 7
-           },
-           {
-            "id": "cad02203-c494-4dd8-a8b5-be9e6cf917a8",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "A guidance cut is the first invalidation signal — review immediately. Two consecutive guidance cuts is a hard invalidation condition.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "1e821273-0d48-4b30-80ae-1695831bc361",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "Quarterly 10-Q review: check commercial segment margin trajectory, backlog composition, PCG/Kinectrics integration progress, and government contract award cadence.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "d891a7bf-89d4-4735-af4f-a3740f4c3210",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "90-day compounder hygiene check: assess whether key assumptions (naval propulsion budget, commercial nuclear growth, FCF conversion) remain intact.",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": [
@@ -4772,7 +4455,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-07T12:04:47.388Z",
-          "triggerCount": 7,
+          "triggerCount": 4,
           "history": [],
           "needsAction": {
            "kind": "TRIGGER_FIRED",
@@ -4999,38 +4682,6 @@
             },
             "rationale": "Q2 2026 EPS miss of ≥5% signals potential demand softness or China restriction impact. Review invalidation conditions — two consecutive misses = thesis warning.",
             "cooldownDays": 7
-           },
-           {
-            "id": "4e0fd1f9-7ac4-4c04-91d2-b392e6177028",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Any downward guidance revision triggers immediate review. Two consecutive guidance cuts = automatic invalidation condition under this thesis.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "99788281-0114-4df4-8f74-da93db172b91",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "SIGNAL_TYPE",
-             "sentiment": "BEARISH",
-             "minUrgency": "HIGH",
-             "signalType": "NEWS"
-            },
-            "rationale": "High-urgency bearish news (China DUV ban escalation, EUV diversion confirmed, new export restrictions) should be reviewed immediately against invalidation conditions.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "a366ef64-f38b-458b-9c25-90d0ec15e879",
-            "action": "REVIEW",
-            "predicate": {
-             "days": 180,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "6-month COMPOUNDER hygiene check: re-evaluate High-NA ramp timeline, China revenue trajectory, and 2026 guidance progress.",
-            "cooldownDays": 144
            }
           ],
           "scalingPlan": [
@@ -5088,7 +4739,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-07T12:05:11.282Z",
-          "triggerCount": 8,
+          "triggerCount": 5,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -5265,17 +4916,6 @@
             "cooldownDays": 7
            },
            {
-            "id": "c8ded0a0-882c-4056-8079-0a0ad411e1e2",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "A guidance cut would directly pressure the multi-year compounding case and needs immediate thesis review.",
-            "cooldownDays": 7
-           },
-           {
             "id": "64bc3672-dbbb-4cef-96a5-025e7213fa58",
             "action": "ENTER",
             "fireMode": "TACTICAL",
@@ -5286,29 +4926,6 @@
             },
             "rationale": "Only re-open the entry decision if $MSFT can clear $520 after this still-extended move, which would indicate continued demand strong enough to absorb overbought conditions and build a new valid entry framework for a conviction position.",
             "cooldownDays": 1
-           },
-           {
-            "id": "24765f42-51ce-499b-8bfd-8a1b3b430428",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "Review each 10-Q for updated Azure growth, margin profile, backlog conversion, and capex digestion.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "fe42e6fe-8d2e-4277-be24-803e2a62d564",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Quarterly hygiene review for a COMPOUNDER: re-check Azure growth rate, Copilot penetration, RPO conversion pace, and margin absorption versus the standing secular claim.",
-            "lastFiredAt": "2026-08-10T14:05:22.151Z",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": null,
@@ -5353,7 +4970,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-08-03T13:31:31.616Z",
-          "triggerCount": 6,
+          "triggerCount": 3,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -5541,29 +5158,6 @@
             },
             "rationale": "Review on an earnings miss because it could signal that the analog recovery is stalling or margins are not improving as expected.",
             "cooldownDays": 7
-           },
-           {
-            "id": "c6848a3d-5df9-46b5-81d3-228abe3a2af0",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Review immediately on lower guidance because that would directly pressure the recovery narrative and could trip an invalidation condition.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "d55ad548-edd9-41f6-ad6d-c1c56751da17",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Review after 90 days if no other catalyst fires to re-underwrite the recovery thesis and valuation.",
-            "lastFiredAt": "2026-08-05T13:30:49.204Z",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": null,
@@ -5606,7 +5200,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-07-27T15:45:48.140Z",
-          "triggerCount": 5,
+          "triggerCount": 3,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -5808,52 +5402,6 @@
             },
             "rationale": "Any Q4 FY2026 earnings miss warrants a full thesis review — evaluate whether miss reflects thesis-breaking demand deceleration or a timing issue. Assess against invalidation conditions before acting.",
             "cooldownDays": 7
-           },
-           {
-            "id": "089f111e-13b2-4a62-b35f-142bb974219f",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "A guidance cut — particularly on SPC systems or advanced packaging revenue — is the first warning of potential thesis invalidation. Review against the two-consecutive-cuts invalidation condition before acting.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "a714d9e8-9451-41ec-b044-bf27d191a29c",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "Each 10-Q filing confirms or challenges the gross margin trajectory (>60% threshold), services mix growth, and China revenue exposure. Review within 48 hours of filing.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "03b5d150-0757-4ab2-b9a2-c37a99f1855e",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "SIGNAL_TYPE",
-             "sentiment": "BEARISH",
-             "minUrgency": "HIGH",
-             "signalType": "NEWS"
-            },
-            "rationale": "Breaking bearish news — export control expansion, major customer capex cut (TSMC/Samsung/Intel), or management change — requires immediate thesis review against invalidation conditions.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "7eae30e0-0747-4c25-b147-7410effd84c8",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Quarterly hygiene review: confirm advanced packaging revenue ramp on track toward $1B FY2026 target, gross margins holding above 60%, and SPC systems growth above 20% YoY.",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": null,
@@ -5896,7 +5444,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-07-31T12:04:27.846Z",
-          "triggerCount": 7,
+          "triggerCount": 3,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -6080,36 +5628,6 @@
             },
             "rationale": "Q2 2026 earnings miss or continued margin compression below 24% in Electrical Americas would challenge the margin-recovery assumption.",
             "cooldownDays": 7
-           },
-           {
-            "id": "34a582a1-91bb-4a12-b2c8-9056949e0b5b",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Any guidance cut to organic growth below 7% would signal demand softening beyond the mix-shift explanation; review against invalidation conditions.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "22e2e8c4-40cf-43e3-8102-a1944c3a7ed9",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "8-K"
-            },
-            "rationale": "Monitor 8-K filings for material Dana/Mobility RMT developments, acquisitions, or strategic pivots that affect the pure-play electrical thesis.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "4a019261-2d45-46b3-a87f-fad434fb6ed7",
-            "action": "REVIEW",
-            "predicate": {
-             "days": 365,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Annual compounder hygiene review — reassess Dana deal close, Electrical Americas margin trajectory, backlog conversion, and 3-5 year thesis health.",
-            "cooldownDays": 292
            }
           ],
           "scalingPlan": [
@@ -6167,7 +5685,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-06-15T00:00:07.356Z",
-          "triggerCount": 6,
+          "triggerCount": 3,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -6355,17 +5873,6 @@
             "cooldownDays": 7
            },
            {
-            "id": "2b901fe0-83f9-4e0b-8829-21528e4d4d75",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Guidance cut would be the primary invalidation signal — review immediately to assess whether core belief (DC revenue >$75B/quarter) is broken.",
-            "cooldownDays": 7
-           },
-           {
             "id": "5b611b6f-6df1-4f1f-9196-305c16e3fc0d",
             "action": "ENTER",
             "fireMode": "TACTICAL",
@@ -6388,29 +5895,6 @@
             },
             "rationale": "A break below the 200-day SMA would signal a major trend breakdown — review whether the COMPOUNDER thesis remains intact or warrants archiving.",
             "cooldownDays": 1
-           },
-           {
-            "id": "d4bf1f16-72e3-4283-b1fe-0d342ad60b69",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "Quarterly 10-Q filings provide segment-level detail on gross margin, CUDA software revenue progress, and geographic demand mix — review for thesis drift.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "7a660824-2d65-4887-9dbd-62a151d52751",
-            "action": "REVIEW",
-            "fireMode": "TACTICAL",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Quarterly hygiene review: rebalance check per COMPOUNDER strategy — trim if position exceeds 7% of portfolio, add if thesis intact and position below target weight.",
-            "lastFiredAt": "2026-07-27T13:30:09.165Z",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": null,
@@ -6455,7 +5939,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-05-26T03:53:14.438Z",
-          "triggerCount": 7,
+          "triggerCount": 4,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -6634,18 +6118,6 @@
             },
             "rationale": "Review immediately if $NTNX trades down to the thesis stop area; confirm whether the move reflects broad-market volatility or a thesis-specific break such as demand deterioration, gross-margin pressure, guidance cuts, or AMD partnership disappointment.",
             "cooldownDays": 1
-           },
-           {
-            "id": "7641010a-c886-4cf8-9228-01db7a03f8fb",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "SIGNAL_TYPE",
-             "sentiment": "BEARISH",
-             "minUrgency": "MEDIUM",
-             "signalType": "EARNINGS"
-            },
-            "rationale": "Review any bearish earnings signal against invalidation conditions: ACV growth below 5% for two consecutive quarters, gross margin below 78%, EPS miss >10%, or FY2026 revenue guidance cut >5%.",
-            "cooldownDays": 1
            }
           ],
           "scalingPlan": null,
@@ -6688,7 +6160,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-06-23T13:07:05.285Z",
-          "triggerCount": 3,
+          "triggerCount": 2,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -6894,48 +6366,6 @@
             },
             "rationale": "Any earnings miss warrants a review to assess whether it reflects Electric Boat cost overruns, Gulfstream demand weakness, or only delivery timing.",
             "cooldownDays": 7
-           },
-           {
-            "id": "4dfd9570-4811-4ba5-9f30-d53da551f0a0",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Guidance cut is one of the key invalidation conditions. Review immediately to assess whether the cut represents the first of two consecutive cuts or a one-off adjustment.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "d25716f3-b9e7-46d4-bd30-8df1f6803741",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "Quarterly 10-Q filing review: check backlog growth, Marine Systems margin, Gulfstream orders, and Electric Boat delivery schedule commentary.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "12774654-a819-4c01-a6bf-f412c84a0962",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "SIGNAL_TYPE",
-             "sentiment": "BEARISH",
-             "minUrgency": "HIGH",
-             "signalType": "NEWS"
-            },
-            "rationale": "High-urgency bearish news — particularly around defense budget cuts, AUKUS cancellation, or Electric Boat program delays — warrants immediate thesis review.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "cfef4b07-2939-4e99-8cd8-4e030513299d",
-            "action": "REVIEW",
-            "predicate": {
-             "days": 180,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Semi-annual hygiene review for this COMPOUNDER thesis. Assess Electric Boat ramp, AUKUS formalization, and Pentagon budget trajectory.",
-            "cooldownDays": 144
            }
           ],
           "scalingPlan": null,
@@ -6978,7 +6408,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-06-12T15:16:15.433Z",
-          "triggerCount": 8,
+          "triggerCount": 4,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -7139,18 +6569,6 @@
             },
             "rationale": "Reconsider scaled entry only once $VST regains the 50-day moving average, confirming the setup is no longer the same marginal below-trend accumulation fire.",
             "cooldownDays": 1
-           },
-           {
-            "id": "92bf17bb-4e68-4239-a343-bc290d71da0e",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "SIGNAL_TYPE",
-             "sentiment": "BULLISH",
-             "minUrgency": "HIGH",
-             "signalType": "NEWS"
-            },
-            "rationale": "Review promptly if material Helix/datacenter contracted revenue, capacity-market upside, or capital-allocation evidence improves the compounder score enough to clear the entry threshold.",
-            "cooldownDays": 1
            }
           ],
           "scalingPlan": [
@@ -7208,7 +6626,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-06-12T15:36:22.695Z",
-          "triggerCount": 2,
+          "triggerCount": 1,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -7401,36 +6819,6 @@
             },
             "rationale": "Price below $850 warrants re-evaluation: assess whether drawdown is technical or fundamental (guidance cut, order slowdown), and whether to add on confirmed weakness or abandon watch.",
             "cooldownDays": 1
-           },
-           {
-            "id": "af07c7da-3605-4a72-8dc4-a2606ad494a9",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "10-Q"
-            },
-            "rationale": "10-Q filing provides quarterly backlog, segment margin, and FCF data — validate Electrification backlog growth, Wind loss narrowing, and consolidated EBITDA margin tracking consensus expansion path.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "6237b5fb-5e23-4276-a4c3-21f1855af2e9",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Any revenue or FCF guidance cut is a thesis-alerting event — two consecutive guidance cuts are an invalidation condition; a single cut warrants immediate re-evaluation of entry decision.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "45b8b286-c515-403d-959e-2a4533009cef",
-            "action": "REVIEW",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "90-day hygiene review: confirm order intake above $12B/quarter, Wind losses on path to improvement, and Electrification datacenter orders sustaining above FY2025 run-rate.",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": null,
@@ -7473,7 +6861,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-06-12T15:28:50.846Z",
-          "triggerCount": 5,
+          "triggerCount": 2,
           "history": [],
           "needsAction": null,
           "resolved": {
@@ -7675,36 +7063,6 @@
             },
             "rationale": "EPS miss >5% on a quarter where Ansys synergies should be visible is a potential invalidation signal — review thesis against integration execution data before any position action.",
             "cooldownDays": 7
-           },
-           {
-            "id": "a463d236-6396-4120-a54e-b6d3e43bc055",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "FILING",
-             "formType": "8-K"
-            },
-            "rationale": "Any material 8-K (guidance change, restructuring update, regulatory filing) warrants immediate thesis review given active integration period.",
-            "cooldownDays": 1
-           },
-           {
-            "id": "41f00f18-7145-40e5-9354-9612b55e3835",
-            "action": "REVIEW",
-            "predicate": {
-             "kind": "GUIDANCE_CHANGE",
-             "direction": "DOWN"
-            },
-            "rationale": "Downward guidance revision would signal Ansys integration costs or EDA demand is worse than expected — review for potential status change to ARCHIVED.",
-            "cooldownDays": 7
-           },
-           {
-            "id": "634d0502-4e16-4605-8f26-ee2f122e4105",
-            "action": "REVIEW",
-            "predicate": {
-             "days": 90,
-             "kind": "TIME_ELAPSED"
-            },
-            "rationale": "Quarterly hygiene review — confirm Ansys synergy targets still on track, check organic EDA growth rate, and re-evaluate entry conditions vs current price level.",
-            "cooldownDays": 72
            }
           ],
           "scalingPlan": [
@@ -7758,7 +7116,7 @@
           "paperRealizedPnl": null,
           "paperReviewCount": null,
           "researchUpdatedAt": "2026-05-26T04:00:49.681Z",
-          "triggerCount": 6,
+          "triggerCount": 3,
           "history": [],
           "needsAction": null,
           "resolved": {
