@@ -15,8 +15,11 @@
  * conversation, which is what the decision rests on). For a trigger run the
  * stock's details are read as they are today; the fired trigger is looked up
  * by the id the run recorded, and a trigger removed since is reported so the
- * case can be finished by hand. `what`, `lookFor` and `expect` are left for
- * the person writing the case.
+ * case can be finished by hand. The kickoff is not stored as text either:
+ * hero-case.ts rebuilds it with today's builder from the fired trigger and
+ * `promptArgs.kickoff.extras`, the day's facts after the trigger's sentence,
+ * read here off the recorded kickoff. `what`, `lookFor` and `expect` are left
+ * for the person writing the case.
  */
 import { writeFileSync } from "fs";
 import { prisma } from "@/lib/prisma";
@@ -28,6 +31,9 @@ import { promptConfigFromAnalyst } from "@/lib/inngest/functions/morning-researc
 import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import { kickoffExtras } from "@/lib/agent/system-prompts/tactical-kickoff";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { getThesisBearCaseBullets, getThesisBullCaseBullets, getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 
 const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
@@ -98,7 +104,10 @@ async function main() {
     const trigger = ladder.find((t: { id: string }) => t.id === triggerId) ?? null;
     if (!trigger) notes.push(`the fired trigger ${triggerId} is no longer on the stock — put it back by hand in promptArgs.trigger and promptArgs.thesis.allTriggers`);
     const position = await prisma.position.findFirst({ where: { analystId: analyst.id, symbol: ticker, status: "OPEN" }, select: { quantity: true, avgCost: true, openedAt: true, peakPrice: true } });
-    const firedPrice = (() => { const u = messages[0]; const text = Array.isArray(u?.content) ? u.content.map((p) => p.text ?? "").join(" ") : String(u?.content ?? ""); const m = text.match(/fired at \$([\d.]+)/); return m ? Number(m[1]) : null; })();
+    const recordedKickoff = (() => { const u = messages[0]; return Array.isArray(u?.content) ? u.content.map((p) => p.text ?? "").join("") : String(u?.content ?? ""); })();
+    const firedPrice = (() => { const m = recordedKickoff.match(/fired at \$([\d.]+)/); return m ? Number(m[1]) : null; })();
+    const extras = trigger ? kickoffExtras(recordedKickoff, ticker, sentenceOf(trigger as Trigger)) : null;
+    if (extras == null) notes.push("the recorded kickoff does not match the fired trigger's sentence today: set promptArgs.kickoff.extras by hand to the text between the sentence and \"Validate, decide\"");
     promptArgs = {
       analyst: { name: analyst.name, mandate: analyst.analystPrompt },
       thesis: {
@@ -114,6 +123,7 @@ async function main() {
       latestDigest: null,
       fired: { price: firedPrice, coFired: [] },
       capacity: null,
+      kickoff: { extras: extras ?? "" },
     };
     notes.push("promptArgs.thesis and context are the stock as it is today; check them against the run's day.");
   } else if (run.mode === "PRINCIPAL_CHAT") {
