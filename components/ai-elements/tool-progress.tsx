@@ -12,6 +12,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { StockLogo } from "@/components/StockLogo";
 import {
   ChevronRightIcon,
   DotIcon,
@@ -160,22 +161,14 @@ export const ToolProgressTickerItem = memo(
         className={cn("flex items-start gap-2 text-sm text-muted-foreground", className)}
         {...props}
       >
+        {/* The app's one ticker avatar. This used to be its own <img> with its
+            own fallback: hide the image and add a `fallback-dot` class — a
+            class that is defined nowhere, so a ticker the logo vendor doesn't
+            have ($NVNI, $BTM and $QTEX all 404) rendered as an empty gap.
+            StockLogo falls back to the ticker's initial on the same muted
+            square every other surface uses. */}
         <div className="relative size-4 shrink-0 mt-0.5 flex items-center justify-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`https://assets.parqet.com/logos/symbol/${ticker}`}
-            alt=""
-            width={16}
-            height={16}
-            className="size-4 rounded-full"
-            loading="lazy"
-            onError={(e) => {
-              // Fall back to dot on logo load failure
-              const el = e.target as HTMLImageElement;
-              el.style.display = "none";
-              el.parentElement?.classList.add("fallback-dot");
-            }}
-          />
+          <StockLogo ticker={ticker} size="xs" />
           {overlay && (
             <span
               className={cn(
