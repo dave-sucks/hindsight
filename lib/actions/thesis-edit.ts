@@ -37,6 +37,7 @@ import {
 } from "@/lib/agent/triggers/ops";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { KEEP_IT_REMOVED } from "@/lib/agent/stock-context";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export interface ThesisEditContext {
@@ -517,7 +518,7 @@ export async function applyTriggerDelete(
       }
       return {
         summary: `You removed a trigger on ${thesis.ticker}: ${what}`,
-        rationale: `You removed this trigger: ${what}. Don't add it back unless the thesis changes.`,
+        rationale: `You removed this trigger: ${what}. ${KEEP_IT_REMOVED}`,
       };
     },
   );

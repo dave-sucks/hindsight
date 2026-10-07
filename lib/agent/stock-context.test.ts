@@ -4,6 +4,7 @@
  * how the principal's decisions read. Rows are CEG's and DOCU's, as stored.
  */
 import raw from "@/lib/agent/__fixtures__/ceg-what-was-said-2026-09.json";
+import abtRaw from "@/lib/agent/__fixtures__/abt-hand-removal-2026-10-06.json";
 import {
   newestNotes,
   buildStockContext,
@@ -105,12 +106,16 @@ describe("the principal's decisions, as read", () => {
     expect(principalDecision(docu, 68.18)).toMatchObject({ line: "Approved the buy, cut from 162 to 120 shares at $68.18", wantsAnswer: true });
   });
 
-  it("nothing to decide is not shown: a plain approval, a removal-only hand edit", () => {
+  it("nothing to decide is not shown: a plain approval, the cleanup of copied rules", () => {
     expect(principalDecision(rows.find((r) => r.type === "PROPOSAL_APPROVED")!)).toBeNull();
-    expect(principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!)).toBeNull();
     for (const r of rows.filter((x) => x.summary?.startsWith("Removed a copied rule from CEG"))) {
       expect(principalDecision(r)).toBeNull();
     }
+  });
+
+  it("a removal by hand is a decision, and says it stays removed (CEG 09-15)", () => {
+    const d = principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!);
+    expect(d).toMatchObject({ wantsAnswer: true, line: "Set by hand: Removed: Trailing 8% from high → exit. Don't add it back unless the thesis changes." });
   });
 
   it("a level set by hand shows only the change, not the app's own sentence", () => {
@@ -206,5 +211,33 @@ describe("notes (lib/agent/notes.ts)", () => {
     const older = buildStockContext({ ticker: "DOCU", rows: [note("p", 10, "Starter only."), answer], labelFor: () => null, now: at(15) });
     expect(older.unansweredDecision).toBeNull();
     expect(older.text).toContain("Starter only.");
+  });
+});
+
+// ABT 2026-10-06: the principal added a buy above $100.60 (15:42 ET), changed
+// it (15:45), removed it (16:15) and added a review above $10 (17:12). The
+// 10-07 morning run read the add and the change, never the removal, and set a
+// buy at $100.60 again. Rows as stored; the run saw ABT at $98.50.
+describe("a removal by hand reaches the next run (ABT 10-07)", () => {
+  const abt = abtRaw as unknown as { runs: { morning1007: { readAt: string; price: number } }; updates: StoredRow[] };
+  const abtRows: ActivityRow[] = abt.updates.map((r) => ({ ...r, timestamp: new Date(r.timestamp) }));
+  const { readAt, price } = abt.runs.morning1007;
+  const { text, unansweredDecision } = buildStockContext({ ticker: "ABT", rows: abtRows, labelFor: () => null, now: new Date(readAt), currentPrice: price });
+
+  it("the removal is listed between the change and the review, with what it asks", () => {
+    expect(text).toContain(
+      [
+        "Since then, not yet answered:",
+        "  The principal, 10-06 17:12: Set by hand: Added: Review if above $10 at $97.50, now $98.50 (+1.0%)",
+        "  The principal, 10-06 16:15: Set by hand: Removed: Buy if below 6% from the close 5 days ago at $97.50, now $98.50 (+1.0%). Don't add it back unless the thesis changes.",
+        "  The principal, 10-06 15:45: Set by hand: Changed: Buy if above $100.60 → Buy if below 6% from the close 5 days ago at $97.50, now $98.50 (+1.0%)",
+        "  The principal, 10-06 15:42: Set by hand: Added: Buy if above $100.60 at $97.50, now $98.50 (+1.0%)",
+      ].join("\n"),
+    );
+  });
+
+  it("the other three lines read as the run saw them; the newest decision still leads", () => {
+    expect(text).toMatch(/^WHAT'S BEEN SAID ON \$ABT\nLast look: morning run, 10-05 08:04 — "ABT is already out on a protective stop/);
+    expect(unansweredDecision?.line).toBe("Set by hand: Added: Review if above $10 at $97.50, now $98.50 (+1.0%)");
   });
 });
