@@ -62,8 +62,8 @@ export interface TacticalSituationArgs {
 /**
  * What this fire brings that the stock's brief does not, one paragraph each,
  * only when it applies: the fired price and the trigger's id, the fire line
- * on a give-back fire, the analyst's room on a buy, old research, a declined
- * buy, yesterday's digest. What to do about a sale is its playbook. They ride
+ * on a give-back fire, the analyst's room on a buy, old research, yesterday's
+ * digest. What to do about a sale, a buy or an add is its playbook. They ride
  * in the kickoff (tactical-kickoff.ts) so the system prompt is the job alone
  * and the same for every fire.
  */
@@ -110,11 +110,6 @@ export function tacticalSituation(args: TacticalSituationArgs): string[] {
     out.push(
       `⚠ Research is ${thesis.researchAge.freshness === "missing" ? "MISSING (never written)" : `${thesis.researchAge.daysOld} days STALE (horizon threshold ${thesis.researchAge.horizonThreshold ?? "n/a"}d)`}. Act on the trigger anyway; the daily run handles the refresh. The bull/bear case + the read on the current quote + the trigger's declared action is enough to validate or override. If the bear-case bullets have come true since the research was written, that's a REVIEW outcome (write update_thesis with the invalidation reason).`,
     );
-  }
-
-  // A buy has the buy-arrives playbook, which carries this; an add has none yet.
-  if (trigger.action === "ADD") {
-    out.push("If the principal declined this same buy and nothing they named has changed, say so and pass.");
   }
 
   if (latestDigest?.narrative) {
@@ -200,47 +195,6 @@ DECISION FRAMEWORK
    - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). Say in the note what you did instead of the trigger's action, and why.
-
-   **ADD on a HELD position (scale-in / press) — press / hold / take, not an
-   auto-buy.** When the fired action is ADD and the thesis is already HOLDING
-   (scaling an existing position, NOT a WATCHING→HOLDING entry), re-underwrite
-   before you buy. Which checklist applies depends on WHY the trigger fired —
-   the predicate and its rationale tell you (a +% up-move vs a −% down-move):
-
-     • **Strength fire (price UP / breakout).** Press only if the move is
-       thesis-CONFIRMING: the catalyst is playing out, estimates or analyst
-       targets are rising, structure is healthy (new high after a pause, above
-       a rising SMA), and it is NOT an exhaustion chase (not already extended
-       far intraday, RSI not a blow-off). If confirmed and R/R to a justified
-       target still holds: manage_position(add_to_position) — the tool sizes
-       the add (half the entry's risk, capped by the largest trade and the most
-       in one stock; you name no amount) — then update_thesis to raise the target
-       and manage_position(move_stop_to_breakeven or update_targets)
-       to raise the stop under the bigger position. If it's an exhaustion spike,
-       do NOT add — hold or trim.
-
-     • **Pullback fire (price DOWN).** The make-or-break question is WHY it
-       dropped. Pull get_market_context (SPY / sector) AND get_stock_data
-       (news). Add ONLY if the drop is MARKET- or SECTOR-WIDE with the thesis
-       intact — no guidance cut, no estimate cuts, no broken catalyst, no
-       company-specific bad headline — and price holds a logical support. Then
-       manage_position(add_to_position) at the discount. If the drop is
-       COMPANY-SPECIFIC (bad news, a broken assumption), do NOT add: that is
-       thesis damage, not a gift — hold, TRIM, or EXIT per the damage. Adding
-       into company-specific weakness is the averaging-into-a-loser trap.
-
-     • **Hold / take (either direction).** If there is no fresh edge to press,
-       do nothing risk-increasing — but "hold" still means protecting what the
-       position has EARNED: raise the stop under a real share of the gain via
-       manage_position(update_targets), set beneath structure (recent swing
-       low, breakout level). Breakeven is the floor of acceptable, not the
-       goal — a +20% winner floored at breakeven round-trips its entire win.
-       If momentum is exhausting or R/R is now poor,
-       manage_position(partial_close) to bank part, or close_position.
-
-   An add needs what a buy needs: the live quote still confirms, and no
-   headline contradicts it. Every add and target-raise is
-   approval-gated — you propose, the principal approves.
 
 3. If validation FAILS:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty

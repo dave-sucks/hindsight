@@ -10,10 +10,11 @@ import type { StockRow } from "@/lib/agent/stock-brief";
 import type { Playbook } from "./types";
 import { protectiveSale } from "./protective-sale";
 import { buyArrives } from "./buy-arrives";
+import { addOrWinner } from "./add-or-winner";
 
 export type { Playbook } from "./types";
 
-export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives];
+export const PLAYBOOKS: readonly Playbook[] = [protectiveSale, buyArrives, addOrWinner];
 
 export function playbooksForRow(row: StockRow): string[] {
   return PLAYBOOKS.filter((p) => p.appliesToRow(row)).map((p) => p.key);

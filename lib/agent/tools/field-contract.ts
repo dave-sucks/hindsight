@@ -77,7 +77,10 @@ const RULE_DEFS = {
   LEVEL_ORDER: {
     says: "Entry, target and stop sit in order against each other and the live price (long: stop < entry < target).",
     refusal: "invalid_thesis_shape — names the three levels and which is out of order.",
-    markers: { daily: "target/stop", tactical: "R/R", discovery: "in order", chat: "target/stop", writer: "R/R" },
+    // The trigger run's text never stated the order: its marker matched "R/R
+    // to a justified target" in the add text, which is now the add-or-winner
+    // playbook. The refusal names the three levels and which is out of order.
+    markers: { daily: "target/stop", discovery: "in order", chat: "target/stop", writer: "R/R" },
   },
   EVENT_DATE: {
     says: "The event date is the company's newest statement. A filing fills a missing date; a disagreement is written on the row, never overwritten.",

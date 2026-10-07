@@ -11,7 +11,7 @@ describe("the playbooks", () => {
   it("each is under its cap, in five parts, with no bold or capitals warnings", () => {
     for (const p of PLAYBOOKS) {
       expect(p.text.length).toBeLessThanOrEqual(p.cap);
-      for (const part of ["When:", "Answer, in order:", "What you can do:", "Answered:", "Mistakes:"]) expect(p.text).toContain(part);
+      for (const part of ["When:", "Answer, in order:", "What you can do", "Answered:", "Mistakes:"]) expect(p.text).toContain(part);
       expect(p.text).not.toMatch(/\*\*|⚠|[A-Z]{4,} [A-Z]{4,}/);
     }
   });
@@ -61,5 +61,23 @@ describe("buy arrives: when it attaches", () => {
   it("a trigger run carries it for a buy on a stock we don't hold", () => {
     expect(playbookForFire({ action: "ENTER", held: false })?.key).toBe("buy-arrives");
     expect(playbookForFire({ action: "ENTER", held: true })).toBeNull();
+  });
+});
+
+describe("add or winner: when it attaches", () => {
+  it("a held stock whose lead flag is a fired or matching add, or that has come three quarters of the way to its target", () => {
+    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", action: "ADD" } }))).toEqual(["add-or-winner"]);
+    expect(playbooksForRow(row({ needsAction: null, resolved: { progressToTarget: 0.75 } }))).toEqual(["add-or-winner"]);
+    expect(playbooksForRow(row({ needsAction: null, resolved: { progressToTarget: 1.4 } }))).toEqual(["add-or-winner"]);
+  });
+  it("not short of the mark, not a watched stock", () => {
+    expect(playbooksForRow(row({ needsAction: null, resolved: { progressToTarget: 0.74 } }))).toEqual([]);
+    expect(playbooksForRow(row({ status: "WATCHING", needsAction: { kind: "TRIGGER_FIRED", action: "ADD" } }))).toEqual([]);
+  });
+  it("a fired sale on a winner near its target carries both, the sale first", () => {
+    expect(playbooksForRow(row({ needsAction: { kind: "TRIGGER_FIRED", action: "EXIT" }, resolved: { progressToTarget: 0.9 } }))).toEqual(["protective-sale", "add-or-winner"]);
+  });
+  it("a trigger run carries it for an add on a stock we hold", () => {
+    expect(playbookForFire({ action: "ADD", held: true })?.key).toBe("add-or-winner");
   });
 });

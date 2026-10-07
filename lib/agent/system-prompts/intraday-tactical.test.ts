@@ -18,6 +18,7 @@ import { stockBrief } from "@/lib/agent/stock-brief";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { protectiveSale } from "@/lib/agent/playbooks/protective-sale";
 import { buyArrives } from "@/lib/agent/playbooks/buy-arrives";
+import { addOrWinner } from "@/lib/agent/playbooks/add-or-winner";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const trailTrigger: Trigger = {
@@ -178,11 +179,12 @@ describe("a declined sale is asked again", () => {
     expect(situation()).not.toContain(PASS);
     expect(system).not.toContain(PASS);
   });
-  it("a buy or add fire keeps it: a declined buy is not re-proposed unchanged (a buy through its playbook)", () => {
+  it("a buy or add fire keeps it, through its playbook: a declined buy or add is not re-proposed unchanged", () => {
     const enter: Trigger = { id: "trig_buy", predicate: { watch: "price", is: "above", value: 60 }, action: "ENTER", rationale: "Buy the breakout." };
     const add: Trigger = { ...enter, id: "trig_add", action: "ADD" };
     expect(situation({ trigger: enter, position: null })).not.toContain(PASS);
+    expect(situation({ trigger: add })).not.toContain(PASS);
     expect(buyArrives.text).toContain(PASS);
-    expect(situation({ trigger: add })).toContain(PASS);
+    expect(addOrWinner.text).toContain(PASS);
   });
 });
