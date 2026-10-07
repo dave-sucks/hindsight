@@ -8,7 +8,7 @@
 import { planLine, priceLine, scoreLine, stockBrief, stockLine, type StockRow } from "@/lib/agent/stock-brief";
 
 const floor = { id: "t_floor", action: "EXIT", predicate: { watch: "price", is: "below", value: 287.3 }, rationale: "Under the reclaimed 200-day.", cooldownDays: 1, lastFiredAt: "2026-10-01T14:00:00Z", source: "AGENT" };
-const target = { id: "t_target", action: "REVIEW", predicate: { watch: "price", is: "above", value: 360 }, rationale: "The target.", source: "USER" };
+const target = { id: "t_target", action: "REVIEW", predicate: { watch: "price", is: "above", value: 360 }, rationale: "The target.", source: "PRINCIPAL" };
 const trail = { id: "a_trail", level: "ANALYST", action: "EXIT", predicate: { watch: "move", is: "below", value: 25, variable: "peak" }, rationale: "The analyst's only automatic sale." };
 
 /** A held stock as get_theses records it live. */
@@ -116,7 +116,15 @@ describe("stockBrief — a stock in full", () => {
     const b = stockBrief(held(), { named: false });
     expect(b.triggers).toEqual([
       { id: "t_floor", says: "Sell if below $287.30", rationale: "Under the reclaimed 200-day." },
-      { id: "t_target", says: "Review if above $360", rationale: "The target.", setBy: "USER" },
+      { id: "t_target", says: "Review if above $360", rationale: "The target.", setBy: "PRINCIPAL" },
+    ]);
+  });
+
+  it("ABT 10-07: the review the principal added by hand keeps its marker, as main's read carried it", () => {
+    const fromRead = { id: "4503a4f5-f854-41df-aed3-3913027d5650", says: "Review if above $10", rationale: "Review if above $10. You set this.", cooldownDays: 1, setBy: "PRINCIPAL" };
+    const b = stockBrief({ id: "cmspld5md000504l72u7ft9ve", ticker: "ABT", status: "WATCHING", direction: "LONG", triggers: [fromRead] }, { named: false });
+    expect(b.triggers).toEqual([
+      { id: "4503a4f5-f854-41df-aed3-3913027d5650", says: "Review if above $10", rationale: "Review if above $10. You set this.", setBy: "PRINCIPAL" },
     ]);
   });
 

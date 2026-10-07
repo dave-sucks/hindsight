@@ -180,7 +180,7 @@ function triggerEntry(t: unknown, sells: boolean, setOn?: string): Obj | null {
     says: worded.says,
     ...(setOn ? { setOn } : worded.rationale ? { rationale: worded.rationale } : {}),
     ...(worded.firesDirectly ? { firesDirectly: true } : {}),
-    ...(worded.setBy === "USER" ? { setBy: "USER" } : {}),
+    ...(worded.setBy === "PRINCIPAL" ? { setBy: "PRINCIPAL" } : {}),
   };
 }
 
