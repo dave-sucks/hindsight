@@ -41,7 +41,7 @@ const held = (): Row => ({
   ],
   inheritedTriggers: [
     { id: "a_trail", says: "Sell if 12% below the high since we bought", rationale: "Protect the gain.", level: "ANALYST" },
-    { id: "acct_filing", says: "Review if it files something material with the SEC", level: "ACCOUNT", lastFiredAt: "2026-10-01T13:00:00.000Z" },
+    { id: "acct_filing", says: "Review if it files something material with the SEC", rationale: "Read the filing first.", level: "ACCOUNT", lastFiredAt: "2026-10-01T13:00:00.000Z" },
   ],
   triggerCount: 4,
   needsAction: { kind: "TRIGGER_FIRED", triggerId: "t_floor", action: "EXIT", repeatLine: "This sale has fired 3 days running." },
@@ -114,8 +114,8 @@ describe("the short row", () => {
     expect(row.triggers).toEqual([
       'Sell if below $40.80 · fired 10-07 10:40 ET · set by the agent · "Under the breakout shelf." [id t_floor]',
       'Review if above $47 · set by hand · "The objective." [id t_target]',
-      "Sell if 12% below the high since we bought · inherited (the analyst's rule) [id a_trail]",
-      "Review if it files something material with the SEC · inherited (the account's rule) · fired 10-01 09:00 ET [id acct_filing]",
+      "Sell if 12% below the high since we bought · inherited [id a_trail]",
+      'Review if it files something material with the SEC · inherited · fired 10-01 09:00 ET · "Read the filing first." [id acct_filing]',
     ]);
     expect(row.belief).toBe("IOT drifts to $47 within 60 days.");
     expect(row.assumptions).toEqual(["ARR customers grow 38%", "Revisions continue up"]);

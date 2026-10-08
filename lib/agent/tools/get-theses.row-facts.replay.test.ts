@@ -99,7 +99,7 @@ describe("get_theses — the facts on the saved row", () => {
     const triggers = modelRow.triggers as string[];
     expect(triggers).toHaveLength(2);
     expect(triggers[0]).toMatch(/^Sell if below \$95.* \[id floor-aaa\]$/);
-    expect(triggers[1]).toMatch(/^Review every 7 days · inherited \(the analyst's rule\) \[id analyst-clock\]$/);
+    expect(triggers[1]).toMatch(/^Review every 7 days · inherited \[id analyst-clock\]$/);
   });
 
   it("a quiet row goes through the builder as one line", async () => {

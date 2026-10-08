@@ -147,7 +147,12 @@ function whoSet(setBy: string | undefined): string | null {
   }
 }
 
-/** Every rule on the stock as a sentence with its id: the stock's own, then the ones it inherits, marked. */
+/**
+ * Every rule on the stock as a sentence with its id: the stock's own, each
+ * with its reason, then the ones it inherits, marked. An inherited rule's
+ * reason is the analyst's or the account's standing text and would repeat on
+ * every stock of theirs, so it travels only on a rung that fired.
+ */
 function triggerLines(row: Row): string[] {
   const own = list<TriggerLine>(row.triggers).map((t) => {
     const fired = date(t.lastFiredAt);
@@ -157,8 +162,9 @@ function triggerLines(row: Row): string[] {
   });
   const inherited = list<TriggerLine>(row.inheritedTriggers).map((t) => {
     const fired = date(t.lastFiredAt);
-    const whose = t.level === "ACCOUNT" ? "the account's rule" : "the analyst's rule";
-    return [t.says ?? "", `inherited (${whose})`, fired ? `fired ${etStamp(fired)}` : null].filter(Boolean).join(" · ") + ` [id ${t.id}]`;
+    return [t.says ?? "", "inherited", fired ? `fired ${etStamp(fired)}` : null, fired && t.rationale ? `"${stripSourceTags(t.rationale)}"` : null]
+      .filter(Boolean)
+      .join(" · ") + ` [id ${t.id}]`;
   });
   return [...own, ...inherited];
 }
