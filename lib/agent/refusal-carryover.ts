@@ -25,6 +25,45 @@ export interface OpenRefusal {
   detail: string | null;
   runId: string | null;
   createdAt: Date;
+  gateCode?: string | null;
+  /** How many identical refusals this line stands for (owedRefusals). */
+  count?: number;
+}
+
+/**
+ * Gates that refuse a field, not a call, since update_thesis became a patch
+ * (#808): the rest of the call lands and no refusal row is written, so an
+ * open row with one of these codes is history, never owed work. The four
+ * trigger runs that failed on 10-07 and 10-08 left 31 such rows, and the next
+ * runs opened with them — NVDA's ten times over, with "call record_thesis",
+ * a tool the morning run doesn't have.
+ */
+export const NO_LONGER_OWED: ReadonlySet<string> = new Set([
+  "direction_change_only_from_pending",
+  "watching_transition_from_non_promoted",
+  "terminate_active_without_close",
+  "conviction_rationale_required",
+  "goalpost_moving_blocked",
+  "no_live_price",
+  "thesis_writer_cannot_change_promoted_status",
+  "promoted_thesis_illegal_transition",
+  "promoted_thesis_requires_resolution",
+]);
+
+/**
+ * The refusals still owed, each once: rows whose gate no longer refuses a
+ * call are dropped, and identical ones (same tool, same stock, same gate)
+ * become one line carrying the count and the latest date.
+ */
+export function owedRefusals(rows: OpenRefusal[]): OpenRefusal[] {
+  const byKey = new Map<string, OpenRefusal>();
+  for (const r of rows) {
+    if (r.gateCode && NO_LONGER_OWED.has(r.gateCode)) continue;
+    const key = `${r.tool}|${r.thesisId ?? r.ticker ?? ""}|${r.gateCode ?? r.summary}`;
+    const seen = byKey.get(key);
+    byKey.set(key, seen ? { ...(r.createdAt >= seen.createdAt ? r : seen), count: (seen.count ?? 1) + 1 } : { ...r, count: 1 });
+  }
+  return [...byKey.values()];
 }
 
 /** The tool's name in product words. */
@@ -49,7 +88,8 @@ const subjectOf = (r: OpenRefusal): string =>
 /** One refusal as a line: "Buy on $PLTR — refused: …". */
 export function describeRefusal(r: OpenRefusal): string {
   const subject = subjectOf(r);
-  return `${describeRefusalTool(r.tool)}${subject ? ` on ${subject}` : ""} (${r.tool}) — refused: ${reasonOf(r)}`;
+  const times = (r.count ?? 1) > 1 ? ` (${r.count} times)` : "";
+  return `${describeRefusalTool(r.tool)}${subject ? ` on ${subject}` : ""} (${r.tool}) — refused${times}: ${reasonOf(r)}`;
 }
 
 /**

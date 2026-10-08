@@ -1175,7 +1175,7 @@ export const updateThesis = defineTool({
             if (pos) {
               const rows = await prisma.order.findMany({
                 where: { positionId: pos.id, ...declinedSaleWhere(new Date()) },
-                select: { createdAt: true, rejectionMessage: true },
+                select: { createdAt: true, rejectionMessage: true, status: true, expiresAt: true, updatedAt: true },
               });
               // The SAME question the work list asks, including "is the
               // price still past the line". Without the breach test the

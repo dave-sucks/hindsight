@@ -1,5 +1,6 @@
 "use server";
 
+import { NO_LONGER_OWED } from "@/lib/agent/refusal-carryover";
 import { prisma } from "@/lib/prisma";
 import { describeRefusalTool } from "@/lib/agent/gate-rejections";
 import { attemptOutcomes, TRADE_TOOLS } from "@/lib/portfolio/attempt-outcomes";
@@ -1394,6 +1395,8 @@ export async function getDashboardData(
         analystId: { in: analystIds },
         resolvedAt: null,
         createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
+        // A gate that refuses a field now writes no row; its old rows are history, not open work.
+        OR: [{ gateCode: null }, { gateCode: { notIn: [...NO_LONGER_OWED] } }],
       },
       orderBy: { createdAt: "desc" },
       take: 20,

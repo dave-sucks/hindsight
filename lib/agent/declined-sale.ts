@@ -108,7 +108,20 @@ export function declinedSaleWhere(now: Date = new Date(), windowDays = DECLINED_
 export interface DeclineRow {
   createdAt: Date;
   rejectionMessage: string | null;
+  /** With these, a decline dates from when it was answered, not when the sale was proposed. */
+  status?: string | null;
+  expiresAt?: Date | null;
+  updatedAt?: Date | null;
 }
+
+/**
+ * When the proposal was answered: an expiry at its expiry time, a decline
+ * when the order last changed (the decline is that change). MU's sale was
+ * proposed 2026-10-06 and expired 10-07; the line said "most recently
+ * 2026-10-06". A row without these dates falls back to the proposal's time.
+ */
+const answeredAt = (r: DeclineRow): Date =>
+  (r.status === "EXPIRED" ? r.expiresAt : r.status === "REJECTED" ? r.updatedAt : null) ?? r.createdAt;
 
 export interface DeclineSummary {
   declineCount: number;
@@ -125,11 +138,11 @@ export interface DeclineSummary {
 export function foldDeclines(rows: DeclineRow[]): DeclineSummary | null {
   const real = rows
     .filter((r) => !isSystemicRejection(r.rejectionMessage))
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    .sort((a, b) => answeredAt(b).getTime() - answeredAt(a).getTime());
   if (real.length === 0) return null;
   return {
     declineCount: real.length,
-    lastDeclinedAt: real[0].createdAt,
+    lastDeclinedAt: answeredAt(real[0]),
     rejectMessage: real.find((r) => r.rejectionMessage)?.rejectionMessage ?? null,
   };
 }

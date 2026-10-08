@@ -47,7 +47,7 @@
 
 import { prisma } from "@/lib/prisma";
 import type { ToolContext } from "./tool-context";
-import { describeRefusalTool, type OpenRefusal } from "./refusal-carryover";
+import { describeRefusalTool, owedRefusals, type OpenRefusal } from "./refusal-carryover";
 
 export { describeRefusalTool, type OpenRefusal };
 
@@ -202,7 +202,7 @@ export async function resolveGateRejections(opts: {
 }
 
 const OPEN_SELECT = {
-  id: true, tool: true, ticker: true, thesisId: true, summary: true, detail: true, runId: true, createdAt: true,
+  id: true, tool: true, ticker: true, thesisId: true, summary: true, detail: true, runId: true, createdAt: true, gateCode: true,
 } as const;
 
 /**
@@ -212,11 +212,13 @@ const OPEN_SELECT = {
  */
 export async function listOpenRefusalsForRun(runId: string): Promise<OpenRefusal[]> {
   try {
-    return await prisma.gateRejection.findMany({
-      where: { runId, resolvedAt: null, tool: { not: "complete_run" } },
-      orderBy: { createdAt: "asc" },
-      select: OPEN_SELECT,
-    });
+    return owedRefusals(
+      await prisma.gateRejection.findMany({
+        where: { runId, resolvedAt: null, tool: { not: "complete_run" } },
+        orderBy: { createdAt: "asc" },
+        select: OPEN_SELECT,
+      }),
+    );
   } catch (err) {
     console.warn("[gate-rejections] listOpenRefusalsForRun failed:", err instanceof Error ? err.message : err);
     return [];
@@ -226,16 +228,18 @@ export async function listOpenRefusalsForRun(runId: string): Promise<OpenRefusal
 /** The analyst's open refusals from the last `days` — what the next run is told. */
 export async function listOpenRefusalsForAnalyst(analystId: string, days = 7): Promise<OpenRefusal[]> {
   try {
-    return await prisma.gateRejection.findMany({
-      where: {
-        analystId,
-        resolvedAt: null,
-        tool: { not: "complete_run" },
-        createdAt: { gte: new Date(Date.now() - days * 86_400_000) },
-      },
-      orderBy: { createdAt: "asc" },
-      select: OPEN_SELECT,
-    });
+    return owedRefusals(
+      await prisma.gateRejection.findMany({
+        where: {
+          analystId,
+          resolvedAt: null,
+          tool: { not: "complete_run" },
+          createdAt: { gte: new Date(Date.now() - days * 86_400_000) },
+        },
+        orderBy: { createdAt: "asc" },
+        select: OPEN_SELECT,
+      }),
+    );
   } catch (err) {
     console.warn("[gate-rejections] listOpenRefusalsForAnalyst failed:", err instanceof Error ? err.message : err);
     return [];
