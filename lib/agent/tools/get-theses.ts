@@ -27,10 +27,11 @@ import { triggerForAgent } from "@/lib/agent/triggers/format";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { readPrice } from "@/lib/market-data/quote-age";
+import { chartFacts } from "@/lib/market-data/indicator-snapshot";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
-import { loadStockFacts } from "@/lib/agent/stock-facts";
+import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
 import {
@@ -133,12 +134,16 @@ export const getTheses = defineTool({
     const { cards, ...rest } = data;
     const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
     if (!Array.isArray(rest.theses)) return { ...result, data: rest };
-    const theses = (rest.theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, named));
+    // The one builder (step 8): a full row and a quiet row each go through
+    // rowForModel, sized; today a quiet row is itself.
+    const theses = (rest.theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, { named, size: "full" }));
+    const quiet = Array.isArray(rest.quiet_theses) ? (rest.quiet_theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, { named, size: "line" })) : rest.quiet_theses;
     return {
       ...result,
       data: {
         ...rest,
         theses,
+        ...(Array.isArray(quiet) ? { quiet_theses: quiet } : {}),
         ...(!named && input?.include_history
           ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `context` already sums up what's been said." }
           : {}),
@@ -547,6 +552,12 @@ export const getTheses = defineTool({
         // way (agents may raise, never lower); moving a line down is the
         // principal's manual act. null when no recent protective declines.
         heldThroughFloor: facts.heldThroughFloor.get(t.id) ?? null,
+        // The facts the row lacked (step 8): the open position, the orders
+        // awaiting approval, the price with the day's change, the chart
+        // numbers the trigger check reads, and the rules the stock inherits
+        // from the analyst and the account. Saved for the screen and the
+        // run; rowForModel decides what the model reads of them.
+        ...rowFacts(t, load, resolverPriceMap[t.ticker] ?? null),
       };
     });
 
@@ -787,11 +798,54 @@ export const getTheses = defineTool({
 const NOT_FOR_THE_MODEL = ["sourceSignalIds", "sourceKind", "parentThesisId", "invalidatedAt", "invalidReason", "closedAt", "closeReason", "promotedAt", "paperTenureDays", "paperRealizedPnl", "paperReviewCount"];
 
 /**
- * One full row as the model reads it (see forModel above). The screen and a
- * saved run keep the whole row.
+ * The facts a full row has carried since step 8's first pull request. The
+ * saved row keeps them; the model's read of them is the next pull request's,
+ * so until then the builder leaves them off and the read is as it was.
  */
-export function rowForModel(row: Record<string, unknown>, named: boolean): Record<string, unknown> {
+export const ROW_FACTS = ["position", "proposals", "price", "chart", "inheritedTriggers"] as const;
+
+/**
+ * The facts for one row, off the one load (work-inputs.ts). Numbers and
+ * dates, no sentences: the builder writes the words.
+ */
+function rowFacts(
+  t: { id: string; ticker: string; status: string },
+  load: StockFacts["load"],
+  currentPrice: number | null,
+): Record<(typeof ROW_FACTS)[number], unknown> {
+  const pos = load.positions.get(t.id);
+  const snap = load.indicators.get(t.ticker.toUpperCase());
+  const dayChange = load.dayChange[t.ticker];
+  return {
+    position: pos ? { quantity: pos.quantity, avgCost: pos.avgCost, openedAt: pos.openedAt, peakPrice: pos.peakPrice } : null,
+    proposals: load.proposals.get(t.id) ?? [],
+    price:
+      currentPrice != null && currentPrice > 0
+        ? { current: currentPrice, dayChangePct: typeof dayChange === "number" ? dayChange : null, asOf: load.priceAsOf[t.ticker] ?? null }
+        : null,
+    chart: snap ? chartFacts(snap, currentPrice) : null,
+    // The ladder's inherited rungs, each as its sentence with the level it
+    // comes from; the stock's own are `triggers`.
+    inheritedTriggers: (load.ladders.get(t.id) ?? [])
+      .filter((x) => ((x as { level?: string }).level ?? "THESIS") !== "THESIS")
+      .map((x) => ({ ...triggerForAgent(x, t.status === "HOLDING"), level: (x as { level?: string }).level })),
+  };
+}
+
+/** How much of a row the model reads: a quiet stock's line, a stock in a situation's short row, or the full row. */
+export type RowSize = "line" | "short" | "full";
+
+/**
+ * One row as the model reads it (see forModel above), the one builder for
+ * every size (step 8). The screen and a saved run keep the whole row.
+ * Today: "line" is the quiet row as saved; "short" and "full" are the full
+ * row as saved, less bookkeeping and the facts above.
+ */
+export function rowForModel(row: Record<string, unknown>, opts: { named: boolean; size: RowSize }): Record<string, unknown> {
+  const { named, size } = opts;
+  if (size === "line") return { ...row };
   const out: Record<string, unknown> = { ...row };
+  for (const k of ROW_FACTS) delete out[k];
   // The evaluator's fire bookkeeping for inherited triggers; the run reads
   // what fired from needsAction and context.
   delete out.triggerState;

@@ -119,6 +119,56 @@ export function liveRsi(snap: IndicatorSnapshot, price: number, period: number):
   return rsi([...snap.closes, price], period);
 }
 
+/**
+ * The chart numbers a stock's row carries (step 8): what the trigger check
+ * reads, as numbers, with the live price as today's close where a figure
+ * needs one. Null where the snapshot has nothing; the row omits nulls.
+ */
+export interface ChartFacts {
+  /** The last completed session the numbers cover (YYYY-MM-DD). */
+  asOf: string;
+  sma20: number | null;
+  sma50: number | null;
+  sma200: number | null;
+  /** RSI(14) with the live price as today's close; null without a price. */
+  rsi14: number | null;
+  /** % move from the close 5 and 20 sessions back to the live price; null without a price. */
+  move5dPct: number | null;
+  move20dPct: number | null;
+  high20: number;
+  low20: number;
+  high52w: number;
+  low52w: number;
+  volumeAvg20: number | null;
+  atr14: number | null;
+  /** Stock minus SPY return, percentage points. */
+  rsVsSpy1M: number | null;
+  rsVsSpy3M: number | null;
+}
+
+const round = (n: number | null, places: number): number | null => (n == null || !Number.isFinite(n) ? null : Math.round(n * 10 ** places) / 10 ** places);
+
+export function chartFacts(snap: IndicatorSnapshot, price: number | null): ChartFacts {
+  const priced = price != null && price > 0;
+  return {
+    asOf: snap.asOf,
+    sma20: round(snap.sma[20], 2),
+    sma50: round(snap.sma[50], 2),
+    sma200: round(snap.sma[200], 2),
+    rsi14: priced ? round(liveRsi(snap, price, 14), 0) : null,
+    move5dPct: priced ? round(movePctOverSessions(snap, price, 5), 1) : null,
+    move20dPct: priced ? round(movePctOverSessions(snap, price, 20), 1) : null,
+    high20: snap.high20,
+    low20: snap.low20,
+    high52w: snap.high52w,
+    low52w: snap.low52w,
+    volumeAvg20: snap.volumeAvg20,
+    atr14: round(snap.atr14, 2),
+    rsVsSpy1M: round(snap.rsVsSpy["1M"], 1),
+    rsVsSpy3M: round(snap.rsVsSpy["3M"], 1),
+  };
+}
+
 /** Today's volume so far ÷ the 20-session average. */
 export function volumeRatio(snap: IndicatorSnapshot, todayVolume: number | null | undefined): number | null {
   if (todayVolume == null || !snap.volumeAvg20) return null;
