@@ -422,9 +422,13 @@ Mistakes:
   },
 };
 
-/** The codes whose guidance a stock calls for: on a promoted stock, only the promotion's. */
-export function guidanceCodes(status: string, codes: readonly SituationCode[]): SituationCode[] {
-  return status === "PROMOTED" ? ["PROMOTED_AWAITING"] : [...codes];
+/** Situations whose answer needs fields the trigger run's save lacks (a setup's exits, a full commitment), so the morning run answers them. */
+const NOT_FOR_THE_TRIGGER_RUN: ReadonlySet<SituationCode> = new Set(["NO_SETUP_NAMED", "FIRST_RESEARCH"]);
+
+/** The codes whose guidance a stock calls for: on a promoted stock, only the promotion's; in a trigger run, none it can't answer. */
+export function guidanceCodes(status: string, codes: readonly SituationCode[], runMode?: string): SituationCode[] {
+  if (status === "PROMOTED") return ["PROMOTED_AWAITING"];
+  return runMode === "INTRADAY_TACTICAL" ? codes.filter((c) => !NOT_FOR_THE_TRIGGER_RUN.has(c)) : [...codes];
 }
 
 /** The guidance for these codes, each text once, in rank order. */
