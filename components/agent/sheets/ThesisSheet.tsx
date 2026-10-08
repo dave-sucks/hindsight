@@ -134,27 +134,11 @@ export type ThesisCardData = {
   /** Days between the agent's reviews; null = a plain watch (DAV-225). */
   agent_watch_days?: number | null;
   /**
-   * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
-   * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
-   * on the read-theses table row. null/undefined means no work needed.
+   * Per-thesis "needs work today" annotation set by get_theses: the lead of
+   * the stock's work list. Drives the flag on the read-theses table row.
+   * null/undefined means no work needed.
    */
-  needs_action?:
-    | {
-        kind: "TRIGGER_FIRED";
-        triggerId: string;
-        action: string;
-        summary: string;
-        firedAt: string;
-      }
-    | {
-        kind: "TRIGGER_MATCHING_NOW";
-        triggerId: string;
-        action: string;
-        predicateSummary: string;
-        livePrice: number | null;
-      }
-    | { kind: "REVIEW_DUE"; daysOverdue: number }
-    | null;
+  needs_action?: NeedsAction | null;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

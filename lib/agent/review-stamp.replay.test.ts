@@ -72,7 +72,8 @@ const LADDER = [
   },
 ];
 
-const FIRE_ROW = { type: "TRIGGER_FIRED", triggerId: ENTER_ID, timestamp: FIRED_AT, runId: REPLAY_RUN_ID, rationale: null, fieldChanges: {} };
+/** The fire, as its row in the audit table. */
+const FIRE_LINE = { id: "fire_etn", thesisId: THESIS_ID, type: "TRIGGER_FIRED", triggerId: ENTER_ID, timestamp: FIRED_AT, runId: REPLAY_RUN_ID, rationale: null, fieldChanges: {} };
 
 /** The run's own close-out call, verbatim from its thread. */
 const CLOSE_OUT = {
@@ -100,7 +101,6 @@ const etn = () =>
     createdAt: new Date("2026-06-15T00:00:07.734Z"),
     researchUpdatedAt: new Date("2026-09-03T00:03:01.301Z"),
     lastReviewedAt: new Date("2026-09-14T13:30:41.113Z"),
-    updates: [FIRE_ROW],
   });
 
 /** What it held at 09:45 — four open, all opened before the fire. */
@@ -146,10 +146,9 @@ async function closeOutThenComplete(held: Row[]) {
     const closeOut = await replayTool("update-thesis", "updateThesis", { seed, args: CLOSE_OUT, ctx: CTX, quotes: { ETN: PRICE } });
     // The double applies no column defaults; production stamps every row.
     const written = (closeOut.db.store.thesisUpdate ?? []).map((u: Row): Row => ({ ...u, timestamp: u.timestamp ?? AT }));
-    // The double joins nothing: the thesis carries its own audit lines.
-    const thesisAfter = { ...(closeOut.db.store.thesis[0] as Row), updates: [...written, FIRE_ROW] };
+    // The fire and the close-out's line, in the audit table the preflight reads.
     const complete = await replayTool("complete-run", "completeRun", {
-      seed: { ...seed, thesis: [thesisAfter], thesisUpdate: written },
+      seed: { ...seed, thesis: [closeOut.db.store.thesis[0] as Row], thesisUpdate: [...written, FIRE_LINE] },
       args: {},
       ctx: CTX,
       quotes: { ETN: PRICE },
@@ -200,7 +199,7 @@ describe("a fired buy answered by a review lets the run finish", () => {
     fakeClock(AT);
     try {
       const { result, crashed, db } = await replayTool("complete-run", "completeRun", {
-        seed: { ...seedWith(HELD), thesisUpdate: [] },
+        seed: { ...seedWith(HELD), thesisUpdate: [FIRE_LINE] },
         args: {},
         ctx: CTX,
         quotes: { ETN: PRICE },

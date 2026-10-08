@@ -8,23 +8,13 @@
  */
 
 import { z } from "zod";
-import { isProtectiveLine, shapeOf } from "@/lib/agent/triggers/condition";
+import { isProtectiveLine, reviewClockDays, shapeOf } from "@/lib/agent/triggers/condition";
+import { loadWorkInputs, type WorkContext } from "@/lib/agent/work-inputs";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
-import {
-  declinedSaleLine,
-  declinedSaleWhere,
-  declinedSaleWork,
-  foldDeclines,
-  type DeclineRow,
-  type DeclineSummary,
-} from "@/lib/agent/declined-sale";
-import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
-import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
-import { getStockQuote } from "@/lib/actions/finnhub.actions";
-import type { Trigger } from "@/lib/agent/triggers/types";
+import { declinedSaleLine } from "@/lib/agent/declined-sale";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -62,7 +52,11 @@ export const completeRun = defineTool({
       // rejections in-conversation and can recover without the run going
       // terminal. Skip for podcast segments and unscoped runs.
       if (ctx.runId && ctx.analystId && !ctx.podcastSegmentId) {
-        const preflightFailure = await runCompleteRunPreflight(ctx.runId, ctx.analystId, ctx.runMode);
+        const preflightFailure = await runCompleteRunPreflight(ctx.runId, ctx.analystId, ctx.runMode, {
+          userId: ctx.userId,
+          runEnvironment: ctx.runEnvironment,
+          alpacaCreds: ctx.alpacaCreds,
+        });
         preflightFinished = true;
         if (preflightFailure) {
           return {
@@ -399,6 +393,8 @@ async function runCompleteRunPreflight(
   runId: string,
   analystId: string,
   runMode?: string,
+  /** The run's own scope for the read the checks share (work-inputs.ts). */
+  work?: Pick<WorkContext, "userId" | "runEnvironment" | "alpacaCreds">,
 ): Promise<PreflightFailure | null> {
   // 1) Did the agent call record_run_summary?
   //
@@ -496,31 +492,7 @@ async function runCompleteRunPreflight(
   // thesis on the book to get past the gate. Observed 2026-05-20: WDAY
   // (and other stale-review theses) updated as a side effect of every
   // Tech Momentum tactical run, regardless of the actual trigger ticker.
-  type ThesisRow = {
-    id: string;
-    ticker: string;
-    direction: string;
-    status: string;
-    triggers: unknown;
-    createdAt: Date;
-    lastReviewedAt: Date | null;
-    researchUpdatedAt: Date | null;
-    horizon: string | null;
-    paperTenureDays: number | null;
-    // Prisma Decimal — typed as unknown to avoid the runtime-library import;
-    // coerced via Number() at the computeNeedsAction call site below.
-    paperRealizedPnl: unknown;
-    paperReviewCount: number | null;
-    promotedAt: Date | null;
-    updates: Array<{
-      type: string;
-      triggerId: string | null;
-      timestamp: Date;
-      runId: string | null;
-      rationale: string | null;
-      fieldChanges: unknown;
-    }>;
-  };
+  type ThesisRow = { id: string; ticker: string; direction: string; status: string };
   // Determine the in-scope thesis set based on mode. PROMOTED is included
   // alongside ACTIVE+WATCHING because PROMOTED rows ALWAYS need resolution
   // this run — the user explicitly graduated the analyst to live money and
@@ -571,36 +543,7 @@ async function runCompleteRunPreflight(
   }
   const theses = (await prisma.thesis.findMany({
     where: thesisWhereScope,
-    select: {
-      id: true,
-      ticker: true,
-      direction: true,
-      status: true,
-      triggers: true,
-      createdAt: true,
-      lastReviewedAt: true,
-      researchUpdatedAt: true,
-      horizon: true,
-      paperTenureDays: true,
-      paperRealizedPnl: true,
-      paperReviewCount: true,
-      promotedAt: true,
-      // Back to the newest line an agent wrote: a fire after it is still
-      // open work, whatever else landed on top (stock-context.ts). 40 lines
-      // reach well past the last run on every stock on the book.
-      updates: {
-        orderBy: { timestamp: "desc" },
-        take: 40,
-        select: {
-          type: true,
-          triggerId: true,
-          timestamp: true,
-          runId: true,
-          rationale: true,
-          fieldChanges: true,
-        },
-      },
-    },
+    select: { id: true, ticker: true, direction: true, status: true },
   })) as ThesisRow[];
   if (theses.length === 0) return null;
 
@@ -640,91 +583,18 @@ async function runCompleteRunPreflight(
       .map((u: { thesisId: string }) => u.thesisId),
   );
 
-  const tickerSet = new Set<string>(theses.map((t: ThesisRow) => t.ticker));
-  const quotes = new Map<string, { price: number; changePct: number }>();
-  await Promise.all(
-    Array.from(tickerSet).map(async (tk) => {
-      try {
-        const q = await getStockQuote(tk);
-        if (q && Number.isFinite(q.c) && q.c > 0) {
-          quotes.set(tk, { price: q.c, changePct: q.dp ?? 0 });
-        }
-      } catch {
-        /* missing quote → skip; computeNeedsAction handles it */
-      }
-    }),
-  );
-
-  // Anchor held-row time questions to the paired open position's openedAt for
-  // ACTIVE rows, so the gate doesn't flag a 0-day-old position's "max hold"
-  // trigger as unaddressed work just because the thesis row is old.
+  // What the read showed, from the same loader and inputs (work-inputs.ts):
+  // the resolved ladder, the position, the activity, the declined sale on
+  // the ladder's floor. A read that could not see the activity is a failed
+  // check, not "nothing fired" (DAV-332).
   const now = new Date();
-  const activeOpenedAtTickers = Array.from(
-    new Set(
-      theses
-        .filter((t) => t.status === "HOLDING")
-        .map((t) => t.ticker),
-    ),
+  const load = await loadWorkInputs(
+    theses.map((t) => t.id),
+    { ...work, analystId },
+    now,
   );
-  const positionOpenedAtByTicker = new Map<string, Date>();
-  const avgCostByTicker = new Map<string, number>();
-  // DAV-315: protective sales the principal declined, per ticker. The run
-  // may not finish while one is unanswered, so this preflight has to see
-  // the same declines `get_theses` put on the work list at the start of the
-  // run — same filter, from the same module, or the two drift and the
-  // obligation quietly stops existing.
-  const declineByTicker = new Map<string, DeclineSummary>();
-  if (activeOpenedAtTickers.length > 0) {
-    try {
-      const openPositions = await prisma.position.findMany({
-        where: {
-          analystId,
-          symbol: { in: activeOpenedAtTickers },
-          status: "OPEN",
-        },
-        select: { id: true, symbol: true, openedAt: true, avgCost: true },
-        orderBy: { openedAt: "desc" },
-      });
-      const tickerByPositionId = new Map<string, string>();
-      for (const p of openPositions) {
-        if (!positionOpenedAtByTicker.has(p.symbol)) {
-          positionOpenedAtByTicker.set(p.symbol, p.openedAt);
-          tickerByPositionId.set(p.id, p.symbol);
-          const avg = Number(p.avgCost);
-          if (Number.isFinite(avg)) avgCostByTicker.set(p.symbol, avg);
-        }
-      }
-      const positionIds = Array.from(tickerByPositionId.keys());
-      if (positionIds.length > 0) {
-        const declines = await prisma.order.findMany({
-          where: {
-            positionId: { in: positionIds },
-            ...declinedSaleWhere(now),
-          },
-          select: { positionId: true, createdAt: true, rejectionMessage: true },
-        });
-        const byPosition = new Map<string, DeclineRow[]>();
-        for (const d of declines) {
-          byPosition.set(d.positionId, [
-            ...(byPosition.get(d.positionId) ?? []),
-            { createdAt: d.createdAt, rejectionMessage: d.rejectionMessage },
-          ]);
-        }
-        for (const [posId, rows] of byPosition) {
-          const ticker = tickerByPositionId.get(posId);
-          const folded = foldDeclines(rows);
-          if (ticker && folded) declineByTicker.set(ticker, folded);
-        }
-      }
-    } catch (err) {
-      console.warn(
-        "[complete_run] open-position openedAt/decline lookup failed; falls back to createdAt:",
-        err,
-      );
-    }
-  }
+  if (load.activityFailed) throw new Error("complete_run preflight: the activity read failed, so the open fires could not be checked");
 
-  const pendingEntryTickers = await getPendingEntryTickers(analystId);
   const unaddressed: Array<{
     thesisId: string;
     ticker: string;
@@ -733,57 +603,28 @@ async function runCompleteRunPreflight(
     detail: string;
   }> = [];
   for (const t of theses) {
-    // needsAction is computed BEFORE the addressed check now: which bar
-    // applies depends on what kind of obligation this is.
-    const needsAction = computeNeedsAction({
-      thesis: {
-        id: t.id,
-        direction: t.direction,
-        status: t.status,
-        triggers: (t.triggers as unknown as Trigger[]) ?? [],
-        createdAt: t.createdAt,
-        lastReviewedAt: t.lastReviewedAt,
-        researchUpdatedAt: t.researchUpdatedAt ?? null,
-        horizon: t.horizon ?? null,
-        positionOpenedAt:
-          t.status === "HOLDING"
-            ? positionOpenedAtByTicker.get(t.ticker) ?? null
-            : null,
-        paperTenureDays: t.paperTenureDays ?? null,
-        paperRealizedPnl:
-          t.paperRealizedPnl != null ? Number(t.paperRealizedPnl) : null,
-        paperReviewCount: t.paperReviewCount ?? null,
-        promotedAt: t.promotedAt ?? null,
-      },
-      // A missing audit relation is a failed read, not "nothing fired" —
-      // read as empty it would clear every open fire in silence (DAV-332).
-      activity: Array.isArray(t.updates)
-        ? t.updates
-        : (() => {
-            throw new Error(`complete_run preflight: no audit lines loaded for thesis ${t.id}`);
-          })(),
-      latestQuote: quotes.get(t.ticker) ?? null,
-      now,
-      hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
-      // DAV-315. The floor comes from the thesis's own rungs — the same
-      // number the ratchet protects (`thesisFloorStop`). When it is null the
-      // breach can't be proven and `declinedSaleWork` keeps the obligation
-      // anyway; a preflight that can't see the floor is not evidence the
-      // principal's decline was answered.
-      declinedSale: declinedSaleWork({
-        status: t.status,
-        direction: t.direction,
-        decline: declineByTicker.get(t.ticker) ?? null,
-        floorPrice: thesisFloorStop({
-          triggers: (t.triggers as unknown as Trigger[]) ?? [],
-          direction: t.direction,
-          avgCost: avgCostByTicker.get(t.ticker) ?? null,
-        }),
-        currentPrice: quotes.get(t.ticker)?.price ?? null,
-        recentLow: null,
-        now,
-      }),
-    })[0] ?? null;
+    const input = load.inputs.get(t.id);
+    if (!input) continue;
+    // It owes what it owed before the read and the close-out shared a feed:
+    // the first kind that it could see then. A floor too far and an
+    // unprotected gain need the position and the account, which it never
+    // read; an inherited trigger true now, or a review clock it only
+    // inherits, was never owed here. A fire on an inherited trigger was, and
+    // still is: only its words change (its real action, not REVIEW).
+    const own = input.thesis.triggers.filter((x) => ((x as { level?: string }).level ?? "THESIS") === "THESIS");
+    const ownIds = new Set(own.map((x) => x.id));
+    const ownClock = own.some((x) => {
+      const w = shapeOf(x.predicate);
+      return w != null && reviewClockDays(w) != null;
+    });
+    const needsAction =
+      computeNeedsAction(input).find(
+        (f) =>
+          f.kind !== "FLOOR_TOO_FAR" &&
+          f.kind !== "UNPROTECTED_GAIN" &&
+          !(f.kind === "TRIGGER_MATCHING_NOW" && !ownIds.has(f.triggerId)) &&
+          !(f.kind === "REVIEW_DUE" && !ownClock),
+      ) ?? null;
     if (needsAction == null) continue;
 
     // A declined sale takes the strong bar (DAV-315): the ticket's words are

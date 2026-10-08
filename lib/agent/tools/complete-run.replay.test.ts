@@ -109,12 +109,7 @@ describe("complete_run's preflight runs for real", () => {
           },
         ],
         thesis: [
-          thesisRow({
-            id: "t1",
-            ticker: "AAA",
-            status: "HOLDING",
-            updates: [{ type: "UPDATED", triggerId: null, timestamp: new Date() }],
-          }),
+          thesisRow({ id: "t1", ticker: "AAA", status: "HOLDING" }),
         ],
         position: [positionRow({ symbol: "AAA" })],
         thesisUpdate: [thesisUpdateRow({ thesisId: "t1", runId: REPLAY_RUN_ID })],

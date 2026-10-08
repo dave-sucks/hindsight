@@ -320,17 +320,16 @@ describe("DAV-323 — nothing new refuses at the end of the run", () => {
           ...answer,
         })
       : null;
-    // The thesis carries its whole log inline — the fire that was waiting
-    // when the run sat down, and the run's answer if it wrote one — and
-    // the preflight picks from it with its own filter and order.
-    const openFire = { type: "TRIGGER_FIRED", triggerId: REVIEW_RUNG_ID, timestamp: at(1, 13) };
+    // The stock's log: the fire that was waiting when the run sat down, and
+    // the run's answer if it wrote one.
+    const openFire = fire(1);
     return replayTool("complete-run", "completeRun", {
       seed: {
         researchRun: [runRow()],
-        thesis: [abtThesis({ updates: answerRow ? [openFire, answerRow] : [openFire] })],
+        thesis: [abtThesis()],
         position: [abtPosition()],
         runEvent: [summaryEvent()],
-        thesisUpdate: answerRow ? [answerRow] : [],
+        thesisUpdate: answerRow ? [openFire, answerRow] : [openFire],
       },
       args: {},
       quotes: { ABT: PRICE },

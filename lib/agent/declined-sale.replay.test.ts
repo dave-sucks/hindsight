@@ -217,8 +217,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
     expect(written.map((u) => u.type)).toEqual(["REVIEWED"]);
 
     const { result, crashed } = await replayTool("complete-run", "completeRun", {
-      // The double joins nothing: the thesis carries its own audit lines.
-      seed: { ...seed, thesis: [{ ...review.db.store.thesis[0], updates: written }], thesisUpdate: written },
+      seed: { ...seed, thesis: [review.db.store.thesis[0]], thesisUpdate: written },
       args: {},
       quotes: { IOT: PRICE_NEXT_DAY },
     });

@@ -242,9 +242,9 @@ describe("DAV-328 — the same answer on every path that sizes a buy", () => {
 
 describe("DAV-332 — a crashed preflight no longer completes the run", () => {
   it("the checks throw, the run stays open, and it says so on the run", async () => {
-    // The exact production-shaped crash: the audit relation comes back null
-    // and the preflight hits `t.updates[0]`. Whatever the cause, the point
-    // is that the checks did not run.
+    // The production crash was an audit read that came back empty-handed.
+    // Here the loader's activity read fails: whatever the cause, the point
+    // is that the open fires could not be checked.
     const { result, db } = await replayTool("complete-run", "completeRun", {
       seed: {
         researchRun: [
@@ -269,10 +269,16 @@ describe("DAV-332 — a crashed preflight no longer completes the run", () => {
             createdAt: new Date(),
           },
         ],
-        thesis: [thesisRow({ id: "t1", ticker: "AAA", status: "HOLDING", updates: null })],
+        thesis: [thesisRow({ id: "t1", ticker: "AAA", status: "HOLDING" })],
       },
       args: {},
       quotes: { AAA: 91 },
+      mocks: {
+        "@/lib/agent/work-inputs": () => {
+          const real = jest.requireActual("@/lib/agent/work-inputs") as typeof import("@/lib/agent/work-inputs");
+          return { ...real, loadWorkInputs: async (...a: Parameters<typeof real.loadWorkInputs>) => ({ ...(await real.loadWorkInputs(...a)), activityFailed: true }) };
+        },
+      },
     });
 
     // Was COMPLETE before this change — every obligation skipped in silence.

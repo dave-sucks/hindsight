@@ -27,24 +27,15 @@ import { triggerForAgent } from "@/lib/agent/triggers/format";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
-import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
-import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
-import {
-  loadLevelSources,
-  resolveThesisLadder,
-} from "@/lib/agent/triggers/load-levels";
-import { getAccount, getBars, getDailyRangePcts } from "@/lib/alpaca";
-import { getLiveQuotes } from "@/lib/market-data/live-quote";
-import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import type { FloorStructure } from "@/lib/agent/floor-risk";
+import { getDailyRangePcts } from "@/lib/alpaca";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import type { NeedsAction, NeedsActionInput } from "@/lib/agent/needs-action";
+import type { NeedsAction } from "@/lib/agent/needs-action";
 import { listsTheStock, situationsTap, type SituationSources } from "@/lib/agent/situations";
-import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
-import type { ActivityRow, StockContext } from "@/lib/agent/stock-context";
-import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
+import { loadWorkInputs } from "@/lib/agent/work-inputs";
+import type { StockContext } from "@/lib/agent/stock-context";
+import { stockContextFor } from "@/lib/agent/stock-context-for";
 import {
   buildResolvedEnvelope,
   buildSupersessionMap,
@@ -55,9 +46,7 @@ import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checkl
 import { buyBlockedByFull, isFull, type AnalystCapacity, type BuyBlockedByFull } from "@/lib/agent/capacity";
 import { spentBuyCrossing, type SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 import { getSetup } from "@/lib/agent/knowledge/setups";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
-import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
 import {
   getThesisBearCaseBullets,
@@ -81,23 +70,6 @@ const STATUS_VALUES = [
 ] as const;
 
 const HORIZONS = ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const;
-
-/**
- * P1-39: how far back a rejected/expired protective (STOP) close proposal
- * counts as "the principal recently held this name through its floor."
- * Post-#513 the exit stream re-surfaces ~daily while a breach persists, so
- * the window self-refreshes; an old decline with no fresh proposals behind
- * it ages out. Feeds the informational `heldThroughFloor` row field only.
- */
-// Single source: lib/proposals/held-through-context.ts — the DIRECT
-// (no-agent) proposal path mirrors this batch computation there (DAV-194).
-import { HELD_THROUGH_WINDOW_DAYS } from "@/lib/proposals/held-through-context";
-import {
-  declinedSaleWork,
-  foldDeclines,
-  type DeclineRow,
-  type DeclineSummary,
-} from "@/lib/agent/declined-sale";
 
 const schema = z.object({
   status: z
@@ -446,532 +418,50 @@ export const getTheses = defineTool({
         t.status === "PROMOTED",
     );
 
-    // The live price, once for the read, from the one place it comes from
-    // (lib/market-data/live-quote): the tape in the session, the last close
-    // outside it. The latest trade it replaces served a pre-market print as
-    // the price at 08:00 — DOCU 2026-10-06: $70.69 from one 100-share trade
-    // at 07:49, against a $70.03 close and a $68.22 day.
-    const livePrice: Record<string, number> = {};
-    if (liveTheses.length > 0) {
-      try {
-        const quotes = await getLiveQuotes(
-          liveTheses.map((t) => t.ticker),
-          { caller: "other", creds: ctx.alpacaCreds },
-        );
-        for (const [ticker, { quote }] of Object.entries(quotes)) {
-          if (!quote) continue;
-          livePrice[ticker] = quote.c;
-          if (quote.t > 0) priceAsOf[ticker] = new Date(quote.t * 1000).toISOString();
-        }
-      } catch (err) {
-        // getLiveQuotes answers every symbol — null where neither vendor had
-        // a price — and does not throw. If it ever does, the read stays
-        // alive and shows the book in full (review finding #3): without
-        // prices the price-dependent flags are null, and the actionable
-        // split would hide every row behind them.
-        priceFetchFailed = true;
-        console.warn("[get_theses] live quote fetch failed; matching-now skipped:", err);
-      }
-    }
-
-    // ── The resolved ladder per thesis (the trigger cascade) ────────────
-    // Every trigger consumer below reads from here rather than parsing
-    // `t.triggers` directly, so the agent reasons about the ladder that
-    // actually fires — its own rungs PLUS what it inherits from the
-    // analyst, the account and the standing code minimums.
-    //
-    // This is load-bearing for ladder health, not just display: a holding
-    // whose floor is inherited rather than stored would otherwise read as
-    // UNPROTECTED_GAIN and the agent would be nagged to fix a ladder that
-    // is already correct. The query is scoped to ctx.analystId, so one
-    // lookup covers every row.
-    const levelSources = ctx.analystId
-      ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId)
-      : undefined;
-    const ladderByThesisId = new Map<string, Trigger[]>(
-      theses.map((t) => [
-        t.id,
-        resolveThesisLadder(t, levelSources, `thesis=${t.id}`) as Trigger[],
-      ]),
+    // ── What the work flag reads, loaded once (lib/agent/work-inputs.ts) ──
+    // The live price, the resolved ladder (own triggers plus what the stock
+    // inherits — a holding protected by an inherited floor must not read as
+    // unprotected), the open position, the chart numbers, the activity back
+    // to the newest answer, the declined sale and the account's equity. The
+    // sheet and complete_run read the same loader, so the flag is the same
+    // everywhere. The rest of this read takes its numbers from here.
+    const load = await loadWorkInputs(
+      theses.map((t) => t.id),
+      { userId: ctx.userId, analystId: ctx.analystId, runEnvironment: ctx.runEnvironment, alpacaCreds: ctx.alpacaCreds },
     );
+    const livePrice = load.livePrice;
+    Object.assign(priceAsOf, load.priceAsOf);
+    if (load.priceFetchFailed) priceFetchFailed = true;
+    const ladderByThesisId = load.ladders;
+    const work = (id: string) => load.inputs.get(id)?.thesis;
+
+    // The work-flag list per live stock (lead first) and what's been said on
+    // it (stock-context.ts): the block a full row carries, its open fires,
+    // and any decision of the principal's no run has answered yet.
     const needsActionByThesisId = new Map<string, NeedsAction | null>();
-    // Each live stock's full work-flag list (lead first) and the input it was
-    // read from, which the declined-sale pass below reuses.
     const needsListByThesisId = new Map<string, NeedsAction[]>();
-    const needsInputByThesisId = new Map<string, NeedsActionInput>();
-    // P1-29 (L2): the most-recent unaddressed PRINCIPAL decision per thesis
-    // (reject / approve-with-edit / direct edit), surfaced verbatim so the
-    // agent reads the instruction directly instead of inferring it from a count.
-    // What's been said on each live stock (stock-context.ts): the block a
-    // full row carries, its open fires, and any decision of the principal's
-    // no run has answered yet.
     const contextByThesisId = new Map<string, StockContext>();
-
-    // ── Position openedAt per ACTIVE thesis (P1-14) ─────────────────────
-    // A HELD thesis measures elapsed time from when the
-    // position opened, not the (possibly older) thesis row. Resolve the open
-    // Position per ACTIVE (ticker) once; shared by both the needsAction and
-    // resolver loops below. WATCHING/PROMOTED rows keep their createdAt clock
-    // and aren't looked up. Scoped by analyst (+ environment when known) so a
-    // LIVE run never reads a PAPER position's open time and vice versa.
-    const positionOpenedAtByThesisId = new Map<string, Date>();
-    // Paired open-position blended avgCost per HOLDING thesis — feeds the
-    // RUNNING_WINNER needsAction flag + the resolver's inline P&L / progress
-    // (SCALE_INTO_WINNERS.md PR3). Empty on lookup failure → winner signal is
-    // null → no RUNNING_WINNER (graceful degradation).
-    const avgCostByThesisId = new Map<string, number>();
-    // Paired open-position water mark (high LONG / low SHORT, price-monitor-
-    // maintained) — feeds the trail floor math in the
-    // ladder-health block + UNPROTECTED_GAIN flag (Game Plan PR-B). Missing →
-    // ladder-health falls back to the current price.
-    const peakPriceByThesisId = new Map<string, number>();
-    // Paired open-position share count — with avgCost, what the floor would
-    // lose (FLOOR_TOO_FAR, DAV-344).
-    const quantityByThesisId = new Map<string, number>();
-    // P1-28 (L2): how many times the user has been shown a close proposal on
-    // this held position and did NOT approve it — rejected OR ignored-to-expiry
-    // (the user mostly ignores cards to expiry rather than clicking Reject).
-    // Surfaced so the agent sees a reliable "you've proposed this exit N×, the
-    // user keeps declining" signal, read from the canonical Order ledger. Pairs
-    // with the Layer-1 cross-day cooldown gate in maybe-await-approval.ts.
-    const unapprovedExitCountByThesisId = new Map<string, number>();
-    // P1-39 (PROPOSAL_FATIGUE.md, principal ruling 2026-08-16): held-through-
-    // floor CONTEXT per HOLDING thesis — recent protective (closeReason=STOP)
-    // close proposals the principal rejected or let expire, plus their most
-    // recent written reject message. Surfaced as an INFORMATIONAL field on
-    // the full row (like unapprovedExitCount) so the agent can enrich its
-    // daily exit-proposal rationale with "Nth day under your floor, recent
-    // low $X, suggested new level $Y if you want the line moved." It does
-    // NOT feed needsAction and it never authorizes the agent to move the
-    // floor — level changes are the principal's manual act (protective
-    // levels ratchet one way: agents may raise, never lower). The recent
-    // low is resolved separately below (needs the ladder-edit scan first).
-    const heldThroughByThesisId = new Map<string, DeclineSummary>();
-    const activeTickersForOpenedAt = Array.from(
-      new Set(
-        theses
-          .filter(
-            (t: { status: string }) =>
-              t.status === "HOLDING",
-          )
-          .map((t: { ticker: string }) => t.ticker),
-      ),
-    );
-    if (activeTickersForOpenedAt.length > 0) {
-      try {
-        const openPositions = await prisma.position.findMany({
-          where: {
-            userId: ctx.userId,
-            symbol: { in: activeTickersForOpenedAt },
-            status: "OPEN",
-            ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
-            ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
-          },
-          select: {
-            id: true,
-            symbol: true,
-            openedAt: true,
-            avgCost: true,
-            quantity: true,
-            peakPrice: true,
-          },
-          orderBy: { openedAt: "desc" },
-        });
-        const openedAtByTicker = new Map<string, Date>();
-        const positionIdByTicker = new Map<string, string>();
-        const avgCostByTicker = new Map<string, number>();
-        const quantityByTicker = new Map<string, number>();
-        const peakPriceByTicker = new Map<string, number>();
-        for (const p of openPositions) {
-          if (!openedAtByTicker.has(p.symbol)) {
-            openedAtByTicker.set(p.symbol, p.openedAt);
-            positionIdByTicker.set(p.symbol, p.id);
-            avgCostByTicker.set(p.symbol, Number(p.avgCost));
-            quantityByTicker.set(p.symbol, Number(p.quantity));
-            if (p.peakPrice != null && Number.isFinite(Number(p.peakPrice))) {
-              peakPriceByTicker.set(p.symbol, Number(p.peakPrice));
-            }
-          }
-        }
-        for (const t of theses) {
-          if (t.status !== "HOLDING") continue;
-          const openedAt = openedAtByTicker.get(t.ticker);
-          if (openedAt) positionOpenedAtByThesisId.set(t.id, openedAt);
-          const avgCost = avgCostByTicker.get(t.ticker);
-          if (avgCost != null && Number.isFinite(avgCost)) {
-            avgCostByThesisId.set(t.id, avgCost);
-          }
-          const peak = peakPriceByTicker.get(t.ticker);
-          if (peak != null) peakPriceByThesisId.set(t.id, peak);
-          const qty = quantityByTicker.get(t.ticker);
-          if (qty != null && qty > 0) quantityByThesisId.set(t.id, qty);
-        }
-
-        // Count UNAPPROVED close proposals per open position (Order ledger):
-        // staged proposals (expiresAt set = the user actually saw a card) that
-        // ended REJECTED-by-user OR EXPIRED. Excludes systemic tombstones.
-        const openPositionIds = Array.from(positionIdByTicker.values());
-        if (openPositionIds.length > 0) {
-          const unapprovedCloses = await prisma.order.findMany({
-            where: {
-              positionId: { in: openPositionIds },
-              side: "SELL",
-              intent: "CLOSE",
-              status: { in: ["REJECTED", "EXPIRED"] },
-              expiresAt: { not: null },
-            },
-            orderBy: { createdAt: "desc" },
-            select: {
-              positionId: true,
-              rejectionMessage: true,
-              closeReason: true,
-              createdAt: true,
-            },
-          });
-          const countByPositionId = new Map<string, number>();
-          // P1-39: recent protective declines per position — the held-through
-          // signal. Window matches "the principal saw this exit recently and
-          // still holds"; post-#513 the exit stream re-surfaces ~daily, so the
-          // window self-refreshes while the breach persists.
-          const heldThroughCutoff = new Date(
-            Date.now() - HELD_THROUGH_WINDOW_DAYS * 86_400_000,
-          );
-          // Protective declines only (STOP-tagged, inside the window): a
-          // declined TARGET exit means "let it run" — a different, benign
-          // hold. Bucket the rows and let `foldDeclines` apply the one
-          // definition of a real decline (DAV-315); it also carries
-          // `lastDeclinedAt`, which the work-list item needs and the old
-          // count-and-message fold threw away.
-          const declineRowsByPositionId = new Map<string, DeclineRow[]>();
-          for (const o of unapprovedCloses) {
-            // Exclude systemic tombstones (dedup, P1-28 cooldown) — only a real
-            // decline (rejection or ignored expiry) counts. Sync w/ the L1 gate.
-            if (isSystemicRejection(o.rejectionMessage)) continue;
-            countByPositionId.set(
-              o.positionId,
-              (countByPositionId.get(o.positionId) ?? 0) + 1,
-            );
-            if (o.closeReason === "STOP" && o.createdAt >= heldThroughCutoff) {
-              declineRowsByPositionId.set(o.positionId, [
-                ...(declineRowsByPositionId.get(o.positionId) ?? []),
-                { createdAt: o.createdAt, rejectionMessage: o.rejectionMessage },
-              ]);
-            }
-          }
-          const heldThroughByPositionId = new Map<string, DeclineSummary>();
-          for (const [posId, rows] of declineRowsByPositionId) {
-            const folded = foldDeclines(rows);
-            if (folded) heldThroughByPositionId.set(posId, folded);
-          }
-          for (const t of theses) {
-            if (t.status !== "HOLDING") continue;
-            const posId = positionIdByTicker.get(t.ticker);
-            const n = posId ? countByPositionId.get(posId) ?? 0 : 0;
-            if (n > 0) unapprovedExitCountByThesisId.set(t.id, n);
-            const heldThrough = posId
-              ? heldThroughByPositionId.get(posId)
-              : undefined;
-            if (heldThrough) heldThroughByThesisId.set(t.id, heldThrough);
-          }
-        }
-      } catch (err) {
-        console.warn(
-          "[get_theses] open-position openedAt/rejected-exit lookup failed; falls back to createdAt:",
-          err,
-        );
-      }
+    for (const t of liveTheses) {
+      const input = load.inputs.get(t.id);
+      if (!input) continue;
+      contextByThesisId.set(
+        t.id,
+        stockContextFor({ ticker: t.ticker, rows: input.activity ?? [], triggers: input.thesis.triggers, now: input.now, currentPrice: input.latestQuote?.price ?? null }),
+      );
+      const needs = computeNeedsAction(input);
+      needsListByThesisId.set(t.id, needs);
+      needsActionByThesisId.set(t.id, needs[0] ?? null);
     }
 
-    // ── Last ladder edit per HOLDING thesis (Game Plan PR-B) ────────────
-    // Feeds ladderHealth.daysSinceLadderEdit — "how stale is the game plan."
-    // One batched scan of recent CREATED/UPDATED audit rows, filtered in JS
-    // by isLadderEditUpdate (fieldChanges touching triggers/fireMode/stopLoss;
-    // TRIGGER_FIRED and rubber-stamp REVIEWED rows deliberately never count).
-    // The scan is capped: when it comes back truncated AND a thesis has no
-    // match, we can't distinguish "never edited" from "edited before the
-    // window" → leave null (the block omits the field). When the scan is
-    // complete and no match exists, the ladder was born with the thesis →
-    // anchor to thesis.createdAt.
-    const lastLadderEditAtByThesisId = new Map<string, Date>();
+    // The buy level's moves away from the price, no structure cited
+    // (DAV-253, the MSFT shape) — off the ladder-edit rows the loader read.
     const entryRaisesByThesisId = new Map<string, EntryRaiseAway[]>();
-    // The scanned rows per thesis. Read twice more below: for the buy levels
-    // moved away with no structure cited, and for the spent-crossing check
-    // (DAV-303), which asks whether a ladder edit landed AFTER the buy fired.
-    const rowsByThesis = new Map<
-      string,
-      Array<{ type: string; timestamp: Date; fieldChanges: unknown; priceAtTime: number | null; rationale: string | null }>
-    >();
-    // Held rows for ladder health; priced watches for the stale-entry flag.
-    const holdingIds = theses
-      .filter((t) => t.status === "HOLDING" || (t.status === "WATCHING" && t.entryPrice != null))
-      .map((t) => t.id);
-    if (holdingIds.length > 0) {
-      try {
-        const scanTake = Math.min(40 * holdingIds.length, 600);
-        const auditRows = await prisma.thesisUpdate.findMany({
-          where: {
-            thesisId: { in: holdingIds },
-            type: { in: ["CREATED", "UPDATED"] },
-          },
-          orderBy: { timestamp: "desc" },
-          take: scanTake,
-          select: {
-            thesisId: true,
-            type: true,
-            timestamp: true,
-            fieldChanges: true,
-            priceAtTime: true,
-            rationale: true,
-          },
-        });
-        const scanTruncated = auditRows.length >= scanTake;
-        const matched = new Set<string>();
-        for (const r of auditRows) {
-          rowsByThesis.set(r.thesisId, [...(rowsByThesis.get(r.thesisId) ?? []), r]);
-          if (matched.has(r.thesisId)) continue;
-          if (isLadderEditUpdate(r.type, r.fieldChanges)) {
-            lastLadderEditAtByThesisId.set(r.thesisId, r.timestamp);
-            matched.add(r.thesisId);
-          }
-        }
-        // The buy level's moves away from the price, no structure cited —
-        // the same rows, read once more (DAV-253, the MSFT shape).
-        for (const t of theses) {
-          if (t.status !== "WATCHING") continue;
-          const rows = rowsByThesis.get(t.id);
-          if (!rows?.length) continue;
-          const raises = entryRaisesAway({ direction: t.direction, updates: rows, now: new Date() });
-          if (raises.length) entryRaisesByThesisId.set(t.id, raises);
-        }
-        if (!scanTruncated) {
-          for (const t of theses) {
-            if (holdingIds.includes(t.id) && !matched.has(t.id)) {
-              lastLadderEditAtByThesisId.set(t.id, t.createdAt);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(
-          "[get_theses] ladder-edit scan failed; daysSinceLadderEdit omitted:",
-          err,
-        );
-      }
-    }
-
-    // ── Recent low per held-through thesis (P1-39) ──────────────────────
-    // The trail-to line for HELD_THROUGH_FLOOR: lowest daily low (LONG; the
-    // recent HIGH for SHORT) since the ladder was last edited — the window
-    // PROPOSAL_FATIGUE.md §7 Q1 names as the starting point. Clamped to
-    // [5, 30] days: the 5-day minimum guarantees at least one trading session
-    // is in range even when the window spans a long weekend or a market
-    // holiday (a 2-day window on the Tuesday after a Monday holiday contains
-    // zero sessions), and the 30-day cap keeps an ancient ladder from
-    // suggesting a months-old low. Only the
-    // held-through candidates are fetched (typically 0-3 tickers); bar-fetch
-    // failure degrades to recentLow=null (the flag still fires, the agent
-    // falls back to fresh data / judgment).
-    const recentLowByThesisId = new Map<string, number>();
-    const heldThroughCandidates = theses.filter(
-      (t) => t.status === "HOLDING" && heldThroughByThesisId.has(t.id),
-    );
-    if (heldThroughCandidates.length > 0) {
-      const nowMs = Date.now();
-      await Promise.all(
-        heldThroughCandidates.map(async (t) => {
-          try {
-            const since = lastLadderEditAtByThesisId.get(t.id);
-            const daysBack = since
-              ? Math.ceil((nowMs - since.getTime()) / 86_400_000)
-              : 30;
-            const clampedDays = Math.min(Math.max(daysBack, 5), 30);
-            const start = new Date(nowMs - clampedDays * 86_400_000)
-              .toISOString()
-              .slice(0, 10);
-            const end = new Date(nowMs).toISOString().slice(0, 10);
-            const bars = await getBars(
-              t.ticker,
-              { start, end },
-              ctx.alpacaCreds,
-            );
-            const isLong = t.direction !== "SHORT";
-            const extremes = bars
-              .map((b) => (isLong ? b.low ?? b.close : b.high ?? b.close))
-              .filter((v): v is number => typeof v === "number" && v > 0);
-            if (extremes.length > 0) {
-              recentLowByThesisId.set(
-                t.id,
-                isLong ? Math.min(...extremes) : Math.max(...extremes),
-              );
-            }
-          } catch (err) {
-            console.warn(
-              `[get_theses] recent-low fetch failed for ${t.ticker}; HELD_THROUGH_FLOOR degrades to recentLow=null:`,
-              err,
-            );
-          }
-        }),
-      );
-    }
-
-    // The account's equity, once, when anything is held: a floor's loss is
-    // judged against it (FLOOR_TOO_FAR, DAV-344). The run's own credentials,
-    // as get_portfolio_context reads them — a LIVE run never reads the paper
-    // account. Fail-open: no equity, no flag.
-    let accountEquity: number | null = null;
-    if (quantityByThesisId.size > 0) {
-      try {
-        const creds =
-          ctx.alpacaCreds ??
-          (ctx.runEnvironment ? await resolveAlpacaCredentials(ctx.userId, ctx.runEnvironment) : null) ??
-          undefined;
-        const equity = parseFloat((await getAccount(creds)).equity);
-        if (Number.isFinite(equity) && equity > 0) accountEquity = equity;
-      } catch (err) {
-        console.warn("[get_theses] account equity unavailable; floor-risk check skipped:", err);
-      }
-    }
-
-    // ATR(14) per ticker, for a trail whose give-back widens with the stock's
-    // range (DAV-294). The SAME daily snapshot the evaluator reads, so the
-    // line the agent is shown is the line that sells. Fail-open: no snapshot
-    // → the written percent, which is what the evaluator will use too.
-    const atrByTicker = new Map<string, number>();
-    // …and the structure a floor could sit under, for FLOOR_TOO_FAR (DAV-344).
-    const structureByTicker = new Map<string, FloorStructure>();
-    if (liveTheses.length > 0) {
-      try {
-        const snaps = await loadIndicatorSnapshots(liveTheses.map((t) => t.ticker.toUpperCase()));
-        for (const [ticker, snap] of snaps) {
-          if (snap.atr14 != null && snap.atr14 > 0) atrByTicker.set(ticker, snap.atr14);
-          structureByTicker.set(ticker, { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] });
-        }
-      } catch (err) {
-        console.warn("[get_theses] indicator snapshot load failed; trails read their written percent:", err);
-      }
-    }
-    if (liveTheses.length > 0) {
-      // Latest ThesisUpdate per thesis — one batched query.
-      const latestUpdates = await prisma.thesisUpdate.findMany({
-        where: { thesisId: { in: liveTheses.map((t) => t.id) } },
-        orderBy: { timestamp: "desc" },
-        distinct: ["thesisId"],
-        select: {
-          id: true,
-          thesisId: true,
-          type: true,
-          triggerId: true,
-          timestamp: true,
-          // The fallback line for a stock the activity scan below truncated
-          // away: enough to tell a fire from an answer.
-          runId: true,
-          summary: true,
-          rationale: true,
-          fieldChanges: true,
-          priceAtTime: true,
-        },
-      });
-      const latestByThesisId = new Map(
-        latestUpdates.map((u) => [u.thesisId, u]),
-      );
-
-      // A slice of each thesis's log, read once for three things: which
-      // fires no agent has answered (needsAction), what has been said on
-      // the stock (the `context` block), and how many times a fired trigger
-      // has already asked (DAV-323). One batched scan; the Compounder's 22
-      // stocks wrote 334 lines in the 30 days to 2026-09-30, so 40 a stock
-      // covers a month. When it truncates, the oldest rows are missing: the
-      // repeat count reads low and the block shows less, never more.
-      const streakRowsByThesisId = new Map<string, FireStreakUpdate[]>();
-      const activityByThesisId = new Map<string, ActivityRow[]>();
-      try {
-        const activityScan = await prisma.thesisUpdate.findMany({
-          where: { thesisId: { in: liveTheses.map((t) => t.id) } },
-          orderBy: { timestamp: "desc" },
-          take: Math.min(40 * liveTheses.length, 1200),
-          select: ACTIVITY_SELECT,
-        });
-        // The principal's notes travel at any age, past the scan's window.
-        const notes = await prisma.thesisUpdate.findMany({
-          where: { thesisId: { in: liveTheses.map((t) => t.id) }, type: "NOTE" },
-          select: ACTIVITY_SELECT,
-        });
-        const seen = new Set(activityScan.map((r) => r.id));
-        activityScan.push(...notes.filter((n) => !seen.has(n.id)));
-        for (const row of activityScan) {
-          const bucket = streakRowsByThesisId.get(row.thesisId);
-          if (bucket) bucket.push(row);
-          else streakRowsByThesisId.set(row.thesisId, [row]);
-          const line: ActivityRow = { ...row, runMode: row.run?.mode ?? null };
-          const lines = activityByThesisId.get(row.thesisId);
-          if (lines) lines.push(line);
-          else activityByThesisId.set(row.thesisId, [line]);
-        }
-      } catch (err) {
-        console.warn("[get_theses] activity scan failed; open fires read from the newest line only:", err);
-      }
-
-      const priceByTicker = livePrice;
-
-      const now = new Date();
-      const pendingEntryTickers = ctx.analystId
-        ? await getPendingEntryTickers(ctx.analystId)
-        : new Set<string>();
-      for (const t of liveTheses) {
-        const triggers: Trigger[] = ladderByThesisId.get(t.id) ?? [];
-        const price = priceByTicker[t.ticker];
-        const latestQuote =
-          typeof price === "number" && price > 0
-            ? { price, changePct: 0 }
-            : null;
-        // What's been said on this stock: the principal's decisions of the
-        // last 30 days, the last two answers, the fires no agent has
-        // answered. A decision that wants an answer and has none puts the row
-        // on the full list (isFullDetail). The scan's lines, or the newest
-        // line alone when the scan didn't reach this stock.
-        const latest = latestByThesisId.get(t.id);
-        const activity: ActivityRow[] =
-          activityByThesisId.get(t.id) ?? (latest ? [latest] : []);
-        contextByThesisId.set(
-          t.id,
-          stockContextFor({ ticker: t.ticker, rows: activity, triggers, now, currentPrice: latestQuote?.price ?? null }),
-        );
-        const needsInput: NeedsActionInput = {
-            thesis: {
-              id: t.id,
-              direction: t.direction,
-              status: t.status,
-              triggers,
-              createdAt: t.createdAt,
-              lastReviewedAt: t.lastReviewedAt,
-              researchUpdatedAt: t.researchUpdatedAt ?? null,
-              horizon: t.horizon ?? null,
-              positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
-              avgCost: avgCostByThesisId.get(t.id) ?? null,
-              peakPrice: peakPriceByThesisId.get(t.id) ?? null,
-              atr14: atrByTicker.get(t.ticker.toUpperCase()) ?? null,
-              quantity: quantityByThesisId.get(t.id) ?? null,
-              structure: structureByTicker.get(t.ticker.toUpperCase()) ?? null,
-              targetPrice: t.targetPrice ?? null,
-              paperTenureDays: t.paperTenureDays ?? null,
-              paperRealizedPnl:
-                t.paperRealizedPnl != null
-                  ? Number(t.paperRealizedPnl)
-                  : null,
-              paperReviewCount: t.paperReviewCount ?? null,
-              promotedAt: t.promotedAt ?? null,
-            },
-            activity,
-            recentUpdates: streakRowsByThesisId.get(t.id),
-            latestQuote,
-            now,
-            hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
-            equity: accountEquity,
-          };
-        const needs = computeNeedsAction(needsInput);
-        needsInputByThesisId.set(t.id, needsInput);
-        needsListByThesisId.set(t.id, needs);
-        needsActionByThesisId.set(t.id, needs[0] ?? null);
-      }
+    for (const t of theses) {
+      if (t.status !== "WATCHING") continue;
+      const rows = load.ladderEditRows.get(t.id);
+      if (!rows?.length) continue;
+      const raises = entryRaisesAway({ direction: t.direction, updates: rows, now: new Date() });
+      if (raises.length) entryRaisesByThesisId.set(t.id, raises);
     }
 
     // ── Conviction Expression v4: supersession lookup (§6) ───────────
@@ -1095,7 +585,7 @@ export const getTheses = defineTool({
           chaseLimitPct: t.setupId
             ? (getSetup(t.setupId, setupOverrides)?.entry.chaseLimitPct ?? null)
             : null,
-          updates: rowsByThesis.get(t.id) ?? [],
+          updates: load.ladderEditRows.get(t.id) ?? [],
           now: resolverNow,
         });
         if (crossing) spentCrossingByThesisId.set(t.id, crossing);
@@ -1118,13 +608,13 @@ export const getTheses = defineTool({
             targetPrice: t.targetPrice ?? null,
             stopLoss: t.stopLoss ?? null,
             dayRangePct: dayRangePctByTicker[t.ticker.toUpperCase()] ?? null,
-            atr14: atrByTicker.get(t.ticker.toUpperCase()) ?? null,
-            avgCost: avgCostByThesisId.get(t.id) ?? null,
-            quantity: quantityByThesisId.get(t.id) ?? null,
-            equity: accountEquity,
-            structure: structureByTicker.get(t.ticker.toUpperCase()) ?? null,
-            peakPrice: peakPriceByThesisId.get(t.id) ?? null,
-            lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,
+            atr14: work(t.id)?.atr14 ?? null,
+            avgCost: work(t.id)?.avgCost ?? null,
+            quantity: work(t.id)?.quantity ?? null,
+            equity: load.equity,
+            structure: work(t.id)?.structure ?? null,
+            peakPrice: work(t.id)?.peakPrice ?? null,
+            lastLadderEditAt: load.lastLadderEditAt.get(t.id) ?? null,
             entryRaisesAway: entryRaisesByThesisId.get(t.id) ?? null,
             spentBuyCrossing: spentCrossingByThesisId.get(t.id) ?? null,
             triggers: t.triggers,
@@ -1135,7 +625,7 @@ export const getTheses = defineTool({
             scoring: t.scoring,
             minConfidence: ctx.minConfidence ?? null,
             parsedTriggers,
-            positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
+            positionOpenedAt: work(t.id)?.positionOpenedAt ?? null,
           },
           currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
           priceAsOf: priceAsOf[t.ticker] ?? null,
@@ -1143,37 +633,6 @@ export const getTheses = defineTool({
           now: resolverNow,
         }),
       );
-    }
-
-    // ── A declined sale is the run's job (DAV-315) ──────────────────────
-    // Second pass, deliberately: the breach test needs the resolved floor
-    // and the live price, and the resolver runs after needsAction. Applied
-    // last so it wins the precedence race against the floor's own daily
-    // TRIGGER_MATCHING_NOW — which is the race it lost on IOT for nine days.
-    for (const t of theses) {
-      const decline = heldThroughByThesisId.get(t.id);
-      if (!decline) continue;
-      const r = resolvedByThesisId.get(t.id);
-      const work = declinedSaleWork({
-        status: t.status,
-        direction: t.direction,
-        decline,
-        floorPrice: r?.ladderHealth?.floor?.price ?? null,
-        currentPrice: r?.currentPrice ?? null,
-        recentLow: recentLowByThesisId.get(t.id) ?? null,
-        now: resolverNow,
-      });
-      if (!work) continue;
-      // The stock's own input with the decline on it: the decline leads and
-      // the stock's other flags stay on its list.
-      const stored = needsInputByThesisId.get(t.id);
-      const withDecline: NeedsActionInput = stored
-        ? { ...stored, declinedSale: work }
-        : { thesis: { id: t.id, status: t.status, triggers: [], createdAt: t.createdAt }, now: resolverNow, declinedSale: work };
-      const needs = computeNeedsAction(withDecline);
-      needsInputByThesisId.set(t.id, withDecline);
-      needsListByThesisId.set(t.id, needs);
-      needsActionByThesisId.set(t.id, needs[0] ?? null);
     }
 
     // ── A buy that fired into a full analyst (DAV-286) ──────────────────
@@ -1220,7 +679,7 @@ export const getTheses = defineTool({
     for (const t of theses) {
       const sources = sourcesFor(t);
       if (listsTheStock(sources)) listedIds.add(t.id);
-      situationsTap.record?.({ thesisId: t.id, ticker: t.ticker, needsInput: needsInputByThesisId.get(t.id) ?? null, sources });
+      situationsTap.record?.({ thesisId: t.id, ticker: t.ticker, needsInput: load.inputs.get(t.id) ?? null, sources });
     }
     const isFullDetail = (t: (typeof theses)[number]): boolean =>
       detailMode === "book" || priceFetchFailed || listedIds.has(t.id);
@@ -1318,7 +777,7 @@ export const getTheses = defineTool({
         // ledger) — rejected by the user OR ignored to expiry. >0 means "you
         // proposed this exit and the user declined N×" — don't re-propose
         // unless the thesis materially changed. 0 for non-HOLDING rows.
-        unapprovedExitCount: unapprovedExitCountByThesisId.get(t.id) ?? 0,
+        unapprovedExitCount: load.unapprovedExitCount.get(t.id) ?? 0,
         researchPriceThen: researchPriceByThesis.get(t.id) ?? null,
         // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
         // recent protective (STOP) declines in the last 7d + the principal's
@@ -1330,7 +789,7 @@ export const getTheses = defineTool({
         // way (agents may raise, never lower); moving a line down is the
         // principal's manual act. null when no recent protective declines.
         heldThroughFloor: (() => {
-          const ht = heldThroughByThesisId.get(t.id);
+          const ht = load.declines.get(t.id);
           if (!ht) return null;
           // Only surface while the breach is LIVE — price still on the losing
           // side of the ladder's tightest protective floor. Once price
@@ -1350,7 +809,7 @@ export const getTheses = defineTool({
             floorPrice,
             heldThroughCount: ht.declineCount,
             rejectMessage: ht.rejectMessage,
-            recentLow: recentLowByThesisId.get(t.id) ?? null,
+            recentLow: load.recentLow.get(t.id) ?? null,
           };
         })(),
       };

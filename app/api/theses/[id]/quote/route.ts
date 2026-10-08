@@ -21,21 +21,11 @@ import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { getAccountId } from "@/lib/auth/account";
 import {
-  loadLevelSources,
-  resolveThesisLadder,
-} from "@/lib/agent/triggers/load-levels";
-import {
   buildResolvedEnvelope,
   buildSupersessionMap,
 } from "@/lib/agent/resolved-thesis";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
-import {
-  declinedSaleWhere,
-  declinedSaleWork,
-  foldDeclines,
-} from "@/lib/agent/declined-sale";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
-import type { Trigger } from "@/lib/agent/triggers/types";
+import { loadWorkInputs } from "@/lib/agent/work-inputs";
 
 export async function GET(
   _req: Request,
@@ -69,24 +59,11 @@ export async function GET(
       targetPrice: true,
       stopLoss: true,
       triggers: true,
-      // Cascade inputs — the resolved envelope must evaluate the SAME
-      // ladder the sheet's pills draw, or "matching now" and ladder health
-      // would ignore every inherited rung and report a holding as
-      // unprotected while its floor is showing on screen.
-      triggerState: true,
       horizon: true,
       catalystDate: true,
       setupId: true,
       createdAt: true,
       scoring: true,
-      // needsAction inputs (DAV-304) — the same work-list flag the daily run
-      // reads, so the sheet can say whether this stock is flagged and why.
-      lastReviewedAt: true,
-      researchUpdatedAt: true,
-      paperTenureDays: true,
-      paperRealizedPnl: true,
-      paperReviewCount: true,
-      promotedAt: true,
       researchRun: { select: { agentConfigId: true, agentConfig: { select: { minConfidence: true } } } },
     },
   });
@@ -95,85 +72,27 @@ export async function GET(
   }
 
   const ownAnalystId = thesis.researchRun?.agentConfigId ?? null;
-  const isHolding = thesis.status === "HOLDING";
 
-  // One parallel batch: the live quote, the StockInfo cache identity,
-  // the terminal-sibling supersession lookup (same-analyst scope), and the
-  // open position (qty/avgCost for PnL + openedAt). Quote
+  // One parallel batch: the live quote, the StockInfo cache identity, and
+  // the terminal-sibling supersession lookup (same-analyst scope). Quote
   // failure is non-fatal — the sheet just omits the price line + PnL.
-  const [
-    liveQuote,
-    identity,
-    terminalSiblings,
-    openPosition,
-    activity,
-    pendingEntryCount,
-    atr14,
-  ] = await Promise.all([
-      getStockQuote(thesis.ticker).catch(() => null),
-      getStockInfo(thesis.ticker),
-      prisma.thesis.findMany({
-        where: {
-          accountId,
-          ticker: thesis.ticker,
-          ...(ownAnalystId
-            ? { researchRun: { agentConfigId: ownAnalystId } }
-            : {}),
-          status: { in: ["RETIRED", "PASSED"] },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { id: true, ticker: true, createdAt: true },
-      }),
-      isHolding && ownAnalystId
-        ? prisma.position
-            .findFirst({
-              where: {
-                accountId,
-                analystId: ownAnalystId,
-                symbol: thesis.ticker,
-                status: "OPEN",
-              },
-              orderBy: { openedAt: "desc" },
-              select: { id: true, quantity: true, avgCost: true, openedAt: true, peakPrice: true },
-            })
-            .catch(() => null)
-        : Promise.resolve(null),
-      // needsAction inputs that need their own read (DAV-304): the recent
-      // Activity lines (a fire after the newest line an agent wrote is still
-      // open — stock-context.ts), whether a buy is already queued for
-      // approval, and the stock's ATR for a range-widened trail.
-      prisma.thesisUpdate
-        .findMany({
-          where: { thesisId: thesis.id },
-          orderBy: { timestamp: "desc" },
-          take: 40,
-          select: {
-            type: true,
-            triggerId: true,
-            timestamp: true,
-            runId: true,
-            rationale: true,
-            fieldChanges: true,
-          },
-        })
-        .catch(() => []),
-      ownAnalystId
-        ? prisma.position
-            .count({
-              where: {
-                accountId,
-                analystId: ownAnalystId,
-                symbol: thesis.ticker,
-                status: "PENDING_APPROVAL",
-              },
-            })
-            .catch(() => 0)
-        : Promise.resolve(0),
-      loadIndicatorSnapshots([thesis.ticker.toUpperCase()])
-        .then((m) => m.get(thesis.ticker.toUpperCase())?.atr14 ?? null)
-        .catch(() => null),
-    ]);
+  const [liveQuote, identity, terminalSiblings] = await Promise.all([
+    getStockQuote(thesis.ticker).catch(() => null),
+    getStockInfo(thesis.ticker),
+    prisma.thesis.findMany({
+      where: {
+        accountId,
+        ticker: thesis.ticker,
+        ...(ownAnalystId
+          ? { researchRun: { agentConfigId: ownAnalystId } }
+          : {}),
+        status: { in: ["RETIRED", "PASSED"] },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+      select: { id: true, ticker: true, createdAt: true },
+    }),
+  ]);
 
   const currentPrice =
     liveQuote && Number.isFinite(liveQuote.c) && liveQuote.c > 0
@@ -184,6 +103,18 @@ export async function GET(
   const dayChangePct =
     liveQuote && Number.isFinite(liveQuote.dp) ? liveQuote.dp : null;
 
+  // What the work flag reads, from the loader get_theses and complete_run
+  // use, on the price above: the resolved ladder (own rungs plus everything
+  // inherited — the same ladder the sheet's pills draw), the open position,
+  // the activity, a declined sale, a queued buy, the chart numbers, the
+  // account's equity.
+  const load = await loadWorkInputs([thesis.id], {
+    userId: user.id,
+    analystId: ownAnalystId,
+    prices: currentPrice != null ? { [thesis.ticker]: { price: currentPrice, t: liveQuote?.t ?? 0 } } : {},
+  });
+  const openPosition = load.positions.get(thesis.id) ?? null;
+
   // PnL math for held theses — quantity + avgCost from the open Position,
   // currentPrice from the quote. Null when the quote failed or nothing's held.
   let positionPnl: {
@@ -193,8 +124,7 @@ export async function GET(
     unrealizedPnlPct: number | null;
   } | null = null;
   if (currentPrice != null && openPosition) {
-    const qty = Number(openPosition.quantity);
-    const avgCost = Number(openPosition.avgCost);
+    const { quantity: qty, avgCost } = openPosition;
     positionPnl = {
       currentPrice,
       marketValue: currentPrice * qty,
@@ -209,15 +139,6 @@ export async function GET(
   // reflects whatever `currentPrice` the quote produced (null → the
   // price-independent states still resolve; ENTER_NOW/WAIT fall back cleanly).
   const supersessionMap = buildSupersessionMap(terminalSiblings);
-  // The resolved ladder — own rungs plus everything inherited. Same
-  // resolver as the dossier route, the evaluator and get_theses.
-  const parsedTriggers = resolveThesisLadder(
-    thesis,
-    ownAnalystId
-      ? (await loadLevelSources([ownAnalystId])).get(ownAnalystId)
-      : undefined,
-    `thesis=${thesis.id}`,
-  ) as Trigger[];
   const resolved = buildResolvedEnvelope({
     thesis: {
       id: thesis.id,
@@ -236,7 +157,7 @@ export async function GET(
       createdAt: thesis.createdAt,
       scoring: thesis.scoring,
       minConfidence: thesis.researchRun?.agentConfig?.minConfidence ?? null,
-      parsedTriggers,
+      parsedTriggers: load.ladders.get(thesis.id) ?? [],
       positionOpenedAt: openPosition?.openedAt ?? null,
     },
     currentPrice,
@@ -245,65 +166,11 @@ export async function GET(
     now: new Date(),
   });
 
-  // A protective sale the principal declined and nothing has answered
-  // (DAV-315). Read here too, from the same module, so the sheet says
-  // "Sale declined — no new plan yet" instead of leaving the state visible
-  // only inside a run. Best-effort: a lookup failure just omits the flag.
-  let declinedSale = null;
-  if (openPosition) {
-    try {
-      const rows = await prisma.order.findMany({
-        where: { positionId: openPosition.id, ...declinedSaleWhere(new Date()) },
-        select: { createdAt: true, rejectionMessage: true },
-      });
-      declinedSale = declinedSaleWork({
-        status: thesis.status,
-        direction: thesis.direction,
-        decline: foldDeclines(rows),
-        floorPrice: resolved.ladderHealth?.floor?.price ?? null,
-        currentPrice,
-        recentLow: null,
-        now: new Date(),
-      });
-    } catch (err) {
-      console.warn(
-        `[thesis quote] declined-sale lookup failed for ${thesis.ticker}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-  }
-
-  // The work-list flag itself (DAV-304). The same pure function get_theses
-  // hands the daily run — computed here so the sheet shows the flag a person
-  // can test, instead of it existing only inside a run that already ended.
-  const needsAction = computeNeedsAction({
-    thesis: {
-      id: thesis.id,
-      direction: thesis.direction,
-      status: thesis.status,
-      triggers: parsedTriggers,
-      createdAt: thesis.createdAt,
-      lastReviewedAt: thesis.lastReviewedAt,
-      researchUpdatedAt: thesis.researchUpdatedAt,
-      horizon: thesis.horizon,
-      positionOpenedAt: openPosition?.openedAt ?? null,
-      avgCost: openPosition ? Number(openPosition.avgCost) : null,
-      peakPrice: openPosition?.peakPrice != null ? Number(openPosition.peakPrice) : null,
-      atr14,
-      targetPrice: thesis.targetPrice ?? null,
-      paperTenureDays: thesis.paperTenureDays,
-      paperRealizedPnl:
-        thesis.paperRealizedPnl != null ? Number(thesis.paperRealizedPnl) : null,
-      paperReviewCount: thesis.paperReviewCount,
-      promotedAt: thesis.promotedAt,
-    },
-    declinedSale,
-    activity,
-    latestQuote:
-      currentPrice != null ? { price: currentPrice, changePct: dayChangePct ?? 0 } : null,
-    now: new Date(),
-    hasPendingEntryProposal: pendingEntryCount > 0,
-  })[0] ?? null;
+  // The work-list flag itself (DAV-304): the lead of the list get_theses
+  // hands the daily run, from the same inputs, so the sheet shows the flag a
+  // person can test. A stock no longer live has none.
+  const input = load.inputs.get(thesis.id);
+  const needsAction = input ? computeNeedsAction(input)[0] ?? null : null;
 
   return NextResponse.json({
     currentPrice,
