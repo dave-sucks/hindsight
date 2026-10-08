@@ -60,3 +60,49 @@ describe("one feed: the read and the close-out", () => {
     expect(db.store.researchRun[0].status).toBe("RUNNING");
   });
 });
+
+/**
+ * The day's move. A trigger on it reads the quote's own change on the day;
+ * the read used to pass 0, so it was never true now on any surface that
+ * shares the loader. MU 10-07: "Review if above 4% from yesterday's close".
+ */
+describe("a trigger on the day's move reads the day's change", () => {
+  const dayMoveSeed = () => ({
+    ...seed(),
+    thesis: [thesisRow({ id: "t_eee", ticker: "EEE", status: "HOLDING", lastReviewedAt: ago(1), researchUpdatedAt: ago(1), triggers: [rung("day-up", "REVIEW", { watch: "move", is: "above", value: 4, variable: "prev_close" })] })],
+    position: [positionRow({ id: "pos_eee", symbol: "EEE", avgCost: 100, quantity: 10, openedAt: ago(20) })],
+    thesisUpdate: [],
+  });
+  /** The live quote, up `dp` percent on the day from a $100 close. */
+  const upOnTheDay = (dp: number) => ({
+    "@/lib/market-data/live-quote": () => {
+      const real = jest.requireActual("@/lib/market-data/live-quote") as typeof import("@/lib/market-data/live-quote");
+      return {
+        ...real,
+        getLiveQuotes: async (tickers: string[]) =>
+          Object.fromEntries(tickers.map((t) => [t, { quote: { c: 100 + dp, t: Math.floor(Date.now() / 1000), pc: 100, d: dp, dp, o: 100, h: 100 + dp, l: 100, source: "alpaca" as const } }])),
+      };
+    },
+  });
+  const leadOn = async (dp: number) => {
+    const { result, crashed } = await replayTool("get-theses", "getTheses", { seed: dayMoveSeed(), args: {}, quotes: { EEE: 100 + dp }, mocks: upOnTheDay(dp) });
+    expect(crashed).toBe(false);
+    const row = ((result.data?.theses ?? []) as Array<{ ticker: string; needsAction?: { kind: string; triggerId?: string } | null }>).find((r) => r.ticker === "EEE");
+    return row?.needsAction ?? null;
+  };
+
+  it("up 5% on the day: the trigger is true now in the read", async () => {
+    expect(await leadOn(5)).toMatchObject({ kind: "TRIGGER_MATCHING_NOW", triggerId: "day-up" });
+  });
+
+  it("up 1%: nothing is true", async () => {
+    expect(await leadOn(1)).toBeNull();
+  });
+
+  it("the close-out owes it, as the stock's own trigger", async () => {
+    const { result, crashed } = await replayTool("complete-run", "completeRun", { seed: dayMoveSeed(), args: {}, quotes: { EEE: 105 }, mocks: upOnTheDay(5) });
+    expect(crashed).toBe(false);
+    expect(result.summary).toMatch(/refused/i);
+    expect(JSON.stringify(result)).toContain("EEE");
+  });
+});

@@ -39,8 +39,8 @@ export interface WorkContext {
   analystId?: string | null;
   runEnvironment?: "PAPER" | "LIVE";
   alpacaCreds?: AlpacaCredentials;
-  /** A price the caller already fetched (price, unix-seconds stamp), so the vendor is asked once. */
-  prices?: Record<string, { price: number; t: number }>;
+  /** A price the caller already fetched (price, unix-seconds stamp, the day's change in %), so the vendor is asked once. */
+  prices?: Record<string, { price: number; t: number; dp: number | null }>;
 }
 
 /** The open position a held stock's flag reads. */
@@ -102,15 +102,18 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
 
   // The live price, once, from the one place it comes from (live-quote): the
   // tape in the session, the last close outside it.
+  // The day's change rides with it, for a trigger on the day's move.
+  const dayChange: Record<string, number> = {};
   if (live.length > 0) {
     try {
       const quotes = ctx.prices
-        ? Object.entries(ctx.prices).map(([ticker, q]) => [ticker, { c: q.price, t: q.t }] as const)
+        ? Object.entries(ctx.prices).map(([ticker, q]) => [ticker, { c: q.price, t: q.t, dp: q.dp }] as const)
         : Object.entries(await getLiveQuotes(live.map((t) => t.ticker), { caller: "other", creds: ctx.alpacaCreds })).map(([ticker, r]) => [ticker, r.quote] as const);
       for (const [ticker, quote] of quotes) {
         if (!quote) continue;
         load.livePrice[ticker] = quote.c;
         if (quote.t > 0) load.priceAsOf[ticker] = new Date(quote.t * 1000).toISOString();
+        if (typeof quote.dp === "number" && Number.isFinite(quote.dp)) dayChange[ticker] = quote.dp;
       }
     } catch (err) {
       // getLiveQuotes does not throw; if it ever does, the caller shows the book in full.
@@ -299,7 +302,8 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   const pending = ctx.analystId ? await getPendingEntryTickers(ctx.analystId) : new Set<string>();
   for (const t of live) {
     const price = load.livePrice[t.ticker];
-    const quote = typeof price === "number" && price > 0 ? { price, changePct: 0 } : null;
+    // No prior close to measure from: 0, which no move threshold matches.
+    const quote = typeof price === "number" && price > 0 ? { price, changePct: dayChange[t.ticker] ?? 0 } : null;
     const pos = positions.get(t.id);
     const triggers = load.ladders.get(t.id) ?? [];
     const latestRow = latest.get(t.id);
