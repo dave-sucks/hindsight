@@ -213,8 +213,8 @@ describe("the 09-14 trigger runs", () => {
     expect(prompt).toContain("WHAT'S BEEN SAID ON $CEG");
     expect(prompt).toContain("The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%)");
     expect(prompt).toContain(DECLINE_ENDS);
-    expect(prompt).toContain("The principal's decisions outrank the trigger's own rationale.");
-    expect(prompt).toContain("When WHAT'S BEEN SAID lists the principal's decisions or other triggers");
+    expect(prompt).toContain("The principal's words outrank everything else on the row.");
+    expect(prompt).toContain("When `context` lists the principal's decisions or triggers fired since your last answer, your one `update_thesis` on the stock answers all of them");
     expect(prompt).not.toContain("RECENT THESIS ACTIVITY");
   });
 
@@ -280,7 +280,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
     expect(prompt).toContain("At +15% from entry, reassess");
     expect(prompt).toContain("A sharp 1-day drop could be either normal volatility");
     expect(prompt).toContain(
-      "When WHAT'S BEEN SAID lists the principal's decisions or other triggers\n     fired since the last answer, your update_thesis answers them too: say\n     what you decided on each, by name.",
+      "When `context` lists the principal's decisions or triggers fired since your last answer, your one `update_thesis` on the stock answers all of them: say what you decided on each, by name.",
     );
   });
 });

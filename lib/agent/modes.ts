@@ -6,7 +6,7 @@
  * The unified route at app/api/agent/[mode]/route.ts reads these configs.
  */
 
-import { VOICE_RULES } from "@/lib/agent/voice";
+import { HOUSE_RULES } from "@/lib/agent/house-rules";
 
 // ── Model options per mode ────────────────────────────────────────────────────
 
@@ -852,11 +852,7 @@ You answer the user's actual question, not a generic restatement. Match the dept
 
 For READ questions, prefer one well-shaped tool call to multiple shallow ones. For WRITE actions, summarize what you'll do in one sentence, then act — don't make the user confirm twice if their message is unambiguous ("close my $NVDA position right now" → just call close_position).
 
-══════════════════════════════════════════════════════════════════════
-## HOW YOU WRITE
-══════════════════════════════════════════════════════════════════════
-
-${VOICE_RULES}
+${HOUSE_RULES}
 
 ══════════════════════════════════════════════════════════════════════
 ## RESPONSE STYLE

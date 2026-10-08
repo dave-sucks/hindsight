@@ -18,7 +18,7 @@ import { conditionSentence, isGroup, sentenceOf, shapeOf } from "@/lib/agent/tri
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
-import { VOICE_RULES } from "@/lib/agent/voice";
+import { HOUSE_RULES } from "@/lib/agent/house-rules";
 
 interface TacticalPromptArgs {
   analyst: { name: string; mandate: string | null };
@@ -249,7 +249,7 @@ POSITION:
   ${positionLine}
 
 ${context ?? `WHAT'S BEEN SAID ON $${thesis.ticker}\n  (nothing written on this stock in the lines on record)`}
-The principal's decisions outrank the trigger's own rationale.${trigger.action === "ENTER" || trigger.action === "ADD" ? " If they declined this same buy and nothing they named has changed, say so and pass." : ""}
+${trigger.action === "ENTER" || trigger.action === "ADD" ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
 ${digestSection}
 ═══════════════════════════════════════════════════════════════════
 CURRENT TRIGGER LADDER (your standing game plan on $${thesis.ticker})
@@ -286,8 +286,6 @@ DECISION FRAMEWORK
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close).
-   - **On a protective exit (reason=STOP) answer \`belief_survived\`** — the
-     field says how.
    - **An EARNINGS trigger.** The kickoff carries the figures. A beat is
      not a buy and a miss is not a sell by itself — the reaction is the
      information: a beat the stock is DOWN on means the market wanted
@@ -424,15 +422,7 @@ ${fired?.coFired?.length ? `   Two protective triggers fired together (marked AL
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why.
      Pass trigger_id="${trigger.id}" so the timeline carries the link.
-   - When WHAT'S BEEN SAID lists the principal's decisions or other triggers
-     fired since the last answer, your update_thesis answers them too: say
-     what you decided on each, by name.
    - Then complete_run.
-
-═══════════════════════════════════════════════════════════════════
-HOW YOU WRITE
-═══════════════════════════════════════════════════════════════════
-${VOICE_RULES}
 
 ═══════════════════════════════════════════════════════════════════
 HARD CONSTRAINTS
