@@ -54,6 +54,21 @@ export const getEarningsCalendar = defineTool({
   ui: "tool-ui" as const,
   groupId: "Researching",
 
+  /**
+   * The model reads the sentences it always read; the table is for the screen.
+   *
+   * `items` carries a table so the twenty-one identical-shaped rows line up.
+   * The model has no use for a layout, and `data.items` is re-sent on every
+   * step after this call — so it gets `lines` instead, which is the exact
+   * payload this tool returned before the table existed, and never sees the
+   * table at all. Adopting the table costs the agent nothing.
+   */
+  forModel: (result) => {
+    if (!result.ok) return result;
+    const { lines, ...rest } = result.data as { lines?: unknown } & Record<string, unknown>;
+    return lines ? { ...result, data: { ...rest, items: lines } } : result;
+  },
+
   progressLabel: (args) => {
     const scope = args.scope ?? "coverage";
     const what = args.window === "reported" ? "reported earnings" : "upcoming earnings";
@@ -178,10 +193,26 @@ export const getEarningsCalendar = defineTool({
         ? `No ${window} earnings ${from} → ${to} (${fenceNote}).`
         : `${sorted.length} ${window === "reported" ? "report" : "scheduled report"}${sorted.length === 1 ? "" : "s"} ${from} → ${to} (${fenceNote}).`;
 
-    const items: Array<
+    const moreText = `… and ${remaining} more (use get_stock_data on specific names).`;
+
+    // TWO renderings of the same rows, from the same data.
+    //
+    // `lines` is what the model reads — the sentence per ticker, unchanged
+    // from before the table existed, so adopting it costs the agent nothing
+    // (`forModel` below hands these back and drops the table).
+    //
+    // `items` is what the screen draws. Twenty-one reports of identical shape
+    // are a table written longhand; the columns are declared once.
+    const lines: Array<
       | { kind: "generic"; text: string }
       | { kind: "ticker"; ticker: string; tag: string; text: string }
     > = [{ kind: "generic", text: headerText }];
+
+    const reported = window === "reported";
+    const tableRows: Array<{
+      ticker: string;
+      cells: Array<string | { text: string; tone?: "pos" | "neg" }>;
+    }> = [];
 
     for (const row of visible) {
       const bell = row.hour === "bmo" ? " before open" : row.hour === "amc" ? " after close" : "";
@@ -197,11 +228,45 @@ export const getEarningsCalendar = defineTool({
       } else {
         text = `${row.epsEstimate != null ? `EPS est $${row.epsEstimate.toFixed(2)}` : "no EPS est"}${bell}`;
       }
-      items.push({ kind: "ticker", ticker: row.symbol, tag: row.reportDate, text });
+      lines.push({ kind: "ticker", ticker: row.symbol, tag: row.reportDate, text });
+
+      const s = row.surprisePct;
+      tableRows.push({
+        ticker: row.symbol,
+        cells: reported
+          ? [
+              row.reportDate.slice(5),
+              row.epsActual != null ? `$${row.epsActual.toFixed(2)}` : "—",
+              row.epsEstimate != null ? `$${row.epsEstimate.toFixed(2)}` : "—",
+              s == null
+                ? "—"
+                : { text: `${s >= 0 ? "+" : "−"}${Math.abs(s).toFixed(1)}%`, tone: s >= 0 ? "pos" : "neg" },
+              row.revenueActual != null ? money(row.revenueActual) : "—",
+              row.revenueEstimate != null ? money(row.revenueEstimate) : "—",
+            ]
+          : [
+              row.reportDate.slice(5),
+              row.epsEstimate != null ? `$${row.epsEstimate.toFixed(2)}` : "—",
+              bell.trim() || "—",
+            ],
+      });
+    }
+
+    const items: Array<
+      | { kind: "generic"; text: string }
+      | { kind: "table"; columns: string[]; align: number[]; rows: typeof tableRows }
+    > = [{ kind: "generic", text: headerText }];
+    if (tableRows.length > 0) {
+      items.push(
+        reported
+          ? { kind: "table", columns: ["Date", "EPS", "Est", "Surprise", "Rev", "Est"], align: [1, 2, 3, 4, 5], rows: tableRows }
+          : { kind: "table", columns: ["Date", "EPS est", "Timing"], align: [1], rows: tableRows },
+      );
     }
 
     if (remaining > 0) {
-      items.push({ kind: "generic", text: `… and ${remaining} more (use get_stock_data on specific names).` });
+      items.push({ kind: "generic", text: moreText });
+      lines.push({ kind: "generic", text: moreText });
     }
 
     return {
@@ -210,6 +275,7 @@ export const getEarningsCalendar = defineTool({
         : `No ${window} earnings ${from}→${to} (${fenceNote}).`,
       data: {
         items,
+        lines,
         from,
         to,
         scope,

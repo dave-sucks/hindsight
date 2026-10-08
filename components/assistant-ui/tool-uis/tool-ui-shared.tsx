@@ -82,6 +82,26 @@ function sourceUrl(s: ToolSource): string {
   return PROVIDER_DOMAINS[key] ?? `https://${s.provider.toLowerCase().replace(/[^a-z]/g, "")}.com`;
 }
 
+/**
+ * The same source cited by several sibling calls is one source.
+ *
+ * A group of seven `get_earnings_data` calls all cite Finnhub, which printed
+ * seven identical chip rows. Keyed on the resolved url so two spellings of the
+ * same provider collapse too; first one wins, so the order is the order the
+ * calls ran in.
+ */
+export function dedupeSources(sources: ToolSource[]): ToolSource[] {
+  const seen = new Set<string>();
+  const out: ToolSource[] = [];
+  for (const s of sources) {
+    const key = sourceUrl(s);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
 export function SourceChips({ sources }: { sources: ToolSource[] }) {
   if (!sources.length) return null;
   return (

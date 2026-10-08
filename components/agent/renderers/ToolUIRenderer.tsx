@@ -27,7 +27,20 @@ import {
   ToolProgressContent,
   ToolProgressItem,
   ToolProgressTickerItem,
+  ToolProgressTable,
 } from "@/components/ai-elements/tool-progress";
+import { GlobeIcon } from "lucide-react";
+
+/**
+ * The header icon, and there is only one of them.
+ *
+ * It marks a CATEGORY, not a tool: `web_search` is the only call that leaves
+ * the system. Everything else reads our own data, and an icon per tool would
+ * be a thing to maintain for every tool added, saying nothing.
+ */
+export function headerIcon(toolName: string) {
+  return toolName === "web_search" ? GlobeIcon : undefined;
+}
 import {
   extractToolSources,
   SourceChips,
@@ -157,6 +170,16 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
               </ToolProgressTickerItem>
             );
           }
+          if (it.kind === "table") {
+            return (
+              <ToolProgressTable
+                key={i}
+                columns={it.columns}
+                align={it.align}
+                rows={it.rows}
+              />
+            );
+          }
           if (!it.text) return null;
           return <ToolProgressItem key={i}>{it.text}</ToolProgressItem>;
         })
@@ -167,21 +190,22 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
         ? [<ToolProgressItem key="fallback">{result.summary}</ToolProgressItem>]
         : [];
 
-  const body = (
-    <>
-      {rows}
-      <SourceChips sources={sources} />
-    </>
-  );
-
+  // Inside a group the chips are the GROUP's: seven sibling calls to the same
+  // vendor printed seven identical "finnhub.io +1" rows, one under each line.
+  // ToolCallGroup renders the union once at the end.
   if (inGroup) {
-    return <>{body}</>;
+    return <>{rows}</>;
   }
 
   return (
     <ToolProgress defaultOpen={loading || hasProposal}>
-      <ToolProgressHeader loading={loading}>{label}</ToolProgressHeader>
-      <ToolProgressContent>{body}</ToolProgressContent>
+      <ToolProgressHeader loading={loading} icon={headerIcon(toolName)}>
+        {label}
+      </ToolProgressHeader>
+      <ToolProgressContent>
+        {rows}
+        <SourceChips sources={sources} />
+      </ToolProgressContent>
     </ToolProgress>
   );
 }

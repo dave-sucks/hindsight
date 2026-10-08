@@ -14,6 +14,14 @@ import {
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
+import {
   ChevronRightIcon,
   DotIcon,
   PlusIcon,
@@ -96,6 +104,78 @@ export const ToolProgressHeader = memo(
   )
 );
 ToolProgressHeader.displayName = "ToolProgressHeader";
+
+// ── Table ──────────────────────────────────────────────────────────────────
+// Rows that all carry the same fields, lined up. The alternative is what this
+// replaced: the same five facts written as a sentence, twenty-one times, with
+// nothing in the same place twice.
+//
+// It knows nothing about what the columns are — a tool declares them.
+
+export type ToolProgressTableProps = {
+  columns: readonly string[];
+  /** Column indexes to right-align, so numbers stack. */
+  align?: readonly number[];
+  rows: ReadonlyArray<{
+    ticker?: string;
+    cells: ReadonlyArray<string | { text: string; tone?: "pos" | "neg" }>;
+  }>;
+};
+
+export const ToolProgressTable = memo(
+  ({ columns, align, rows }: ToolProgressTableProps) => {
+    const right = new Set(align ?? []);
+    const hasTicker = rows.some((r) => r.ticker);
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {hasTicker && <TableHead>Ticker</TableHead>}
+            {columns.map((c, i) => (
+              <TableHead key={c + i} className={right.has(i) ? "text-right" : undefined}>
+                {c}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r, ri) => (
+            <TableRow key={(r.ticker ?? "") + ri}>
+              {hasTicker && (
+                <TableCell>
+                  <span className="flex items-center gap-1.5">
+                    {r.ticker ? <StockLogo ticker={r.ticker} size="xs" /> : null}
+                    <span className="font-medium text-foreground">
+                      {r.ticker ? `$${r.ticker}` : ""}
+                    </span>
+                  </span>
+                </TableCell>
+              )}
+              {r.cells.map((cell, ci) => {
+                const text = typeof cell === "string" ? cell : cell.text;
+                const tone = typeof cell === "string" ? undefined : cell.tone;
+                return (
+                  <TableCell
+                    key={ci}
+                    className={cn(
+                      "tabular-nums",
+                      right.has(ci) && "text-right",
+                      tone === "pos" && "text-positive",
+                      tone === "neg" && "text-negative",
+                    )}
+                  >
+                    {text}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  },
+);
+ToolProgressTable.displayName = "ToolProgressTable";
 
 // ── Content ────────────────────────────────────────────────────────────────
 

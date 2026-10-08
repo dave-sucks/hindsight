@@ -392,21 +392,24 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className }
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Reject proposal</DialogTitle>
-              <DialogDescription>
-                Optional: tell the agent why — stored as a ThesisUpdate the agent
-                reads next run. You can also adjust the stop/target or add a price
-                or % alert below before rejecting.
-              </DialogDescription>
             </DialogHeader>
-            <Textarea
-              value={rejectMessage}
-              onChange={(e) => setRejectMessage(e.target.value)}
-              placeholder="e.g. just broke out — reconsider adding instead of selling"
-              rows={4}
-              maxLength={2000}
-              disabled={pending === "reject"}
-              autoFocus
-            />
+            {/* The app's form field: label over input, `space-y-2` between —
+                the same shape InputField and the other dialogs use. This was a
+                DialogDescription paragraph explaining the field in prose, with
+                a stored field name in it. */}
+            <div className="space-y-2">
+              <Label htmlFor="reject-note">Note to the analyst (optional)</Label>
+              <Textarea
+                id="reject-note"
+                value={rejectMessage}
+                onChange={(e) => setRejectMessage(e.target.value)}
+                placeholder="e.g. just broke out — reconsider adding instead of selling"
+                rows={4}
+                maxLength={2000}
+                disabled={pending === "reject"}
+                autoFocus
+              />
+            </div>
 
             {/* Inline trigger editor — adjust the stop/target or add a "down X%"
                 alert without leaving the dialog. Edits persist immediately via

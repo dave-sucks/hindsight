@@ -78,8 +78,27 @@ const run = async (): Promise<any> =>
   (getEarningsCalendar({ runId: "chat_0913", userId: "u", accountId: "a", watchlist: PEAD_BOOK, positionTickers: [], groupId: (p: string) => p } as unknown as ToolContext) as any)
     .execute({ window: "reported", days: 10, scope: "universe" });
 
-const tickerRows = (out: { data: { items: Array<{ kind: string; ticker?: string }> } }) =>
-  out.data.items.filter((i) => i.kind === "ticker").map((i) => i.ticker);
+/**
+ * The visible tickers, read from BOTH renderings.
+ *
+ * The screen gets `items` — a header plus one `table`; the model gets `lines`,
+ * the sentence per ticker, handed over by this tool's `forModel`. They are
+ * built from the same loop, and this asserts they stay the same list in the
+ * same order: a reading-order fix that only reached one of them would be a
+ * silent split between what is shown and what is reasoned over.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const tickerRows = (out: any): (string | undefined)[] => {
+  const table = out.data.items.find((i: { kind: string }) => i.kind === "table");
+  const fromTable: (string | undefined)[] = table
+    ? table.rows.map((r: { ticker?: string }) => r.ticker)
+    : [];
+  const fromLines: (string | undefined)[] = out.data.lines
+    .filter((i: { kind: string }) => i.kind === "ticker")
+    .map((i: { ticker?: string }) => i.ticker);
+  expect(fromTable).toEqual(fromLines);
+  return fromTable;
+};
 
 describe("PEAD discovery, 2026-09-13 — the reported list's reading order", () => {
   it("puts real companies ahead of one-cent-estimate micro-caps", async () => {
@@ -95,6 +114,21 @@ describe("PEAD discovery, 2026-09-13 — the reported list's reading order", () 
   it("shows IOT — the name the chat bought — inside the visible rows", async () => {
     const out = await run();
     expect(tickerRows(out)).toContain("IOT");
+  });
+
+  // The table is for the screen only — the model reads the same sentences it
+  // read before the table existed.
+  it("hands the model lines, never the table", async () => {
+    const out = await run();
+    const tool = getEarningsCalendar({
+      runId: "chat_0913", userId: "u", accountId: "a",
+      watchlist: PEAD_BOOK, positionTickers: [], groupId: (p: string) => p,
+    } as unknown as ToolContext) as unknown as {
+      toModelOutput: (a: { output: unknown }) => { value: { data: { items: Array<{ kind: string }> } } };
+    };
+    const forModel = tool.toModelOutput({ output: out }).value.data;
+    expect(forModel.items.some((i) => i.kind === "table")).toBe(false);
+    expect(forModel.items.filter((i) => i.kind === "ticker").length).toBeGreaterThan(0);
   });
 
   it("still returns every row to the agent, micro-caps last", async () => {
