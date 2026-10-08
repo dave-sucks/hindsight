@@ -46,12 +46,36 @@ export function buyBlockedByFull(
   };
 }
 
+/**
+ * What an agent is told when the stock is in this situation: written from
+ * the morning prompt's "this analyst is full" bullet (system-prompt.ts),
+ * verbatim where it fits. Cap 1,200 characters
+ * (situations.guidance.test.ts); a line added means a line removed. Not sent
+ * to any agent yet: the read that carries it with the stock is a later
+ * change, which also takes the matching text out of the prompts.
+ */
+const GUIDANCE = `When: a buy fired or is true now on a stock we watch, and this analyst is full: every slot is held or awaiting approval. The row names the holdings. A buy that fired or is live cannot be bought, and place_trade will refuse it.
+
+Answer, in order:
+1. Is this stock the better use of a slot than one we hold? Weigh it against the weakest holding: the thesis, the setup, the reward left to its target.
+
+What you can do:
+- This is a portfolio decision, not a quiet day: on this stock's update_thesis, name which held stock it would replace and why it is the better use of the slot.
+- Or write "full — waiting" there, with the reason.
+Say it once in the run summary too ("$ETN wants in; the analyst is full"). Replacing a holding is the principal's decision; your job is to put the comparison in front of them.
+
+Answered: that one update_thesis on the stock.
+
+Mistakes:
+- Calling place_trade for it while the analyst is full.
+- Treating it as a quiet day.`;
+
 export const buyBlockedFull: SituationDefinition<"BUY_BLOCKED_FULL"> = {
   code: "BUY_BLOCKED_FULL",
   order: 4,
   appliesTo: "watched",
   entry: "row",
-  guidance: "",
+  guidance: GUIDANCE,
   lists: () => true,
   rule: (stock, book, now) => {
     const facts = stockFacts(stock, book, now);

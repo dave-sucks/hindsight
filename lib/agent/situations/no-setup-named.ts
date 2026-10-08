@@ -37,12 +37,34 @@ export function nameTheSetup(
   };
 }
 
+/**
+ * What an agent is told when the stock is in this situation: written from
+ * the morning prompt's setup-ask sentences (system-prompt.ts) and
+ * nameTheSetup's ask. Cap 1,200 characters (situations.guidance.test.ts); a
+ * line added means a line removed. Not sent to any agent yet: the read that
+ * carries it with the stock is a later change, which also takes the matching
+ * text out of the prompts.
+ */
+const GUIDANCE = `When: a stock we hold, or one we watch with a buy price, has no setup named. Everything setup-aware skips it: the trigger run's confirmation, the exits a buy writes, the held review's checklist.
+
+Answer, in order:
+1. Which setup was it bought on, or is its buy price written on? Read the chart and the thesis; the row lists this analyst's setups to choose from.
+
+What you can do:
+- Name it on this review, in the same update_thesis call: setup_id from the row's choices. On a held stock that also writes the setup's own exits onto the stock, so do not add those yourself.
+- If no setup fits: setup_id "NONE", with the reason in the rationale.
+
+Answered: setup_id on an update_thesis. Named (or NONE), the stock stops asking.
+
+Mistakes:
+- Adding the setup's exits by hand on a held stock after naming it: naming it writes them.`;
+
 export const noSetupNamed: SituationDefinition<"NO_SETUP_NAMED"> = {
   code: "NO_SETUP_NAMED",
   order: 16,
   appliesTo: "both",
   entry: "full",
-  guidance: "",
+  guidance: GUIDANCE,
   lists: () => true,
   rule: (stock, book) => {
     const ask = nameTheSetup(
