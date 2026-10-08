@@ -17,10 +17,15 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
-import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
-import { HELD_THROUGH_WINDOW_DAYS } from "@/lib/proposals/held-through-context";
 import { computeLadderHealth, isLadderEditUpdate } from "@/lib/agent/ladder-health";
-import { declinedSaleWork, foldDeclines, type DeclineRow, type DeclineSummary } from "@/lib/agent/declined-sale";
+import {
+  declinedSaleWhere,
+  declinedSaleWork,
+  foldDeclines,
+  isSystemicRejection,
+  type DeclineRow,
+  type DeclineSummary,
+} from "@/lib/agent/declined-sale";
 import { ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import type { ActivityRow } from "@/lib/agent/stock-context";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
@@ -148,18 +153,21 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
       }
       const ids = Array.from(new Set(Array.from(positions.values(), (p) => p.id)));
       if (ids.length > 0) {
+        // Every close the principal did not approve counts; a protective one
+        // inside the window is a declined sale. Both from declined-sale.ts's
+        // one definition of a decline.
+        const declined = declinedSaleWhere(now);
         const closes = await prisma.order.findMany({
-          where: { positionId: { in: ids }, side: "SELL", intent: "CLOSE", status: { in: ["REJECTED", "EXPIRED"] }, expiresAt: { not: null } },
+          where: { positionId: { in: ids }, side: "SELL", intent: declined.intent, status: declined.status, expiresAt: declined.expiresAt },
           orderBy: { createdAt: "desc" },
           select: { positionId: true, rejectionMessage: true, closeReason: true, createdAt: true },
         });
-        const cutoff = new Date(now.getTime() - HELD_THROUGH_WINDOW_DAYS * 86_400_000);
         const counts = new Map<string, number>();
         const declineRows = new Map<string, DeclineRow[]>();
         for (const o of closes) {
           if (isSystemicRejection(o.rejectionMessage)) continue;
           counts.set(o.positionId, (counts.get(o.positionId) ?? 0) + 1);
-          if (o.closeReason === "STOP" && o.createdAt >= cutoff) {
+          if (o.closeReason === declined.closeReason && o.createdAt >= declined.createdAt.gte) {
             declineRows.set(o.positionId, [...(declineRows.get(o.positionId) ?? []), { createdAt: o.createdAt, rejectionMessage: o.rejectionMessage }]);
           }
         }
