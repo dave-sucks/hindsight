@@ -361,19 +361,22 @@ export const getTheses = defineTool({
       }
     }
 
-    // The price when the research was written: the writer's latest save on
-    // each stock. The research text and the score are as old as that visit
-    // (SYK on 2026-10-02: written at $348, the stock at $273, 51 days on), so
-    // the row says so next to them.
-    const researchPriceByThesis = new Map<string, number>();
+    // When the research was written and the price then: the writer's latest
+    // save on each stock, its date and its price from the same row. The
+    // research text and the score are as old as that visit (SYK on
+    // 2026-10-02: written at $348, the stock at $273, 51 days on). A later
+    // save that touched a research field is an edit, not a rewrite (SYK
+    // 2026-10-08 read "Written 2026-10-07 at $348.15", the August price
+    // under an October date).
+    const researchWrittenByThesis = new Map<string, { at: Date; price: number }>();
     if (theses.length > 0) {
       const writerSaves = await prisma.thesisUpdate.findMany({
         where: { thesisId: { in: theses.map((t) => t.id) }, priceAtTime: { not: null }, run: { mode: "THESIS_WRITER" } },
         orderBy: { timestamp: "desc" },
         distinct: ["thesisId"],
-        select: { thesisId: true, priceAtTime: true },
+        select: { thesisId: true, priceAtTime: true, timestamp: true },
       });
-      for (const u of writerSaves) if (u.priceAtTime != null) researchPriceByThesis.set(u.thesisId, u.priceAtTime);
+      for (const u of writerSaves) if (u.priceAtTime != null) researchWrittenByThesis.set(u.thesisId, { at: u.timestamp, price: u.priceAtTime });
     }
 
     // The live stocks (held, watched, promoted): the ones whose missing or
@@ -530,7 +533,10 @@ export const getTheses = defineTool({
         // proposed this exit and the user declined N×" — don't re-propose
         // unless the thesis materially changed. 0 for non-HOLDING rows.
         unapprovedExitCount: load.unapprovedExitCount.get(t.id) ?? 0,
-        researchPriceThen: researchPriceByThesis.get(t.id) ?? null,
+        researchWritten: (() => {
+          const w = researchWrittenByThesis.get(t.id);
+          return w ? { on: w.at.toISOString().slice(0, 10), price: w.price, daysAgo: Math.floor((Date.now() - w.at.getTime()) / 86_400_000) } : null;
+        })(),
         // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
         // recent protective (STOP) declines in the last 7d + the principal's
         // verbatim reject message + the recent low (lowest low since the last
@@ -793,13 +799,18 @@ export function rowForModel(row: Record<string, unknown>, named: boolean): Recor
     const v = out[k];
     if (v == null || (Array.isArray(v) && v.length === 0) || v === 0) delete out[k];
   }
-  const written = typeof row.researchUpdatedAt === "string" ? row.researchUpdatedAt.slice(0, 10) : row.researchUpdatedAt instanceof Date ? row.researchUpdatedAt.toISOString().slice(0, 10) : null;
-  const price = typeof row.researchPriceThen === "number" ? row.researchPriceThen : null;
+  // The writer's save gives the date and the price together; a later edit of
+  // a research field is said as an edit, never as the date of the writing.
+  const updated = typeof row.researchUpdatedAt === "string" ? row.researchUpdatedAt.slice(0, 10) : row.researchUpdatedAt instanceof Date ? row.researchUpdatedAt.toISOString().slice(0, 10) : null;
+  const w = row.researchWritten as { on: string; price: number; daysAgo: number } | null | undefined;
+  const ago = (n: number) => `${n} day${n === 1 ? "" : "s"} ago`;
   const age = (row.researchAge as { daysOld?: number | null } | undefined)?.daysOld;
-  out.research = written
-    ? `Written ${written}${price != null ? ` at $${price}` : ""}${age != null ? `, ${age} days ago` : ""}.`
-    : "No research written yet.";
-  delete out.researchPriceThen;
+  out.research = w
+    ? `Written ${w.on} at $${w.price}, ${ago(w.daysAgo)}${updated && updated > w.on ? `, edited ${updated}` : ""}.`
+    : updated
+      ? `Written ${updated}${age != null ? `, ${ago(age)}` : ""}.`
+      : "No research written yet.";
+  delete out.researchWritten;
   delete out.researchUpdatedAt;
   if (!named) delete out.history;
   return out;

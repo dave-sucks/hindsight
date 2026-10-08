@@ -163,7 +163,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
         const closes = await prisma.order.findMany({
           where: { positionId: { in: ids }, side: "SELL", intent: declined.intent, status: declined.status, expiresAt: declined.expiresAt },
           orderBy: { createdAt: "desc" },
-          select: { positionId: true, rejectionMessage: true, closeReason: true, createdAt: true },
+          select: { positionId: true, rejectionMessage: true, closeReason: true, createdAt: true, status: true, expiresAt: true, updatedAt: true },
         });
         const counts = new Map<string, number>();
         const declineRows = new Map<string, DeclineRow[]>();
@@ -171,7 +171,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
           if (isSystemicRejection(o.rejectionMessage)) continue;
           counts.set(o.positionId, (counts.get(o.positionId) ?? 0) + 1);
           if (o.closeReason === declined.closeReason && o.createdAt >= declined.createdAt.gte) {
-            declineRows.set(o.positionId, [...(declineRows.get(o.positionId) ?? []), { createdAt: o.createdAt, rejectionMessage: o.rejectionMessage }]);
+            declineRows.set(o.positionId, [...(declineRows.get(o.positionId) ?? []), { createdAt: o.createdAt, rejectionMessage: o.rejectionMessage, status: o.status, expiresAt: o.expiresAt, updatedAt: o.updatedAt }]);
           }
         }
         for (const [thesisId, { id: posId }] of positions) {

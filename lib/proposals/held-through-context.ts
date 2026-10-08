@@ -80,7 +80,7 @@ export async function heldThroughNoteForPosition(args: {
   try {
     const declines = await prisma.order.findMany({
       where: { positionId, ...declinedSaleWhere(new Date()) },
-      select: { createdAt: true, rejectionMessage: true },
+      select: { createdAt: true, rejectionMessage: true, status: true, expiresAt: true, updatedAt: true },
     });
     const folded = foldDeclines(declines);
     if (!folded) return null;
