@@ -69,7 +69,7 @@ function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
   return "uncertain";
 }
 
-type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "FAILED" | "PROPOSED";
+type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "UNCHANGED" | "FAILED" | "PROPOSED";
 
 interface ManagePositionTicker {
   ticker: string;
@@ -1055,6 +1055,28 @@ export const managePosition = defineTool({
                 success: false, ticker, action: args.action, status: "FAILED" as const,
                 message: "Provide new_target_price and/or new_stop_loss.",
                 tickers: [{ ticker, tag: "Failed", summary: "Missing target/stop values", actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+
+          // A save is a patch: the stop in force or the stored target, sent
+          // back, changes nothing and is dropped before the ratchet reads it.
+          // Both dropped writes nothing — no audit row, no Activity line.
+          const thesisTarget = auditThesisId
+            ? await prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { targetPrice: true } }).catch(() => null)
+            : null;
+          const storedTarget = thesisTarget ? thesisTarget.targetPrice : position.targetPrice;
+          if (args.new_stop_loss != null && args.new_stop_loss === floorInForce) args = { ...args, new_stop_loss: undefined };
+          if (args.new_target_price != null && args.new_target_price === storedTarget) args = { ...args, new_target_price: undefined };
+          if (!args.new_target_price && !args.new_stop_loss) {
+            return {
+              summary: `${ticker}: the stop and target sent are the ones in place — nothing changed`,
+              data: {
+                success: true, ticker, action: args.action, status: "UNCHANGED" as const,
+                newTargetPrice: storedTarget, newStopLoss: floorInForce,
+                message: `No change: ${ticker}'s stop and target are already what you sent.`,
+                tickers: [{ ticker, tag: "No change", summary: "Stop and target already in place", actionIcon: "hold" }],
               },
               sources: [],
             };

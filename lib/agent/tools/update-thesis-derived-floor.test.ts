@@ -91,7 +91,7 @@ beforeEach(() => {
 });
 
 describe("update_thesis — the floor covers a buy level moved through its trigger (DAV-241)", () => {
-  it("refuses a buy level moved through the trigger that leaves the plan under 2:1", async () => {
+  it("refuses a buy level moved through the trigger that leaves the plan under 2:1 (the note lands)", async () => {
     mockThesisFindUnique.mockResolvedValue(etnRow());
     const result = await run({
       thesis_id: "thesis_etn",
@@ -99,10 +99,10 @@ describe("update_thesis — the floor covers a buy level moved through its trigg
       // (490 − 432) / (432 − 355) = 0.75:1
       edit_triggers: [{ id: "buy", level: 432, rationale: "Confirmation is above the repair range." }],
     });
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("invalid_thesis_shape");
-    expect(String(result.data.message)).toContain("R/R floor");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    // The trigger changes are refused together; the rest of the call lands (a save is a patch).
+    expect(result.data.ok).toBe(true);
+    expect(result.data.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("R/R floor") })]);
+    expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
   });
 
   it("lets the same resend through when the derived plan clears the floor", async () => {

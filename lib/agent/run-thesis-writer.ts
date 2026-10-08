@@ -1389,6 +1389,8 @@ export interface WriterSaveOutcome {
   error: string | null;
   /** A refusal or schema miss the model can fix — not a crash. */
   fixable: boolean;
+  /** A save that landed with some fields refused by themselves, in the save's words. */
+  notApplied?: string;
 }
 
 /**
@@ -1414,16 +1416,20 @@ export function readWriterSaveResult(
     // hears it: the thesis text says one thing and the trigger says another
     // until some later run reads the stock. The check hands it back while the
     // writer still has its research (Dave's ruling, 2026-09-15).
-    const refused = (Array.isArray(data.trigger_ops) ? data.trigger_ops : []).filter(
-      (op): op is { id?: string; text?: string; reason?: string } =>
-        !!op && typeof op === "object" && (op as { ok?: boolean }).ok === false,
-    );
+    const refused: Array<{ id?: string; text?: string; reason?: string }> = [
+      ...(Array.isArray(data.trigger_ops) ? data.trigger_ops : []).filter(
+        (op): op is { id?: string; text?: string; reason?: string } =>
+          !!op && typeof op === "object" && (op as { ok?: boolean }).ok === false,
+      ),
+      // A field the save would refuse by itself, the rest landing (update_thesis's refused_fields).
+      ...(Array.isArray(data.refused_fields) ? (data.refused_fields as Array<{ field: string; reason: string }>) : []).map((f) => ({ text: f.field, reason: f.reason })),
+    ];
     if (refused.length > 0) {
       return {
         thesisId: null,
         wouldSave: false,
         fixable: true,
-        error: `${toolName} would save, but ${refused.length} trigger change${refused.length === 1 ? "" : "s"} would be refused: ${refused
+        error: `${toolName} would save, but ${refused.length} change${refused.length === 1 ? "" : "s"} would be refused: ${refused
           .map((op) => `${op.text ?? op.id ?? "trigger"} — ${op.reason ?? "refused"}`)
           .join(" · ")}`,
       };
@@ -1439,8 +1445,13 @@ export function readWriterSaveResult(
   if (data.ok === false) {
     return { thesisId: null, wouldSave: false, error: `update_thesis refused: ${String(data.message ?? data.error ?? res?.summary ?? "unknown")}`, fixable: true };
   }
-  // update_thesis said ok; the caller proves it with the audit row.
-  return { thesisId: null, wouldSave: false, error: null, fixable: false };
+  // update_thesis said ok; the caller proves it with the audit row. What it
+  // refused by itself rides along so the run's record names it.
+  const refusedFields = Array.isArray(data.refused_fields) ? (data.refused_fields as Array<{ field: string; reason: string }>) : [];
+  return {
+    thesisId: null, wouldSave: false, error: null, fixable: false,
+    ...(refusedFields.length ? { notApplied: refusedFields.map((f) => `${f.field} — ${f.reason}`).join(" · ") } : {}),
+  };
 }
 
 /**
@@ -1646,6 +1657,7 @@ export async function writerPersistPhase(
   const T = args.ticker.toUpperCase();
   let thesisId: string | null = null;
   let persistError: string | null = research.ok ? null : research.error ?? "research failed";
+  let notApplied: string | null = null;
 
   try {
     const analyst = await loadWriterAnalyst(args.analystId);
@@ -1738,13 +1750,14 @@ export async function writerPersistPhase(
         }
         thesisId = outcome.thesisId;
         persistError = outcome.thesisId ? null : outcome.error ?? "unknown";
+        notApplied = outcome.notApplied ?? null;
       }
 
       await writePhaseEvent(
         args.childRunId,
         thesisId ? "Thesis persisted" : "Persist refused",
         thesisId
-          ? `${args.mode === "mint" ? "record_thesis" : "update_thesis"} landed (${d.direction}${d.conviction ? `, ${d.conviction}` : ""}${research.riskReward ? `, R/R ${research.riskReward.toFixed(2)}:1` : ""}).`
+          ? `${args.mode === "mint" ? "record_thesis" : "update_thesis"} landed (${d.direction}${d.conviction ? `, ${d.conviction}` : ""}${research.riskReward ? `, R/R ${research.riskReward.toFixed(2)}:1` : ""}).${notApplied ? ` Not applied: ${notApplied}` : ""}`
           : persistError ?? "unknown",
         { ticker: T, thesisId, mode: args.mode },
       );

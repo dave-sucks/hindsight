@@ -139,7 +139,7 @@ const EARLY_RULES: TransitionRule[] = [
           message:
             `update_thesis(change_status: "${i.changeStatus}") is refused from the thesis-writer on a PROMOTED thesis. ` +
             `The writer's job is research refresh only — refreshed content (target / stop / triggers / belief / sections) lands on the row; the status decision belongs to the next daily run. ` +
-            `Drop change_status and retry with refreshed content. The PROMOTED state persists until the orchestrator (daily/tactical run) acts on the refreshed research.`,
+            `The PROMOTED state persists until the orchestrator (daily/tactical run) acts on the refreshed research.`,
         },
       };
     },
@@ -266,8 +266,7 @@ export function checkTerminateWithoutClose(
       message:
         `$${input.ticker} has an open ${pos.direction} position (${pos.quantity} sh) backed by this thesis — a stock we own. ` +
         `Terminating the thesis (${action}) without closing the position creates a zombie — open position with no live thesis to manage it. ` +
-        `Correct sequence: call \`close_position\` first to exit Alpaca (which also flips the thesis status), then retry \`update_thesis(thesis_id, change_status: "${action}", rationale: "...")\` if you want a separate audit row. ` +
-        `If the position should stay open (just refining the thesis), drop change_status and pass the fields you want to change instead.`,
+        `Call \`close_position\` first to exit Alpaca; it flips the thesis status itself.`,
     },
   };
 }

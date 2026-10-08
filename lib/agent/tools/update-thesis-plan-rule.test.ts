@@ -124,17 +124,17 @@ beforeEach(() => {
 describe("update_thesis — the plan rule runs on any level edit", () => {
   it("refuses the 08-27 PLTR edit: moving only the entry onto the target", async () => {
     const result = await run({ entry_price: 190 });
-    expect(result.data?.ok).toBe(false);
-    expect(result.data?.error).toBe("invalid_thesis_shape");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    // The entry is refused with the plan message; the rest of the call lands.
+    expect(result.data?.ok).toBe(true);
+    expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers" })]);
+    expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
   });
 
   it("refuses an entry edit that leaves the plan under 2:1", async () => {
     // 183 → 150 against target 190 / stop 110: reward 40, risk 40 → 1:1.
     const result = await run({ entry_price: 150 });
-    expect(result.data?.ok).toBe(false);
-    expect(result.data?.error).toBe("invalid_thesis_shape");
-    expect(String(result.data?.message)).toContain("R/R floor");
+    expect(result.data?.ok).toBe(true);
+    expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("R/R floor") })]);
   });
 
   it("accepts a re-level that clears the floor in the same call", async () => {

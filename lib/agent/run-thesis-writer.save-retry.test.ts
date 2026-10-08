@@ -1,10 +1,13 @@
 /**
- * run-thesis-writer.save-retry.test.ts — one retry when the save refuses.
+ * run-thesis-writer.save-retry.test.ts — what the real save does with a plan
+ * the check let through.
  *
  * The submit step's check can still be outrun (it leaves out the
  * server-built sections, and it lets a decision through after two refusals
- * so the loop can't spin). When the real save refuses, the model sees the
- * refusal once and resubmits; the corrected decision is saved.
+ * so the loop can't spin). A save is a patch: a plan the save can't apply is
+ * refused by itself and the rest of the refresh lands, so the research is
+ * kept, the stock keeps the plan it had, and the run's record names what was
+ * not applied. The one save-time retry is left for a save refused whole.
  *
  * Replay: DOCU's 2026-09-15 decision with its floor kept (the buy level
  * removed, the $57.50 sell left behind — a sale with no buy, which the save's
@@ -114,8 +117,6 @@ const halfPlan = {
   ...fx.submit,
   remove_trigger_ids: fx.submit.remove_trigger_ids.filter((id) => !id.startsWith("85cba008")),
 };
-/** The fix the refusal asks for: take the floor off with the buy — DOCU's real call. */
-const fixedPlan = fx.submit;
 
 function research(): WriterResearchPhaseOutput {
   const v = validateThesisDecision(halfPlan, {
@@ -154,32 +155,15 @@ beforeEach(() => {
   );
 });
 
-it("DOCU: the save refuses once, the model resubmits with the plan set down whole, and the thesis saves", async () => {
-  mockGenerateText.mockImplementation(async (opts: { messages: Array<{ content: string }>; tools: { submit_thesis: { execute: (a: unknown, o: unknown) => Promise<unknown> } } }) => {
-    // The model is shown the refusal in the save's own words.
-    expect(opts.messages[2].content).toMatch(/no buy level/);
-    await opts.tools.submit_thesis.execute(fixedPlan, { toolCallId: "retry", messages: [] });
-    return { text: "", response: { messages: [] } };
-  });
-
+it("DOCU: the save keeps the research, refuses the half plan by name, and the stock keeps its plan — no retry", async () => {
   const result = await writerPersistPhase(args, pullOutput, research(), Date.now());
 
-  expect(mockGenerateText).toHaveBeenCalledTimes(1);
+  expect(mockGenerateText).not.toHaveBeenCalled();
   expect(result.status).toBe("COMPLETE");
   expect(result.thesisId).toBe(fx.thesis.id);
   expect(mockThesisUpdate).toHaveBeenCalledTimes(1);
-  const titles = mockRunEventCreate.mock.calls.map((c) => c[0].data.title);
-  expect(titles).toContain("Save refused — retrying once");
-  expect(titles).toContain("Thesis persisted");
-});
-
-it("DOCU: a retry that doesn't fix it fails the run with the save's reason — one retry, not a loop", async () => {
-  mockGenerateText.mockImplementation(async () => ({ text: "", response: { messages: [] } }));
-
-  const result = await writerPersistPhase(args, pullOutput, research(), Date.now());
-
-  expect(mockGenerateText).toHaveBeenCalledTimes(1);
-  expect(result.status).toBe("FAILED");
-  expect(result.error).toMatch(/no buy level/);
-  expect(mockThesisUpdate).not.toHaveBeenCalled();
+  expect(mockThesisUpdate.mock.calls[0][0].data.triggers).toBeUndefined();
+  const events = mockRunEventCreate.mock.calls.map((c) => c[0].data as { title: string; message: string });
+  expect(events.map((e) => e.title)).not.toContain("Save refused — retrying once");
+  expect(events.find((e) => e.title === "Thesis persisted")?.message).toMatch(/Not applied: triggers — .*no buy level/);
 });

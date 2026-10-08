@@ -113,6 +113,8 @@ export interface TriggerOpResult {
   text: string;
   /** Why the op was refused. */
   reason?: string;
+  /** The op asked for what the trigger already says: an agent's save drops it, a person is told. */
+  unchanged?: true;
 }
 
 export interface ApplyTriggerOpsInput {
@@ -247,8 +249,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     input.ops.flatMap((o) => ((o.op === "edit" || o.op === "replace") && deleted.has(o.id) ? [o.id] : [])),
   );
 
-  const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string) =>
-    results.push({ op, id, ok: false, text, reason });
+  const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string, unchanged?: true) =>
+    results.push({ op, id, ok: false, text, reason, ...(unchanged ? { unchanged } : {}) });
 
   /** The one gate an agent's edit runs on a stock we own. */
   const ratchetReason = (next: Trigger[]): string | null => {
@@ -420,7 +422,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (parts.length === 0 && rationale !== target.rationale)
       parts.push(`${name}: wording updated`);
     if (parts.length === 0) {
-      return refuse("edit", op.id, `${name}: no change`, "Nothing to change — the trigger already has these values.");
+      return refuse("edit", op.id, `${name}: no change`, "Nothing to change — the trigger already has these values.", true);
     }
     const text = parts.join("; ");
 
@@ -498,7 +500,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       target.action === trigger.action &&
       (target.fireMode ?? "TACTICAL") === (trigger.fireMode ?? "TACTICAL")
     ) {
-      return refuse("edit", id, text, "Nothing to change — the trigger already says this.");
+      return refuse("edit", id, text, "Nothing to change — the trigger already says this.", true);
     }
     // The history belongs to the condition. Same slot: a new value for the
     // same rule keeps its id, its fire history, its cooldown and its

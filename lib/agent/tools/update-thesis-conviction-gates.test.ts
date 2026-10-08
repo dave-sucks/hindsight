@@ -109,7 +109,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
   });
 
   describe("coherence gates", () => {
-    it("rejects patching conviction without conviction_rationale", async () => {
+    it("refuses conviction without conviction_rationale by itself; the rest lands", async () => {
       mockThesisFindUnique.mockResolvedValueOnce(makeExistingRow());
       const ctx = makeCtx();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,9 +122,9 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
         // conviction_rationale missing
       });
 
-      expect(result.data.ok).toBe(false);
-      expect(result.data.error).toBe("conviction_rationale_required");
-      expect(mockThesisUpdate).not.toHaveBeenCalled();
+      expect(result.data.ok).toBe(true);
+      expect(result.data.refused_fields).toEqual([expect.objectContaining({ field: "conviction", reason: expect.stringContaining("conviction_rationale") })]);
+      expect(mockThesisUpdate.mock.calls[0][0].data.conviction).toBeUndefined();
     });
 
     it("patching to STRONG with no variant_view anywhere is stored as MEDIUM, with the reason", async () => {

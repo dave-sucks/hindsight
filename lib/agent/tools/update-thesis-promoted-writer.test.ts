@@ -103,7 +103,7 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
     mockThesisFindUnique.mockReset();
   });
 
-  it("refuses change_status: WATCHING from runMode=THESIS_WRITER on PROMOTED thesis", async () => {
+  it("refuses change_status: WATCHING from runMode=THESIS_WRITER on PROMOTED thesis, by itself", async () => {
     mockThesisFindUnique.mockResolvedValueOnce(promotedThesisRow);
     const ctx = makeCtx({ runMode: "THESIS_WRITER" });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,11 +115,10 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
       change_status: "WATCHING",
     });
 
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("thesis_writer_cannot_change_promoted_status");
-    expect(result.data.attempted).toBe("WATCHING");
-    expect(result.data.current_status).toBe("PROMOTED");
-    expect(result.summary).toMatch(/writer is research-only/i);
+    // The verb is refused by name; the rest of the refresh lands and the row stays PROMOTED.
+    expect(result.data.ok).toBe(true);
+    expect(result.data.refused_fields).toEqual([expect.objectContaining({ field: "change_status", reason: expect.stringMatching(/research refresh only/i) })]);
+    expect("status" in (mockThesisUpdate.mock.calls.at(-1)?.[0].data ?? {})).toBe(false);
   });
 
   it("refuses any change_status from runMode=THESIS_WRITER on PROMOTED thesis", async () => {
@@ -136,8 +135,9 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
       change_status: "INVALIDATED",
     });
 
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("thesis_writer_cannot_change_promoted_status");
+    expect(result.data.ok).toBe(true);
+    expect(result.data.refused_fields).toEqual([expect.objectContaining({ field: "change_status" })]);
+    expect("status" in (mockThesisUpdate.mock.calls.at(-1)?.[0].data ?? {})).toBe(false);
   });
 
   // P1-24 contract: the tool-owned ACTIVE/CLOSED change_status verbs were
@@ -179,11 +179,11 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
     expect(updateArg?.data?.status).toBeUndefined();
   });
 
-  it("still REFUSES a status-less update on PROMOTED from an orchestrator run", async () => {
+  it("lands a status-less update on PROMOTED from an orchestrator run and says it is still promoted", async () => {
     // The resolution requirement is orchestrator-scoped: a daily/tactical
-    // run touching a PROMOTED thesis must resolve it (place_trade to
-    // re-enter, or change_status: "WATCHING" to defer). Reasoning-only
-    // patches don't count. The 2026-08-13 fix must NOT have loosened this.
+    // run touching a PROMOTED thesis resolves it with place_trade or
+    // change_status: "WATCHING". A note alone leaves it promoted, and the
+    // reply says so; refusing the note only made runs retry it (ASML/NVDA).
     mockThesisFindUnique.mockResolvedValueOnce(promotedThesisRow);
     const ctx = makeCtx({ runMode: "MORNING_PLAN" });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -195,8 +195,10 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
       core_belief: "Patched belief",
     });
 
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("promoted_thesis_requires_resolution");
+    expect(result.data.ok).toBe(true);
+    expect(result.data.refused_fields).toBeUndefined();
+    expect(result.summary).toContain("Still promoted until place_trade or change_status WATCHING.");
+    expect(mockThesisUpdate.mock.calls.at(-1)?.[0].data.coreBelief).toBe("Patched belief");
   });
 
   it("allows change_status: WATCHING from runMode=DAILY (orchestrator) on PROMOTED thesis", async () => {
