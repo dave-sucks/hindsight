@@ -110,9 +110,10 @@ beforeEach(() => {
 describe("update_thesis — a refused call claims no change (DAV-258)", () => {
   it("VST 09-11: removing only the buy is refused, and every op says it did not land", async () => {
     const result = await run({ remove_trigger_ids: [BUY, CADENCE] });
-    expect(result.data?.ok).toBe(false);
-    expect(result.data?.error).toBe("missing_enter_trigger");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    // The trigger changes are refused together; the note lands as a review.
+    expect(result.data?.ok).toBe(true);
+    expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To set the plan down") })]);
+    expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
 
     const ops = result.data?.trigger_ops as TriggerOpResult[];
     expect(ops.map((o) => o.id).sort()).toEqual([BUY, CADENCE].sort());
@@ -124,7 +125,7 @@ describe("update_thesis — a refused call claims no change (DAV-258)", () => {
 
   it("the refusal names the exact set-down call, and following it lands", async () => {
     const refused = await run({ remove_trigger_ids: [BUY, CADENCE] });
-    const message = String(refused.data?.message);
+    const message = String((refused.data?.refused_fields as Array<{ field: string; reason: string }>).find((f) => f.field === "triggers")?.reason);
     expect(message).toContain("To set the plan down");
     // Buy, floor and target by id — not the review cadence, which survives a set-down.
     const named = [...message.matchAll(/"([0-9a-f-]{36})"/g)].map((m) => m[1]);

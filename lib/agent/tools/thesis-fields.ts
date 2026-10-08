@@ -59,7 +59,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
   return {
     direction: z
       .enum(["LONG", "SHORT", "PASS"])
-      .describe("LONG, SHORT, or PASS: a stock you researched and won't trade. A thesis's direction is set once, when it has none; sending the one it has changes nothing."),
+      .describe("LONG, SHORT, or PASS: a stock you researched and won't trade."),
     horizon: z
       .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
       .describe(

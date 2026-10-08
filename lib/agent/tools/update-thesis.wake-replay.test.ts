@@ -86,11 +86,11 @@ describe("VST 2026-09-27 — the chat's review above $145, with no buy", () => {
     expect(row.stopLoss).toBeNull();
   });
 
-  it("the same call as a sale at $145 is still a half plan — refused", async () => {
+  it("the same call as a sale at $145 is still a half plan — the trigger change is refused, the note lands", async () => {
     const sale = { ...fx.args, add_triggers: [{ ...fx.args.add_triggers[0], action: "EXIT" }] };
     const r = await call(sale);
-    expect(r.refused).toBe(true);
-    expect(r.refusal?.error).toBe("missing_enter_trigger");
+    expect(r.refused).toBe(false);
+    expect(JSON.stringify(r.result.data?.refused_fields)).toMatch(/"field":"triggers"/);
     expect(rowOf(r).triggers).toEqual(cadence);
   });
 });

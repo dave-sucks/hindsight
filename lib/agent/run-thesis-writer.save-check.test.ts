@@ -325,14 +325,15 @@ describe("a check writes nothing anyone reads later", () => {
     expect(mockRecordGateRejection).not.toHaveBeenCalled();
   });
 
-  it("a real refused save still writes its refusal receipt", async () => {
+  it("a real save lands the rest and refuses the plan by name (no refusal receipt: the call landed)", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const v = validateThesisDecision(withFloorKept(fx.submit), validateOpts(fx, "DOCU"));
     const call = buildWriterSaveCall(writerArgs(fx, "DOCU"), null, v.decision as ValidatedThesisDecision, {}, { direction: "LONG", status: "WATCHING" });
     const saveTool = updateThesis(ctx) as unknown as { execute: (a: unknown, o: unknown) => Promise<unknown> };
-    await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] });
-    expect(mockRecordGateRejection).toHaveBeenCalledTimes(1);
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    const res = (await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] })) as { data: { refused_fields?: Array<{ field: string }> } };
+    expect(res.data.refused_fields?.map((f) => f.field)).toEqual(["triggers"]);
+    expect(mockRecordGateRejection).not.toHaveBeenCalled();
+    expect(mockThesisUpdate.mock.calls.every(([a]: [{ data: Record<string, unknown> }]) => !("triggers" in a.data))).toBe(true);
   });
 });
 

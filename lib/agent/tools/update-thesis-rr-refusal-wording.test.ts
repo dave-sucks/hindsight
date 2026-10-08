@@ -110,11 +110,11 @@ describe("update_thesis — the 2:1 refusal names the ops that exist (DAV-262)",
   it("MSFT 09-14: a plan under the floor is refused with remove_trigger_ids naming the buy, floor and target", async () => {
     // The stop nudged to $450 with the target left at $600: (600 − 518) / (518 − 450) = 1.21.
     const refused = await run({ stop_loss: 450 });
-    expect(refused.data?.ok).toBe(false);
-    expect(refused.data?.error).toBe("invalid_thesis_shape");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    // Refused with the plan message by name; the rest of the call lands.
+    expect(refused.data?.ok).toBe(true);
+    expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
 
-    const message = String(refused.data?.message);
+    const message = String((refused.data?.refused_fields as Array<{ field: string; reason: string }>).find((f) => f.field === "triggers")?.reason);
     expect(message).toContain("1.21:1");
     expect(message).toContain("remove_trigger_ids");
     expect(message).not.toMatch(/resend triggers|triggers\[\]|pass that array|ACTIVE thesis/);
