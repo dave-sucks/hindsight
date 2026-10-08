@@ -105,6 +105,32 @@ export function situationsFor(s: SituationSources): SituationCode[] {
   return [...new Set(codes)];
 }
 
+/** Each situation in a few plain words, for a person: the thesis sheet's flag line. */
+export const SITUATION_NAMES: Record<SituationCode, string> = {
+  PROMOTED_AWAITING: "promoted to live",
+  PROTECTIVE_SALE: "sale signal",
+  BUY_ARRIVES: "buy level reached",
+  BUY_BLOCKED_FULL: "buy blocked, full",
+  ADD_OR_WINNER: "add or near target",
+  EARNINGS: "earnings",
+  FILING: "new filing",
+  QUIET_WATCH_WOKE: "watch woke up",
+  PROTECTION: "floor to fix",
+  FIRST_RESEARCH: "first research due",
+  REVIEW_DUE: "review due",
+  STALE_RESEARCH: "research stale",
+  PLAN_PROBLEM: "plan check",
+  YOUR_WORD_UNANSWERED: "your word unanswered",
+  SOLD_ONE_REVIEW: "sold, one look",
+  NO_SETUP_NAMED: "no setup named",
+};
+
+/** The situations for a person, lead first: each code, its name, and whether the lead flag is what put the stock in it. */
+export function situationLabels(s: SituationSources): Array<{ code: SituationCode; name: string; lead: boolean }> {
+  const lead = new Set(s.needs[0] ? flagCodes(s, s.needs[0]) : []);
+  return situationsFor(s).map((code) => ({ code, name: SITUATION_NAMES[code], lead: lead.has(code) }));
+}
+
 /** Plan checks list a stock by themselves, except these two (decision 4, docs/plans/AGENT_ARCHITECTURE.md). */
 const CHECKS_THAT_DO_NOT_LIST = new Set(["NO_BUY_LEVEL", "COMPOSITE_BELOW_MINIMUM"]);
 const LABELS_THAT_LIST = new Set(["ENTER_NOW", "STALE_PAST_CATALYST", "PROMOTED_DECIDE_TODAY"]);

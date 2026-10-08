@@ -303,6 +303,8 @@ export interface QuoteResponse {
    * sheet words it with `needsActionFlag` (DAV-304).
    */
   needsAction?: NeedsAction | null;
+  /** Every situation the stock is in, lead first (lib/agent/situations.ts `situationLabels`). */
+  situations?: Array<{ code: string; name: string; lead: boolean }>;
 }
 
 // `sourcesUsed` column is Json — agents write `[{provider, title, url}]`

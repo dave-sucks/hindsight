@@ -6,7 +6,7 @@
 import { readFileSync, statSync } from "fs";
 import path from "path";
 import { computeNeedsAction, type NeedsActionInput } from "./needs-action";
-import { listsTheStock, measuresOf, situationsFor, type SituationSources } from "./situations";
+import { listsTheStock, measuresOf, SITUATION_NAMES, situationLabels, situationsFor, type SituationSources } from "./situations";
 import type { Trigger } from "./triggers/types";
 
 const NOW = new Date("2026-05-09T21:00:00Z"); // a Saturday: no session
@@ -118,6 +118,29 @@ describe("the situations a stock is in", () => {
   it("a two-condition group is walked: both measures", () => {
     const group = { match: "all", conditions: [{ watch: "surprise", is: "beat", value: 0 }, { watch: "move", is: "below", value: 3 }] };
     expect(measuresOf(group).map((m) => m.id)).toEqual(["surprise", "move"]);
+  });
+});
+
+describe("the situations for a person: the sheet's flag line", () => {
+  it("MU 10-07: the fired review is the lead's; near target follows it", () => {
+    const i = input({ triggers: [trig("rev", "REVIEW", below(95))] }, { activity: [fire("rev")] });
+    expect(situationLabels(sources(i, { progressToTarget: 0.8 }))).toEqual([
+      { code: "REVIEW_DUE", name: "review due", lead: true },
+      { code: "ADD_OR_WINNER", name: "add or near target", lead: false },
+    ]);
+  });
+  it("a sale on an earnings trigger: both codes are the lead's", () => {
+    const report = trig("er", "EXIT", { match: "all", conditions: [{ watch: "surprise", is: "miss", value: 0 }, { watch: "price", is: "below", value: 90 }] });
+    const i = input({ triggers: [report] }, { activity: [fire("er")] });
+    expect(situationLabels(sources(i, { unansweredDecision: true })).map((x) => [x.code, x.lead])).toEqual([
+      ["PROTECTIVE_SALE", true],
+      ["EARNINGS", true],
+      ["YOUR_WORD_UNANSWERED", false],
+    ]);
+  });
+  it("every code has a name of a few plain words", () => {
+    expect(Object.keys(SITUATION_NAMES)).toHaveLength(16);
+    for (const name of Object.values(SITUATION_NAMES)) expect(name.split(" ").length).toBeLessThanOrEqual(4);
   });
 });
 
