@@ -85,6 +85,13 @@ import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 // The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
 const F = thesisFields();
 
+/** What change_status does, worded once; the trigger run's save takes the two retiring verbs only. */
+const STATUS_RETIRE =
+  "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
+  "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead, when it has them. ";
+const STATUS_WATCH = "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). ";
+const STATUS_OWNED = "Holding and sold are not set here: place_trade and close_position flip them when the order fills.";
+
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
   rationale: z
@@ -144,12 +151,7 @@ const updateSchema = z.object({
     // (INVALIDATED → reason INVALIDATED, ARCHIVED → reason DROPPED).
     .enum(["INVALIDATED", "ARCHIVED", "WATCHING"])
     .optional()
-    .describe(
-      "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
-        "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead, when it has them. " +
-        "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). " +
-        "Holding and sold are not set here: place_trade and close_position flip them when the order fills. A researched decline is direction: \"PASS\".",
-    ),
+    .describe(`${STATUS_RETIRE}${STATUS_WATCH}${STATUS_OWNED} A researched decline is direction: "PASS".`),
   research_data: F.research_data.optional(),
 });
 
@@ -261,12 +263,26 @@ const WRITER_ONLY_UPDATE_FIELDS = {
 } as const;
 
 /**
- * Fields the trigger run never writes: in its 72 update_thesis calls in the
- * 30 days to 2026-10-06 none sent one, and its text asks only for the belief,
- * the levels and the triggers. Conviction, the variant view and the setup are
- * the writer's and the morning run's.
+ * The trigger run's closing save (Roadmap step 10): the same update_thesis,
+ * with only what a run answering one fired trigger changes. In the 30 days to
+ * 2026-10-08 its 63 close-outs sent the form whole (NVDA all 22 fields); what
+ * changed was the note, a trigger, a stop, a target, a buy price. Direction,
+ * belief, scores, horizon and the research snapshot are the morning run's and
+ * the writer's; the price is the server's. The level fields stay because the
+ * situation texts every run shares name them. change_status takes the two
+ * retiring verbs: back to watch is the sale's fill, and WATCHING was sent in
+ * every call of the four runs that failed (ASML 10-07; NVDA, CEG, MU 10-08).
  */
-const NOT_THE_TRIGGER_RUNS = { conviction: true, conviction_rationale: true, variant_view: true, setup_id: true } as const;
+const triggerRunSchema = updateSchema
+  .pick({
+    thesis_id: true, trigger_id: true, rationale: true,
+    add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
+    stop_loss: true, stop_basis: true, target_price: true, target_basis: true, entry_price: true,
+  })
+  .extend({ change_status: z.enum(["INVALIDATED", "ARCHIVED"]).optional().describe(`${STATUS_RETIRE}${STATUS_OWNED}`) });
+
+/** The trigger run's door: its save has no price field and no way back to watch. */
+const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TACTICAL";
 
 /** The chat never answers a fired trigger, so it has no trigger to name (0 of its 58 calls in the same 30 days). */
 const NOT_THE_CHATS = { trigger_id: true } as const;
@@ -415,8 +431,8 @@ export const updateThesis = defineTool({
   schemaFor: (ctx) =>
     ctx.runMode === "THESIS_WRITER"
       ? updateSchema
-      : ctx.runMode === "INTRADAY_TACTICAL"
-        ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_TRIGGER_RUNS })
+      : isTriggerRun(ctx)
+        ? triggerRunSchema
         : ctx.runMode === "PRINCIPAL_CHAT"
           ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_CHATS })
           : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
@@ -568,6 +584,19 @@ export const updateThesis = defineTool({
         /* handled below when the call needs a price */
       }
     }
+    // Then the price that fired the trigger this call answers: the
+    // evaluator stamps it on the fire's row. The trigger run's save has no
+    // price field, so this is its fallback when the quote fails.
+    if (resolvedPriceAtTime == null && args.trigger_id) {
+      const fire = await prisma.thesisUpdate
+        .findFirst({
+          where: { thesisId: existing.id, type: "TRIGGER_FIRED", triggerId: args.trigger_id },
+          orderBy: { timestamp: "desc" },
+          select: { priceAtTime: true },
+        })
+        .catch(() => null);
+      if (fire?.priceAtTime != null && Number(fire.priceAtTime) > 0) resolvedPriceAtTime = Number(fire.priceAtTime);
+    }
     // A buy level's SIDE (pullback below the price, breakout above it) is
     // read off the price. When this call places or moves one and there is
     // no price at all — no price_at_time, quote failed — refuse rather than
@@ -581,9 +610,12 @@ export const updateThesis = defineTool({
       );
       const buyEdit = (e: NonNullable<UpdateArgs["edit_triggers"]>[number]) =>
         editNumber(e).value != null && (e.action === "ENTER" || enterIds.has(e.id));
-      const noPrice =
-        `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
-        `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
+      // A refusal names only fields this door has: the trigger run's save has no price field.
+      const noPrice = isTriggerRun(ctx)
+        ? `The quote for ${existing.ticker} failed and the fire carries no price, so whether the buy level is a pullback (below the price) ` +
+          `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
+        : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
+          `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
       // On a stock we hold the entry is the fill, refused as its own op below.
       if (args.entry_price != null && existing.status !== "HOLDING") refuseField("entry_price", noPrice, "no live price");
       for (const e of (args.edit_triggers ?? []).filter(buyEdit)) {

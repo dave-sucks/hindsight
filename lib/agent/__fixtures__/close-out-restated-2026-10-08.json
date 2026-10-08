@@ -1,5 +1,5 @@
 {
- "_note": "Two trigger-run close-outs refused whole eleven times each: ASML (run cmuyg113b000204l7q20mad6b, 2026-10-07) and NVDA (run cmuzks3fj000306jphr8lw2u1, 2026-10-08). `call` is each run's first update_thesis call, verbatim from its RunMessage thread. `thesis` is the row as it stood at the run, with only the fields update_thesis reads; the research sections are left out (each call's snapshot differs from the stored one, so it lands either way). ASML's floor read $1835 at the run and was moved to $1568 the next day, which also reworded it; the sentence here is the later one.",
+ "_note": "Four trigger-run close-outs refused whole, each sent until the run failed: ASML (run cmuyg113b000204l7q20mad6b, 2026-10-07), NVDA (run cmuzks3fj000306jphr8lw2u1), CEG (run cmuzr7yla000006jpi65awjgb) and MU (run cmuzrw0f6000006jvwk0az1k3), 2026-10-08. `call` is each run's first update_thesis call, verbatim from its RunMessage thread. `thesis` is the row as it stood at the run, with only the fields update_thesis reads; the research sections are left out (each call's snapshot differs from the stored one, so it lands either way). ASML's floor read $1835 at the run and was moved to $1568 the next day, which also reworded it; the sentence here is the later one. CEG's and MU's rows have no plan change after their runs.",
  "ASML": {
   "position": {
    "avgCost": 1716.09,
@@ -362,6 +362,487 @@
      {
       "url": "[STRUCTURED:Price levels]",
       "title": "Structured price and moving-average snapshot",
+      "domain": "structured",
+      "kind": "STRUCTURED"
+     }
+    ]
+   },
+   "change_status": "WATCHING"
+  }
+ },
+ "CEG": {
+  "position": {
+   "avgCost": 282.006094117647,
+   "quantity": 51
+  },
+  "price": 287.6825,
+  "thesis": {
+   "id": "cmqb2ku1a000q04l6jtquuqr6",
+   "ticker": "CEG",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "COMPOUNDER",
+   "setupId": "COMPOUNDER_ACCUMULATION",
+   "entryPrice": 282.006094117647,
+   "targetPrice": 360,
+   "stopLoss": 287.3,
+   "coreBelief": "CEG compounds to $360+ over 24 months as the 1,121 MW AI nuclear PPA begins revenue in June 2027, the Crane Clean Energy Center restarts, and $8.4B of 2026–27 FCF funds buybacks and dividend growth — repricing the stock from a utility multiple to a contracted infrastructure multiple.",
+   "keyAssumptions": [
+    "The 1,121 MW largest AI nuclear PPA commences revenue as contracted in June 2027, with no material counterparty default or contract restructuring by the hyperscaler buyer.",
+    "The Crane Clean Energy Center (Three Mile Island Unit 1) restarts in 2027 on schedule, adding ~835 MW of nuclear generation under the Microsoft PPA without a multi-quarter delay driven by grid interconnection or federal waiver failure.",
+    "CEG delivers $8.4B of cumulative FCF in 2026–27, confirming that the Calpine integration has not structurally impaired the company's cash generation capacity.",
+    "Nuclear IRA production tax credits remain in force, providing the per-MWh floor that underpins PPA economics and protects downside in a merchant-price downturn."
+   ],
+   "invalidationConds": [
+    "A hyperscaler counterparty restructures, cancels, or materially delays the 1,121 MW AI PPA beyond H2 2027, removing the single largest forward revenue inflection from the model.",
+    "The Crane Clean Energy Center restart slips beyond Q1 2028, signaling systemic grid interconnection or regulatory failure that calls the entire nuclear restart pipeline into question.",
+    "CEG reports two consecutive quarters of guidance cuts driven by Calpine integration cost overruns or margin compression — defined as EPS actuals more than 10% below the $11–$12 2026 guidance range in back-to-back quarters.",
+    "The nuclear IRA production tax credits are materially repealed or curtailed via legislation, removing the economic floor that makes long-duration nuclear PPAs viable at premium pricing."
+   ],
+   "scoring": {
+    "composite": 8,
+    "entryQuality": {
+     "note": "COMPOUNDER already held at $255 entry. Stock is at $299, 12% above the 50-day ($267) — confirmed uptrend but extended from the clean add level. Not a 0 — thesis is working, trend is up — but the ideal add tranche is a pullback to $267–$275. No new entry chasing $299.",
+     "score": 1
+    },
+    "trendStrength": {
+     "note": "SMA20 > SMA50, price 12% above 50-day, RSI 67.4, bullish trend confirmed on recovery from 52w low. All three moving average signals constructive.",
+     "score": 3
+    },
+    "relativeStrength": {
+     "note": "CEG ranks 1/4 in revenue growth at +26% YTD but 4/4 in YTD price performance (-19.9% vs. NEE +16.9%). Leading on fundamentals, lagging on price — a re-rating candidate, not a deteriorating name. Composite peer score 2/4.",
+     "score": 2
+    },
+    "catalystFreshness": {
+     "note": "Q2 beat filed Aug. 6, guidance raised Aug. 26, Sept. 8 reporting on 1,121 MW AI deal details — all within last 30 days. Crane restart and June 2027 PPA commencement are 6–15 months out, keeping the catalyst ladder well-stocked.",
+     "score": 2
+    }
+   },
+   "conviction": "HIGH",
+   "convictionRationale": "Signed 18.5-year PPAs with investment-grade counterparties at AI-premium pricing are not a thesis hope — they are on paper. The FCF turn from -$5B to +$1.3B to an $8.4B two-year target is the compounding engine. The stock is 27% off its high on valuation noise, not business deterioration. I want size here.",
+   "variantView": "Consensus treats CEG as a premium utility; I think the 18.5-year AI PPA duration, nuclear PTC floor, and Calpine FCF engine make it a contracted infrastructure compounder — a re-rating that pushes the fair multiple 30–40% above current levels as 2027 revenue kicks in.",
+   "catalystDate": null,
+   "triggers": [
+    {
+     "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 287.3,
+      "watch": "price"
+     },
+     "rationale": "The floor moves up to the reclaimed 200-day average at $287.30, which is now the nearest plain support under today's news-driven move and keeps the larger position from round-tripping below the key reclaim.",
+     "lastFiredAt": "2026-10-08T17:50:27.200Z",
+     "cooldownDays": 0
+    },
+    {
+     "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
+     "action": "REVIEW",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 256.42,
+      "watch": "price"
+     },
+     "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+     "lastFiredAt": "2026-10-02T13:40:15.270Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "9dde5606-86b2-46c3-bed6-57cfd57ac942",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "is": "above",
+      "value": 360,
+      "watch": "price"
+     },
+     "rationale": "The target stays $360 because today's Google deal confirms the contracted-infrastructure rerating path already embedded in the thesis, but it does not yet change the 24-month destination enough to move the number.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "value": 30,
+      "watch": "repeat"
+     },
+     "rationale": "Look at this every 30 days, counting from the last real review.",
+     "cooldownDays": 30
+    },
+    {
+     "id": "5cf4c100-2af5-48ab-89fb-8df012063c53",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "after",
+      "value": 60,
+      "watch": "from_date",
+      "variable": "buy"
+     },
+     "rationale": "60 days after the buy — A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.",
+     "cooldownDays": 60
+    }
+   ]
+  },
+  "call": {
+   "thesis_id": "cmqb2ku1a000q04l6jtquuqr6",
+   "rationale": "Holding CEG at $287.68. The stop at $287.30 fired intraday at $287.18, but the stock is back above that floor now and there is no new company-specific break in the thesis: the AI nuclear PPA, Crane restart, 2026-27 free-cash-flow case and IRA support all still stand. I am not selling a 56-day compounder on a brief break of the 200-day without a named invalidation; the floor stays $287.30 under the 200-day reclaim for now, and the 60-day business checkpoint is the next decision point.",
+   "trigger_id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
+   "price_at_time": 287.6825,
+   "core_belief": "CEG compounds to $360+ over 24 months as the 1,121 MW AI nuclear PPA begins revenue in June 2027, the Crane Clean Energy Center restarts, and $8.4B of 2026–27 FCF funds buybacks and dividend growth — repricing the stock from a utility multiple to a contracted infrastructure multiple.",
+   "key_assumptions": [
+    "The 1,121 MW largest AI nuclear PPA commences revenue as contracted in June 2027, with no material counterparty default or contract restructuring by the hyperscaler buyer.",
+    "The Crane Clean Energy Center (Three Mile Island Unit 1) restarts in 2027 on schedule, adding ~835 MW of nuclear generation under the Microsoft PPA without a multi-quarter delay driven by grid interconnection or federal waiver failure.",
+    "CEG delivers $8.4B of cumulative FCF in 2026–27, confirming that the Calpine integration has not structurally impaired the company's cash generation capacity.",
+    "Nuclear IRA production tax credits remain in force, providing the per-MWh floor that underpins PPA economics and protects downside in a merchant-price downturn."
+   ],
+   "invalidation_conditions": [
+    "A hyperscaler counterparty restructures, cancels, or materially delays the 1,121 MW AI PPA beyond H2 2027, removing the single largest forward revenue inflection from the model.",
+    "The Crane Clean Energy Center restart slips beyond Q1 2028, signaling systemic grid interconnection or regulatory failure that calls the entire nuclear restart pipeline into question.",
+    "CEG reports two consecutive quarters of guidance cuts driven by Calpine integration cost overruns or margin compression — defined as EPS actuals more than 10% below the $11–$12 2026 guidance range in back-to-back quarters.",
+    "The nuclear IRA production tax credits are materially repealed or curtailed via legislation, removing the economic floor that makes long-duration nuclear PPAs viable at premium pricing."
+   ],
+   "scoring": {
+    "trendStrength": {
+     "score": 1,
+     "note": "Price is only 0.3% above the 200-day average and the 200-day is still falling, so the chart is weaker than when I raised the floor."
+    },
+    "relativeStrength": {
+     "score": 2,
+     "note": "CEG is still ahead of XLU by 28.3 points over 3 months and ahead of SPY by 16.1 points over 3 months despite today's pullback."
+    },
+    "entryQuality": {
+     "score": 1,
+     "note": "We already own it at $282.01; today's move tested the raised floor but reclaimed it, which argues for hold rather than a fresh add or an exit."
+    },
+    "catalystFreshness": {
+     "score": 2,
+     "note": "The AI nuclear PPA, Crane restart path and 2026-27 FCF inflection remain ahead of us and still define the multi-year upside case."
+    }
+   },
+   "target_price": 360,
+   "stop_loss": 287.3,
+   "stop_basis": "Under the reclaimed 200-day average at $287.30, which remains the nearest plain support while I wait for the 60-day business checkpoint.",
+   "target_basis": "$360 remains the 24-month compounding objective tied to the AI PPA revenue start, Crane restart and 2026-27 cash-flow inflection.",
+   "entry_on_close": false,
+   "entry_price": 282.006094117647,
+   "direction": "LONG",
+   "horizon": "COMPOUNDER",
+   "catalyst_date": null,
+   "add_triggers": [],
+   "edit_triggers": [],
+   "remove_trigger_ids": [],
+   "snapshot": {
+    "text": "CEG trades at $287.68 live after tripping the $287.30 floor intraday, with the low at $286.50 and the stock now back above the 200-day average at $286.79. The chart has weakened into a downtrend verdict, but the recent headlines are still about the long-duration nuclear demand theme rather than a company-specific break in the Microsoft-linked restart, the larger AI power contract, or the 2026-27 free-cash-flow framework that underwrites the thesis.",
+    "citations": [
+     {
+      "url": "https://docs.alpaca.markets/reference/stocksnapshots-1",
+      "title": "CEG Real-Time Quote",
+      "domain": "docs.alpaca.markets",
+      "kind": "STRUCTURED"
+     },
+     {
+      "url": "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/",
+      "title": "CEG One-Year Daily Bars",
+      "domain": "alpaca.markets",
+      "kind": "STRUCTURED"
+     }
+    ]
+   },
+   "change_status": "WATCHING"
+  }
+ },
+ "MU": {
+  "position": {
+   "avgCost": 895.935,
+   "quantity": 13
+  },
+  "price": 1055.35,
+  "thesis": {
+   "id": "cmrp6chyu000h04l5roqq5ha1",
+   "ticker": "MU",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "PEAD",
+   "entryPrice": 895.935,
+   "targetPrice": 1100,
+   "stopLoss": 1060,
+   "coreBelief": "Micron's HBM supply is contracted through 2027 with $22B in strategic customer agreements and $18B in cash deposits already secured, sustaining a multi-quarter earnings-upgrade cycle that drives MU to $1,100 before the September 30 Q4 FY2026 print as each sequential record forces estimate revisions higher.",
+   "keyAssumptions": [
+    "HBM3E and HBM4 remain fully booked through 2027, with no customer deferrals or cancellations to the $22B in strategic customer agreements",
+    "Q4 FY2026 guidance of $50B revenue and ~86% gross margin is confirmed or exceeded on September 30, triggering another round of upward analyst estimate revisions"
+   ],
+   "invalidationConds": [
+    "MU closes below the $969 stop-loss, signaling a break below the 50-day SMA and invalidating the drift recovery",
+    "Q4 FY2026 earnings on September 30 deliver revenue materially below $50B guidance or guidance for Q1 FY2027 is cut, breaking the multi-quarter upgrade cycle",
+    "A major HBM customer (Nvidia, AMD) publicly reduces or delays memory commitments under the strategic customer agreements"
+   ],
+   "scoring": {
+    "composite": 9,
+    "entryQuality": {
+     "note": "Refresh on a held position — stop-only tightening allowed. Entry set at $980 (a modest intraday pullback below today's $1,000.26 tape) to satisfy the priced-plan requirement; stop at $969 is the existing floor, unchanged.",
+     "score": 1
+    },
+    "trendStrength": {
+     "note": "SMA20 > SMA50, price above both, RSI 57.7, YTD +142.8% — structurally bullish despite -20% off the 52w high",
+     "score": 3
+    },
+    "relativeStrength": {
+     "note": "MU ranks 1/4 in revenue growth, YTD return, and composite score vs. NVDA, AVGO, AMD peer group",
+     "score": 3
+    },
+    "catalystFreshness": {
+     "note": "September 30 Q4 FY2026 print is 21 days out with $50B revenue guidance already set — hard catalyst with date, number, and analyst revision mechanics fully primed",
+     "score": 2
+    }
+   },
+   "conviction": "MEDIUM",
+   "convictionRationale": "The fundamental case is as strong as it's ever been — two massive beats since the thesis opened, HBM fully booked through 2027, margins at 84.9% and guided higher. But the stock's failure to sustain above $1,100 after the Q3 FY2026 print, Druckenmiller's exit, and no insider buying at these levels keeps me honest. MEDIUM is the right read: the thesis is working but the drift is choppy, not clean.",
+   "variantView": "The market is treating today's AI-chip de-risking as a structural downgrade; I think it's a sentiment flush on a name with a multi-quarter HBM earnings upgrade cycle still intact — consensus hasn't cut numbers, just the multiple, which reopens the PEAD drift window.",
+   "catalystDate": null,
+   "triggers": [
+    {
+     "id": "t1",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 1100,
+      "watch": "price"
+     },
+     "rationale": "Original pre-earnings drift objective remains the first decision zone; above it I re-underwrite rather than mechanically extend into next week's print.",
+     "lastFiredAt": "2026-09-25T13:40:03.840Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t2",
+     "action": "TRIM",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 1150,
+      "watch": "price"
+     },
+     "rationale": "Trim into a push toward and through the upper target zone if price nears $1,150.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t3",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 880,
+      "watch": "price"
+     },
+     "rationale": "A break below $880 would signal deeper technical damage — review whether the thesis is weakening structurally.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t4",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 1060,
+      "watch": "price"
+     },
+     "rationale": "Under the reclaimed breakout area around $1,070 and roughly 0.6 ATR below the $1,100 decision zone; if MU gives that back after this repair, the mature drift is done.",
+     "lastFiredAt": "2026-10-08T16:50:20.141Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t5",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 4,
+      "watch": "move",
+      "variable": "prev_close"
+     },
+     "rationale": "A sharp 1-day gain could confirm momentum repair — review whether the drift is re-accelerating.",
+     "lastFiredAt": "2026-10-07T17:10:12.520Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t6",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 4,
+      "watch": "move",
+      "variable": "prev_close"
+     },
+     "rationale": "A sharp 1-day drop could be either normal volatility or early thesis damage — review the cause.",
+     "lastFiredAt": "2026-10-08T17:01:13.694Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t9",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 15,
+      "watch": "move",
+      "variable": "entry"
+     },
+     "rationale": "At +15% from entry, reassess whether trend repair is durable enough to add or tighten risk.",
+     "lastFiredAt": "2026-10-05T13:35:09.585Z",
+     "cooldownDays": 7
+    },
+    {
+     "id": "t10",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "DIRECT",
+     "predicate": {
+      "is": "below",
+      "value": 8,
+      "watch": "move",
+      "variable": "entry"
+     },
+     "rationale": "Exit if the position falls 8% below entry; that is the hard loss cap for this PEAD setup.",
+     "cooldownDays": 0
+    },
+    {
+     "id": "t11",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "beat",
+      "value": 5,
+      "watch": "surprise"
+     },
+     "rationale": "If $MU again beats EPS by at least 5%, review whether the earnings-upgrade cycle remains intact and whether targets should rise.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "5d6fb212-0bee-451d-9287-06a3aff1f1f4",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "after",
+      "value": 60,
+      "watch": "from_date",
+      "variable": "buy"
+     },
+     "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
+     "lastFiredAt": "2026-09-23T13:30:08.094Z",
+     "cooldownDays": 60
+    },
+    {
+     "id": "d2f2eb13-a35f-4ae6-ab4b-053526c2245b",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {
+        "is": "beat",
+        "value": 0,
+        "watch": "surprise"
+       },
+       {
+        "is": "below",
+        "value": 3,
+        "watch": "move",
+        "variable": "prev_close"
+       }
+      ]
+     },
+     "rationale": "A beat the market sold — the stock is down 3%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.",
+     "lastFiredAt": "2026-10-01T14:20:09.369Z",
+     "cooldownDays": 7
+    }
+   ]
+  },
+  "call": {
+   "thesis_id": "cmrp6chyu000h04l5roqq5ha1",
+   "rationale": "Selling Micron at $1055.35. The stock is still below the $1060 floor after firing at $1058.13, so I am honoring the stop on 13 shares and treating this as the end of a mature post-earnings drift, not a fresh setup. The HBM demand story has not obviously broken, but today’s weakness came with no new company-specific damage in the news, so I am keeping the thesis on your watchlist with the belief intact. Floor, target and the fired sell trigger go stale once this stop is taken.",
+   "trigger_id": "t4",
+   "price_at_time": 1055.35,
+   "core_belief": "Micron's HBM supply is contracted through 2027 with $22B in strategic customer agreements and $18B in cash deposits already secured, sustaining a multi-quarter earnings-upgrade cycle that drives MU to $1,100 before the September 30 Q4 FY2026 print as each sequential record forces estimate revisions higher.",
+   "key_assumptions": [
+    "HBM3E and HBM4 remain fully booked through 2027, with no customer deferrals or cancellations to the $22B in strategic customer agreements",
+    "Q4 FY2026 guidance of $50B revenue and ~86% gross margin is confirmed or exceeded on September 30, triggering another round of upward analyst estimate revisions"
+   ],
+   "invalidation_conditions": [
+    "MU closes below the $969 stop-loss, signaling a break below the 50-day SMA and invalidating the drift recovery",
+    "Q4 FY2026 earnings on September 30 deliver revenue materially below $50B guidance or guidance for Q1 FY2027 is cut, breaking the multi-quarter upgrade cycle",
+    "A major HBM customer (Nvidia, AMD) publicly reduces or delays memory commitments under the strategic customer agreements"
+   ],
+   "scoring": {
+    "trendStrength": {
+     "score": 3,
+     "note": "The stock remains in a broad uptrend above rising 20-, 50-, 150- and 200-day averages despite today’s break of the tactical floor."
+    },
+    "relativeStrength": {
+     "score": 2,
+     "note": "Micron still leads the S&P over 1, 3 and 6 months, though it is roughly flat versus SMH over the last month."
+    },
+    "entryQuality": {
+     "score": 0,
+     "note": "This is no longer a clean post-earnings drift entry after an 82-day hold and a break back below the reclaimed $1060 area."
+    },
+    "catalystFreshness": {
+     "score": 0,
+     "note": "The original 30-60 day drift window is mature and the next earnings date is the relevant event now."
+    }
+   },
+   "target_price": null,
+   "stop_loss": null,
+   "stop_basis": "The tactical floor at $1060 has been hit and the position is being sold; no active stop remains after the exit proposal.",
+   "target_basis": "The $1100 target belongs to the position being exited and is removed after the stop proposal.",
+   "entry_on_close": false,
+   "entry_price": null,
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "catalyst_date": null,
+   "add_triggers": [],
+   "edit_triggers": [],
+   "remove_trigger_ids": [
+    "t1",
+    "t2",
+    "t3",
+    "t4",
+    "t5",
+    "t6",
+    "t9",
+    "t10",
+    "t11",
+    "5d6fb212-0bee-451d-9287-06a3aff1f1f4",
+    "d2f2eb13-a35f-4ae6-ab4b-053526c2245b",
+    "f552414c-ff2a-455d-b779-d5401ac9ea98",
+    "56be49ac-b01b-4101-8c51-377aa1bab0ac",
+    "1aba586f-cd45-4bbd-82da-d651f1e2802a",
+    "b459cc93-12a4-43f1-8904-d8a8cd846b93",
+    "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+    "5817586d-f522-4d14-acea-7c9081ddab9c",
+    "30059604-b755-4848-b938-b636464815c3"
+   ],
+   "snapshot": {
+    "text": "Micron is trading at $1055.35 on October 8, 2026, below the $1060 tactical floor that marked the reclaimed breakout area under the $1,100 decision zone. The stock remains above rising 20-, 50-, 150- and 200-day averages, but this 82-day post-earnings drift has matured and the fresh trigger was a price break, not a new estimate-upgrade catalyst. Today's news flow is mixed commentary rather than a new company-specific break in the HBM demand story, so I am taking the stop while keeping the name on watch for a later re-entry if a new setup forms.",
+    "citations": [
+     {
+      "url": "[STRUCTURED:get_stock_data/MU]",
+      "title": "MU stock snapshot",
       "domain": "structured",
       "kind": "STRUCTURED"
      }

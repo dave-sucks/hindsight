@@ -159,6 +159,12 @@ describe("the guidance: each situation's text, once", () => {
     expect(guidanceCodes("PROMOTED", ["PROMOTED_AWAITING", "STALE_RESEARCH", "NO_SETUP_NAMED"])).toEqual(["PROMOTED_AWAITING"]);
     expect(guidanceCodes("HOLDING", ["REVIEW_DUE", "ADD_OR_WINNER"])).toEqual(["REVIEW_DUE", "ADD_OR_WINNER"]);
   });
+  it("a trigger run is not handed a situation whose answer needs fields its save lacks", () => {
+    const codes: SituationCode[] = ["PROTECTIVE_SALE", "NO_SETUP_NAMED", "FIRST_RESEARCH", "STALE_RESEARCH"];
+    expect(guidanceCodes("HOLDING", codes, "INTRADAY_TACTICAL")).toEqual(["PROTECTIVE_SALE", "STALE_RESEARCH"]);
+    expect(guidanceCodes("HOLDING", codes, "MORNING_PLAN")).toEqual(codes);
+    expect(guidanceCodes("HOLDING", codes)).toEqual(codes);
+  });
 });
 
 describe("listsTheStock: today's rule", () => {

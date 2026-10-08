@@ -623,7 +623,7 @@ export const tacticalRun = inngest.createFunction(
     // situationsFor), read after this fire's own line is written: the fire,
     // and anything else true on the stock, such as the principal's word
     // unanswered. Fail-soft: the run decides on the fire without guidance.
-    const { situations, heldThroughFloor } = await step.run("load-situations", async (): Promise<{ situations: SituationCode[]; heldThroughFloor: HeldThroughFloor | null }> => {
+    const { situations, guidance, heldThroughFloor } = await step.run("load-situations", async (): Promise<{ situations: SituationCode[]; guidance: SituationCode[]; heldThroughFloor: HeldThroughFloor | null }> => {
       try {
         const row = await prisma.thesis.findUnique({
           where: { id: thesis.id },
@@ -633,7 +633,7 @@ export const tacticalRun = inngest.createFunction(
             researchRun: { select: { agentConfig: { select: { setupIds: true } } } },
           },
         });
-        if (!row) return { situations: [], heldThroughFloor: null };
+        if (!row) return { situations: [], guidance: [], heldThroughFloor: null };
         const facts = await loadStockFacts([row], {
           userId: agentConfig.userId,
           analystId: agentConfig.id,
@@ -646,12 +646,14 @@ export const tacticalRun = inngest.createFunction(
         const sources = facts.sources.get(row.id);
         return {
           situations: sources ? guidanceCodes(row.status, situationsFor(sources)) : [],
+          // The list names every situation; the guidance leaves out the ones only the morning run can answer.
+          guidance: sources ? guidanceCodes(row.status, situationsFor(sources), "INTRADAY_TACTICAL") : [],
           // A declined sale's facts, the same object the morning row carries.
           heldThroughFloor: facts.heldThroughFloor.get(row.id) ?? null,
         };
       } catch (err) {
         console.warn(`[tactical-run] situations for ${thesis.ticker} unavailable:`, err);
-        return { situations: [], heldThroughFloor: null };
+        return { situations: [], guidance: [], heldThroughFloor: null };
       }
     });
 
@@ -774,7 +776,7 @@ export const tacticalRun = inngest.createFunction(
         latestDigest,
         fired: { price: fired.firedPrice ?? null, coFired: fired.coFired ?? [] },
         capacity: ctx.capacity ?? null,
-        situations: { codes: situations, guidance: guidanceFor(situations) },
+        situations: { codes: situations, guidance: guidanceFor(guidance) },
         heldThroughFloor,
       });
 
