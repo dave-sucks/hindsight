@@ -18,7 +18,7 @@ import { conditionSentence, isGroup, sentenceOf, shapeOf } from "@/lib/agent/tri
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
-import { VOICE_RULES } from "@/lib/agent/voice";
+import { HOUSE_RULES } from "@/lib/agent/house-rules";
 
 interface TacticalPromptArgs {
   analyst: { name: string; mandate: string | null };
@@ -249,7 +249,7 @@ POSITION:
   ${positionLine}
 
 ${context ?? `WHAT'S BEEN SAID ON $${thesis.ticker}\n  (nothing written on this stock in the lines on record)`}
-The principal's decisions outrank the trigger's own rationale.${trigger.action === "ENTER" || trigger.action === "ADD" ? " If they declined this same buy and nothing they named has changed, say so and pass." : ""}
+${trigger.action === "ENTER" || trigger.action === "ADD" ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
 ${digestSection}
 ═══════════════════════════════════════════════════════════════════
 CURRENT TRIGGER LADDER (your standing game plan on $${thesis.ticker})
@@ -428,11 +428,6 @@ ${fired?.coFired?.length ? `   Two protective triggers fired together (marked AL
      fired since the last answer, your update_thesis answers them too: say
      what you decided on each, by name.
    - Then complete_run.
-
-═══════════════════════════════════════════════════════════════════
-HOW YOU WRITE
-═══════════════════════════════════════════════════════════════════
-${VOICE_RULES}
 
 ═══════════════════════════════════════════════════════════════════
 HARD CONSTRAINTS

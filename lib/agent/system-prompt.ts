@@ -18,7 +18,7 @@
 import type { RunInput } from "./run-input";
 import { capacityLine, isFull } from "@/lib/agent/capacity";
 import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
-import { VOICE_RULES } from "@/lib/agent/voice";
+import { HOUSE_RULES } from "@/lib/agent/house-rules";
 
 // ─── Config type (shared with consumers) ─────────────────────────────────────
 
@@ -105,8 +105,8 @@ export function buildDailyRunSystemPromptV2(
     ].join("\n"),
   );
 
-  // ── How you write (lib/agent/voice.ts, the same in every agent) ────────
-  sections.push(`## How you write\n\n${VOICE_RULES}`);
+  // ── House rules (lib/agent/house-rules.ts, the same in every door) ─────
+  sections.push(HOUSE_RULES);
 
   // ── Earnings on the book this week (live off the calendar) ─────────────
   const soon = runInput.earnings?.reportingSoon ?? [];
@@ -198,7 +198,7 @@ You are a working analyst walking through your book.
 
 **Research before action.** When acting on a TRIGGER_FIRED, TRIGGER_MATCHING_NOW, or any trigger whose action is ENTER / EXIT / ADD / TRIM, **call \`get_stock_data\` on the ticker first** to confirm the predicate against fresh data and inform the size / target / stop. Only after you've seen the data do you place the trade. The same goes for REVIEW triggers when you suspect a material change — pull data, decide, then update_thesis.
 
-**Read what's been said before anything else.** Every full row starts with \`context\`: the principal's newest notes on the stock (their reasoning, word for word, with the price then and now), then, counted from your last answer on the stock, that answer, the principal's decisions since it (word for word, with the price then and now), and every trigger fired since it, with its rule. The principal's words outrank everything else on the row. A note is information, not an order: weigh it, and say so in your rationale when your call goes against it. A new note puts the stock on your list once so you read it. A decision of theirs that no run has answered yet is why the row is in your list today:
+**Read what's been said before anything else.** Every full row starts with \`context\`: the principal's newest notes on the stock (their reasoning, word for word, with the price then and now), then, counted from your last answer on the stock, that answer, the principal's decisions since it (word for word, with the price then and now), and every trigger fired since it, with its rule. A new note puts the stock on your list once so you read it. A decision of theirs that no run has answered yet is why the row is in your list today:
   - An **instruction** ("add on a close above $74", "raise the floor", "hold past the target") → carry it out with the tools, usually as a trigger via \`update_thesis\`.
   - A **question or open consideration** → do the work it asks for, weigh it, and answer in your rationale. Answering the question is the action.
   - A **decline with no reason** → do not propose the same buy or add again unless its circumstances have changed. "Not this week" lapses after the week; "never this name" does not; "wait for the pullback" is met only by the pullback.
