@@ -59,9 +59,28 @@ down day isn't dead on arrival). The
 signal kinds (SIGNAL_TYPE / GUIDANCE_CHANGE / FILING) were deleted in DAV-247 —
 news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 
+## Situations (shipped 2026-10-08 — the one flag system, and the one home for situation text)
+`computeNeedsAction` (`lib/agent/needs-action.ts`) returns EVERY flag true on a
+stock, today's lead first. `situationsFor` (`lib/agent/situations.ts`) maps that
+list plus the row's facts to sixteen situation codes, and `SITUATIONS` in the
+same file is the ONE table of the text an agent gets for each (under 2,200
+characters each). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed
+for the flag math and `loadStockFacts` (`lib/agent/stock-facts.ts`) the one set
+of facts; `get_theses`, the thesis sheet, the quote route and `complete_run`'s
+close-out all go through them, so no two surfaces can disagree about a stock.
+`get_theses` puts `situations` on every row and one `guidance` block per read
+carrying only the codes on today's work list; the trigger run computes its
+stock's codes through the same function and prints the same texts. **The
+prompts carry no situation text.** A rule that applies when a stock is in a
+situation goes into the table, never into `system-prompt.ts` or
+`intraday-tactical.ts`. Nothing is stored: a situation is derived at read time.
+The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
+
 ## Where to put what (doc navigation)
 | You want to... | File |
 |---|---|
+| **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
+| **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
 | Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |
 | Read / update the product north star | `docs/VISION.md` |
 | Read the live thesis-system reference | `docs/THESIS_ARCHITECTURE.md` |
@@ -340,7 +359,7 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 
 ### Action Tools
 12. record_thesis — mint a NEW thesis (direction LONG/SHORT/PASS) for net-new coverage or direction flip. PASS lands status=PASSED (institutional memory). Unresearched watchlist seeds (direction=null, status=WATCHING) are minted only by non-agent code paths (UI/builder/editor) — agents can't mint them.
-13. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, or STATUS_CHANGED; change_status accepts INVALIDATED/ARCHIVED/PASS as input aliases → stored as RETIRED+retiredReason or PASSED — the ACTIVE/CLOSED change_status verbs were removed). The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
+13. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, or STATUS_CHANGED; change_status accepts INVALIDATED / ARCHIVED (→ stored as RETIRED + retiredReason) and WATCHING; there is NO PASS alias — a researched decline on a committed watch is `record_thesis(direction: 'PASS')`, the chat's tool, and a holding is sold with close_position; the ACTIVE/CLOSED verbs were removed). **A save is a patch (2026-10-08, #808):** a value equal to what is stored is dropped before any rule reads it; a field that cannot be applied comes back by name in `data.refused_fields` and the rest of the call lands; a whole-call refusal remains only for a missing or foreign thesis, a terminal row and a seed's commitment. The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
 14. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row.
 15. close_position — close an existing open position fully; flips Thesis HOLDING→RETIRED (retiredReason=SOLD).
 16. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
