@@ -217,6 +217,17 @@ const ReasoningPart: FC = () => {
 const AssistantMessage: FC = () => {
   // Extract _sources from all tool-call results in this message
   const content = useMessage((m) => m.content);
+  // Is the message running with nothing to show yet? The breathing dot in
+  // globals.css hangs off `.aui-md`, the markdown element, which does not
+  // exist until the first text token — so the seconds a model spends thinking
+  // before its first word or tool call rendered as an empty screen. Any part
+  // arriving (text, reasoning, a tool call) ends it.
+  const waiting = useMessage((m) => {
+    const status = (m as { status?: { type?: string } }).status;
+    if (status?.type !== "running") return false;
+    const parts = (m.content ?? []) as ReadonlyArray<{ type: string; text?: string }>;
+    return parts.every((p) => p.type === "text" && !(p.text ?? "").trim());
+  });
   const sources = useMemo(
     () =>
       extractSourcesFromParts(
@@ -233,6 +244,13 @@ const AssistantMessage: FC = () => {
       <div>
         <div className="min-w-0 flex-1">
           <div className="aui-assistant-message-content wrap-break-word text-foreground text-message">
+            {waiting && (
+              <span
+                role="status"
+                aria-label="Working"
+                className="aui-thinking-pending"
+              />
+            )}
             <SourcesProvider sources={sources}>
               <MessagePrimitive.Parts
                 components={{

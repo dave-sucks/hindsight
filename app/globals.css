@@ -338,3 +338,25 @@
   vertical-align: middle;
   transform-origin: center;
 }
+
+/* The same dot, for the window BEFORE the message has any part.
+ * The rule above hangs off `.aui-md`, which is the assistant message's
+ * markdown element — it is not in the DOM until the first text token. While
+ * the model reasons before saying anything (and the principal chat thinks for
+ * several seconds before its first tool call), there was no element to hang an
+ * indicator on, so the screen sat blank. This one is rendered by the message
+ * itself, so it covers that gap and disappears the moment a part arrives. */
+.aui-thinking-pending::after {
+  content: "●";
+  display: inline-block;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--foreground);
+  animation: aui-thinking-dot 1.4s ease-in-out infinite;
+  vertical-align: middle;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aui-thinking-pending::after { animation: none; }
+}
