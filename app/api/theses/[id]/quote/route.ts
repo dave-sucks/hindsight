@@ -2,11 +2,12 @@
  * GET /api/theses/:id/quote
  *
  * The LIVE layer for a thesis — everything that depends on the current price:
- * the quote (price + day change), position PnL math, and the `resolved`
- * actionability envelope (trigger evaluation + supersession + the
- * ENTER_NOW / WAIT_FOR_TRIGGER / ACTIVE_HOLD rollup). All of it needs a live
- * price, so it lives here rather than in the durable dossier
- * (/api/theses/:id), which is pure DB and gates the sheet's first paint.
+ * the quote (price + day change), position PnL math, the `resolved`
+ * actionability envelope, the work flag and the situations. The envelope,
+ * the flag and the situations come from lib/agent/stock-facts.ts, the
+ * function get_theses calls, so the sheet shows what the morning read shows.
+ * All of it needs a live price, so it lives here rather than in the durable
+ * dossier (/api/theses/:id), which is pure DB and gates the sheet's first paint.
  *
  * The sheet fires this in parallel with the dossier: the dossier paints the
  * body in ~50ms; this refines the price header, the position PnL, and the
@@ -20,22 +21,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { getAccountId } from "@/lib/auth/account";
-import {
-  loadLevelSources,
-  resolveThesisLadder,
-} from "@/lib/agent/triggers/load-levels";
-import {
-  buildResolvedEnvelope,
-  buildSupersessionMap,
-} from "@/lib/agent/resolved-thesis";
-import { computeNeedsAction } from "@/lib/agent/needs-action";
-import {
-  declinedSaleWhere,
-  declinedSaleWork,
-  foldDeclines,
-} from "@/lib/agent/declined-sale";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
-import type { Trigger } from "@/lib/agent/triggers/types";
+import { loadStockFacts } from "@/lib/agent/stock-facts";
+import { situationLabels } from "@/lib/agent/situations";
 
 export async function GET(
   _req: Request,
@@ -53,9 +40,8 @@ export async function GET(
   const accountId = await getAccountId(user.id);
   if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
-  // Thesis fields needed for the quote (ticker) + the resolved envelope
-  // (entry / triggers / dates / scoring / status). Everything price-dependent
-  // is computed here; the durable body comes from /api/theses/[id].
+  // The thesis columns the stock's facts read (stock-facts.ts `FactsRow`),
+  // and its analyst's settings for the plan check and the slot count.
   const thesis = await prisma.thesis.findFirst({
     where: { id, accountId },
     select: {
@@ -64,116 +50,34 @@ export async function GET(
       status: true,
       direction: true,
       entryPrice: true,
-      // Plan-sanity inputs (DAV-188) — the sheet envelope carries the same
-      // flags the agent sees.
       targetPrice: true,
       stopLoss: true,
       triggers: true,
-      // Cascade inputs — the resolved envelope must evaluate the SAME
-      // ladder the sheet's pills draw, or "matching now" and ladder health
-      // would ignore every inherited rung and report a holding as
-      // unprotected while its floor is showing on screen.
-      triggerState: true,
       horizon: true,
       catalystDate: true,
       setupId: true,
       createdAt: true,
       scoring: true,
-      // needsAction inputs (DAV-304) — the same work-list flag the daily run
-      // reads, so the sheet can say whether this stock is flagged and why.
-      lastReviewedAt: true,
-      researchUpdatedAt: true,
-      paperTenureDays: true,
-      paperRealizedPnl: true,
-      paperReviewCount: true,
-      promotedAt: true,
-      researchRun: { select: { agentConfigId: true, agentConfig: { select: { minConfidence: true } } } },
+      researchRun: {
+        select: {
+          agentConfigId: true,
+          agentConfig: { select: { minConfidence: true, maxOpenPositions: true, setupIds: true } },
+        },
+      },
     },
   });
   if (!thesis) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const ownAnalystId = thesis.researchRun?.agentConfigId ?? null;
-  const isHolding = thesis.status === "HOLDING";
+  const analyst = thesis.researchRun?.agentConfig ?? null;
 
-  // One parallel batch: the live quote, the StockInfo cache identity,
-  // the terminal-sibling supersession lookup (same-analyst scope), and the
-  // open position (qty/avgCost for PnL + openedAt). Quote
-  // failure is non-fatal — the sheet just omits the price line + PnL.
-  const [
-    liveQuote,
-    identity,
-    terminalSiblings,
-    openPosition,
-    activity,
-    pendingEntryCount,
-    atr14,
-  ] = await Promise.all([
-      getStockQuote(thesis.ticker).catch(() => null),
-      getStockInfo(thesis.ticker),
-      prisma.thesis.findMany({
-        where: {
-          accountId,
-          ticker: thesis.ticker,
-          ...(ownAnalystId
-            ? { researchRun: { agentConfigId: ownAnalystId } }
-            : {}),
-          status: { in: ["RETIRED", "PASSED"] },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { id: true, ticker: true, createdAt: true },
-      }),
-      isHolding && ownAnalystId
-        ? prisma.position
-            .findFirst({
-              where: {
-                accountId,
-                analystId: ownAnalystId,
-                symbol: thesis.ticker,
-                status: "OPEN",
-              },
-              orderBy: { openedAt: "desc" },
-              select: { id: true, quantity: true, avgCost: true, openedAt: true, peakPrice: true },
-            })
-            .catch(() => null)
-        : Promise.resolve(null),
-      // needsAction inputs that need their own read (DAV-304): the recent
-      // Activity lines (a fire after the newest line an agent wrote is still
-      // open — stock-context.ts), whether a buy is already queued for
-      // approval, and the stock's ATR for a range-widened trail.
-      prisma.thesisUpdate
-        .findMany({
-          where: { thesisId: thesis.id },
-          orderBy: { timestamp: "desc" },
-          take: 40,
-          select: {
-            type: true,
-            triggerId: true,
-            timestamp: true,
-            runId: true,
-            rationale: true,
-            fieldChanges: true,
-          },
-        })
-        .catch(() => []),
-      ownAnalystId
-        ? prisma.position
-            .count({
-              where: {
-                accountId,
-                analystId: ownAnalystId,
-                symbol: thesis.ticker,
-                status: "PENDING_APPROVAL",
-              },
-            })
-            .catch(() => 0)
-        : Promise.resolve(0),
-      loadIndicatorSnapshots([thesis.ticker.toUpperCase()])
-        .then((m) => m.get(thesis.ticker.toUpperCase())?.atr14 ?? null)
-        .catch(() => null),
-    ]);
+  // The live quote and the StockInfo cache identity. Quote failure is
+  // non-fatal — the sheet just omits the price line + PnL.
+  const [liveQuote, identity] = await Promise.all([
+    getStockQuote(thesis.ticker).catch(() => null),
+    getStockInfo(thesis.ticker),
+  ]);
 
   const currentPrice =
     liveQuote && Number.isFinite(liveQuote.c) && liveQuote.c > 0
@@ -184,6 +88,20 @@ export async function GET(
   const dayChangePct =
     liveQuote && Number.isFinite(liveQuote.dp) ? liveQuote.dp : null;
 
+  // The stock's facts, from the function get_theses calls, on the price
+  // above. One stock was read, so the analyst's slots are counted from its
+  // positions.
+  const facts = await loadStockFacts([thesis], {
+    userId: user.id,
+    analystId: thesis.researchRun?.agentConfigId ?? null,
+    accountId,
+    prices: currentPrice != null ? { [thesis.ticker]: { price: currentPrice, t: liveQuote?.t ?? 0 } } : {},
+    minConfidence: analyst?.minConfidence ?? null,
+    maxOpenPositions: analyst?.maxOpenPositions ?? null,
+    slots: "positions",
+  });
+  const openPosition = facts.load.positions.get(thesis.id) ?? null;
+
   // PnL math for held theses — quantity + avgCost from the open Position,
   // currentPrice from the quote. Null when the quote failed or nothing's held.
   let positionPnl: {
@@ -193,8 +111,7 @@ export async function GET(
     unrealizedPnlPct: number | null;
   } | null = null;
   if (currentPrice != null && openPosition) {
-    const qty = Number(openPosition.quantity);
-    const avgCost = Number(openPosition.avgCost);
+    const { quantity: qty, avgCost } = openPosition;
     positionPnl = {
       currentPrice,
       marketValue: currentPrice * qty,
@@ -204,107 +121,9 @@ export async function GET(
     };
   }
 
-  // Resolved envelope — live trigger evaluation + supersession + actionability
-  // rollup. Drives the Trade-Structure "Status" cell. Price-dependent, so it
-  // reflects whatever `currentPrice` the quote produced (null → the
-  // price-independent states still resolve; ENTER_NOW/WAIT fall back cleanly).
-  const supersessionMap = buildSupersessionMap(terminalSiblings);
-  // The resolved ladder — own rungs plus everything inherited. Same
-  // resolver as the dossier route, the evaluator and get_theses.
-  const parsedTriggers = resolveThesisLadder(
-    thesis,
-    ownAnalystId
-      ? (await loadLevelSources([ownAnalystId])).get(ownAnalystId)
-      : undefined,
-    `thesis=${thesis.id}`,
-  ) as Trigger[];
-  const resolved = buildResolvedEnvelope({
-    thesis: {
-      id: thesis.id,
-      ticker: thesis.ticker,
-      status: thesis.status,
-      direction: thesis.direction,
-      entryPrice: thesis.entryPrice,
-      // Feed the plan-sanity flags (DAV-188) so the sheet's envelope
-      // matches what the agent sees for the same thesis.
-      targetPrice: thesis.targetPrice ?? null,
-      stopLoss: thesis.stopLoss ?? null,
-      triggers: thesis.triggers,
-      catalystDate: thesis.catalystDate,
-      setupId: thesis.setupId ?? null,
-      horizon: thesis.horizon ?? null,
-      createdAt: thesis.createdAt,
-      scoring: thesis.scoring,
-      minConfidence: thesis.researchRun?.agentConfig?.minConfidence ?? null,
-      parsedTriggers,
-      positionOpenedAt: openPosition?.openedAt ?? null,
-    },
-    currentPrice,
-    priceAsOf: liveQuote?.t ?? null,
-    supersession: supersessionMap.get(thesis.ticker) ?? null,
-    now: new Date(),
-  });
-
-  // A protective sale the principal declined and nothing has answered
-  // (DAV-315). Read here too, from the same module, so the sheet says
-  // "Sale declined — no new plan yet" instead of leaving the state visible
-  // only inside a run. Best-effort: a lookup failure just omits the flag.
-  let declinedSale = null;
-  if (openPosition) {
-    try {
-      const rows = await prisma.order.findMany({
-        where: { positionId: openPosition.id, ...declinedSaleWhere(new Date()) },
-        select: { createdAt: true, rejectionMessage: true },
-      });
-      declinedSale = declinedSaleWork({
-        status: thesis.status,
-        direction: thesis.direction,
-        decline: foldDeclines(rows),
-        floorPrice: resolved.ladderHealth?.floor?.price ?? null,
-        currentPrice,
-        recentLow: null,
-        now: new Date(),
-      });
-    } catch (err) {
-      console.warn(
-        `[thesis quote] declined-sale lookup failed for ${thesis.ticker}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-  }
-
-  // The work-list flag itself (DAV-304). The same pure function get_theses
-  // hands the daily run — computed here so the sheet shows the flag a person
-  // can test, instead of it existing only inside a run that already ended.
-  const needsAction = computeNeedsAction({
-    thesis: {
-      id: thesis.id,
-      direction: thesis.direction,
-      status: thesis.status,
-      triggers: parsedTriggers,
-      createdAt: thesis.createdAt,
-      lastReviewedAt: thesis.lastReviewedAt,
-      researchUpdatedAt: thesis.researchUpdatedAt,
-      horizon: thesis.horizon,
-      positionOpenedAt: openPosition?.openedAt ?? null,
-      avgCost: openPosition ? Number(openPosition.avgCost) : null,
-      peakPrice: openPosition?.peakPrice != null ? Number(openPosition.peakPrice) : null,
-      atr14,
-      targetPrice: thesis.targetPrice ?? null,
-      paperTenureDays: thesis.paperTenureDays,
-      paperRealizedPnl:
-        thesis.paperRealizedPnl != null ? Number(thesis.paperRealizedPnl) : null,
-      paperReviewCount: thesis.paperReviewCount,
-      promotedAt: thesis.promotedAt,
-    },
-    declinedSale,
-    activity,
-    latestQuote:
-      currentPrice != null ? { price: currentPrice, changePct: dayChangePct ?? 0 } : null,
-    now: new Date(),
-    hasPendingEntryProposal: pendingEntryCount > 0,
-  });
-
+  // The work-list flag is the lead of the stock's list (DAV-304); a stock no
+  // longer live has none. The situations are every one the stock is in.
+  const sources = facts.sources.get(thesis.id);
   return NextResponse.json({
     currentPrice,
     dayChange,
@@ -312,7 +131,8 @@ export async function GET(
     positionPnl,
     companyName: identity.companyName,
     exchange: identity.exchange,
-    resolved,
-    needsAction,
+    resolved: facts.resolved.get(thesis.id) ?? null,
+    needsAction: facts.needs.get(thesis.id)?.[0] ?? null,
+    situations: sources ? situationLabels(sources) : [],
   });
 }

@@ -31,6 +31,9 @@ import {
   derivedNextReviewAt,
 } from "./defaults";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
+
+/** The lead: the first entry on the stock's list, null when nothing is true. */
+const leadOf = (...a: Parameters<typeof computeNeedsAction>) => computeNeedsAction(...a)[0] ?? null;
 import type { Trigger } from "./types";
 import type { ResolvedTrigger } from "./levels";
 import type { When } from "@/lib/agent/triggers/condition";
@@ -396,7 +399,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
 
   it("is quiet before the cadence elapses", () => {
     expect(
-      computeNeedsAction({
+      leadOf({
         thesis: seed,
         activity: [],
         latestQuote: null,
@@ -406,7 +409,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
   });
 
   it("comes due as REVIEW_DUE + pendingFirstReview once the week is up", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: seed,
       activity: [],
       latestQuote: null,
@@ -431,7 +434,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
       createdAt: mintedAt,
       lastReviewedAt: daysLater(10), // reviewed the morning it was sold
     };
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: recycled,
       activity: [],
       latestQuote: null,

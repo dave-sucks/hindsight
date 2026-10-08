@@ -30,21 +30,9 @@ import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
+import { needsActionFlag } from "@/lib/agent/needs-action-line";
 
 // ─── Row ─────────────────────────────────────────────────────────────────────
-
-function describeNeedsAction(na: NonNullable<ThesisCardData["needs_action"]>): string {
-  switch (na.kind) {
-    case "TRIGGER_FIRED":
-      return `Trigger fired: ${na.action}`;
-    case "TRIGGER_MATCHING_NOW":
-      return `Trigger matching: ${na.predicateSummary}`;
-    case "REVIEW_DUE":
-      return na.daysOverdue > 0
-        ? `Review ${na.daysOverdue}d overdue`
-        : "Review due";
-  }
-}
 
 function ThesisReadRow({
   thesis,
@@ -56,7 +44,8 @@ function ThesisReadRow({
   const status = getThesisStatusDisplay(thesis.status);
   const summary = thesis.reasoning_summary?.trim() || "—";
   const needsAction = thesis.needs_action ?? null;
-  const needsActionLabel = needsAction ? describeNeedsAction(needsAction) : null;
+  const flag = needsAction ? needsActionFlag(needsAction) : null;
+  const needsActionLabel = flag ? `${flag.name}${flag.detail ? `: ${flag.detail}` : ""}` : null;
 
   return (
     <HoverCard>

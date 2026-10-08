@@ -15,6 +15,9 @@ import {
   type ActivityRow,
 } from "@/lib/agent/stock-context";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
+
+/** The lead: the first entry on the stock's list, null when nothing is true. */
+const leadOf = (...a: Parameters<typeof computeNeedsAction>) => computeNeedsAction(...a)[0] ?? null;
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 type StoredRow = Omit<ActivityRow, "timestamp"> & { timestamp: string };
@@ -64,7 +67,7 @@ describe("open fires on CEG", () => {
     const triggers = [
       { id: FIFTEEN_OFF_HIGH, action: "REVIEW", predicate: { watch: "move", is: "below", value: 15, variable: "peak" }, rationale: "15% off the high" },
     ] as unknown as Trigger[];
-    const na = computeNeedsAction({
+    const na = leadOf({
       thesis: { id: "cmqb2ku1a000q04l6jtquuqr6", status: "HOLDING", direction: "LONG", triggers, createdAt: new Date("2026-06-12T15:16:50Z"), lastReviewedAt: new Date("2026-09-28T12:04:39Z") },
       activity: before("2026-09-30T12:04:25Z"),
       now: new Date("2026-09-30T12:04:25Z"),

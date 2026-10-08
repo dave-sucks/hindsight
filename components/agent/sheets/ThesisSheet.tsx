@@ -134,27 +134,11 @@ export type ThesisCardData = {
   /** Days between the agent's reviews; null = a plain watch (DAV-225). */
   agent_watch_days?: number | null;
   /**
-   * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
-   * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
-   * on the read-theses table row. null/undefined means no work needed.
+   * Per-thesis "needs work today" annotation set by get_theses: the lead of
+   * the stock's work list. Drives the flag on the read-theses table row.
+   * null/undefined means no work needed.
    */
-  needs_action?:
-    | {
-        kind: "TRIGGER_FIRED";
-        triggerId: string;
-        action: string;
-        summary: string;
-        firedAt: string;
-      }
-    | {
-        kind: "TRIGGER_MATCHING_NOW";
-        triggerId: string;
-        action: string;
-        predicateSummary: string;
-        livePrice: number | null;
-      }
-    | { kind: "REVIEW_DUE"; daysOverdue: number }
-    | null;
+  needs_action?: NeedsAction | null;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -806,6 +790,7 @@ function LatestNoteBlock({
   status,
   latestUpdate,
   needsAction,
+  situations,
   quoteLoading,
   quoteFailed,
   analystName,
@@ -815,6 +800,8 @@ function LatestNoteBlock({
   status: string;
   latestUpdate: ThesisDossier["latestUpdate"];
   needsAction: NeedsAction | null;
+  /** Every situation the stock is in, lead first; the ones the lead didn't put it in follow the flag. */
+  situations: Array<{ name: string; lead: boolean }>;
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
@@ -836,10 +823,11 @@ function LatestNoteBlock({
   // (why will a run pick this up?), in prose written for the agent to read.
   // It renders beside the triggers now, where its numbers live.
   const flag = needsAction ? needsActionFlag(needsAction) : null;
+  const also = situations.filter((x) => !x.lead).map((x) => x.name);
   const view = latestNoteView({
     status,
     hasNote: text != null,
-    hasReasons: flag != null,
+    hasReasons: flag != null || also.length > 0,
     quoteLoading,
     quoteFailed,
   });
@@ -849,12 +837,15 @@ function LatestNoteBlock({
     <div className="space-y-2">
       {view.flags === "hidden" ? null : view.flags === "loading" ? (
         <Skeleton className="h-4 w-56" />
-      ) : view.flags === "reasons" && flag ? (
+      ) : view.flags === "reasons" ? (
+        // The lead flag, then the other situations the stock is in. With no
+        // work flag, the situations alone are why the morning read lists it.
         <p className="flex items-center gap-1.5 text-sm text-foreground">
           <FlagNotificationIcon className="size-4 shrink-0" />
           <span>
-            Flagged for review — {flag.name}
-            {flag.detail ? <>: {flag.detail}</> : null}
+            Flagged for review — {flag ? flag.name : also.join(", ")}
+            {flag?.detail ? <>: {flag.detail}</> : null}
+            {flag && also.length > 0 ? <span className="text-muted-foreground"> · also: {also.join(", ")}</span> : null}
           </span>
         </p>
       ) : view.flags === "unchecked" ? (
@@ -1569,6 +1560,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         status={state.status}
         latestUpdate={state.latestUpdate}
         needsAction={quote?.needsAction ?? null}
+        situations={quote?.situations ?? []}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
         analystName={state.analystName}
