@@ -12,6 +12,7 @@ export const earnings: SituationDefinition<"EARNINGS"> = {
   appliesTo: "both",
   entry: "row",
   guidance: "",
+  lists: () => true,
   rule: (stock, book, now) => {
     const items = itemsFor(stockFacts(stock, book, now), "EARNINGS");
     if (items.length === 0) return { active: false };

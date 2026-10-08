@@ -1,7 +1,7 @@
 /**
  * A sale on a holding: a sale or trim trigger fired or is true now, or the
  * principal declined the sale and the price is still past the line. Rule:
- * needs-action.ts `saleDeclinedFlag`, and the fires and matches with action
+ * work-flag.ts `saleDeclinedFlag`, and the fires and matches with action
  * EXIT or TRIM on a holding (`openFireWork`, `matchingWork`).
  */
 import { firstFlag, itemsFor, stockFacts } from "./facts";
@@ -13,6 +13,7 @@ export const protectiveSale: SituationDefinition<"PROTECTIVE_SALE"> = {
   appliesTo: "held",
   entry: "row",
   guidance: "",
+  lists: () => true,
   rule: (stock, book, now) => {
     const facts = stockFacts(stock, book, now);
     const items = itemsFor(facts, "PROTECTIVE_SALE");

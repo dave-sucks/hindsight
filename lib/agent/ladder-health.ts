@@ -18,7 +18,7 @@
  *   - days since the ladder was last edited (caller supplies the timestamp)
  *   - the UNPROTECTED_GAIN flag: gain meaningfully above what the floor locks
  *
- * Shared by needs-action.ts (the UNPROTECTED_GAIN attention flag) and
+ * Shared by situations/work-flag.ts (the UNPROTECTED_GAIN attention flag) and
  * resolved-thesis.ts (surfacing the block on every HOLDING row in
  * get_theses). No I/O — pure + unit-tested.
  *

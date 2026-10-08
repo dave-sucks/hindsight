@@ -12,14 +12,19 @@
  *
  * Numbers below are live rows on 2026-09-22.
  */
-import { computeNeedsAction } from "./needs-action";
-import { needsActionFlag, needsActionLine } from "./needs-action-line";
-import type { NeedsAction } from "./needs-action";
-import type { Trigger } from "./triggers/types";
+import { situationsFor } from "@/lib/agent/situations";
+import { workFlagOf } from "@/lib/agent/situations/flag-line";
+import type { WorkFlagInput } from "@/lib/agent/situations/work-flag";
+
+/** The work flag, read off the list: the lead situation's flag. */
+const leadOf = (input: WorkFlagInput) => workFlagOf(situationsFor({ ticker: "T", work: input }, {}, input.now));
+import { workFlagLabel, workFlagLine } from "./flag-line";
+import type { WorkFlag } from "./work-flag";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 describe("the review flag says when it was due", () => {
   it("EME — reviewed 09-18 on a 7-day cadence, read on 09-29", () => {
-    const na = computeNeedsAction({
+    const na = leadOf({
       thesis: {
         id: "eme",
         direction: "LONG",
@@ -38,17 +43,17 @@ describe("the review flag says when it was due", () => {
       now: new Date("2026-09-29T12:00:00Z"),
     });
     expect(na?.kind).toBe("REVIEW_DUE");
-    expect(needsActionLine(na!)).toBe("Review is 3 days overdue.");
+    expect(workFlagLine(na!)).toBe("Review is 3 days overdue.");
   });
 
   it("due today reads as due today, not as zero days overdue", () => {
-    expect(needsActionLine({ kind: "REVIEW_DUE", daysOverdue: 0 })).toBe("Review is due today.");
-    expect(needsActionLine({ kind: "REVIEW_DUE", daysOverdue: 1 })).toBe("Review is 1 day overdue.");
+    expect(workFlagLine({ kind: "REVIEW_DUE", daysOverdue: 0 })).toBe("Review is due today.");
+    expect(workFlagLine({ kind: "REVIEW_DUE", daysOverdue: 1 })).toBe("Review is 1 day overdue.");
   });
 
   it("a seed nobody has researched says so", () => {
     expect(
-      needsActionLine({ kind: "REVIEW_DUE", daysOverdue: 12, pendingFirstReview: true }),
+      workFlagLine({ kind: "REVIEW_DUE", daysOverdue: 12, pendingFirstReview: true }),
     ).toBe("Awaiting its first research.");
   });
 });
@@ -56,7 +61,7 @@ describe("the review flag says when it was due", () => {
 describe("the other flags a person needs to see", () => {
   it("EME's research is 41 days old against the compounder's mark", () => {
     expect(
-      needsActionLine({ kind: "RESEARCH_STALE", daysOld: 41, threshold: 30, freshness: "stale" }),
+      workFlagLine({ kind: "RESEARCH_STALE", daysOld: 41, threshold: 30, freshness: "stale" }),
     ).toBe(
       "The research is 41 days old, past its 30-day mark — refresh it or say it still holds.",
     );
@@ -64,13 +69,13 @@ describe("the other flags a person needs to see", () => {
 
   it("no research at all is a different sentence", () => {
     expect(
-      needsActionLine({ kind: "RESEARCH_STALE", daysOld: null, threshold: 30, freshness: "missing" }),
+      workFlagLine({ kind: "RESEARCH_STALE", daysOld: null, threshold: 30, freshness: "missing" }),
     ).toBe("No deep research has ever been written for this stock.");
   });
 
   it("a fired trigger carries what fired", () => {
     expect(
-      needsActionLine({
+      workFlagLine({
         kind: "TRIGGER_FIRED",
         triggerId: "d2580188",
         action: "ENTER",
@@ -82,7 +87,7 @@ describe("the other flags a person needs to see", () => {
 
   it("a live condition carries the price it is true at", () => {
     expect(
-      needsActionLine({
+      workFlagLine({
         kind: "TRIGGER_MATCHING_NOW",
         triggerId: "t2",
         action: "ENTER",
@@ -94,7 +99,7 @@ describe("the other flags a person needs to see", () => {
 
   it("an unprotected winner says what the floor actually locks in", () => {
     expect(
-      needsActionLine({
+      workFlagLine({
         kind: "UNPROTECTED_GAIN",
         unrealizedGainPct: 17.9,
         flooredGainPct: -12,
@@ -109,7 +114,7 @@ describe("the other flags a person needs to see", () => {
 
   it("…and says plainly when there is no floor at all", () => {
     expect(
-      needsActionLine({
+      workFlagLine({
         kind: "UNPROTECTED_GAIN",
         unrealizedGainPct: 24.3,
         flooredGainPct: null,
@@ -121,7 +126,7 @@ describe("the other flags a person needs to see", () => {
   });
 
   it("a promoted stock names the decision it owes", () => {
-    expect(needsActionLine({ kind: "PROMOTED_AWAITING_RESOLUTION" })).toContain(
+    expect(workFlagLine({ kind: "PROMOTED_AWAITING_RESOLUTION" })).toContain(
       "re-enter it, defer it, or kill it",
     );
   });
@@ -138,7 +143,7 @@ describe("the other flags a person needs to see", () => {
  * so every stock's header had a differently shaped sentence on it.
  */
 describe("the flag is a name and at most one fact", () => {
-  const cases: Array<[NeedsAction, string, string | null]> = [
+  const cases: Array<[WorkFlag, string, string | null]> = [
     [
       { kind: "PROMOTED_AWAITING_RESOLUTION", paperTenureDays: null, paperRealizedPnl: null, paperReviewCount: null, promotedAt: null },
       "Promoted to live money",
@@ -200,14 +205,14 @@ describe("the flag is a name and at most one fact", () => {
   ];
 
   it.each(cases)("%#", (na, name, detail) => {
-    expect(needsActionFlag(na)).toEqual({ name, detail });
+    expect(workFlagLabel(na)).toEqual({ name, detail });
   });
 
   // The flag never carries a sentence. The paragraph under it is the
   // analyst's; the flag's job is to say which of eight things happened.
   it("a detail is a fact, never prose", () => {
     for (const [na] of cases) {
-      const { detail } = needsActionFlag(na);
+      const { detail } = workFlagLabel(na);
       if (detail == null) continue;
       expect(detail.length).toBeLessThan(45);
       expect(detail).not.toMatch(/\. /);

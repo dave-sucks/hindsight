@@ -7,7 +7,11 @@
  * the tape) and don't count; the 09-14 set-down (to null) doesn't either.
  */
 import { citesStructure, entryRaisesAway } from "./entry-raises";
-import { computePlanSanity } from "./plan-sanity";
+import { planChecksOn } from "@/lib/agent/situations";
+import type { PlanCheckArgs } from "@/lib/agent/situations/plan-checks";
+
+/** The plan checks, read off the list (PLAN_PROBLEM). */
+const planChecksOf = (args: PlanCheckArgs) => planChecksOn(args, args.now ?? new Date());
 
 const MSFT = [
   { type: "UPDATED", timestamp: new Date("2026-08-28T16:03:49Z"), priceAtTime: 504.98, rationale: "MSFT's old priced plan is stale and the row needs a live entry framework again.", fieldChanges: { entryPrice: { from: null, to: 470 } } },
@@ -33,7 +37,7 @@ describe("entryRaisesAway — MSFT 2026-09-09", () => {
     expect(entryRaisesAway({ direction: "LONG", updates: MSFT, now: new Date("2026-10-20T00:00:00Z") })).toEqual([]);
   });
   it("the plan-sanity flag says it with the count and the numbers", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       status: "WATCHING",
       direction: "LONG",
       entryPrice: 497,

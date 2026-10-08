@@ -30,7 +30,12 @@ import {
   reviewCadenceTrigger,
   derivedNextReviewAt,
 } from "./defaults";
-import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { situationsFor } from "@/lib/agent/situations";
+import { workFlagOf } from "@/lib/agent/situations/flag-line";
+import type { WorkFlagInput } from "@/lib/agent/situations/work-flag";
+
+/** The work flag, read off the list: the lead situation's flag. */
+const leadOf = (input: WorkFlagInput) => workFlagOf(situationsFor({ ticker: "T", work: input }, {}, input.now));
 import type { Trigger } from "./types";
 import type { ResolvedTrigger } from "./levels";
 import type { When } from "@/lib/agent/triggers/condition";
@@ -396,7 +401,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
 
   it("is quiet before the cadence elapses", () => {
     expect(
-      computeNeedsAction({
+      leadOf({
         thesis: seed,
         activity: [],
         latestQuote: null,
@@ -406,7 +411,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
   });
 
   it("comes due as REVIEW_DUE + pendingFirstReview once the week is up", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: seed,
       activity: [],
       latestQuote: null,
@@ -431,7 +436,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
       createdAt: mintedAt,
       lastReviewedAt: daysLater(10), // reviewed the morning it was sold
     };
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: recycled,
       activity: [],
       latestQuote: null,

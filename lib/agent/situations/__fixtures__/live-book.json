@@ -1,13 +1,20 @@
 {
- "measuredAt": "2026-10-08T00:38:08.364Z",
- "what": "Every live stock on the trading account: today's flags beside its situations (lib/agent/situations), from the real get_theses. The principal's words are replaced.",
+ "measuredAt": "2026-10-08T01:01:04.673Z",
+ "what": "Every live stock on the trading account: its inputs and situations from the real get_theses, beside main's value for each model-facing field the list now fills and whether main listed it. The principal's words are replaced.",
+ "modelFields": [
+  "needsAction",
+  "nameTheSetup",
+  "buyBlockedByFull",
+  "heldThroughFloor",
+  "resolved.planSanity",
+  "resolved.floorRisk",
+  "listed"
+ ],
  "totals": {
   "stocks": 40,
   "withALead": 5,
-  "firstSituationCarriesTheLead": 5,
-  "planChecks": 13,
-  "planChecksOnPlanProblem": 13,
-  "listingReasonsDisagreeWithTheRead": 0,
+  "listed": 10,
+  "fieldsDifferingFromMain": 0,
   "keptInputsReplayDifferently": 0,
   "soldOwedALook": 0
  },
@@ -15,7 +22,7 @@
   {
    "ticker": "MU",
    "analyst": "PEAD Specialist",
-   "ruling": "1 (lead by today's precedence)",
+   "ruling": "1 (lead by the work flag's precedence)",
    "what": "lead REVIEW_DUE; by order alone ADD_OR_WINNER"
   }
  ],
@@ -26,15 +33,19 @@
    "thesisId": "cmugfvjwf000a04jttagre7ew",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. The buying window is open — 37 days to the event. Price the buy now: the pivot or the pullback if the chart offers one, otherwise a close above the highest high of the last 20 sessions, with its stop under the last swing low and a target at 2:1 or better. If no level clears 2:1, let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -51,14 +62,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -307,10 +313,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PRE_CATALYST",
      "entryPrice": null,
@@ -339,28 +345,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. The buying window is open — 37 days to the event. Price the buy now: the pivot or the pullback if the chart offers one, otherwise a close above the highest high of the last 20 sessions, with its stop under the last swing low and a target at 2:1 or better. If no level clears 2:1, let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 17.95,
+      "dayRangePct": null,
+      "composite": 7,
+      "minConfidence": 50,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 3,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "PRE_CATALYST",
+      "catalystDate": {
+       "$date": "2026-11-14T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:04:01.118Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -370,23 +393,19 @@
    "thesisId": "cmrof7ayc000s04juomotwdmh",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -599,10 +618,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PRE_CATALYST",
      "entryPrice": null,
@@ -624,23 +643,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 278.02,
+      "dayRangePct": null,
+      "composite": 3,
+      "minConfidence": 50,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "PRE_CATALYST",
+      "catalystDate": {
+       "$date": "2026-12-27T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:03:29.059Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -650,23 +691,19 @@
    "thesisId": "cmuhp3qf6000004jtz6qubf7l",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -886,10 +923,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PRE_CATALYST",
      "entryPrice": null,
@@ -914,23 +951,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 9.75,
+      "dayRangePct": null,
+      "composite": 5,
+      "minConfidence": 50,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 2,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "PRE_CATALYST",
+      "catalystDate": {
+       "$date": "2027-01-06T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:03:29.060Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -940,23 +999,19 @@
    "thesisId": "cmugfyhcl000s04jtzuiezpcf",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -1168,10 +1223,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PRE_CATALYST",
      "entryPrice": null,
@@ -1192,23 +1247,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 58.44,
+      "dayRangePct": null,
+      "composite": 6,
+      "minConfidence": 50,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "PRE_CATALYST",
+      "catalystDate": {
+       "$date": "2027-03-03T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:03:29.059Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -1218,23 +1295,19 @@
    "thesisId": "cmuhp4n4e000e04kx3vkxm5lr",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -1559,10 +1632,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PRE_CATALYST",
      "entryPrice": 116.0313,
@@ -1629,23 +1702,47 @@
        "isUnprotectedGain": false,
        "summary": "+3.1% from entry ($116.03 → $119.60); floor locks -6.6% (BELOW entry) — below $108.40; no trail; next rung EXIT below $108.40 @ $108.40 (-9.4% away); ladder last edited 1d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 116.0313,
+      "targetPrice": 152,
+      "stopLoss": 108.4,
+      "currentPrice": 119.6,
+      "dayRangePct": null,
+      "composite": 8,
+      "minConfidence": 50,
+      "lastLadderEditAt": {
+       "$date": "2026-10-06T12:02:35.826Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 7,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "PRE_CATALYST",
+      "catalystDate": {
+       "$date": "2026-12-17T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:03:04.487Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -1655,23 +1752,19 @@
    "thesisId": "cmuhp3pp1000004l6w5jqlxlz",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -1902,10 +1995,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PRE_CATALYST",
      "entryPrice": null,
@@ -1930,23 +2023,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 66.5,
+      "dayRangePct": null,
+      "composite": 2,
+      "minConfidence": 50,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 2,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "PRE_CATALYST",
+      "catalystDate": {
+       "$date": "2026-11-27T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:02:43.384Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -1956,15 +2071,19 @@
    "thesisId": "cmtc1m5ol000404jloc0es9kg",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. The buying window is open — 24 days to the event. Price the buy now: the pivot or the pullback if the chart offers one, otherwise a close above the highest high of the last 20 sessions, with its stop under the last swing low and a target at 2:1 or better. If no level clears 2:1, let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -1981,14 +2100,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -2197,10 +2311,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PRE_CATALYST",
      "entryPrice": null,
@@ -2221,28 +2335,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. The buying window is open — 24 days to the event. Price the buy now: the pivot or the pullback if the chart offers one, otherwise a close above the highest high of the last 20 sessions, with its stop under the last swing low and a target at 2:1 or better. If no level clears 2:1, let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 31.79,
+      "dayRangePct": null,
+      "composite": 6,
+      "minConfidence": 50,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "PRE_CATALYST",
+      "catalystDate": {
+       "$date": "2026-11-01T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:02:27.062Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -2252,23 +2383,19 @@
    "thesisId": "cmtgoecfz000o04jmu57mrwv3",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -2507,10 +2634,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": null,
      "entryPrice": null,
@@ -2539,23 +2666,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 55.2,
+      "dayRangePct": null,
+      "composite": 6,
+      "minConfidence": 50,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 3,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": null,
+      "catalystDate": {
+       "$date": "2027-02-28T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 5,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-02T12:02:44.959Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -2565,23 +2714,19 @@
    "thesisId": "cmugfvp6q000f04jtjfjnaqd7",
    "status": "WATCHING",
    "direction": null,
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:11.252Z"
+     "$date": "2026-10-08T01:01:07.443Z"
     },
     "book": {
      "capacity": {
@@ -2861,10 +3006,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:10.923Z"
+       "$date": "2026-10-08T01:01:07.104Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PRE_CATALYST",
      "entryPrice": null,
@@ -2901,23 +3046,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "ENTER_WAITING",
       "triggerDetail": "above $36.95 · only on the close and at least 1.5× normal volume",
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:11.252Z",
-      "quoteAgeMs": 16691252
+      "resolvedAt": "2026-10-08T01:01:07.443Z",
+      "quoteAgeMs": 18067443
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": null,
+      "entryPrice": null,
+      "targetPrice": 43.35,
+      "stopLoss": null,
+      "currentPrice": 30.14,
+      "dayRangePct": null,
+      "composite": 2,
+      "minConfidence": 50,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 5,
+      "hasEnterTrigger": true,
+      "hasPriceWake": true,
+      "setupId": "PRE_CATALYST",
+      "catalystDate": {
+       "$date": "2026-11-30T00:00:00.000Z"
+      },
+      "horizon": "CATALYST",
+      "now": {
+       "$date": "2026-10-08T01:01:07.443Z"
+      }
      },
      "researchAge": {
       "daysOld": 9,
       "freshness": "stale",
       "lastWrittenAt": "2026-09-28T01:07:03.063Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -2927,24 +3094,20 @@
    "thesisId": "cmrp6chyu000h04l5roqq5ha1",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": {
+   "main": {
+    "needsAction": {
      "kind": "TRIGGER_FIRED",
      "triggerId": "t5",
      "action": "REVIEW",
      "summary": "Review if above 4% from yesterday's close",
      "firedAt": "2026-10-07T17:10:16.012Z"
     },
-    "header": {
-     "name": "Trigger fired",
-     "detail": "Review if above 4% from yesterday's close"
-    },
-    "planChecks": [],
-    "listed": true,
-    "listingReasons": [
-     "needsAction TRIGGER_FIRED"
-    ],
-    "resolverLabel": "ACTIVE_HOLD"
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -2984,16 +3147,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": [
-     "ADD_OR_WINNER"
-    ]
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:15.143Z"
+     "$date": "2026-10-08T01:01:11.558Z"
     },
     "book": {
      "capacity": {
@@ -3479,10 +3635,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:14.794Z"
+       "$date": "2026-10-08T01:01:11.202Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PEAD",
      "entryPrice": 895.935,
@@ -3572,23 +3728,45 @@
        "isUnprotectedGain": false,
        "summary": "+21.4% from entry ($895.93 → $1088.00); floor locks +17.0% — below $1048; trail on; next rung REVIEW above $1100 @ $1100.00 (+1.1% away); ladder last edited 5d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:15.143Z",
-      "quoteAgeMs": 16695143
+      "resolvedAt": "2026-10-08T01:01:11.558Z",
+      "quoteAgeMs": 18071558
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 895.935,
+      "targetPrice": 1100,
+      "stopLoss": 1048,
+      "currentPrice": 1088,
+      "dayRangePct": null,
+      "composite": 9,
+      "minConfidence": 60,
+      "lastLadderEditAt": {
+       "$date": "2026-10-02T12:00:57.863Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 11,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "PEAD",
+      "catalystDate": null,
+      "horizon": "TARGET",
+      "now": {
+       "$date": "2026-10-08T01:01:11.558Z"
+      }
      },
      "researchAge": {
       "daysOld": 5,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-02T12:00:57.472Z",
       "horizonThreshold": 30
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -3598,24 +3776,20 @@
    "thesisId": "cmu062bge000004jtd1aqp304",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": {
+   "main": {
+    "needsAction": {
      "kind": "TRIGGER_FIRED",
      "triggerId": "e10a14d3-8f05-473a-8e37-2bc22f4946fa",
      "action": "EXIT",
      "summary": "Sell if below $40.80",
      "firedAt": "2026-10-07T14:40:22.635Z"
     },
-    "header": {
-     "name": "Trigger fired",
-     "detail": "Sell if below $40.80"
-    },
-    "planChecks": [],
-    "listed": true,
-    "listingReasons": [
-     "needsAction TRIGGER_FIRED"
-    ],
-    "resolverLabel": "ACTIVE_HOLD"
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -3646,14 +3820,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:15.143Z"
+     "$date": "2026-10-08T01:01:11.558Z"
     },
     "book": {
      "capacity": {
@@ -4023,10 +4192,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:14.794Z"
+       "$date": "2026-10-08T01:01:11.202Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PEAD",
      "entryPrice": 39.062,
@@ -4095,23 +4264,45 @@
        "isUnprotectedGain": false,
        "summary": "+3.7% from entry ($39.06 → $40.51); floor locks +4.4% — below $40.80; no trail; next rung REVIEW above 10% from our entry → $42.97 @ $42.97 (+6.1% away); ladder last edited 1d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "EXIT_FIRED",
       "triggerDetail": "below $40.80 (now $40.51, -0.7%)",
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:15.143Z",
-      "quoteAgeMs": 16695143
+      "resolvedAt": "2026-10-08T01:01:11.558Z",
+      "quoteAgeMs": 18071558
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 39.062,
+      "targetPrice": 47,
+      "stopLoss": 40.8,
+      "currentPrice": 40.51,
+      "dayRangePct": null,
+      "composite": 8,
+      "minConfidence": 60,
+      "lastLadderEditAt": {
+       "$date": "2026-10-06T12:00:50.382Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 7,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "PEAD",
+      "catalystDate": null,
+      "horizon": "TARGET",
+      "now": {
+       "$date": "2026-10-08T01:01:11.558Z"
+      }
      },
      "researchAge": {
       "daysOld": 2,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-05T13:35:48.491Z",
       "horizonThreshold": 30
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -4121,15 +4312,19 @@
    "thesisId": "cmtu9lfhw000004i575f6xyig",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -4146,14 +4341,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:15.143Z"
+     "$date": "2026-10-08T01:01:11.558Z"
     },
     "book": {
      "capacity": {
@@ -4368,10 +4558,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:14.794Z"
+       "$date": "2026-10-08T01:01:11.202Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "MA_PULLBACK",
      "entryPrice": null,
@@ -4404,28 +4594,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:15.143Z",
-      "quoteAgeMs": 16695143
+      "resolvedAt": "2026-10-08T01:01:11.558Z",
+      "quoteAgeMs": 18071558
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 68.9,
+      "dayRangePct": null,
+      "composite": 8,
+      "minConfidence": 60,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 4,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "MA_PULLBACK",
+      "catalystDate": {
+       "$date": "2026-12-03T00:00:00.000Z"
+      },
+      "horizon": "TARGET",
+      "now": {
+       "$date": "2026-10-08T01:01:11.558Z"
+      }
      },
      "researchAge": {
       "daysOld": 9,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-28T13:30:44.586Z",
       "horizonThreshold": 30
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -4435,15 +4642,19 @@
    "thesisId": "cmu6d6k0v000c04jhwflvtjhf",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -4460,14 +4671,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:15.143Z"
+     "$date": "2026-10-08T01:01:11.558Z"
     },
     "book": {
      "capacity": {
@@ -4636,10 +4842,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:14.794Z"
+       "$date": "2026-10-08T01:01:11.202Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PEAD",
      "entryPrice": null,
@@ -4660,28 +4866,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:15.143Z",
-      "quoteAgeMs": 16695143
+      "resolvedAt": "2026-10-08T01:01:11.558Z",
+      "quoteAgeMs": 18071558
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 10.3,
+      "dayRangePct": null,
+      "composite": 6,
+      "minConfidence": 60,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "PEAD",
+      "catalystDate": null,
+      "horizon": "TARGET",
+      "now": {
+       "$date": "2026-10-08T01:01:11.558Z"
+      }
      },
      "researchAge": {
       "daysOld": 19,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-18T02:53:37.941Z",
       "horizonThreshold": 30
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -4691,23 +4912,19 @@
    "thesisId": "cmtg9nbdy000204jpc6cwawgg",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:15.143Z"
+     "$date": "2026-10-08T01:01:11.558Z"
     },
     "book": {
      "capacity": {
@@ -5031,10 +5248,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:14.794Z"
+       "$date": "2026-10-08T01:01:11.202Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "PEAD",
      "entryPrice": 218.2259,
@@ -5097,23 +5314,45 @@
        "isUnprotectedGain": false,
        "summary": "+8.8% from entry ($218.23 → $237.47); floor locks +8.1% — below $236; trail on; next rung EXIT below $236 @ $236.00 (-0.6% away); ladder last edited 0d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:15.143Z",
-      "quoteAgeMs": 16695143
+      "resolvedAt": "2026-10-08T01:01:11.558Z",
+      "quoteAgeMs": 18071558
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 218.2259,
+      "targetPrice": 322,
+      "stopLoss": 236,
+      "currentPrice": 237.47,
+      "dayRangePct": null,
+      "composite": 8,
+      "minConfidence": 60,
+      "lastLadderEditAt": {
+       "$date": "2026-10-07T12:00:51.775Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 6,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "PEAD",
+      "catalystDate": null,
+      "horizon": "TARGET",
+      "now": {
+       "$date": "2026-10-08T01:01:11.558Z"
+      }
      },
      "researchAge": {
       "daysOld": 28,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-09T03:40:48.296Z",
       "horizonThreshold": 30
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -5123,17 +5362,19 @@
    "thesisId": "cmukjqjf7000304l9a1dnqozl",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "ENTRY_FAR_FROM_PRICE"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "ENTRY_FAR_FROM_PRICE",
+      "text": "The buy level $39.25 is 13% below the live price $44.94. A level this far below the tape either never fills or fills only in a collapse you wouldn't want to buy. Re-anchor it to current structure, state in one sentence why it's deliberately parked there, or stop watching."
+     }
     ],
-    "listed": true,
-    "listingReasons": [
-     "plan check"
-    ],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -5150,14 +5391,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:15.143Z"
+     "$date": "2026-10-08T01:01:11.558Z"
     },
     "book": {
      "capacity": {
@@ -5392,10 +5628,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:14.794Z"
+       "$date": "2026-10-08T01:01:11.202Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "MA_PULLBACK",
      "entryPrice": 39.25,
@@ -5432,28 +5668,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "ENTRY_FAR_FROM_PRICE",
-        "text": "The buy level $39.25 is 13% below the live price $44.94. A level this far below the tape either never fills or fills only in a collapse you wouldn't want to buy. Re-anchor it to current structure, state in one sentence why it's deliberately parked there, or stop watching."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "ENTER_WAITING",
       "triggerDetail": "below $39.25 (now $44.94, +14.5%)",
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:15.143Z",
-      "quoteAgeMs": 16695143
+      "resolvedAt": "2026-10-08T01:01:11.558Z",
+      "quoteAgeMs": 18071558
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": 39.25,
+      "targetPrice": 52,
+      "stopLoss": 35.1,
+      "currentPrice": 44.94,
+      "dayRangePct": 7.331118493909197,
+      "composite": 9,
+      "minConfidence": 60,
+      "lastLadderEditAt": {
+       "$date": "2026-09-28T01:05:54.942Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 5,
+      "hasEnterTrigger": true,
+      "hasPriceWake": true,
+      "setupId": "MA_PULLBACK",
+      "catalystDate": null,
+      "horizon": "TARGET",
+      "now": {
+       "$date": "2026-10-08T01:01:11.558Z"
+      }
      },
      "researchAge": {
       "daysOld": 9,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-28T01:05:54.455Z",
       "horizonThreshold": 30
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -5463,15 +5716,19 @@
    "thesisId": "cmtu9lyik000004l57d397wpu",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "PENDING_CATALYST"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -5488,14 +5745,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:15.143Z"
+     "$date": "2026-10-08T01:01:11.558Z"
     },
     "book": {
      "capacity": {
@@ -5652,10 +5904,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:14.794Z"
+       "$date": "2026-10-08T01:01:11.202Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": "MA_PULLBACK",
      "entryPrice": null,
@@ -5676,28 +5928,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "PENDING_CATALYST",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:15.143Z",
-      "quoteAgeMs": 16695143
+      "resolvedAt": "2026-10-08T01:01:11.558Z",
+      "quoteAgeMs": 18071558
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 72.09,
+      "dayRangePct": null,
+      "composite": 7,
+      "minConfidence": 60,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "MA_PULLBACK",
+      "catalystDate": {
+       "$date": "2026-12-01T00:00:00.000Z"
+      },
+      "horizon": "TARGET",
+      "now": {
+       "$date": "2026-10-08T01:01:11.558Z"
+      }
      },
      "researchAge": {
       "daysOld": 5,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-02T18:41:23.140Z",
       "horizonThreshold": 30
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -5707,23 +5976,19 @@
    "thesisId": "cmtg9zgpt000f04jp78g77xsc",
    "status": "WATCHING",
    "direction": null,
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:15.143Z"
+     "$date": "2026-10-08T01:01:11.558Z"
     },
     "book": {
      "capacity": {
@@ -5880,10 +6145,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:14.794Z"
+       "$date": "2026-10-08T01:01:11.202Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114981.8
      },
      "setupId": null,
      "entryPrice": null,
@@ -5904,23 +6169,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:15.143Z",
-      "quoteAgeMs": 16695143
+      "resolvedAt": "2026-10-08T01:01:11.558Z",
+      "quoteAgeMs": 18071558
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": null,
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 265.44,
+      "dayRangePct": null,
+      "composite": null,
+      "minConfidence": 60,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": null,
+      "catalystDate": null,
+      "horizon": "TRADE",
+      "now": {
+       "$date": "2026-10-08T01:01:11.558Z"
+      }
      },
      "researchAge": {
-      "daysOld": 10,
+      "daysOld": 11,
       "freshness": "stale",
       "lastWrittenAt": "2026-09-27T00:57:21.051Z",
       "horizonThreshold": 7
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -5930,8 +6215,8 @@
    "thesisId": "cmqooyvy8000004l5a9njg6n5",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": {
+   "main": {
+    "needsAction": {
      "kind": "SALE_DECLINED",
      "declineCount": 1,
      "lastDeclinedAt": "2026-10-06T18:25:18.399Z",
@@ -5939,16 +6224,17 @@
      "floorPrice": 1835,
      "recentLow": 1785.74
     },
-    "header": {
-     "name": "Sale declined",
-     "detail": "2026-10-06"
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": {
+     "floorPrice": 1835,
+     "heldThroughCount": 1,
+     "rejectMessage": null,
+     "recentLow": 1785.74
     },
-    "planChecks": [],
-    "listed": true,
-    "listingReasons": [
-     "needsAction SALE_DECLINED"
-    ],
-    "resolverLabel": "ACTIVE_HOLD"
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -5990,14 +6276,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -6416,10 +6697,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71,
+      "equity": 114991.94,
       "declinedSale": {
        "declineCount": 1,
        "lastDeclinedAt": "2026-10-06T18:25:18.399Z",
@@ -6486,23 +6767,45 @@
        "isUnprotectedGain": false,
        "summary": "+5.2% from entry ($1716.09 → $1804.96); floor locks +6.9% — below $1835; trail on; next rung REVIEW above 15% from our entry → $1973.50 @ $1973.50 (+9.3% away); ladder last edited 1d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "EXIT_FIRED",
       "triggerDetail": "below $1835 (now $1804.96, -1.6%)",
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 1716.09,
+      "targetPrice": 2800,
+      "stopLoss": 1835,
+      "currentPrice": 1804.96,
+      "dayRangePct": null,
+      "composite": 10,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-10-06T18:20:23.886Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 5,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:04:28.983Z",
       "horizonThreshold": 90
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -6512,25 +6815,20 @@
    "thesisId": "cmspld5md000504l72u7ft9ve",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": {
+   "main": {
+    "needsAction": {
      "kind": "TRIGGER_FIRED",
      "triggerId": "6d0614f4-38e9-4d4b-8e6e-a5661fc3f58b",
      "action": "REVIEW",
      "summary": "(predicate removed)",
      "firedAt": "2026-10-07T14:05:14.058Z"
     },
-    "header": {
-     "name": "Trigger fired",
-     "detail": "(predicate removed)"
-    },
-    "planChecks": [],
-    "listed": true,
-    "listingReasons": [
-     "needsAction TRIGGER_FIRED",
-     "the principal's word"
-    ],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -6567,22 +6865,15 @@
        "at": {
         "$date": "2026-10-07T14:04:24.782Z"
        },
-       "line": "(the principal's words, not kept)",
+       "line": "Set by hand: Added: Review if below $110 at $98.16, now $98.73 (+0.6%)",
        "wantsAnswer": true
       }
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": [
-     "YOUR_WORD_UNANSWERED"
-    ]
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -6945,10 +7236,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "MA_PULLBACK",
      "entryPrice": 100.6,
@@ -6977,28 +7268,44 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "ENTER_WAITING",
       "triggerDetail": "above $100.60 · only on the close (now $98.73, -1.9%)",
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": 100.6,
+      "targetPrice": 135,
+      "stopLoss": 95.48,
+      "currentPrice": 98.73,
+      "dayRangePct": 3.055837563451782,
+      "composite": 7,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-10-07T14:58:51.946Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 3,
+      "hasEnterTrigger": true,
+      "hasPriceWake": true,
+      "setupId": "MA_PULLBACK",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:05:37.978Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": {
-      "at": {
-       "$date": "2026-10-07T14:04:24.782Z"
-      },
-      "line": "(the principal's words, not kept)",
-      "wantsAnswer": true
      }
     }
    }
@@ -7009,24 +7316,20 @@
    "thesisId": "cmsplgnxd000c04l7jkp3kr8o",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": {
+   "main": {
+    "needsAction": {
      "kind": "TRIGGER_FIRED",
      "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
      "action": "REVIEW",
      "summary": "Review if below the 200-day average",
      "firedAt": "2026-10-07T14:45:13.216Z"
     },
-    "header": {
-     "name": "Trigger fired",
-     "detail": "Review if below the 200-day average"
-    },
-    "planChecks": [],
-    "listed": true,
-    "listingReasons": [
-     "needsAction TRIGGER_FIRED"
-    ],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -7057,14 +7360,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -7345,10 +7643,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": null,
@@ -7394,23 +7692,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 784.66,
+      "dayRangePct": null,
+      "composite": 6,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 7,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 12,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-25T12:05:58.930Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -7420,15 +7738,19 @@
    "thesisId": "cmqooz978000504l5lj0mu09h",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -7445,14 +7767,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -7655,10 +7972,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": null,
@@ -7688,28 +8005,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 137.87,
+      "dayRangePct": null,
+      "composite": 8.5,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 3,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:05:24.321Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -7719,17 +8051,19 @@
    "thesisId": "cmsplgpal000f04l71yixvmrl",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "ENTRY_RAISED_AWAY"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "ENTRY_RAISED_AWAY",
+      "text": "The buy level was moved above the price once in the last 30 days with no structure cited (2026-10-07: $301.51 with the stock at $278.20). A fired buy has two answers: buy it, or set the plan down and say why. A re-priced level names the structure it sits on — a pivot, an average, a swing — or it is the buy being avoided."
+     }
     ],
-    "listed": true,
-    "listingReasons": [
-     "plan check"
-    ],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -7746,14 +8080,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -8008,10 +8337,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 301.51,
@@ -8052,28 +8381,52 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "ENTRY_RAISED_AWAY",
-        "text": "The buy level was moved above the price once in the last 30 days with no structure cited (2026-10-07: $301.51 with the stock at $278.20). A fired buy has two answers: buy it, or set the plan down and say why. A re-priced level names the structure it sits on — a pivot, an average, a swing — or it is the buy being avoided."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "ENTER_WAITING",
       "triggerDetail": "above $301.51 · only on the close (now $275.40, -8.7%)",
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": 301.51,
+      "targetPrice": 430,
+      "stopLoss": 267,
+      "currentPrice": 275.4,
+      "dayRangePct": 2.72694262890341,
+      "composite": 8,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-10-07T12:04:55.184Z"
+      },
+      "entryRaisesAway": [
+       {
+        "date": "2026-10-07",
+        "from": null,
+        "to": 301.51,
+        "price": 278.2
+       }
+      ],
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 6,
+      "hasEnterTrigger": true,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 0,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-07T12:04:54.903Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -8083,15 +8436,19 @@
    "thesisId": "cmurgwknr000404jtnef2nzwv",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -8108,14 +8465,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -8310,10 +8662,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": null,
@@ -8338,28 +8690,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 265.44,
+      "dayRangePct": null,
+      "composite": 9,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 2,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 5,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-02T21:21:00.386Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -8369,23 +8736,19 @@
    "thesisId": "cmqop233h000n04l57odbcpup",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -8920,10 +9283,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 192.0105,
@@ -8994,23 +9357,45 @@
        "isUnprotectedGain": false,
        "summary": "+1.1% from entry ($192.01 → $194.12); floor locks -14.3% (BELOW entry) — below $164.55; trail on; next rung REVIEW above 15% from our entry → $220.81 @ $220.81 (+13.8% away); ladder last edited 12d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 192.0105,
+      "targetPrice": 249.26,
+      "stopLoss": 164.55,
+      "currentPrice": 194.12,
+      "dayRangePct": null,
+      "composite": 9,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-09-25T12:05:52.008Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 8,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 5,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-02T13:35:34.178Z",
       "horizonThreshold": 90
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -9020,23 +9405,19 @@
    "thesisId": "cmum3c72c000h04jp9ztyxxko",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -9287,10 +9668,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 372,
@@ -9335,23 +9716,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "ENTER_WAITING",
       "triggerDetail": "above $372 (now $360.61, -3.1%)",
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": 372,
+      "targetPrice": 431.5,
+      "stopLoss": 352.5,
+      "currentPrice": 360.61,
+      "dayRangePct": 2.010482238429328,
+      "composite": 8,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-10-05T12:03:36.387Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 7,
+      "hasEnterTrigger": true,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 8,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-29T03:02:23.756Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -9361,23 +9764,19 @@
    "thesisId": "cmum3bxkt000204l243g6s93c",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -9905,10 +10304,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 333.565,
@@ -9975,23 +10374,45 @@
        "isUnprotectedGain": false,
        "summary": "+0.9% from entry ($333.56 → $336.67); floor locks -7.4% (BELOW entry) — below $309; trail on; next rung EXIT below $309 @ $309.00 (-8.2% away); ladder last edited 7d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 333.565,
+      "targetPrice": 383,
+      "stopLoss": 309,
+      "currentPrice": 336.67,
+      "dayRangePct": null,
+      "composite": 8,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-09-30T23:53:03.503Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 7,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 8,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-29T03:02:11.457Z",
       "horizonThreshold": 90
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -10001,23 +10422,19 @@
    "thesisId": "cmum3c2la000704l2nq4rgf8k",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -10556,10 +10973,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 369.2526,
@@ -10630,23 +11047,45 @@
        "isUnprotectedGain": false,
        "summary": "+0.8% from entry ($369.25 → $372.10); floor locks -6.8% (BELOW entry) — below $344; trail on; next rung REVIEW above 4.6% from our entry (not if it ran up 10%) → $386.24 @ $386.24 (+3.8% away); ladder last edited 8d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 369.2526,
+      "targetPrice": 434,
+      "stopLoss": 344,
+      "currentPrice": 372.1,
+      "dayRangePct": null,
+      "composite": 7,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-09-29T03:19:51.059Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 8,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 2,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-05T18:30:50.372Z",
       "horizonThreshold": 90
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -10656,23 +11095,19 @@
    "thesisId": "cmum2tu02000h04jf51986b32",
    "status": "WATCHING",
    "direction": null,
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -10905,10 +11340,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": null,
      "entryPrice": null,
@@ -10929,23 +11364,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": null,
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 91.93,
+      "dayRangePct": null,
+      "composite": null,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": null,
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": null,
       "freshness": "missing",
       "lastWrittenAt": null,
       "horizonThreshold": null
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -10955,23 +11410,19 @@
    "thesisId": "cmum2tf9m000d04jfv0szuiap",
    "status": "WATCHING",
    "direction": null,
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -11160,10 +11611,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": null,
      "entryPrice": null,
@@ -11188,23 +11639,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": null,
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 570.06,
+      "dayRangePct": null,
+      "composite": null,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 2,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": null,
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": null,
       "freshness": "missing",
       "lastWrittenAt": null,
       "horizonThreshold": null
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -11214,23 +11685,19 @@
    "thesisId": "cmum2t3b3000904jfw3w57629",
    "status": "WATCHING",
    "direction": null,
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -11404,10 +11871,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": null,
      "entryPrice": null,
@@ -11428,23 +11895,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": null,
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 189.28,
+      "dayRangePct": null,
+      "composite": null,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": null,
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": null,
       "freshness": "missing",
       "lastWrittenAt": null,
       "horizonThreshold": null
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -11454,23 +11941,19 @@
    "thesisId": "cmum2st7y000504jfkeagglf2",
    "status": "WATCHING",
    "direction": null,
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -11657,10 +12140,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": null,
      "entryPrice": null,
@@ -11685,23 +12168,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": null,
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 271.36,
+      "dayRangePct": null,
+      "composite": null,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 2,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": null,
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": null,
       "freshness": "missing",
       "lastWrittenAt": null,
       "horizonThreshold": null
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -11711,15 +12214,14 @@
    "thesisId": "cmqb2nt4b001r04k0ahd3crrx",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": true,
-    "listingReasons": [
-     "the principal's word"
-    ],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -11731,20 +12233,15 @@
        "at": {
         "$date": "2026-10-01T16:59:57.597Z"
        },
-       "line": "(the principal's words, not kept)",
+       "line": "Approved the buy, cut from 10 to 9 shares at $976.12, now $997.09 (+2.1%)",
        "wantsAnswer": true
       }
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -12248,10 +12745,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 984.585,
@@ -12310,28 +12807,44 @@
        "isUnprotectedGain": false,
        "summary": "+1.3% from entry ($984.59 → $997.09); floor locks -11.8% (BELOW entry) — below $868; trail on; next rung REVIEW below 15% from the high of $1050.33 → $892.78 @ $892.78 (-10.5% away); ladder last edited 8d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 984.585,
+      "targetPrice": 1300,
+      "stopLoss": 868,
+      "currentPrice": 997.09,
+      "dayRangePct": null,
+      "composite": 7,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-09-29T01:47:38.770Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 5,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 35,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-02T12:10:07.336Z",
       "horizonThreshold": 90
-     },
-     "unansweredDecision": {
-      "at": {
-       "$date": "2026-10-01T16:59:57.597Z"
-      },
-      "line": "(the principal's words, not kept)",
-      "wantsAnswer": true
      }
     }
    }
@@ -12342,15 +12855,19 @@
    "thesisId": "cmqb2ro9x000004jiado1yk0a",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -12367,14 +12884,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -12561,10 +13073,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": null,
@@ -12585,28 +13097,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 166.72,
+      "dayRangePct": null,
+      "composite": 2,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 1,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 8,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-29T01:50:30.089Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -12616,15 +13143,19 @@
    "thesisId": "cmsplh2ow000m04l74ho8iti0",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -12641,14 +13172,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -12852,10 +13378,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": null,
@@ -12884,28 +13410,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 414.52,
+      "dayRangePct": null,
+      "composite": 8,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 3,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 9,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-28T20:20:42.783Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -12915,17 +13456,19 @@
    "thesisId": "cmqb2k3mz000a04l69hca1w1s",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "FLOOR_INSIDE_NOISE"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "FLOOR_INSIDE_NOISE",
+      "text": "The floor $322.00 sits 1.4% under the live price $326.63, but this stock's ordinary daily move is ~2.0%. A floor on a stock we don't own sets the plan down on the first tick through it, so an ordinary red day erases this plan. Put the floor under real structure with room, or say in one sentence that a break of today's level is meant to end the plan."
+     }
     ],
-    "listed": true,
-    "listingReasons": [
-     "plan check"
-    ],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -12942,14 +13485,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -13267,10 +13805,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 356,
@@ -13316,28 +13854,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "FLOOR_INSIDE_NOISE",
-        "text": "The floor $322.00 sits 1.4% under the live price $326.63, but this stock's ordinary daily move is ~2.0%. A floor on a stock we don't own sets the plan down on the first tick through it, so an ordinary red day erases this plan. Put the floor under real structure with room, or say in one sentence that a break of today's level is meant to end the plan."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "ENTER_WAITING",
       "triggerDetail": "above $356 · only on the close (now $326.63, -8.3%)",
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": 356,
+      "targetPrice": 435,
+      "stopLoss": 322,
+      "currentPrice": 326.63,
+      "dayRangePct": 2.0440347868691853,
+      "composite": 7,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-09-28T02:34:44.780Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 7,
+      "hasEnterTrigger": true,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 35,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-02T12:12:21.225Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -13347,15 +13902,19 @@
    "thesisId": "cmqb2ksrb000m04l6ifhce815",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [
-     "NO_BUY_LEVEL"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": [
+     {
+      "kind": "NO_BUY_LEVEL",
+      "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
+     }
     ],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [
     {
@@ -13372,14 +13931,9 @@
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -13659,10 +14213,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": null,
@@ -13699,28 +14253,43 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": [
-       {
-        "kind": "NO_BUY_LEVEL",
-        "text": "LONG on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. A rationale with no plan leaves it here tomorrow."
-       }
-      ],
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "currentPrice": 141.54,
+      "dayRangePct": null,
+      "composite": 2,
+      "minConfidence": 70,
+      "lastLadderEditAt": null,
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 5,
+      "hasEnterTrigger": false,
+      "hasPriceWake": false,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 7,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-30T12:07:47.504Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -13730,23 +14299,19 @@
    "thesisId": "cmqeg5hyu000a04l1jsoavysc",
    "status": "WATCHING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "WAIT_FOR_TRIGGER"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -14052,10 +14617,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 448,
@@ -14096,23 +14661,45 @@
       "unrealizedGainPct": null,
       "progressToTarget": null,
       "ladderHealth": null,
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "ENTER_WAITING",
       "triggerDetail": "above $448 · only on the close (now $431.33, -3.7%)",
       "actionability": "WAIT_FOR_TRIGGER",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": 448,
+      "targetPrice": 575,
+      "stopLoss": 387,
+      "currentPrice": 431.33,
+      "dayRangePct": 3.6335752208286047,
+      "composite": 8,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-09-28T02:32:13.557Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 6,
+      "hasEnterTrigger": true,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 35,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-03T00:03:01.301Z",
       "horizonThreshold": 35
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -14122,23 +14709,19 @@
    "thesisId": "cmsplcu9u000004l71leub93x",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -14819,10 +15402,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 355.28,
@@ -14881,23 +15464,45 @@
        "isUnprotectedGain": false,
        "summary": "+3.2% from entry ($355.28 → $366.48); floor locks -7.1% (BELOW entry) — below $330; trail on; next rung EXIT below $330 @ $330.00 (-10.0% away); ladder last edited 9d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 355.28,
+      "targetPrice": 425,
+      "stopLoss": 330,
+      "currentPrice": 366.48,
+      "dayRangePct": null,
+      "composite": 7,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-09-28T15:56:29.987Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 5,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 28,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-09T03:43:38.727Z",
       "horizonThreshold": 90
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -14907,23 +15512,19 @@
    "thesisId": "cmqb2ku1a000q04l6jtquuqr6",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": false,
-    "listingReasons": [],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": false
    },
    "situations": [],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -15365,10 +15966,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 282.006094117647,
@@ -15428,23 +16029,45 @@
        "isUnprotectedGain": false,
        "summary": "+6.2% from entry ($282.01 → $299.59); floor locks +1.9% — below $287.30; trail on; next rung EXIT below $287.30 @ $287.30 (-4.1% away); ladder last edited 1d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 282.006094117647,
+      "targetPrice": 360,
+      "stopLoss": 287.3,
+      "currentPrice": 299.59,
+      "dayRangePct": null,
+      "composite": 8,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-10-06T13:30:48.024Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 5,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 28,
       "freshness": "fresh",
       "lastWrittenAt": "2026-09-09T03:41:18.634Z",
       "horizonThreshold": 90
-     },
-     "unansweredDecision": null
+     }
     }
    }
   },
@@ -15454,15 +16077,14 @@
    "thesisId": "cmoh5nfsg008m04jubqafc6c6",
    "status": "HOLDING",
    "direction": "LONG",
-   "today": {
-    "lead": null,
-    "header": null,
-    "planChecks": [],
-    "listed": true,
-    "listingReasons": [
-     "the principal's word"
-    ],
-    "resolverLabel": "ACTIVE_HOLD"
+   "main": {
+    "needsAction": null,
+    "nameTheSetup": null,
+    "buyBlockedByFull": null,
+    "heldThroughFloor": null,
+    "resolved.planSanity": null,
+    "resolved.floorRisk": null,
+    "listed": true
    },
    "situations": [
     {
@@ -15474,20 +16096,15 @@
        "at": {
         "$date": "2026-10-06T19:39:32.178Z"
        },
-       "line": "(the principal's words, not kept)",
+       "line": "Approved the buy, cut from 19 to 17 shares at $529.94, now $529.76 (−0.0%)",
        "wantsAnswer": true
       }
      }
     }
    ],
-   "checks": {
-    "firstCarriesTodaysLead": true,
-    "everyPlanCheckOnPlanProblem": true,
-    "hiddenToday": []
-   },
    "input": {
     "now": {
-     "$date": "2026-10-08T00:38:20.106Z"
+     "$date": "2026-10-08T01:01:16.552Z"
     },
     "book": {
      "capacity": {
@@ -16049,10 +16666,10 @@
        "changePct": 0
       },
       "now": {
-       "$date": "2026-10-08T00:38:19.756Z"
+       "$date": "2026-10-08T01:01:16.205Z"
       },
       "hasPendingEntryProposal": false,
-      "equity": 115025.71
+      "equity": 114991.94
      },
      "setupId": "COMPOUNDER_ACCUMULATION",
      "entryPrice": 531.0146,
@@ -16127,28 +16744,44 @@
        "isUnprotectedGain": false,
        "summary": "-0.2% from entry ($531.01 → $529.76); floor locks -8.5% (BELOW entry) — below $486; trail on; next rung EXIT below $486 @ $486.00 (-8.3% away); ladder last edited 2d ago"
       },
-      "planSanity": null,
-      "floorRisk": null,
       "triggerState": "NONE",
       "triggerDetail": null,
       "actionability": "ACTIVE_HOLD",
       "supersededBy": null,
       "staleness": "FRESH",
-      "resolvedAt": "2026-10-08T00:38:20.106Z",
-      "quoteAgeMs": 16700106
+      "resolvedAt": "2026-10-08T01:01:16.552Z",
+      "quoteAgeMs": 18076552
+     },
+     "plan": {
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 531.0146,
+      "targetPrice": 600,
+      "stopLoss": 486,
+      "currentPrice": 529.76,
+      "dayRangePct": null,
+      "composite": 8,
+      "minConfidence": 70,
+      "lastLadderEditAt": {
+       "$date": "2026-10-05T12:03:10.671Z"
+      },
+      "entryRaisesAway": null,
+      "spentBuyCrossing": null,
+      "ownTriggerCount": 9,
+      "hasEnterTrigger": false,
+      "hasPriceWake": true,
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "catalystDate": null,
+      "horizon": "COMPOUNDER",
+      "now": {
+       "$date": "2026-10-08T01:01:16.552Z"
+      }
      },
      "researchAge": {
       "daysOld": 2,
       "freshness": "fresh",
       "lastWrittenAt": "2026-10-05T20:20:42.093Z",
       "horizonThreshold": 90
-     },
-     "unansweredDecision": {
-      "at": {
-       "$date": "2026-10-06T19:39:32.178Z"
-      },
-      "line": "(the principal's words, not kept)",
-      "wantsAnswer": true
      }
     }
    }

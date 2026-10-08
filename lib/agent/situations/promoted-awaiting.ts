@@ -1,5 +1,5 @@
 /**
- * A promoted stock awaiting the live decision. Rule: needs-action.ts
+ * A promoted stock awaiting the live decision. Rule: work-flag.ts
  * `promotedFlag` (status PROMOTED).
  */
 import { stockFacts } from "./facts";
@@ -11,6 +11,8 @@ export const promotedAwaiting: SituationDefinition<"PROMOTED_AWAITING"> = {
   appliesTo: "held",
   entry: "row",
   guidance: "",
+  // A promoted stock is resolved this run.
+  lists: () => true,
   rule: (stock, book, now) => {
     const { promoted } = stockFacts(stock, book, now);
     return promoted ? { active: true, data: { flag: promoted } } : { active: false };

@@ -4,8 +4,9 @@
  * The LIVE layer for a thesis — everything that depends on the current price:
  * the quote (price + day change), position PnL math, and the `resolved`
  * actionability envelope (trigger evaluation + supersession + the
- * ENTER_NOW / WAIT_FOR_TRIGGER / ACTIVE_HOLD rollup). All of it needs a live
- * price, so it lives here rather than in the durable dossier
+ * ENTER_NOW / WAIT_FOR_TRIGGER / ACTIVE_HOLD rollup), and the stock's situations
+ * (lib/agent/situations: the work flag the header shows, the plan checks).
+ * All of it needs a live price, so it lives here rather than in the durable dossier
  * (/api/theses/:id), which is pure DB and gates the sheet's first paint.
  *
  * The sheet fires this in parallel with the dossier: the dossier paints the
@@ -27,8 +28,10 @@ import {
 import {
   buildResolvedEnvelope,
   buildSupersessionMap,
+  type ResolverThesisInput,
 } from "@/lib/agent/resolved-thesis";
-import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { situationsFor } from "@/lib/agent/situations";
+import { planCheckArgs } from "@/lib/agent/situations/plan-checks";
 import {
   declinedSaleWhere,
   declinedSaleWork,
@@ -64,8 +67,8 @@ export async function GET(
       status: true,
       direction: true,
       entryPrice: true,
-      // Plan-sanity inputs (DAV-188) — the sheet envelope carries the same
-      // flags the agent sees.
+      // Plan-check inputs (DAV-188) — the sheet shows the same checks the
+      // agent sees.
       targetPrice: true,
       stopLoss: true,
       triggers: true,
@@ -79,8 +82,8 @@ export async function GET(
       setupId: true,
       createdAt: true,
       scoring: true,
-      // needsAction inputs (DAV-304) — the same work-list flag the daily run
-      // reads, so the sheet can say whether this stock is flagged and why.
+      // The work flag's inputs (DAV-304) — the same flag the daily run reads,
+      // so the sheet can say whether this stock is flagged and why.
       lastReviewedAt: true,
       researchUpdatedAt: true,
       paperTenureDays: true,
@@ -218,27 +221,28 @@ export async function GET(
       : undefined,
     `thesis=${thesis.id}`,
   ) as Trigger[];
+  const resolverInput: ResolverThesisInput = {
+    id: thesis.id,
+    ticker: thesis.ticker,
+    status: thesis.status,
+    direction: thesis.direction,
+    entryPrice: thesis.entryPrice,
+    // Feed the plan checks (DAV-188) so the sheet shows what the agent sees
+    // for the same thesis.
+    targetPrice: thesis.targetPrice ?? null,
+    stopLoss: thesis.stopLoss ?? null,
+    triggers: thesis.triggers,
+    catalystDate: thesis.catalystDate,
+    setupId: thesis.setupId ?? null,
+    horizon: thesis.horizon ?? null,
+    createdAt: thesis.createdAt,
+    scoring: thesis.scoring,
+    minConfidence: thesis.researchRun?.agentConfig?.minConfidence ?? null,
+    parsedTriggers,
+    positionOpenedAt: openPosition?.openedAt ?? null,
+  };
   const resolved = buildResolvedEnvelope({
-    thesis: {
-      id: thesis.id,
-      ticker: thesis.ticker,
-      status: thesis.status,
-      direction: thesis.direction,
-      entryPrice: thesis.entryPrice,
-      // Feed the plan-sanity flags (DAV-188) so the sheet's envelope
-      // matches what the agent sees for the same thesis.
-      targetPrice: thesis.targetPrice ?? null,
-      stopLoss: thesis.stopLoss ?? null,
-      triggers: thesis.triggers,
-      catalystDate: thesis.catalystDate,
-      setupId: thesis.setupId ?? null,
-      horizon: thesis.horizon ?? null,
-      createdAt: thesis.createdAt,
-      scoring: thesis.scoring,
-      minConfidence: thesis.researchRun?.agentConfig?.minConfidence ?? null,
-      parsedTriggers,
-      positionOpenedAt: openPosition?.openedAt ?? null,
-    },
+    thesis: resolverInput,
     currentPrice,
     priceAsOf: liveQuote?.t ?? null,
     supersession: supersessionMap.get(thesis.ticker) ?? null,
@@ -273,10 +277,12 @@ export async function GET(
     }
   }
 
-  // The work-list flag itself (DAV-304). The same pure function get_theses
-  // hands the daily run — computed here so the sheet shows the flag a person
-  // can test, instead of it existing only inside a run that already ended.
-  const needsAction = computeNeedsAction({
+  // The stock's situations (DAV-304): the same list get_theses hands the
+  // daily run, computed here so the sheet shows the flag a person can test
+  // (the lead's) and the plan checks, instead of them existing only inside a
+  // run that already ended.
+  const now = new Date();
+  const work = {
     thesis: {
       id: thesis.id,
       direction: thesis.direction,
@@ -301,9 +307,22 @@ export async function GET(
     activity,
     latestQuote:
       currentPrice != null ? { price: currentPrice, changePct: dayChangePct ?? 0 } : null,
-    now: new Date(),
+    now,
     hasPendingEntryProposal: pendingEntryCount > 0,
-  });
+  };
+  const situations = situationsFor(
+    {
+      ticker: thesis.ticker,
+      work,
+      setupId: thesis.setupId ?? null,
+      entryPrice: thesis.entryPrice ?? null,
+      ownTriggers: thesis.triggers,
+      resolved,
+      plan: planCheckArgs(resolverInput, currentPrice, now),
+    },
+    {},
+    now,
+  );
 
   return NextResponse.json({
     currentPrice,
@@ -313,6 +332,6 @@ export async function GET(
     companyName: identity.companyName,
     exchange: identity.exchange,
     resolved,
-    needsAction,
+    situations,
   });
 }

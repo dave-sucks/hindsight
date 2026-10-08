@@ -17,6 +17,8 @@ export const addOrWinner: SituationDefinition<"ADD_OR_WINNER"> = {
   appliesTo: "held",
   entry: "row",
   guidance: "",
+  // An add that fired or is true now lists the stock; nearing the target alone does not.
+  lists: (data) => data.flag != null,
   rule: (stock, book, now) => {
     const facts = stockFacts(stock, book, now);
     const items = itemsFor(facts, "ADD_OR_WINNER");

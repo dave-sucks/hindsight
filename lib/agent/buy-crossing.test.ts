@@ -24,7 +24,11 @@
  * the same shape.
  */
 import { spentBuyCrossing } from "./buy-crossing";
-import { computePlanSanity } from "./plan-sanity";
+import { planChecksOn } from "@/lib/agent/situations";
+import type { PlanCheckArgs } from "@/lib/agent/situations/plan-checks";
+
+/** The plan checks, read off the list (PLAN_PROBLEM). */
+const planChecksOf = (args: PlanCheckArgs) => planChecksOn(args, args.now ?? new Date());
 import type { When } from "@/lib/agent/triggers/condition";
 
 
@@ -77,7 +81,7 @@ describe("ETN — the buy fired into a full analyst and the crossing is spent", 
   });
 
   it("arrives on the work list as a plan-sanity flag stating the arithmetic", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       status: "WATCHING",
       direction: "LONG",
       entryPrice: 418,
@@ -102,7 +106,7 @@ describe("ETN — the buy fired into a full analyst and the crossing is spent", 
     // Without the crossing, ETN's row is silent: 1.7% is nowhere near the
     // 10% distance flag, the target is not passed, the stop is not breached.
     expect(
-      computePlanSanity({
+      planChecksOf({
         status: "WATCHING",
         direction: "LONG",
         entryPrice: 418,
@@ -131,7 +135,7 @@ describe("LUXE — a pullback buy the price has not reached is not spent", () =>
   it("$10.08 against a PRICE_BELOW $9.10 buy raises nothing", () => {
     expect(spentBuyCrossing(LUXE)).toBeNull();
     expect(
-      computePlanSanity({
+      planChecksOf({
         status: "WATCHING",
         direction: "LONG",
         entryPrice: 9.1,
@@ -159,7 +163,7 @@ describe("LUXE — a pullback buy the price has not reached is not spent", () =>
     const c = spentBuyCrossing({ ...LUXE, currentPrice: 8.4 });
     expect(c).toMatchObject({ level: 9.1, crossing: "BELOW", insideChase: true });
     expect(c!.pastPct).toBeCloseTo(7.69, 2);
-    const flag = computePlanSanity({
+    const flag = planChecksOf({
       status: "WATCHING",
       direction: "LONG",
       entryPrice: 9.1,
@@ -177,7 +181,7 @@ describe("LUXE — a pullback buy the price has not reached is not spent", () =>
     const c = spentBuyCrossing({ ...LUXE, currentPrice: 8 });
     expect(c?.insideChase).toBe(false);
     expect(c!.pastPct).toBeCloseTo(12.09, 2);
-    const flag = computePlanSanity({
+    const flag = planChecksOf({
       status: "WATCHING",
       direction: "LONG",
       entryPrice: 9.1,
@@ -272,7 +276,7 @@ describe("the setup's chase limit decides which answer the run owes", () => {
   it("inside it: still buyable, re-anchor to today's price", () => {
     const c = spentBuyCrossing({ ...ETN, chaseLimitPct: 5 });
     expect(c?.insideChase).toBe(true);
-    const flag = computePlanSanity({
+    const flag = planChecksOf({
       status: "WATCHING",
       direction: "LONG",
       entryPrice: 418,
@@ -287,7 +291,7 @@ describe("the setup's chase limit decides which answer the run owes", () => {
   it("past it: buying here is a chase — re-price to the level the setup waits for", () => {
     const c = spentBuyCrossing({ ...ETN, currentPrice: 460, chaseLimitPct: 5 });
     expect(c?.insideChase).toBe(false);
-    const flag = computePlanSanity({
+    const flag = planChecksOf({
       status: "WATCHING",
       direction: "LONG",
       entryPrice: 418,

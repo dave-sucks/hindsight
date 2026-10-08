@@ -1,14 +1,14 @@
 /**
- * Every plan-sanity kind has a human label, because the alternative is what
- * shipped: `PlanSanityFlag.text` rendered raw at the top of the thesis sheet.
+ * Every plan check has a human label, because the alternative is what
+ * shipped: `PlanCheck.text` rendered raw at the top of the thesis sheet.
  * That text is an instruction to the agent — TRV's read "Answer it one of two
  * ways — price the buy at a level you can name… A rationale with no plan
  * leaves it here tomorrow" — in the same amber as the work flag.
  */
-import { planSanityLabel } from "./plan-sanity-label";
-import type { PlanSanityFlag } from "./plan-sanity";
+import { planCheckLabel } from "./plan-check-label";
+import type { PlanCheck } from "./plan-checks";
 
-const KINDS: PlanSanityFlag["kind"][] = [
+const KINDS: PlanCheck["kind"][] = [
   "NOTHING_CAN_WAKE",
   "NO_BUY_LEVEL",
   "BUY_INSIDE_CUTOFF",
@@ -24,10 +24,10 @@ const KINDS: PlanSanityFlag["kind"][] = [
   "COMPOSITE_BELOW_MINIMUM",
 ];
 
-describe("planSanityLabel", () => {
+describe("planCheckLabel", () => {
   it("names every kind, in a few words and never the raw enum", () => {
     for (const kind of KINDS) {
-      const label = planSanityLabel(kind);
+      const label = planCheckLabel(kind);
       expect(label).not.toBe(kind);
       expect(label.split(" ").length).toBeLessThanOrEqual(6);
       expect(label).not.toMatch(/_/);
@@ -35,6 +35,6 @@ describe("planSanityLabel", () => {
   });
 
   it("falls back readably rather than inventing a name for a new kind", () => {
-    expect(planSanityLabel("SOME_NEW_CHECK")).toBe("some new check");
+    expect(planCheckLabel("SOME_NEW_CHECK")).toBe("some new check");
   });
 });

@@ -14,8 +14,15 @@ import {
   CONTEXT_CHAR_CAP,
   type ActivityRow,
 } from "@/lib/agent/stock-context";
-import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { situationsFor } from "@/lib/agent/situations";
+import { workFlagOf } from "@/lib/agent/situations/flag-line";
+import type { WorkFlagInput } from "@/lib/agent/situations/work-flag";
+
+/** The work flag, read off the list: the lead situation's flag. */
+const leadOf = (input: WorkFlagInput) => workFlagOf(situationsFor({ ticker: "T", work: input }, {}, input.now));
 import type { Trigger } from "@/lib/agent/triggers/types";
+// What the principal said that no run has answered: YOUR_WORD_UNANSWERED's rule.
+import { unansweredDecision as unansweredOf } from "@/lib/agent/situations/your-word-unanswered";
 
 type StoredRow = Omit<ActivityRow, "timestamp"> & { timestamp: string };
 const fx = raw as unknown as { updates: StoredRow[] };
@@ -64,7 +71,7 @@ describe("open fires on CEG", () => {
     const triggers = [
       { id: FIFTEEN_OFF_HIGH, action: "REVIEW", predicate: { watch: "move", is: "below", value: 15, variable: "peak" }, rationale: "15% off the high" },
     ] as unknown as Trigger[];
-    const na = computeNeedsAction({
+    const na = leadOf({
       thesis: { id: "cmqb2ku1a000q04l6jtquuqr6", status: "HOLDING", direction: "LONG", triggers, createdAt: new Date("2026-06-12T15:16:50Z"), lastReviewedAt: new Date("2026-09-28T12:04:39Z") },
       activity: before("2026-09-30T12:04:25Z"),
       now: new Date("2026-09-30T12:04:25Z"),
@@ -125,8 +132,10 @@ describe("the block, counted from the analyst's last answer", () => {
     id === FIFTEEN_OFF_HIGH
       ? { label: "15% off the high → review", rationale: "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business." }
       : null;
-  const block = (at: string, price: number | null = null) =>
-    buildStockContext({ ticker: "CEG", rows: before(at), labelFor, now: new Date(at), currentPrice: price });
+  const block = (at: string, price: number | null = null) => ({
+    ...buildStockContext({ ticker: "CEG", rows: before(at), labelFor, now: new Date(at), currentPrice: price }),
+    unansweredDecision: unansweredOf(before(at), price),
+  });
 
   it("09-30 morning read: the last look, and the one review nobody answered — nothing else", () => {
     const { text, unansweredDecision } = block("2026-09-30T12:04:25Z", 261.25);
@@ -199,11 +208,12 @@ describe("notes (lib/agent/notes.ts)", () => {
   it("the principal's notes come first with the price then and now; a note newer than the last answer puts the stock on the list", () => {
     const text = "Starter only: the base hasn't resolved.";
     const rows = [answer, note("p", 14, text)];
-    const c = buildStockContext({ ticker: "DOCU", rows, labelFor: () => null, now: at(15), currentPrice: 110 });
+    const c = { ...buildStockContext({ ticker: "DOCU", rows, labelFor: () => null, now: at(15), currentPrice: 110 }), unansweredDecision: unansweredOf(rows, 110) };
     expect(c.text).toMatch(/^WHAT'S BEEN SAID ON \$DOCU\nThe principal's notes:\n  10-01 10:00 at \$100\.00, now \$110\.00 \(\+10\.0%\): "Starter only: the base hasn't resolved\."\nLast look: morning run/);
     expect(c.unansweredDecision?.line).toBe(`Note: ${text}`);
     expect(c.principalNote).toBe(`10-01 10:00: ${text}`);
-    const older = buildStockContext({ ticker: "DOCU", rows: [note("p", 10, "Starter only."), answer], labelFor: () => null, now: at(15) });
+    const olderRows = [note("p", 10, "Starter only."), answer];
+    const older = { ...buildStockContext({ ticker: "DOCU", rows: olderRows, labelFor: () => null, now: at(15) }), unansweredDecision: unansweredOf(olderRows, null) };
     expect(older.unansweredDecision).toBeNull();
     expect(older.text).toContain("Starter only.");
   });

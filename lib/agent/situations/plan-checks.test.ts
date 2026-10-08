@@ -1,10 +1,15 @@
 /**
- * plan-sanity.test.ts — the arithmetic that says a written plan
- * contradicts the live tape (DAV-188, THREE_SYSTEMS.md Move 2).
+ * The plan checks — the arithmetic that says a written plan contradicts the
+ * live tape (DAV-188, THREE_SYSTEMS.md Move 2), read off the situations list
+ * (PLAN_PROBLEM; moved from plan-sanity.test.ts with its expectations).
  * Pinned to the production cases that motivated it.
  */
 
-import { computePlanSanity, ENTRY_DISTANCE_FLAG_PCT } from "./plan-sanity";
+import { planChecksOn } from "@/lib/agent/situations";
+import { ENTRY_DISTANCE_FLAG_PCT, type PlanCheckArgs } from "./plan-checks";
+
+/** The plan checks, read off the list (PLAN_PROBLEM). */
+const planChecksOf = (args: PlanCheckArgs) => planChecksOn(args, args.now ?? new Date());
 
 const base = {
   status: "WATCHING",
@@ -15,9 +20,9 @@ const base = {
   currentPrice: null as number | null,
 };
 
-describe("computePlanSanity — the CAPR shape (buy level far from the tape)", () => {
+describe("the plan checks — the CAPR shape (buy level far from the tape)", () => {
   it("flags a LONG buy level ~20% below the live price", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 400,
       currentPrice: 500,
@@ -30,7 +35,7 @@ describe("computePlanSanity — the CAPR shape (buy level far from the tape)", (
   });
 
   it("flags a buy level stranded far ABOVE the price too", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 600,
       currentPrice: 500,
@@ -42,36 +47,36 @@ describe("computePlanSanity — the CAPR shape (buy level far from the tape)", (
   it("does not flag a level inside the tolerance band", () => {
     const nearMiss = 500 * (1 - (ENTRY_DISTANCE_FLAG_PCT - 1) / 100);
     expect(
-      computePlanSanity({ ...base, entryPrice: nearMiss, currentPrice: 500 }),
+      planChecksOf({ ...base, entryPrice: nearMiss, currentPrice: 500 }),
     ).toHaveLength(0);
   });
 });
 
-describe("computePlanSanity — a buy at the price is how buying now is written (2026-09-14)", () => {
+describe("the plan checks — a buy at the price is how buying now is written (2026-09-14)", () => {
   // TOST and ISRG used to be flagged ENTRY_AT_PRICE. Dave's ruling: there is
   // no buy-now option — buying now IS an entry at or near the price — so a
   // level on the tape is not a defect.
   it("does not flag TOST — buy $35.15 against a $35.16 tape", () => {
-    expect(computePlanSanity({ ...base, entryPrice: 35.15, currentPrice: 35.16 })).toHaveLength(0);
+    expect(planChecksOf({ ...base, entryPrice: 35.15, currentPrice: 35.16 })).toHaveLength(0);
   });
 });
 
-describe("computePlanSanity — a buy level nobody has re-priced in four weeks", () => {
+describe("the plan checks — a buy level nobody has re-priced in four weeks", () => {
   const now = new Date("2026-09-14T14:00:00Z");
   it("flags ENTRY_STALE at 28 days", () => {
-    const flags = computePlanSanity({ ...base, entryPrice: 102, currentPrice: 100, lastLadderEditAt: new Date("2026-08-17T14:00:00Z"), now });
+    const flags = planChecksOf({ ...base, entryPrice: 102, currentPrice: 100, lastLadderEditAt: new Date("2026-08-17T14:00:00Z"), now });
     expect(flags.map((f) => f.kind)).toEqual(["ENTRY_STALE"]);
     expect(flags[0].text).toContain("28 days ago");
   });
   it("says nothing at 27 days, or with no edit date", () => {
-    expect(computePlanSanity({ ...base, entryPrice: 102, currentPrice: 100, lastLadderEditAt: new Date("2026-08-18T14:00:00Z"), now })).toHaveLength(0);
-    expect(computePlanSanity({ ...base, entryPrice: 102, currentPrice: 100, now })).toHaveLength(0);
+    expect(planChecksOf({ ...base, entryPrice: 102, currentPrice: 100, lastLadderEditAt: new Date("2026-08-18T14:00:00Z"), now })).toHaveLength(0);
+    expect(planChecksOf({ ...base, entryPrice: 102, currentPrice: 100, now })).toHaveLength(0);
   });
 });
 
-describe("computePlanSanity — goalpost drift and incoherent stops", () => {
+describe("the plan checks — goalpost drift and incoherent stops", () => {
   it("flags a LONG target the price has already passed", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 495,
       targetPrice: 480,
@@ -81,7 +86,7 @@ describe("computePlanSanity — goalpost drift and incoherent stops", () => {
   });
 
   it("flags a LONG stop the price is already under", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 505,
       stopLoss: 510,
@@ -92,7 +97,7 @@ describe("computePlanSanity — goalpost drift and incoherent stops", () => {
 
   it("inverts both checks for SHORT plans", () => {
     // A SHORT profits downward: target sits BELOW price, stop ABOVE.
-    const notReached = computePlanSanity({
+    const notReached = planChecksOf({
       ...base,
       direction: "SHORT",
       entryPrice: 505,
@@ -101,7 +106,7 @@ describe("computePlanSanity — goalpost drift and incoherent stops", () => {
     });
     expect(notReached.map((f) => f.kind)).not.toContain("TARGET_ALREADY_PASSED");
 
-    const reached = computePlanSanity({
+    const reached = planChecksOf({
       ...base,
       direction: "SHORT",
       entryPrice: 505,
@@ -110,7 +115,7 @@ describe("computePlanSanity — goalpost drift and incoherent stops", () => {
     });
     expect(reached.map((f) => f.kind)).toContain("TARGET_ALREADY_PASSED");
 
-    const breached = computePlanSanity({
+    const breached = planChecksOf({
       ...base,
       direction: "SHORT",
       entryPrice: 495,
@@ -121,10 +126,10 @@ describe("computePlanSanity — goalpost drift and incoherent stops", () => {
   });
 });
 
-describe("computePlanSanity — the MNKD shape (stop inside daily noise)", () => {
+describe("the plan checks — the MNKD shape (stop inside daily noise)", () => {
   it("flags a stop closer to the entry than the ordinary daily move", () => {
     // MNKD's real numbers: entry $4.04, stop $4.00 (~1% apart), ~5% range.
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 4.04,
       stopLoss: 4.0,
@@ -138,7 +143,7 @@ describe("computePlanSanity — the MNKD shape (stop inside daily noise)", () =>
   });
 
   it("does not flag a stop set outside the daily wiggle", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 100,
       stopLoss: 92, // 8% away
@@ -149,7 +154,7 @@ describe("computePlanSanity — the MNKD shape (stop inside daily noise)", () =>
   });
 
   it("skips the noise check silently when range data is unavailable", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 4.04,
       stopLoss: 4.0,
@@ -160,10 +165,10 @@ describe("computePlanSanity — the MNKD shape (stop inside daily noise)", () =>
   });
 });
 
-describe("computePlanSanity — scope guards", () => {
+describe("the plan checks — scope guards", () => {
   it("never flags HOLDING rows (ladder + triggers own that surface)", () => {
     expect(
-      computePlanSanity({
+      planChecksOf({
         ...base,
         status: "HOLDING",
         entryPrice: 400,
@@ -174,18 +179,18 @@ describe("computePlanSanity — scope guards", () => {
 
   it("never flags unresearched seeds or PASS rows", () => {
     expect(
-      computePlanSanity({ ...base, direction: null, entryPrice: 400, currentPrice: 500 }),
+      planChecksOf({ ...base, direction: null, entryPrice: 400, currentPrice: 500 }),
     ).toHaveLength(0);
   });
 
   it("stays silent without a live price (fail-open, no guessing)", () => {
     expect(
-      computePlanSanity({ ...base, entryPrice: 400, currentPrice: null }),
+      planChecksOf({ ...base, entryPrice: 400, currentPrice: null }),
     ).toHaveLength(0);
   });
 
   it("can stack multiple flags on one broken plan", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 700, // 40% above price
       targetPrice: 480, // already passed
@@ -196,9 +201,9 @@ describe("computePlanSanity — scope guards", () => {
   });
 });
 
-describe("computePlanSanity — PLAN_BELOW_RR_FLOOR (the floor, read back)", () => {
+describe("the plan checks — PLAN_BELOW_RR_FLOOR (the floor, read back)", () => {
   it("flags PLTR as stored: 183 / 190 / 110 pays 0.1:1", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 183,
       targetPrice: 190,
@@ -212,7 +217,7 @@ describe("computePlanSanity — PLAN_BELOW_RR_FLOOR (the floor, read back)", () 
   });
 
   it("stays quiet on a plan that clears 2:1", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 100,
       targetPrice: 130,
@@ -223,11 +228,11 @@ describe("computePlanSanity — PLAN_BELOW_RR_FLOOR (the floor, read back)", () 
   });
 });
 
-describe("computePlanSanity — FLOOR_INSIDE_NOISE (the HWM shape)", () => {
+describe("the plan checks — FLOOR_INSIDE_NOISE (the HWM shape)", () => {
   it("flags a watch floor 0.35% under the price on a stock that moves ~2% a day", () => {
     // 2026-09-02 08:06: HWM at $254.89, floor $254, buy above $277. Set down
     // 90 minutes later on an ordinary red day.
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 277,
       targetPrice: 330,
@@ -242,7 +247,7 @@ describe("computePlanSanity — FLOOR_INSIDE_NOISE (the HWM shape)", () => {
   });
 
   it("stays quiet when the floor has room", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 277,
       targetPrice: 330,
@@ -254,7 +259,7 @@ describe("computePlanSanity — FLOOR_INSIDE_NOISE (the HWM shape)", () => {
   });
 
   it("leaves an already-breached floor to STOP_ALREADY_BREACHED", () => {
-    const flags = computePlanSanity({
+    const flags = planChecksOf({
       ...base,
       entryPrice: 277,
       targetPrice: 330,
@@ -267,21 +272,21 @@ describe("computePlanSanity — FLOOR_INSIDE_NOISE (the HWM shape)", () => {
   });
 
   it("skips the check without a daily range", () => {
-    const flags = computePlanSanity({ ...base, entryPrice: 277, targetPrice: 330, stopLoss: 254, currentPrice: 254.89 });
+    const flags = planChecksOf({ ...base, entryPrice: 277, targetPrice: 330, stopLoss: 254, currentPrice: 254.89 });
     expect(flags.some((x) => x.kind === "FLOOR_INSIDE_NOISE")).toBe(false);
   });
 });
 
-describe("computePlanSanity — COMPOSITE_BELOW_MINIMUM (VST 2026-09-08)", () => {
+describe("the plan checks — COMPOSITE_BELOW_MINIMUM (VST 2026-09-08)", () => {
   it("flags a 5/10 plan on an analyst that only buys at 78", () => {
-    const flags = computePlanSanity({ ...base, entryPrice: 151, targetPrice: 210, stopLoss: 132, currentPrice: 149, composite: 5, minConfidence: 78 });
+    const flags = planChecksOf({ ...base, entryPrice: 151, targetPrice: 210, stopLoss: 132, currentPrice: 149, composite: 5, minConfidence: 78 });
     const f = flags.find((x) => x.kind === "COMPOSITE_BELOW_MINIMUM");
     expect(f).toBeDefined();
     expect(f?.text).toContain("5/10");
     expect(f?.text).toContain("7.8/10");
   });
   it("stays quiet at or above the bar, and without either input", () => {
-    expect(computePlanSanity({ ...base, entryPrice: 75, targetPrice: 91, stopLoss: 67, currentPrice: 72, composite: 9, minConfidence: 50 }).some((x) => x.kind === "COMPOSITE_BELOW_MINIMUM")).toBe(false);
-    expect(computePlanSanity({ ...base, entryPrice: 75, targetPrice: 91, stopLoss: 67, currentPrice: 72, composite: 5 }).some((x) => x.kind === "COMPOSITE_BELOW_MINIMUM")).toBe(false);
+    expect(planChecksOf({ ...base, entryPrice: 75, targetPrice: 91, stopLoss: 67, currentPrice: 72, composite: 9, minConfidence: 50 }).some((x) => x.kind === "COMPOSITE_BELOW_MINIMUM")).toBe(false);
+    expect(planChecksOf({ ...base, entryPrice: 75, targetPrice: 91, stopLoss: 67, currentPrice: 72, composite: 5 }).some((x) => x.kind === "COMPOSITE_BELOW_MINIMUM")).toBe(false);
   });
 });

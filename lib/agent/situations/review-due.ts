@@ -1,5 +1,5 @@
 /**
- * A review: the review clock came due (needs-action.ts `reviewDueFlag`, not a
+ * A review: the review clock came due (work-flag.ts `reviewDueFlag`, not a
  * seed's first), or a review trigger fired or is true now that no other
  * situation claims; and every fire nothing else claims (QB ruling,
  * 2026-10-07), so no fire leaves the list.
@@ -13,6 +13,7 @@ export const reviewDue: SituationDefinition<"REVIEW_DUE"> = {
   appliesTo: "both",
   entry: "row",
   guidance: "",
+  lists: () => true,
   rule: (stock, book, now) => {
     const facts = stockFacts(stock, book, now);
     const items = itemsFor(facts, "REVIEW_DUE");
@@ -21,7 +22,7 @@ export const reviewDue: SituationDefinition<"REVIEW_DUE"> = {
     return {
       active: true,
       data: {
-        // A fire or match ranks above the clock (needs-action.ts).
+        // A fire or match ranks above the clock (work-flag.ts).
         flag: firstFlag(items) ?? clock ?? undefined,
         fires: items.map((i) => i.ref),
         ...(clock ? { clock } : {}),

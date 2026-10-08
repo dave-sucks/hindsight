@@ -43,12 +43,13 @@ import {
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
-import { needsActionFlag } from "@/lib/agent/needs-action-line";
+import { planChecksIn, workFlagLabel, workFlagOf } from "@/lib/agent/situations/flag-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { FlameIcon } from "@/components/ui/flame-icon";
-import { planSanityLabel } from "@/lib/agent/plan-sanity-label";
+import { planCheckLabel } from "@/lib/agent/situations/plan-check-label";
 import { latestNoteView } from "@/lib/thesis/latest-note";
-import type { NeedsAction } from "@/lib/agent/needs-action";
+import type { WorkFlag } from "@/lib/agent/situations/work-flag";
+import type { Situation } from "@/lib/agent/situations/types";
 import { SendToAgentButton } from "@/components/stocks/SendToAgentButton";
 import {
   agentWatchDays,
@@ -134,27 +135,11 @@ export type ThesisCardData = {
   /** Days between the agent's reviews; null = a plain watch (DAV-225). */
   agent_watch_days?: number | null;
   /**
-   * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
-   * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
-   * on the read-theses table row. null/undefined means no work needed.
+   * The stock's situations, set by get_theses (lib/agent/situations): the
+   * lead's work flag drives the alert chip on the read-theses table row.
+   * Absent or empty means no work needed.
    */
-  needs_action?:
-    | {
-        kind: "TRIGGER_FIRED";
-        triggerId: string;
-        action: string;
-        summary: string;
-        firedAt: string;
-      }
-    | {
-        kind: "TRIGGER_MATCHING_NOW";
-        triggerId: string;
-        action: string;
-        predicateSummary: string;
-        livePrice: number | null;
-      }
-    | { kind: "REVIEW_DUE"; daysOverdue: number }
-    | null;
+  situations?: Situation[] | null;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -786,7 +771,7 @@ function FilingsBlock({ data }: { data: FilingsResponse }) {
  * The top of the sheet: what is going on with this stock, right now.
  *
  * Three lines, in this order, and nothing else:
- *   1. the flag, named — `needsActionFlag`, one fixed sentence per enum
+ *   1. the flag, named — `workFlagLabel`, one fixed sentence per enum
  *      case. Absent when nothing is flagged; "nothing is flagged" is not
  *      news and it used to take a line at the top of every stock.
  *   2. the newest thing an analyst WROTE about this stock — the rationale
@@ -814,7 +799,7 @@ function LatestNoteBlock({
 }: {
   status: string;
   latestUpdate: ThesisDossier["latestUpdate"];
-  needsAction: NeedsAction | null;
+  needsAction: WorkFlag | null;
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
@@ -835,7 +820,7 @@ function LatestNoteBlock({
   // system (is this PLAN coherent?) painting the same amber as the work flag
   // (why will a run pick this up?), in prose written for the agent to read.
   // It renders beside the triggers now, where its numbers live.
-  const flag = needsAction ? needsActionFlag(needsAction) : null;
+  const flag = needsAction ? workFlagLabel(needsAction) : null;
   const view = latestNoteView({
     status,
     hasNote: text != null,
@@ -1403,7 +1388,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   }
 
   // ── Derived — durable from `state`, live from the hydration states ────────
-  const resolved = quote?.resolved ?? null;
+  // The plan checks on the stock, from its situations (PLAN_PROBLEM).
+  const planChecks = planChecksIn(quote?.situations);
   const liveStatus = state.status as ThesisStatus;
   const position = state.position;
   // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
@@ -1568,7 +1554,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       <LatestNoteBlock
         status={state.status}
         latestUpdate={state.latestUpdate}
-        needsAction={quote?.needsAction ?? null}
+        needsAction={workFlagOf(quote?.situations)}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
         analystName={state.analystName}
@@ -1621,14 +1607,14 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           instead of stacking under that flag in the same amber. The label is
           which check failed; the sentence under it is the agent's own, which
           is why it is small and grey rather than a warning. */}
-      {resolved?.planSanity && resolved.planSanity.length > 0 ? (
+      {planChecks.length > 0 ? (
         <div className="space-y-1.5">
           <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
             Plan checks
           </p>
-          {resolved.planSanity.map((f, i) => (
+          {planChecks.map((f, i) => (
             <div key={i} className="space-y-0.5">
-              <p className="text-sm text-foreground">{planSanityLabel(f.kind)}</p>
+              <p className="text-sm text-foreground">{planCheckLabel(f.kind)}</p>
               <p className="text-xs text-muted-foreground leading-relaxed">{f.text}</p>
             </div>
           ))}

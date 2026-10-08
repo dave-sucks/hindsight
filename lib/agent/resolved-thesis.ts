@@ -20,14 +20,10 @@
  * read.
  */
 
-import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { conditionSentence, levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
-import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
-import { floorTooFar, type FloorRisk, type FloorStructure } from "@/lib/agent/floor-risk";
-import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 
@@ -78,25 +74,10 @@ export interface ResolvedEnvelope {
    */
   ladderHealth: LadderHealth | null;
 
-  /**
-   * Plan-sanity flags (System 1 Move 2, DAV-188): the arithmetic that says
-   * a WATCHING plan contradicts the live tape — buy level far from the
-   * price, target already passed, stop already breached. Plain-language,
-   * recomputed against the live quote on every read. Null when clean (or
-   * not applicable) so quiet rows cost no tokens. A non-empty value
-   * promotes the row into the daily run's FULL work list — a flag the
-   * agent never reads is decoration. See lib/agent/plan-sanity.ts.
-   */
-  planSanity: PlanSanityFlag[] | null;
-
-  /**
-   * A holding whose floor would lose more than 1.5% of the account,
-   * measured from what we paid (DAV-344): the numbers and the one sentence
-   * the run answers. Null when the loss fits, so quiet rows cost nothing.
-   * Carried here as well as on needsAction because a fired sale can hold
-   * the needsAction slot. See lib/agent/floor-risk.ts.
-   */
-  floorRisk: FloorRisk | null;
+  // The plan checks and a holding's floor risk were here; they are the
+  // PLAN_PROBLEM and PROTECTION situations now (lib/agent/situations).
+  // get_theses still puts both on the row it sends the model, at these two
+  // places, from the stock's situations.
 
   triggerState: TriggerState;
   /** Human-readable for the agent + UI: e.g. "above $92.50 (now $90.30, -2.4%)". */
@@ -124,11 +105,11 @@ export interface ResolverThesisInput {
   entryPrice: number | null;
   /** Thesis target price — feeds progress-to-target for HOLDING rows. */
   targetPrice?: number | null;
-  /** Thesis stop — feeds the plan-sanity stop-already-breached check. */
+  /** Thesis stop — feeds the plan checks' stop-already-breached check. */
   stopLoss?: number | null;
   /**
-   * The stock's ordinary daily move (% of price) — feeds the plan-sanity
-   * stop-inside-noise check. Callers fetch it batched (getDailyRangePcts)
+   * The stock's ordinary daily move (% of price) — feeds the plan checks'
+   * stop-inside-noise check (situations/plan-checks.ts). Callers fetch it batched (getDailyRangePcts)
    * for the rows that need it; absent ⇒ that check is skipped.
    */
   dayRangePct?: number | null;
@@ -136,12 +117,6 @@ export interface ResolverThesisInput {
   atr14?: number | null;
   /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
   avgCost?: number | null;
-  /** Paired open Position's share count — with avgCost, the loss at the floor (DAV-344). */
-  quantity?: number | null;
-  /** The account's equity, for the floor-risk check. Absent ⇒ no check. */
-  equity?: number | null;
-  /** Chart numbers the floor-risk sentence names (20-day low, averages). */
-  structure?: FloorStructure | null;
   /**
    * Paired open Position's water mark (high LONG / low SHORT) — feeds the
    * trail floor math in the ladder-health block. Null when not
@@ -287,7 +262,7 @@ export function buildResolvedEnvelope(args: {
     // the paper position was force-closed, and the daily run must
     // re-enter / defer / kill in this session. See GAPS P1-10 + the
     // needsAction = PROMOTED_AWAITING_RESOLUTION peer in
-    // lib/agent/needs-action.ts (this is the resolver-layer label of
+    // lib/agent/situations/work-flag.ts (this is the resolver-layer label of
     // the same state).
     actionability = "PROMOTED_DECIDE_TODAY";
   } else if (thesis.status === "HOLDING") {
@@ -324,7 +299,7 @@ export function buildResolvedEnvelope(args: {
   // ── Ladder health (HOLDING rows only — Game Plan PR-B) ────────────
   // Same shared-pure-module pattern as the winner signal above: the
   // UNPROTECTED_GAIN needsAction flag keys off the identical math in
-  // needs-action.ts; this surfaces the full block (floor, trail, nearest
+  // situations/work-flag.ts; this surfaces the full block (floor, trail, nearest
   // rung, edit staleness) inline on the row.
   const ladderHealth =
     thesis.status === "HOLDING"
@@ -340,61 +315,12 @@ export function buildResolvedEnvelope(args: {
         })
       : null;
 
-  const planSanityFlags = computePlanSanity({
-    status: thesis.status,
-    direction: thesis.direction,
-    entryPrice: thesis.entryPrice,
-    targetPrice: thesis.targetPrice ?? null,
-    stopLoss: thesis.stopLoss ?? null,
-    currentPrice,
-    dayRangePct: thesis.dayRangePct ?? null,
-    composite: getThesisComposite({ scoring: thesis.scoring }),
-    minConfidence: thesis.minConfidence ?? null,
-    lastLadderEditAt: thesis.lastLadderEditAt ?? null,
-    entryRaisesAway: thesis.entryRaisesAway ?? null,
-    spentBuyCrossing: thesis.spentBuyCrossing ?? null,
-    // The stock's own triggers — an inherited analyst or account rule is
-    // not a plan for this stock.
-    ownTriggerCount: thesis.parsedTriggers.filter((t) => ((t as { level?: string }).level ?? "THESIS") === "THESIS").length,
-    // Can this stock ever be bought? The resolved ladder, not the column:
-    // `entryPrice` is a read model and an inherited rule is not a plan, but
-    // an ENTER trigger anywhere in the cascade genuinely can buy it.
-    hasEnterTrigger: thesis.parsedTriggers.some((t) => t.action === "ENTER"),
-    // A review of the stock's own on the side a buy would profit (above the
-    // price on a LONG) — the wake it is waiting for, the level #737 stopped
-    // reading as a target. A review below is a "something broke" line, not
-    // a way in (BBIO, EME on 2026-09-29).
-    hasPriceWake: thesis.parsedTriggers.some(
-      (t) =>
-        ((t as { level?: string }).level ?? "THESIS") === "THESIS" &&
-        t.action === "REVIEW" &&
-        isPlanLevel(t, thesis.direction),
-    ),
-    setupId: thesis.setupId ?? null,
-    catalystDate: thesis.catalystDate ?? null,
-    horizon: thesis.horizon ?? null,
-    now,
-  });
-
   return {
     currentPrice,
     entryQualityScore,
     unrealizedGainPct: winner.unrealizedGainPct,
     progressToTarget: winner.progressToTarget,
     ladderHealth,
-    planSanity: planSanityFlags.length > 0 ? planSanityFlags : null,
-    floorRisk: ladderHealth
-      ? floorTooFar({
-          ticker: thesis.ticker,
-          direction: thesis.direction,
-          avgCost: thesis.avgCost ?? null,
-          quantity: thesis.quantity ?? null,
-          floorPrice: ladderHealth.floor?.price ?? null,
-          equity: thesis.equity ?? null,
-          currentPrice,
-          structure: thesis.structure ?? null,
-        })
-      : null,
     triggerState,
     triggerDetail,
     actionability,

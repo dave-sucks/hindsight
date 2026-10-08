@@ -373,7 +373,7 @@ export function weakens(prev: LegacyPredicate, next: LegacyPredicate): boolean {
   }
 }
 
-/** live-evaluate.ts and needs-action.ts: evaluable against a quote alone. */
+/** live-evaluate.ts and situations/work-flag.ts: evaluable against a quote alone. */
 export function isPriceOrTimePredicate(p: LegacyPredicate): boolean {
   const PRICE_OR_TIME_KINDS = new Set([
     "PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT", "GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "VS_SMA", "NEAR_SMA",

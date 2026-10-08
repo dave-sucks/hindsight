@@ -11,7 +11,7 @@ import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
-import { RECENTLY_SOLD_WINDOW_DAYS } from "@/lib/agent/sold-review";
+import { RECENTLY_SOLD_WINDOW_DAYS } from "@/lib/agent/situations/sold-review";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";

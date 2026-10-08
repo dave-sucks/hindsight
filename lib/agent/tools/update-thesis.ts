@@ -75,7 +75,7 @@ import {
   needsPairedCloseCheck,
 } from "@/lib/agent/thesis-transitions";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
-import { computePlanSanity } from "@/lib/agent/plan-sanity";
+import { planChecksOn } from "@/lib/agent/situations";
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 // The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
@@ -1581,17 +1581,21 @@ export const updateThesis = defineTool({
 
 /**
  * The save's reply (docs/plans/AGENT_CONTEXT.md §3.6): what the saved plan
- * means, in the sheet's words (plan-sanity.ts). Words, never a refusal. EME
+ * means, in the sheet's words: the plan checks the saved plan raises, read off
+ * its situations (lib/agent/situations). Words, never a refusal. EME
  * 2026-09-29: a buy armed at a score of 6 against this analyst's 7 got only
  * "composite 3 → 6" back; told, the chat fixed it in one turn.
  */
 function whatThisMeans(row: Record<string, unknown>, price: number | null, minConfidence?: number | null): string[] {
   const n = (v: unknown) => (v == null ? null : Number(v));
-  const flags = computePlanSanity({
-    status: String(row.status), direction: (row.direction as string | null) ?? null, currentPrice: price,
-    entryPrice: n(row.entryPrice), targetPrice: n(row.targetPrice), stopLoss: n(row.stopLoss),
-    composite: getThesisComposite(row as never), minConfidence: minConfidence ?? null,
-  });
+  const flags = planChecksOn(
+    {
+      status: String(row.status), direction: (row.direction as string | null) ?? null, currentPrice: price,
+      entryPrice: n(row.entryPrice), targetPrice: n(row.targetPrice), stopLoss: n(row.stopLoss),
+      composite: getThesisComposite(row as never), minConfidence: minConfidence ?? null,
+    },
+    new Date(),
+  );
   // The score line is about a buy; with no buy price there is none to refuse.
   return flags.filter((f) => f.kind !== "COMPOSITE_BELOW_MINIMUM" || n(row.entryPrice) != null).map((f) => `${row.ticker}: ${f.text}`);
 }

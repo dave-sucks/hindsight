@@ -2,7 +2,7 @@
  * setup-checklist.test.ts — get_theses tells the run which rows have no
  * setup (DAV-285). Production 2026-09-17: 3 of 32 stocks had one.
  */
-import { nameTheSetup } from "./setup-checklist";
+import { nameTheSetup } from "@/lib/agent/situations/no-setup-named";
 
 describe("nameTheSetup — the ask a row with no setup carries", () => {
   it("ABT (held, Secular Compounder, no setup): asks, and offers the analyst's own setups", () => {

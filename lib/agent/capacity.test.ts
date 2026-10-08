@@ -8,7 +8,8 @@
  * buy and were blocked at place_trade. Nothing said so anywhere a person or
  * the next run looks.
  */
-import { buyBlockedByFull, capacityLine, isFull } from "./capacity";
+import { capacityLine, isFull } from "./capacity";
+import { buyBlockedByFull } from "./situations/buy-blocked-full";
 
 const COMPOUNDER = { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] };
 const NOW = new Date("2026-09-18T16:00:00Z");

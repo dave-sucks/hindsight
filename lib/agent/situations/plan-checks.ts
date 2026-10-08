@@ -1,6 +1,7 @@
 /**
- * Plan sanity — the arithmetic that says a written plan contradicts the
- * live tape. System 1, THREE_SYSTEMS.md Move 2 (DAV-188).
+ * The plan checks — the arithmetic that says a written plan contradicts the
+ * live tape, PLAN_PROBLEM's rule (moved from lib/agent/plan-sanity.ts).
+ * System 1, THREE_SYSTEMS.md Move 2 (DAV-188).
  *
  * Dave's acceptance test, verbatim: "I shouldn't have a thesis minted with
  * a target price that makes no sense based on the live price, that then
@@ -32,11 +33,14 @@
  */
 
 import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
+import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
+import type { ResolverThesisInput } from "@/lib/agent/resolved-thesis";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 import { CATALYST_WINDOW_DAYS, PRE_CATALYST_ENTRY_CUTOFF_DAYS, isPreCatalystPlay } from "@/lib/agent/knowledge/setups";
 
-export type PlanSanityFlag = {
+export type PlanCheck = {
   kind:
     | "NOTHING_CAN_WAKE"
     | "NO_BUY_LEVEL"
@@ -117,7 +121,8 @@ function parkedUntil(
   return null;
 }
 
-export function computePlanSanity(args: {
+/** What the plan checks read: the plan, the price, and the facts each check needs. */
+export interface PlanCheckArgs {
   status: string;
   direction: string | null;
   entryPrice: number | null;
@@ -174,7 +179,9 @@ export function computePlanSanity(args: {
   /** The thesis horizon — a CATALYST row with no named setup is a dated binary too. */
   horizon?: string | null;
   now?: Date;
-}): PlanSanityFlag[] {
+}
+
+export function planChecks(args: PlanCheckArgs): PlanCheck[] {
   const {
     status,
     direction,
@@ -194,7 +201,7 @@ export function computePlanSanity(args: {
   if (status !== "WATCHING") return [];
   if (direction !== "LONG" && direction !== "SHORT") return [];
 
-  const flags: PlanSanityFlag[] = [];
+  const flags: PlanCheck[] = [];
   // A directional watch with nothing of its own can never come back
   // (DAV-291: LUXE 2026-09-18, and six more on the PEAD analyst's list that
   // day). No buy price, no level to look again at, no review. The only
@@ -447,4 +454,48 @@ export function computePlanSanity(args: {
   }
 
   return flags;
+}
+
+/**
+ * The checks' inputs for one thesis, as the resolver built them (moved from
+ * resolved-thesis.ts with the checks): the stock's own triggers decide the
+ * wake and the trigger count; the resolved ladder decides whether anything
+ * can buy it.
+ */
+export function planCheckArgs(thesis: ResolverThesisInput, currentPrice: number | null, now: Date): PlanCheckArgs {
+  return {
+    status: thesis.status,
+    direction: thesis.direction,
+    entryPrice: thesis.entryPrice,
+    targetPrice: thesis.targetPrice ?? null,
+    stopLoss: thesis.stopLoss ?? null,
+    currentPrice,
+    dayRangePct: thesis.dayRangePct ?? null,
+    composite: getThesisComposite({ scoring: thesis.scoring }),
+    minConfidence: thesis.minConfidence ?? null,
+    lastLadderEditAt: thesis.lastLadderEditAt ?? null,
+    entryRaisesAway: thesis.entryRaisesAway ?? null,
+    spentBuyCrossing: thesis.spentBuyCrossing ?? null,
+    // The stock's own triggers — an inherited analyst or account rule is
+    // not a plan for this stock.
+    ownTriggerCount: thesis.parsedTriggers.filter((t) => ((t as { level?: string }).level ?? "THESIS") === "THESIS").length,
+    // Can this stock ever be bought? The resolved ladder, not the column:
+    // `entryPrice` is a read model and an inherited rule is not a plan, but
+    // an ENTER trigger anywhere in the cascade genuinely can buy it.
+    hasEnterTrigger: thesis.parsedTriggers.some((t) => t.action === "ENTER"),
+    // A review of the stock's own on the side a buy would profit (above the
+    // price on a LONG) — the wake it is waiting for, the level #737 stopped
+    // reading as a target. A review below is a "something broke" line, not
+    // a way in (BBIO, EME on 2026-09-29).
+    hasPriceWake: thesis.parsedTriggers.some(
+      (t) =>
+        ((t as { level?: string }).level ?? "THESIS") === "THESIS" &&
+        t.action === "REVIEW" &&
+        isPlanLevel(t, thesis.direction),
+    ),
+    setupId: thesis.setupId ?? null,
+    catalystDate: thesis.catalystDate ?? null,
+    horizon: thesis.horizon ?? null,
+    now,
+  };
 }

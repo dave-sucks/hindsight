@@ -1,25 +1,27 @@
 /**
- * measure-situations.ts — every live stock's situations beside today's flags
- * (lib/agent/situations), from the real get_theses.
+ * measure-situations.ts — every live stock's situations, beside what the read
+ * sent the model before the list existed (lib/agent/situations).
  *
- *   npx tsx --env-file=.env.local scripts/measure-situations.ts [--out <file>]
+ *   npx tsx --env-file=.env.local scripts/measure-situations.ts --main <dump> [--out <file>]
  *
- * Read-only: database reads, quotes, bars and the broker's account. Run it
- * after the close. For each analyst on the trading account it calls
+ * `--main` is scripts/dump-model-read.ts's output from main, run just before
+ * this, after the same close. Read-only: database reads, quotes, bars and the
+ * broker's account. For each analyst on the trading account it calls
  * get_theses twice, as the morning run does: once with every row in full
- * (the old fields and the situations side by side) and once on the default
- * read (which stocks are listed). Each stock's inputs are kept, so a later
- * change can replay them.
+ * (each stock's inputs recorded as the list is built) and once on the
+ * default read (which stocks are listed).
  *
  * It prints, and writes to the fixture:
- *  - the lead: today's needsAction, the first situation, and whether the
- *    first situation carries today's flag unchanged;
- *  - every plan check today, and whether each is on PLAN_PROBLEM;
- *  - the situations after the first, which today's one-reason flag hides;
- *  - the stocks where a ruling decides the lead or the listing: the lead
- *    picked by today's precedence rather than by `order`, a fire no other
- *    situation claims carried by REVIEW_DUE, and a buy level reached or a
- *    past catalyst (the resolver's label) as a source.
+ *  - for every live stock, its inputs, its situations, and main's value for
+ *    each model-facing field the list now fills (needsAction, nameTheSetup,
+ *    buyBlockedByFull, heldThroughFloor, resolved.planSanity,
+ *    resolved.floorRisk) and whether main listed it;
+ *  - every stock where this checkout's read differs from main on any of
+ *    those;
+ *  - the stocks where a ruling decides the lead: the lead picked by the work
+ *    flag's precedence rather than by `order`, a fire no other situation
+ *    claims carried by REVIEW_DUE, and a buy level reached or a past
+ *    catalyst (the resolver's label) as a source.
  *
  * The principal's own words (notes, decline messages, the words of a
  * decision) and their user id are replaced before anything is written: the
@@ -29,16 +31,15 @@ import { writeFileSync } from "fs";
 import { isAgentAnswer, type ActivityRow } from "@/lib/agent/stock-context";
 import { changedTheRow } from "@/lib/agent/fire-streak";
 import { prisma } from "@/lib/prisma";
-import { getTheses, listsTheStock } from "@/lib/agent/tools/get-theses";
+import { readFileSync } from "fs";
+import { getTheses } from "@/lib/agent/tools/get-theses";
 import { createToolContext } from "@/lib/agent/tool-context";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { needsActionFlag } from "@/lib/agent/needs-action-line";
-import type { NeedsAction } from "@/lib/agent/needs-action";
+import type { WorkFlag } from "@/lib/agent/situations/work-flag";
 import { recordSituations, situationsFor, type Situation, type SituationsCall } from "@/lib/agent/situations";
 import { fromFixtureJson, toFixtureJson } from "@/lib/agent/situations/fixture-json";
 
 const NOT_KEPT = "(the principal's words, not kept)";
-const ACTIONABLE_RESOLVED = new Set(["ENTER_NOW", "STALE_PAST_CATALYST", "PROMOTED_DECIDE_TODAY"]);
 const isDeep = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 type Row = Record<string, unknown> & {
@@ -46,12 +47,28 @@ type Row = Record<string, unknown> & {
   ticker: string;
   status: string;
   direction: string | null;
-  needsAction: NeedsAction | null;
+  needsAction: WorkFlag | null;
   situations: Situation[];
   nameTheSetup: unknown;
   buyBlockedByFull: unknown;
-  resolved: { planSanity: Array<{ kind: string }> | null; actionability: string; floorRisk: unknown } | null;
+  heldThroughFloor: { rejectMessage?: unknown } | null;
+  resolved: { planSanity: unknown; actionability: string; floorRisk: unknown } | null;
 };
+
+/** The model-facing fields the list now fills, as a row carries them. */
+const MODEL_FIELDS = ["needsAction", "nameTheSetup", "buyBlockedByFull", "heldThroughFloor", "resolved.planSanity", "resolved.floorRisk"] as const;
+function modelFields(row: Record<string, unknown>): Record<(typeof MODEL_FIELDS)[number], unknown> {
+  const resolved = (row.resolved ?? null) as { planSanity?: unknown; floorRisk?: unknown } | null;
+  const held = (row.heldThroughFloor ?? null) as { rejectMessage?: unknown } | null;
+  return {
+    needsAction: scrubFlag(row.needsAction ?? null),
+    nameTheSetup: row.nameTheSetup ?? null,
+    buyBlockedByFull: row.buyBlockedByFull ?? null,
+    heldThroughFloor: held ? { ...held, rejectMessage: scrubText(held.rejectMessage) } : null,
+    "resolved.planSanity": resolved ? resolved.planSanity ?? null : null,
+    "resolved.floorRisk": resolved ? resolved.floorRisk ?? null : null,
+  };
+}
 
 /** The principal's words out; the prefixes and keys every rule reads, kept. */
 function scrubText(text: unknown): unknown {
@@ -138,28 +155,23 @@ function scrubCall(call: SituationsCall) {
         recentUpdates: trimActivity(stock.work.recentUpdates),
         declinedSale: stock.work.declinedSale ? scrubFlag(stock.work.declinedSale) : stock.work.declinedSale,
       },
-      unansweredDecision: stock.unansweredDecision ? { ...stock.unansweredDecision, line: NOT_KEPT } : stock.unansweredDecision,
     },
   };
 }
 
-/** Why today's code lists a stock on the default read (get-theses.ts isFullDetail), from the full row and its inputs. */
-function listingReasons(row: Row, call: SituationsCall | undefined): string[] {
-  const reasons: string[] = [];
-  if (row.nameTheSetup != null) reasons.push("no setup named");
-  if (row.buyBlockedByFull != null) reasons.push("buy blocked, analyst full");
-  if (row.status === "PROMOTED") reasons.push("promoted");
-  if (row.needsAction != null) reasons.push(`needsAction ${row.needsAction.kind}`);
-  if (ACTIONABLE_RESOLVED.has(row.resolved?.actionability ?? "")) reasons.push(`resolver label ${row.resolved?.actionability}`);
-  if (listsTheStock(row.resolved?.planSanity ?? null)) reasons.push("plan check");
-  if (row.resolved?.floorRisk != null) reasons.push("floor risk");
-  if (call?.stock.unansweredDecision != null) reasons.push("the principal's word");
-  return reasons;
+interface ModelRead {
+  data?: { theses?: Array<Record<string, unknown>>; quiet_theses?: Array<Record<string, unknown>> };
 }
 
 async function main() {
-  const outIdx = process.argv.indexOf("--out");
-  const out = outIdx > 0 ? process.argv[outIdx + 1] : "lib/agent/situations/__fixtures__/live-book.json";
+  const flag = (name: string) => {
+    const i = process.argv.indexOf(name);
+    return i > 0 ? process.argv[i + 1] : undefined;
+  };
+  const mainDump = flag("--main");
+  if (!mainDump) throw new Error("usage: measure-situations.ts --main <dump-model-read output from main> [--out <file>]");
+  const out = flag("--out") ?? "lib/agent/situations/__fixtures__/live-book.json";
+  const mainReads = JSON.parse(readFileSync(mainDump, "utf8")) as Record<string, ModelRead>;
   const measuredAt = new Date();
 
   const analysts = await prisma.agentConfig.findMany({
@@ -171,14 +183,17 @@ async function main() {
   const stocks: unknown[] = [];
   const sold: unknown[] = [];
   const decidedBy: Array<{ ticker: string; analyst: string; ruling: string; what: string }> = [];
-  let leadMatches = 0;
+  const differences: string[] = [];
   let leadCount = 0;
-  let planChecks = 0;
-  let planChecksOnSituation = 0;
-  let listingMismatches = 0;
+  let listedCount = 0;
   let replayMismatches = 0;
 
   for (const config of analysts) {
+    const mainBook = new Map(((mainReads[`${config.name} — book`]?.data?.theses) ?? []).map((r) => [String(r.id), r]));
+    const mainDefault = mainReads[`${config.name} — default`]?.data;
+    if (!mainDefault || mainBook.size === 0) throw new Error(`${config.name}: not in the main dump`);
+    const mainListed = new Set((mainDefault.theses ?? []).map((r) => String(r.id)));
+
     const runEnvironment = (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
     const alpacaCreds = (await resolveAlpacaCredentials(config.userId, runEnvironment)) ?? undefined;
     const ctx = createToolContext({
@@ -209,25 +224,21 @@ async function main() {
     for (const row of (book.data.theses as Row[]) ?? []) {
       const call = calls.get(row.id);
       const list = row.situations ?? [];
-      const lead = row.needsAction;
-      const first = list[0] ?? null;
-      const leadHeld = lead ? isDeep(first?.data.flag, lead) : list.every((s) => s.data.flag === undefined);
-      if (lead) {
-        leadCount++;
-        if (leadHeld) leadMatches++;
+      const mainRow = mainBook.get(row.id);
+      if (!mainRow) throw new Error(`${row.ticker}: not in the main dump's book read`);
+      const mainValues = { ...modelFields(mainRow), listed: mainListed.has(row.id) };
+      const branchValues = { ...modelFields(row), listed: listedIds.has(row.id) };
+      for (const k of Object.keys(mainValues) as Array<keyof typeof mainValues>) {
+        if (!isDeep(mainValues[k], branchValues[k])) differences.push(`${row.ticker} (${config.name}) ${k}: main ${JSON.stringify(mainValues[k])} — here ${JSON.stringify(branchValues[k])}`);
       }
-      const plan = (row.resolved?.planSanity ?? []).map((f) => f.kind);
-      const onSituation = (list.find((s) => s.code === "PLAN_PROBLEM")?.data as { codes?: Array<{ kind: string }> } | undefined)?.codes?.map((c) => c.kind) ?? [];
-      planChecks += plan.length;
-      planChecksOnSituation += plan.filter((k) => onSituation.includes(k)).length;
-      const reasons = listingReasons(row, call);
-      const isListed = listedIds.has(row.id);
-      if (isListed !== reasons.length > 0) listingMismatches++;
+      if (mainValues.needsAction != null) leadCount++;
+      if (mainValues.listed) listedCount++;
 
-      // Where a ruling decides the lead or the listing.
+      // Where a ruling decides the lead.
+      const first = list[0] ?? null;
       const byOrder = [...list].sort((a, b) => a.order - b.order)[0]?.code ?? null;
       if (first && byOrder !== first.code) {
-        decidedBy.push({ ticker: row.ticker, analyst: config.name, ruling: "1 (lead by today's precedence)", what: `lead ${first.code}; by order alone ${byOrder}` });
+        decidedBy.push({ ticker: row.ticker, analyst: config.name, ruling: "1 (lead by the work flag's precedence)", what: `lead ${first.code}; by order alone ${byOrder}` });
       }
       const review = list.find((s) => s.code === "REVIEW_DUE");
       for (const f of ((review?.data as { fires?: Array<{ action: string; summary: string; source: string }> } | undefined)?.fires ?? []).filter((f) => f.action !== "REVIEW")) {
@@ -235,18 +246,23 @@ async function main() {
       }
       const label = row.resolved?.actionability;
       if (label === "ENTER_NOW" || label === "STALE_PAST_CATALYST") {
-        const only = reasons.every((r) => r.startsWith("resolver label"));
-        decidedBy.push({ ticker: row.ticker, analyst: config.name, ruling: "5 (resolver label as a source)", what: `${label}${only ? " — the only reason it is listed" : ""}` });
+        decidedBy.push({ ticker: row.ticker, analyst: config.name, ruling: "5 (resolver label as a source)", what: label });
       }
 
-      // The fixture must replay: the trimmed, scrubbed inputs give the same list.
+      // The fixture must replay: the trimmed, scrubbed inputs give the same
+      // list. The one difference allowed is the principal's word, which the
+      // replay words from the scrubbed lines; what is kept is the replayed
+      // list, which carries none of their words.
       const kept = call ? scrubCall(call) : null;
+      let keptList = scrubSituations(list);
       if (kept) {
         const back = fromFixtureJson<ReturnType<typeof scrubCall>>(toFixtureJson(kept));
         const again = situationsFor(back.stock as SituationsCall["stock"], back.book, back.now);
-        if (!isDeep(again, scrubSituations(list))) {
+        if (!isDeep(scrubSituations(again), keptList)) {
           replayMismatches++;
           console.warn(`[measure] ${row.ticker}: the kept inputs replay to ${again.map((x) => x.code).join(", ")}, not ${list.map((x) => x.code).join(", ")}`);
+        } else {
+          keptList = again;
         }
       }
 
@@ -256,20 +272,8 @@ async function main() {
         thesisId: row.id,
         status: row.status,
         direction: row.direction,
-        today: {
-          lead: lead ? scrubFlag(lead) : null,
-          header: lead ? needsActionFlag(lead) : null,
-          planChecks: plan,
-          listed: isListed,
-          listingReasons: reasons,
-          resolverLabel: label ?? null,
-        },
-        situations: scrubSituations(list),
-        checks: {
-          firstCarriesTodaysLead: leadHeld,
-          everyPlanCheckOnPlanProblem: plan.every((k) => onSituation.includes(k)),
-          hiddenToday: list.slice(1).map((s) => s.code),
-        },
+        main: mainValues,
+        situations: keptList,
         input: kept,
       });
     }
@@ -281,14 +285,14 @@ async function main() {
 
   const fixture = {
     measuredAt: measuredAt.toISOString(),
-    what: "Every live stock on the trading account: today's flags beside its situations (lib/agent/situations), from the real get_theses. The principal's words are replaced.",
+    what:
+      "Every live stock on the trading account: its inputs and situations from the real get_theses, beside main's value for each model-facing field the list now fills and whether main listed it. The principal's words are replaced.",
+    modelFields: [...MODEL_FIELDS, "listed"],
     totals: {
       stocks: stocks.length,
       withALead: leadCount,
-      firstSituationCarriesTheLead: leadMatches,
-      planChecks,
-      planChecksOnPlanProblem: planChecksOnSituation,
-      listingReasonsDisagreeWithTheRead: listingMismatches,
+      listed: listedCount,
+      fieldsDifferingFromMain: differences.length,
       keptInputsReplayDifferently: replayMismatches,
       soldOwedALook: sold.length,
     },
@@ -300,21 +304,18 @@ async function main() {
 
   // ── Print ────────────────────────────────────────────────────────────
   console.log(`\nmeasured ${measuredAt.toISOString()} — ${analysts.length} analysts, ${stocks.length} live stocks, ${sold.length} sold owed a look`);
-  console.log(`lead: ${leadMatches} of ${leadCount} stocks with a lead carry it unchanged on their first situation`);
-  console.log(`plan checks: ${planChecksOnSituation} of ${planChecks} on PLAN_PROBLEM`);
-  console.log(`listing: ${listingMismatches} stocks where the reasons read off the row disagree with the default read`);
+  console.log(`main: ${leadCount} stocks with a lead, ${listedCount} listed`);
+  console.log(`fields differing from main (${MODEL_FIELDS.length} model-facing fields and the listing, on every stock): ${differences.length}`);
+  for (const d of differences) console.log(`  ${d}`);
   console.log(`fixture: ${replayMismatches} stocks whose kept inputs replay to a different list\n`);
-  console.log("ticker  analyst                 status    today's lead                     situations");
-  for (const s of stocks as Array<{ ticker: string; analyst: string; status: string; today: { lead: NeedsAction | null; listed: boolean }; situations: Situation[]; checks: { firstCarriesTodaysLead: boolean } }>) {
-    const lead = s.today.lead ? `${s.today.lead.kind}${"action" in s.today.lead ? ` ${s.today.lead.action}` : ""}` : "—";
-    console.log(
-      `${s.ticker.padEnd(7)} ${s.analyst.slice(0, 23).padEnd(23)} ${s.status.padEnd(9)} ${lead.padEnd(32)} ${s.situations.map((x) => x.code).join(", ") || "—"}${s.checks.firstCarriesTodaysLead ? "" : "   ✗ LEAD"}${s.today.listed ? "" : "   (quiet)"}`,
-    );
+  console.log("ticker  analyst                 status    situations");
+  for (const s of stocks as Array<{ ticker: string; analyst: string; status: string; main: { listed: boolean }; situations: Situation[] }>) {
+    console.log(`${s.ticker.padEnd(7)} ${s.analyst.slice(0, 23).padEnd(23)} ${s.status.padEnd(9)} ${s.situations.map((x) => x.code).join(", ") || "—"}${s.main.listed ? "" : "   (quiet)"}`);
   }
   for (const s of sold as Array<{ ticker: string; analyst: string; situations: Situation[] }>) {
-    console.log(`${s.ticker.padEnd(7)} ${s.analyst.slice(0, 23).padEnd(23)} SOLD      —                                ${s.situations.map((x) => x.code).join(", ")}`);
+    console.log(`${s.ticker.padEnd(7)} ${s.analyst.slice(0, 23).padEnd(23)} SOLD      ${s.situations.map((x) => x.code).join(", ")}`);
   }
-  console.log("\nwhere a ruling decides the lead or the listing:");
+  console.log("\nwhere a ruling decides the lead:");
   for (const d of decidedBy) console.log(`  ${d.ticker.padEnd(6)} ${d.ruling}: ${d.what}`);
   if (decidedBy.length === 0) console.log("  none");
   console.log(`\nwrote ${out}`);

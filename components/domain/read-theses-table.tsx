@@ -30,10 +30,13 @@ import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
+import { workFlagOf } from "@/lib/agent/situations/flag-line";
+import type { WorkFlag } from "@/lib/agent/situations/work-flag";
 
 // ─── Row ─────────────────────────────────────────────────────────────────────
 
-function describeNeedsAction(na: NonNullable<ThesisCardData["needs_action"]>): string {
+/** The lead's work flag as a chip: the three kinds the chip has always named; any other kind shows none. */
+function describeNeedsAction(na: WorkFlag): string | null {
   switch (na.kind) {
     case "TRIGGER_FIRED":
       return `Trigger fired: ${na.action}`;
@@ -43,6 +46,8 @@ function describeNeedsAction(na: NonNullable<ThesisCardData["needs_action"]>): s
       return na.daysOverdue > 0
         ? `Review ${na.daysOverdue}d overdue`
         : "Review due";
+    default:
+      return null;
   }
 }
 
@@ -55,7 +60,7 @@ function ThesisReadRow({
 }) {
   const status = getThesisStatusDisplay(thesis.status);
   const summary = thesis.reasoning_summary?.trim() || "—";
-  const needsAction = thesis.needs_action ?? null;
+  const needsAction = workFlagOf(thesis.situations);
   const needsActionLabel = needsAction ? describeNeedsAction(needsAction) : null;
 
   return (

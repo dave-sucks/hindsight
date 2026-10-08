@@ -6,16 +6,18 @@
  * computation, moved), its guidance and the entry a read gives it.
  *
  * The lead. Today the screen and complete_run show one reason per stock,
- * picked by needs-action.ts's precedence. That precedence is not a fixed
+ * picked by a fixed precedence (./work-flag.ts). That precedence is not a fixed
  * order of kinds: a floor too far outranks a fired review, a fired review
  * outranks a sale true now, and a sale true now outranks a floor too far;
  * among triggers true now the first in ladder order wins. So the lead is
- * still picked by that code (`computeNeedsAction`, unchanged), and
+ * still picked by that code (`leadFlag`, ./work-flag.ts), and
  * situations[0] is the situation holding it. The rest follow by `order`,
  * and `order` alone decides when nothing today flags the stock.
  */
 import { stockFacts, type StockFacts } from "./facts";
 import type { BookInput, Situation, SituationCode, SituationDefinition, StockInput } from "./types";
+import type { PlanCheck, PlanCheckArgs } from "./plan-checks";
+import { planChecksIn } from "./flag-line";
 import { promotedAwaiting } from "./promoted-awaiting";
 import { protectiveSale } from "./protective-sale";
 import { buyArrives } from "./buy-arrives";
@@ -128,4 +130,29 @@ function ordered(stock: StockInput, book: BookInput, now: Date): Situation[] {
   }
   if (i <= 0) return list;
   return [list[i], ...list.slice(0, i), ...list.slice(i + 1)];
+}
+
+const BY_CODE = new Map(SITUATIONS.map((d) => [d.code, d]));
+
+/**
+ * Whether a stock's situations put it on the morning run's work list: any
+ * situation whose definition lists it (`lists`, set to what the read decided
+ * before the list existed).
+ */
+export function listsTheStock(situations: readonly Situation[]): boolean {
+  return situations.some((s) => (BY_CODE.get(s.code)?.lists as ((d: unknown) => boolean) | undefined)?.(s.data) === true);
+}
+
+/**
+ * The plan checks one plan raises, read off the list: what PLAN_PROBLEM
+ * carries for it, the resolver's label left out. For a save's reply, which
+ * has the plan and no stock read.
+ */
+export function planChecksOn(plan: PlanCheckArgs, now: Date): PlanCheck[] {
+  const list = situationsFor(
+    { ticker: "", work: { thesis: { id: "", status: plan.status, direction: plan.direction, triggers: [], createdAt: now }, now }, plan },
+    {},
+    now,
+  );
+  return planChecksIn(list);
 }

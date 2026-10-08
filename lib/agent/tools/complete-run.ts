@@ -12,7 +12,8 @@ import { isProtectiveLine, shapeOf } from "@/lib/agent/triggers/condition";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
-import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { situationsFor } from "@/lib/agent/situations";
+import { workFlagOf } from "@/lib/agent/situations/flag-line";
 import {
   declinedSaleLine,
   declinedSaleWhere,
@@ -483,8 +484,8 @@ async function runCompleteRunPreflight(
   }
 
   // 4) Triggered/needsAction theses not addressed via update_thesis this run.
-  //    Uses computeNeedsAction (cooldown-aware shouldFire) — same logic
-  //    needs-action.ts uses for get_theses, so Layer 2 and Layer 1 ask the
+  //    Uses the stock's lead situation's flag (cooldown-aware shouldFire) — the
+  //    same list get_theses reads (lib/agent/situations), so Layer 2 and Layer 1 ask the
   //    SAME question. Bug 1 fix: no more "needsAction said null but the
   //    gate says you missed it" inconsistency (GAPS P0-7).
   //
@@ -508,7 +509,7 @@ async function runCompleteRunPreflight(
     horizon: string | null;
     paperTenureDays: number | null;
     // Prisma Decimal — typed as unknown to avoid the runtime-library import;
-    // coerced via Number() at the computeNeedsAction call site below.
+    // coerced via Number() where the work input is built below.
     paperRealizedPnl: unknown;
     paperReviewCount: number | null;
     promotedAt: Date | null;
@@ -650,7 +651,7 @@ async function runCompleteRunPreflight(
           quotes.set(tk, { price: q.c, changePct: q.dp ?? 0 });
         }
       } catch {
-        /* missing quote → skip; computeNeedsAction handles it */
+        /* missing quote → skip; the work flag handles it */
       }
     }),
   );
@@ -734,8 +735,10 @@ async function runCompleteRunPreflight(
   }> = [];
   for (const t of theses) {
     // needsAction is computed BEFORE the addressed check now: which bar
-    // applies depends on what kind of obligation this is.
-    const needsAction = computeNeedsAction({
+    // applies depends on what kind of obligation this is. It is the stock's
+    // lead situation's flag (lib/agent/situations), read from the same input
+    // this preflight always built, so it owes exactly what it owed before.
+    const work = {
       thesis: {
         id: t.id,
         direction: t.direction,
@@ -783,7 +786,8 @@ async function runCompleteRunPreflight(
         recentLow: null,
         now,
       }),
-    });
+    };
+    const needsAction = workFlagOf(situationsFor({ ticker: t.ticker, work }, {}, now));
     if (needsAction == null) continue;
 
     // A declined sale takes the strong bar (DAV-315): the ticket's words are
@@ -830,7 +834,7 @@ async function runCompleteRunPreflight(
       detail = needsAction.line;
     } else if (needsAction.kind === "UNPROTECTED_GAIN") {
       // Defensive branch: this preflight does NOT feed avgCost/peakPrice
-      // into computeNeedsAction,
+      // into the work input,
       // so UNPROTECTED_GAIN cannot fire here at runtime — it's a get_theses
       // attention flag; enforcement as a run-close gate is PR-C (warn-mode
       // first, per THESIS_GAME_PLAN.md). Handled for type-completeness.

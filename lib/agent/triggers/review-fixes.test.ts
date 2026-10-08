@@ -7,7 +7,12 @@ import { applyTriggerOps } from "./ops";
 import { protectiveRatchetViolations } from "./ratchet";
 import { shouldFire } from "./evaluate";
 import { describeChartFire } from "./condition/facts";
-import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { situationsFor } from "@/lib/agent/situations";
+import { workFlagOf } from "@/lib/agent/situations/flag-line";
+import type { WorkFlagInput } from "@/lib/agent/situations/work-flag";
+
+/** The work flag, read off the list: the lead situation's flag. */
+const leadOf = (input: WorkFlagInput) => workFlagOf(situationsFor({ ticker: "T", work: input }, {}, input.now));
 import type { Trigger } from "./types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 
@@ -78,7 +83,7 @@ describe("the ratchet sees a stop moved to close-basis as a loosening", () => {
 
 describe("the daily run's 'matching now' respects the close", () => {
   const input = (now: string) =>
-    computeNeedsAction({
+    leadOf({
       thesis: {
         id: "t",
         direction: "LONG",

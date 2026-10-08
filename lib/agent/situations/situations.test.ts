@@ -3,9 +3,10 @@
  * today's needsAction, a stock can be in several situations, and every rule
  * is today's computation.
  */
-import { computeNeedsAction, type NeedsActionInput } from "@/lib/agent/needs-action";
+import { leadFlag, type WorkFlagInput } from "@/lib/agent/situations/work-flag";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { SITUATIONS, situationsFor } from "./index";
+import { SITUATIONS, listsTheStock, situationsFor } from "./index";
+import { planChecks, type PlanCheckArgs } from "./plan-checks";
 import type { BookInput, StockInput } from "./types";
 
 const NOW = new Date("2026-05-09T21:00:00Z"); // a Saturday: no session, the last price is a close
@@ -22,7 +23,7 @@ const fire = (triggerId: string, hoursAgo = 2) => ({
   runId: null,
 });
 
-function stock(over: { thesis?: Partial<NeedsActionInput["thesis"]>; work?: Partial<NeedsActionInput> } & Omit<Partial<StockInput>, "work"> = {}): StockInput {
+function stock(over: { thesis?: Partial<WorkFlagInput["thesis"]>; work?: Partial<WorkFlagInput> } & Omit<Partial<StockInput>, "work"> = {}): StockInput {
   const { thesis, work, ...rest } = over;
   return {
     ticker: "TEST",
@@ -50,9 +51,9 @@ describe("the lead is today's needsAction, even where today's order is a cycle",
       work: { activity: [fire("rev")], equity: 100_000 },
     });
     const list = situationsFor(s, {}, NOW);
-    expect(computeNeedsAction(s.work)?.kind).toBe("FLOOR_TOO_FAR");
+    expect(leadFlag(s.work)?.kind).toBe("FLOOR_TOO_FAR");
     expect(list[0].code).toBe("PROTECTION");
-    expect(list[0].data.flag).toEqual(computeNeedsAction(s.work));
+    expect(list[0].data.flag).toEqual(leadFlag(s.work));
     expect(list.map((x) => x.code)).toContain("REVIEW_DUE");
   });
 
@@ -62,9 +63,9 @@ describe("the lead is today's needsAction, even where today's order is a cycle",
       work: { activity: [fire("rev")], latestQuote: { price: 75, changePct: 0 } },
     });
     const list = situationsFor(s, {}, NOW);
-    expect(computeNeedsAction(s.work)?.kind).toBe("TRIGGER_FIRED");
+    expect(leadFlag(s.work)?.kind).toBe("TRIGGER_FIRED");
     expect(list.map((x) => x.code)).toEqual(["REVIEW_DUE", "PROTECTIVE_SALE"]);
-    expect(list[0].data.flag).toEqual(computeNeedsAction(s.work));
+    expect(list[0].data.flag).toEqual(leadFlag(s.work));
   });
 
   it("a sale true now leads over a floor too far", () => {
@@ -73,9 +74,9 @@ describe("the lead is today's needsAction, even where today's order is a cycle",
       work: { latestQuote: { price: 75, changePct: 0 }, equity: 100_000 },
     });
     const list = situationsFor(s, {}, NOW);
-    expect(computeNeedsAction(s.work)?.kind).toBe("TRIGGER_MATCHING_NOW");
+    expect(leadFlag(s.work)?.kind).toBe("TRIGGER_MATCHING_NOW");
     expect(list.map((x) => x.code)).toEqual(["PROTECTIVE_SALE", "PROTECTION"]);
-    expect(list[0].data.flag).toEqual(computeNeedsAction(s.work));
+    expect(list[0].data.flag).toEqual(leadFlag(s.work));
   });
 
   it("among triggers true now, the first in the ladder leads: a review listed before a sale", () => {
@@ -120,7 +121,7 @@ describe("where a fire belongs", () => {
     const s = stock({ thesis: { status: "WATCHING", triggers: [trig("wf", "EXIT", below(80))] }, work: { activity: [fire("wf")] } });
     const list = situationsFor(s, {}, NOW);
     expect(list.map((x) => x.code)).toEqual(["REVIEW_DUE"]);
-    expect(list[0].data.flag).toEqual(computeNeedsAction(s.work));
+    expect(list[0].data.flag).toEqual(leadFlag(s.work));
   });
 
   it("a buy on a watch arrives; the same buy into a full analyst is blocked instead", () => {
@@ -139,24 +140,24 @@ describe("where a fire belongs", () => {
   it("an add on a holding, and a holding three quarters of the way to its target", () => {
     const s = stock({ thesis: { triggers: [trig("add", "ADD", above(95))] }, work: { activity: [fire("add")] } });
     expect(codes(s)).toEqual(["ADD_OR_WINNER"]);
-    const near = stock({ resolved: { planSanity: null, actionability: "ACTIVE_HOLD", floorRisk: null, progressToTarget: 0.8, triggerDetail: null } });
+    const near = stock({ resolved: { actionability: "ACTIVE_HOLD", progressToTarget: 0.8, triggerDetail: null } });
     expect(codes(near)).toEqual(["ADD_OR_WINNER"]);
     expect(situationsFor(near, {}, NOW)[0].data.flag).toBeUndefined();
   });
 });
 
 describe("the other sources", () => {
-  const resolved = (over: Record<string, unknown>) => ({ planSanity: null, actionability: "WAIT_FOR_TRIGGER" as const, floorRisk: null, progressToTarget: null, triggerDetail: null, ...over });
+  const resolved = (over: Record<string, unknown>) => ({ actionability: "WAIT_FOR_TRIGGER" as const, progressToTarget: null, triggerDetail: null, ...over });
+  // A watched LONG whose buy sits 50% over the price, and no buy trigger: two checks.
+  const farPlan: PlanCheckArgs = { status: "WATCHING", direction: "LONG", entryPrice: 150, targetPrice: null, stopLoss: null, currentPrice: 100, hasEnterTrigger: false, ownTriggerCount: 1 };
 
   it("every plan check rides on PLAN_PROBLEM with its text; STALE_PAST_CATALYST joins it", () => {
-    const flags = [
-      { kind: "ENTRY_FAR_FROM_PRICE" as const, text: "far" },
-      { kind: "NO_BUY_LEVEL" as const, text: "none" },
-    ];
-    const s = stock({ thesis: { status: "WATCHING" }, resolved: resolved({ planSanity: flags, actionability: "STALE_PAST_CATALYST" }) });
+    const flags = planChecks(farPlan);
+    expect(flags.map((f) => f.kind)).toEqual(["NO_BUY_LEVEL", "ENTRY_FAR_FROM_PRICE"]);
+    const s = stock({ thesis: { status: "WATCHING" }, plan: farPlan, resolved: resolved({ actionability: "STALE_PAST_CATALYST" }) });
     const list = situationsFor(s, {}, NOW);
     expect(list.map((x) => x.code)).toEqual(["PLAN_PROBLEM"]);
-    expect(list[0].data).toEqual({ codes: [...flags, { kind: "STALE_PAST_CATALYST", text: null }] });
+    expect(list[0].data).toEqual({ codes: [...flags.map((f) => ({ kind: f.kind, text: f.text })), { kind: "STALE_PAST_CATALYST", text: null }] });
   });
 
   it("a level the resolver reads as reached is a buy arriving, with no flag to paint", () => {
@@ -180,12 +181,13 @@ describe("the other sources", () => {
     const s = stock({
       thesis: { researchUpdatedAt: old, horizon: "TRADE", triggers: [trig("clock", "REVIEW", { watch: "repeat", value: 7 })], lastReviewedAt: T0 },
     });
-    expect(computeNeedsAction(s.work)?.kind).toBe("REVIEW_DUE");
+    expect(leadFlag(s.work)?.kind).toBe("REVIEW_DUE");
     expect(codes(s)).toEqual(["REVIEW_DUE", "STALE_RESEARCH"]);
   });
 
   it("the principal's word, a sold stock's one look, a setup to name", () => {
-    expect(codes(stock({ unansweredDecision: { at: NOW, line: "Note: hold through the print", wantsAnswer: true } }))).toEqual(["YOUR_WORD_UNANSWERED"]);
+    const note = { type: "NOTE", timestamp: new Date(NOW.getTime() - 3_600_000), rationale: "Hold through the print.", runId: null };
+    expect(codes(stock({ work: { activity: [note] } }))).toEqual(["YOUR_WORD_UNANSWERED"]);
     const sold = stock({
       thesis: { status: "RETIRED", triggers: [] },
       sold: { ticker: "TEST", status: "RETIRED", retiredReason: "SOLD", closedAt: new Date(NOW.getTime() - 86_400_000), closeReason: "STOP", exitPrice: 10, realizedPnl: 5, realizedPnlPct: 1, beliefSurvived: null, catalystDate: null, answered: false },
@@ -260,17 +262,17 @@ function generated(): { s: StockInput; book: BookInput } {
     setupId: pick([null, "PEAD", "NONE"]),
     entryPrice: pick([null, 95]),
     ownTriggers: triggers,
-    // As the resolver gives them: plan checks and the watch labels on a watch only.
+    // As the resolver gives them: the watch labels on a watch only.
     resolved: rnd() < 0.7
       ? {
-          planSanity: watching && rnd() < 0.3 ? [{ kind: "ENTRY_FAR_FROM_PRICE", text: "far" }] : null,
           actionability: watching ? pick(["ENTER_NOW", "WAIT_FOR_TRIGGER", "STALE_PAST_CATALYST"] as const) : status === "HOLDING" ? ("ACTIVE_HOLD" as const) : ("PROMOTED_DECIDE_TODAY" as const),
-          floorRisk: null,
           progressToTarget: status === "HOLDING" && rnd() < 0.3 ? pick([0.5, 0.8, 1.2]) : null,
           triggerDetail: null,
         }
       : null,
-    unansweredDecision: rnd() < 0.1 ? { at: now, line: "Note: x", wantsAnswer: true } : null,
+    plan: rnd() < 0.5
+      ? { status, direction: "LONG", entryPrice: pick([null, 95, 150]), targetPrice: pick([null, 130]), stopLoss: pick([null, 90]), currentPrice: pick([null, 100]), hasEnterTrigger: rnd() < 0.5, ownTriggerCount: pick([0, 1]) }
+      : null,
   };
   const book: BookInput = rnd() < 0.3 ? { capacity: { open: 4, max: 4, held: ["A"] } } : {};
   return { s, book };
@@ -281,7 +283,7 @@ describe("over 20,000 generated stocks", () => {
     let led = 0;
     for (let n = 0; n < 20_000; n++) {
       const { s, book } = generated();
-      const lead = computeNeedsAction(s.work);
+      const lead = leadFlag(s.work);
       const list = situationsFor(s, book, s.work.now);
       if (lead) {
         led++;
@@ -302,6 +304,46 @@ describe("over 20,000 generated stocks", () => {
         if (def.appliesTo === "watched") expect(s.work.thesis.status).not.toBe("HOLDING");
       }
     }
+  });
+});
+
+describe("which situations list a stock, as the read decided before", () => {
+  const listed = (s: StockInput, book: BookInput = {}) => listsTheStock(situationsFor(s, book, NOW));
+  const near = { actionability: "ACTIVE_HOLD" as const, progressToTarget: 0.8, triggerDetail: null };
+
+  it("a holding near its target, with nothing fired, is read but not listed", () => {
+    expect(codes(stock({ resolved: near }))).toEqual(["ADD_OR_WINNER"]);
+    expect(listed(stock({ resolved: near }))).toBe(false);
+  });
+
+  it("old research a flag does not lead is read but not listed; the flag lists it", () => {
+    const old = { daysOld: 90, freshness: "stale" as const, lastWrittenAt: null, horizonThreshold: 30 };
+    // researchUpdatedAt not read (undefined): the flag cannot fire, the row's age still shows.
+    expect(codes(stock({ researchAge: old }))).toEqual(["STALE_RESEARCH"]);
+    expect(listed(stock({ researchAge: old }))).toBe(false);
+    const flagged = stock({ thesis: { researchUpdatedAt: new Date(NOW.getTime() - 400 * 86_400_000), horizon: "TRADE" } });
+    expect(listed(flagged)).toBe(true);
+  });
+
+  it("no buy level on its own is read but not listed; a buy far from the price lists it", () => {
+    const noBuy: PlanCheckArgs = { status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null, currentPrice: 100, hasEnterTrigger: false, ownTriggerCount: 1 };
+    expect(codes(stock({ thesis: { status: "WATCHING" }, plan: noBuy }))).toEqual(["PLAN_PROBLEM"]);
+    expect(listed(stock({ thesis: { status: "WATCHING" }, plan: noBuy }))).toBe(false);
+    const far: PlanCheckArgs = { ...noBuy, entryPrice: 150, hasEnterTrigger: true };
+    expect(listed(stock({ thesis: { status: "WATCHING" }, plan: far }))).toBe(true);
+  });
+
+  it("a floor too far lists a holding even when a sale holds the lead", () => {
+    const s = stock({
+      thesis: { avgCost: 100, quantity: 1000, triggers: [trig("floor", "EXIT", below(80))] },
+      work: { latestQuote: { price: 75, changePct: 0 }, equity: 100_000 },
+    });
+    expect(codes(s)).toEqual(["PROTECTIVE_SALE", "PROTECTION"]);
+    expect(listed(s)).toBe(true);
+  });
+
+  it("nothing on a stock: not listed", () => {
+    expect(listed(stock())).toBe(false);
   });
 });
 

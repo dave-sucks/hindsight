@@ -15,6 +15,8 @@ export const buyArrives: SituationDefinition<"BUY_ARRIVES"> = {
   appliesTo: "watched",
   entry: "row",
   guidance: "",
+  // A fired or true-now buy is a flag; a level reached is the resolver's ENTER_NOW, which lists too.
+  lists: () => true,
   rule: (stock, book, now) => {
     const facts = stockFacts(stock, book, now);
     const items = itemsFor(facts, "BUY_ARRIVES");

@@ -12,6 +12,7 @@ export const filing: SituationDefinition<"FILING"> = {
   appliesTo: "both",
   entry: "row",
   guidance: "",
+  lists: () => true,
   rule: (stock, book, now) => {
     const items = itemsFor(stockFacts(stock, book, now), "FILING");
     if (items.length === 0) return { active: false };

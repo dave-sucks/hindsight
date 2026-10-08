@@ -11,7 +11,7 @@ import { prisma } from "@/lib/prisma";
 
 // The keyword-rejection scan + tickerMentionRegex helpers that lived
 // here were removed on 2026-05-19 along with the legacy promotion
-// gate (P1-13). complete_run's preflight (using computeNeedsAction)
+// gate (P1-13). complete_run's preflight (using the work flag, lib/agent/situations)
 // is now the canonical structural check.
 //
 // The summary-vs-execution check that lived here moved to complete_run
@@ -258,7 +258,7 @@ export const recordRunSummary = defineTool({
       // The legacy keyword-scan promotion gate that lived here was
       // removed on 2026-05-19 — superseded by `complete_run`'s preflight
       // (lib/agent/tools/complete-run.ts:282, PR #266), which uses the
-      // structural `computeNeedsAction` check for "did the agent address
+      // structural work-flag check for "did the agent address
       // every triggered thesis?" — wording-agnostic, no false fails on
       // rationales that lacked a specific keyword. The goalpost-moving
       // check is now enforced structurally in `update_thesis`

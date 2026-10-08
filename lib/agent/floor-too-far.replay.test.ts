@@ -27,7 +27,7 @@ import {
   REPLAY_ANALYST_ID,
   type PrismaDouble,
 } from "@/lib/replay";
-import type { NeedsAction } from "@/lib/agent/needs-action";
+import type { WorkFlag } from "@/lib/agent/situations/work-flag";
 import type { FloorRisk } from "@/lib/agent/floor-risk";
 
 type Row = Record<string, unknown>;
@@ -44,7 +44,7 @@ const fx = raw as unknown as {
   fill0813: { triggersBefore: unknown[]; orders: Array<{ intent: string; filledPrice: number; filledQty: number; filledAt: string }> };
 };
 
-type ThesisOut = { ticker: string; needsAction: NeedsAction | null; resolved?: { floorRisk?: FloorRisk | null } | null };
+type ThesisOut = { ticker: string; needsAction: WorkFlag | null; resolved?: { floorRisk?: FloorRisk | null } | null };
 const cegRow = (result: unknown): ThesisOut =>
   ((result as { data: { theses: ThesisOut[] } }).data.theses ?? []).find((t) => t.ticker === "CEG")!;
 
@@ -145,7 +145,7 @@ describe("CEG 2026-09-30 through get_theses", () => {
       pctOfAccount: 1.7,
       structureBelow: [{ label: "20-day low", price: 250.55 }],
     });
-    const na = row.needsAction as Extract<NeedsAction, { kind: "FLOOR_TOO_FAR" }>;
+    const na = row.needsAction as Extract<WorkFlag, { kind: "FLOOR_TOO_FAR" }>;
     expect(na.lossAtFloor).toBeCloseTo((fx.position.avgCost - TRAIL_FLOOR) * 39, 1); // $1,924.60
     expect(na.line).toBe(
       "At the $227.55 floor, 39 shares bought at an average $276.90 lose $1,925 — 1.7% of the $113,065 account, over the 1.5% a floor may risk (a buy is sized to about 1%). " +

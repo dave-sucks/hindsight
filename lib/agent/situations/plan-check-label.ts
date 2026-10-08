@@ -1,7 +1,7 @@
 /**
- * A plan-sanity flag in three words.
+ * A plan check in three words (PLAN_PROBLEM's codes).
  *
- * `PlanSanityFlag.text` is a paragraph written for the agent to act on — "Answer
+ * `PlanCheck.text` is a paragraph written for the agent to act on — "Answer
  * it one of two ways — price the buy at a level you can name (the pivot, the
  * reclaim, the pullback) with its stop and a target at 2:1 or better, or let it
  * go." Correct instruction, wrong reader: it rendered at the top of the thesis
@@ -11,8 +11,8 @@
  * The label is what a person needs — WHICH check failed. The paragraph stays on
  * the flag for the agent, and sits under the label for anyone who wants it.
  *
- * Its own module so a client component can import it: plan-sanity.ts reaches the
- * trigger types, and only the label is needed on screen.
+ * Its own module so a client component can import it: plan-checks.ts reaches
+ * the trigger types, and only the label is needed on screen.
  */
 const LABELS: Record<string, string> = {
   NOTHING_CAN_WAKE: "Nothing can wake this",
@@ -31,6 +31,6 @@ const LABELS: Record<string, string> = {
 };
 
 /** The check's name. Falls back to the raw kind rather than inventing one. */
-export function planSanityLabel(kind: string): string {
+export function planCheckLabel(kind: string): string {
   return LABELS[kind] ?? kind.toLowerCase().replace(/_/g, " ");
 }

@@ -13,6 +13,7 @@ export const quietWatchWoke: SituationDefinition<"QUIET_WATCH_WOKE"> = {
   appliesTo: "watched",
   entry: "full",
   guidance: "",
+  lists: () => true,
   rule: (stock, book, now) => {
     const items = itemsFor(stockFacts(stock, book, now), "QUIET_WATCH_WOKE");
     if (items.length === 0) return { active: false };

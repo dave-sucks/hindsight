@@ -13,7 +13,11 @@
  */
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
 import { setupsFor } from "./decision.test-helpers";
-import { computePlanSanity } from "@/lib/agent/plan-sanity";
+import { planChecksOn } from "@/lib/agent/situations";
+import type { PlanCheckArgs } from "@/lib/agent/situations/plan-checks";
+
+/** The plan checks, read off the list (PLAN_PROBLEM). */
+const planChecksOf = (args: PlanCheckArgs) => planChecksOn(args, args.now ?? new Date());
 
 /** The writer's submit_thesis input, verbatim from the run's messages. */
 const LUXE_SUBMIT = {
@@ -95,14 +99,14 @@ describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
 
 describe("the six already on the book — get_theses puts them on the work list", () => {
   it("a LONG watch with no entry and no trigger of its own is flagged, with no live price needed", () => {
-    const flags = computePlanSanity({ status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null, currentPrice: null, ownTriggerCount: 0 });
+    const flags = planChecksOf({ status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null, currentPrice: null, ownTriggerCount: 0 });
     expect(flags.map((f) => f.kind)).toEqual(["NOTHING_CAN_WAKE"]);
   });
   it("one wake of its own is enough; so is a buy price; a seed and a held stock are never flagged", () => {
     const base = { status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null, currentPrice: null } as const;
-    expect(computePlanSanity({ ...base, ownTriggerCount: 1 })).toEqual([]);
-    expect(computePlanSanity({ ...base, entryPrice: 7.91, ownTriggerCount: 0 })).toEqual([]);
-    expect(computePlanSanity({ ...base, direction: null, ownTriggerCount: 0 })).toEqual([]);
-    expect(computePlanSanity({ ...base, status: "HOLDING", ownTriggerCount: 0 })).toEqual([]);
+    expect(planChecksOf({ ...base, ownTriggerCount: 1 })).toEqual([]);
+    expect(planChecksOf({ ...base, entryPrice: 7.91, ownTriggerCount: 0 })).toEqual([]);
+    expect(planChecksOf({ ...base, direction: null, ownTriggerCount: 0 })).toEqual([]);
+    expect(planChecksOf({ ...base, status: "HOLDING", ownTriggerCount: 0 })).toEqual([]);
   });
 });

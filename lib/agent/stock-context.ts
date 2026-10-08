@@ -21,7 +21,7 @@
  * The principal's newest notes (notes.ts) come first. A note is information:
  * never an answer, never a plan change, and nothing closes it.
  *
- * Pure: needs-action.ts imports it; trigger labels come from the caller.
+ * Pure: situations/work-flag.ts imports it; trigger labels come from the caller.
  */
 
 /** One Activity line, as the callers load it. Any order. */
@@ -66,7 +66,6 @@ export interface StockContext {
   /** The block, ready to print; null when there is nothing on record. */
   text: string | null;
   openFires: OpenFire[];
-  unansweredDecision: PrincipalDecision | null;
   /** The principal's newest note, one line — what a quiet row carries. */
   principalNote: string | null;
 }
@@ -83,8 +82,8 @@ type Changes = {
 };
 const changesOf = (r: ActivityRow): Changes =>
   r.fieldChanges && typeof r.fieldChanges === "object" ? (r.fieldChanges as Changes) : {};
-const newestFirst = (rows: ActivityRow[]) => [...rows].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
+export const newestFirst = (rows: ActivityRow[]) => [...rows].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+export const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const money = (n: number) => `$${n.toFixed(2)}`;
 
 /** A proposal decision, or an edit made by hand. */
@@ -231,13 +230,8 @@ export function buildStockContext(args: {
     .map((r) => principalDecision(r, priceBefore(r), args.currentPrice ?? null))
     .filter((d): d is PrincipalDecision => d != null);
   const notes = newestNotes(rows);
-  // A note written after the last answer puts the stock on the list once, so a run reads it in full.
-  const newNote = notes.find((n) => !last || n.timestamp > last.timestamp);
-  const unansweredDecision =
-    decisions.find((d) => d.wantsAnswer) ??
-    (newNote ? { at: newNote.timestamp, line: `Note: ${oneLine(newNote.rationale ?? "")}`, wantsAnswer: true } : null);
   if (!last && decisions.length === 0 && fires.length === 0 && !notes.length) {
-    return { text: null, openFires: fires, unansweredDecision, principalNote: null };
+    return { text: null, openFires: fires, principalNote: null };
   }
 
   const T = args.ticker.toUpperCase();
@@ -273,5 +267,5 @@ export function buildStockContext(args: {
   lines.push(tail);
   const p0 = notes[0];
   const principalNote = p0 ? `${etStamp(p0.timestamp)}: ${sentences(p0.rationale ?? "", 120)}` : null;
-  return { text: lines.join("\n"), openFires: fires, unansweredDecision, principalNote };
+  return { text: lines.join("\n"), openFires: fires, principalNote };
 }

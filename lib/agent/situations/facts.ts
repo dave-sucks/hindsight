@@ -1,8 +1,8 @@
 /**
  * What every situation reads about one stock, computed once per call: the
- * lead (today's precedence, `computeNeedsAction`, unchanged), the fires and
+ * lead (today's precedence, `leadFlag` in ./work-flag.ts), the fires and
  * matches each with the situations they belong to, and each work-flag kind
- * on its own from the same functions computeNeedsAction is built from.
+ * on its own from the same functions leadFlag is built from.
  *
  * Where a fire belongs (QB rulings, 2026-10-07):
  *  - a trigger watching a report or a surprise belongs to EARNINGS, one
@@ -17,7 +17,7 @@
  *    a holding, an add on a watch) to REVIEW_DUE, so no fire leaves the list.
  */
 import {
-  computeNeedsAction,
+  leadFlag,
   firedFlag,
   floorTooFarFlag,
   heldLadder,
@@ -31,9 +31,10 @@ import {
   unprotectedGainFlag,
   type FireWork,
   type MatchWork,
-  type NeedsAction,
-} from "@/lib/agent/needs-action";
-import { buyBlockedByFull, type BuyBlockedByFull } from "@/lib/agent/capacity";
+  type WorkFlag,
+} from "@/lib/agent/situations/work-flag";
+import { floorTooFar, type FloorRisk } from "@/lib/agent/floor-risk";
+import { buyBlockedByFull, type BuyBlockedByFull } from "./buy-blocked-full";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { measuresOf } from "./measures";
 import type { BookInput, FireRef, SituationCode, StockInput } from "./types";
@@ -42,20 +43,26 @@ import type { BookInput, FireRef, SituationCode, StockInput } from "./types";
 export interface FireItem {
   ref: FireRef;
   /** What needsAction would carry if this fire or match led. */
-  flag: NeedsAction;
+  flag: WorkFlag;
   homes: SituationCode[];
 }
 
 export interface StockFacts {
   held: boolean;
-  /** Today's lead: computeNeedsAction on the caller's own input. */
-  lead: NeedsAction | null;
-  promoted: NeedsAction | null;
-  declined: NeedsAction | null;
-  floorTooFar: NeedsAction | null;
-  unprotectedGain: NeedsAction | null;
-  clock: NeedsAction | null;
-  stale: NeedsAction | null;
+  /** Today's lead: leadFlag on the caller's own input. */
+  lead: WorkFlag | null;
+  promoted: WorkFlag | null;
+  declined: WorkFlag | null;
+  floorTooFar: WorkFlag | null;
+  /**
+   * The same floor's risk with the stock named in its sentence, as the
+   * resolver gave it (moved from resolved-thesis.ts): it lists a stock even
+   * when a fired sale holds the lead.
+   */
+  floorRisk: FloorRisk | null;
+  unprotectedGain: WorkFlag | null;
+  clock: WorkFlag | null;
+  stale: WorkFlag | null;
   /** The fires first (newest first), then the matches (ladder order). */
   items: FireItem[];
   blocked: BuyBlockedByFull | null;
@@ -96,7 +103,7 @@ export function stockFacts(stock: StockInput, book: BookInput, now: Date): Stock
 
   const input = stock.work;
   const held = input.thesis.status === "HOLDING";
-  const lead = computeNeedsAction(input);
+  const lead = leadFlag(input);
   const ladder = heldLadder(input);
 
   // A buy that fired (or is true now) while the analyst is full, as
@@ -148,6 +155,18 @@ export function stockFacts(stock: StockInput, book: BookInput, now: Date): Stock
     promoted: promotedFlag(input),
     declined: saleDeclinedFlag(input),
     floorTooFar: floorTooFarFlag(input, ladder),
+    floorRisk: ladder
+      ? floorTooFar({
+          ticker: stock.ticker,
+          direction: input.thesis.direction ?? null,
+          avgCost: input.thesis.avgCost ?? null,
+          quantity: input.thesis.quantity ?? null,
+          floorPrice: ladder.floor?.price ?? null,
+          equity: input.equity ?? null,
+          currentPrice: input.latestQuote?.price ?? null,
+          structure: input.thesis.structure ?? null,
+        })
+      : null,
     unprotectedGain: unprotectedGainFlag(input, ladder),
     clock: reviewDueFlag(input),
     stale: researchStaleFlag(input),
@@ -168,7 +187,7 @@ export function itemsFor(facts: StockFacts, code: SituationCode): FireItem[] {
  * precedence: a fire before a match; among fires, the one that moves money
  * before a review, else the newest; among matches, the first in ladder order.
  */
-export function firstFlag(items: FireItem[]): NeedsAction | undefined {
+export function firstFlag(items: FireItem[]): WorkFlag | undefined {
   const fires = items.filter((i) => i.ref.source === "TRIGGER_FIRED");
   const lead = fires.find((i) => i.ref.action !== "REVIEW") ?? fires[0] ?? items[0];
   return lead?.flag;

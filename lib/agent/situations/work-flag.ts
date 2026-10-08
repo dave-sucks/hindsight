@@ -1,83 +1,46 @@
 /**
- * `needsAction` — the per-thesis annotation get_theses puts on every row
- * so the daily-run agent doesn't have to cross-reference five different
- * prompt blocks to figure out what needs attention today.
+ * The work-list flag: the one lead reason a stock shows today, and each kind
+ * on its own (moved from lib/agent/needs-action.ts). The situations module
+ * (./index.ts) reads every kind for the situations a stock is in, and takes
+ * its lead from `leadFlag`. A situation's `data.flag` carries one of these,
+ * unchanged in shape, for the sheet header and complete_run.
  *
- * Six kinds. Three are trigger-driven (FIRED / MATCHING_NOW / REVIEW_DUE);
- * PROMOTED is status-driven (any PROMOTED thesis ALWAYS requires resolution
- * this run); UNPROTECTED_GAIN and RUNNING_WINNER are position-P&L-driven
- * (a held winner whose floor doesn't reflect its gain, and a held winner
- * that reached its target's decision point with no trigger set to catch it).
+ * Eight kinds, in the order `leadFlag` ranks them:
  *
- *   PROMOTED_AWAITING_RESOLUTION — thesis.status === "PROMOTED".
- *                         The user explicitly graduated this analyst to
- *                         live money and the paper position was force-
- *                         closed at promotion. The daily run must decide
- *                         today: re-enter (place_trade) / defer (update_
- *                         thesis change_status: WATCHING) / kill (when
- *                         tool gates allow). Highest precedence — fires
- *                         regardless of other trigger state.
- *   TRIGGER_FIRED       — a trigger fired after the newest line an AGENT
+ *   PROMOTED_AWAITING_RESOLUTION — the thesis is PROMOTED: the next run must
+ *                         re-enter it, defer it or kill it.
+ *   SALE_DECLINED       — the principal declined a protective sale and the
+ *                         price is still past the line (DAV-315).
+ *   TRIGGER_FIRED       — a trigger fired after the newest line an agent
  *                         wrote on this thesis (stock-context.ts
  *                         `openFires`). The principal's edits, proposal
- *                         decisions and the app's bookkeeping do not
- *                         answer a fire; only a run's own line does. When
- *                         several fired, the lead is the one that moves
- *                         money (not a REVIEW) and the rest ride along in
- *                         `alsoFired`.
- *   TRIGGER_MATCHING_NOW — server-side `shouldFire` evaluation against
- *                         the fresh quote says one of the thesis's
- *                         price/time-side predicates is currently true.
- *                         Catches matches the cron may not have
- *                         delivered yet.
- *   UNPROTECTED_GAIN    — a HOLDING whose cumulative gain is meaningfully
- *                         above what its tightest protective EXIT rung locks
- *                         in: gain ≥ 8% AND (gain − flooredGain) ≥ 6pts, a
- *                         missing floor counting as −infinity. The IONS
- *                         detector (Game Plan PR-B): a +17% position with a
- *                         day-one floor at −12% is flagged every single
- *                         morning until the floor is raised. See
- *                         docs/plans/THESIS_GAME_PLAN.md + ladder-health.ts.
- *   (RUNNING_WINNER was removed 2026-08-25 — the account trigger fires first.
- *                         entry (avgCost) to its target (or blown past it),
- *                         up ≥8%, with no fired/matching trigger already
- *                         catching it. The backstop for the "agent ignores
- *                         winners" gap: an un-laddered winner near its target
- *                         would otherwise resolve to needsAction=null and be
- *                         skipped. Surfaces it as a press/hold/take decision.
- *                         See docs/plans/SCALE_INTO_WINNERS.md + winner-signal.ts.
- *   REVIEW_DUE          — the review cadence (counted from lastReviewedAt)
- *                         elapses within the next 24h (i.e. due today or
- *                         already overdue). Look-ahead window covers
- *                         reviews scheduled for later in the same trading
- *                         day — without it, a thesis coming due at
- *                         today 09:30 ET would be
- *                         skipped by the 08:00 ET morning daily-run
- *                         ("not yet due"), then fire the old review-date
- *                         trigger 90 min later, spawning a tactical run
- *                         that did the same work. 24h is wide enough to
- *                         catch same-day reviews regardless of when the
- *                         agent scheduled them; weekend gaps get caught
- *                         as overdue on the following Monday's daily
- *                         run.
+ *                         decisions and the app's bookkeeping do not answer
+ *                         a fire; only a run's own line does. When several
+ *                         fired, the lead is the one that moves money (not a
+ *                         REVIEW) and the rest ride along in `alsoFired`.
+ *   TRIGGER_MATCHING_NOW — `shouldFire` against the fresh quote says one of
+ *                         the thesis's price- or time-side triggers is true
+ *                         now; the first in ladder order.
+ *   FLOOR_TOO_FAR       — a holding whose floor would lose more than 1.5% of
+ *                         the account (DAV-344).
+ *   UNPROTECTED_GAIN    — a holding whose gain is meaningfully above what its
+ *                         tightest protective EXIT locks in: gain ≥ 8% AND
+ *                         (gain − flooredGain) ≥ 6pts, a missing floor
+ *                         counting as −infinity. See ladder-health.ts.
+ *   REVIEW_DUE          — the review clock (counted from lastReviewedAt)
+ *                         comes due within the next 24h.
+ *   RESEARCH_STALE      — the deep research behind a committed view is past
+ *                         its horizon's threshold, or missing.
  *
- * Precedence when multiple match:
- *   PROMOTED_AWAITING_RESOLUTION > TRIGGER_FIRED > TRIGGER_MATCHING_NOW >
- *   UNPROTECTED_GAIN > RUNNING_WINNER > REVIEW_DUE
- * (An explicit fired/matching trigger — a stop, a target-EXIT — outranks both
- * P&L flags: it's more specific, and if the protection itself is firing the
- * fire IS the work item. UNPROTECTED_GAIN outranks RUNNING_WINNER because
- * locking the downside precedes pressing the upside — the two often coincide
- * on the same big winner, and floor-first ordering means the agent fixes the
- * ladder now; once the floor reflects the gain the flag self-clears and the
- * press/hold/take decision surfaces on the next read. Both outrank a routine
- * review because they tell the agent WHY to look.)
+ * The order is not a fixed rank of kinds. A floor too far outranks a fired or
+ * matching REVIEW but not a fire or match that moves money; a fire outranks a
+ * match of any action. So a floor too far beats a fired review, a fired review
+ * beats a sale true now, and a sale true now beats a floor too far.
  *
- * A thesis with no PROMOTED status, no fires, no matches, and a review
- * not yet due returns `null` — yesterday's thesis stands and the agent
- * doesn't need to touch it.
+ * A thesis with no PROMOTED status, no fires, no matches, and a review not yet
+ * due has no flag: yesterday's thesis stands.
  *
- * Pure function. Caller supplies all data; no DB, no clock, no fetches.
+ * Pure. Caller supplies all data; no DB, no clock, no fetches.
  */
 
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
@@ -96,14 +59,14 @@ import type { When } from "@/lib/agent/triggers/condition";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
-export type NeedsActionVerb =
+export type WorkFlagVerb =
   | "ENTER"
   | "EXIT"
   | "REVIEW"
   | "ADD"
   | "TRIM";
 
-export type NeedsAction =
+export type WorkFlag =
   | {
       kind: "PROMOTED_AWAITING_RESOLUTION";
       /**
@@ -142,7 +105,7 @@ export type NeedsAction =
   | {
       kind: "TRIGGER_FIRED";
       triggerId: string;
-      action: NeedsActionVerb;
+      action: WorkFlagVerb;
       summary: string;
       firedAt: string;
       /**
@@ -162,7 +125,7 @@ export type NeedsAction =
        */
       alsoFired?: Array<{
         triggerId: string;
-        action: NeedsActionVerb;
+        action: WorkFlagVerb;
         summary: string;
         count: number;
         lastAt: string;
@@ -171,7 +134,7 @@ export type NeedsAction =
   | {
       kind: "TRIGGER_MATCHING_NOW";
       triggerId: string;
-      action: NeedsActionVerb;
+      action: WorkFlagVerb;
       predicateSummary: string;
       livePrice: number | null;
     }
@@ -258,7 +221,7 @@ function isPriceOrTimePredicate(p: When): boolean {
 
 // ─── Inputs ──────────────────────────────────────────────────────────────────
 
-export interface NeedsActionInput {
+export interface WorkFlagInput {
   thesis: {
     id: string;
     /**
@@ -368,12 +331,10 @@ export interface NeedsActionInput {
 /**
  * The work-list flag: the one lead reason, by precedence. Each kind is
  * computed by its own function below; this function is only the order.
- * lib/agent/situations reads the same functions for every situation a
- * stock is in, and takes its lead from here.
  */
-export function computeNeedsAction(
-  input: NeedsActionInput,
-): NeedsAction | null {
+export function leadFlag(
+  input: WorkFlagInput,
+): WorkFlag | null {
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence.
   const promoted = promotedFlag(input);
   if (promoted) return promoted;
@@ -477,7 +438,7 @@ export function computeNeedsAction(
  * (where tool gates allow). Surfaces conviction context for the agent to
  * weigh in the decision.
  */
-export function promotedFlag(input: NeedsActionInput): NeedsAction | null {
+export function promotedFlag(input: WorkFlagInput): WorkFlag | null {
   const { thesis } = input;
   if (thesis.status !== "PROMOTED") return null;
   return {
@@ -498,7 +459,7 @@ export function promotedFlag(input: NeedsActionInput): NeedsAction | null {
  * breached" and never "and you already told me not to sell there." The
  * second sentence is the one that needs answering.
  */
-export function saleDeclinedFlag(input: NeedsActionInput): NeedsAction | null {
+export function saleDeclinedFlag(input: WorkFlagInput): WorkFlag | null {
   if (!input.declinedSale) return null;
   const d = input.declinedSale;
   return {
@@ -512,7 +473,7 @@ export function saleDeclinedFlag(input: NeedsActionInput): NeedsAction | null {
 }
 
 /** The held row's ladder: the floor both held-row flags use. Null when not held. */
-export function heldLadder(input: NeedsActionInput): LadderHealth | null {
+export function heldLadder(input: WorkFlagInput): LadderHealth | null {
   const { thesis, latestQuote, now } = input;
   return thesis.status === "HOLDING"
     ? computeLadderHealth({
@@ -530,9 +491,9 @@ export function heldLadder(input: NeedsActionInput): LadderHealth | null {
 
 /** FLOOR_TOO_FAR (DAV-344) — a holding whose floor would lose more than 1.5% of the account. */
 export function floorTooFarFlag(
-  input: NeedsActionInput,
+  input: WorkFlagInput,
   ladder: LadderHealth | null,
-): NeedsAction | null {
+): WorkFlag | null {
   const { thesis, latestQuote } = input;
   const floorRisk = ladder
     ? floorTooFar({
@@ -562,7 +523,7 @@ export function floorTooFarFlag(
 /** An open fire with its trigger's action and sentence. */
 export interface FireWork {
   f: OpenFire;
-  action: NeedsActionVerb;
+  action: WorkFlagVerb;
   summary: string;
 }
 
@@ -571,14 +532,14 @@ export interface FireWork {
  * first, each with its trigger's action and sentence. A trigger removed since
  * reads as a REVIEW.
  */
-export function openFireWork(input: NeedsActionInput): FireWork[] {
+export function openFireWork(input: WorkFlagInput): FireWork[] {
   const { thesis, hasPendingEntryProposal } = input;
   return openFires(input.activity ?? [])
     .map((f) => {
       const t = thesis.triggers.find((x) => x.id === f.triggerId);
       return {
         f,
-        action: (t?.action as NeedsActionVerb) ?? "REVIEW",
+        action: (t?.action as WorkFlagVerb) ?? "REVIEW",
         summary: t ? sentenceOf(t, thesis.status == null || thesis.status === "HOLDING") : "(predicate removed)",
       };
     })
@@ -590,10 +551,10 @@ export function openFireWork(input: NeedsActionInput): FireWork[] {
 
 /** One open fire as the TRIGGER_FIRED flag, every other open fire riding along. */
 export function firedFlag(
-  input: NeedsActionInput,
+  input: WorkFlagInput,
   lead: FireWork,
   fired: FireWork[],
-): NeedsAction {
+): WorkFlag {
   // DAV-323: how long this same rung has been asking. Absent when the
   // caller passed no history, or on a first ask.
   const streak = input.recentUpdates
@@ -632,7 +593,7 @@ export function firedFlag(
 /** A trigger true on the live price right now. */
 export interface MatchWork {
   trigger: Trigger;
-  action: NeedsActionVerb;
+  action: WorkFlagVerb;
 }
 
 /**
@@ -640,7 +601,7 @@ export interface MatchWork {
  * same `shouldFire` the evaluator runs. A buy with a proposal pending is left
  * out (P1-25 Change 4).
  */
-export function matchingWork(input: NeedsActionInput): MatchWork[] {
+export function matchingWork(input: WorkFlagInput): MatchWork[] {
   const { thesis, latestQuote, now, hasPendingEntryProposal } = input;
   const out: MatchWork[] = [];
   for (const trigger of thesis.triggers) {
@@ -657,7 +618,7 @@ export function matchingWork(input: NeedsActionInput): MatchWork[] {
       now,
     });
     if (result.fires) {
-      const action = (trigger.action as NeedsActionVerb) ?? "REVIEW";
+      const action = (trigger.action as WorkFlagVerb) ?? "REVIEW";
       // P1-25 Change 4: suppress ENTER while a buy proposal is pending.
       if (hasPendingEntryProposal && action === "ENTER") continue;
       out.push({ trigger, action });
@@ -667,7 +628,7 @@ export function matchingWork(input: NeedsActionInput): MatchWork[] {
 }
 
 /** One match as the TRIGGER_MATCHING_NOW flag. */
-export function matchingFlag(input: NeedsActionInput, m: MatchWork): NeedsAction {
+export function matchingFlag(input: WorkFlagInput, m: MatchWork): WorkFlag {
   const { thesis, latestQuote } = input;
   return {
     kind: "TRIGGER_MATCHING_NOW",
@@ -680,9 +641,9 @@ export function matchingFlag(input: NeedsActionInput, m: MatchWork): NeedsAction
 
 /** UNPROTECTED_GAIN — a held winner whose floor doesn't reflect its gain. */
 export function unprotectedGainFlag(
-  input: NeedsActionInput,
+  input: WorkFlagInput,
   ladder: LadderHealth | null,
-): NeedsAction | null {
+): WorkFlag | null {
   if (input.thesis.status !== "HOLDING") return null;
   if (!ladder?.isUnprotectedGain) return null;
   return {
@@ -721,7 +682,7 @@ export function unprotectedGainFlag(
  * so a review coming due later today has to be caught now or it waits a
  * whole day.
  */
-export function reviewDueFlag(input: NeedsActionInput): NeedsAction | null {
+export function reviewDueFlag(input: WorkFlagInput): WorkFlag | null {
   const { thesis, now } = input;
   const REVIEW_DUE_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
   // Only the review clock decides REVIEW_DUE. A day count from the buy or
@@ -741,7 +702,7 @@ export function reviewDueFlag(input: NeedsActionInput): NeedsAction | null {
         0,
         Math.floor((now.getTime() - dueAt) / 86_400_000),
       );
-      const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
+      const result: WorkFlag = { kind: "REVIEW_DUE", daysOverdue };
       // A seed has no committed view yet — route it to "commit a direction".
       if (isUnresearchedSeed(thesis.direction)) result.pendingFirstReview = true;
       return result;
@@ -769,7 +730,7 @@ export function reviewDueFlag(input: NeedsActionInput): NeedsAction | null {
  *   • `researchUpdatedAt === undefined` — the caller didn't select the
  *     column; absent data is not evidence of staleness.
  */
-export function researchStaleFlag(input: NeedsActionInput): NeedsAction | null {
+export function researchStaleFlag(input: WorkFlagInput): WorkFlag | null {
   const { thesis } = input;
   if (
     thesis.researchUpdatedAt !== undefined &&

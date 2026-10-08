@@ -11,7 +11,7 @@
  * sheet/rows/hooks consume it. Component files re-export for import paths.
  */
 
-import type { NeedsAction } from "@/lib/agent/needs-action";
+import type { Situation } from "@/lib/agent/situations/types";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export interface Trigger {
@@ -264,13 +264,6 @@ export interface ResolvedEnvelope {
     | "DEAD";
   supersededBy: string | null;
   staleness: "FRESH" | "STALE";
-  /**
-   * The plan-sanity flags (DAV-188) — the arithmetic saying this plan
-   * contradicts the live tape. The server has always sent these; this type
-   * dropped them on the floor, which is why no screen has ever shown one
-   * (DAV-304).
-   */
-  planSanity?: { kind: string; text: string }[] | null;
   resolvedAt: string;
   quoteAgeMs: number | null;
 }
@@ -298,11 +291,11 @@ export interface QuoteResponse {
   // the resolver couldn't run.
   resolved?: ResolvedEnvelope | null;
   /**
-   * The work-list flag the daily run reads — why this stock is due attention
-   * today, or null when nothing is. Same pure function get_theses calls; the
-   * sheet words it with `needsActionLine` (DAV-304).
+   * Every situation the stock is in, the lead first: the same list get_theses
+   * reads (lib/agent/situations). The sheet shows the lead's work flag — why
+   * this stock is due attention today — and the plan checks (DAV-304).
    */
-  needsAction?: NeedsAction | null;
+  situations?: Situation[] | null;
 }
 
 // `sourcesUsed` column is Json — agents write `[{provider, title, url}]`

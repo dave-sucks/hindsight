@@ -36,7 +36,7 @@
  *
  * This module is (3): the same decline, promoted from background colour to a
  * work item. The ratchet exemption is in `triggers/ops.ts`; the field fix is
- * in `needs-action.ts`.
+ * in `situations/work-flag.ts`.
  *
  * ── One source for "a real, protective, recent decline" ──────────────────
  *

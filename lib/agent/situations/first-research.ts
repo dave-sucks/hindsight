@@ -1,5 +1,5 @@
 /**
- * A seed is due its first research. Rule: needs-action.ts `reviewDueFlag`
+ * A seed is due its first research. Rule: work-flag.ts `reviewDueFlag`
  * with pendingFirstReview (the review clock came due on a stock with no
  * direction yet).
  */
@@ -12,6 +12,7 @@ export const firstResearch: SituationDefinition<"FIRST_RESEARCH"> = {
   appliesTo: "watched",
   entry: "line",
   guidance: "",
+  lists: () => true,
   rule: (stock, book, now) => {
     const { clock } = stockFacts(stock, book, now);
     if (clock?.kind !== "REVIEW_DUE" || clock.pendingFirstReview !== true) return { active: false };
