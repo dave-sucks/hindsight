@@ -17,6 +17,7 @@ import { zodSchema } from "ai";
 import type { z } from "zod";
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
 import { REPLAN_FLOOR_MAX_DROP_PCT } from "@/lib/agent/declined-sale";
+import { SITUATIONS } from "@/lib/agent/situations";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
 
 const HELD = "A stock we hold is sold first with close_position, which retires the thesis itself.";
@@ -42,3 +43,11 @@ it("update_thesis names the declined-sale exception, at the save's own number", 
   }
   expect(REPLAN_FLOOR_MAX_DROP_PCT).toBe(15);
 });
+
+it("REVIEW_DUE, which reaches stocks we hold in both runs, retires only a stock we watch", () => {
+  expect(SITUATIONS.REVIEW_DUE.guidance).toContain(
+    "- No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.",
+  );
+  expect(SITUATIONS.REVIEW_DUE.guidance.length).toBeLessThanOrEqual(2_200);
+});
+
