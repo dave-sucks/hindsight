@@ -205,7 +205,7 @@ function fmtValue(field: "level" | "pct" | "days", v: number): string {
 // sentence the same way an edit op does.
 
 /** The trigger an add would collide with: same plan slot, else same bucket. */
-function collision(
+export function collision(
   stored: Trigger[],
   t: Trigger,
   direction: string | null,

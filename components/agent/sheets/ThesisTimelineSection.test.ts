@@ -27,6 +27,7 @@ import {
   dropRepeatedProse,
   episodeMembers,
   relativeTimestamp,
+  notAppliedLines,
   type TimelineItem,
 } from "./thesis-timeline-utils";
 
@@ -992,5 +993,27 @@ describe("a row that changed nothing stays collapsed", () => {
     expect(toRow(episode).title.outcome).toBe("— proposed buy");
     expect(toRow(episode).showDescription).toBe(false);
     expect(show(row({ type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("OPEN", 16), rationale: "I am buying here because…" }))).toBe(true);
+  });
+});
+
+describe("what a call asked for and did not get", () => {
+  // The ASML close-out: the note landed, "back to watching" did not (update_thesis's notApplied).
+  const notApplied = {
+    notApplied: { from: null, to: [{ field: "change_status", to: "WATCHING", why: "the position is still open", reason: "change_status: WATCHING puts back…" }] },
+  };
+
+  it("reads as one muted chip in plain words", () => {
+    expect(notAppliedLines(row({ type: "REVIEWED", fieldChanges: notApplied }))).toEqual([
+      { kind: "not-applied", text: "Not applied: back to watching — the position is still open" },
+    ]);
+    expect(notAppliedLines(row({ fieldChanges: { notApplied: { from: null, to: [{ field: "target_price", to: 2400, why: "you set it by hand at 8:05 AM" }] } } }))).toEqual([
+      { kind: "not-applied", text: "Not applied: target $2400 — you set it by hand at 8:05 AM" },
+    ]);
+  });
+
+  it("sits under the row, and a review that changed nothing still reads no change", () => {
+    const reviewed = row({ type: "REVIEWED", fieldChanges: notApplied });
+    expect(toRow({ kind: "event", row: reviewed }).chips).toEqual([{ kind: "not-applied", text: "Not applied: back to watching — the position is still open" }]);
+    expect(outcomePhrase(reviewed)).toBe("no change");
   });
 });

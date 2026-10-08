@@ -333,7 +333,9 @@ describe("a check writes nothing anyone reads later", () => {
     const res = (await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] })) as { data: { refused_fields?: Array<{ field: string }> } };
     expect(res.data.refused_fields?.map((f) => f.field)).toEqual(["triggers"]);
     expect(mockRecordGateRejection).not.toHaveBeenCalled();
-    expect(mockThesisUpdate.mock.calls.every(([a]: [{ data: Record<string, unknown> }]) => !("triggers" in a.data))).toBe(true);
+    // The largest set of trigger changes that leaves a valid plan lands: the buy stays.
+    const saved = mockThesisUpdate.mock.calls.at(-1)?.[0].data.triggers as Array<{ action: string }> | undefined;
+    expect(saved?.some((t) => t.action === "ENTER")).toBe(true);
   });
 });
 

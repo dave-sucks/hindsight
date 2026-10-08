@@ -1,6 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
+import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -380,7 +381,9 @@ export const morningResearch = inngest.createFunction(
                 promptCacheKey: run.id,
               },
             },
-            stopWhen: stepCountIs(30),
+            // The same refused call three times ends the loop (repeat-refusal.ts).
+            stopWhen: [stepCountIs(30), repeatRefusalGuard.stopWhen],
+            prepareStep: repeatRefusalGuard.prepareStep,
             // (maxDuration - 30) * 1000 leaves 30s of headroom before Vercel's
             // hard kill so the catch block can persist messages + mark the run
             // COMPLETE/FAILED cleanly. With maxDuration=800 under Pro, this is
@@ -448,6 +451,9 @@ export const morningResearch = inngest.createFunction(
           let toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
           let elapsed = Date.now() - t0;
           console.log(`[morning-research] Agent completed for ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`);
+          // Stopped for sending a refused call a third time: the run closes
+          // with what it has, FAILED with that reason, and no retry asks again.
+          const stopped = repeatRefusalStop(steps);
 
           // ── Process-violation retry ────────────────────────────────────────
           // Decision-framework v1 (2026-04-25): a HOLD run with no theses and
@@ -643,6 +649,7 @@ export const morningResearch = inngest.createFunction(
           const refusalViolation = openRefusalsBefore.length > 0;
 
           const shouldRetry =
+            !stopped &&
             (processViolation ||
               coverageViolation ||
               prematureExitViolation ||
@@ -875,7 +882,7 @@ export const morningResearch = inngest.createFunction(
           }
 
           const finalStatus =
-            tradeExecutionGap !== null
+            stopped || tradeExecutionGap !== null
               ? "FAILED"
               : hasWork
                 ? "COMPLETE"
@@ -891,7 +898,9 @@ export const morningResearch = inngest.createFunction(
             data: { status: finalStatus, completedAt: new Date() },
           });
           if (beltResult.count > 0 && finalStatus === "FAILED") {
-            const reason = tradeExecutionGap
+            const reason = stopped
+              ? stopped
+              : tradeExecutionGap
               ? `trade execution gap: ${tradeExecutionGap}`
               : processViolationFinal
                 ? `process violation: researched ${researchedCount} tickers but only recorded ${thesisCount} theses`

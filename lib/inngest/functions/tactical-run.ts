@@ -22,6 +22,7 @@ import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for"
 import { loadStockFacts, type HeldThroughFloor } from "@/lib/agent/stock-facts";
 import { guidanceCodes, guidanceFor, situationsFor, type SituationCode } from "@/lib/agent/situations";
 import { generateText, stepCountIs } from "ai";
+import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -821,7 +822,9 @@ export const tacticalRun = inngest.createFunction(
           prompt: userPrompt,
           tools,
           providerOptions: { openai: openaiOptions },
-          stopWhen: stepCountIs(MODES["tactical"].maxSteps),
+          // The same refused call three times ends the loop (repeat-refusal.ts).
+          stopWhen: [stepCountIs(MODES["tactical"].maxSteps), repeatRefusalGuard.stopWhen],
+          prepareStep: repeatRefusalGuard.prepareStep,
           abortSignal: AbortSignal.timeout(
             (MODES["tactical"].maxDuration - 30) * 1000,
           ),
@@ -841,6 +844,9 @@ export const tacticalRun = inngest.createFunction(
 
         // Every step whose messages are saved, for the thread's tool results.
         const threadSteps: RunStep[] = [...steps];
+        // Stopped for sending a refused call a third time: the run closes
+        // with what it has, FAILED with that reason, and no retry asks again.
+        const stopped = repeatRefusalStop(steps);
 
         // ── Compute responseMessages with step-flatten fallback ────────────
         // AI SDK v6 sometimes returns response.messages empty on a text-only
@@ -880,6 +886,7 @@ export const tacticalRun = inngest.createFunction(
         let closedOut = initialUpdate !== null;
         if (
           !closedOut &&
+          !stopped &&
           responseMessages &&
           responseMessages.length > 0
         ) {
@@ -977,7 +984,7 @@ export const tacticalRun = inngest.createFunction(
         // What is still open afterwards is written on the run and carried
         // to the next run on this stock.
         const openRefusals = await listOpenRefusalsForRun(run.id);
-        if (openRefusals.length > 0 && responseMessages && responseMessages.length > 0) {
+        if (!stopped && openRefusals.length > 0 && responseMessages && responseMessages.length > 0) {
           console.warn(
             `[tactical-run] thesis=${thesis.id} ${openRefusals.length} refused call(s) never redone — attempting refusal retry`,
           );
@@ -1041,18 +1048,19 @@ export const tacticalRun = inngest.createFunction(
         await prisma.researchRun.update({
           where: { id: run.id },
           data: {
-            status: closedOut ? "COMPLETE" : "FAILED",
+            status: closedOut && !stopped ? "COMPLETE" : "FAILED",
             completedAt: new Date(),
           },
         });
 
-        if (!closedOut) {
+        if (!closedOut || stopped) {
           await prisma.runEvent.create({
             data: {
               runId: run.id,
               type: "run_failed",
-              title: "Tactical run did not close out",
+              title: stopped ? "Tactical run stopped: the same refused call three times" : "Tactical run did not close out",
               message:
+                stopped ??
                 "Tactical contract: update_thesis MUST be called once. Agent finished without writing a ThesisUpdate row for this thesis.",
               payload: {
                 thesisId: thesis.id,

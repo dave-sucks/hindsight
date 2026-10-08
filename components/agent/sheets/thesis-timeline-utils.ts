@@ -732,7 +732,7 @@ function fmtPlain(v: unknown): string {
  * still says what happened.
  */
 export type LadderChange = {
-  kind: "add" | "remove" | "edit";
+  kind: "add" | "remove" | "edit" | "not-applied";
   text: string;
 };
 
@@ -748,6 +748,36 @@ export function ladderChangeLines(u: TimelineUpdate): LadderChange[] {
   });
 }
 
+
+/**
+ * What a call asked for and did not get, one chip each, from the row's
+ * `fieldChanges.notApplied` (update_thesis): "Not applied: back to
+ * watching — the position is still open". Kept apart from the trigger ops,
+ * so a row that changed nothing still reads "no change".
+ */
+export function notAppliedLines(u: TimelineUpdate): LadderChange[] {
+  const list = (u.fieldChanges as { notApplied?: { to?: unknown } } | null)?.notApplied?.to;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((e) => {
+    const { field, to, why } = (e ?? {}) as { field?: unknown; to?: unknown; why?: unknown };
+    if (typeof field !== "string") return [];
+    const reason = typeof why === "string" && why ? ` — ${why}` : "";
+    return [{ kind: "not-applied" as const, text: `Not applied: ${askedFor(field, to)}${reason}` }];
+  });
+}
+
+function askedFor(field: string, to: unknown): string {
+  const price = typeof to === "number" ? ` $${to}` : "";
+  const word = typeof to === "string" ? to.toLowerCase() : null;
+  if (field === "change_status") return to === "WATCHING" ? "back to watching" : to === "INVALIDATED" ? "invalidate" : to === "ARCHIVED" ? "drop the stock" : "status change";
+  if (field === "direction") return to === "PASS" ? "pass" : word ? `flip to ${word}` : "direction change";
+  if (field === "conviction") return word ? `conviction ${word}` : "conviction";
+  if (field === "entry_price") return `buy at${price}`;
+  if (field === "target_price") return `target${price}`;
+  if (field === "stop_loss") return `stop${price}`;
+  if (field === "triggers") return "trigger changes";
+  return field.replace(/_/g, " ");
+}
 
 /** The principal's written note on a declined proposal, when present. */
 export function proposalUserMessage(u: TimelineUpdate): string | null {
@@ -872,7 +902,7 @@ export function toRow(item: TimelineItem): TimelineRow {
       type: u.type,
       dot: dotFor(u),
       title: titleSegments(u),
-      chips: ladderChangeLines(u),
+      chips: [...ladderChangeLines(u), ...notAppliedLines(u)],
       // A Bought/Sold title already reads "… at $832.84" — don't repeat it.
       price: u.type === "PROPOSAL_APPROVED" ? null : u.priceAtTime,
       description: text,
@@ -904,7 +934,7 @@ export function toRow(item: TimelineItem): TimelineRow {
         secondary: conditionList(item.fires),
         outcome: `— ${outcome}`,
       },
-      chips: ladderChangeLines(item.response),
+      chips: [...ladderChangeLines(item.response), ...notAppliedLines(item.response)],
       price: lead.priceAtTime ?? item.response.priceAtTime,
       description: text,
       quoted,
