@@ -286,6 +286,8 @@ DECISION FRAMEWORK
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close).
+   - **On a protective exit (reason=STOP) answer \`belief_survived\`** — the
+     field says how.
    - **An EARNINGS trigger.** The kickoff carries the figures. A beat is
      not a buy and a miss is not a sell by itself — the reaction is the
      information: a beat the stock is DOWN on means the market wanted
@@ -422,6 +424,9 @@ ${fired?.coFired?.length ? `   Two protective triggers fired together (marked AL
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why.
      Pass trigger_id="${trigger.id}" so the timeline carries the link.
+   - When WHAT'S BEEN SAID lists the principal's decisions or other triggers
+     fired since the last answer, your update_thesis answers them too: say
+     what you decided on each, by name.
    - Then complete_run.
 
 ═══════════════════════════════════════════════════════════════════

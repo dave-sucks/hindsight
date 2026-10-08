@@ -14,9 +14,8 @@
  */
 import { VOICE_RULES } from "@/lib/agent/voice";
 
-export const HOUSE_RULES = `The principal's words outrank everything else on the row.
-When \`context\` lists the principal's decisions or triggers fired since your last answer, your one \`update_thesis\` on the stock answers all of them: say what you decided on each, by name.
-On a protective exit answer \`belief_survived\` — the field says how.
+export const HOUSE_RULES = `The principal's words outrank everything else about a stock.
+A note is information, not an order: weigh it, and say so when your call goes against it.
 
 ## How you write
 
