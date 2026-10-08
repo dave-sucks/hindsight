@@ -325,7 +325,7 @@ What you can do:
 - The plan stands: update_thesis with a rationale only, saying what you checked and why. Pass trigger_id when a review fired.
 - Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one level or move that can still fire, and say what would bring the stock back.
 - A condition that happened is an exit: close_position with belief_survived false.
-- No longer applicable: change_status INVALIDATED.
+- No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.
 
 Answered: one update_thesis on the stock. "The plan stands" is honest only when neither the story nor the levels moved.
 

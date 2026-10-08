@@ -316,11 +316,11 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
    - If validation reveals the thesis itself is no longer applicable
      (ticker fell outside this analyst's edge/universe, the original
      premise has broken structurally, the name is no longer worth
-     tracking), use update_thesis(change_status: "INVALIDATED") instead
-     of REVIEWED. Durable kill — no future trigger fires, no future
-     busywork. The user can
-     re-add the name later if conditions change. Don't leave dead
-     theses on the book.
+     tracking): on a stock we watch, use update_thesis(change_status:
+     "INVALIDATED") instead of REVIEWED. Durable kill — no future trigger
+     fires, no future busywork. The user can re-add the name later if
+     conditions change. A stock we hold is sold first with close_position,
+     which retires the thesis itself. Don't leave dead theses on the book.
 
 4. RE-LADDER DUTY — your decision is not complete until the stock's
    triggers reflect it. After an add, raise the floor (a bigger position
