@@ -1,6 +1,6 @@
 /**
  * update-thesis-guards.replay.test.ts — the record tells the truth, the
- * principal's hand edit wins, and the plan check refuses per detail.
+ * principal's hand edit wins, and the plan check refuses linked changes together.
  *
  * Follows "a save is a patch" (update-thesis-patch.replay.test.ts): a field
  * the save could not apply is refused by name and the rest lands. Here:
@@ -8,8 +8,9 @@
  *     Activity feed shows it beside the note that landed;
  *   - a field or trigger the principal set by hand after the run began is
  *     not changed by the run, which read the stock before the edit;
- *   - when the trigger changes leave an invalid plan, the largest set of
- *     them that leaves a valid one lands.
+ *   - when the trigger changes in a call leave an invalid plan, they are
+ *     refused together: changes sent together carry one intent, and part of
+ *     them is a plan nobody chose. The note lands.
  */
 import fixture from "@/lib/agent/__fixtures__/close-out-restated-2026-10-08.json";
 import { replayTool, thesisRow, positionRow, thesisUpdateRow, REPLAY_RUN_ID, type Row } from "@/lib/replay";
@@ -107,7 +108,7 @@ describe("the principal's hand edit wins", () => {
   });
 });
 
-describe("the plan check, per detail", () => {
+describe("the plan check refuses a call's trigger changes together", () => {
   const watch = () =>
     thesisRow({
       id: "t_w", ticker: "AAA", status: "WATCHING", direction: "LONG", entryPrice: 100, targetPrice: 130, stopLoss: 90,
@@ -126,16 +127,12 @@ describe("the plan check, per detail", () => {
     });
   const review = { predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Look at this every 14 days." };
 
-  it("a stop above the buy is refused by itself; the review added in the same call lands", async () => {
+  it("a stop above the buy and a review added with it: both refused, the plan unchanged, the note lands", async () => {
     const r = await replay({ stop_loss: 105, stop_basis: "Under the new shelf at $105.", add_triggers: [review] });
-    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "stop_loss" })]);
+    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To set the plan down") })]);
+    expect(opsOf(r).every((o) => !o.ok)).toBe(true);
     expect(r.db.store.thesis[0].stopLoss).toBe(90);
-    expect((r.db.store.thesis[0].triggers as Array<{ predicate: { watch: string } }>).some((t) => t.predicate.watch === "repeat")).toBe(true);
-  });
-
-  it("more than five changes are refused together", async () => {
-    const r = await replay({ stop_loss: 105, remove_trigger_ids: ["x1", "x2", "x3", "x4", "x5"] });
-    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "triggers" })]);
-    expect(r.db.store.thesis[0].stopLoss).toBe(90);
+    expect((r.db.store.thesis[0].triggers as Array<{ predicate: { watch: string } }>).some((t) => t.predicate.watch === "repeat")).toBe(false);
+    expect(written(r.db)).toEqual([expect.objectContaining({ type: "REVIEWED", rationale: "Tightening the plan after the base formed." })]);
   });
 });

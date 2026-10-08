@@ -1260,38 +1260,6 @@ export const updateThesis = defineTool({
         let applied = apply(liveOps);
         let check = applied.results.some((r) => r.ok) ? await checkOf(applied.triggers) : null;
 
-        // ── The plan check, per detail ───────────────────────────────────
-        // When the plan these trigger changes leave is invalid, the largest
-        // set of them that leaves a valid one lands and the rest are refused
-        // by name. Bounded: two to five changes, every subset tried, largest
-        // first and earliest-sent first. More than five are refused together.
-        if (check && !check.ok && !isUnresearchedSeed(existing.direction) && liveOps.length > 1 && liveOps.length <= 5) {
-          const failed = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
-          const size = (m: number) => liveOps.filter((_, i) => m & (1 << i)).length;
-          const masks = Array.from({ length: (1 << liveOps.length) - 2 }, (_, i) => i + 1).sort((a, b) => size(b) - size(a) || a - b);
-          for (const m of masks) {
-            const a = apply(liveOps.filter((_, i) => m & (1 << i)));
-            const c = a.results.some((r) => r.ok) ? await checkOf(a.triggers) : null;
-            if (!c?.ok) continue;
-            const dropped = liveOps.filter((_, i) => !(m & (1 << i)));
-            for (const o of dropped) {
-              if (o.op === "level") {
-                const field = { ENTRY: "entry_price", TARGET: "target_price", FLOOR: "stop_loss" }[o.slot];
-                refusedFields.push({ field, reason: failed, why: "the plan it leaves is invalid", ...(o.price != null ? { to: o.price } : {}) });
-              } else {
-                const id = o.op === "add" ? (o.trigger.id ?? "") : o.id;
-                const text = o.op === "add" ? `Add: ${describeTrigger(o.trigger, held)}` : `${o.op === "remove" ? "Remove" : "Edit"} trigger ${id}`;
-                opResults.push({ op: o.op === "replace" ? "edit" : o.op, id, ok: false, text, reason: failed });
-              }
-            }
-            if (dropped.some((o) => o.op !== "level")) refusedFields.push({ field: "triggers", reason: failed, why: "the plan they leave is invalid" });
-            liveOps = liveOps.filter((_, i) => m & (1 << i));
-            applied = a;
-            check = c;
-            break;
-          }
-        }
-
         // ── Goalpost-moving guard (audit Root Cause #3) ──────────────────
         // Raising the target on a WATCHING thesis whose price has already
         // crossed the OLD target is moving the bar instead of acting (the
