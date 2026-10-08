@@ -108,19 +108,23 @@ beforeEach(() => {
 });
 
 describe("update_thesis — a refused call claims no change (DAV-258)", () => {
-  it("VST 09-11: removing only the buy is refused, and every op says it did not land", async () => {
+  it("VST 09-11: removing the buy is refused by id; the cadence removal, valid alone, lands — no op claims a change it didn't make", async () => {
     const result = await run({ remove_trigger_ids: [BUY, CADENCE] });
-    // The trigger changes are refused together; the note lands as a review.
+    // The plan check runs per detail: the largest set of changes that leaves
+    // a valid plan lands, the rest are refused by id.
     expect(result.data?.ok).toBe(true);
     expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To set the plan down") })]);
-    expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
-
     const ops = result.data?.trigger_ops as TriggerOpResult[];
-    expect(ops.map((o) => o.id).sort()).toEqual([BUY, CADENCE].sort());
-    for (const op of ops) {
-      expect(op.ok).toBe(false);
-      expect(op.reason).toContain("Not applied");
-    }
+    expect(ops).toHaveLength(2);
+    expect(ops).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ op: "remove", id: CADENCE, ok: true }),
+        expect.objectContaining({ op: "remove", id: BUY, ok: false, reason: expect.stringContaining("To set the plan down") }),
+      ]),
+    );
+    const saved = mockThesisUpdate.mock.calls.at(-1)?.[0].data.triggers as Array<{ id: string }>;
+    expect(saved.map((t) => t.id)).toContain(BUY);
+    expect(saved.map((t) => t.id)).not.toContain(CADENCE);
   });
 
   it("the refusal names the exact set-down call, and following it lands", async () => {

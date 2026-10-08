@@ -49,6 +49,7 @@ import {
   acceptedOps,
   applyTriggerOps,
   checkLadder,
+  collision,
   describeTrigger,
   type TriggerOp,
   type TriggerOpResult,
@@ -65,6 +66,7 @@ import {
   writeThesisUpdate,
   diffThesisFields,
   compactFieldChanges,
+  type ThesisFieldChanges,
   type ThesisUpdateType,
 } from "@/lib/agent/thesis-updates";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
@@ -78,6 +80,7 @@ import {
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { computePlanSanity } from "@/lib/agent/plan-sanity";
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
+import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 
 // The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
 const F = thesisFields();
@@ -234,7 +237,7 @@ export function setDownInstruction(stored: Trigger[], direction: string | null):
 function dryRunPassed(ticker: string, triggerOps: TriggerOpResult[], refusedFields: RefusedField[]) {
   return {
     summary: `Check only: the update on $${ticker} would save.`,
-    data: { ok: true, dry_run: true, trigger_ops: triggerOps, ...(refusedFields.length ? { refused_fields: refusedFields } : {}) },
+    data: { ok: true, dry_run: true, trigger_ops: triggerOps, ...(refusedFields.length ? { refused_fields: forAgent(refusedFields) } : {}) },
     sources: [],
   };
 }
@@ -276,8 +279,66 @@ const NOT_THE_CHATS = { trigger_id: true } as const;
 export const DOORS_WITH_RECORD_THESIS: ReadonlySet<string> = new Set(["PRINCIPAL_CHAT"]);
 
 type UpdateArgs = z.infer<typeof updateSchema>;
-/** A field the save could not apply: named, with the one thing to change. The rest of the call lands. */
-export type RefusedField = { field: string; reason: string };
+/**
+ * A field the save could not apply: named, with the one thing to change. The
+ * rest of the call lands. `why` is the short form the Activity chip shows and
+ * `to` the value asked for; both stay on the audit row, not in the reply.
+ */
+export type RefusedField = { field: string; reason: string; why: string; to?: string | number };
+const forAgent = (r: RefusedField[]) => r.map(({ field, reason }) => ({ field, reason }));
+
+/** Each field update_thesis compares with the stored row, and the column that stores it. */
+const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
+  ["direction", "direction"], ["core_belief", "coreBelief"], ["key_assumptions", "keyAssumptions"],
+  ["invalidation_conditions", "invalidationConds"], ["conviction", "conviction"],
+  ["conviction_rationale", "convictionRationale"], ["horizon", "horizon"], ["setup_id", "setupId"],
+  ["snapshot", "snapshot"], ["bull_case", "bullCase"], ["bear_case", "bearCase"],
+  ["recent_catalysts", "recentCatalysts"], ["fundamentals", "fundamentals"], ["latest_earnings", "latestEarnings"],
+  ["catalysts_and_events", "catalystsAndEvents"], ["analyst_consensus", "analystConsensus"],
+  ["insider_technical", "insiderTechnical"], ["research_data", "researchData"],
+];
+const LEVEL_SLOT: Record<string, LevelSlot> = { entry_price: "ENTRY", target_price: "TARGET", stop_loss: "FLOOR" };
+/** Every field a hand edit can have set, with its column (the levels and the fields compared above). */
+const HAND_FIELDS: Array<[keyof UpdateArgs, string]> = [
+  ...FIELD_COLUMNS, ["variant_view", "variantView"], ["catalyst_date", "catalystDate"], ["scoring", "scoring"],
+  ["entry_price", "entryPrice"], ["target_price", "targetPrice"], ["stop_loss", "stopLoss"],
+];
+
+/**
+ * The principal's edit wins. A field or trigger the principal set by hand
+ * after this run began (the trigger popover marks its audit row) is not
+ * changed by the run: the run read the stock before the edit, so what it
+ * sends is older than what is there. Read from the audit table, so the agent
+ * carries nothing. The chat is the principal's own door and is not checked.
+ * A lookup that fails checks nothing, as before.
+ */
+async function handEditsSince(thesisId: string, ctx: { runId?: string | null; runMode?: string }) {
+  if (!ctx.runId || ctx.runMode === "PRINCIPAL_CHAT") return null;
+  try {
+    const run = await prisma.researchRun.findUnique({ where: { id: ctx.runId }, select: { startedAt: true } });
+    if (!run) return null;
+    const rows = (
+      await prisma.thesisUpdate.findMany({
+        where: { thesisId, timestamp: { gte: run.startedAt } },
+        select: { timestamp: true, fieldChanges: true, rationale: true },
+        orderBy: { timestamp: "desc" },
+      })
+    ).filter(isYourEdit);
+    if (rows.length === 0) return null;
+    const keys = new Set<string>();
+    const triggerIds = new Set<string>();
+    for (const r of rows) {
+      const fc = (r.fieldChanges ?? {}) as Record<string, { to?: unknown }>;
+      for (const k of Object.keys(fc)) keys.add(k);
+      for (const o of Array.isArray(fc.triggerOps?.to) ? (fc.triggerOps.to as Array<{ id?: unknown }>) : []) {
+        if (typeof o?.id === "string") triggerIds.add(o.id);
+      }
+    }
+    return { at: rows[0].timestamp, keys, triggerIds };
+  } catch {
+    return null;
+  }
+}
 
 /** Two values compared the way an echo comes back: text trimmed, lists item by item, objects key by key. */
 function sameValue(a: unknown, b: unknown): boolean {
@@ -315,16 +376,7 @@ export function dropUnchanged(
 ): UpdateArgs {
   if (isUnresearchedSeed(row.direction) && args.direction) return args;
   const out: Record<string, unknown> = { ...args };
-  const stored: Array<[keyof UpdateArgs, unknown]> = [
-    ["direction", row.direction], ["core_belief", row.coreBelief], ["key_assumptions", row.keyAssumptions],
-    ["invalidation_conditions", row.invalidationConds], ["conviction", row.conviction],
-    ["conviction_rationale", row.convictionRationale], ["horizon", row.horizon], ["setup_id", row.setupId],
-    ["snapshot", row.snapshot], ["bull_case", row.bullCase], ["bear_case", row.bearCase],
-    ["recent_catalysts", row.recentCatalysts], ["fundamentals", row.fundamentals], ["latest_earnings", row.latestEarnings],
-    ["catalysts_and_events", row.catalystsAndEvents], ["analyst_consensus", row.analystConsensus],
-    ["insider_technical", row.insiderTechnical], ["research_data", row.researchData],
-  ];
-  for (const [k, v] of stored) if (out[k] !== undefined && sameValue(out[k], v)) out[k] = undefined;
+  for (const [k, col] of FIELD_COLUMNS) if (out[k] !== undefined && sameValue(out[k], row[col])) out[k] = undefined;
   if (out.variant_view !== undefined && sameValue(String(out.variant_view).trim() || null, row.variantView || null)) out.variant_view = undefined;
   if (out.catalyst_date !== undefined && sameValue(out.catalyst_date ? new Date(String(out.catalyst_date)) : null, row.catalystDate ?? null)) {
     out.catalyst_date = undefined;
@@ -462,12 +514,47 @@ export const updateThesis = defineTool({
     const sent = args;
     args = dropUnchanged(args, existing);
     const refusedFields: RefusedField[] = [];
-    const refuseField = (field: keyof UpdateArgs, reason: string) => {
-      refusedFields.push({ field, reason });
+    const refuseField = (field: keyof UpdateArgs, reason: string, why: string) => {
+      const to = args[field];
+      refusedFields.push({ field, reason, why, ...(typeof to === "string" || typeof to === "number" ? { to } : {}) });
       args = { ...args, [field]: undefined };
     };
     const opResults: TriggerOpResult[] = [];
     let stillPromoted = false;
+
+    // The principal's edit wins (handEditsSince). Looked up only when the
+    // call still changes something.
+    const asksAChange =
+      HAND_FIELDS.some(([k]) => args[k] !== undefined) ||
+      !!(args.edit_triggers?.length || args.remove_trigger_ids?.length || args.add_triggers?.length);
+    const hand = asksAChange ? await handEditsSince(existing.id, ctx) : null;
+    if (hand) {
+      const at = hand.at.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
+      const reason = `You set this by hand at ${at} ET; not changed.`;
+      const why = `you set it by hand at ${at}`;
+      const stored = parseTriggersResilient(existing.triggers).triggers as Trigger[];
+      const touched = (id?: string) => !!id && hand.triggerIds.has(id);
+      const slotId = (slot?: LevelSlot) => (slot ? stored.find((t) => levelSlotOf(t, existing.direction) === slot)?.id : undefined);
+      for (const [k, col] of HAND_FIELDS) {
+        if (args[k] !== undefined && (hand.keys.has(col) || touched(slotId(LEVEL_SLOT[k])))) refuseField(k, reason, why);
+      }
+      const hit = (t: unknown) => touched(collision(stored, t as Trigger, existing.direction)?.id);
+      const refusedOps = [
+        ...(args.edit_triggers ?? []).filter((e) => touched(e.id)).map((e) => ({ op: "edit" as const, id: e.id })),
+        ...(args.remove_trigger_ids ?? []).filter(touched).map((id) => ({ op: "remove" as const, id })),
+        ...(args.add_triggers ?? []).filter(hit).map((t) => ({ op: "edit" as const, id: collision(stored, t as Trigger, existing.direction)!.id })),
+      ];
+      if (refusedOps.length > 0) {
+        opResults.push(...refusedOps.map((o) => ({ ...o, ok: false, text: `${o.op === "remove" ? "Remove" : "Edit"} trigger ${o.id}`, reason })));
+        refusedFields.push({ field: "triggers", reason, why });
+        args = {
+          ...args,
+          edit_triggers: args.edit_triggers?.filter((e) => !touched(e.id)),
+          remove_trigger_ids: args.remove_trigger_ids?.filter((id) => !touched(id)),
+          add_triggers: args.add_triggers?.filter((t) => !hit(t)),
+        };
+      }
+    }
 
     // priceAtTime fallback: agent didn't pass one → fetch a fresh quote
     // for this ticker. Failure is non-fatal; just leaves it null.
@@ -494,13 +581,13 @@ export const updateThesis = defineTool({
       );
       const buyEdit = (e: NonNullable<UpdateArgs["edit_triggers"]>[number]) =>
         editNumber(e).value != null && (e.action === "ENTER" || enterIds.has(e.id));
-      const why =
+      const noPrice =
         `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
         `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
       // On a stock we hold the entry is the fill, refused as its own op below.
-      if (args.entry_price != null && existing.status !== "HOLDING") refuseField("entry_price", why);
+      if (args.entry_price != null && existing.status !== "HOLDING") refuseField("entry_price", noPrice, "no live price");
       for (const e of (args.edit_triggers ?? []).filter(buyEdit)) {
-        opResults.push({ op: "edit", id: e.id, ok: false, text: `Edit trigger ${e.id}`, reason: why });
+        opResults.push({ op: "edit", id: e.id, ok: false, text: `Edit trigger ${e.id}`, reason: noPrice });
       }
       if (args.edit_triggers?.some(buyEdit)) args = { ...args, edit_triggers: args.edit_triggers.filter((e) => !buyEdit(e)) };
     }
@@ -537,7 +624,11 @@ export const updateThesis = defineTool({
       // A status verb that can't apply (the writer's on a promoted stock, a
       // kill on one) is refused by itself.
       if (violation && violation.data.error !== "terminal_status" && violation.data.error !== "promoted_thesis_requires_resolution") {
-        refuseField("change_status", String(violation.data.message ?? violation.summary));
+        refuseField(
+          "change_status",
+          String(violation.data.message ?? violation.summary),
+          violation.data.error === "thesis_writer_cannot_change_promoted_status" ? "the writer doesn't change status" : "a promoted stock goes back to watching first",
+        );
         transitionInput = { ...transitionInput, changeStatus: undefined };
         violation = checkStatusTransition(transitionInput);
       }
@@ -611,7 +702,7 @@ export const updateThesis = defineTool({
         closedThisRun: closeInRun != null,
       });
       if (violation) {
-        refuseField("change_status", String(violation.data.message ?? violation.summary));
+        refuseField("change_status", String(violation.data.message ?? violation.summary), "the position is still open");
         transitionInput = { ...transitionInput, changeStatus: undefined };
       }
     }
@@ -683,15 +774,17 @@ export const updateThesis = defineTool({
       // A refusal names only tools this door has: the morning run and the
       // trigger run have no record_thesis.
       const recordThesis = DOORS_WITH_RECORD_THESIS.has(ctx.runMode ?? "");
+      const pass = args.direction === "PASS";
       refuseField(
         "direction",
-        args.direction === "PASS"
+        pass
           ? existing.status === "HOLDING"
             ? "A stock we hold isn't passed: selling it is close_position."
             : `A thesis with a view isn't passed in place: change_status ARCHIVED drops it, or INVALIDATED if the belief broke.${recordThesis ? ` To keep the pass on record, record_thesis with direction PASS and parent_thesis_id "${existing.id}" writes it and retires this one.` : ""}`
           : recordThesis
             ? `A flip is a new thesis: record_thesis with parent_thesis_id "${existing.id}" writes it and retires this one.`
             : "A flip is a new thesis; say so in your note.",
+        pass ? (existing.status === "HOLDING" ? "we hold it" : "a thesis with a view isn't passed") : "a flip is a new thesis",
       );
     }
     if (args.direction) {
@@ -782,7 +875,7 @@ export const updateThesis = defineTool({
       // tier is refused and the rest lands. Read as sent, so a reason equal
       // to the stored one still counts as given.
       if (args.conviction !== undefined && !sent.conviction_rationale?.trim()) {
-        refuseField("conviction", "Send conviction_rationale with it: a sentence or two on why the tier changed, or the old reason stops matching the tier.");
+        refuseField("conviction", "Send conviction_rationale with it: a sentence or two on why the tier changed, or the old reason stops matching the tier.", "no reason given for the new tier");
       }
       const effectiveConviction = args.conviction ?? existing.conviction;
       const effectiveVariantView =
@@ -1131,8 +1224,41 @@ export const updateThesis = defineTool({
             avgCost,
           });
         };
-        let applied = apply(triggerOps);
+        let liveOps = triggerOps;
+        let applied = apply(liveOps);
         let check = applied.results.some((r) => r.ok) ? await checkOf(applied.triggers) : null;
+
+        // ── The plan check, per detail ───────────────────────────────────
+        // When the plan these trigger changes leave is invalid, the largest
+        // set of them that leaves a valid one lands and the rest are refused
+        // by name. Bounded: two to five changes, every subset tried, largest
+        // first and earliest-sent first. More than five are refused together.
+        if (check && !check.ok && !isUnresearchedSeed(existing.direction) && liveOps.length > 1 && liveOps.length <= 5) {
+          const failed = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
+          const size = (m: number) => liveOps.filter((_, i) => m & (1 << i)).length;
+          const masks = Array.from({ length: (1 << liveOps.length) - 2 }, (_, i) => i + 1).sort((a, b) => size(b) - size(a) || a - b);
+          for (const m of masks) {
+            const a = apply(liveOps.filter((_, i) => m & (1 << i)));
+            const c = a.results.some((r) => r.ok) ? await checkOf(a.triggers) : null;
+            if (!c?.ok) continue;
+            const dropped = liveOps.filter((_, i) => !(m & (1 << i)));
+            for (const o of dropped) {
+              if (o.op === "level") {
+                const field = { ENTRY: "entry_price", TARGET: "target_price", FLOOR: "stop_loss" }[o.slot];
+                refusedFields.push({ field, reason: failed, why: "the plan it leaves is invalid", ...(o.price != null ? { to: o.price } : {}) });
+              } else {
+                const id = o.op === "add" ? (o.trigger.id ?? "") : o.id;
+                const text = o.op === "add" ? `Add: ${describeTrigger(o.trigger, held)}` : `${o.op === "remove" ? "Remove" : "Edit"} trigger ${id}`;
+                opResults.push({ op: o.op === "replace" ? "edit" : o.op, id, ok: false, text, reason: failed });
+              }
+            }
+            if (dropped.some((o) => o.op !== "level")) refusedFields.push({ field: "triggers", reason: failed, why: "the plan they leave is invalid" });
+            liveOps = liveOps.filter((_, i) => m & (1 << i));
+            applied = a;
+            check = c;
+            break;
+          }
+        }
 
         // ── Goalpost-moving guard (audit Root Cause #3) ──────────────────
         // Raising the target on a WATCHING thesis whose price has already
@@ -1151,6 +1277,8 @@ export const updateThesis = defineTool({
         ) {
           refusedFields.push({
             field: "target_price",
+            why: "the price is past the old target",
+            to: check.columns.targetPrice,
             reason: `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${Number(existing.targetPrice).toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${check.columns.targetPrice.toFixed(2)} and walk away. If you genuinely think the setup has changed, leave the target untouched and give the concrete reason in your rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1). Or close the thesis with change_status: "INVALIDATED".`,
           });
           const onTarget = (o: TriggerOp) =>
@@ -1159,7 +1287,8 @@ export const updateThesis = defineTool({
               : o.op === "add"
                 ? levelSlotOf(o.trigger, levelDirection) === "TARGET"
                 : existingTriggers.some((t) => t.id === o.id && levelSlotOf(t, levelDirection) === "TARGET");
-          applied = apply(triggerOps.filter((o) => !onTarget(o)));
+          liveOps = liveOps.filter((o) => !onTarget(o));
+          applied = apply(liveOps);
           check = applied.results.some((r) => r.ok) ? await checkOf(applied.triggers) : null;
         }
         // An op that changes nothing is a no-op here, not a refusal.
@@ -1181,7 +1310,7 @@ export const updateThesis = defineTool({
           }
           // On a thesis with a view the trigger changes are refused together
           // and the rest of the call lands.
-          refusedFields.push({ field: "triggers", reason: message });
+          refusedFields.push({ field: "triggers", reason: message, why: "the plan they leave is invalid" });
           const error = check.error;
           opResults.splice(
             0,
@@ -1307,7 +1436,11 @@ export const updateThesis = defineTool({
       //     nothing new built.
       const violation = checkWatchingOptOut(transitionInput);
       if (violation) {
-        refuseField("change_status", String(violation.data.message ?? violation.summary));
+        refuseField(
+          "change_status",
+          String(violation.data.message ?? violation.summary),
+          existing.status === "HOLDING" ? "the position is still open" : `not from ${existing.status.toLowerCase()}`,
+        );
       } else {
         patch.status = "WATCHING";
         patch.promotedAt = null;
@@ -1403,7 +1536,12 @@ export const updateThesis = defineTool({
       ...refusedFields.map((r) => `Not changed: ${r.field}. ${r.reason}`),
       ...(stillPromoted ? ["Still promoted until place_trade or change_status WATCHING."] : []),
     ].join(" ");
-    const refusedData = refusedFields.length ? { refused_fields: refusedFields } : {};
+    const refusedData = refusedFields.length ? { refused_fields: forAgent(refusedFields) } : {};
+    // The record tells the truth: what the call asked for and did not get
+    // goes on its own audit row, and the Activity feed shows it as a chip.
+    const notAppliedChange: ThesisFieldChanges = refusedFields.length
+      ? { notApplied: { from: null, to: refusedFields.map(({ field, to, why, reason }) => ({ field, ...(to !== undefined ? { to } : {}), why, reason })) } }
+      : {};
     if (changedKeys.length === 0) {
       if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults, refusedFields);
       const reviewedAt = new Date();
@@ -1421,6 +1559,7 @@ export const updateThesis = defineTool({
         type: "REVIEWED",
         summary: `Reviewed ${existing.ticker} thesis — no changes`,
         rationale: args.rationale,
+        ...(refusedFields.length ? { fieldChanges: notAppliedChange } : {}),
         runId: ctx.runId,
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,
@@ -1513,6 +1652,8 @@ export const updateThesis = defineTool({
     );
     const landedOps = acceptedOps(opResults);
     if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
+    const changedFields = Object.keys(fieldChanges);
+    Object.assign(fieldChanges, notAppliedChange);
 
     // The structural-belief gate that lived here (P0-1) is gone. It refused
     // any change to the target or the floor unless a belief field changed or
@@ -1677,7 +1818,7 @@ export const updateThesis = defineTool({
         ok: true,
         thesis_id: existing.id,
         type: updateType,
-        changed_fields: Object.keys(fieldChanges),
+        changed_fields: changedFields,
         trigger_ops: opResults,
         ...refusedData,
         ...(means.length ? { what_this_means: means } : {}),

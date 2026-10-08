@@ -67,7 +67,8 @@ const ALWAYS_A_CHANGE = new Set([
 
 function hasAnyFieldChange(fieldChanges: unknown): boolean {
   if (fieldChanges == null || typeof fieldChanges !== "object") return false;
-  return Object.keys(fieldChanges as Record<string, unknown>).length > 0;
+  // What a call asked for and did not get changed nothing.
+  return Object.keys(fieldChanges as Record<string, unknown>).some((k) => k !== "notApplied");
 }
 
 /**

@@ -21,7 +21,7 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronsUpDown, Plus, RefreshCw, X } from "lucide-react";
+import { Ban, ChevronsUpDown, Plus, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -110,7 +110,8 @@ function Dot({ kind, pulse }: { kind: DotKind; pulse: boolean }) {
  * Sub-metadata: ladder rung changes as solid muted badges — the shared
  * Badge in its `muted` variant with squared corners, matching the
  * thesis trigger chips. Icon carries the kind: + added, × removed,
- * ↻ edited. Capped so a long list of ops can't wall the row.
+ * ↻ edited, ⊘ asked for and not applied. Capped so a long list of ops
+ * can't wall the row.
  */
 function LadderBadges({ changes }: { changes: LadderChange[] }) {
   const shown = changes.slice(0, 4);
@@ -123,6 +124,8 @@ function LadderBadges({ changes }: { changes: LadderChange[] }) {
             <Plus />
           ) : c.kind === "remove" ? (
             <X />
+          ) : c.kind === "not-applied" ? (
+            <Ban />
           ) : (
             <RefreshCw />
           )}
