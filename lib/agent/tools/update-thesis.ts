@@ -366,6 +366,13 @@ export const updateThesis = defineTool({
         sources: [],
       };
     }
+    // The direction a committed thesis already has, sent again, changes
+    // nothing: drop it and go on. A real flip is still refused below. On
+    // 2026-10-07 and 10-08 two trigger runs restated LONG on a LONG holding
+    // in every close-out call; each was refused until the run ran out.
+    if (args.direction != null && args.direction === existing.direction && !isUnresearchedSeed(existing.direction)) {
+      args = { ...args, direction: undefined };
+    }
 
     // priceAtTime fallback: agent didn't pass one → fetch a fresh quote
     // for this ticker. Failure is non-fatal; just leaves it null.

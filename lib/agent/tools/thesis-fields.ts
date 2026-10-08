@@ -57,7 +57,9 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
   const score = (max: number) => (opts.writer ? z.number() : z.number().min(0).max(max));
   const part = (max: number) => z.object({ score: score(max), note: z.string() });
   return {
-    direction: z.enum(["LONG", "SHORT", "PASS"]).describe("LONG, SHORT, or PASS: a stock you researched and won't trade."),
+    direction: z
+      .enum(["LONG", "SHORT", "PASS"])
+      .describe("LONG, SHORT, or PASS: a stock you researched and won't trade. A thesis's direction is set once, when it has none; sending the one it has changes nothing."),
     horizon: z
       .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
       .describe(
