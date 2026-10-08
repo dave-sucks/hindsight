@@ -12,6 +12,7 @@
  * the trap a naive "any update since the close" check falls into.
  */
 import { soldReview } from "./sold-review";
+import { SITUATIONS } from "./situations";
 
 const SMMT = {
   ticker: "SMMT",
@@ -45,12 +46,10 @@ describe("SMMT — the one look a sold stock gets", () => {
     expect(r.text).toContain("Its catalyst is still ahead — 2026-11-14.");
   });
 
-  it("offers the four answers the run already has, and refuses nothing", () => {
-    expect(r.text).toContain("keep watching with a re-entry level");
-    expect(r.text).toContain("keep watching on a review cadence");
-    expect(r.text).toContain("keep watching with nothing set");
-    expect(r.text).toContain("let it go");
-    expect(r.text).toContain('update_thesis(change_status: "WATCHING")');
+  it("is the sale's facts alone; the answers are SOLD_ONE_REVIEW's guidance", () => {
+    expect(r.text).toBe("Sold today at $16.92 for +$1,158 (+17.9%) on a stop. Nobody said whether the belief survived the exit. Its catalyst is still ahead — 2026-11-14.");
+    expect(SITUATIONS.SOLD_ONE_REVIEW.guidance).toContain("Keep watching with a re-entry level");
+    expect(SITUATIONS.SOLD_ONE_REVIEW.guidance).toContain("Let it go.");
   });
 });
 
@@ -101,7 +100,7 @@ describe("the sale's facts, in the shapes they come in", () => {
     ).not.toContain("catalyst is still ahead");
   });
 
-  it("a sale with no position numbers still asks the question", () => {
+  it("a sale with no position numbers still says when", () => {
     const bare = soldReview({
       ...SMMT,
       exitPrice: null,
@@ -110,8 +109,7 @@ describe("the sale's facts, in the shapes they come in", () => {
       closeReason: null,
       catalystDate: null,
     })!;
-    expect(bare.text).toContain("Sold today.");
-    expect(bare.text).toContain("let it go");
+    expect(bare.text).toBe("Sold today. Nobody said whether the belief survived the exit.");
   });
 
   it("yesterday and older read in days", () => {

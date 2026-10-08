@@ -80,6 +80,6 @@ export function buyBlockedByFull(
   const when = recent ? `fired ${fired!.toISOString().slice(0, 10)}` : "is live now";
   return {
     firedAt: recent ? fired!.toISOString() : null,
-    text: `$${row.ticker}'s buy ${when} and this analyst is full (${c.open} of ${c.max}${c.held.length ? `: ${c.held.map((t) => `$${t}`).join(", ")}` : ""}). This is a portfolio decision, not a quiet day: name which held stock $${row.ticker} would replace and why it is better, or write "full — waiting" on this row with the reason. Do not call place_trade for it while the analyst is full.`,
+    text: `$${row.ticker}'s buy ${when} and this analyst is full (${c.open} of ${c.max}${c.held.length ? `: ${c.held.map((t) => `$${t}`).join(", ")}` : ""}).`,
   };
 }

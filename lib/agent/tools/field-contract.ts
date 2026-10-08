@@ -59,7 +59,9 @@ const RULE_DEFS = {
   RISK_REWARD_FLOOR: {
     says: "A plan pays at least 2:1: (target − entry) ÷ (entry − stop). Below it the plan is refused with the arithmetic and the three legal answers (a real level, PASS, or set the plan down).",
     refusal: "invalid_thesis_shape — names the ratio, the three levels, and the fix.",
-    markers: { daily: "2:1", discovery: "2:1", chat: "2:1", writer: "2:1" },
+    // The morning run reads it in PLAN_PROBLEM's guidance when a plan is
+    // under it (lib/agent/situations.ts), and in the refusal.
+    markers: { discovery: "2:1", chat: "2:1", writer: "2:1" },
   },
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
@@ -77,7 +79,9 @@ const RULE_DEFS = {
   LEVEL_ORDER: {
     says: "Entry, target and stop sit in order against each other and the live price (long: stop < entry < target).",
     refusal: "invalid_thesis_shape — names the three levels and which is out of order.",
-    markers: { daily: "target/stop", tactical: "R/R", discovery: "in order", chat: "target/stop", writer: "R/R" },
+    // The trigger run reads the reward-to-risk check in ADD_OR_WINNER's
+    // guidance (lib/agent/situations.ts), and the order in the refusal.
+    markers: { daily: "target/stop", discovery: "in order", chat: "target/stop", writer: "R/R" },
   },
   EVENT_DATE: {
     says: "The event date is the company's newest statement. A filing fills a missing date; a disagreement is written on the row, never overwritten.",

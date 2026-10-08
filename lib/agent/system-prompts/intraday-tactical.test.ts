@@ -10,6 +10,7 @@
  */
 
 import { buildTacticalSystemPrompt } from "./intraday-tactical";
+import { guidanceFor, SITUATIONS } from "@/lib/agent/situations";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const trailTrigger: Trigger = {
@@ -109,7 +110,6 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
     expect(prompt).toContain("THE SETUP THIS PLAN WAS WRITTEN ON");
     expect(prompt).toContain("PEAD — Post-earnings drift (TARGET)");
     expect(prompt).toContain("Confirm a buy by: Gap held; Surprise and guidance confirmed");
-    expect(prompt).toContain("(b) **The setup's own confirmation.**");
     expect(prompt).not.toContain("Volume — horizon-conditional");
     expect(prompt).not.toContain("COMPOUNDER horizon:** volume is irrelevant");
   });
@@ -129,7 +129,28 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
     );
     expect(prompt).toContain("→ FIRED: Sell if below $969  [id stop-969]");
     expect(prompt).toContain("→ ALSO FIRED: Sell if below 8% from the high since we bought  [id trail-8]");
-    expect(prompt).toContain("Two protective triggers fired together");
+  });
+
+  it("the stock's situations print with what each asks, where the per-situation text sat", () => {
+    const prompt = buildTacticalSystemPrompt(
+      makeArgs({
+        trigger: stop,
+        thesis: { ...makeArgs().thesis, ticker: "MU", allTriggers: [stop, trail] },
+        situations: { codes: ["PROTECTIVE_SALE", "YOUR_WORD_UNANSWERED"], guidance: guidanceFor(["PROTECTIVE_SALE", "YOUR_WORD_UNANSWERED"]) },
+      }),
+    );
+    expect(prompt).toContain("The situations $MU is in (PROTECTIVE_SALE, YOUR_WORD_UNANSWERED), and what each asks:");
+    expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + SITUATIONS.PROTECTIVE_SALE.guidance);
+    expect(prompt).toContain("Two sales fired together: one decision covers both");
+    expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("YOUR_WORD_UNANSWERED — "));
+    expect(prompt.indexOf("YOUR_WORD_UNANSWERED — ")).toBeLessThan(prompt.indexOf("3. If validation FAILS"));
+  });
+
+  it("no situations: no block, and none of the old per-situation text", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs());
+    expect(prompt).not.toContain("and what each asks:");
+    expect(prompt).not.toContain("An EARNINGS trigger.");
+    expect(prompt).not.toContain("Confirmation gate before place_trade");
   });
 
   it("CEG 09-14: the fired price is the price to act on when the tool's quote fails", () => {
@@ -157,7 +178,7 @@ describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () =>
     expect(prompt).toContain("Positions: 4 of 4 — this analyst is FULL.");
     expect(prompt).toContain("READ THIS BEFORE YOU RESEARCH.");
     expect(prompt).toContain('rationale starting "Buy fired into a full analyst (4 of 4)"');
-    expect(prompt).toContain("the weakest of $ABT, $ASML, $CEG, $WST");
+    expect(prompt).toContain("Leave the buy trigger as it is.");
     expect(prompt.indexOf("THE ANALYST'S ROOM")).toBeLessThan(prompt.indexOf("THE SETUP THIS PLAN WAS WRITTEN ON"));
   });
   it("an analyst with room: the line only", () => {

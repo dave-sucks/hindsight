@@ -4,14 +4,13 @@
  */
 import { nameTheSetup } from "./setup-checklist";
 
-describe("nameTheSetup — the ask a row with no setup carries", () => {
-  it("ABT (held, Secular Compounder, no setup): asks, and offers the analyst's own setups", () => {
+describe("nameTheSetup — what a row with no setup carries (NO_SETUP_NAMED says how to answer)", () => {
+  it("ABT (held, Secular Compounder, no setup): offers the analyst's own setups", () => {
     const ask = nameTheSetup({ setupId: null, status: "HOLDING", entryPrice: 103.663 }, ["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"]);
     expect(ask?.choose.map((c) => c.id)).toEqual(
       expect.arrayContaining(["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"]),
     );
     expect(ask?.choose).toHaveLength(3);
-    expect(ask?.ask).toMatch(/writes the setup's own exits/);
   });
 
   it("a watched stock with a buy price is asked too; one with no plan is not", () => {

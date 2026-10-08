@@ -6,7 +6,7 @@
 import { readFileSync, statSync } from "fs";
 import path from "path";
 import { computeNeedsAction, type NeedsActionInput } from "./needs-action";
-import { listsTheStock, measuresOf, SITUATION_NAMES, situationLabels, situationsFor, type SituationSources } from "./situations";
+import { guidanceCodes, guidanceFor, listsTheStock, measuresOf, SITUATIONS, situationLabels, situationsFor, type SituationCode, type SituationSources } from "./situations";
 import type { Trigger } from "./triggers/types";
 
 const NOW = new Date("2026-05-09T21:00:00Z"); // a Saturday: no session
@@ -139,8 +139,25 @@ describe("the situations for a person: the sheet's flag line", () => {
     ]);
   });
   it("every code has a name of a few plain words", () => {
-    expect(Object.keys(SITUATION_NAMES)).toHaveLength(16);
-    for (const name of Object.values(SITUATION_NAMES)) expect(name.split(" ").length).toBeLessThanOrEqual(4);
+    expect(Object.keys(SITUATIONS)).toHaveLength(16);
+    for (const { name } of Object.values(SITUATIONS)) expect(name.split(" ").length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("the guidance: each situation's text, once", () => {
+  it("every text is under the 2,200-character cap and says when, what to do and what answers it", () => {
+    for (const [code, { guidance }] of Object.entries(SITUATIONS)) {
+      expect([code, guidance.length <= 2_200]).toEqual([code, true]);
+      for (const part of ["When:", "Answered:", "Mistakes:"]) expect([code, guidance.includes(part)]).toEqual([code, true]);
+    }
+  });
+  it("comes in rank order, each text once, whatever order the codes arrive in", () => {
+    const codes: SituationCode[] = ["YOUR_WORD_UNANSWERED", "PROTECTIVE_SALE", "YOUR_WORD_UNANSWERED", "EARNINGS"];
+    expect(Object.keys(guidanceFor(codes))).toEqual(["PROTECTIVE_SALE", "EARNINGS", "YOUR_WORD_UNANSWERED"]);
+  });
+  it("a promoted stock calls for the promotion's text alone", () => {
+    expect(guidanceCodes("PROMOTED", ["PROMOTED_AWAITING", "STALE_RESEARCH", "NO_SETUP_NAMED"])).toEqual(["PROMOTED_AWAITING"]);
+    expect(guidanceCodes("HOLDING", ["REVIEW_DUE", "ADD_OR_WINNER"])).toEqual(["REVIEW_DUE", "ADD_OR_WINNER"]);
   });
 });
 

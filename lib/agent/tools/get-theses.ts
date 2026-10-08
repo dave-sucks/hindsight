@@ -29,7 +29,7 @@ import { prisma } from "@/lib/prisma";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { listsTheStock, situationsTap } from "@/lib/agent/situations";
+import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
 import { loadStockFacts } from "@/lib/agent/stock-facts";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
@@ -111,7 +111,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book); each row carries the snapshot and the bull and bear cases, and says when that research was written and at what price. The raw activity log comes back when you read named stocks (tickers or ids). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
+    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book); each row carries the snapshot and the bull and bear cases, and says when that research was written and at what price. The raw activity log comes back when you read named stocks (tickers or ids). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; `needsAction` is a row's lead, `situations` lists every situation the stock is in, and `guidance` says once per read what each situation asks and what answers it; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
@@ -390,7 +390,8 @@ export const getTheses = defineTool({
     // said on each stock, the resolved envelope, a buy into a full analyst
     // and the situation sources. The thesis sheet reads the same function,
     // so it shows what this read shows. A read filtered to some tickers has
-    // a partial held list, so it skips the full-analyst check.
+    // a partial held list, so it counts the analyst's slots from its
+    // positions, as the sheet does.
     const tickerFiltered = !!(args.tickers && args.tickers.length > 0);
     const facts = await loadStockFacts(theses, {
       userId: ctx.userId,
@@ -400,7 +401,7 @@ export const getTheses = defineTool({
       accountId: ctx.accountId,
       minConfidence: ctx.minConfidence,
       maxOpenPositions: ctx.maxOpenPositions,
-      slots: tickerFiltered ? null : "rows",
+      slots: tickerFiltered ? "positions" : "rows",
     });
     const load = facts.load;
     Object.assign(priceAsOf, load.priceAsOf);
@@ -413,6 +414,10 @@ export const getTheses = defineTool({
     const blockedByThesisId = facts.blocked;
     const setupOverrides = facts.setupOverrides;
     const resolverNow = facts.now;
+    const situationsOf = (id: string): SituationCode[] => {
+      const src = facts.sources.get(id);
+      return src ? situationsFor(src) : [];
+    };
 
     // Actionable-detail split: full rows for the work list, one-line index
     // entries for the quiet rest; "book" mode, and prices that failed to
@@ -472,6 +477,7 @@ export const getTheses = defineTool({
       ),
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
+      situations: situationsOf(t.id),
       // The principal's newest note, one line (docs/plans/AGENT_CONTEXT.md §3.2).
       ...(contextByThesisId.get(t.id)?.principalNote ? { principalNote: contextByThesisId.get(t.id)!.principalNote } : {}),
     }));
@@ -491,6 +497,9 @@ export const getTheses = defineTool({
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
+        // Every situation the stock is in, the lead's first; `guidance` on
+        // the result says what each asks.
+        situations: situationsOf(t.id),
         // Conviction Expression v4 — read-time resolved envelope. The
         // agent reads `resolved.actionability` first to filter actionable
         // rows; `triggerDetail` shows trigger state vs current price;
@@ -617,7 +626,7 @@ export const getTheses = defineTool({
     // through the resolver, the quote fetch and needsAction. Skipped on a
     // ticker-filtered drill-down and for callers that asked for an explicit
     // status scope. Fail-soft: the book still returns if this throws.
-    const soldToReview: Array<{ thesis_id: string; ticker: string; sold_on: string; days_ago: number; ask: string }> = [];
+    const soldToReview: Array<{ thesis_id: string; ticker: string; sold_on: string; days_ago: number; ask: string; situations: SituationCode[] }> = [];
     if (!tickerFiltered && !(args.status && args.status.length > 0) && ctx.analystId) {
       try {
         const since = new Date(resolverNow.getTime() - RECENTLY_SOLD_WINDOW_DAYS * 86_400_000);
@@ -704,6 +713,7 @@ export const getTheses = defineTool({
               sold_on: review.soldOn,
               days_ago: review.daysAgo,
               ask: review.text,
+              situations: ["SOLD_ONE_REVIEW"],
             });
           }
         }
@@ -748,6 +758,14 @@ export const getTheses = defineTool({
         ? `${summary} ${soldToReview.length} recently sold stock${soldToReview.length === 1 ? "" : "s"} (${soldToReview.map((x) => `$${x.ticker}`).join(", ")}) still need${soldToReview.length === 1 ? "s" : ""} a keep-watching-or-let-it-go decision.`
         : summary);
 
+    // What each situation on the work list asks, once per read, in rank
+    // order (lib/agent/situations.ts). A promoted stock calls for the
+    // promotion's text alone; quiet rows are not today's work.
+    const guidance = guidanceFor([
+      ...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id))),
+      ...soldToReview.flatMap((x) => x.situations),
+    ]);
+
     return {
       summary: summaryWithSold,
       data: {
@@ -755,6 +773,7 @@ export const getTheses = defineTool({
         count: theses.length,
         active: activeCount,
         watching: watchingCount,
+        ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
         // Full rows: the work list (needsAction non-null / PROMOTED), or
         // the whole book under detail="book".
         theses: enriched,

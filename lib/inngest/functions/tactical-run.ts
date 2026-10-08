@@ -19,6 +19,8 @@ import { enterAlreadyChecked, rearmBuyAfterPass } from "@/lib/agent/triggers/rea
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
+import { loadStockFacts } from "@/lib/agent/stock-facts";
+import { guidanceCodes, guidanceFor, situationsFor, type SituationCode } from "@/lib/agent/situations";
 import { generateText, stepCountIs } from "ai";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
@@ -615,6 +617,39 @@ export const tacticalRun = inngest.createFunction(
       };
     }
 
+    // ── The situations the stock is in ────────────────────────────────
+    // From the same functions as the morning read (stock-facts.ts →
+    // situationsFor), read after this fire's own line is written: the fire,
+    // and anything else true on the stock, such as the principal's word
+    // unanswered. Fail-soft: the run decides on the fire without guidance.
+    const situations = await step.run("load-situations", async (): Promise<SituationCode[]> => {
+      try {
+        const row = await prisma.thesis.findUnique({
+          where: { id: thesis.id },
+          select: {
+            id: true, ticker: true, status: true, direction: true, entryPrice: true, targetPrice: true, stopLoss: true,
+            triggers: true, catalystDate: true, setupId: true, horizon: true, createdAt: true, scoring: true,
+            researchRun: { select: { agentConfig: { select: { setupIds: true } } } },
+          },
+        });
+        if (!row) return [];
+        const facts = await loadStockFacts([row], {
+          userId: agentConfig.userId,
+          analystId: agentConfig.id,
+          runEnvironment,
+          accountId: agentConfig.accountId,
+          minConfidence: agentConfig.minConfidence,
+          maxOpenPositions: agentConfig.maxOpenPositions,
+          slots: "positions",
+        });
+        const sources = facts.sources.get(row.id);
+        return sources ? guidanceCodes(row.status, situationsFor(sources)) : [];
+      } catch (err) {
+        console.warn(`[tactical-run] situations for ${thesis.ticker} unavailable:`, err);
+        return [];
+      }
+    });
+
     // ── Run the agent ─────────────────────────────────────────────────
     const outcome = await step.run("agent-run", async () => {
       const t0 = Date.now();
@@ -734,6 +769,7 @@ export const tacticalRun = inngest.createFunction(
         latestDigest,
         fired: { price: fired.firedPrice ?? null, coFired: fired.coFired ?? [] },
         capacity: ctx.capacity ?? null,
+        situations: { codes: situations, guidance: guidanceFor(situations) },
       });
 
       // Build the kickoff message so the chat replay shows WHY this run

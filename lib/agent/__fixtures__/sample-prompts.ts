@@ -10,6 +10,7 @@ import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 import type { RunInput } from "@/lib/agent/run-input";
 import type { PromptName } from "@/lib/agent/tools/field-contract";
+import { guidanceFor } from "@/lib/agent/situations";
 
 const runInput = {
   analyst: { name: "Secular Compounder", mandate: null, voice: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, exclusionList: [], minConfidence: 70, minPositionSize: 3000, maxPositionSize: 10000, maxOpenPositions: 6 },
@@ -28,6 +29,8 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
       analyst: { name: "PEAD Specialist", mandate: null },
       thesis: { id: "thesis_1", ticker: "HPE", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"], entryPrice: 53, targetPrice: 70, stopLoss: 50, snapshotText: null, bullCaseBullets: [], bearCaseBullets: [], researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 }, allTriggers: [trailTrigger] },
       trigger: trailTrigger, signal: null, position: { quantity: 60, avgCost: 53.1, daysHeld: 10, peakPrice: 62.7 }, recentUpdates: [], latestDigest: null,
+      // A trail sale on a holding: the one situation it puts the stock in.
+      situations: { codes: ["PROTECTIVE_SALE"], guidance: guidanceFor(["PROTECTIVE_SALE"]) },
     } as never),
   discovery: () => buildDiscoverySystemPrompt({ config: { name: "PEAD Specialist", sectors: [], minConfidence: 70, maxPositionSize: 14000 }, analystId: "an", existingTickers: ["MU"] } as never),
   chat: () =>

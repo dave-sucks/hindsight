@@ -114,13 +114,15 @@ describe("SMMT reaches the run as sold_to_review", () => {
     ]);
   });
 
-  it("the ask carries the sale's own numbers and the catalyst still ahead", async () => {
-    const { ask } = (await run()).data.sold_to_review[0];
+  it("the entry carries the sale's own numbers and the catalyst still ahead; the read carries how to answer", async () => {
+    const { data } = await run();
+    const { ask, situations } = data.sold_to_review[0];
     expect(ask).toContain("$16.92");
     expect(ask).toContain("+$1,158 (+17.9%)");
     expect(ask).toContain("on a stop");
     expect(ask).toContain("Its catalyst is still ahead — 2026-11-14.");
-    expect(ask).toContain('update_thesis(change_status: "WATCHING")');
+    expect(situations).toEqual(["SOLD_ONE_REVIEW"]);
+    expect(data.guidance.SOLD_ONE_REVIEW).toContain('change_status "WATCHING"');
   });
 
   it("the run's summary says how many still owe a decision, and names them", async () => {

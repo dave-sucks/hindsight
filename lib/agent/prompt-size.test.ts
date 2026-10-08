@@ -22,8 +22,8 @@ import { MODES } from "@/lib/agent/modes";
 import { createResearchTools } from "@/lib/agent/tools";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  daily: 28_070,
-  tactical: 15_366,
+  daily: 8_125,
+  tactical: 10_557,
   writer: 11_027,
   discovery: 20_773,
   chat: 32_056,
@@ -36,10 +36,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
  * by accident just as easily.
  */
 const RECORDED_TOOLS: Record<string, number> = {
-  "research-run": 34_667,
-  tactical: 31_978,
-  discovery: 35_104,
-  principal: 66_235,
+  "research-run": 34_830,
+  tactical: 32_141,
+  discovery: 35_267,
+  principal: 66_398,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", discovery: "DISCOVERY", principal: "PRINCIPAL_CHAT" };
 

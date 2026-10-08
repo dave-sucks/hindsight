@@ -3,6 +3,7 @@
  * What the prompt deletes and adds, pinned; the prompt builder is pure.
  */
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
+import { SITUATIONS } from "./situations";
 import type { RunInput } from "./run-input";
 
 const runInput = {
@@ -28,13 +29,15 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).not.toContain("THREE legal paths");
     expect(prompt).not.toContain("Retune the buy trigger");
   });
-  it("a fired buy has two answers, and a raise away is named as a flag, not refused", () => {
-    expect(prompt).toContain("a fired buy is a decision with two answers");
-    expect(prompt).toContain("Set the plan down with the reason");
-    expect(prompt).toContain("ENTRY_RAISED_AWAY");
+  it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a plan check, not refused", () => {
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Set the plan down:");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("A buy left as a note comes back on the next morning run");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it: it comes back as a plan check, with the count.");
+    expect(prompt).not.toContain("a fired buy is a decision with two answers");
   });
-  it("a stock nothing can wake is let go by its call, in the flag's own words", () => {
-    expect(prompt).toContain('give it a wake, or let it go (`change_status: "ARCHIVED"`))');
+  it("a plan check is answered by PLAN_PROBLEM's guidance; the prompt no longer restates the checks", () => {
+    expect(SITUATIONS.PLAN_PROBLEM.guidance).toContain("nothing that can bring it back");
+    expect(prompt).not.toContain("give it a wake, or let it go");
   });
   it("regime and cash are inputs: the cash line names today's names at their buy level", () => {
     expect(prompt).toContain("## Regime and cash");
@@ -46,8 +49,10 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
   it("filings on the book this week are listed, and a held name's review runs its setup's checklist", () => {
     expect(prompt).toContain("## Filings on your book this week");
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
-    expect(prompt).toContain("A held name's review runs its setup's checklist");
-    expect(prompt).toContain("REVIEW from a filing trigger");
+    // The setup's checklist and the filing's reading are guidance now.
+    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("`setup.failureSigns`");
+    expect(SITUATIONS.FILING.guidance).toContain("Read it first");
+    expect(prompt).not.toContain("REVIEW from a filing trigger");
   });
 });
 
@@ -59,16 +64,15 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
   const withBook = (symbols: string[]) =>
     ({ ...runInput, portfolio: { ...(runInput as unknown as { portfolio: object }).portfolio, positions: symbols.map(pos) } }) as unknown as RunInput;
 
-  it("Compounder, 4 of 4: says it is full, what it holds, and what to do with a buy that fired", () => {
+  it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is BUY_BLOCKED_FULL's", () => {
     const p = buildDailyRunSystemPromptV2(
       { name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
       withBook(["ABT", "ASML", "CEG", "WST"]),
     );
     expect(p).toContain("Positions: 4 of 4 — this analyst is FULL.");
     expect(p).toContain("It holds $ABT, $ASML, $CEG, $WST.");
-    expect(p).toContain("**This analyst is full.**");
-    expect(p).toContain("buyBlockedByFull");
-    expect(p).toContain("full — waiting");
+    expect(p).not.toContain("**This analyst is full.**");
+    expect(SITUATIONS.BUY_BLOCKED_FULL.guidance).toContain("full — waiting");
   });
 
   it("PEAD, 4 of 6: says two are free and carries no full-analyst rule", () => {

@@ -19,6 +19,7 @@ import { getSetup } from "@/lib/agent/knowledge/setups";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 
 interface TacticalPromptArgs {
   analyst: { name: string; mandate: string | null };
@@ -92,12 +93,26 @@ interface TacticalPromptArgs {
   setupOverrides?: SetupOverrides | null;
   /** How full the analyst is, on a buy fire (DAV-292). Null = not a buy, or no limit. */
   capacity?: AnalystCapacity | null;
+  /**
+   * The situations the stock is in and what each asks (lib/agent/situations.ts),
+   * from the same functions as the morning read: the codes, and their
+   * guidance in rank order.
+   */
+  situations?: { codes: SituationCode[]; guidance: Partial<Record<SituationCode, string>> } | null;
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   const { analyst, thesis, trigger, position, context, latestDigest, fired } = args;
   const setup = thesis.setupId ? getSetup(thesis.setupId, args.setupOverrides ?? undefined) : undefined;
   const coFiredIds = new Set((fired?.coFired ?? []).map((c) => c.triggerId));
+  // The situations the stock is in, each with what it asks, printed where
+  // the per-situation text used to sit (lib/agent/situations.ts).
+  const guidance = Object.entries(args.situations?.guidance ?? {}) as Array<[SituationCode, string]>;
+  const situationsBlock = guidance.length
+    ? `   - The situations $${thesis.ticker} is in (${(args.situations?.codes ?? []).join(", ")}), and what each asks:\n\n` +
+      guidance.map(([code, text]) => `${code} — ${SITUATIONS[code].name}\n${text}`).join("\n\n") +
+      "\n\n"
+    : "";
 
   const predicateSummary = conditionSentence(trigger.predicate);
 
@@ -197,7 +212,7 @@ ${
   capacityLine(args.capacity)
     ? `THE ANALYST'S ROOM\n  ${capacityLine(args.capacity)}${
         isFull(args.capacity)
-          ? `\n  READ THIS BEFORE YOU RESEARCH. This analyst cannot OPEN a new position, so do not confirm the setup and do not call place_trade — it will be refused. (Adding to a stock it already holds is not capped and never reaches this block.) Your whole run is ONE update_thesis on this thesis, rationale starting "Buy fired into a full analyst (${args.capacity!.open} of ${args.capacity!.max})": say in one or two sentences whether $${thesis.ticker} is a better use of a slot than the weakest of ${args.capacity!.held.map((t) => `$${t}`).join(", ")} and which one it would replace, or "full — waiting" with the reason. Leave the buy trigger as it is. That line is what the principal reads; replacing a holding is their decision.`
+          ? `\n  READ THIS BEFORE YOU RESEARCH. This analyst cannot OPEN a new position. (Adding to a stock it already holds is not capped and never reaches this block.) Your whole run is ONE update_thesis on this thesis, rationale starting "Buy fired into a full analyst (${args.capacity!.open} of ${args.capacity!.max})". Leave the buy trigger as it is.`
           : ""
       }\n\n`
     : ""
@@ -286,113 +301,9 @@ DECISION FRAMEWORK
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade. ADD means
      manage_position (scale up). TRIM means manage_position (partial close).
-   - **On a protective exit (reason=STOP) answer \`belief_survived\`** — the
-     field says how.
-   - **An EARNINGS trigger.** The kickoff carries the figures. A beat is
-     not a buy and a miss is not a sell by itself — the reaction is the
-     information: a beat the stock is DOWN on means the market wanted
-     more (read the call before trusting the number, tighten the floor);
-     a miss the stock shrugged off was priced in. "Reports within N
-     days" is a sizing question — trim or floor for a ±10% open, never
-     add into the print. On a miss with a broken assumption, EXIT and
-     answer belief_survived=false; on a miss with the story intact, keep
-     it and say what would change your mind.
-   - **A filing trigger.** The kickoff names the kind of event and the
-     link; read the document first (\`get_sec_filings\`). A restatement
-     (4.02): exit unless clearly small and off-thesis, and say which.
-     Bankruptcy or a delisting notice: exit. A late report: tighten the
-     floor, don't add until it's filed. A sudden CFO exit (5.02): tighten
-     the floor; a planned succession is noise. We hold an acquisition
-     target: the price is capped at the deal price — move the target to
-     it, consider selling. Dilution: don't add into it. Cite the filing in
-     the close-out rationale.
-   - **Confirmation gate before place_trade.** A price level firing is
-     necessary but not sufficient. Before place_trade, confirm using
-     get_stock_data:
-
-       (a) **Live quote still confirms the breakout.** ALWAYS applies.
-           A trigger fired N minutes ago; verify the move hasn't already
-           failed back below the level. If the breakout is unwinding
-           right now, pass — write update_thesis(REVIEWED) saying so
-           plainly: "Not acting yet: it hit $X, then slipped back to $Y."
-
-       (b) **The setup's own confirmation.** Read THE SETUP block above
-           and check what it says to confirm — a breakout needs a close
-           above the level on ${setup?.id === "BASE_BREAKOUT" || setup?.id === "MOMENTUM_FLAG" ? "1.5× volume" : "real volume"} (\`technicals.today.volumeVsAvg20\`,
-           informational before ~14:00 ET when the session is young); a
-           pullback needs the touch to have held (a close above the prior
-           day's high); an earnings gap needs the gap to have held; a
-           compounder needs the thesis intact and cares little for volume;
-           a pre-catalyst entry is never the day before the event. With no
-           setup recorded, the price holding is the confirmation.
-           **Chased:** if the live price is more than the setup's chase
-           limit past the level, pass — write update_thesis(REVIEWED) with
-           "Not buying: it's already X% past my buy level"; the daily run
-           re-anchors the plan.
-
-       (c) **No contradicting headline.** ALWAYS applies. Use
-           get_stock_data's news field to check the last hour. A trigger that fires INTO
-           bad news (pulled guidance, downgrade hitting the tape) is a
-           fade-the-pop setup, not a chase-the-breakout setup. Pass
-           and document.
-
-       (d) **Outside-market-hours fires** — if the tactical run is firing
-           pre-market (before 09:30 ET) or after the close (after 16:00
-           ET), volume data reflects the prior session or is mid-day
-           accumulation, neither of which is decision-relevant. Skip the
-           volume gate entirely; confirm with gates (a) and (c) and act
-           if both pass. The trigger fired on a live quote — that's the
-           signal you have.
-
-     If any APPLICABLE gate fails, do NOT place_trade. update_thesis(REVIEWED)
-     saying in plain words which check failed. "Volume too
-     low" is a reason only when the setup's confirmation asks for volume
-     (a breakout, a flag) and the session is past mid-day; on a pullback,
-     a compounder or a pre-catalyst entry it is not a reason.
-   - Override is allowed when you have a specific reason (e.g. trigger
+${situationsBlock}   - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). Say in the note what you did instead of the trigger's action, and why.
-
-   **ADD on a HELD position (scale-in / press) — press / hold / take, not an
-   auto-buy.** When the fired action is ADD and the thesis is already HOLDING
-   (scaling an existing position, NOT a WATCHING→HOLDING entry), re-underwrite
-   before you buy. Which checklist applies depends on WHY the trigger fired —
-   the predicate and its rationale tell you (a +% up-move vs a −% down-move):
-
-     • **Strength fire (price UP / breakout).** Press only if the move is
-       thesis-CONFIRMING: the catalyst is playing out, estimates or analyst
-       targets are rising, structure is healthy (new high after a pause, above
-       a rising SMA), and it is NOT an exhaustion chase (not already extended
-       far intraday, RSI not a blow-off). If confirmed and R/R to a justified
-       target still holds: manage_position(add_to_position) — the tool sizes
-       the add (half the entry's risk, capped by the largest trade and the most
-       in one stock; you name no amount) — then update_thesis to raise the target
-       and manage_position(move_stop_to_breakeven or update_targets)
-       to raise the stop under the bigger position. If it's an exhaustion spike,
-       do NOT add — hold or trim.
-
-     • **Pullback fire (price DOWN).** The make-or-break question is WHY it
-       dropped. Pull get_market_context (SPY / sector) AND get_stock_data
-       (news). Add ONLY if the drop is MARKET- or SECTOR-WIDE with the thesis
-       intact — no guidance cut, no estimate cuts, no broken catalyst, no
-       company-specific bad headline — and price holds a logical support. Then
-       manage_position(add_to_position) at the discount. If the drop is
-       COMPANY-SPECIFIC (bad news, a broken assumption), do NOT add: that is
-       thesis damage, not a gift — hold, TRIM, or EXIT per the damage. Adding
-       into company-specific weakness is the averaging-into-a-loser trap.
-
-     • **Hold / take (either direction).** If there is no fresh edge to press,
-       do nothing risk-increasing — but "hold" still means protecting what the
-       position has EARNED: raise the stop under a real share of the gain via
-       manage_position(update_targets), set beneath structure (recent swing
-       low, breakout level). Breakeven is the floor of acceptable, not the
-       goal — a +20% winner floored at breakeven round-trips its entire win.
-       If momentum is exhausting or R/R is now poor,
-       manage_position(partial_close) to bank part, or close_position.
-
-   The confirmation gates above (live quote still confirms; no contradicting
-   headline) apply to an add just as to an entry. Every add and target-raise is
-   approval-gated — you propose, the principal approves.
 
 3. If validation FAILS:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
@@ -419,7 +330,7 @@ DECISION FRAMEWORK
    The trigger ids are in the ladder printed above. If nothing went stale,
    say so in one sentence in the rationale ("Floor stays $X, still under
    the last swing low.").
-${fired?.coFired?.length ? `   Two protective triggers fired together (marked ALSO FIRED above). One decision covers both: sell all, sell some, or hold — and say which trigger's rule you followed.\n` : ""}
+
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why.
