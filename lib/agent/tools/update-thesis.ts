@@ -58,6 +58,7 @@ import {
   declinedSaleWhere,
   declinedSaleWork,
   foldDeclines,
+  REPLAN_FLOOR_MAX_DROP_PCT,
 } from "@/lib/agent/declined-sale";
 import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
 import { isPlanLevelOnList, levelSlotOf, type LevelSlot } from "@/lib/agent/triggers/price-levels";
@@ -91,6 +92,8 @@ const STATUS_RETIRE =
   "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead, when it has them. ";
 const STATUS_WATCH = "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). ";
 const STATUS_OWNED = "Holding and sold are not set here: place_trade and close_position flip them when the order fills.";
+/** The trigger run's: the retiring verbs are for a stock we watch (CEG and MU sent INVALIDATED on holdings, 10-08). */
+const STATUS_HELD = " Both are for a stock we watch: a stock we hold is sold first with close_position, which retires the thesis itself.";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -279,7 +282,7 @@ const triggerRunSchema = updateSchema
     add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
     stop_loss: true, stop_basis: true, target_price: true, target_basis: true, entry_price: true,
   })
-  .extend({ change_status: z.enum(["INVALIDATED", "ARCHIVED"]).optional().describe(`${STATUS_RETIRE}${STATUS_OWNED}`) });
+  .extend({ change_status: z.enum(["INVALIDATED", "ARCHIVED"]).optional().describe(`${STATUS_RETIRE}${STATUS_OWNED}${STATUS_HELD}`) });
 
 /** The trigger run's door: its save has no price field and no way back to watch. */
 const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TACTICAL";
@@ -426,7 +429,8 @@ export const updateThesis = defineTool({
     "Change a thesis you already have. Pass thesis_id, the fields that change and a rationale; every call writes one line to the stock's Activity. " +
     "entry_price, target_price and stop_loss are the levels of the buy, target and floor triggers, and null removes one. " +
     "Each trigger edit comes back in `trigger_ops`, accepted or refused with the reason; a refused one leaves the rest of the call in place. " +
-    "On a stock we hold, only the principal moves a safety line down: if you think one is wrong, keep it and give the number you'd suggest in the rationale.",
+    `On a stock we hold, only the principal moves a safety line down, except that after the principal declines its sale, while the price is still past it, it may come down at most ${REPLAN_FLOOR_MAX_DROP_PCT}%. ` +
+    "If you think one is wrong otherwise, keep it and give the number you'd suggest in the rationale.",
   schema: updateSchema,
   schemaFor: (ctx) =>
     ctx.runMode === "THESIS_WRITER"
