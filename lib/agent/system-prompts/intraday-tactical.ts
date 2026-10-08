@@ -20,6 +20,7 @@ import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import type { HeldThroughFloor } from "@/lib/agent/stock-facts";
 
 interface TacticalPromptArgs {
   analyst: { name: string; mandate: string | null };
@@ -99,6 +100,8 @@ interface TacticalPromptArgs {
    * guidance in rank order.
    */
   situations?: { codes: SituationCode[]; guidance: Partial<Record<SituationCode, string>> } | null;
+  /** A protective sale the principal declined, still past its floor: the morning row's field, by the same name. */
+  heldThroughFloor?: HeldThroughFloor | null;
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
@@ -263,7 +266,7 @@ ${
 POSITION:
   ${positionLine}
 
-${context ?? `WHAT'S BEEN SAID ON $${thesis.ticker}\n  (nothing written on this stock in the lines on record)`}
+${context ?? `WHAT'S BEEN SAID ON $${thesis.ticker}\n  (nothing written on this stock in the lines on record)`}${args.heldThroughFloor ? `\n  heldThroughFloor: ${JSON.stringify(args.heldThroughFloor)}` : ""}
 ${trigger.action === "ENTER" || trigger.action === "ADD" ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
 ${digestSection}
 ═══════════════════════════════════════════════════════════════════

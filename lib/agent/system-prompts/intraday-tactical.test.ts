@@ -146,6 +146,18 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
     expect(prompt.indexOf("YOUR_WORD_UNANSWERED — ")).toBeLessThan(prompt.indexOf("3. If validation FAILS"));
   });
 
+  it("ASML 10-07: a declined sale's facts print under the morning row's name, so PROTECTIVE_SALE's pointer is true here too", () => {
+    const declined = { floorPrice: 1835, heldThroughCount: 1, rejectMessage: null, recentLow: 1785.74 };
+    const prompt = buildTacticalSystemPrompt(makeArgs({ heldThroughFloor: declined }));
+    expect(prompt).toContain('heldThroughFloor: {"floorPrice":1835,"heldThroughCount":1,"rejectMessage":null,"recentLow":1785.74}');
+    expect(prompt.indexOf("heldThroughFloor:")).toBeGreaterThan(prompt.indexOf("WHAT'S BEEN SAID"));
+    expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` has the count, the floor, the recent low and their note");
+  });
+
+  it("no declined sale: nothing prints", () => {
+    expect(buildTacticalSystemPrompt(makeArgs())).not.toContain("heldThroughFloor");
+  });
+
   it("no situations: no block, and none of the old per-situation text", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs());
     expect(prompt).not.toContain("and what each asks:");

@@ -157,7 +157,7 @@ Mistakes:
 
 Answer, in order:
 1. Does the price still hold the level (get_stock_data)? If it touched and slipped back, say so: "it hit $X, then slipped back to $Y".
-2. Did the setup's confirmation happen? By \`setup.name\`: a breakout needs a close above the level on volume; a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
+2. Did the setup's confirmation happen? By \`setup.name\`: a breakout needs a close above the level on volume (get_stock_data: technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
 3. Is it chased? A crossing already spent shows in \`resolved.planSanity\` as BUY_FIRED_UNANSWERED, with the setup's chase limit and how far past it the stock is.
 4. Does a headline from the last hour contradict it (get_stock_data's news)? A buy into bad news is a fade.
 5. Did the principal decline this buy (\`context\`), with nothing they named changed since? Then say so and pass.
@@ -323,7 +323,7 @@ Answer, in order:
 What you can do:
 - Patch the plan: update_thesis with edit_triggers on the levels that moved, by id.
 - The plan stands: update_thesis with a rationale only, saying what you checked and why. Pass trigger_id when a review fired.
-- Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one level or move that can still fire.
+- Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one level or move that can still fire, and say what would bring the stock back.
 - A condition that happened is an exit: close_position with belief_survived false.
 - No longer applicable: change_status INVALIDATED.
 

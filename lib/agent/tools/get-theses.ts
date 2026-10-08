@@ -540,30 +540,7 @@ export const getTheses = defineTool({
         // NEVER a license to edit the floor — protective levels ratchet one
         // way (agents may raise, never lower); moving a line down is the
         // principal's manual act. null when no recent protective declines.
-        heldThroughFloor: (() => {
-          const ht = load.declines.get(t.id);
-          if (!ht) return null;
-          // Only surface while the breach is LIVE — price still on the losing
-          // side of the ladder's tightest protective floor. Once price
-          // recovers above the line, the floor held and the held-through
-          // framing is false; the next breach is a fresh, meaningful ask.
-          // Reuses the resolver's already-computed floor + live price (no
-          // second fetch). Can't prove the breach (no floor rung, or quotes
-          // degraded) → omit rather than assert something unverified.
-          const r = resolvedByThesisId.get(t.id);
-          const floorPrice = r?.ladderHealth?.floor?.price ?? null;
-          const price = r?.currentPrice ?? null;
-          if (floorPrice == null || price == null || price <= 0) return null;
-          const stillBreached =
-            t.direction === "SHORT" ? price >= floorPrice : price <= floorPrice;
-          if (!stillBreached) return null;
-          return {
-            floorPrice,
-            heldThroughCount: ht.declineCount,
-            rejectMessage: ht.rejectMessage,
-            recentLow: load.recentLow.get(t.id) ?? null,
-          };
-        })(),
+        heldThroughFloor: facts.heldThroughFloor.get(t.id) ?? null,
       };
     });
 

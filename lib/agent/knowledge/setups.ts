@@ -399,7 +399,7 @@ export const SETUPS: Setup[] = [
     ],
     entry: {
       template: { match: "all", conditions: [{ watch: "price", is: "above", value: "{flagHigh}", settings: { close: true } }, { watch: "volume", value: BREAKOUT_VOLUME_RATIO }] },
-      confirmation: ["Range expands upward out of the flag", "Price above the 10- and 20-day"],
+      confirmation: ["Range expands upward out of the flag", `Volume ≥ ${BREAKOUT_VOLUME_RATIO}× the 20-day average volume on the day it clears`, "Price above the 10- and 20-day"],
       chaseLimitPct: CHASE_LIMIT_PCT,
       text: "Close above the flag high on volume.",
     },
