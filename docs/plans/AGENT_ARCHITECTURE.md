@@ -1,8 +1,11 @@
 # How the agents should be built
 
-> **Status:** final proposal, 2026-10-02. Steps 1 and 2 are approved and in
-> progress, one PR each. Step 3 onward waits for the test cases. Section 9
-> records each decision.
+> **Status:** steps 1 to 7 are merged (step 7 on 2026-10-07, step 6 on
+> 2026-10-08). Steps 6 to 11 were re-planned on 2026-10-07 and are in
+> section 11, in the step numbers the Agent Rebuild Roadmap page uses. The
+> order in "The short version" below carries those numbers; section 5 is
+> the 2026-10-02 order and section 10 the superseded step-6 design, both
+> kept as the record. Section 9 records each decision.
 >
 > **This is the one page for this work.** It holds the research, the audit,
 > the design, the build order, what the reviews raised, and the decisions.
@@ -48,18 +51,25 @@ right text to the stock. Each rule is written in exactly one place.
 ### The order
 
 Content first, structure second. Moving text before cleaning it would only
-move bad text.
+move bad text. The numbers are the Roadmap page's and are the only ones
+used anywhere; section 11 has steps 6 to 11 in full.
 
-1. Fix the cache and record token use for every agent.
-2. Build the test cases: single real decisions, scored by code.
-3. Delete what is dead, repeated or already enforced.
-4. Fix the read.
-5. Slim the tool definitions and define the thesis fields once.
-6. Move each situation's text onto its flag, one at a time.
-7. Write the house rules and cut each job to what is left.
-8. Lessons get one home, and a test.
+1. Fix the cache and record token use for every agent. Merged 2026-10-03.
+2. Build the test cases: single real decisions, scored by code. Merged.
+3. Delete what is dead, repeated or already enforced. Merged 2026-10-05.
+4. Fix the read. Merged 2026-10-06.
+5. Slim the tool definitions and define the thesis fields once. Merged
+   2026-10-07.
+6. Situations: one list per stock of every situation it is in, one feed,
+   one table of texts sent with the stock. Merged 2026-10-08.
+7. The house rules in one file. Merged 2026-10-07.
+8. The one read, sized by situation. Next.
+9. The morning run on the new read; then one analyst for a week, then all.
+10. The chat and the trigger run on the same agent; then delete what is
+    left.
+11. Lessons get one home, and a test.
 
-### Decisions, as of 2026-10-02
+### Decisions
 
 1. Steps 1 and 2: approved, one PR each. Step 3 onward waits for the cases.
 2. The deletions PR: merged.
@@ -67,8 +77,14 @@ move bad text.
 4. Two flags stop putting no-buy stocks on every morning list: approved,
    with a rule for the stock nothing can wake.
 5. The pullback notice from the earlier plan still stands.
+6. Steps 6 to 11 re-planned 2026-10-07: one analyst agent, three doors,
+   one read; no parent agent, no per-stock fan-out (section 11.1).
+7. Step 6 rebuilt as one list and one table after the playbook stack was
+   stopped (section 11.2).
+8. A save is a patch (#806, #808); an update that changes nothing stays
+   allowed.
 
-Details are in section 9.
+Details are in sections 9 and 11.
 
 ---
 
@@ -376,6 +392,10 @@ What each agent looks like afterwards:
 
 ## 5. The order to build it
 
+> Steps 6 to 8 below are the 2026-10-02 order. They were re-planned on
+> 2026-10-07; the current order, in the Roadmap page's step numbers, is
+> section 11. Steps 1 to 5 here are the ones that were built.
+
 Every step is one or two small PRs. Appendix D has the rules each PR follows.
 
 1. **Fix the cache and measure every agent.** Stop the random id reaching the
@@ -548,14 +568,46 @@ What the reviews raised, and where each point is handled:
    clock, or lets it go. Last month that was 8 rows in 6 runs. It changes
    what the morning run looks at, not what it may trade. Built in step 4d.
 5. **The pullback notice.** Unchanged from the earlier plan.
+6. **The shape of steps 6 to 11.** Set by the owner on 2026-10-07 after an
+   independent review of the first re-plan: one analyst agent per analyst,
+   defined once; three doors (the chat, a scheduled prompt, a fire); one
+   read sized by situation; decisions side by side in one conversation with
+   the book in view. No parent agent and no per-stock fan-out: a parent
+   that passes or declines proposals would impersonate the owner, whose
+   approval is the only one, and a recorded decline is already the owner's
+   word. Section 11.1.
+7. **Step 6 rebuilt.** The playbook stack (section 10) and the first
+   situations module (#802 to #804) do not merge; together they added about
+   18,000 lines and deleted nothing from the prompts. Step 6 is the list,
+   one feed and one table (#805, #807), merged 2026-10-08. Section 11.2.
+8. **A save is a patch.** For every field of `update_thesis`, a value equal
+   to what is stored is dropped before any rule reads it; a field that
+   cannot be applied is refused by name and the rest of the call lands; a
+   whole-call refusal remains only where nothing can land (#806, #808,
+   2026-10-08). An update that changes nothing stays allowed (the owner,
+   2026-10-07): a review with nothing to change is a real case, and the
+   agents will be taught the note feature for it.
+9. **The review stamp and the two strong bars.** A review that changes
+   nothing lands REVIEWED again; the fired-buy bar in `complete_run` is
+   deleted (a buy left as a note comes back on the next morning run); the
+   declined-sale bar stays (#789, 2026-10-07).
 
 ---
 
 ## 10. Step 6, written up: each situation onto its flag
 
+> **Superseded 2026-10-07.** This was the playbook stack (#785 to #798): one
+> file per situation attached by eleven predicates over four flag systems.
+> It was reviewed in full and not merged: its first pull requests added
+> about a thousand lines of attach code and deleted nothing from the
+> prompts, and the first situations module written after it (#802 to #804)
+> added 18,000 lines with the same result. Step 6 was rebuilt as one list
+> and one table (section 11.2); the eleven texts here were re-cut into the
+> sixteen entries. Kept as the record of each situation and its cases.
+
 Read from main after the trigger cutover (2026-10-06) and checked against the
-code on 2026-10-07. Nothing here is built yet. Sizes are characters in the
-sample prompts the size test builds.
+code on 2026-10-07. Sizes are characters in the sample prompts the size test
+builds.
 
 Each situation's text reaches a stock only when that situation is present,
 by code, from something the app already computes. A playbook is one file per
@@ -930,6 +982,170 @@ Estimates from the measured sizes, replaced by measurements as each PR lands
 3. Whether the chat keeps any description of the app and its tables (6.11).
    The recommendation is none on every message, and a lookup topic if a case
    shows the chat needed it.
+
+---
+
+## 11. Steps 6 to 11, re-planned 2026-10-07
+
+Written after the owner stopped the playbook stack (section 10) and set the
+shape. Two live pages carry the same plan for the owner: the Agent Rebuild
+Roadmap (the full set of plans, with every PR, run day and check) and The
+Decision Loop (the plan for these steps). This section says the same thing
+in the same step numbers, so the three agree. A number is measured unless
+it says "estimate".
+
+### 11.1 The shape
+
+One analyst agent per analyst, defined once: the house rules (every agent,
+always), the analyst brief (when it acts for one analyst), the job prompt
+(from the door it came in), its tools, and one read of its stocks. Three
+doors into it: the principal's chat; a scheduled prompt (the morning run is
+the first; any cron row carrying a prompt is the same door); a fire (the
+trigger run). One read for every agent, sized by situation by code: a quiet
+stock is one line; a stock with a situation gets a short row with each
+situation's text attached once; the full row comes by ticker or by a
+situation's rule. Decisions are made side by side in one conversation with
+the book and the account in view. No parent agent, no per-stock fan-out, no
+gate before the owner's queue; no new refusals and no scope change.
+
+What was wrong with the one conversation was never that it was one
+conversation. It was what the read put into it: about 12,000 characters per
+flagged stock, most of it research essays no decision needed, re-sent on
+every tool call.
+
+### 11.2 Step 6, situations: done 2026-10-08
+
+As built, in #805 and #807, after #802 to #804 were closed:
+
+- **The flag math stays where it was.** `computeNeedsAction`
+  (`lib/agent/needs-action.ts`) now returns every situation a stock is in,
+  today's lead first, the rest in a fixed rank. No new module wraps it.
+  Today's lead precedence is a cycle (a floor too far beats a fired review,
+  which beats a matching sale, which beats a floor too far); it is kept as
+  is and recorded as a finding.
+- **One feed, one set of facts.** `loadWorkInputs`
+  (`lib/agent/work-inputs.ts`) gathers the inputs for `get_theses`, the run
+  close-out and the quote route; `loadStockFacts`
+  (`lib/agent/stock-facts.ts`) assembles the plan checks, ladder health and
+  floor risk for `get_theses` and the quote route. Before, each surface
+  built its own inputs and the sheet could never show a floor too far.
+- **One table.** `SITUATIONS` in `lib/agent/situations.ts`: sixteen codes
+  (PROMOTED_AWAITING, PROTECTIVE_SALE, BUY_ARRIVES, BUY_BLOCKED_FULL,
+  ADD_OR_WINNER, EARNINGS, FILING, QUIET_WATCH_WOKE, PROTECTION,
+  FIRST_RESEARCH, REVIEW_DUE, STALE_RESEARCH, PLAN_PROBLEM,
+  YOUR_WORD_UNANSWERED, SOLD_ONE_REVIEW, NO_SETUP_NAMED), each a name and
+  the text an agent gets when a stock is in it, each under 2,200
+  characters. `situationsFor` maps the list and the row's facts to codes.
+  No database table: a situation is derived at read time.
+- **Sent with the stock.** `get_theses` puts `situations` on every row and
+  one `guidance` block per read carrying only the codes on today's work
+  list. The trigger run computes its one stock's codes through the same
+  function and prints the same texts. The lectures left both prompts: the
+  morning prompt went from 31,224 to 11,279 characters (PEAD 30,183 to
+  10,238; Compounder 40,434 to 19,959); the trigger run's sample prompt from
+  15,366 to 10,589. The read gains 190 to 6,439 characters a run.
+- **Proof.** Under #805 the model's read was byte-identical to main on all
+  40 live stocks; app code net −417 lines. #807's case batch ($2.51, six a
+  side): better than main on MU (held and raised the floor; main sold at
+  the target), WST (decided on the first turn; main never did) and DOCU
+  (six of six held off an unconfirmed pullback buy; main bought four of
+  six); the same on CEG, FIVE, PBH and NVDA; NOW fails on both sides, a
+  pre-existing case failure.
+- **Found on the way, findings not PRs.** The case runner replays each
+  recorded tool result word for word, so a change to what the read returns
+  is invisible to a case (step 8 fixes this first). The runner's expect
+  rules are not scoped to the scored thesis. The sheet's open runs about
+  twenty sequential queries.
+
+### 11.3 Step 7, the house rules: done 2026-10-07
+
+#801: `lib/agent/house-rules.ts`, imported by the three doors. Measured, the
+doors shared the twelve voice rules (already one import) and two sentences,
+about 1,550 characters as sent; the rest of what the earlier bars called
+house rules was situation text or true in one door. Six one-door candidates
+wait for a second pass after step 8 gives every door the account's numbers.
+
+### 11.4 Fixes found along the way, outside the steps
+
+- **A save is a patch** (#806, #808, 2026-10-08). The agent copies the row
+  it was shown into its save; one refused field used to refuse the whole
+  call, and two trigger runs made their sale proposal and then failed their
+  closing note eleven refusals deep. Now an unchanged value is a no-op, a
+  field that cannot be applied is refused by name in `data.refused_fields`
+  and the rest lands, and a whole-call refusal remains only for a missing
+  or foreign thesis, a terminal row and a seed's commitment. Refusals name
+  only tools the door has. Open in #809: the refusals written on the
+  save's Activity row, a hand edit made after the run started wins over the
+  run's copy, a run repeating a refused call is stopped on the third time,
+  and a failing plan check refuses only the trigger changes that fail it.
+- **The review stamp** (#789): a review that changes nothing lands REVIEWED;
+  the fired-buy bar is deleted; the declined-sale bar stays.
+- **A hand removal reaches the next run** (#799): held by the owner.
+- Rulings: an empty `update_thesis` stays allowed; an analyst may remove a
+  principal-set trigger (nothing stops it; the read marks who set it).
+
+### 11.5 Step 8, the one read: next
+
+The brief is written from the 2026-10-07 dumps of exactly what each door
+receives today, one page per door. The entries:
+
+| Entry | When | What it carries | Size |
+|---|---|---|---|
+| One line | a stock with no situation today | ticker, held or watched, live price against its plan prices, next review date, one word if something fired | ~120 chars |
+| Short row | a stock with one or more situations | the position if held and any proposal already waiting; the plan and every trigger as a sentence, with the rules it inherits from the analyst and the account; belief, assumptions, what would prove it wrong; what's been said since the last answer; the chart numbers and the live price; the situations by name with each one's text once per read. No research essays | ~3–4k chars, estimate |
+| Full row | by ticker on request, or by a situation's rule | the short row plus the research: snapshot, bull case, bear case, scoring notes, conviction | ~27k chars, measured |
+| The account | every read | risk used against the cap, cash and buying power, concentration, approvals already waiting, what fired across the book today | ~1k chars |
+
+Source tags are stripped from what the model reads. The chat's default read
+is the same. Nothing depends on the model remembering to ask: code decides
+the entry from the situations. First, the case runner gets a mode that
+rebuilds the read from the recorded facts through the current code, or no
+case can measure the change. With the read, the morning run's save is
+shaped to its job. No model calls; every size on the plan page is replaced
+by the one measured on the live book before any spend. #786's content rules
+are the source material (`git show 5b0efbca:`); its branch is not a base.
+
+### 11.6 Steps 9 to 11
+
+9. **The morning run on the new read.** Its prompt shrinks to the job; the
+   read defaults to the new entries; the six situations with no saved case
+   get one each; a second independent review reads steps 6 to 9 before any
+   spend. Proof: the morning and trigger cases, six a side, main against
+   the branch, about $10, priced to the owner first. Then one analyst runs
+   it for a week behind a per-analyst switch set through the app, then the
+   other two; the old read stays a flip away.
+10. **The chat and the trigger run on the same agent; then delete.** The
+    analyst brief rendered by one builder for every door instead of four
+    ways. The chat reads the book in lines first and opens a stock's full
+    row by ticker (today it loads every stock in full; one chat on
+    2026-10-05 read 1.2 million tokens). The trigger run reads its one stock
+    in full with the fire as its situation, and its closing save is shaped
+    to its job: six fields instead of twenty-two optional ones, with cases.
+    Then the old prompt blocks, the leftovers of the old feeds and the
+    twelve superseded branches are deleted; grep proves each is gone.
+    Cases about $2 and $6.
+11. **The lessons rule.** A new instruction enters only with a failing case
+    and under a size cap (rule 8 in section 4).
+
+After these, on the owner's word: schedules as a framework (any prompt on
+any clock, through the same door) and discovery rebuilt as one of them.
+
+### 11.7 Rules for these steps
+
+Appendix D still holds, with three additions: nothing is built, merged or
+spent without the owner's word, and every batch is priced to the owner
+before it runs; architecture work adds no rules and no refusals, only
+deletions and moves; a brief that saves data for a test states the byte cap
+and the fields the rule reads, because a 420 KB fixture stopped #802.
+
+### 11.8 What the owner still decides
+
+1. Decision 3, the score check at a buy fire: approved by the QB, pending
+   the owner's veto; built only after a yes.
+2. The buy rule when the account has no cash (Roadmap check 10).
+3. #799, a hand removal reaching the next run: held.
+4. #771, the trigger translator's deletion: Friday 2026-10-09 after the
+   close, if a week of production logs shows no agent sending an old kind.
 
 ---
 
