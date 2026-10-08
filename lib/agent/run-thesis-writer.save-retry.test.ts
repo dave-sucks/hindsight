@@ -155,15 +155,14 @@ beforeEach(() => {
   );
 });
 
-it("DOCU: the save keeps the research, refuses the buy's removal by name, and the stock keeps a whole plan — no retry", async () => {
+it("DOCU: the save keeps the research, refuses the half plan by name, and the stock keeps its plan — no retry", async () => {
   const result = await writerPersistPhase(args, pullOutput, research(), Date.now());
 
   expect(mockGenerateText).not.toHaveBeenCalled();
   expect(result.status).toBe("COMPLETE");
   expect(result.thesisId).toBe(fx.thesis.id);
   expect(mockThesisUpdate).toHaveBeenCalledTimes(1);
-  // The largest set of trigger changes that leaves a valid plan lands: the buy stays.
-  expect((mockThesisUpdate.mock.calls[0][0].data.triggers as Array<{ action: string }>).some((t) => t.action === "ENTER")).toBe(true);
+  expect(mockThesisUpdate.mock.calls[0][0].data.triggers).toBeUndefined();
   const events = mockRunEventCreate.mock.calls.map((c) => c[0].data as { title: string; message: string });
   expect(events.map((e) => e.title)).not.toContain("Save refused — retrying once");
   expect(events.find((e) => e.title === "Thesis persisted")?.message).toMatch(/Not applied: triggers — .*no buy level/);
