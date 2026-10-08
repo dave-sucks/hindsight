@@ -40,7 +40,8 @@ import type { FloorStructure } from "@/lib/agent/floor-risk";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import type { NeedsAction } from "@/lib/agent/needs-action";
+import type { NeedsAction, NeedsActionInput } from "@/lib/agent/needs-action";
+import { situationsFor, type Situation } from "@/lib/agent/situations";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { ActivityRow, StockContext } from "@/lib/agent/stock-context";
 import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
@@ -176,11 +177,22 @@ export const getTheses = defineTool({
     const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
     if (!Array.isArray(rest.theses)) return { ...result, data: rest };
     const theses = (rest.theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, named));
+    // The situations list is not sent to the model yet (lib/agent/situations).
+    const unlisted = (rows: unknown) =>
+      Array.isArray(rows)
+        ? (rows as Array<Record<string, unknown>>).map((r) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { situations, ...kept } = r;
+            return kept;
+          })
+        : rows;
     return {
       ...result,
       data: {
         ...rest,
         theses,
+        ...(rest.quiet_theses !== undefined ? { quiet_theses: unlisted(rest.quiet_theses) } : {}),
+        ...(rest.sold_to_review !== undefined ? { sold_to_review: unlisted(rest.sold_to_review) } : {}),
         ...(!named && input?.include_history
           ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `context` already sums up what's been said." }
           : {}),
@@ -494,6 +506,9 @@ export const getTheses = defineTool({
       ]),
     );
     const needsActionByThesisId = new Map<string, NeedsAction | null>();
+    // Each live stock's work-flag input, kept so its situations read exactly
+    // what its needsAction read (lib/agent/situations).
+    const workInputByThesisId = new Map<string, NeedsActionInput>();
     // P1-29 (L2): the most-recent unaddressed PRINCIPAL decision per thesis
     // (reject / approve-with-edit / direct edit), surfaced verbatim so the
     // agent reads the instruction directly instead of inferring it from a count.
@@ -930,9 +945,7 @@ export const getTheses = defineTool({
           t.id,
           stockContextFor({ ticker: t.ticker, rows: activity, triggers, now, currentPrice: latestQuote?.price ?? null }),
         );
-        needsActionByThesisId.set(
-          t.id,
-          computeNeedsAction({
+        const workInput: NeedsActionInput = {
             thesis: {
               id: t.id,
               direction: t.direction,
@@ -963,8 +976,9 @@ export const getTheses = defineTool({
             now,
             hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
             equity: accountEquity,
-          }),
-        );
+          };
+        workInputByThesisId.set(t.id, workInput);
+        needsActionByThesisId.set(t.id, computeNeedsAction(workInput));
       }
     }
 
@@ -1158,6 +1172,8 @@ export const getTheses = defineTool({
         now: resolverNow,
       });
       if (!work) continue;
+      const workInput = workInputByThesisId.get(t.id);
+      if (workInput) workInputByThesisId.set(t.id, { ...workInput, declinedSale: work });
       needsActionByThesisId.set(
         t.id,
         computeNeedsAction({
@@ -1224,6 +1240,39 @@ export const getTheses = defineTool({
     const setupAskFor = (t: (typeof theses)[number]) =>
       nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null);
 
+    // ── The situations each live stock is in (lib/agent/situations) ─────
+    // Alongside the fields above, which still decide the listing and what
+    // the model reads: nothing reads this list yet, and the model is not
+    // sent it (forModel). Fail-soft: a stock whose list can't be built gets
+    // none, and the read still returns.
+    const situationsByThesisId = new Map<string, Situation[]>();
+    for (const t of liveTheses) {
+      const work = workInputByThesisId.get(t.id);
+      if (!work) continue;
+      try {
+        situationsByThesisId.set(
+          t.id,
+          situationsFor(
+            {
+              ticker: t.ticker,
+              work,
+              setupId: t.setupId ?? null,
+              entryPrice: t.entryPrice ?? null,
+              setupChoices: t.researchRun?.agentConfig?.setupIds ?? null,
+              ownTriggers: t.triggers,
+              resolved: resolvedByThesisId.get(t.id) ?? null,
+              researchAge: classifyResearchAge(t.researchUpdatedAt, t.horizon as Horizon | null, t.status),
+              unansweredDecision: contextByThesisId.get(t.id)?.unansweredDecision ?? null,
+            },
+            { capacity, setupOverrides },
+            resolverNow,
+          ),
+        );
+      } catch (err) {
+        console.warn(`[get_theses] situations failed for ${t.ticker}; the row carries none:`, err);
+      }
+    }
+
     const isFullDetail = (t: (typeof theses)[number]): boolean => {
       return (
         setupAskFor(t) !== null ||
@@ -1286,6 +1335,7 @@ export const getTheses = defineTool({
       ),
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
+      situations: situationsByThesisId.get(t.id) ?? [],
       // The principal's newest note, one line (docs/plans/AGENT_CONTEXT.md §3.2).
       ...(contextByThesisId.get(t.id)?.principalNote ? { principalNote: contextByThesisId.get(t.id)!.principalNote } : {}),
     }));
@@ -1305,6 +1355,8 @@ export const getTheses = defineTool({
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
+        // Every situation the stock is in, the lead first (lib/agent/situations).
+        situations: situationsByThesisId.get(t.id) ?? [],
         // Conviction Expression v4 — read-time resolved envelope. The
         // agent reads `resolved.actionability` first to filter actionable
         // rows; `triggerDetail` shows trigger state vs current price;
@@ -1431,7 +1483,7 @@ export const getTheses = defineTool({
     // through the resolver, the quote fetch and needsAction. Skipped on a
     // ticker-filtered drill-down and for callers that asked for an explicit
     // status scope. Fail-soft: the book still returns if this throws.
-    const soldToReview: Array<{ thesis_id: string; ticker: string; sold_on: string; days_ago: number; ask: string }> = [];
+    const soldToReview: Array<{ thesis_id: string; ticker: string; sold_on: string; days_ago: number; ask: string; situations: Situation[] }> = [];
     if (!tickerFiltered && !(args.status && args.status.length > 0) && ctx.analystId) {
       try {
         const since = new Date(resolverNow.getTime() - RECENTLY_SOLD_WINDOW_DAYS * 86_400_000);
@@ -1491,7 +1543,7 @@ export const getTheses = defineTool({
           const pos = posBySymbol.get(r.ticker);
           const cost = pos ? Number(pos.avgCost) * Number(pos.quantity) : 0;
           const realized = pos?.realizedPnl != null ? Number(pos.realizedPnl) : null;
-          const review: SoldReview | null = soldReview({
+          const soldFacts = {
             ticker: r.ticker,
             status: "RETIRED",
             retiredReason: "SOLD",
@@ -1509,8 +1561,8 @@ export const getTheses = defineTool({
               r.closedAt &&
               r.updates[0].timestamp.getTime() > r.closedAt.getTime() + 5_000
             ),
-            now: resolverNow,
-          });
+          };
+          const review: SoldReview | null = soldReview({ ...soldFacts, now: resolverNow });
           if (review) {
             soldToReview.push({
               thesis_id: r.id,
@@ -1518,6 +1570,15 @@ export const getTheses = defineTool({
               sold_on: review.soldOn,
               days_ago: review.daysAgo,
               ask: review.text,
+              situations: situationsFor(
+                {
+                  ticker: r.ticker,
+                  work: { thesis: { id: r.id, status: "RETIRED", triggers: [], createdAt: r.closedAt ?? resolverNow }, now: resolverNow },
+                  sold: soldFacts,
+                },
+                {},
+                resolverNow,
+              ),
             });
           }
         }
@@ -1607,6 +1668,8 @@ export function rowForModel(row: Record<string, unknown>, named: boolean): Recor
   // The evaluator's fire bookkeeping for inherited triggers; the run reads
   // what fired from needsAction and context.
   delete out.triggerState;
+  // Not sent to the model yet (lib/agent/situations).
+  delete out.situations;
   for (const k of NOT_FOR_THE_MODEL) {
     const v = out[k];
     if (v == null || (Array.isArray(v) && v.length === 0) || v === 0) delete out[k];
