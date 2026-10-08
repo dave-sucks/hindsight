@@ -156,15 +156,15 @@ Mistakes:
     guidance: `When: a buy trigger fired or is true now on a stock we watch and the analyst has room, or \`resolved.actionability\` is ENTER_NOW.
 
 Answer, in order:
-1. Does the price still hold the level (get_stock_data)? If it touched and slipped back, say so: "it hit $X, then slipped back to $Y".
-2. Did the setup's confirmation happen? By \`setup.name\`: a breakout needs a close above the level on volume (get_stock_data: technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
-3. Is it chased? A crossing already spent shows in \`resolved.planSanity\` as BUY_FIRED_UNANSWERED, with the setup's chase limit and how far past it the stock is.
+1. Does the price still hold the level (get_stock_data)? If it touched and slipped back, say so.
+2. Did the setup's confirmation happen? By the setup (the row's \`setup\`; THE SETUP block in a trigger run): a breakout needs a close above the level on volume (get_stock_data: technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
+3. Is it chased? A spent crossing shows in \`resolved.planSanity\` as BUY_FIRED_UNANSWERED, with the setup's chase limit and how far past it the stock is.
 4. Does a headline from the last hour contradict it (get_stock_data's news)? A buy into bad news is a fade.
 5. Did the principal decline this buy (\`context\`), with nothing they named changed since? Then say so and pass.
 6. Does the view still hold? At LOW \`conviction\`, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks \`variantView\`.
 
 What you can do:
-- Buy: place_trade (it sizes the buy), then one update_thesis saying why.
+- Buy, only when every check above holds: place_trade (it sizes the buy), then one update_thesis saying why.
 - Re-price: update_thesis with edit_triggers on the buy's id, at a level from the chart's structure, named in the rationale.
 - Set the plan down: update_thesis with remove_trigger_ids naming the buy, floor and target, keeping a review, and one sentence on why this was not the entry.
 - Stop watching: change_status ARCHIVED; INVALIDATED only when the thesis should not exist at all.

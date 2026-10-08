@@ -302,8 +302,9 @@ DECISION FRAMEWORK
 2. If validation HOLDS:
    - Default: execute the declared action (${trigger.action}). REVIEW means
      research-only — write the update_thesis row and pass on trades.
-     EXIT means close_position. ENTER means place_trade. ADD means
-     manage_position (scale up). TRIM means manage_position (partial close).
+     EXIT means close_position. ENTER means place_trade once the buy's
+     checks hold. ADD means manage_position (scale up). TRIM means
+     manage_position (partial close).
 ${situationsBlock}   - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). Say in the note what you did instead of the trigger's action, and why.
