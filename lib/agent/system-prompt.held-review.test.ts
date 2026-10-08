@@ -68,7 +68,7 @@ describe("answering a fired review: REVIEW_DUE's guidance, which the read carrie
   });
 
   it("tells a held stock's review to go down its invalidation conditions", () => {
-    expect(review).toContain("go down `invalidationConds` and say for each whether it has happened");
+    expect(review).toContain("go down `would_prove_it_wrong` and say for each whether it has happened");
     expect(review).toContain("A condition that happened is an exit");
   });
 

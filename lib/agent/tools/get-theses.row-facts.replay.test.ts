@@ -3,8 +3,8 @@
  * the first pull request): the open position, the orders awaiting approval,
  * the price with the day's change, the chart numbers the trigger check reads,
  * and the rules the stock inherits. They land on the saved full row, off the
- * one load (work-inputs.ts), and the one builder (rowForModel) leaves them
- * off the model's read until the next pull request sizes the row.
+ * one load (work-inputs.ts), and the one builder (rowForModel) writes the
+ * model's lines from them.
  *
  * Through the real get_theses execute and its real model-output hook. The
  * tool is imported after the replay has doubled the database, as the other
@@ -58,7 +58,8 @@ async function read() {
   };
   const model = tool.toModelOutput({ toolCallId: "c1", input: args, output: result }).value.data;
   const screen = result.data as Record<string, unknown>;
-  const row = (d: Record<string, unknown>, ticker: string) => ((d.theses as Array<Record<string, unknown>>) ?? []).find((t) => t.ticker === ticker) as Record<string, unknown>;
+  // The screen's row has a ticker; the model's row opens with its stock line.
+  const row = (d: Record<string, unknown>, ticker: string) => ((d.theses as Array<Record<string, unknown>>) ?? []).find((t) => t.ticker === ticker || String(t.stock ?? "").startsWith(`${ticker} ·`)) as Record<string, unknown>;
   return { mod, model, screen, screenRow: row(screen, "AAA"), modelRow: row(model, "AAA") };
 }
 
@@ -85,27 +86,25 @@ describe("get_theses — the facts on the saved row", () => {
     expect((screenRow.triggers as Array<{ id: string }>).map((x) => x.id)).toEqual(["floor-aaa"]);
   });
 
-  it("the model's read leaves them off, so the read is as it was", async () => {
-    const { mod, modelRow, screenRow } = await read();
-    for (const k of mod.ROW_FACTS) expect(modelRow).not.toHaveProperty(k);
-    // Everything else the model read before, it still reads.
-    const stripped = { ...screenRow };
-    for (const k of mod.ROW_FACTS) delete stripped[k];
-    expect(modelRow).toEqual(mod.rowForModel(stripped, { named: false, size: "full" }));
+  it("the model's row is the short row written from them, never the raw facts", async () => {
+    const { mod, modelRow } = await read();
+    // The raw facts never reach the model; three of their names are now lines of words.
+    for (const k of ["proposals", "inheritedTriggers"]) expect(modelRow).not.toHaveProperty(k);
+    for (const k of ["position", "price", "chart"]) expect(typeof modelRow[k]).toBe("string");
+    expect(mod.ROW_FACTS).toContain("inheritedTriggers");
+    expect(modelRow.position).toMatch(/^10 sh at \$100\.00 → \$91\.00 \(-9\.0%\), \$910; opened \d\d-\d\d; high since we bought \$112\.00$/);
+    expect(modelRow.proposal_waiting).toMatch(/^sell 10 sh, placed \d\d-\d\d \d\d:\d\d ET, expires \d\d-\d\d \d\d:\d\d ET$/);
+    expect(modelRow.price).toMatch(/^\$91\.00, \+0\.0% today \(\d\d-\d\d \d\d:\d\d ET\)$/);
+    expect(modelRow.chart).toMatch(/^as of the \d{4}-\d\d-\d\d close: 20d \$85\.25 · 50d \$78\.10 · 200d \$70\.40 · RSI \d+ \(14-day, from the closes and the live price\) · 20d range \$80\.00–\$90\.00 · 52w high \$95\.00 · ATR \$2\.15 · vs the S&P 1M \+3\.2% \/ 3M -1\.1% · 20d avg volume 1\.2M · 5d \+4\.0% · 20d \+13\.8%$/);
+    const triggers = modelRow.triggers as string[];
+    expect(triggers).toHaveLength(2);
+    expect(triggers[0]).toMatch(/^Sell if below \$95.* \[id floor-aaa\]$/);
+    expect(triggers[1]).toMatch(/^Review every 7 days · inherited \(the analyst's rule\) \[id analyst-clock\]$/);
   });
 
-  it("a quiet row goes through the builder as the line size and comes out itself", async () => {
+  it("a quiet row goes through the builder as one line", async () => {
     const { model, screen } = await read();
     expect((screen.quiet_theses as Array<{ ticker: string }>).map((q) => q.ticker)).toEqual(["BBB"]);
-    expect(model.quiet_theses).toEqual(screen.quiet_theses);
-  });
-
-  it("the builder strips exactly the saved facts from a full row", async () => {
-    const { mod } = await read();
-    const row = { id: "t", ticker: "X", researchUpdatedAt: "2026-10-01T00:00:00.000Z", researchWritten: { on: "2026-10-01", price: 10, daysAgo: 7 }, position: {}, proposals: [], price: {}, chart: {}, inheritedTriggers: [] };
-    const out = mod.rowForModel(row, { named: false, size: "full" });
-    for (const k of mod.ROW_FACTS) expect(out).not.toHaveProperty(k);
-    expect(out.research).toBe("Written 2026-10-01 at $10, 7 days ago.");
-    expect(mod.rowForModel({ id: "q", position: {} }, { named: false, size: "line" })).toEqual({ id: "q", position: {} });
+    expect(model.quiet_theses).toEqual(["BBB · watch · LONG · BASE_BREAKOUT · $33.00 · buy $36.00 · target $48.00 · floor $32.00 · score 7 · id t_bbb"]);
   });
 });

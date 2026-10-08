@@ -1,8 +1,8 @@
 /**
  * get-theses.saved-cases.test.ts — the saved cases carry the facts (step 8,
  * the first pull request), and the builder reads a recorded row the way it
- * reads the live one: the facts stay off the model's read until the next
- * pull request sizes the row. Two recorded morning reads, through the real
+ * reads the live one: the short row from the facts, the full row by rule,
+ * the guidance from the rows' situations. Two recorded morning reads, through the real
  * model-output hook, with no database.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
@@ -36,6 +36,9 @@ const tool = getTheses({ runId: "r", userId: "u", analystId: "a" } as never) as 
 };
 const forModel = (read: Read) => tool.toModelOutput({ toolCallId: "c", input: read.input, output: read.output }).value.data;
 
+const SHORT_KEYS = ["stock", "id", "situations", "said", "position", "proposal_waiting", "price", "plan", "plan_checks", "protection", "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong", "setup", "nameTheSetup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "score", "chart", "research", "catalyst", "repeat", "note", "paper_record"];
+const FULL_ONLY = ["score_notes", "bull_case", "bear_case", "conviction_rationale", "variant_view", "history"];
+
 describe.each(CASES)("the saved case %s", (name) => {
   const reads = recordedReads(name);
 
@@ -52,13 +55,28 @@ describe.each(CASES)("the saved case %s", (name) => {
     }
   });
 
-  it("replays the model's row without the facts, byte for byte as if they were never there", () => {
+  it("replays each row at the size its situations call for, with the guidance read off them", () => {
     for (const read of reads) {
       const model = forModel(read);
-      for (const row of model.theses as Row[]) for (const k of ROW_FACTS) expect(row).not.toHaveProperty(k);
-      const without = JSON.parse(JSON.stringify(read.output)) as Read["output"];
-      for (const row of without.data.theses) for (const k of ROW_FACTS) delete row[k];
-      expect(JSON.stringify(model)).toBe(JSON.stringify(forModel({ input: read.input, output: without })));
+      const rows = model.theses as Row[];
+      for (const [i, row] of rows.entries()) {
+        const recorded = read.output.data.theses[i];
+        const keys = Object.keys(row);
+        expect(keys[0]).toBe("stock");
+        const full = (recorded.situations as string[]).some((c) => c === "QUIET_WATCH_WOKE" || c === "NO_SETUP_NAMED");
+        for (const k of keys) expect([...SHORT_KEYS, ...(full ? FULL_ONLY : [])]).toContain(k);
+        if (!full) for (const k of FULL_ONLY) expect(row).not.toHaveProperty(k);
+        // The raw facts never reach the model; three of their names are now lines of words.
+        for (const k of ["proposals", "inheritedTriggers"]) expect(row).not.toHaveProperty(k);
+        for (const k of ["position", "price", "chart"]) if (k in row) expect(typeof row[k]).toBe("string");
+        expect(JSON.stringify(row)).not.toMatch(/\[(STRUCTURED|WEB)/);
+        // The short row is smaller than the row the model used to read.
+        if (!full) expect(JSON.stringify(row).length).toBeLessThan(JSON.stringify(recorded).length);
+      }
+      for (const line of (model.quiet_theses as string[]) ?? []) expect(line).toMatch(/^[A-Z.]+ · (held|watch|promoted) · /);
+      const codes = new Set(read.output.data.theses.flatMap((r) => r.situations as string[]));
+      expect(Object.keys(model.guidance as Record<string, string>).every((c) => codes.has(c))).toBe(true);
+      if (codes.size > 0) expect(Object.keys(model.guidance as Record<string, string>).length).toBeGreaterThan(0);
     }
   });
 });

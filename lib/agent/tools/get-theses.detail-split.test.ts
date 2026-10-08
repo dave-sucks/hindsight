@@ -201,7 +201,7 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(res.data.cards).toHaveLength(1);
     // Counts span the whole book.
     expect(res.data.count).toBe(2);
-    expect(res.data.note).toContain("index rows");
+    expect(res.data.note).toContain("one line each");
   });
 
   it("still holds a year from now — the fixture is not a time bomb", async () => {
@@ -428,9 +428,9 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
   });
 });
 
-describe("get_theses detail split — every other caller unchanged", () => {
-  it.each(["INTRADAY_TACTICAL", "DISCOVERY", undefined])(
-    "runMode=%s returns the full book",
+describe("get_theses detail split — the same default at every door (step 8)", () => {
+  it.each(["INTRADAY_TACTICAL", "DISCOVERY", "PRINCIPAL_CHAT", undefined])(
+    "runMode=%s splits the book like the morning run: a quiet stock is one line",
     async (mode) => {
       mockThesisFindMany.mockResolvedValue([
         thesisRow({ id: "t_quiet", ticker: "QUIET" }),
@@ -438,11 +438,21 @@ describe("get_theses detail split — every other caller unchanged", () => {
 
       const res = await run(makeCtx(mode as string | undefined));
 
-      expect(res.data.theses).toHaveLength(1);
-      expect(res.data.theses[0].snapshot).toBeDefined();
-      expect(res.data.quiet_theses).toHaveLength(0);
+      expect(res.data.theses).toHaveLength(0);
+      expect(res.data.quiet_theses).toHaveLength(1);
     },
   );
+
+  it("detail: \"book\" lists every stock as a row, whoever reads", async () => {
+    mockThesisFindMany.mockResolvedValue([
+      thesisRow({ id: "t_quiet", ticker: "QUIET" }),
+    ]);
+
+    const res = await run(makeCtx("PRINCIPAL_CHAT"), { detail: "book" });
+
+    expect(res.data.theses).toHaveLength(1);
+    expect(res.data.quiet_theses).toHaveLength(0);
+  });
 });
 
 // ── DAV-292 / DAV-286 — two inputs the run wasn't getting ──────────────────
