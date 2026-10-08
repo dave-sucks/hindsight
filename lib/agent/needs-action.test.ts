@@ -5,6 +5,9 @@
  */
 
 import { computeNeedsAction } from "./needs-action";
+
+/** The lead: the first entry on the stock's list, null when nothing is true. */
+const leadOf = (...a: Parameters<typeof computeNeedsAction>) => computeNeedsAction(...a)[0] ?? null;
 import type { Trigger } from "./triggers/types";
 
 const ENTER_LONG: Trigger = {
@@ -72,7 +75,7 @@ const lookedAt = (days: number) =>
 
 describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)", () => {
   it("returns PROMOTED_AWAITING_RESOLUTION when status is PROMOTED, regardless of trigger state", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         status: "PROMOTED",
@@ -102,7 +105,7 @@ describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)",
   });
 
   it("returns PROMOTED_AWAITING_RESOLUTION even when conviction context fields are missing (pre-PR-#330 rows)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         status: "PROMOTED",
@@ -122,7 +125,7 @@ describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)",
   });
 
   it("does NOT return PROMOTED_AWAITING_RESOLUTION when status is WATCHING (falls through normally)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         status: "WATCHING",
@@ -138,7 +141,7 @@ describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)",
 
 describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 Change 4)", () => {
   it("suppresses a fired ENTER trigger when a buy proposal is pending", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
       activity: [{
         type: "TRIGGER_FIRED",
@@ -153,7 +156,7 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   });
 
   it("suppresses a matching-now ENTER predicate when a buy proposal is pending", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
       activity: [],
       latestQuote: { price: 120, changePct: 0 }, // above 100 → ENTER matches
@@ -164,7 +167,7 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   });
 
   it("still surfaces a fired EXIT trigger when a buy proposal is pending (only ENTER suppressed)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [EXIT_LONG] },
       activity: [{
         type: "TRIGGER_FIRED",
@@ -179,7 +182,7 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   });
 
   it("surfaces the ENTER normally when no proposal is pending", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
       activity: [{
         type: "TRIGGER_FIRED",
@@ -198,7 +201,7 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
 
 describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   it("returns TRIGGER_FIRED when latest ThesisUpdate is an unanswered fire", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
       activity: [{
         type: "TRIGGER_FIRED",
@@ -218,7 +221,7 @@ describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   });
 
   it("includes a graceful fallback when the firing triggerId was deleted", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
       activity: [{
         type: "TRIGGER_FIRED",
@@ -238,7 +241,7 @@ describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   });
 
   it("falls through to MATCHING_NOW when latest update is a UPDATED row (answered)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
       activity: [{
         type: "UPDATED",
@@ -254,7 +257,7 @@ describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
 
 describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
   it("returns TRIGGER_MATCHING_NOW when a price predicate is currently true", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [ENTER_LONG] },
       activity: [],
       latestQuote: { price: 105, changePct: 1 },
@@ -270,7 +273,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
   });
 
   it("returns null when no predicate matches", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [ENTER_LONG, EXIT_LONG] },
       activity: [],
       latestQuote: { price: 95, changePct: 0 }, // between stop and entry-trigger
@@ -280,7 +283,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
   });
 
   it("skips signal-side predicates (no signal payload available at run-start)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [SIGNAL_EARNINGS] },
       activity: [],
       latestQuote: { price: 100, changePct: 0 },
@@ -290,7 +293,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
   });
 
   it("does not fire when the quote is missing (price-side eval needs a quote)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
       activity: [],
       latestQuote: null,
@@ -302,7 +305,7 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
 
 describe("computeNeedsAction — REVIEW_DUE", () => {
   it("returns REVIEW_DUE once the cadence has elapsed", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         triggers: [CADENCE_7D],
@@ -321,7 +324,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     // so it surfaces as REVIEW_DUE within a cadence; the null-direction
     // discriminator must set pendingFirstReview so the prompt routes it to
     // the "commit a direction" path (exactly as legacy 'PENDING' did).
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         direction: null,
@@ -340,7 +343,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   });
 
   it("flags pendingFirstReview on a legacy 'PENDING' seed (dual-read window)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         direction: null,
@@ -359,7 +362,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   });
 
   it("does NOT flag pendingFirstReview on a committed LONG that is REVIEW_DUE", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         direction: "LONG",
@@ -375,7 +378,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
 
   it("returns null while still inside the cadence window", () => {
     // Reviewed yesterday on a 7-day cadence — due again in 6 days.
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         triggers: [CADENCE_7D],
@@ -389,7 +392,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   });
 
   it("returns null when no cadence is set and no triggers fire", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [] },
       activity: [],
       latestQuote: null,
@@ -405,7 +408,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   // REVIEW_DATE_HIT cron picked it up 90 min later in a redundant
   // tactical run.
   it("returns REVIEW_DUE when the review comes due later TODAY", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         // now = 12:00 UTC; this is 13:30 UTC same day (90 min ahead)
@@ -421,7 +424,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
 
   it("returns daysOverdue: 0 when the review is due within 24h", () => {
     // now = 12:00 UTC; due date = +23h
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         triggers: [CADENCE_7D],
@@ -435,7 +438,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   });
 
   it("returns null when the review is just past the 24h look-ahead", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         triggers: [CADENCE_7D],
@@ -451,7 +454,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
 
 describe("computeNeedsAction — precedence (FIRED > MATCHING_NOW > REVIEW_DUE)", () => {
   it("FIRED beats MATCHING_NOW + REVIEW_DUE", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         triggers: [CADENCE_7D],
@@ -471,7 +474,7 @@ describe("computeNeedsAction — precedence (FIRED > MATCHING_NOW > REVIEW_DUE)"
   it("MATCHING_NOW beats REVIEW_DUE", () => {
     // Both are live: the price trigger matches AND the review is 4 days
     // overdue. The specific thing that happened outranks the routine look.
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         triggers: [ENTER_LONG, CADENCE_7D],
@@ -491,7 +494,7 @@ describe("computeNeedsAction — anti-regression (no hardcoded thresholds)", () 
     // stop $90. No NEAR_TARGET trigger set by the agent. Helper MUST NOT
     // fabricate proximity heuristics — that would reintroduce the bug
     // Fix #0 removes from price-monitor.
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
       activity: [],
       latestQuote: { price: 119, changePct: 0 },
@@ -506,7 +509,7 @@ describe("computeNeedsAction — anti-regression (no hardcoded thresholds)", () 
     // With Fix #2 the helper does nothing — the agent set a $90 stop,
     // not a $95 review trigger; the trigger predicate must literally
     // match.
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, triggers: [EXIT_LONG] },
       activity: [],
       latestQuote: { price: 97, changePct: 0 }, // -3% from entry, well above stop $90
@@ -535,7 +538,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   };
 
   it("flags a +17% holding whose floor locks −12% (the IONS shape)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: ionsThesis,
       activity: [],
       latestQuote: { price: 86.24, changePct: 0 },
@@ -552,7 +555,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   });
 
   it("flags a qualifying gain with NO protective EXIT rung at all", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...ionsThesis, triggers: [] },
       activity: [],
       latestQuote: { price: 82, changePct: 0 }, // +11.1%
@@ -571,7 +574,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       ...ionsExit,
       predicate: { watch: "price", is: "below", value: 82 }, // locks +11.1% vs +16.8% gain
     };
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...ionsThesis, triggers: [raisedFloor] },
       activity: [],
       latestQuote: { price: 86.24, changePct: 0 },
@@ -581,7 +584,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   });
 
   it("a fired EXIT trigger outranks UNPROTECTED_GAIN", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: ionsThesis,
       activity: [{
         type: "TRIGGER_FIRED",
@@ -602,7 +605,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       rationale: "breakout add",
       cooldownDays: 1,
     };
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...ionsThesis, triggers: [ionsExit, addRung] },
       activity: [],
       latestQuote: { price: 86.24, changePct: 0 }, // above 85 → ADD matches
@@ -614,7 +617,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   it("UNPROTECTED_GAIN fires on a big unprotected winner", () => {
     // avgCost 100, target 120, price 118: a big winner (progress 0.9,
     // +18%) — but there's no floor, so UNPROTECTED_GAIN must win.
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         status: "HOLDING",
@@ -639,7 +642,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       rationale: "ratcheted floor",
       cooldownDays: 0,
     };
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         status: "HOLDING",
@@ -660,7 +663,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   });
 
   it("UNPROTECTED_GAIN outranks a due review", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...ionsThesis,
         triggers: [ionsExit, CADENCE_7D],
@@ -674,7 +677,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   });
 
   it("does NOT flag a non-held (WATCHING) row", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...ionsThesis, status: "WATCHING" },
       activity: [],
       latestQuote: { price: 86.24, changePct: 0 },
@@ -685,7 +688,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
 
   it("degrades gracefully when avgCost or the quote is missing", () => {
     expect(
-      computeNeedsAction({
+      leadOf({
         thesis: { ...ionsThesis, avgCost: null },
         activity: [],
         latestQuote: { price: 86.24, changePct: 0 },
@@ -693,7 +696,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       }),
     ).toBeNull();
     expect(
-      computeNeedsAction({
+      leadOf({
         thesis: ionsThesis,
         activity: [],
         latestQuote: null,
@@ -712,7 +715,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     };
     // peak 120, trail 5% → floor 114 locks +14; +18% gain → gap 4 → protected
     // (no flag — the gain is protected).
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         ...baseThesis,
         status: "HOLDING",
@@ -753,7 +756,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
   ];
 
   it("flags an 80-day-old compounder watch whose review is a month away (the GD case)", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         id: "t1",
         direction: "LONG",
@@ -775,7 +778,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
   });
 
   it("does NOT flag the same age on a stock we own — held names keep the longer clock", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         id: "t2",
         direction: "LONG",
@@ -794,7 +797,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
   });
 
   it("a due review still wins — REVIEW_DUE carries the staleness instruction already", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         id: "t3",
         direction: "LONG",
@@ -813,7 +816,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
   });
 
   it("fresh research on a quiet row stays quiet", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         id: "t4",
         direction: "LONG",
@@ -832,7 +835,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
   });
 
   it("a thesis with no deep research at all is flagged as missing", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         id: "t5",
         direction: "LONG",
@@ -857,7 +860,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
     // review clock and no research, so without this exclusion it would flag
     // RESEARCH_STALE("missing") every morning forever — turning the one
     // tier that exists to cost nothing into permanent work.
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         id: "t7",
         direction: null,
@@ -883,7 +886,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
   });
 
   it("an unresearched seed is not 'stale' — it surfaces as REVIEW_DUE asking for first research", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         id: "t8",
         direction: null,
@@ -904,7 +907,7 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
   });
 
   it("callers that don't pass researchUpdatedAt keep their old behavior", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: {
         id: "t6",
         direction: "LONG",
@@ -934,7 +937,7 @@ describe("computeNeedsAction — a day count from the buy is not the review cloc
     cooldownDays: 60,
   };
   it("a watch with only a buy-count review and no clock is quiet", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, status: "WATCHING", triggers: [SIXTY_AFTER_BUY], lastReviewedAt: lookedAt(90) },
       activity: [],
       latestQuote: null,
@@ -943,7 +946,7 @@ describe("computeNeedsAction — a day count from the buy is not the review cloc
     expect(result).toBeNull();
   });
   it("the review clock next to it still decides REVIEW_DUE", () => {
-    const result = computeNeedsAction({
+    const result = leadOf({
       thesis: { ...baseThesis, status: "HOLDING", triggers: [SIXTY_AFTER_BUY, CADENCE_7D], lastReviewedAt: lookedAt(8) },
       activity: [],
       latestQuote: null,

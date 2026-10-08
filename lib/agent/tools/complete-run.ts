@@ -783,7 +783,7 @@ async function runCompleteRunPreflight(
         recentLow: null,
         now,
       }),
-    });
+    })[0] ?? null;
     if (needsAction == null) continue;
 
     // A declined sale takes the strong bar (DAV-315): the ticket's words are

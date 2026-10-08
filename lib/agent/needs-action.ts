@@ -365,9 +365,18 @@ export interface NeedsActionInput {
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
+/**
+ * Every kind true on the stock, as a list. [0] is the lead: the one flag a
+ * screen and complete_run show, by the precedence below, unchanged. The rest
+ * follow in a fixed rank (SALE_DECLINED, PROMOTED_AWAITING_RESOLUTION,
+ * TRIGGER_FIRED, TRIGGER_MATCHING_NOW, FLOOR_TOO_FAR, UNPROTECTED_GAIN,
+ * REVIEW_DUE, RESEARCH_STALE), one entry per kind, except one
+ * TRIGGER_MATCHING_NOW per trigger true now, in ladder order. Fires beyond
+ * the lead fire ride inside it (`alsoFired`). Empty when nothing is true.
+ */
 export function computeNeedsAction(
   input: NeedsActionInput,
-): NeedsAction | null {
+): NeedsAction[] {
   const { thesis, latestQuote, now, hasPendingEntryProposal } = input;
 
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
@@ -378,15 +387,16 @@ export function computeNeedsAction(
   //    defer (update_thesis change_status: WATCHING), or kill (where
   //    tool gates allow). Surfaces conviction context for the agent to
   //    weigh in the decision.
-  if (thesis.status === "PROMOTED") {
-    return {
-      kind: "PROMOTED_AWAITING_RESOLUTION",
-      paperTenureDays: thesis.paperTenureDays ?? null,
-      paperRealizedPnl: thesis.paperRealizedPnl ?? null,
-      paperReviewCount: thesis.paperReviewCount ?? null,
-      promotedAt: thesis.promotedAt ? thesis.promotedAt.toISOString() : null,
-    };
-  }
+  const promoted: NeedsAction | null =
+    thesis.status === "PROMOTED"
+      ? {
+          kind: "PROMOTED_AWAITING_RESOLUTION",
+          paperTenureDays: thesis.paperTenureDays ?? null,
+          paperRealizedPnl: thesis.paperRealizedPnl ?? null,
+          paperReviewCount: thesis.paperReviewCount ?? null,
+          promotedAt: thesis.promotedAt ? thesis.promotedAt.toISOString() : null,
+        }
+      : null;
 
   // 0.5) SALE_DECLINED — the principal said no to a protective sale and the
   //    price is still past the line (DAV-315). Ranks above the trigger kinds
@@ -395,17 +405,17 @@ export function computeNeedsAction(
   //    the race. It did, on IOT, for nine days — the run kept seeing "the
   //    floor is breached" and never "and you already told me not to sell
   //    there." The second sentence is the one that needs answering.
-  if (input.declinedSale) {
-    const d = input.declinedSale;
-    return {
-      kind: "SALE_DECLINED",
-      declineCount: d.declineCount,
-      lastDeclinedAt: d.lastDeclinedAt,
-      rejectMessage: d.rejectMessage,
-      floorPrice: d.floorPrice,
-      recentLow: d.recentLow,
-    };
-  }
+  const d = input.declinedSale;
+  const declined: NeedsAction | null = d
+    ? {
+        kind: "SALE_DECLINED",
+        declineCount: d.declineCount,
+        lastDeclinedAt: d.lastDeclinedAt,
+        rejectMessage: d.rejectMessage,
+        floorPrice: d.floorPrice,
+        recentLow: d.recentLow,
+      }
+    : null;
 
   // The held row's ladder, read once: the floor both held-row flags use.
   const ladder =
@@ -459,6 +469,8 @@ export function computeNeedsAction(
   //    fire counted as answered by ANY newer line; CEG's "15% off the high"
   //    review was closed by the principal's unrelated cleanup edit and no run
   //    was ever handed it.
+  let firedEntry: NeedsAction | null = null;
+  let leadFireIsReview = false;
   {
     const fired = openFires(input.activity ?? [])
       .map((f) => {
@@ -476,14 +488,14 @@ export function computeNeedsAction(
     // The fire that moves money leads; among equals, the newest.
     const lead = fired.find((x) => x.action !== "REVIEW") ?? fired[0];
     if (lead) {
-      if (floorWork && lead.action === "REVIEW") return floorWork;
+      leadFireIsReview = lead.action === "REVIEW";
       // DAV-323: how long this same rung has been asking. Absent when the
       // caller passed no history, or on a first ask.
       const streak = input.recentUpdates
         ? fireStreak(input.recentUpdates, lead.f.triggerId, now)
         : null;
       const others = fired.filter((x) => x !== lead);
-      return {
+      firedEntry = {
         kind: "TRIGGER_FIRED",
         triggerId: lead.f.triggerId,
         action: lead.action,
@@ -518,7 +530,9 @@ export function computeNeedsAction(
   //    runs every 5 minutes; we just want the run-start snapshot too.
   //    Cooldown gating respected — a match within the cooldown window
   //    returns false from shouldFire, which is correct (the cron will
-  //    re-fire when cooldown expires).
+  //    re-fire when cooldown expires). Every trigger true now, in ladder
+  //    order; the first is the one that can lead.
+  const matches: NeedsAction[] = [];
   for (const trigger of thesis.triggers) {
     if (!isPriceOrTimePredicate(trigger.predicate)) continue;
     const result = shouldFire(trigger, {
@@ -536,14 +550,13 @@ export function computeNeedsAction(
       const action = (trigger.action as NeedsActionVerb) ?? "REVIEW";
       // P1-25 Change 4: suppress ENTER while a buy proposal is pending.
       if (hasPendingEntryProposal && action === "ENTER") continue;
-      if (floorWork && action === "REVIEW") return floorWork;
-      return {
+      matches.push({
         kind: "TRIGGER_MATCHING_NOW",
         triggerId: trigger.id,
         action,
         predicateSummary: sentenceOf(trigger, thesis.status == null || thesis.status === "HOLDING"),
         livePrice: latestQuote?.price ?? null,
-      };
+      });
     }
   }
 
@@ -558,19 +571,17 @@ export function computeNeedsAction(
   //    upside — once the agent raises the floor this flag self-clears and
   //    the press/hold/take decision surfaces on the next read. HOLDING only;
   //    needs avgCost + a live quote (graceful null degradation otherwise).
-  if (floorWork) return floorWork;
-  if (thesis.status === "HOLDING") {
-    if (ladder?.isUnprotectedGain) {
-      return {
-        kind: "UNPROTECTED_GAIN",
-        unrealizedGainPct: ladder.gainPct,
-        flooredGainPct: ladder.flooredGainPct,
-        unprotectedGapPct: ladder.unprotectedGapPct,
-        hasTrail: ladder.hasTrail,
-        floorSummary: ladder.floor?.label ?? null,
-      };
-    }
-  }
+  const unprotected: NeedsAction | null =
+    thesis.status === "HOLDING" && ladder?.isUnprotectedGain
+      ? {
+          kind: "UNPROTECTED_GAIN",
+          unrealizedGainPct: ladder.gainPct,
+          flooredGainPct: ladder.flooredGainPct,
+          unprotectedGapPct: ladder.unprotectedGapPct,
+          hasTrail: ladder.hasTrail,
+          floorSummary: ladder.floor?.label ?? null,
+        }
+      : null;
 
   // RUNNING_WINNER was here, and is deleted (DAV-195 L8).
   //
@@ -618,6 +629,7 @@ export function computeNeedsAction(
     .map((t) => shapeOf(t.predicate))
     .map((w) => (w == null ? null : reviewClockDays(w)))
     .find((d) => d != null);
+  let due: NeedsAction | null = null;
   if (clockDays != null) {
     const lastLooked = thesis.lastReviewedAt ?? thesis.createdAt;
     const dueAt = lastLooked.getTime() + clockDays * 86_400_000;
@@ -631,7 +643,7 @@ export function computeNeedsAction(
       const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
       // A seed has no committed view yet — route it to "commit a direction".
       if (isUnresearchedSeed(thesis.direction)) result.pendingFirstReview = true;
-      return result;
+      due = result;
     }
   }
 
@@ -656,6 +668,7 @@ export function computeNeedsAction(
   //        that could ever satisfy it.
   //      • `researchUpdatedAt === undefined` — the caller didn't select the
   //        column; absent data is not evidence of staleness.
+  let stale: NeedsAction | null = null;
   if (
     thesis.researchUpdatedAt !== undefined &&
     !isUnresearchedSeed(thesis.direction) &&
@@ -668,7 +681,7 @@ export function computeNeedsAction(
       thesis.status,
     );
     if (age.freshness === "stale" || age.freshness === "missing") {
-      return {
+      stale = {
         kind: "RESEARCH_STALE",
         daysOld: age.daysOld,
         threshold: age.horizonThreshold,
@@ -677,6 +690,24 @@ export function computeNeedsAction(
     }
   }
 
-  // Nothing to act on. Yesterday's thesis stands.
-  return null;
+  // The lead, by the precedence above: a promoted stock; a declined sale; a
+  // fire (a floor too far outranks a fired REVIEW); the first trigger true
+  // now (a floor too far outranks it when it is a REVIEW); a floor too far;
+  // an unprotected gain; a review due; stale research. With none, nothing to
+  // act on: yesterday's thesis stands.
+  const firstMatch = matches[0] ?? null;
+  const lead =
+    promoted ??
+    declined ??
+    (firedEntry ? (floorWork && leadFireIsReview ? floorWork : firedEntry) : null) ??
+    (firstMatch ? (floorWork && firstMatch.kind === "TRIGGER_MATCHING_NOW" && firstMatch.action === "REVIEW" ? floorWork : firstMatch) : null) ??
+    floorWork ??
+    unprotected ??
+    due ??
+    stale;
+  if (!lead) return [];
+  const rest = [declined, promoted, firedEntry, ...matches, floorWork, unprotected, due, stale].filter(
+    (x): x is NeedsAction => x != null && x !== lead,
+  );
+  return [lead, ...rest];
 }

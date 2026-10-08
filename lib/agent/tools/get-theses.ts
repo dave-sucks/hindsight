@@ -40,7 +40,8 @@ import type { FloorStructure } from "@/lib/agent/floor-risk";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import type { NeedsAction } from "@/lib/agent/needs-action";
+import type { NeedsAction, NeedsActionInput } from "@/lib/agent/needs-action";
+import { listsTheStock, situationsTap, type SituationSources } from "@/lib/agent/situations";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { ActivityRow, StockContext } from "@/lib/agent/stock-context";
 import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
@@ -494,6 +495,10 @@ export const getTheses = defineTool({
       ]),
     );
     const needsActionByThesisId = new Map<string, NeedsAction | null>();
+    // Each live stock's full work-flag list (lead first) and the input it was
+    // read from, which the declined-sale pass below reuses.
+    const needsListByThesisId = new Map<string, NeedsAction[]>();
+    const needsInputByThesisId = new Map<string, NeedsActionInput>();
     // P1-29 (L2): the most-recent unaddressed PRINCIPAL decision per thesis
     // (reject / approve-with-edit / direct edit), surfaced verbatim so the
     // agent reads the instruction directly instead of inferring it from a count.
@@ -930,9 +935,7 @@ export const getTheses = defineTool({
           t.id,
           stockContextFor({ ticker: t.ticker, rows: activity, triggers, now, currentPrice: latestQuote?.price ?? null }),
         );
-        needsActionByThesisId.set(
-          t.id,
-          computeNeedsAction({
+        const needsInput: NeedsActionInput = {
             thesis: {
               id: t.id,
               direction: t.direction,
@@ -963,8 +966,11 @@ export const getTheses = defineTool({
             now,
             hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
             equity: accountEquity,
-          }),
-        );
+          };
+        const needs = computeNeedsAction(needsInput);
+        needsInputByThesisId.set(t.id, needsInput);
+        needsListByThesisId.set(t.id, needs);
+        needsActionByThesisId.set(t.id, needs[0] ?? null);
       }
     }
 
@@ -1158,53 +1164,21 @@ export const getTheses = defineTool({
         now: resolverNow,
       });
       if (!work) continue;
-      needsActionByThesisId.set(
-        t.id,
-        computeNeedsAction({
-          thesis: { id: t.id, status: t.status, triggers: [], createdAt: t.createdAt },
-          now: resolverNow,
-          declinedSale: work,
-        }),
-      );
+      // The stock's own input with the decline on it: the decline leads and
+      // the stock's other flags stay on its list.
+      const stored = needsInputByThesisId.get(t.id);
+      const withDecline: NeedsActionInput = stored
+        ? { ...stored, declinedSale: work }
+        : { thesis: { id: t.id, status: t.status, triggers: [], createdAt: t.createdAt }, now: resolverNow, declinedSale: work };
+      const needs = computeNeedsAction(withDecline);
+      needsInputByThesisId.set(t.id, withDecline);
+      needsListByThesisId.set(t.id, needs);
+      needsActionByThesisId.set(t.id, needs[0] ?? null);
     }
 
-    // Actionable-detail split: full rows for work-list theses; one-line
-    // index entries for the quiet rest. "book" mode keeps everything full.
-    // Full-row criteria (review findings #2/#3):
-    //   • needsAction non-null — the trigger system's work list
-    //   • status PROMOTED — must be resolved this run
-    //   • resolved.actionability ENTER_NOW / STALE_PAST_CATALYST /
-    //     PROMOTED_DECIDE_TODAY — actionable shapes that carry NO
-    //     needsAction flag (the writer's "buy at market" shape is a
-    //     WATCHING row with no ENTER trigger and price ≈ entry; hiding it
-    //     would strand an intended entry indefinitely)
-    //   • priceFetchFailed — fail open; degraded data must not hide winners
-    //   • resolved.planSanity — the plan contradicts the live tape
-    //     (DAV-188: buy level far from price / target passed / stop
-    //     breached). A flagged-but-quiet row is the exact "wrong through 5
-    //     runs" failure this exists to end; the flag forces the full row.
-    //     Except "no buy level" and "score under the minimum" on their own
-    //     (listsTheStock, below).
-    //   • a decision of the principal's that wants an answer and has none
-    //     — a decline with a written reason, a resized approval, a direct
-    //     edit (stock-context.ts). It must reach the agent's work list on
-    //     its next run; the first line an agent writes after it answers it.
-    // ACTIVE_HOLD deliberately stays quiet: it's the healthy-holding
-    // default, and its work signals (UNPROTECTED_GAIN / RUNNING_WINNER /
-    // trigger fires) all arrive via needsAction.
-    const ACTIONABLE_RESOLVED = new Set([
-      "ENTER_NOW",
-      "STALE_PAST_CATALYST",
-      "PROMOTED_DECIDE_TODAY",
-    ]);
-    // ── Two inputs the run wasn't getting (DAV-292, DAV-286) ────────────
-    // (1) A held or priced watched stock with no setup named. The ask rode
-    //     only on full rows, and a quiet stock is a one-line index entry —
-    //     so on 2026-09-18 the PEAD run saw its held names as "all quiet"
-    //     and MU, IOT and NVDA stayed unnamed. Naming it (or NONE) clears it.
-    // (2) A buy that fired into a full analyst, off the `capacity` counted
-    //     above — no extra query. Skipped on a ticker-filtered read, where
-    //     the held list is partial.
+    // ── A buy that fired into a full analyst (DAV-286) ──────────────────
+    // Off the `capacity` counted above — no extra query. Skipped on a
+    // ticker-filtered read, where the held list is partial.
     const blockedByThesisId = new Map<string, BuyBlockedByFull>();
     for (const t of theses) {
       const own = Array.isArray(t.triggers) ? (t.triggers as unknown as Array<{ action?: string; lastFiredAt?: string }>) : [];
@@ -1221,25 +1195,35 @@ export const getTheses = defineTool({
       );
       if (blocked) blockedByThesisId.set(t.id, blocked);
     }
-    const setupAskFor = (t: (typeof theses)[number]) =>
-      nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null);
 
-    const isFullDetail = (t: (typeof theses)[number]): boolean => {
-      return (
-        setupAskFor(t) !== null ||
-        blockedByThesisId.has(t.id) ||
-        detailMode === "book" ||
-        priceFetchFailed ||
-        t.status === "PROMOTED" ||
-        (needsActionByThesisId.get(t.id) ?? null) !== null ||
-        ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "") ||
-        listsTheStock(resolvedByThesisId.get(t.id)?.planSanity ?? null) ||
-        // A floor that would lose too much of the account is work even when
-        // a fired sale holds the needsAction slot (DAV-344).
-        resolvedByThesisId.get(t.id)?.floorRisk != null ||
-        contextByThesisId.get(t.id)?.unansweredDecision != null
-      );
+    // Actionable-detail split: full rows for the work list, one-line index
+    // entries for the quiet rest; "book" mode, and prices that failed to
+    // load, keep everything full. Which stocks are work is
+    // lib/agent/situations.ts `listsTheStock`, read off what the read
+    // already computed.
+    const sourcesFor = (t: (typeof theses)[number]): SituationSources => {
+      const r = resolvedByThesisId.get(t.id);
+      return {
+        needs: needsListByThesisId.get(t.id) ?? [],
+        triggers: ladderByThesisId.get(t.id) ?? [],
+        status: t.status,
+        direction: t.direction,
+        planSanity: r?.planSanity ?? null,
+        actionability: r?.actionability ?? null,
+        progressToTarget: r?.progressToTarget ?? null,
+        buyBlockedByFull: blockedByThesisId.has(t.id),
+        nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null) !== null,
+        unansweredDecision: contextByThesisId.get(t.id)?.unansweredDecision != null,
+      };
     };
+    const listedIds = new Set<string>();
+    for (const t of theses) {
+      const sources = sourcesFor(t);
+      if (listsTheStock(sources)) listedIds.add(t.id);
+      situationsTap.record?.({ thesisId: t.id, ticker: t.ticker, needsInput: needsInputByThesisId.get(t.id) ?? null, sources });
+    }
+    const isFullDetail = (t: (typeof theses)[number]): boolean =>
+      detailMode === "book" || priceFetchFailed || listedIds.has(t.id);
 
     const fullTheses = theses.filter((t) => isFullDetail(t));
     const quietTheses = theses.filter((t) => !isFullDetail(t));
@@ -1621,18 +1605,4 @@ export function rowForModel(row: Record<string, unknown>, named: boolean): Recor
   delete out.researchUpdatedAt;
   if (!named) delete out.history;
   return out;
-}
-
-/**
- * Whether a stock's plan flags put it on the morning run's work list by
- * themselves (decision 4 in docs/plans/AGENT_ARCHITECTURE.md, approved
- * 2026-10-02). "No buy level" and "score under the minimum" do not: a stock
- * with no buy price comes onto the list on its review clock or when a
- * trigger fires, as the 2026-09-08 ruling has it, and both flags still show
- * on the row whenever it is opened. Every other flag lists it, including
- * "nothing can wake it" — the one case where nothing else ever would.
- */
-const FLAGS_THAT_DO_NOT_LIST = new Set(["NO_BUY_LEVEL", "COMPOSITE_BELOW_MINIMUM"]);
-export function listsTheStock(flags: ReadonlyArray<{ kind: string }> | null): boolean {
-  return (flags ?? []).some((f) => !FLAGS_THAT_DO_NOT_LIST.has(f.kind));
 }

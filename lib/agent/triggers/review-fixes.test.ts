@@ -8,6 +8,9 @@ import { protectiveRatchetViolations } from "./ratchet";
 import { shouldFire } from "./evaluate";
 import { describeChartFire } from "./condition/facts";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
+
+/** The lead: the first entry on the stock's list, null when nothing is true. */
+const leadOf = (...a: Parameters<typeof computeNeedsAction>) => computeNeedsAction(...a)[0] ?? null;
 import type { Trigger } from "./types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 
@@ -78,7 +81,7 @@ describe("the ratchet sees a stop moved to close-basis as a loosening", () => {
 
 describe("the daily run's 'matching now' respects the close", () => {
   const input = (now: string) =>
-    computeNeedsAction({
+    leadOf({
       thesis: {
         id: "t",
         direction: "LONG",

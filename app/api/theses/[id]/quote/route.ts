@@ -303,7 +303,7 @@ export async function GET(
       currentPrice != null ? { price: currentPrice, changePct: dayChangePct ?? 0 } : null,
     now: new Date(),
     hasPendingEntryProposal: pendingEntryCount > 0,
-  });
+  })[0] ?? null;
 
   return NextResponse.json({
     currentPrice,

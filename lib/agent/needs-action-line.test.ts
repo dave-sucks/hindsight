@@ -13,13 +13,16 @@
  * Numbers below are live rows on 2026-09-22.
  */
 import { computeNeedsAction } from "./needs-action";
+
+/** The lead: the first entry on the stock's list, null when nothing is true. */
+const leadOf = (...a: Parameters<typeof computeNeedsAction>) => computeNeedsAction(...a)[0] ?? null;
 import { needsActionFlag, needsActionLine } from "./needs-action-line";
 import type { NeedsAction } from "./needs-action";
 import type { Trigger } from "./triggers/types";
 
 describe("the review flag says when it was due", () => {
   it("EME — reviewed 09-18 on a 7-day cadence, read on 09-29", () => {
-    const na = computeNeedsAction({
+    const na = leadOf({
       thesis: {
         id: "eme",
         direction: "LONG",
