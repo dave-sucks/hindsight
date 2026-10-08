@@ -20,6 +20,7 @@
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
 import { SYSTEM_PROMPT_TEMPLATE } from "./system-prompt-template";
 import type { RunInput } from "./run-input";
+import { SITUATIONS } from "./situations";
 import { replayTool, thesisRow, positionRow, thesisUpdateRow } from "@/lib/replay";
 
 const runInput = () =>
@@ -46,36 +47,35 @@ const built = () =>
     runInput(),
   );
 
-/** The one line that starts "- **REVIEW** →", from a prompt. */
-const reviewLine = (prompt: string) =>
-  prompt.split("\n").find((l) => l.trimStart().startsWith("- **REVIEW** →")) ?? "";
+/** The walk's one line, step 2, from a prompt. */
+const walkLine = (prompt: string) =>
+  prompt.split("\n").find((l) => l.trimStart().startsWith("2. Walk your work list")) ?? "";
+const review = SITUATIONS.REVIEW_DUE.guidance;
 
-describe("the built daily prompt — answering a fired review", () => {
+describe("answering a fired review: REVIEW_DUE's guidance, which the read carries with the stock", () => {
   it("asks for the trigger id and the sentence", () => {
-    const line = reviewLine(built());
-    expect(line).toContain("pass `trigger_id`");
-    expect(line).toContain("what you checked and why the plan still stands");
+    expect(review).toContain("Pass trigger_id when a review fired");
+    expect(review).toContain("saying what you checked and why");
   });
 
   it("says what to do when the row reports a repeat", () => {
-    const line = reviewLine(built());
-    expect(line).toContain("has fired several times and the plan has not changed since");
-    expect(line).toContain("say what is different from the last time you answered it");
+    expect(review).toContain("The same answer to a review that fired again");
+    expect(review).toContain("say what differs from last time");
   });
 
   it("threatens no refusal — none exists", () => {
-    expect(reviewLine(built())).not.toMatch(/does not answer a fire|will refuse|is refused/i);
+    expect(review).not.toMatch(/does not answer a fire|will refuse|is refused/i);
   });
 
   it("tells a held stock's review to go down its invalidation conditions", () => {
-    const line = reviewLine(built());
-    expect(line).toContain("`invalidationConds`");
-    expect(line).toContain("say, for each one, whether it has happened");
-    expect(line).toContain("a condition that has happened is an exit");
+    expect(review).toContain("go down `invalidationConds` and say for each whether it has happened");
+    expect(review).toContain("A condition that happened is an exit");
   });
 
-  it("the preview on the workflow page carries the same line", () => {
-    expect(reviewLine(SYSTEM_PROMPT_TEMPLATE).trim()).toBe(reviewLine(built()).trim());
+  it("the built prompt sends the run to the guidance, and the workflow page's preview says the same", () => {
+    const line = walkLine(built());
+    expect(line).toContain("`guidance`");
+    expect(walkLine(SYSTEM_PROMPT_TEMPLATE).trim()).toBe(line.trim());
   });
 });
 

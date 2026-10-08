@@ -95,7 +95,7 @@ export async function GET(
     userId: user.id,
     analystId: thesis.researchRun?.agentConfigId ?? null,
     accountId,
-    prices: currentPrice != null ? { [thesis.ticker]: { price: currentPrice, t: liveQuote?.t ?? 0 } } : {},
+    prices: currentPrice != null ? { [thesis.ticker]: { price: currentPrice, t: liveQuote?.t ?? 0, dp: dayChangePct } } : {},
     minConfidence: analyst?.minConfidence ?? null,
     maxOpenPositions: analyst?.maxOpenPositions ?? null,
     slots: "positions",

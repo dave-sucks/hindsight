@@ -54,6 +54,14 @@ export interface FactsContext extends WorkContext {
   slots: "rows" | "positions" | null;
 }
 
+/** A protective sale the principal declined, the price still past the floor: what both doors show under this name. */
+export interface HeldThroughFloor {
+  floorPrice: number;
+  heldThroughCount: number;
+  rejectMessage: string | null;
+  recentLow: number | null;
+}
+
 export interface StockFacts {
   load: WorkLoad;
   /** When the plan facts were judged. */
@@ -67,6 +75,7 @@ export interface StockFacts {
   blocked: Map<string, BuyBlockedByFull>;
   /** What situationsFor and listsTheStock read, per stock. */
   sources: Map<string, SituationSources>;
+  heldThroughFloor: Map<string, HeldThroughFloor>;
 }
 
 /**
@@ -278,5 +287,21 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
     });
   }
 
-  return { load, now, setupOverrides, needs, context, resolved, blocked, sources };
+  // A declined protective sale, shown only while the breach is LIVE: the
+  // price still on the losing side of the ladder's tightest protective
+  // floor. Once it recovers the floor held and the next breach is a fresh
+  // ask. Reuses the resolver's floor and live price; a breach it can't
+  // prove (no floor, or no quote) is omitted rather than asserted.
+  const heldThroughFloor = new Map<string, HeldThroughFloor>();
+  for (const t of theses) {
+    const ht = load.declines.get(t.id);
+    const r = resolved.get(t.id);
+    const floorPrice = r?.ladderHealth?.floor?.price ?? null;
+    const price = r?.currentPrice ?? null;
+    if (!ht || floorPrice == null || price == null || price <= 0) continue;
+    if (!(t.direction === "SHORT" ? price >= floorPrice : price <= floorPrice)) continue;
+    heldThroughFloor.set(t.id, { floorPrice, heldThroughCount: ht.declineCount, rejectMessage: ht.rejectMessage, recentLow: load.recentLow.get(t.id) ?? null });
+  }
+
+  return { load, now, setupOverrides, needs, context, resolved, blocked, sources, heldThroughFloor };
 }

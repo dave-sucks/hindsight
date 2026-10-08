@@ -13,6 +13,7 @@
  */
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
 import type { RunInput } from "./run-input";
+import { SITUATIONS } from "./situations";
 
 const runInput = () =>
   ({
@@ -38,39 +39,32 @@ const prompt = () =>
     runInput(),
   );
 
-describe("the built prompt names the sold-stock review", () => {
-  it("names the block get_theses returns", () => {
-    expect(prompt()).toContain("`sold_to_review`");
-  });
-
-  it("says it is work today, and that each row gets one answer", () => {
+describe("the built prompt names the sold-stock review; the answers arrive as guidance", () => {
+  it("names the block get_theses returns, and says every entry is work today", () => {
     const p = prompt();
-    expect(p).toContain("Every one of them is work today, and each gets exactly one answer");
+    expect(p).toContain("`sold_to_review`");
+    expect(p).toContain("every one of them is work today");
   });
 
-  it("names all four answers the run already has", () => {
-    const p = prompt();
-    expect(p).toContain("keep watching with a re-entry level priced off today's chart");
-    expect(p).toContain("keep watching on a review cadence");
-    expect(p).toContain("keep watching with nothing set (legal, and it costs nothing)");
-    expect(p).toContain("or let it go");
+  it("the four answers, the call that puts one back on watch and how the rest clears are SOLD_ONE_REVIEW's", () => {
+    const g = SITUATIONS.SOLD_ONE_REVIEW.guidance;
+    expect(g).toContain("Keep watching with a re-entry level priced off today's chart.");
+    expect(g).toContain("Keep watching on a review cadence.");
+    expect(g).toContain("Keep watching with nothing set (legal, and it costs nothing).");
+    expect(g).toContain("Let it go.");
+    expect(g).toContain('change_status "WATCHING"');
+    expect(g).toContain("write the one-line reason on an update_thesis and it clears");
+    expect(g).toContain("the exit price, the date, why it sold, whether the belief survived");
   });
 
-  it("names the exact call that puts one back on watch, and how to clear the rest", () => {
-    const p = prompt();
-    expect(p).toContain('update_thesis(change_status: "WATCHING")');
-    expect(p).toContain("write the one-line reason on an `update_thesis` and it clears");
+  it("the prompt no longer carries its own copy", () => {
+    expect(prompt()).not.toContain("keep watching on a review cadence");
   });
 
-  it("says what each row carries, so the run knows it has the sale's facts", () => {
-    const p = prompt();
-    expect(p).toContain("the exit price, the date, why it sold, whether the belief survived");
-  });
-
-  // The paragraph it was added to still has to say what it said before.
+  // The paragraph it sits in still has to say what it said before.
   it("leaves the rest of the book paragraph intact", () => {
     const p = prompt();
     expect(p).toContain("`quiet_theses` rows are NOT your work today");
-    expect(p).toContain("buyBlockedByFull");
+    expect(p).toContain("`guidance`");
   });
 });

@@ -21,11 +21,9 @@ describe("the Secular Compounder on 2026-09-18 — 4 of 4", () => {
     );
   });
 
-  it("ETN: the buy that fired that morning is on the row as a portfolio decision", () => {
+  it("ETN: the buy that fired that morning is on the row, with the slots and the holdings (BUY_BLOCKED_FULL says how to answer)", () => {
     const f = buyBlockedByFull({ ticker: "ETN", status: "WATCHING", enterLastFiredAt: "2026-09-18T13:45:15.819Z" }, COMPOUNDER, NOW);
-    expect(f?.text).toMatch(/\$ETN's buy fired 2026-09-18 and this analyst is full \(4 of 4: \$ABT, \$ASML, \$CEG, \$WST\)/);
-    expect(f?.text).toMatch(/which held stock \$ETN would replace/);
-    expect(f?.text).toMatch(/full — waiting/);
+    expect(f?.text).toBe("$ETN's buy fired 2026-09-18 and this analyst is full (4 of 4: $ABT, $ASML, $CEG, $WST).");
   });
 
   it("ISRG: fired the day before — still wants in", () => {

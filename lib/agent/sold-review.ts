@@ -6,7 +6,8 @@
  * watching with some triggers, etc."*
  *
  * So: a sale joins the next daily run's work list with the sale's own facts,
- * and the run answers with the verbs it already has. Keep watching with a
+ * and the run answers with the verbs it already has (SOLD_ONE_REVIEW's
+ * guidance, lib/agent/situations.ts). Keep watching with a
  * re-entry level; keep watching on a review cadence; keep watching with
  * nothing (legal, and it costs nothing); or let it go. Every one of those is
  * an ordinary `update_thesis` — no new predicate, no new quoting job, no
@@ -32,7 +33,7 @@
 export const RECENTLY_SOLD_WINDOW_DAYS = 14;
 
 export interface SoldReview {
-  /** Plain-language statement of the sale and the decision it owes. */
+  /** The sale in plain words: when, at what price, the result, why, the belief, a catalyst still ahead. */
   text: string;
   /** YYYY-MM-DD of the exit. */
   soldOn: string;
@@ -97,11 +98,6 @@ export function soldReview(input: {
   return {
     soldOn: input.closedAt.toISOString().slice(0, 10),
     daysAgo,
-    text:
-      `Sold ${when}${at}${pnl}${why}.${belief}${catalyst} ` +
-      `This is the one look a sold stock gets, and it is yours: keep watching with a re-entry level priced off today's chart, ` +
-      `keep watching on a review cadence, keep watching with nothing set (legal, and it costs nothing), or let it go. ` +
-      `Put it back on watch with update_thesis(change_status: "WATCHING") plus whatever wakes it; ` +
-      `say in one line why, either way. Answering it in any of those ways clears it.`,
+    text: `Sold ${when}${at}${pnl}${why}.${belief}${catalyst}`,
   };
 }
