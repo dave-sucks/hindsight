@@ -1,0 +1,142 @@
+{
+ "what": "Two trigger-run fires, read the way the trigger run reads its stock since step 10: DOCU 2026-09-28 13:30 ET, the pullback buy at $67 on a watched stock (the plan as scripts/hero-cases/docu-trigger.json puts it back), and NVDA 2026-10-08 13:31 ET, the $236 floor on a held stock, from its production rows. Trigger notes are the agent's and the defaults'; no principal text.",
+ "analyst": {
+  "name": "PEAD Specialist",
+  "setupIds": [
+   "PEAD",
+   "EPISODIC_PIVOT",
+   "MA_PULLBACK"
+  ],
+  "maxOpenPositions": 6,
+  "minConfidence": 60
+ },
+ "docu": {
+  "now": "2026-09-28T17:30:30.000Z",
+  "price": 65.88,
+  "thesis": {
+   "id": "cmtu9lfhw000004i575f6xyig",
+   "ticker": "DOCU",
+   "status": "WATCHING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "MA_PULLBACK",
+   "entryPrice": 67,
+   "targetPrice": 83,
+   "stopLoss": 63,
+   "researchUpdatedAt": "2026-09-28T01:05:08.000Z",
+   "createdAt": "2026-09-28T01:05:08.000Z",
+   "triggers": [
+    {
+     "id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 67
+     },
+     "action": "ENTER",
+     "rationale": "Pullback to the rising 20-day: the plan's buy level.",
+     "lastFiredAt": "2026-09-28T17:30:25.000Z"
+    },
+    {
+     "id": "hero-floor",
+     "predicate": {
+      "kind": "PRICE_BELOW",
+      "level": 63
+     },
+     "action": "EXIT",
+     "rationale": "The plan's floor."
+    },
+    {
+     "id": "hero-target",
+     "predicate": {
+      "kind": "PRICE_ABOVE",
+      "level": 83
+     },
+     "action": "REVIEW",
+     "rationale": "The plan's target."
+    }
+   ]
+  },
+  "fire": {
+   "triggerId": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+   "at": "2026-09-28T17:30:28.000Z",
+   "price": 65.88,
+   "summary": "Buy if below $67"
+  }
+ },
+ "nvda": {
+  "now": "2026-10-08T17:31:45.000Z",
+  "price": 234.24,
+  "thesis": {
+   "id": "cmtg9nbdy000204jpc6cwawgg",
+   "ticker": "NVDA",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "PEAD",
+   "entryPrice": 218.2259,
+   "targetPrice": 322,
+   "stopLoss": 236,
+   "conviction": "HIGH",
+   "researchUpdatedAt": "2026-09-09T07:40:48.296Z",
+   "lastReviewedAt": "2026-10-07T16:00:51.568Z",
+   "createdAt": "2026-08-31T17:50:00.000Z",
+   "triggers": [
+    {
+     "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "value": 7,
+      "watch": "repeat"
+     },
+     "rationale": "Look at this every 7 days, counting from the last real review.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "6306936b-bb02-4298-9ca0-90f586772512",
+     "action": "EXIT",
+     "source": "AGENT",
+     "predicate": {
+      "is": "below",
+      "value": 236,
+      "watch": "price"
+     },
+     "rationale": "Under the $237.88 breakout pivot and just beneath the recent reclaim area; that keeps the stock above structure while locking in a meaningful share of the gain.",
+     "lastFiredAt": "2026-10-08T17:31:39.000Z",
+     "cooldownDays": 0
+    },
+    {
+     "id": "8f58e347-64c5-41bf-90f3-b17ac4466ae7",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "above",
+      "value": 322,
+      "watch": "price"
+     },
+     "rationale": "Target $322 hit. Decide: close at target or trail higher with confidence intact.",
+     "cooldownDays": 1
+    }
+   ]
+  },
+  "position": {
+   "quantity": 33,
+   "avgCost": 218.2259,
+   "openedAt": "2026-08-31T17:53:39.975Z",
+   "peakPrice": 242.505
+  },
+  "answer": {
+   "type": "UPDATED",
+   "timestamp": "2026-10-07T16:00:51.775Z",
+   "summary": "Updated NVDA: Stop: wording updated",
+   "priceAtTime": 239.24,
+   "runMode": "MORNING_PLAN"
+  },
+  "fire": {
+   "triggerId": "6306936b-bb02-4298-9ca0-90f586772512",
+   "at": "2026-10-08T17:31:42.120Z",
+   "price": 234.24,
+   "summary": "Sell if below $236"
+  }
+ }
+}

@@ -11,6 +11,8 @@ import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 import type { RunInput } from "@/lib/agent/run-input";
 import type { PromptName } from "@/lib/agent/tools/field-contract";
 import { guidanceFor } from "@/lib/agent/situations";
+import { rowForModel } from "@/lib/agent/row-for-model";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
 
 const runInput = {
   portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
@@ -26,8 +28,16 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
   tactical: () =>
     buildTacticalSystemPrompt({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
-      thesis: { id: "thesis_1", ticker: "HPE", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"], entryPrice: 53, targetPrice: 70, stopLoss: 50, snapshotText: null, bullCaseBullets: [], bearCaseBullets: [], researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 }, allTriggers: [trailTrigger] },
-      trigger: trailTrigger, signal: null, position: { quantity: 60, avgCost: 53.1, daysHeld: 10, peakPrice: 62.7 }, recentUpdates: [], latestDigest: null,
+      // The same stock as before step 10, as the trigger run reads it: get_theses's short row with the setup's lines.
+      stock: {
+        ticker: "HPE",
+        direction: "LONG",
+        row: rowForModel(
+          { id: "thesis_1", ticker: "HPE", status: "HOLDING", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"], entryPrice: 53, targetPrice: 70, stopLoss: 50, position: { quantity: 60, avgCost: 53.1, peakPrice: 62.7 }, triggers: [{ id: trailTrigger.id, says: sentenceOf(trailTrigger), rationale: trailTrigger.rationale }], situations: ["PROTECTIVE_SALE"] },
+          { named: true, size: "short", setupLines: true },
+        ),
+      },
+      trigger: trailTrigger, position: { peakPrice: 62.7 }, latestDigest: null,
       // A trail sale on a holding: the one situation it puts the stock in.
       situations: { codes: ["PROTECTIVE_SALE"], guidance: guidanceFor(["PROTECTIVE_SALE"]) },
     } as never),

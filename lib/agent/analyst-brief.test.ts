@@ -69,10 +69,9 @@ const buy = { id: "trig_buy", predicate: { watch: "price", is: "below", value: 6
 const tactical = (analyst: BriefAnalyst, extra: Record<string, unknown> = {}) =>
   buildTacticalSystemPrompt({
     analyst,
-    thesis: { id: "thesis_1", ticker: "DOCU", direction: "LONG", horizon: "TARGET", setupId: "MA_PULLBACK", coreBelief: "Belief.", keyAssumptions: [], invalidationConds: [], entryPrice: 67, targetPrice: 83, stopLoss: 63, snapshotText: null, bullCaseBullets: [], bearCaseBullets: [], researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 }, allTriggers: [trail] },
+    stock: { ticker: "DOCU", direction: "LONG", row: { stock: "DOCU · held · LONG · MA_PULLBACK", id: "thesis_1" } },
     trigger: trail,
-    position: { quantity: 60, avgCost: 66, daysHeld: 10, peakPrice: 80 },
-    context: null,
+    position: { peakPrice: 80 },
     ...extra,
   } as never);
 
@@ -212,6 +211,15 @@ describe("setupLines", () => {
   it("without one, each horizon's, labelled", () => {
     const lines = setupLines(pullback);
     expect(lines.filter((l) => l.startsWith("Manage"))).toEqual(Object.entries(pullback.trail).map(([h, t]) => `Manage (${h}): ${t}`));
+  });
+  it("three cuts of one text: the brief's first line, the writer's all, a row's decision lines", () => {
+    const all = setupLines(pullback, "TARGET");
+    const decision = setupLines(pullback, "TARGET", "decision");
+    expect(all[0]).toBe(`MA_PULLBACK — ${pullback.name}: ${pullback.summary}`);
+    expect(all[1]).toBe(`Needs: ${pullback.preconditions.join("; ")}`);
+    expect(decision).toEqual(all.slice(2));
+    expect(decision[0]).toMatch(/^Entry: /);
+    expect(decision.at(-1)).toMatch(/^Failure looks like: /);
   });
   it("carries the confirmation and the failure signs the trigger run reads", () => {
     const lines = setupLines(pullback, "TARGET");

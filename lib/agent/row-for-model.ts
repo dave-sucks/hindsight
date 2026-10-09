@@ -321,7 +321,7 @@ function sectionText(v: unknown): string | string[] | null {
 }
 
 /** The short row, and the full row when `size` is "full". Keys in reading order; a line with nothing to say is left out. */
-function shortOrFull(row: Row, size: "short" | "full", named: boolean): Row {
+function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLinesOn = false): Row {
   const held = row.status === "HOLDING";
   const price = num(obj(row.price)?.current) ?? num(obj(row.resolved)?.currentPrice);
   const resolved = obj(row.resolved);
@@ -345,7 +345,10 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean): Row {
   put("belief", str(row.coreBelief) ? stripSourceTags(row.coreBelief as string) : null);
   put("assumptions", strings(row.keyAssumptions));
   put("would_prove_it_wrong", strings(row.invalidationConds));
-  put("setup", setupLine(row));
+  // The lines a fire checks for the stock's horizon (setupLines' decision cut), in place of the compact line: on the full row, and on the trigger run's short row.
+  const lines = size === "full" || setupLinesOn ? strings(obj(row.setup)?.lines) : [];
+  if (lines.length) put("setup_lines", lines);
+  else put("setup", setupLine(row));
   // The facts a situation's text refers to, by the names it uses.
   put("nameTheSetup", row.nameTheSetup);
   put("buyBlockedByFull", row.buyBlockedByFull);
@@ -377,7 +380,12 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean): Row {
  * One row as the model reads it. A quiet row builds the one line; a listed
  * row builds the short row, or the full row for a named read or by rule
  * (`sizeFor`). The screen and a saved run keep the whole row.
+ *
+ * `setupLines` is the trigger run's door (step 10): its stock is the short
+ * row with the lines a fire checks for the stock's horizon (`setup_lines`,
+ * setupLines' decision cut) in place of the compact setup line. Every other
+ * short row is unchanged; the full row always carries them.
  */
-export function rowForModel(row: Row, opts: { named: boolean; size: RowSize }): string | Row {
-  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named);
+export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; setupLines?: boolean }): string | Row {
+  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named, opts.setupLines);
 }

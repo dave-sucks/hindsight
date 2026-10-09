@@ -33,6 +33,7 @@ import {
 } from "@/lib/replay";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { rowForModel } from "@/lib/agent/row-for-model";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 type Row = Record<string, unknown>;
@@ -181,30 +182,17 @@ describe("the 09-14 trigger runs", () => {
       currentPrice: firedPrice,
     }).text;
     const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, rationale: "Gave back 8% from the high." } as Trigger;
+    // Since step 10 the trigger run reads the stock as get_theses's short row with the setup's lines; what's been said is its `said`.
     return buildTacticalSystemPrompt({
       analyst: { name: fl.analyst.name, analystPrompt: null },
-      thesis: {
-        id: fx.thesis0918.id,
+      stock: {
         ticker: "CEG",
         direction: "LONG",
-        horizon: "COMPOUNDER",
-        setupId: null,
-        coreBelief: "CEG compounds to $360+ over 24 months.",
-        keyAssumptions: [],
-        invalidationConds: [],
-        entryPrice: 280.33,
-        targetPrice: 360,
-        stopLoss: 220,
-        snapshotText: null,
-        bullCaseBullets: [],
-        bearCaseBullets: [],
-        researchAge: { freshness: "fresh", daysOld: 5, horizonThreshold: 90 } as never,
-        allTriggers: [trail],
+        row: rowForModel({ id: fx.thesis0918.id, ticker: "CEG", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER", context, coreBelief: "CEG compounds to $360+ over 24 months." }, { named: true, size: "short", setupLines: true }) as Row,
       },
       trigger: trail,
-      position: { quantity: 30, avgCost: 280.33, daysHeld: 32, peakPrice: 303.4 },
-      context,
-      fired: { price: firedPrice, coFired: [] },
+      position: { peakPrice: 303.4 },
+      fired: { price: firedPrice },
     });
   };
 
@@ -214,7 +202,7 @@ describe("the 09-14 trigger runs", () => {
     expect(prompt).toContain("The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%)");
     expect(prompt).toContain(DECLINE_ENDS);
     expect(prompt).toContain("The principal's words outrank everything else about a stock.");
-    expect(prompt).toContain("When WHAT'S BEEN SAID lists the principal's decisions or other triggers");
+    expect(prompt).toContain("When the row's `said` lists the principal's decisions or other triggers");
     expect(prompt).not.toContain("RECENT THESIS ACTIVITY");
   });
 
@@ -251,28 +239,14 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
     const context = stockContextFor({ ticker: "MU", rows: loaded, triggers: mu.triggers, now: new Date(mu.loadedAt) }).text!;
     const prompt = buildTacticalSystemPrompt({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
-      thesis: {
-        id: "cmrp6chyu000h04l5roqq5ha1",
+      stock: {
         ticker: "MU",
         direction: "LONG",
-        horizon: "TARGET",
-        setupId: null,
-        coreBelief: "MU's HBM-driven earnings-upgrade cycle carries the stock through the next print.",
-        keyAssumptions: [],
-        invalidationConds: [],
-        entryPrice: 895.94,
-        targetPrice: 1100,
-        stopLoss: 1041,
-        snapshotText: null,
-        bullCaseBullets: [],
-        bearCaseBullets: [],
-        researchAge: { freshness: "fresh", daysOld: 3, horizonThreshold: 30 } as never,
-        allTriggers: mu.triggers,
+        row: rowForModel({ id: "cmrp6chyu000h04l5roqq5ha1", ticker: "MU", status: "HOLDING", direction: "LONG", horizon: "TARGET", context, coreBelief: "MU's HBM-driven earnings-upgrade cycle carries the stock through the next print." }, { named: true, size: "short", setupLines: true }) as Row,
       },
       trigger: sale,
-      position: { quantity: 13, avgCost: 895.94, daysHeld: 20, peakPrice: 1100 },
-      context,
-      fired: { price: 1038.82, coFired: [] },
+      position: { peakPrice: 1100 },
+      fired: { price: 1038.82 },
     });
     expect(prompt).toContain("Last look: morning run, 09-28 08:00");
     expect(prompt).toContain("Since then, not yet answered:");
@@ -280,7 +254,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
     expect(prompt).toContain("At +15% from entry, reassess");
     expect(prompt).toContain("A sharp 1-day drop could be either normal volatility");
     expect(prompt).toContain(
-      "When WHAT'S BEEN SAID lists the principal's decisions or other triggers\n     fired since the last answer, your update_thesis answers them too: say\n     what you decided on each, by name.",
+      "When the row's `said` lists the principal's decisions or other triggers\n     fired since the last answer, your update_thesis answers them too: say\n     what you decided on each, by name.",
     );
   });
 });

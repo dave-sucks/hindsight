@@ -226,6 +226,25 @@ describe("the research sections a read loads with include_research", () => {
   });
 });
 
+describe("the trigger run's door (step 10): the short row with the setup's lines", () => {
+  const withLines = () => ({ ...held(), ...research, setup: { ...(held().setup as Row), lines: ["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."] } });
+  it("carries setup_lines in place of the compact setup line, and nothing of the full row", () => {
+    const row = rowForModel(withLines(), { named: true, size: "short", setupLines: true }) as Row;
+    expect(row.setup_lines).toEqual(["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."]);
+    expect(row).not.toHaveProperty("setup");
+    for (const k of ["bull_case", "bear_case", "score_notes", "conviction_rationale", "variant_view", "history", ...SECTIONS]) expect([k, k in row]).toEqual([k, false]);
+    expect(row.research).toMatch(/Full row: get_theses\(tickers: \["IOT"\]\)\.$/);
+  });
+  it("every other short row is unchanged: the compact setup line, no setup_lines", () => {
+    const row = rowForModel(withLines(), { named: false, size: "short" }) as Row;
+    expect(row.setup).toBe((rowForModel(held(), { named: false, size: "short" }) as Row).setup);
+    expect(row).not.toHaveProperty("setup_lines");
+  });
+  it("the full row always carries them", () => {
+    expect((rowForModel(withLines(), { named: true, size: "full" }) as Row).setup_lines).toHaveLength(3);
+  });
+});
+
 describe("stripSourceTags", () => {
   it("removes the screen's citations and markdown bold and nothing else", () => {
     expect(stripSourceTags("**Bold:** a claim [STRUCTURED:Earnings History] [WEB:https://x.y/z] and more.")).toBe("Bold: a claim and more.");

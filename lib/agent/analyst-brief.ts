@@ -84,12 +84,15 @@ function chosenSetups(analyst: BriefAnalyst): Setup[] {
 }
 
 /**
- * One setup, every line a decision reads, first line first: what it is, what
- * must be true, the entry and how a buy is confirmed, the stop, the target,
- * how it is managed, its time limit and what failure looks like. With a
- * horizon, the one Manage line for it; without, each horizon's, labelled.
+ * One setup, written once, in three cuts. "all" (the writer's block): what it
+ * is, what must be true, the entry and how a buy is confirmed, the stop, the
+ * target, how it is managed, its time limit and what failure looks like. The
+ * brief takes the first line of it. "decision" (a row's `setup_lines`): the
+ * lines a fire checks, from the entry on; the summary is in the brief and the
+ * preconditions are the writer's. With a horizon, the one Manage line for it;
+ * without, each horizon's, labelled.
  */
-export function setupLines(setup: Setup, horizon?: string | null): string[] {
+export function setupLines(setup: Setup, horizon?: string | null, cut: "all" | "decision" = "all"): string[] {
   const confirm = setup.entry.confirmation.length ? setup.entry.confirmation.join("; ") : "the level holding";
   const chase = setup.entry.chaseLimitPct != null ? `; not more than ${setup.entry.chaseLimitPct}% past the level` : "";
   const trail = setup.trail as Partial<Record<string, string>>;
@@ -97,8 +100,7 @@ export function setupLines(setup: Setup, horizon?: string | null): string[] {
     ? [trail[horizon] ?? Object.values(trail)[0]].filter((t): t is string => !!t).map((t) => `Manage: ${t}`)
     : (Object.keys(trail) as Horizon[]).map((h) => `Manage (${h}): ${trail[h]}`);
   return [
-    `${setup.id} — ${setup.name}: ${setup.summary}`,
-    `Needs: ${setup.preconditions.join("; ")}`,
+    ...(cut === "all" ? [`${setup.id} — ${setup.name}: ${setup.summary}`, `Needs: ${setup.preconditions.join("; ")}`] : []),
     `Entry: ${setup.entry.text} Confirm a buy by: ${confirm}${chase}`,
     `Stop: ${setup.stop.text}`,
     `Target: ${setup.target.text}`,
