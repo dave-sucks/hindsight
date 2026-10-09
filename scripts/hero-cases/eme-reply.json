@@ -709,7 +709,53 @@
           },
           "unapprovedExitCount": 0,
           "heldThroughFloor": null,
-          "principalDirective": null
+          "principalDirective": null,
+          "position": null,
+          "proposals": [],
+          "price": {
+           "current": 764.75,
+           "dayChangePct": -0.1,
+           "asOf": "2026-09-30T01:32:30.536Z"
+          },
+          "chart": {
+           "asOf": "2026-09-28",
+           "sma20": 750.29,
+           "sma50": 771.04,
+           "sma200": 769.92,
+           "rsi14": 52,
+           "move5dPct": 1.1,
+           "move20dPct": 4.1,
+           "high20": 782.6,
+           "low20": 722.08,
+           "high52w": 951.96,
+           "low52w": 564.92,
+           "volumeAvg20": 359860,
+           "atr14": 24.03,
+           "rsVsSpy1M": -0.5,
+           "rsVsSpy3M": -9.3
+          },
+          "inheritedTriggers": [
+           {
+            "id": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+            "says": "Review if below the 200-day average",
+            "rationale": "Below the 200-day — the long trend is in question. Review the business, not the chart.",
+            "cooldownDays": 1,
+            "lastFiredAt": "2026-10-07T14:45:08.932Z",
+            "setBy": "PRINCIPAL",
+            "level": "ANALYST"
+           },
+           {
+            "id": "30059604-b755-4848-b938-b636464815c3",
+            "says": "Review if it files something material with the SEC",
+            "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           }
+          ],
+          "situations": [
+           "REVIEW_DUE",
+           "PLAN_PROBLEM"
+          ]
          }
         ],
         "quiet_theses": [],
@@ -1193,5 +1239,10 @@
   "text": {
    "regex": "refus|blocked|(will|would) not (fill|execute|go through|be placed)|won.t (fill|execute|go through|be placed)|cannot (fill|execute|be placed)"
   }
+ },
+ "source": {
+  "notes": [
+   "Back-filled 2026-10-08 (step 8): position, proposals, price, chart, inheritedTriggers and situations on every recorded get_theses full row, as of each row's resolved.resolvedAt; today's inherited rules against today's stored triggers; the chart absent where no snapshot existed by then. context and principalDirective are as recorded."
+  ]
  }
 }

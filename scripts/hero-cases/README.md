@@ -49,6 +49,27 @@ A `where` names fields of the call's input by path (`edit_triggers.*.level`,
 many) and what each must be: `"present"`, `"absent"`, a value, or
 `{ lt, gt, regex }`.
 
+## The facts on a recorded row
+
+A recorded `get_theses` full row carries what the live row has carried since
+step 8's first pull request: `position`, `proposals`, `price`, `chart`,
+`inheritedTriggers` and `situations`, as of the row's own read time
+(`resolved.resolvedAt`). `scripts/backfill-case-facts.ts` put them there from
+the database on 2026-10-08, one pass, read-only, and each case's
+`source.notes` says so; a case cut since records the live row, facts
+included, and needs no back-fill. The replay builds the model's row through
+today's `rowForModel`, so a change to what the read shows of those facts
+reaches a case with no database. `context` and `principalDirective` are as
+recorded, and no guidance text is stored: the read attaches it from the
+table.
+
+Two things are today's, not the day's: the inherited rules (the analyst's
+and the account's keep no history) and a position's quantity, cost and peak
+(its row is updated in place). A row read before 2026-09-10 has no `chart`:
+the snapshot table starts there. The recorded lead (`needsAction`) is kept
+where today's flag math over the day's facts would lead differently; the
+script prints each such row.
+
 ## A case that runs a read
 
 A case may list read-only tools under `execute` (only `get_portfolio_context`,

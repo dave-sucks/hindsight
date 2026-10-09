@@ -6,6 +6,8 @@
  * the account's equity. get_theses, the thesis sheet's quote route and
  * complete_run all read it here, so every surface computes the same list
  * from the same inputs. Moved from get_theses, which loaded it this way.
+ * What the flag math reads, the row keeps (step 8): the day's change, the
+ * chart snapshot and the orders awaiting approval ride on the load too.
  *
  * Fail-soft as the read was: a lookup that throws leaves its fields empty
  * and says so; nothing here refuses anything.
@@ -15,6 +17,7 @@ import { getAccount, getBars, type AlpacaCredentials } from "@/lib/alpaca";
 import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { computeLadderHealth, isLadderEditUpdate } from "@/lib/agent/ladder-health";
@@ -52,6 +55,17 @@ export interface OpenPosition {
   peakPrice: number | null;
 }
 
+/** An order of this analyst's in the principal's queue: proposed, not yet approved. */
+export interface PendingProposal {
+  id: string;
+  side: "BUY" | "SELL";
+  /** OPEN, CLOSE, PARTIAL_CLOSE or ADD; null on an old row. */
+  intent: string | null;
+  quantity: number;
+  createdAt: Date;
+  expiresAt: Date | null;
+}
+
 /** An audit row the ladder-edit scan reads. */
 export interface LadderEditRow {
   type: string;
@@ -68,8 +82,14 @@ export interface WorkLoad {
   ladders: Map<string, Trigger[]>;
   livePrice: Record<string, number>;
   priceAsOf: Record<string, string>;
+  /** The day's change in %, per ticker, from the quote; absent when the quote had no prior close. */
+  dayChange: Record<string, number>;
   priceFetchFailed: boolean;
+  /** The 06:30 chart snapshot per upper-case ticker, the one the trigger check reads. */
+  indicators: Map<string, IndicatorSnapshot>;
   positions: Map<string, OpenPosition>;
+  /** The orders awaiting the principal's approval, per thesis. */
+  proposals: Map<string, PendingProposal[]>;
   unapprovedExitCount: Map<string, number>;
   declines: Map<string, DeclineSummary>;
   recentLow: Map<string, number>;
@@ -95,15 +115,15 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     : [];
   const live = theses.filter((t) => LIVE.has(t.status));
   const load: WorkLoad = {
-    inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, priceFetchFailed: false,
-    positions: new Map(), unapprovedExitCount: new Map(), declines: new Map(), recentLow: new Map(),
+    inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, priceFetchFailed: false,
+    indicators: new Map(), positions: new Map(), proposals: new Map(), unapprovedExitCount: new Map(), declines: new Map(), recentLow: new Map(),
     lastLadderEditAt: new Map(), ladderEditRows: new Map(), equity: null, activityFailed: false,
   };
 
   // The live price, once, from the one place it comes from (live-quote): the
   // tape in the session, the last close outside it.
   // The day's change rides with it, for a trigger on the day's move.
-  const dayChange: Record<string, number> = {};
+  const dayChange = load.dayChange;
   if (live.length > 0) {
     try {
       const quotes = ctx.prices
@@ -186,6 +206,31 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     }
   }
 
+  // The orders awaiting the principal's approval on the live stocks, in one
+  // query: a buy or add proposed and not yet approved, a sale in the queue.
+  // The row says so, so a run does not propose it again (step 8). An order
+  // carries its thesis since 2026-08-18; a proposal lives a day, so every
+  // open one has it.
+  if (live.length > 0) {
+    try {
+      const awaiting = await prisma.order.findMany({
+        where: {
+          userId: ctx.userId, status: "AWAITING_APPROVAL", thesisId: { in: live.map((t) => t.id) },
+          ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, thesisId: true, side: true, intent: true, quantity: true, createdAt: true, expiresAt: true },
+      });
+      for (const o of awaiting) {
+        if (!o.thesisId) continue;
+        const p: PendingProposal = { id: o.id, side: o.side === "SELL" ? "SELL" : "BUY", intent: o.intent ?? null, quantity: Number(o.quantity), createdAt: o.createdAt, expiresAt: o.expiresAt ?? null };
+        load.proposals.set(o.thesisId, [...(load.proposals.get(o.thesisId) ?? []), p]);
+      }
+    } catch (err) {
+      console.warn("[work-inputs] awaiting-approval lookup failed:", err);
+    }
+  }
+
   // The last ladder edit per held or priced watched stock, from one capped
   // scan of CREATED/UPDATED rows. Truncated with no match ⇒ unknown; complete
   // with no match ⇒ the ladder was born with the thesis.
@@ -255,6 +300,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   if (live.length > 0) {
     try {
       for (const [ticker, snap] of await loadIndicatorSnapshots(live.map((t) => t.ticker.toUpperCase()))) {
+        load.indicators.set(ticker, snap);
         if (snap.atr14 != null && snap.atr14 > 0) atr.set(ticker, snap.atr14);
         structure.set(ticker, { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] });
       }
