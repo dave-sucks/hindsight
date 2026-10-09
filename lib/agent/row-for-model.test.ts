@@ -191,6 +191,41 @@ describe("the full row", () => {
   });
 });
 
+/** The seven research sections in the three shapes the writer saves (IOT's, 2026-10-08): a paragraph with citations, cited bullets, plain text. */
+const research = {
+  recentCatalysts: { text: "Raised guidance on Sept 3 [WEB:https://example.com/r].", citations: [{ url: "https://example.com/r", kind: "WEB", domain: "example.com" }] },
+  fundamentals: { text: "**Revenue +30%** year on year [STRUCTURED:Financials].", citations: [{ kind: "STRUCTURED", title: "Financials" }] },
+  latestEarnings: { bullets: [{ text: "EPS beat by 25% [STRUCTURED:Earnings History]", citation: { kind: "STRUCTURED", title: "Earnings History" } }, { text: "Revenue beat by 5%" }] },
+  catalystsAndEvents: { bullets: [{ text: "Q3 report in December [WEB:https://example.com/c]" }] },
+  analystConsensus: { text: "Targets $51 to $58 [WEB:https://example.com/a].", citations: [] },
+  insiderTechnical: { text: "No open-market buys in 90 days [STRUCTURED:Insider Activity].", citations: [] },
+  researchData: "Raw notes [STRUCTURED:Snapshot] with numbers.",
+};
+const SECTIONS = Object.keys(research);
+
+describe("the research sections a read loads with include_research", () => {
+  it("the full row carries each under its own name, as text, with the citations and tags removed", () => {
+    const row = rowForModel({ ...held(), ...research }, { named: true, size: "full" }) as Row;
+    expect(row.recentCatalysts).toBe("Raised guidance on Sept 3.");
+    expect(row.fundamentals).toBe("Revenue +30% year on year.");
+    expect(row.latestEarnings).toEqual(["EPS beat by 25%", "Revenue beat by 5%"]);
+    expect(row.catalystsAndEvents).toEqual(["Q3 report in December"]);
+    expect(row.analystConsensus).toBe("Targets $51 to $58.");
+    expect(row.insiderTechnical).toBe("No open-market buys in 90 days.");
+    expect(row.researchData).toBe("Raw notes with numbers.");
+    const text = JSON.stringify(SECTIONS.map((k) => row[k]));
+    expect(text).not.toMatch(/\[(STRUCTURED|WEB)|citation|example\.com|\*\*/);
+  });
+  it("a full row without them carries none", () => {
+    const row = rowForModel(held(), { named: true, size: "full" }) as Row;
+    for (const k of SECTIONS) expect(row).not.toHaveProperty(k);
+  });
+  it("the short row never carries them, even when the row has them", () => {
+    const row = rowForModel({ ...held(), ...research }, { named: false, size: "short" }) as Row;
+    for (const k of SECTIONS) expect(row).not.toHaveProperty(k);
+  });
+});
+
 describe("stripSourceTags", () => {
   it("removes the screen's citations and markdown bold and nothing else", () => {
     expect(stripSourceTags("**Bold:** a claim [STRUCTURED:Earnings History] [WEB:https://x.y/z] and more.")).toBe("Bold: a claim and more.");

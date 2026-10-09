@@ -301,6 +301,25 @@ function paperRecord(row: Row): string | null {
   return parts.length ? parts.join(", ") : null;
 }
 
+/**
+ * The lower-priority research sections a read loads with include_research,
+ * under their own names. The full row carries the ones a row has, as text
+ * with the screen's citations removed; the short row and the one line never do.
+ */
+const RESEARCH_SECTIONS = ["recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"] as const;
+
+/** A research section as text: a paragraph, a list of bullets, or a plain string; citations dropped, tags stripped. */
+function sectionText(v: unknown): string | string[] | null {
+  if (typeof v === "string") return str(v) ? stripSourceTags(v) : null;
+  const o = obj(v);
+  if (!o) return null;
+  if (Array.isArray(o.bullets)) {
+    const bullets = strings(list<{ text?: unknown }>(o.bullets).map((b) => (typeof b === "string" ? b : b?.text)));
+    return bullets.length ? bullets : null;
+  }
+  return str(o.text) ? stripSourceTags(o.text as string) : null;
+}
+
 /** The short row, and the full row when `size` is "full". Keys in reading order; a line with nothing to say is left out. */
 function shortOrFull(row: Row, size: "short" | "full", named: boolean): Row {
   const held = row.status === "HOLDING";
@@ -340,6 +359,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean): Row {
     put("bear_case", strings(list<{ text?: unknown }>(obj(row.bearCase)?.bullets).map((b) => b?.text)));
     put("conviction_rationale", str(row.convictionRationale) ? stripSourceTags(row.convictionRationale as string) : null);
     put("variant_view", str(row.variantView) ? stripSourceTags(row.variantView as string) : null);
+    for (const k of RESEARCH_SECTIONS) put(k, sectionText(row[k]));
   }
   put("chart", chartLine(row));
   put("research", researchLine(row, size));
