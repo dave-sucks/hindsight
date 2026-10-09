@@ -374,7 +374,10 @@ The rules that hold it together:
    situation: that situation's playbook. Every stock and every agent: the
    house rules. Must never happen: a check in code. A lesson is added only
    with a test case that fails without it, and each playbook has a size cap,
-   so adding one means removing one.
+   so adding one means removing one. A new instruction enters only with a
+   failing case. The recorded size per door (`lib/agent/prompt-size.test.ts`)
+   may be lowered freely and raised only with the QB's word in the pull
+   request.
 9. **Reference material, if it comes later,** goes behind the same lookup
    tool. There is none to search today. The playbook is twelve setups.
 
@@ -701,7 +704,7 @@ Today four places build a stock, four ways:
 |---|---|
 | `get_theses` (morning, trigger run, chat) | The full row: `context` (via `stockContextFor`), the plan, the flags, the score, the research line |
 | The trigger run's system prompt (`intraday-tactical.ts`) | Its own blocks: the thesis, the setup, a research excerpt, the position, `context` (the same `stockContextFor`), the ladder, the fired trigger |
-| `list_theses_all` (chat) | The levels and status only: no context, no flags |
+| `get_theses` with no analyst (chat) | The same rows for every analyst's stocks, each with its own analyst's rules and naming its analyst |
 | `list_proposals` (chat) | The plan and score of the stock behind a proposal, and the stop from the **position row**, which can lag a floor moved on the thesis |
 
 **One builder.** `stockBrief(facts)` is a pure function: no database call,
@@ -1119,13 +1122,14 @@ are the source material (`git show 5b0efbca:`); its branch is not a base.
     ways. The chat reads the book in lines first and opens a stock's full
     row by ticker (today it loads every stock in full; one chat on
     2026-10-05 read 1.2 million tokens). The trigger run reads its one stock
-    in full with the fire as its situation, and its closing save is shaped
+    as the short row with its setup's lines, the fire as its situation, the
+    full row one call away (measured Oct 9), and its closing save is shaped
     to its job: six fields instead of twenty-two optional ones, with cases.
     Then the old prompt blocks, the leftovers of the old feeds and the
     twelve superseded branches are deleted; grep proves each is gone.
     Cases about $2 and $6.
-11. **The lessons rule.** A new instruction enters only with a failing case
-    and under a size cap (rule 8 in section 4).
+11. **The lessons rule: built 2026-10-09.** A new instruction enters only
+    with a failing case and under a size cap (rule 8 in section 4).
 
 After these, on the owner's word: schedules as a framework (any prompt on
 any clock, through the same door) and discovery rebuilt as one of them.
