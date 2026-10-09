@@ -64,13 +64,13 @@ const FAVICON: Partial<Record<ToolSource, string>> = {
   inngest: "inngest.com",
 };
 
-/** A source's mark: the vendor's favicon, or Hindsight's own logo for our database. */
-export function SourceMark({ source, size = "md" }: { source: ToolSource; size?: "sm" | "md" | "lg" }) {
-  const box = size === "lg" ? "size-10 rounded-xl" : size === "sm" ? "size-5 rounded-md" : "size-8 rounded-lg";
-  const img = size === "lg" ? "size-5" : size === "sm" ? "size-3" : "size-4";
+/** A source's mark: the vendor's favicon, or Hindsight's own logo for our database. `xs` is the bare icon, for a line of text. */
+export function SourceMark({ source, size = "md" }: { source: ToolSource; size?: "xs" | "sm" | "md" | "lg" }) {
+  const box = size === "lg" ? "size-10 rounded-xl" : size === "sm" ? "size-5 rounded-md" : size === "xs" ? "" : "size-8 rounded-lg";
+  const img = size === "lg" ? "size-5" : size === "sm" || size === "xs" ? "size-3" : "size-4";
   const domain = FAVICON[source];
   return (
-    <span className={cn("grid shrink-0 place-items-center border bg-background", box)} title={TOOL_SOURCES[source]}>
+    <span className={cn("grid shrink-0 place-items-center", size !== "xs" && "border bg-background", box)} title={TOOL_SOURCES[source]}>
       {domain ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} alt="" className={cn("rounded-sm", img)} />
@@ -118,9 +118,38 @@ export function ToolGrid({ tools }: { tools: readonly CatalogTool[] }) {
   );
 }
 
-/** One agent's tools, read from the code. */
+/** Tools as rows: the mark, the name, the machine name, one line of what it does. Opens the dialog. */
+export function ToolList({ tools }: { tools: readonly CatalogTool[] }) {
+  const [open, setOpen] = useState<CatalogTool | null>(null);
+  return (
+    <>
+      <ul className="flex flex-col divide-y rounded-xl border">
+        {tools.map((t) => (
+          <li key={t.code}>
+            <button
+              type="button"
+              onClick={() => setOpen(t)}
+              className="flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <SourceMark source={t.sources[0]} size="sm" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+                <span className="shrink-0 text-sm font-medium text-foreground sm:w-44">{t.name}</span>
+                <span className="min-w-0 truncate text-sm text-muted-foreground">{t.summary}</span>
+              </span>
+              <Mono className="hidden shrink-0 text-xs text-muted-foreground md:inline">{t.code}</Mono>
+              {t.approval ? <ShieldCheck className="size-4 shrink-0 text-amber-500" aria-label="Needs your approval" /> : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <ToolDialog tool={open} onClose={() => setOpen(null)} />
+    </>
+  );
+}
+
+/** One agent's tools, read from the code, as rows. */
 export function AgentTools({ agent }: { agent: DocsAgentId }) {
-  return <ToolGrid tools={useDocsTools(agent)} />;
+  return <ToolList tools={useDocsTools(agent)} />;
 }
 
 // ── Dialog ─────────────────────────────────────────────────────────────────

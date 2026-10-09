@@ -16,7 +16,7 @@ export function MorningRunsDoc() {
       <DocHeader
         eyebrow="Agent · Morning runs"
         lead="Your analysts, at 8 AM."
-        rest="Three mornings a week, each analyst reads its whole book, answers every stock that needs it, and leaves the quiet ones alone."
+        rest="Every weekday morning, each analyst reads its whole book, answers every stock that needs it, and leaves the quiet ones alone."
       />
 
       <Stage label="Example run">

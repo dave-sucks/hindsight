@@ -6,6 +6,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
+import { DISPATCH_CAP } from "@/lib/agent/system-prompts/discovery";
 import { buildFrameworkData } from "./framework";
 
 describe("the framework page's measurements", () => {
@@ -30,5 +31,11 @@ describe("the framework page's measurements", () => {
   it("reads all sixteen situation texts", () => {
     expect(data.situations).toHaveLength(16);
     for (const s of data.situations) expect(s.chars).toBeGreaterThan(50);
+  });
+});
+
+describe("numbers the doc pages write in words", () => {
+  it("Discovery says it starts the Writer on up to five stocks a run", () => {
+    expect(DISPATCH_CAP).toBe(5);
   });
 });

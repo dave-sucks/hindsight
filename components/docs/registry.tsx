@@ -55,7 +55,7 @@ export interface DocMeta {
 export const DOCS: readonly DocMeta[] = [
   { slug: "discovery", title: "Discovery", group: "Agents", icon: Search, Content: DiscoveryDoc, blurb: "Screens earnings, movers and the web for stocks that fit an analyst, and sends the best to the Writer." },
   { slug: "writer", title: "The Writer", group: "Agents", icon: PenLine, Content: WriterDoc, blurb: "Researches one stock in depth and writes its thesis, plan and all." },
-  { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, Content: MorningRunsDoc, blurb: "Three mornings a week, each analyst reviews its whole book." },
+  { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, Content: MorningRunsDoc, blurb: "Every weekday morning, each analyst reviews its whole book." },
   { slug: "trigger-runs", title: "Trigger runs", group: "Agents", icon: Zap, Content: TriggerRunsDoc, blurb: "A trigger fires and the analyst looks at that one stock within minutes." },
   { slug: "chat", title: "Chat", group: "Agents", icon: MessageCircle, Content: ChatDoc, blurb: "Talk to one analyst, or to the whole account." },
   { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, Content: ThesesDoc, blurb: "A belief we can be wrong about, and the plan that acts on it." },

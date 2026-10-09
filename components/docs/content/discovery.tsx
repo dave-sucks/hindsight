@@ -1,31 +1,23 @@
 "use client";
 
-import { CalendarDays, FlaskConical, Globe, ScanSearch, TrendingUp } from "lucide-react";
 import { ChatMock, Tk } from "../chat-mock";
-import { Code, DocBody, DocHeader, Section, Stage, Steps, TechDetails, Trio } from "../primitives";
+import { AgentRef, DocSection, DocTitle, P, Prompts, ToolRef, Ul } from "../doc-text";
+import { Code, DocBody, Stage, TechDetails } from "../primitives";
 import { AgentTools } from "../tool-catalog";
-
-const SOURCES = [
-  { icon: CalendarDays, t: "Earnings calendar", b: "Who reported in the last few days and by how much they beat, or who reports soon." },
-  { icon: TrendingUp, t: "Market movers", b: "Today's gainers, losers and most active, with the 5-day, 1-month and 6-month move beside each." },
-  { icon: ScanSearch, t: "Setup screens", b: "Computed candidate lists for post-earnings drift, episodic pivots, pullbacks, base breakouts and momentum leaders." },
-  { icon: FlaskConical, t: "FDA catalysts", b: "Dated FDA decisions, taken from the companies' own 8-K filings." },
-  { icon: Globe, t: "The web and X", b: "To check a story, find the call, and kill a false lead before it becomes a thesis." },
-] as const;
 
 export function DiscoveryDoc() {
   return (
     <DocBody>
-      <DocHeader
-        eyebrow="Agent · Discovery"
-        lead="Find it before it's obvious."
-        rest="Discovery screens earnings, today's movers, setups and the web for stocks that fit an analyst, checks each against its rules, and sends the best to the Writer."
-      />
+      <DocTitle kicker="Agent" title="Discovery">
+        Discovery finds new stocks for an analyst to watch. It looks where new names show up, like fresh earnings, today&apos;s movers and setup screens, checks each one
+        against the analyst&apos;s rules, and sends the best to the Writer to research.
+      </DocTitle>
 
       <Stage label="Example">
         <ChatMock
           className="mx-auto max-w-2xl"
           title="PEAD Specialist · discovery"
+          composer={false}
           steps={[
             { kind: "user", text: "Find drift names off this week's reports." },
             {
@@ -58,53 +50,126 @@ export function DiscoveryDoc() {
         />
       </Stage>
 
-      <Trio
-        items={[
-          { title: "Screens, not hunches", body: "The setup screens compute the numbers: the size of the beat, whether the gap held, the volume, the trend." },
-          { title: "Your analyst's rules decide", body: "Its universe, its market-cap band, its exclusions and the setup's checklist decide what clears. Only names that clear go forward." },
-          { title: "Every new stock has a plan", body: "Each one goes to the Writer and comes back with a buy trigger, a floor and a target." },
-        ]}
-      />
+      <DocSection title="What it does">
+        <P>
+          Discovery only looks at stocks the analyst doesn&apos;t already cover. The tools it reads from hide every stock the analyst holds or watches, so a run spends
+          its time on names that are new. You can ask it to:
+        </P>
+        <Ul>
+          <li>Find names off this week&apos;s earnings reports</li>
+          <li>Run one of the analyst&apos;s setup screens and research what clears it</li>
+          <li>Look for dated catalysts, like FDA decisions, in a window</li>
+          <li>Check a list of tickers you paste in</li>
+        </Ul>
+        <P>
+          It doesn&apos;t manage stocks already on the book. That&apos;s <AgentRef slug="morning-runs" />. And it never buys: every stock it adds lands on the watchlist, and
+          a buy only happens later, when that stock&apos;s buy trigger fires and you approve the proposal.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="Where it looks" lead="Five places stocks come from.">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {SOURCES.map((s) => (
-            <div key={s.t} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-              <span className="grid size-8 place-items-center rounded-lg border bg-muted text-muted-foreground">
-                <s.icon className="size-4" />
-              </span>
-              <p className="text-sm font-medium text-foreground">{s.t}</p>
-              <p className="text-sm text-muted-foreground">{s.b}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      <Section eyebrow="How it works" lead="Screen, check, write, wait." rest="A session isn't done until every stock it sent has a thesis or a stated reason it didn't.">
-        <Steps
+      <DocSection title="Starting it">
+        <P>
+          Discovery runs when you ask for it. Open <AgentRef slug="chat" /> with an analyst selected and ask for new names, or start a discovery run for one analyst.
+          A run can carry a focus, like &ldquo;this week&apos;s earnings&rdquo;, which decides where it looks first. The chat has the same discovery tools, so a
+          conversation can do the whole job and show you the plans as they land.
+        </P>
+        <P>Try asking:</P>
+        <Prompts
           items={[
-            { title: "Screen", body: "Pull the candidates: the calendar, the movers, a setup screen, or names you paste in." },
-            { title: "Check", body: "Each candidate against the analyst's rules and the setup's checklist. Watch wide before a report, buy narrow after it." },
-            { title: "Write", body: "The best go to the Writer, which researches each and writes its thesis and plan." },
-            { title: "Wait", body: "It waits for every Writer it started and ends with one table: stock, buy trigger, floor, target." },
+            "Find drift names off this week's reports.",
+            "Run the pullback screen and research what's left.",
+            "Any FDA decisions in the next 60 days that fit this analyst?",
+            "Look at SMMT, IOT and SRRK. Worth a watch?",
           ]}
         />
-      </Section>
+      </DocSection>
 
-      <Section eyebrow="The buy trigger" lead="A watch is only useful if it can be bought." rest="The buy isn't today's price. It's the level where the analyst's setup becomes true: a pullback to a rising average, a break above the last high, a close back above the 50-day. It fires only if the stock turns." />
+      <DocSection title="Where it looks">
+        <P>
+          <strong>Setup screens.</strong> <ToolRef name="run_screen" /> returns a candidate list for one of the analyst&apos;s setups with the numbers already worked
+          out: the size of the beat and the reaction for post-earnings drift, the gap for an episodic pivot, the distance to a rising average for a pullback. Every
+          stock that failed the screen comes back with its reason.
+        </P>
+        <P>
+          <strong>Earnings.</strong> <ToolRef name="get_earnings_calendar" /> shows who just reported, against the estimate, biggest beats first, or who reports soon.
+          When you ask for discovery off a report window, this is where it starts.
+        </P>
+        <P>
+          <strong>Movers.</strong> <ToolRef name="get_market_movers" /> lists today&apos;s gainers, losers and most active stocks outside the analyst&apos;s coverage:
+          how a stock nobody covers shows up on price and volume.
+        </P>
+        <P>
+          <strong>Catalysts and the web.</strong> <ToolRef name="get_catalyst_calendar" /> reads dated FDA decisions from the companies&apos; own filings.{" "}
+          <ToolRef name="web_search" /> and <ToolRef name="twitter_search" /> check a story before it becomes a thesis.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="When it runs" lead="When you ask." rest="Discovery has no schedule on purpose: you decide when the book needs new names. Ask in chat with an analyst selected, or start a discovery run." />
+      <DocSection title="How it decides">
+        <P>
+          Discovery reads the whole pool before researching anything, and says in a sentence or two what caught its eye on each name and what it would need to
+          check. Names that plainly don&apos;t fit (outside the universe, a penny stock off the movers list) are dropped right there.
+        </P>
+        <P>
+          For the rest, the research is deliberately cheap. <ToolRef name="get_theses" /> checks whether another analyst on the account already covers the stock in the
+          same direction; if one does, it moves on. <ToolRef name="get_stock_data" /> gives the live price, the chart and the week&apos;s news. Each stock is then scored
+          on four things: the trend, its strength against the market, the quality of the entry, and how fresh its catalyst is. A score of 4 out of 10 or better is
+          worth a deeper look.
+        </P>
+        <P>
+          Off an earnings report, the order of weight is: both lines beat and guidance went up, first. An earnings beat with a revenue miss is discounted, because the
+          beat came from cost. A beat where the stock fell means the market wanted more, so it reads the call before trusting the number.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="Tools" lead="What discovery can use." rest="Read from the code.">
+      <DocSection title="What happens to each stock">
+        <P>Every stock it researched ends one of four ways, and the run&apos;s summary lists each one with where it went.</P>
+        <Ul>
+          <li>
+            <strong>Sent to the Writer.</strong> <ToolRef name="dispatch_thesis_research" /> starts <AgentRef slug="writer" /> on the stock, up to five per run.
+            The Writer does the deep research and writes the thesis with its buy trigger, floor and target.
+          </li>
+          <li>
+            <strong>Kept on watch.</strong> Strong, but out of slots this run or not ready yet. <ToolRef name="record_thesis" /> puts it on the watchlist without a
+            plan, with a wake-up condition if one makes sense, like a price level or a date before its report.
+          </li>
+          <li>
+            <strong>Passed.</strong> Researched and declined. The pass is recorded with what would change the verdict, so the next discovery that meets the stock reads
+            &ldquo;we already looked, and here&apos;s why not.&rdquo;
+          </li>
+          <li>
+            <strong>Skipped.</strong> Dropped before research. No record, just a line in the summary.
+          </li>
+        </Ul>
+        <P>
+          A run ends with <ToolRef name="record_run_summary" /> and <ToolRef name="complete_run" />. The Writers it started keep working after it finishes; each one
+          lands as its own run. In chat, <ToolRef name="wait_for_thesis_refresh" /> waits for them so you see the finished plans in the conversation.
+        </P>
+      </DocSection>
+
+      <DocSection title="What it knows about the analyst">
+        <P>
+          Discovery works for one analyst at a time, and reads it before it starts: the strategy you wrote, word for word, its rules on direction and size, and its
+          universe of sectors, industries, themes, market cap and exclusions. The universe is for judgment; the tools have already hidden what&apos;s covered.
+        </P>
+        <P>
+          It also reads the analyst&apos;s book, including stocks it used to own. A past holding with a fresh catalyst is a lead, not a used-up name. And it reads the
+          analyst&apos;s record by setup, so the patterns that have paid are the ones it looks for first.
+        </P>
+      </DocSection>
+
+      <DocSection title="Tools">
+        <P>Everything discovery can call, read from the code.</P>
         <AgentTools agent="discovery" />
-      </Section>
+      </DocSection>
 
       <TechDetails
         rows={[
-          { label: "Mode", value: <><Code>discovery</Code> · <Code>gpt-5.4</Code> · up to 45 steps. In chat, the same tools are on the principal&apos;s list.</> },
-          { label: "Started by", value: <>Chat, or the <Code>app/discovery.run.manual</Code> event (<Code>lib/inngest/functions/discovery-run.ts</Code>).</> },
-          { label: "Screens", value: <><Code>run_screen</Code> over <Code>lib/discovery/screens.ts</Code>; setups in <Code>lib/agent/knowledge/setups.ts</Code>.</> },
-          { label: "New stocks", value: <><Code>record_thesis</Code> for a researched pass; <Code>dispatch_thesis_research</Code> for a new thesis, then <Code>wait_for_thesis_refresh</Code>.</> },
+          { label: "Prompt", value: <><Code>lib/agent/system-prompts/discovery.ts</Code> (<Code>buildDiscoverySystemPrompt</Code>)</> },
+          { label: "Mode", value: <><Code>discovery</Code> in <Code>lib/agent/modes.ts</Code>: <Code>gpt-5.4</Code>, up to 45 steps. The chat (<Code>principal</Code>) carries the same discovery tools.</> },
+          { label: "Started by", value: <>Chat, or the <Code>app/discovery.run.manual</Code> event, which can carry an analyst and a focus. <Code>lib/inngest/functions/discovery-run.ts</Code> also lists a Sunday 9 AM cron; in practice discovery is run by hand.</> },
+          { label: "Writer cap", value: <><Code>DISPATCH_CAP</Code> = 5 per run, enforced in <Code>dispatch_thesis_research</Code>.</> },
+          { label: "Outcomes", value: <><Code>record_thesis</Code> with <Code>direction: PASS</Code> is a pass; with <Code>status: WATCHING</Code> as well, a watch without a plan. A new plan is always the Writer&apos;s.</> },
+          { label: "Screens", value: <><Code>lib/discovery/screens.ts</Code>; setups in <Code>lib/agent/knowledge/setups.ts</Code>.</> },
           { label: "Playbook", value: <><Code>docs/DISCOVERY_PLAYBOOK.md</Code> · <Code>docs/prompts/DISCOVERY_SESSION.md</Code></> },
         ]}
       />
