@@ -21,8 +21,8 @@ import { LoopCanvas } from "./loop-canvas";
 import { Eyebrow, TwoTone } from "./primitives";
 import { DocCrumbs } from "./doc-crumbs";
 import { DocsNav } from "./docs-nav";
-import { DOCS, GET_STARTED, docBySlug, type DocSlug } from "./registry";
-import { Scenarios } from "./scenarios";
+import { DOCS, docBySlug, type DocSlug } from "./registry";
+import { StockStory } from "./stock-story";
 import { DocsDataProvider, ToolCatalog } from "./tool-catalog";
 
 export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; setups: readonly DocsSetup[] }) {
@@ -83,37 +83,15 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
               rest="Analysts find the stocks, write the case and guard every position. Nothing trades without you."
             />
           </div>
+          <StockStory onOpen={setDoc} />
+        </section>
+
+        <section className="flex flex-col gap-8" aria-labelledby="flow-h">
+          <div className="flex flex-col gap-2.5">
+            <Eyebrow>The workflow</Eyebrow>
+            <TwoTone id="flow-h" lead="How the pieces connect." rest="Three ways to wake an analyst, one decision, and nothing trades without you. Open any step to read how it works." />
+          </div>
           <LoopCanvas onOpen={setDoc} />
-        </section>
-
-        <section className="flex flex-col gap-8" aria-labelledby="gs-h">
-          <div className="flex flex-col gap-2.5">
-            <Eyebrow>Get started</Eyebrow>
-            <TwoTone id="gs-h" lead="From an empty desk to a guarded book." rest="Five steps, in the order you'll meet them." />
-          </div>
-          <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {GET_STARTED.map((s, i) => (
-              <li key={s.slug} className="grid">
-                <button type="button" onClick={() => setDoc(s.slug)} className="group grid w-full text-left">
-                  <Card>
-                    <CardHeader>
-                      <span className="text-xs text-muted-foreground tabular-nums">{String(i + 1).padStart(2, "0")}</span>
-                      <CardTitle>{s.title}</CardTitle>
-                      <CardDescription>{s.blurb}</CardDescription>
-                    </CardHeader>
-                  </Card>
-                </button>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <section className="flex flex-col gap-8" aria-labelledby="practice-h">
-          <div className="flex flex-col gap-2.5">
-            <Eyebrow>In practice</Eyebrow>
-            <TwoTone id="practice-h" lead="What a day on the desk looks like." rest="Five moments you'll see every week, as the agents work through them." />
-          </div>
-          <Scenarios />
         </section>
 
         <section className="flex flex-col gap-8" aria-labelledby="agents-h">

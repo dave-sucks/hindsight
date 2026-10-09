@@ -69,12 +69,3 @@ export const DOCS: readonly DocMeta[] = [
 export function docBySlug(slug: string): DocMeta | undefined {
   return DOCS.find((d) => d.slug === slug);
 }
-
-/** The order someone meets the product in. */
-export const GET_STARTED: readonly { slug: DocSlug; title: string; blurb: string }[] = [
-  { slug: "analysts", title: "Hire an analyst", blurb: "Pick a style, a universe and how big it trades." },
-  { slug: "discovery", title: "Find stocks", blurb: "Discovery screens earnings, movers and the web, and fills the watchlist." },
-  { slug: "writer", title: "Get the case written", blurb: "The Writer researches each stock and writes its thesis and plan." },
-  { slug: "morning-runs", title: "Let the runs watch", blurb: "Morning runs review the book; triggers wake a run the moment a stock moves." },
-  { slug: "approvals", title: "Approve trades", blurb: "Every buy and sale waits in your queue for your yes." },
-];
