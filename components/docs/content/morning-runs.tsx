@@ -22,7 +22,7 @@ export function MorningRunsDoc() {
       <Stage label="Example run">
         <div className="mx-auto flex max-w-xl flex-col items-stretch">
           <div className="rounded-2xl border border-chart-2/40 bg-background p-3.5 shadow-sm ring-4 ring-chart-2/10">
-            <p className="text-message text-foreground">Every Monday, Wednesday and Friday at 8 AM ET, review my book.</p>
+            <p className="text-message text-foreground">Every weekday at 8 AM ET, review my book.</p>
             <div className="mt-3 flex items-center gap-1.5">
               <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
                 <Clock className="size-3" />
@@ -85,7 +85,7 @@ export function MorningRunsDoc() {
       <Section eyebrow="How it works" lead="Wake, read, decide, report." rest="The same four beats every run.">
         <Steps
           items={[
-            { title: "Wakes", body: "8 AM ET on each analyst's run days: Monday, Wednesday and Friday today. Market holidays are skipped. The Run button starts one any day." },
+            { title: "Wakes", body: "8 AM ET on each analyst's run days: every weekday by default. Market holidays are skipped. The Run button starts one any day." },
             { title: "Reads", body: "Its book, the account and the market. Each stock that needs an answer comes with the guidance for its situation." },
             { title: "Decides", body: "Sell, add, trim, hold, redraw the plan, or a review that says what it checked. It can send a stock to the Writer for fresh research." },
             { title: "Reports", body: "Trades go to your queue as proposals. One summary closes the run, and it has to match what the run actually did." },

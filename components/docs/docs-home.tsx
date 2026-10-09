@@ -18,7 +18,9 @@ import { cn } from "@/lib/utils";
 import { AgentAsset } from "./agent-assets";
 import { LoopCanvas } from "./loop-canvas";
 import { Eyebrow, TwoTone } from "./primitives";
+import { DocsNav } from "./docs-nav";
 import { DOCS, GET_STARTED, docBySlug, type DocSlug } from "./registry";
+import { Scenarios } from "./scenarios";
 import { DocsDataProvider, ToolCatalog } from "./tool-catalog";
 
 export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; setups: readonly DocsSetup[] }) {
@@ -56,10 +58,11 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
 
   return (
     <DocsDataProvider tools={tools} setups={setups}>
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-24 px-4 pb-32 pt-10 sm:px-6 lg:pt-16">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-24 px-4 pb-32 pt-6 sm:px-6 lg:pt-10">
         <section className="flex flex-col gap-10">
           <div className="flex flex-col gap-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <DocsNav />
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-6">
               <Eyebrow>How Hindsight works</Eyebrow>
               <button
                 type="button"
@@ -101,6 +104,14 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
               </li>
             ))}
           </ol>
+        </section>
+
+        <section className="flex flex-col gap-8" aria-labelledby="practice-h">
+          <div className="flex flex-col gap-2.5">
+            <Eyebrow>In practice</Eyebrow>
+            <TwoTone id="practice-h" lead="What a day on the desk looks like." rest="Five moments you'll see every week, as the agents work through them." />
+          </div>
+          <Scenarios />
         </section>
 
         <section className="flex flex-col gap-8" aria-labelledby="agents-h">
