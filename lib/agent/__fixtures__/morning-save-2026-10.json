@@ -1,0 +1,747 @@
+{
+ "_note": "Four real morning-run update_thesis calls, verbatim from each run's thread (MU 10-02, ABT 10-07, DOCU 10-07, CORT 10-09), each row as it stood when the call was made: the run's own read and the audit's earlier values. The words are the analysts'.",
+ "MU": {
+  "analyst": "PEAD Specialist",
+  "call": {
+   "thesis_id": "cmrp6chyu000h04l5roqq5ha1",
+   "rationale": "I re-underwrote the post-earnings review against fresh data and I am tightening the floor instead of exiting into strength. The fired review was correct yesterday — MU had beaten but the market sold it — yet today's tape has repaired that damage: price is back to about $1,097 on 1.83x average volume, sitting just under the $1,100 target area. This was not a clean new PEAD reset because the latest EPS beat was only 2.6%, below my 5% clean-signal threshold, so I am not treating this print as a fresh add. I am also not leaving the old $1,041 floor in place when the position is up more than 22% and the ladder health already flags the gain as under-protected. Invalidation check: the stock has not closed below the $969 stop-loss assumption; Q4 revenue did not miss the $50B guide — it beat at $54.23B — so that condition did not happen; and there is no evidence of a major HBM customer deferral or cancellation. What did happen is the drift matured and the stock is now back in the target zone, so the right move is to ratchet protection higher under the reclaimed breakout area and let the name either finish the last bit of upside or stop us out with a real gain.",
+   "structural_unchanged_reason": "The core HBM-demand and earnings-upgrade belief still stands; this change is about protecting a mature PEAD winner whose latest print did not qualify as a fresh clean beat-and-raise signal.",
+   "trigger_id": "d2f2eb13-a35f-4ae6-ab4b-053526c2245b",
+   "price_at_time": 1097.39,
+   "stop_loss": 1048,
+   "stop_basis": "Raised floor to just above the prior breakout/pivot zone around $1,042 and roughly 1 ATR under the $1,100 decision area; if MU gives that back after reclaiming this level, the post-earnings drift has likely finished.",
+   "snapshot": {
+    "text": "MU has repaired the immediate post-earnings fade and is trading back near $1,100 on above-average volume, but this remains a mature PEAD hold rather than a fresh entry. The latest quarter beat on both lines, yet the EPS surprise was only 2.6%, below the clean-signal threshold for a new post-earnings drift setup. With the original 30–60 day window already stretched and the position up more than 22%, the right posture is to protect the earned gain under the reclaimed breakout area rather than widen for a new cycle.",
+    "citations": [
+     {
+      "title": "get_stock_data MU live quote and technicals",
+      "kind": "STRUCTURED"
+     },
+     {
+      "title": "get_earnings_data MU recent quarter",
+      "kind": "STRUCTURED"
+     }
+    ]
+   }
+  },
+  "price": 1097.39,
+  "position": {
+   "quantity": 13,
+   "avgCost": 895.935,
+   "peakPrice": 1091.66
+  },
+  "thesis": {
+   "id": "cmrp6chyu000h04l5roqq5ha1",
+   "ticker": "MU",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "PEAD",
+   "retiredReason": null,
+   "closedAt": null,
+   "closeReason": null,
+   "entryPrice": 895.935,
+   "targetPrice": 1100,
+   "stopLoss": 1041,
+   "triggers": [
+    {
+     "id": "t1",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 1100,
+      "watch": "price"
+     },
+     "rationale": "Original pre-earnings drift objective remains the first decision zone; above it I re-underwrite rather than mechanically extend into next week's print.",
+     "lastFiredAt": "2026-09-25T13:40:03.840Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t2",
+     "action": "TRIM",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 1150,
+      "watch": "price"
+     },
+     "rationale": "Trim into a push toward and through the upper target zone if price nears $1,150.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t3",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 880,
+      "watch": "price"
+     },
+     "rationale": "A break below $880 would signal deeper technical damage — review whether the thesis is weakening structurally.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t4",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 1041,
+      "watch": "price"
+     },
+     "rationale": "Under the reclaimed breakout area around $1,070 and roughly 0.6 ATR below the $1,100 decision zone; if MU gives that back after this repair, the mature drift is done.",
+     "lastFiredAt": "2026-10-08T16:50:20.141Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t5",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 4,
+      "watch": "move",
+      "variable": "prev_close"
+     },
+     "rationale": "A sharp 1-day gain could confirm momentum repair — review whether the drift is re-accelerating.",
+     "lastFiredAt": "2026-10-07T17:10:12.520Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t6",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 4,
+      "watch": "move",
+      "variable": "prev_close"
+     },
+     "rationale": "A sharp 1-day drop could be either normal volatility or early thesis damage — review the cause.",
+     "lastFiredAt": "2026-10-08T17:01:13.694Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t9",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 15,
+      "watch": "move",
+      "variable": "entry"
+     },
+     "rationale": "At +15% from entry, reassess whether trend repair is durable enough to add or tighten risk.",
+     "lastFiredAt": "2026-10-05T13:35:09.585Z",
+     "cooldownDays": 7
+    },
+    {
+     "id": "t10",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "DIRECT",
+     "predicate": {
+      "is": "below",
+      "value": 8,
+      "watch": "move",
+      "variable": "entry"
+     },
+     "rationale": "Exit if the position falls 8% below entry; that is the hard loss cap for this PEAD setup.",
+     "cooldownDays": 0
+    },
+    {
+     "id": "t11",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "beat",
+      "value": 5,
+      "watch": "surprise"
+     },
+     "rationale": "If $MU again beats EPS by at least 5%, review whether the earnings-upgrade cycle remains intact and whether targets should rise.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "5d6fb212-0bee-451d-9287-06a3aff1f1f4",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "after",
+      "value": 60,
+      "watch": "from_date",
+      "variable": "buy"
+     },
+     "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
+     "lastFiredAt": "2026-09-23T13:30:08.094Z",
+     "cooldownDays": 60
+    },
+    {
+     "id": "d2f2eb13-a35f-4ae6-ab4b-053526c2245b",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {
+        "is": "beat",
+        "value": 0,
+        "watch": "surprise"
+       },
+       {
+        "is": "below",
+        "value": 3,
+        "watch": "move",
+        "variable": "prev_close"
+       }
+      ]
+     },
+     "rationale": "A beat the market sold — the stock is down 3%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.",
+     "lastFiredAt": "2026-10-01T14:20:09.369Z",
+     "cooldownDays": 7
+    }
+   ],
+   "triggerState": {
+    "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace": {
+     "firedAt": "2026-09-28T13:30:14.102Z",
+     "firedReports": [
+      "2026-09-30"
+     ]
+    },
+    "cacf717e-af57-42e5-a9af-28835e20508d": {
+     "firedAt": "2026-09-14T13:40:11.705Z"
+    }
+   },
+   "conviction": "MEDIUM",
+   "convictionRationale": "The fundamental case is as strong as it's ever been — two massive beats since the thesis opened, HBM fully booked through 2027, margins at 84.9% and guided higher. But the stock's failure to sustain above $1,100 after the Q3 FY2026 print, Druckenmiller's exit, and no insider buying at these levels keeps me honest. MEDIUM is the right read: the thesis is working but the drift is choppy, not clean.",
+   "variantView": "The market is treating today's AI-chip de-risking as a structural downgrade; I think it's a sentiment flush on a name with a multi-quarter HBM earnings upgrade cycle still intact — consensus hasn't cut numbers, just the multiple, which reopens the PEAD drift window.",
+   "scoring": {
+    "composite": 9,
+    "entryQuality": {
+     "note": "Refresh on a held position — stop-only tightening allowed. Entry set at $980 (a modest intraday pullback below today's $1,000.26 tape) to satisfy the priced-plan requirement; stop at $969 is the existing floor, unchanged.",
+     "score": 1
+    },
+    "trendStrength": {
+     "note": "SMA20 > SMA50, price above both, RSI 57.7, YTD +142.8% — structurally bullish despite -20% off the 52w high",
+     "score": 3
+    },
+    "relativeStrength": {
+     "note": "MU ranks 1/4 in revenue growth, YTD return, and composite score vs. NVDA, AVGO, AMD peer group",
+     "score": 3
+    },
+    "catalystFreshness": {
+     "note": "September 30 Q4 FY2026 print is 21 days out with $50B revenue guidance already set — hard catalyst with date, number, and analyst revision mechanics fully primed",
+     "score": 2
+    }
+   },
+   "catalystDate": null,
+   "coreBelief": "Micron's HBM supply is contracted through 2027 with $22B in strategic customer agreements and $18B in cash deposits already secured, sustaining a multi-quarter earnings-upgrade cycle that drives MU to $1,100 before the September 30 Q4 FY2026 print as each sequential record forces estimate revisions higher.",
+   "keyAssumptions": [
+    "HBM3E and HBM4 remain fully booked through 2027, with no customer deferrals or cancellations to the $22B in strategic customer agreements",
+    "Q4 FY2026 guidance of $50B revenue and ~86% gross margin is confirmed or exceeded on September 30, triggering another round of upward analyst estimate revisions"
+   ],
+   "invalidationConds": [
+    "MU closes below the $969 stop-loss, signaling a break below the 50-day SMA and invalidating the drift recovery",
+    "Q4 FY2026 earnings on September 30 deliver revenue materially below $50B guidance or guidance for Q1 FY2027 is cut, breaking the multi-quarter upgrade cycle",
+    "A major HBM customer (Nvidia, AMD) publicly reduces or delays memory commitments under the strategic customer agreements"
+   ],
+   "snapshot": {
+    "text": "$MU broke the tightened protective floor at $1,041 and is trading around $1,034.85, below the recent breakout pivot near $1,042. While the stock remains above rising intermediate moving averages and no fresh headline directly breaks the HBM demand thesis, this PEAD position is now beyond its intended 30–60 day drift window and the setup rule is to be out before the next earnings print rather than keep carrying event risk.",
+    "citations": [
+     {
+      "kind": "STRUCTURED",
+      "title": "Live quote and technical snapshot"
+     },
+     {
+      "kind": "STRUCTURED",
+      "title": "Current thesis trigger ladder and fired stop t4"
+     }
+    ]
+   },
+   "researchUpdatedAt": "2026-10-01T14:06:19.037Z",
+   "createdAt": "2026-07-17T16:50:48.438Z",
+   "lastReviewedAt": "2026-10-01T14:06:19.037Z"
+  }
+ },
+ "ABT": {
+  "analyst": "Secular Compounder",
+  "call": {
+   "thesis_id": "cmspld5md000504l72u7ft9ve",
+   "rationale": "Still watching ABT at $98.16. The business thesis may survive, but the stock is still broken: below the 20-day, 50-day, 150-day, and 200-day averages with no real base to buy against. I am simplifying the re-entry plan to one honest condition instead of stacking duplicate wakes around the same level: wait for a reclaim of $100.60 and leave the rest alone.",
+   "price_at_time": 98.16,
+   "target_price": 135,
+   "stop_loss": 95.48,
+   "stop_basis": "The floor sits just under the 61.8% retracement at $95.48 and near the recent washout zone. If ABT reclaims $100.60 and then loses that area, the repair failed.",
+   "target_basis": "The underlying Libre / diagnostics compounder case still points to the mid-$130s if the stock can repair. That remains the right upside marker, but only after a real reclaim.",
+   "entry_on_close": true,
+   "entry_price": 100.6,
+   "remove_trigger_ids": [
+    "4503a4f5-f854-41df-aed3-3913027d5650"
+   ],
+   "snapshot": {
+    "text": "ABT is trading at $98.16 and the chart remains broken, with price below the 20-day, 50-day, 150-day, and 200-day averages and no fresh base formed yet. The thesis stays on watch because the business-level invalidations still have not printed, but the tactical re-entry needs to be simple: only a close back above $100.60 would count as repair worth re-underwriting."
+   }
+  },
+  "price": 98.16,
+  "position": null,
+  "thesis": {
+   "id": "cmspld5md000504l72u7ft9ve",
+   "ticker": "ABT",
+   "status": "WATCHING",
+   "direction": "LONG",
+   "horizon": "COMPOUNDER",
+   "setupId": "MA_PULLBACK",
+   "entryPrice": null,
+   "targetPrice": null,
+   "stopLoss": null,
+   "triggers": [
+    {
+     "id": "4503a4f5-f854-41df-aed3-3913027d5650",
+     "action": "REVIEW",
+     "source": "PRINCIPAL",
+     "predicate": {
+      "watch": "price",
+      "is": "above",
+      "value": 10
+     },
+     "rationale": "Review if above $10. You set this.",
+     "cooldownDays": 1
+    }
+   ],
+   "triggerState": {
+    "cf39ff35-5a15-43d4-a0f1-911cb5fd519b": {
+     "firedAt": "2026-10-02T13:45:22.097Z"
+    }
+   },
+   "conviction": "HIGH",
+   "convictionRationale": "Q2 confirmed the thesis: EPS beat, guidance raised to $5.45–$5.60, Exact Sciences at $1B/quarter, Libre Duo CE Mark in hand. The -32% YTD drawdown is recall psychology and sector rotation, not broken fundamentals. At the 50-day MA with RSI 40.8, this is the exact confirmation entry the August WATCHING thesis was waiting for.",
+   "variantView": "Consensus discounts ABT as a COVID-diagnostic recovery; I think Exact Sciences is a category-creation move in oncology diagnostics not yet re-rated — falsifiable if Cologuard volumes disappoint or Libre Duo U.S. approval slips past Q1 2027.",
+   "scoring": {
+    "composite": 7,
+    "entryQuality": {
+     "note": "Stock is pulling back to its 50-day MA ($104.61), which is precisely the confirmation entry Rule 5 names. RSI 40.8 offers technical room; entry at $104.50 is inside the July base support zone — this is confirmation, not chasing.",
+     "score": 2
+    },
+    "trendStrength": {
+     "note": "Bullish trend intact (SMA20 > SMA50) but stock is -32% YTD and -5.5% below the 20-day; trend is constructive at the 50-day test, not accelerating.",
+     "score": 2
+    },
+    "relativeStrength": {
+     "note": "ABT ranks last in peer composite (44 vs ISRG 58, SYK 51) and worst YTD in the group at -32.1%; relative momentum is a headwind, though sector-wide pressure context matters.",
+     "score": 1
+    },
+    "catalystFreshness": {
+     "note": "Q2 beat + guidance raise was fresh (July 16/28 filings); Libre Duo CE Mark secured; Volt PFA limited launch underway; Q3 earnings catalyst ~Oct 21. Multiple near-term product launches across the next 12 months.",
+     "score": 2
+    }
+   },
+   "catalystDate": null,
+   "coreBelief": "Abbott reaches $135+ by mid-2028 as FreeStyle Libre 3/Duo volume expansion, Volt PFA commercial ramp, and Exact Sciences diagnostics integration push adjusted EPS above $5.70, compressing the forward multiple from 28x toward 24x on structurally higher earnings.",
+   "keyAssumptions": [
+    "FreeStyle Libre 3/Duo volumes continue expanding into the estimated 60-65M untapped global CGM-eligible population, sustaining mid-to-high single-digit CGM revenue growth through 2027",
+    "Exact Sciences integration delivers $3.5B+ annualized Diagnostics revenue run-rate by Q4 2026, with no material Cologuard volume deterioration or integration cost overruns that would pressure group gross margin"
+   ],
+   "invalidationConds": [
+    "Two consecutive quarters of adjusted EPS guidance cuts (any single miss is a review, not invalidation; two cuts signals structural demand erosion or integration failure)",
+    "A new Libre device safety recall or FDA warning letter that requires commercial pause, replicating the recall overhang that drove the stock from $137 to $82 in H1 2026",
+    "Exact Sciences Cologuard volumes decline YoY in any reported quarter, indicating the diagnostics acquisition thesis is not delivering the durable oncology revenue stream modeled"
+   ],
+   "snapshot": {
+    "text": "$ABT broke the $96 protective line and the MA-pullback setup has now clearly failed on price action, with the stock trading below its 50-day, 150-day, and 200-day moving averages and showing weak relative strength versus both SPY and XLV. Even so, the fresh trigger review did not surface business-level thesis damage: there is no new Libre recall or FDA warning letter, no evidence of two consecutive adjusted EPS guidance cuts, and no sign here that Exact/Cologuard integration has broken. This tactical action is therefore a protective exit on technical failure, not a retirement of the underlying compounder thesis.",
+    "citations": [
+     {
+      "kind": "STRUCTURED",
+      "title": "get_stock_data ABT live quote and technicals"
+     }
+    ]
+   },
+   "researchUpdatedAt": "2026-10-02T13:35:33.558Z",
+   "createdAt": "2026-08-12T04:30:55.669Z",
+   "lastReviewedAt": "2026-10-05T12:04:36.369Z"
+  }
+ },
+ "DOCU": {
+  "analyst": "PEAD Specialist",
+  "call": {
+   "thesis_id": "cmtu9lfhw000004i575f6xyig",
+   "rationale": "Watching DocuSign at $68.22. I sold the first attempt because the pullback entry never followed through, but the stock is still sitting on the rising 20-day at $68.35 and the larger base is intact. I want it back only on a reclaim of the $74.07 pivot, where the next leg would be confirmation rather than hope.",
+   "price_at_time": 68.22,
+   "target_price": 83,
+   "stop_loss": 68.9,
+   "stop_basis": "Under the breakout line after a close through $74.10; if a reclaim fails back through the upper base, the re-entry is wrong quickly.",
+   "target_basis": "A reclaim through the $74.07 base pivot would reopen the path toward the prior post-earnings drift objective near $83.",
+   "entry_on_close": true,
+   "entry_price": 74.1,
+   "add_triggers": [
+    {
+     "predicate": {
+      "watch": "repeat",
+      "value": 14
+     },
+     "action": "REVIEW",
+     "rationale": "Revisit DocuSign every 14 days while the December 3 catalyst is still ahead and the base is still live."
+    }
+   ],
+   "change_status": "WATCHING"
+  },
+  "price": 68.22,
+  "position": null,
+  "thesis": {
+   "id": "cmtu9lfhw000004i575f6xyig",
+   "ticker": "DOCU",
+   "status": "RETIRED",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "MA_PULLBACK",
+   "retiredReason": "SOLD",
+   "closedAt": "2026-10-06T19:23:49.184Z",
+   "closeReason": "MANUAL",
+   "entryPrice": 67.7347,
+   "targetPrice": 83,
+   "stopLoss": 63,
+   "triggers": [
+    {
+     "id": "af4d1172-ee7e-4ac1-9b92-12f2e83091e3",
+     "action": "EXIT",
+     "source": "AGENT",
+     "predicate": {
+      "watch": "price",
+      "is": "below",
+      "value": 63
+     },
+     "rationale": "Under the Sep 9 swing low $63.63 and the Sep 3 gap-day low $64.16 — if both break, the MA_PULLBACK thesis is wrong. -8% from entry would be $61.64; the structural level is tighter at $63.00.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "6d1adc43-b748-423f-8109-bcc79296cd22",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "watch": "price",
+      "is": "above",
+      "value": 83
+     },
+     "rationale": "Prior 52-week high $83.29 / 1.272 Fibonacci extension from the June low to Sep high = $82.96. R/R 4:1 from entry $67 with floor $63.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "7dd652d9-823b-46ba-b880-09ed4afc0786",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "watch": "repeat",
+      "value": 7
+     },
+     "rationale": "Look at this every 7 days, counting from the last real review.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "05da8147-8aa7-415e-92dc-0dff5f8b228f",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "is": "beat",
+      "value": 0,
+      "watch": "surprise"
+     },
+     "rationale": "DOCU beat ≥5% — fresh PEAD triage required immediately. Check: revenue beat, ARR guidance raised, IAM mix still expanding, volume on gap day ≥1.5x. If all four conditions met, this is a new 60-day drift window. Do NOT enter on the gap day itself — wait 1-3 days.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "8956c980-d3f1-4c72-88cf-e3fcd5ebf1df",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "miss",
+      "value": 3,
+      "watch": "surprise"
+     },
+     "rationale": "Miss — entry conditions worsening. Consider removing.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "8a831860-7dff-4b30-9c2e-ca410991f61b",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "after",
+      "value": 14,
+      "watch": "from_date",
+      "variable": "buy"
+     },
+     "rationale": "10 sessions after the buy — 14 calendar days from this one — 10 sessions to reclaim the prior high, else review.",
+     "cooldownDays": 14
+    },
+    {
+     "id": "6602fa8d-99a6-4cf5-8413-21801640bb6a",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {
+        "is": "beat",
+        "value": 0,
+        "watch": "surprise"
+       },
+       {
+        "is": "below",
+        "value": 3,
+        "watch": "move",
+        "variable": "prev_close"
+       }
+      ]
+     },
+     "rationale": "A beat the market sold — the stock is down 3%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.",
+     "cooldownDays": 7
+    }
+   ],
+   "triggerState": {},
+   "conviction": "MEDIUM",
+   "convictionRationale": "The PEAD signal was clean — beat, raised ARR guide, volume 2.5x — but the stock has already run 11%+ from the gap day, blowing through the original $62.50 buy level. R/R at $71.85 with a technically honest stop at the gap-day low ($64.16) yields under 2:1 to any defensible target. I stay directionally LONG but cannot buy here; I need the 20-day ($64.50) to come to me.",
+   "variantView": "Consensus expects DOCU to be range-bound near the $66–$68 PT cluster; I think the IAM platform re-rating is underpriced because 18 of 29 analysts haven't revised yet, falsifiable if consensus PTs fail to clear $75 within 30 days.",
+   "scoring": {
+    "composite": 8,
+    "entryQuality": {
+     "note": "Pullback from $74.07 high exactly to the rising 20-day at $67.43. Entry $67.00, not a chase — stock coming to the level.",
+     "score": 2
+    },
+    "trendStrength": {
+     "note": "Uptrend confirmed, TT 6/8 — failing only 150-day above 200-day and 200-day rising. Rising 20-day ($67.43) and 50-day ($61.38) intact.",
+     "score": 2
+    },
+    "relativeStrength": {
+     "note": "vs SPY: 1M +13.1pts, 3M +43.5pts, 6M +23.5pts — exceptional outperformance across all windows.",
+     "score": 3
+    },
+    "catalystFreshness": {
+     "note": "Sep 3 beat-and-raise (Day 24 of drift window), ARR guide raised, IAM inflecting. Catalyst aging but estimate revision tail still propagating through HOLD-majority analyst community.",
+     "score": 1
+    }
+   },
+   "catalystDate": "2026-12-03T00:00:00.000Z",
+   "coreBelief": "DOCU drifts to $83 within 60 days of the September 3 print as the 18 HOLD-rated analysts who haven't yet revised absorb the confirmed ARR guide raise and IAM ARR inflection to 15.1% — but only on a pullback to the rising 20-day SMA (~$64.50) where a 2:1 R/R entry can be structured.",
+   "keyAssumptions": [
+    "IAM ARR mix continues to expand from 15.1% toward management's 18%–19% Q4 FY2027 target, validating the platform re-rating thesis",
+    "The remaining 18 HOLD-rated analysts revise estimates upward over the next 4–6 weeks, maintaining the systematic estimate-diffusion bid that drives PEAD continuation"
+   ],
+   "invalidationConds": [
+    "Gap-day low of $64.16 closes below on volume — the gap fills, the PEAD setup is broken",
+    "Analyst consensus price targets fail to move above $75 over the next 30 days, indicating the revision wave has peaked below the stock price and the diffusion edge has expired"
+   ],
+   "snapshot": {
+    "text": "$DOCU pulled back to the planned buy zone and triggered the price alert at $65.88, but the defined MA_PULLBACK confirmation has not occurred yet. The stock is trading below its rising 20-day moving average ($67.43) in the opening minutes, with no reversal close above the prior day's high to prove support held. Relative strength remains strong and no fresh thesis-breaking news is visible, so the setup stays WATCHING rather than promoted on an unconfirmed dip.",
+    "citations": [
+     {
+      "kind": "STRUCTURED",
+      "title": "get_stock_data DOCU live quote, technicals, news"
+     }
+    ]
+   },
+   "researchUpdatedAt": "2026-09-28T13:30:44.586Z",
+   "createdAt": "2026-09-09T15:39:59.540Z",
+   "lastReviewedAt": "2026-10-02T12:01:57.923Z"
+  }
+ },
+ "CORT": {
+  "analyst": "Catalyst Event PM",
+  "call": {
+   "thesis_id": "cmuhp4n4e000e04kx3vkxm5lr",
+   "rationale": "Holding Corcept at $118.54. The December 17 FDA trade is unchanged: the stock is still basing above the 50-day average at $115.12 and above the $108.41 swing low, volume remains quiet at 0.28 times the 20-day average, and none of the invalidation conditions have fired — no second CRL, no close below the base low, and no Korlym generic event — so I am keeping the $152 target and the $108.40 floor.",
+   "price_at_time": 118.54,
+   "scoring": {
+    "trendStrength": {
+     "score": 3,
+     "note": "Trend Template still passes 8/8; price is above all rising long-term moving averages and the stock remains in a constructive base."
+    },
+    "relativeStrength": {
+     "score": 3,
+     "note": "vs SPY: 1M +0.9pts, 3M +26.5pts, 6M +166.7pts. Relative strength remains strong despite the sideways base."
+    },
+    "entryQuality": {
+     "score": 1,
+     "note": "Held position is inside a stable base, but no new entry improves the risk-reward enough to re-price the plan today."
+    },
+    "catalystFreshness": {
+     "score": 2,
+     "note": "PDUFA date remains December 17, 2026, and the catalyst is still live and ahead."
+    }
+   },
+   "conviction": "MEDIUM",
+   "conviction_rationale": "I still have a real dated catalyst with positive prior molecule-level regulatory history and intact chart structure, but the market is already pricing a lot of approval probability and the stock is not far enough above entry to justify a tighter stop under normal noise. That keeps this as a hold, not an add.",
+   "variant_view": "Consensus treats this as a straightforward pre-approval hold; I think the efficacy-focused CRL history still matters more than the market is discounting, which is why I want the position but not a looser or larger risk posture here.",
+   "snapshot": {
+    "text": "Corcept ($CORT, $118.54) remains a clean pre-catalyst hold into the December 17, 2026 Cushing's PDUFA. The stock is still basing 6.2% below its 52-week high, above all four major moving averages, and the latest session came on just 0.28 times normal volume — quiet digestion, not distribution. The invalidation list is unchanged and untripped: no second CRL, no close below the $108.08 base low, and no Korlym generic event. This is still the same trade — a run-up into a dated FDA decision on a molecule already approved in another indication — so I am holding the $152 target and the $108.40 floor."
+   }
+  },
+  "price": 118.54,
+  "position": {
+   "quantity": 43,
+   "avgCost": 116.0313,
+   "peakPrice": 121.8
+  },
+  "thesis": {
+   "id": "cmuhp4n4e000e04kx3vkxm5lr",
+   "ticker": "CORT",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "CATALYST",
+   "setupId": "PRE_CATALYST",
+   "retiredReason": null,
+   "closedAt": null,
+   "closeReason": null,
+   "entryPrice": 116.0313,
+   "targetPrice": 152,
+   "stopLoss": 108.4,
+   "triggers": [
+    {
+     "id": "aa96d933-7d21-49c3-b202-3310e01bd386",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {
+        "is": "above",
+        "value": 126.5,
+        "watch": "price",
+        "settings": {
+         "close": true
+        }
+       },
+       {
+        "value": 1.5,
+        "watch": "volume"
+       }
+      ]
+     },
+     "rationale": "Close above the base pivot $126.38 on 1.5× volume confirms the breakout has started — re-price the entry using the tighter stop that the new base low provides at that point.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "8d4c8654-7c75-4969-85da-6e536b028418",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "is": "below",
+      "value": 108.1,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "Close below the base low $108.08 invalidates the basing structure; reassess whether any thesis remains before the December PDUFA.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "cc036f1a-22cf-4330-a37a-715de9ee8afa",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "value": 21,
+      "watch": "repeat"
+     },
+     "rationale": "Routine 3-week check: confirm PDUFA date unchanged, base structure intact, insider picture and stop/R/R math before pricing the entry.",
+     "cooldownDays": 21
+    },
+    {
+     "id": "d515ba10-f5f6-4f48-9543-c7b735ee8f0a",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "is": "before",
+      "value": 14,
+      "watch": "from_date",
+      "variable": "event"
+     },
+     "rationale": "Two weeks before the Dec 17 PDUFA: final decision on whether to price and enter, hold an existing position through the event, or stand aside on the coin flip.",
+     "cooldownDays": 14
+    },
+    {
+     "id": "de208236-947b-4b11-9c4b-07050e42d6e3",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "is": "before",
+      "value": 7,
+      "watch": "report"
+     },
+     "rationale": "Q3 2026 earnings expected late October — review Korlym + Lifyorli revenue trajectory and Cushing's PDUFA preparation commentary before the print, and again after.",
+     "cooldownDays": 30
+    },
+    {
+     "id": "6a51d02a-5d14-4610-948d-9df76697bdb4",
+     "action": "EXIT",
+     "source": "AGENT",
+     "predicate": {
+      "is": "below",
+      "value": 108.4,
+      "watch": "price"
+     },
+     "rationale": "Under the recent swing low near $108.41 and the 40-session base floor at $108.08; wide enough for normal daily noise, tight enough to respect a failed base.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "86a09dc3-b576-43ce-baae-709bf3f3fbd9",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "is": "above",
+      "value": 152,
+      "watch": "price"
+     },
+     "rationale": "1.272 Fib extension of the March-August up-leg ($31.81→$126.38), measured move to $152. Confirmed as the first major overhead extension level.",
+     "cooldownDays": 1
+    }
+   ],
+   "triggerState": {},
+   "conviction": "MEDIUM",
+   "convictionRationale": "The regulatory environment is genuinely de-risked relative to the prior PASS: Lifyorli's FDA approval confirms the molecule works and that FDA will approve relacorilant when data supports it. The CRL was an efficacy-data request, the additional analyses were characterized as positive by management, and the resubmission is a Class 2 review — a narrower hurdle than a first-time binary. That said, efficacy-focused CRLs carry real second-CRL risk that I cannot quantify from the outside, and the $12.5B market cap means a bad outcome gaps 40–60% through any stop. Insider selling at scale and no open-market buying from insiders with the best NDA read is the signal I respect most. MEDIUM is honest here — the thesis is directionally right, but no priced plan exists until R/R clears 2:1 at a real technical stop.",
+   "variantView": "Consensus treats this as a routine re-filing after an administrative CRL; I think the efficacy-data ask is meaningfully harder than market pricing implies — approval probability is real but closer to 60–65%, not the 80%+ the stock's valuation embeds, making the entry level and stop placement critical to any viable R/R.",
+   "scoring": {
+    "composite": 8,
+    "entryQuality": {
+     "note": "Entry pivot $126.38 is 8.1% above current price; base structure is intact but the plan is unpriced today because no real structural stop clears 2:1 R/R against the $152.10 extension target.",
+     "score": 1
+    },
+    "trendStrength": {
+     "note": "Trend Template 8/8; price above all rising long-term MAs; basing tightly 35 sessions after a 297% run off the March low.",
+     "score": 3
+    },
+    "relativeStrength": {
+     "note": "vs SPY: 3M +27.1pts, 6M +181.8pts. 1M -3.8pts — brief relative weakness inside the base is normal digestion, not deterioration.",
+     "score": 2
+    },
+    "catalystFreshness": {
+     "note": "PDUFA Dec 17, 2026 confirmed in company's own SEC filing (announced July 29). Class 2 resubmission accepted. 82 days out. Fresh and stable.",
+     "score": 2
+    }
+   },
+   "catalystDate": "2026-12-17T00:00:00.000Z",
+   "coreBelief": "Relacorilant receives FDA approval for Cushing's syndrome on or before December 17, 2026, driven by the additional GRACE/GRADIENT efficacy analyses satisfying the agency's CRL request, which unlocks a second marketed indication for a molecule already proven approvable.",
+   "keyAssumptions": [
+    "The additional efficacy analyses provided in the Class 2 resubmission are sufficient to address the FDA's CRL — management characterized the outcome as positive and FDA accepted the filing without a refuse-to-file notice.",
+    "Korlym revenue continues growing through year-end, maintaining cash runway well past the December decision — the company is debt-free with a 2.86 current ratio and $142M FCF in 2025, eliminating dilutive raise risk."
+   ],
+   "invalidationConds": [
+    "FDA issues a second complete response letter on or after December 17, 2026 — thesis is immediately closed with no recovery plan.",
+    "Stock breaks and closes below the base low of $108.08 on above-average volume before the PDUFA date, signaling distribution and likely information leakage or thesis deterioration.",
+    "Korlym generics receive FDA tentative approval or a litigation settlement triggers market entry before the Cushing's PDUFA, materially compressing the commercial optionality the market is paying for."
+   ],
+   "snapshot": {
+    "text": "Corcept ($CORT, $119.57) remains a clean pre-catalyst hold into the December 17, 2026 Cushing's PDUFA. The stock is still basing just 5.4% below its 52-week high, above all four major moving averages, and yesterday's 2.0% pullback came on only 0.44 times normal volume — weakness, but not distribution. The invalidation list is unchanged and untripped: no second CRL, no close below the $108.08 base low, and no Korlym generic event. The only material filing since the last review was the September 23 management-change 8-K, which reads as orderly succession rather than a warning: Sean Maduck disclosed no disagreement with the company and remains engaged under a one-year consulting agreement. This remains the same trade — a run-up into a dated FDA decision on a molecule already approved in another indication — so I am holding the $152 target and the $108.40 floor."
+   },
+   "researchUpdatedAt": "2026-10-07T12:03:04.688Z",
+   "createdAt": "2026-09-26T01:13:32.174Z",
+   "lastReviewedAt": "2026-10-08T12:03:41.147Z"
+  }
+ }
+}

@@ -287,6 +287,25 @@ const triggerRunSchema = updateSchema
 /** The trigger run's door: its save has no price field and no way back to watch. */
 const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TACTICAL";
 
+/**
+ * The morning run's save: the same update_thesis, with what a morning review
+ * changes. In the 30 days to 2026-10-08 its 45 runs made 285 saves: the note
+ * on every one, the levels and their reasons, the trigger edits, a status
+ * change, a setup named, a conviction tier with its reason. A seed's first
+ * research and a woken watch commit through this door, so direction,
+ * horizon, the belief fields and the catalyst date stay. Four leave:
+ * price_at_time (224 calls, each a copy of the price the row showed; the
+ * save reads the quote itself), snapshot (25 saves rewrote the writer's
+ * cited paragraph uncited), scoring (the writer's number) and variant_view
+ * (the writer's claim, which the conviction gate reads off the row).
+ * change_status keeps its three values: this door puts a sold stock back on
+ * watch.
+ */
+const morningRunSchema = updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, price_at_time: true, snapshot: true, scoring: true, variant_view: true });
+
+/** The morning run's door: its save has no price field; it reads the quote. */
+const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLAN";
+
 /** The chat never answers a fired trigger, so it has no trigger to name (0 of its 58 calls in the same 30 days). */
 const NOT_THE_CHATS = { trigger_id: true } as const;
 
@@ -437,9 +456,11 @@ export const updateThesis = defineTool({
       ? updateSchema
       : isTriggerRun(ctx)
         ? triggerRunSchema
-        : ctx.runMode === "PRINCIPAL_CHAT"
-          ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_CHATS })
-          : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
+        : isMorningRun(ctx)
+          ? morningRunSchema
+          : ctx.runMode === "PRINCIPAL_CHAT"
+            ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_CHATS })
+            : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 
@@ -614,12 +635,16 @@ export const updateThesis = defineTool({
       );
       const buyEdit = (e: NonNullable<UpdateArgs["edit_triggers"]>[number]) =>
         editNumber(e).value != null && (e.action === "ENTER" || enterIds.has(e.id));
-      // A refusal names only fields this door has: the trigger run's save has no price field.
+      // A refusal names only fields this door has: the trigger run's and the
+      // morning run's saves have no price field.
       const noPrice = isTriggerRun(ctx)
         ? `The quote for ${existing.ticker} failed and the fire carries no price, so whether the buy level is a pullback (below the price) ` +
           `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
-        : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
-          `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
+        : isMorningRun(ctx)
+          ? `The quote for ${existing.ticker} failed, so whether the buy level is a pullback (below the price) ` +
+            `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
+          : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
+            `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
       // On a stock we hold the entry is the fill, refused as its own op below.
       if (args.entry_price != null && existing.status !== "HOLDING") refuseField("entry_price", noPrice, "no live price");
       for (const e of (args.edit_triggers ?? []).filter(buyEdit)) {
