@@ -99,7 +99,8 @@ describe("get_theses — the facts on the saved row", () => {
     const triggers = modelRow.triggers as string[];
     expect(triggers).toHaveLength(2);
     expect(triggers[0]).toMatch(/^Sell if below \$95.* \[id floor-aaa\]$/);
-    expect(triggers[1]).toMatch(/^Review every 7 days · inherited \[id analyst-clock\]$/);
+    // The analyst's clock has not fired on this stock: no id, nothing a run could name to edit or remove.
+    expect(triggers[1]).toBe("Review every 7 days · inherited");
   });
 
   it("a quiet row goes through the builder as one line", async () => {

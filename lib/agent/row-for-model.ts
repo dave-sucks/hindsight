@@ -148,10 +148,13 @@ function whoSet(setBy: string | undefined): string | null {
 }
 
 /**
- * Every rule on the stock as a sentence with its id: the stock's own, each
- * with its reason, then the ones it inherits, marked. An inherited rule's
+ * Every rule on the stock as a sentence: the stock's own, each with its
+ * reason and its id, then the ones it inherits, marked. An inherited rule's
  * reason is the analyst's or the account's standing text and would repeat on
- * every stock of theirs, so it travels only on a rung that fired.
+ * every stock of theirs, so it travels only on a rung that fired; so does its
+ * id, which a run answering the fire names as trigger_id. An inherited rule
+ * that has not fired carries no id: it is not the stock's to edit or remove
+ * (PBH 09-23, no rules of its own, two runs named the account's for removal).
  */
 function triggerLines(row: Row): string[] {
   const own = list<TriggerLine>(row.triggers).map((t) => {
@@ -164,7 +167,7 @@ function triggerLines(row: Row): string[] {
     const fired = date(t.lastFiredAt);
     return [t.says ?? "", "inherited", fired ? `fired ${etStamp(fired)}` : null, fired && t.rationale ? `"${stripSourceTags(t.rationale)}"` : null]
       .filter(Boolean)
-      .join(" · ") + ` [id ${t.id}]`;
+      .join(" · ") + (fired ? ` [id ${t.id}]` : "");
   });
   return [...own, ...inherited];
 }

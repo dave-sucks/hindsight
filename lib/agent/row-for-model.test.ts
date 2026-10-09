@@ -114,7 +114,7 @@ describe("the short row", () => {
     expect(row.triggers).toEqual([
       'Sell if below $40.80 · fired 10-07 10:40 ET · set by the agent · "Under the breakout shelf." [id t_floor]',
       'Review if above $47 · set by hand · "The objective." [id t_target]',
-      "Sell if 12% below the high since we bought · inherited [id a_trail]",
+      "Sell if 12% below the high since we bought · inherited",
       'Review if it files something material with the SEC · inherited · fired 10-01 09:00 ET · "Read the filing first." [id acct_filing]',
     ]);
     expect(row.belief).toBe("IOT drifts to $47 within 60 days.");
@@ -126,6 +126,15 @@ describe("the short row", () => {
     expect(row.research).toBe('Written 2026-10-05 at $39.55, 2 days ago. Full row: get_theses(tickers: ["IOT"]).');
     expect(row.catalyst).toBe("2026-10-29");
     expect(row.repeat).toBe("This sale has fired 3 days running.");
+  });
+
+  it("an inherited rule carries its id only once it has fired; the stock's own rules always do", () => {
+    const lines = row.triggers as string[];
+    const unfired = lines.find((l) => l.startsWith("Sell if 12% below the high"))!;
+    const fired = lines.find((l) => l.startsWith("Review if it files"))!;
+    expect(unfired).not.toContain("[id");
+    expect(fired).toMatch(/\[id acct_filing\]$/);
+    for (const own of lines.filter((l) => !l.includes("· inherited"))) expect(own).toMatch(/\[id t_\w+\]$/);
   });
 
   it("keeps the snapshot to whole sentences under 300 characters, tags and bold stripped", () => {

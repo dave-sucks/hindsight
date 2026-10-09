@@ -80,3 +80,22 @@ describe.each(CASES)("the saved case %s", (name) => {
     }
   });
 });
+
+describe("PBH on 09-23, read through the builder", () => {
+  it("its only rules are the account's four, and none carries an id, so nothing on its row names a rule that is not the stock's", () => {
+    const read = recordedReads("pbh-two-flags")[0];
+    const recorded = read.output.data.theses.find((r) => r.ticker === "PBH")!;
+    expect(recorded.triggers).toEqual([]);
+    const inherited = recorded.inheritedTriggers as Array<{ id: string; level: string; lastFiredAt?: string }>;
+    expect(inherited.map((t) => t.level)).toEqual(["ACCOUNT", "ACCOUNT", "ACCOUNT", "ACCOUNT"]);
+    expect(inherited.every((t) => !t.lastFiredAt)).toBe(true);
+    const row = (forModel(read).theses as Row[]).find((r) => String(r.stock).startsWith("PBH ·"))!;
+    const lines = row.triggers as string[];
+    expect(lines).toHaveLength(4);
+    for (const line of lines) {
+      expect(line).toMatch(/· inherited$/);
+      expect(line).not.toContain("[id");
+    }
+    for (const t of inherited) expect(JSON.stringify(row)).not.toContain(t.id);
+  });
+});
