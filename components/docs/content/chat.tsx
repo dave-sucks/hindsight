@@ -1,101 +1,119 @@
 "use client";
 
-import { ChatMock, Tk } from "../chat-mock";
-import { Code, DocBody, DocHeader, Section, Stage, TechDetails, Trio } from "../primitives";
+import { Tk } from "../chat-mock";
+import { ChatExample, DocRef, DocSection, P, Prompts, ToolRef, Ul } from "../doc-text";
+import { Code, DocBody, DocHeader, TechDetails } from "../primitives";
 import { AgentTools } from "../tool-catalog";
-
-const ASKS = [
-  "What's waiting on me?",
-  "Why did the 8 AM run sell SHOP?",
-  "How have my drift trades done this quarter?",
-  "Find drift names off this week's reports.",
-  "Raise CRWD's floor to $398.",
-  "What would make you sell LLY?",
-  "Which stocks have stale research?",
-  "Write up why I'm holding AVGO through earnings.",
-];
 
 export function ChatDoc() {
   return (
     <DocBody>
-      <DocHeader
-        lead="Ask anything. It sees the whole desk."
-        rest="Talk to one analyst about its book, or to the whole account. It reads the same theses, runs the same research, and can change a plan or propose a trade while you watch."
-      />
+      <DocHeader lead="Ask anything. It sees the whole desk." rest="Talk to one analyst about its book, or to the whole account.">
+        Chat reads the same theses, runs the same research, and can change a plan or propose a trade while you watch.
+      </DocHeader>
 
-      <Stage label="Example">
-        <ChatMock
-          className="mx-auto max-w-2xl"
-          title="Secular Compounder"
-          steps={[
-            { kind: "user", text: "Why are we still holding AVGO after the report?" },
-            {
-              kind: "tools",
-              label: "Reading thesis on $AVGO (+1 more)",
-              rows: [
-                { ticker: "AVGO", text: "Holding since June · up 18.4% · floor $1,610 · target $2,050" },
-                { text: "Beat by 6%, raised AI revenue guidance; the stock fell 3% on the day" },
-              ],
-            },
-            {
-              kind: "text",
-              text: (
-                <>
-                  The belief is intact. <Tk s="AVGO" c={-3.1} /> beat and raised; the drop was the whole sector selling, not the company. None of the three things that
-                  would prove it wrong has happened, and the floor locks in about 9% of the gain.
-                </>
-              ),
-            },
-            { kind: "user", text: "Good. Raise the floor to $1,650, and note that I want to hold through the next print." },
-            {
-              kind: "tools",
-              label: "Updating thesis 7a2c91e0 (+1 more)",
-              rows: [
-                { ticker: "AVGO", text: "Floor raised from $1,610 to $1,650" },
-                { text: "Your note saved: hold through the next report unless the guide is cut" },
-              ],
-            },
-          ]}
-        />
-      </Stage>
-
-      <Trio
-        items={[
-          { title: "One analyst, or all of them", body: "Pick an analyst to talk about its book, or none to look across the whole account." },
-          { title: "The same tools, and more", body: "Research, your book, the run history, trade results, the Writer, edits and trades, all in one place." },
-          { title: "It asks before saving your words", body: "A note goes on a stock only after you say yes on the question card." },
+      <ChatExample
+        caption="Chat with the Secular Compounder selected."
+        steps={[
+          { kind: "user", text: "Why are we still holding AVGO after the report?" },
+          {
+            kind: "tools",
+            label: "Reading $AVGO's thesis (+1 more)",
+            rows: [
+              { ticker: "AVGO", text: "Holding since June · up 18.4% · floor $1,610 · target $2,050" },
+              { text: "Beat by 6%, raised AI revenue guidance; the stock fell 3% on the day" },
+            ],
+          },
+          {
+            kind: "text",
+            text: <>The belief is intact. <Tk s="AVGO" c={-3.1} /> beat and raised; the drop was the sector selling, not the company. None of the things that would prove it wrong has happened.</>,
+          },
+          { kind: "user", text: "Good. Raise the floor to $1,650." },
+          { kind: "tools", label: "Updating $AVGO's thesis", rows: [{ ticker: "AVGO", text: "Floor raised from $1,610 to $1,650" }] },
         ]}
       />
 
-      <Section eyebrow="Try asking" lead="Questions, changes and research." rest="Anything you'd ask an analyst sitting next to you.">
-        <div className="flex flex-wrap gap-2">
-          {ASKS.map((a) => (
-            <span key={a} className="rounded-2xl bg-muted px-3.5 py-2 text-sm text-foreground">
-              {a}
-            </span>
-          ))}
-        </div>
-      </Section>
+      <DocSection title="What it does">
+        <P>
+          Chat is the one agent you talk to directly. It can answer a question about any stock, run, trade or analyst, do research, change a plan, start{" "}
+          <DocRef slug="discovery" /> or <DocRef slug="writer" />, and propose a trade. It runs on Claude Sonnet with thinking on.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="Your words" lead="What you say travels with the stock.">
-        <Trio
+      <DocSection title="One analyst, or all of them">
+        <P>
+          With an analyst selected, chat works for that analyst: every edit and trade is made on its book, and it reads the analyst&apos;s strategy and rules
+          first. With none selected, it looks across the whole account, and asks which analyst you mean before it writes anything.
+        </P>
+      </DocSection>
+
+      <DocSection title="Try asking">
+        <Prompts
           items={[
-            { title: "Notes are read first", body: "Every review reads your newest notes before anything else and answers them." },
-            { title: "Information, not orders", body: "A note is weighed, not obeyed. When a run goes against it, it says so and why." },
-            { title: "Your edits win", body: "A change you make by hand while a run is working stands over the run's copy." },
+            "What's waiting on me?",
+            "Why did the 8 AM run sell SHOP?",
+            "How have my drift trades done this quarter?",
+            "/research CRWD",
+            "Raise CRWD's floor to $398.",
+            "What would make you sell LLY?",
           ]}
         />
-      </Section>
+      </DocSection>
 
-      <Section eyebrow="Tools" lead="What chat can use." rest="Read from the code.">
+      <DocSection title="What it can reach">
+        <Ul>
+          <li>
+            <strong>Your book:</strong> <ToolRef name="get_theses" /> and <ToolRef name="get_portfolio_context" /> for the stocks, positions and cash.
+          </li>
+          <li>
+            <strong>The queue:</strong> <ToolRef name="list_proposals" /> reads what&apos;s waiting for you, with each reason and its time left. Chat can&apos;t
+            approve or decline one; that&apos;s always your click.
+          </li>
+          <li>
+            <strong>The record:</strong> <ToolRef name="list_runs" />, <ToolRef name="read_run" /> and <ToolRef name="read_trade_results" /> for what the
+            analysts did and how their trades turned out.
+          </li>
+          <li>
+            <strong>Research:</strong> the market data, filings, earnings, the web and X, the same as every other agent.
+          </li>
+          <li>
+            <strong>New research:</strong> &ldquo;research CRWD&rdquo;, or <Code>/research</Code>, starts the Writer with{" "}
+            <ToolRef name="dispatch_thesis_research" />, and <ToolRef name="wait_for_thesis_refresh" /> brings its thesis back into the conversation.
+          </li>
+        </Ul>
+      </DocSection>
+
+      <DocSection title="Changes and trades">
+        <P>
+          When your message is clear (&ldquo;raise the floor to $1,650&rdquo;, &ldquo;sell NVDA&rdquo;), chat says what it&apos;s doing in one sentence and does
+          it. An edit goes through <ToolRef name="update_thesis" /> and lands in Activity like any other. A trade becomes a{" "}
+          <DocRef slug="approvals">proposal</DocRef> like any analyst&apos;s; chat can name a size, which is used as given.
+        </P>
+      </DocSection>
+
+      <DocSection title="Your notes">
+        <P>
+          The analysts never see this chat. What reaches them is a note on the stock&apos;s thesis, in your words: why you like or doubt it, what you&apos;re
+          waiting for. Every review reads your newest notes first and answers them.
+        </P>
+        <Ul>
+          <li>When research reaches a conclusion, chat asks before saving a note, with the draft on a question card.</li>
+          <li>A note is information, not an order. A run weighs it and says so when it decides against it.</li>
+          <li>A price or a condition is never just words in a note. &ldquo;Sell under $62&rdquo; becomes a trigger, and the note says why.</li>
+        </Ul>
+      </DocSection>
+
+      <DocSection title="Tools">
+        <P>Everything chat can call, read from the code.</P>
         <AgentTools agent="chat" />
-      </Section>
+      </DocSection>
 
       <TechDetails
         rows={[
-          { label: "Mode", value: <><Code>principal</Code> · <Code>claude-sonnet-4-6</Code> with thinking on · up to 45 steps</> },
-          { label: "Scope", value: <>With an analyst selected, the chat is a <Code>PRINCIPAL_CHAT</Code> run on that analyst, so edits and trades are recorded the same way as a morning run&apos;s.</> },
-          { label: "Prompt", value: <><Code>buildPrincipalSystemPrompt</Code> in <Code>lib/agent/modes.ts</Code>, with the shared house rules.</> },
+          { label: "Mode", value: <><Code>principal</Code> in <Code>lib/agent/modes.ts</Code>: <Code>claude-sonnet-4-6</Code> with a 4,000-token thinking budget, up to 45 steps. The model can be switched in the chat.</> },
+          { label: "Scope", value: <>With an analyst selected, the chat is a <Code>PRINCIPAL_CHAT</Code> run on that analyst, so its edits and trades are recorded like a morning run&apos;s.</> },
+          { label: "Prompt", value: <><Code>buildPrincipalSystemPrompt</Code> in <Code>lib/agent/modes.ts</Code>, with the analyst brief and the house rules.</> },
+          { label: "Notes", value: <><Code>write_note</Code>, only after a yes on <Code>ask_question</Code> or when you asked for one.</> },
           { label: "Route", value: <><Code>app/api/agent/[mode]/route.ts</Code></> },
         ]}
       />

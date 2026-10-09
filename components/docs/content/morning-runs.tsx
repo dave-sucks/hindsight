@@ -1,119 +1,146 @@
 "use client";
 
-import { ArrowUp, Clock } from "lucide-react";
-import { SITUATIONS } from "@/lib/agent/situations";
-import { ChatMock, Tk } from "../chat-mock";
-import { Code, DocBody, DocHeader, Section, Stage, Steps, TechDetails, Trio } from "../primitives";
+import { Tk } from "../chat-mock";
+import { ChatExample, DocRef, DocSection, P, ToolRef, Ul } from "../doc-text";
+import { ReadDemo } from "../framework/read-demo";
+import { Code, DocBody, DocHeader, TechDetails } from "../primitives";
 import { AgentTools } from "../tool-catalog";
-
-function capital(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 export function MorningRunsDoc() {
   return (
     <DocBody>
-      <DocHeader
-        lead="Your analysts, at 8 AM."
-        rest="Every weekday morning, each analyst reads its whole book, answers every stock that needs it, and leaves the quiet ones alone."
-      />
+      <DocHeader lead="Your analysts, at 8 AM." rest="Every weekday morning, each analyst reads its whole book and answers the stocks that need it.">
+        It decides on what changed, leaves the quiet stocks alone, and sends every trade to you as a proposal.
+      </DocHeader>
 
-      <Stage label="Example run">
-        <div className="mx-auto flex max-w-xl flex-col items-stretch">
-          <div className="rounded-2xl border border-chart-2/40 bg-background p-3.5 shadow-sm ring-4 ring-chart-2/10">
-            <p className="text-message text-foreground">Every weekday at 8 AM ET, review my book.</p>
-            <div className="mt-3 flex items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-                <Clock className="size-3" />
-                Schedule
-              </span>
-              <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">PEAD Specialist</span>
-              <span className="ml-auto grid size-7 place-items-center rounded-full bg-chart-2 text-background">
-                <ArrowUp className="size-3.5" />
-              </span>
-            </div>
-          </div>
-          <div className="mx-auto h-7 w-px bg-border" />
-          <ChatMock
-            title="Morning run · PEAD Specialist · Wed 8:00 AM"
-            composer={false}
-            steps={[
-              {
-                kind: "tools",
-                label: "Reading thesis library (+2 more)",
-                rows: [
-                  { text: "11 stocks · 4 need an answer · 7 are quiet" },
-                  { text: "SPY above its 50-day · the regime is risk-on" },
-                ],
-              },
-              {
-                kind: "text",
-                text: (
-                  <>
-                    <Tk s="SHOP" c={-3.4} /> closed through its $96 floor on no company news. The drift has failed, so I&apos;m proposing the sale.
-                  </>
-                ),
-              },
-              {
-                kind: "tools",
-                label: "Closing $SHOP position (+2 more)",
-                rows: [
-                  { ticker: "SHOP", action: "sell", tag: "Proposal", text: "Sell 120 shares at about $95.12" },
-                  { ticker: "AVGO", text: "Earnings review · held, floor raised to $1,610 to lock in the gain" },
-                  { ticker: "ADBE", text: "Plan check · buy moved to $402, under the 20-day" },
-                ],
-              },
-              {
-                kind: "tools",
-                label: "Recording the run summary",
-                rows: [{ text: "1 proposal waiting for you · 2 plans changed · 7 stocks left alone" }],
-              },
-            ]}
-          />
-        </div>
-      </Stage>
-
-      <Trio
-        items={[
-          { title: "Reads the whole book", body: "Every stock it holds or watches, the account and the market, in one read at the start." },
-          { title: "Answers what needs it", body: "A stock with a situation gets a decision. A quiet stock is left alone." },
-          { title: "Proposes, never trades", body: "Buys, sales, adds and trims go to your queue with the reason. Edits land in Activity as they happen." },
+      <ChatExample
+        caption="A morning run for the PEAD Specialist."
+        steps={[
+          {
+            kind: "tools",
+            label: "Reading your book (+1 more)",
+            rows: [
+              { text: "11 stocks · 4 need an answer · 7 are quiet" },
+              { text: "SPY above its 50-day · the market is risk-on" },
+            ],
+          },
+          { kind: "text", text: <><Tk s="SHOP" c={-3.4} /> closed through its $96 floor on no company news. The drift has failed, so I&apos;m proposing the sale.</> },
+          {
+            kind: "tools",
+            label: "Closing $SHOP position (+2 more)",
+            rows: [
+              { ticker: "SHOP", action: "sell", tag: "Proposal", text: "Sell 120 shares at about $95.12" },
+              { ticker: "AVGO", text: "Earnings review · held, floor raised to $1,610 to keep most of the gain" },
+              { ticker: "ADBE", text: "Plan check · buy moved to $402, under the 20-day" },
+            ],
+          },
+          { kind: "tools", label: "Recording the run summary", rows: [{ text: "1 proposal waiting for you · 2 plans changed · 7 stocks left alone" }] },
         ]}
       />
 
-      <Section eyebrow="How it works" lead="Wake, read, decide, report." rest="The same four beats every run.">
-        <Steps
-          items={[
-            { title: "Wakes", body: "8 AM ET on each analyst's run days: every weekday by default. Market holidays are skipped. The Run button starts one any day." },
-            { title: "Reads", body: "Its book, the account and the market. Each stock that needs an answer comes with the guidance for its situation." },
-            { title: "Decides", body: "Sell, add, trim, hold, redraw the plan, or a review that says what it checked. It can send a stock to the Writer for fresh research." },
-            { title: "Reports", body: "Trades go to your queue as proposals. One summary closes the run, and it has to match what the run actually did." },
-          ]}
-        />
-      </Section>
+      <DocSection title="What it does">
+        <P>
+          Each analyst runs on its own, for its own book. It reads every stock it holds or watches, takes one action on each stock that needs an answer, and
+          leaves the rest alone. It never trades: buys, sales, adds and trims go to your queue as <DocRef slug="approvals">proposals</DocRef>, and every change
+          to a thesis lands in Activity the moment it&apos;s made.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="Situations" lead="What puts a stock on the list." rest="Sixteen situations, worked out fresh each morning. A stock can be in several at once.">
-        <div className="flex flex-wrap gap-1.5">
-          {Object.values(SITUATIONS).map((s) => (
-            <span key={s.name} className="rounded-full border bg-card px-2.5 py-1 text-sm text-muted-foreground">
-              {capital(s.name)}
-            </span>
-          ))}
-        </div>
-      </Section>
+      <DocSection title="When it runs">
+        <P>
+          At 8 AM Eastern on the analyst&apos;s run days, every weekday by default. Market holidays are skipped. The Run button on an analyst&apos;s page starts
+          one on any day, and you can watch it stream in.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="Tools" lead="What the morning run can use." rest="Read from the code. Open one to see where it reads from.">
+      <DocSection title="What it reads">
+        <P>
+          The run opens with two reads. <ToolRef name="get_portfolio_context" /> gives live positions, cash, the account&apos;s open risk and the market&apos;s
+          mood. <ToolRef name="get_theses" /> gives the book, with each stock at the size today needs:
+        </P>
+        <Ul>
+          <li>
+            <strong>A quiet stock</strong> is one line: the price, the plan, the next review.
+          </li>
+          <li>
+            <strong>A stock in a <DocRef slug="situations">situation</DocRef></strong> gets a short row (position, plan, triggers, belief) and the instructions
+            for that situation, once.
+          </li>
+          <li>
+            <strong>A stock whose research needs re-planning</strong> gets the full row, research and all.
+          </li>
+        </Ul>
+        <ReadDemo />
+        <P>
+          It also reads its analyst&apos;s brief: the strategy you wrote, word for word, its rules on direction and size, and how many slots are free.
+        </P>
+      </DocSection>
+
+      <DocSection title="How it decides">
+        <P>
+          It works the list one stock at a time, saying which one it&apos;s picking up and why, and takes exactly one action on each. A single{" "}
+          <ToolRef name="update_thesis" /> answers all of a stock&apos;s situations at once. Before a buy, a sale, an add or a trim it calls{" "}
+          <ToolRef name="get_stock_data" /> for the news and a fresh quote.
+        </P>
+        <Ul>
+          <li>
+            <strong>Sell or trim:</strong> <ToolRef name="close_position" /> or <ToolRef name="manage_position" />, as a proposal with its reason.
+          </li>
+          <li>
+            <strong>Buy or add:</strong> <ToolRef name="place_trade" /> or <ToolRef name="manage_position" />. The size is worked out by risk inside the
+            analyst&apos;s band; the run never picks it.
+          </li>
+          <li>
+            <strong>Redraw the plan or raise a floor:</strong> <ToolRef name="update_thesis" />, one trigger at a time.
+          </li>
+          <li>
+            <strong>Get fresh research:</strong> <ToolRef name="dispatch_thesis_research" /> sends the stock to <DocRef slug="writer" />.
+          </li>
+          <li>
+            <strong>Nothing to change:</strong> one sentence on what it checked and what would change its mind.
+          </li>
+        </Ul>
+      </DocSection>
+
+      <DocSection title="The market and cash">
+        <P>The market&apos;s mood sets how hard it leans in:</P>
+        <Ul>
+          <li>
+            <strong>Risk-on:</strong> full size.
+          </li>
+          <li>
+            <strong>Cautious</strong> (the S&amp;P more than 1% under its 50-day): buys are half size, and breakouts wait.
+          </li>
+          <li>
+            <strong>Risk-off</strong> (more than 1% under its 200-day): only event-driven and mean-reversion buys.
+          </li>
+        </Ul>
+        <P>
+          Idle cash is a decision too. With more than a quarter of the account in cash, a watched stock at its buy level and a risk-on market, the run either acts
+          or says in its summary why it didn&apos;t.
+        </P>
+      </DocSection>
+
+      <DocSection title="How it ends">
+        <P>
+          <ToolRef name="record_run_summary" /> lists what the run did, each stock it touched with a one-word action. <ToolRef name="complete_run" /> then
+          checks the summary against the orders: a sale it names on a stock it holds needs a sale or a sale proposal from this run, or the run can&apos;t finish
+          until it fixes one or the other.
+        </P>
+      </DocSection>
+
+      <DocSection title="Tools">
+        <P>Everything the morning run can call, read from the code.</P>
         <AgentTools agent="morning" />
-      </Section>
+      </DocSection>
 
       <TechDetails
         rows={[
-          { label: "Schedule", value: <>Inngest <Code>morning-research.ts</Code>, cron <Code>0 8 * * 1-5</Code> ET, then each analyst&apos;s <Code>runDaysOfWeek</Code>; skipped when <Code>isTradingDay()</Code> is false. A manual run bypasses both.</> },
-          { label: "Mode", value: <><Code>research-run</Code> · <Code>gpt-5.4</Code> · up to 65 steps · 800 s function limit</> },
-          { label: "Prompt", value: <><Code>lib/agent/system-prompt.ts</Code>, built per analyst. Situation texts come from <Code>SITUATIONS</Code> in <Code>lib/agent/situations.ts</Code>, never from the prompt.</> },
-          { label: "The read", value: <><Code>get_theses</Code> → <Code>loadWorkInputs</Code> → <Code>computeNeedsAction</Code> → <Code>situationsFor</Code>. Quiet stocks come back as short rows.</> },
-          { label: "Close-out", value: <><Code>record_run_summary</Code>, then <Code>complete_run</Code>. A ranked sale on a held stock needs a sale or a sale proposal this run, checked against orders, not prose.</> },
-          { label: "Cost", value: <>Measured Oct 7: about 880k–930k input tokens a run, 91% from the cache, about $0.47.</> },
+          { label: "Schedule", value: <><Code>lib/inngest/functions/morning-research.ts</Code>, cron <Code>0 8 * * 1-5</Code> Eastern, then each analyst&apos;s <Code>runDaysOfWeek</Code>; skipped when <Code>isTradingDay()</Code> is false. A manual run skips both.</> },
+          { label: "Mode", value: <><Code>research-run</Code> in <Code>lib/agent/modes.ts</Code>: <Code>gpt-5.4</Code>, up to 65 steps, an 800-second limit.</> },
+          { label: "Prompt", value: <><Code>lib/agent/system-prompt.ts</Code>, with the analyst brief and the house rules. Situation texts come from <Code>SITUATIONS</Code> in <Code>lib/agent/situations.ts</Code>, never the prompt.</> },
+          { label: "The read", value: <><Code>get_theses</Code> builds each row with <Code>lib/agent/row-for-model.ts</Code> at one of three sizes.</> },
+          { label: "Close-out", value: <><Code>complete_run</Code> credits a sale from the <Code>Order</Code> table, not the run&apos;s words (<Code>lib/agent/summary-action-check.ts</Code>).</> },
         ]}
       />
     </DocBody>

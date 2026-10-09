@@ -1,134 +1,128 @@
 "use client";
 
-import { FileText } from "lucide-react";
-import { ChatMock } from "../chat-mock";
-import { Code, DocBody, DocHeader, Section, Stage, Steps, TechDetails, Trio } from "../primitives";
+import { ChatExample, DocRef, DocSection, P, ToolRef, Ul } from "../doc-text";
+import { Code, DocBody, DocHeader, TechDetails } from "../primitives";
 import { AgentTools } from "../tool-catalog";
-
-const SECTIONS = ["Snapshot", "Recent catalysts", "Fundamentals", "Latest earnings", "Catalysts and events", "Bull case", "Bear case", "Analyst consensus", "Insiders and technicals"];
-
-const DECISION: readonly [string, string][] = [
-  ["Direction", "Long"],
-  ["Setup", "Post-earnings drift"],
-  ["Buy", "near $412"],
-  ["Floor", "$384"],
-  ["Target", "$480"],
-  ["Conviction", "High"],
-];
 
 export function WriterDoc() {
   return (
     <DocBody>
-      <DocHeader
-        lead="Deep research on one stock, in about four minutes."
-        rest="The Writer pulls the numbers, reads the filings and the web, and writes the thesis: the case for and against, the belief, and a plan made of triggers."
-      />
+      <DocHeader lead="Deep research on one stock, in about four minutes." rest="The Writer pulls the numbers, reads the filings and the web, and writes the thesis.">
+        It writes the case for and against, the one belief everything else rests on, and a plan made of triggers.
+      </DocHeader>
 
-      <Stage label="Example">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
-          <ChatMock
-            title="The Writer · CRWD"
-            composer={false}
-            steps={[
-              {
-                kind: "tools",
-                label: "Pulling $CRWD's 5-year financials (+6 more)",
-                rows: [
-                  { text: "Financial statements, earnings track record, insider activity" },
-                  { text: "Peers, analyst coverage, recent filings, the live price" },
-                ],
-              },
-              {
-                kind: "tools",
-                label: 'Searching the web for "CrowdStrike Q2 call guidance" (+3 more)',
-                rows: [
-                  { text: "The call transcript, the guide raise, estimate revisions since the print" },
-                  { text: "A competitor's report the same week, for context" },
-                ],
-              },
-              { kind: "text", text: "Note written in nine sections. Submitting the decision for checks." },
-            ]}
-          />
-          <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-background shadow-sm">
-            <div className="flex items-center gap-2 border-b px-4 py-2.5 text-sm">
-              <FileText className="size-4 text-muted-foreground" />
-              <span className="font-medium text-foreground">CRWD thesis</span>
-              <span className="ml-auto text-xs text-muted-foreground">written today</span>
-            </div>
-            <div className="flex flex-col gap-4 p-4">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">The note</span>
-                <ul className="grid grid-cols-2 gap-x-3 gap-y-1">
-                  {SECTIONS.map((s) => (
-                    <li key={s} className="flex items-center gap-1.5 text-sm text-foreground">
-                      <span className="size-1 rounded-full bg-muted-foreground" />
-                      {s}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">The decision</span>
-                <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-xl border bg-muted/40 p-3">
-                  {DECISION.map(([k, v]) => (
-                    <div key={k} className="flex flex-col">
-                      <dt className="text-xs text-muted-foreground">{k}</dt>
-                      <dd className="text-sm font-medium text-foreground tabular-nums">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-              <p className="text-xs text-positive">Checked: the reward to the target is 2.4 times the risk to the floor.</p>
-            </div>
-          </div>
-        </div>
-      </Stage>
-
-      <Trio
-        items={[
-          { title: "Pulls before it writes", body: "Seven data sets in parallel: statements, earnings, insiders, peers, coverage, filings and the price." },
-          { title: "Writes with its sources", body: "A nine-part note, every claim tagged with where it came from, then a short decision." },
-          { title: "Checked before it's saved", body: "The reward must be at least twice the risk, the prices in the right order, the triggers right for the position." },
+      <ChatExample
+        caption="The Writer researching CRWD for the PEAD Specialist."
+        steps={[
+          {
+            kind: "tools",
+            label: "Pulling $CRWD's 5-year financials (+6 more)",
+            rows: [
+              { text: "Financial statements, earnings track record, insider activity" },
+              { text: "Peers, analyst coverage, recent filings, the live price" },
+            ],
+          },
+          {
+            kind: "tools",
+            label: 'Searching the web for "CrowdStrike Q2 call guidance" (+3 more)',
+            rows: [{ text: "The call, the guide raise, estimate revisions since the print" }],
+          },
+          {
+            kind: "tools",
+            label: "Writing the thesis on $CRWD",
+            rows: [
+              { ticker: "CRWD", action: "watch", text: "Post-earnings drift · buy $401 · floor $384 · target $480" },
+              { text: "The reward is 2.4 times the risk" },
+            ],
+          },
         ]}
       />
 
-      <Section eyebrow="How it works" lead="Pull, research, write, check.">
-        <Steps
-          items={[
-            { title: "Pull", body: "The data tools run in code, all at once, before the model starts. A source that fails is named, not guessed." },
-            { title: "Research", body: "One research call with Claude's own web search: the call, the guidance, what changed since the print." },
-            { title: "Write", body: "The note in nine sections, then the decision: direction, setup, buy, floor, target, conviction and triggers." },
-            { title: "Check", body: "The decision is checked; a problem goes back to the Writer to fix in the same run, then the thesis is saved." },
-          ]}
-        />
-      </Section>
+      <DocSection title="What it does">
+        <P>
+          The Writer is the only agent that writes a whole thesis. It researches one stock in depth for one analyst, in that analyst&apos;s strategy, and saves
+          the result as a new watch or a rewrite of an existing thesis. It runs on Claude Sonnet with Claude&apos;s own web search, because in a side-by-side
+          test it wrote the most grounded notes and got fiscal years right where other models quoted a year-old quarter as current.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="Who calls it" lead="Any agent can send it a stock.">
-        <Trio
-          items={[
-            { title: "Discovery and chat", body: "Every new stock is written by the Writer, so it arrives with a full case and a plan." },
-            { title: "Morning runs", body: "A stock whose research is older than the analyst's limit is sent back for a rewrite." },
-            { title: "Trigger runs", body: "A run that needs fresh research mid-decision can ask for it and wait for the result." },
-          ]}
-        />
-      </Section>
+      <DocSection title="Who sends it a stock">
+        <P>
+          Any agent can, with <ToolRef name="dispatch_thesis_research" />. Each request runs as its own run, five at a time, and the agent that asked can wait
+          for the result with <ToolRef name="wait_for_thesis_refresh" />.
+        </P>
+        <Ul>
+          <li>
+            <strong><DocRef slug="discovery" /></strong> sends every new stock it wants to watch.
+          </li>
+          <li>
+            <strong><DocRef slug="chat" /></strong> sends one when you ask to research a stock, or type <Code>/research</Code>.
+          </li>
+          <li>
+            <strong><DocRef slug="morning-runs">A morning run</DocRef></strong> sends a stock whose research has gone stale, or needs re-planning.
+          </li>
+        </Ul>
+      </DocSection>
 
-      <Section
-        eyebrow="Why Claude"
-        lead="The most careful writer won."
-        rest="In a side-by-side test, Claude with its own web search wrote the most grounded notes, with the most citations, and got fiscal years right where other models quoted a year-old quarter as current."
-      />
+      <DocSection title="How it researches">
+        <P>
+          Before the model starts, seven data sets are pulled in code, all at once: five years of statements, the earnings record, insider trades, peers,
+          analyst coverage, recent filings and the price and chart. A source that fails is named as missing, never guessed. That data is the ground truth for
+          every number in the note.
+        </P>
+        <P>
+          Then one research call with up to four web searches fills in what data can&apos;t: the call, the guidance, what changed this week. Every paragraph
+          carries its source, and a catalyst dated after today is written as expected, never as reported.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="Tools" lead="What the Writer uses." rest="The data tools run in code before it writes; the web search and the final submit are its own.">
+      <DocSection title="What it writes">
+        <P>A research note in nine sections, always the same ones:</P>
+        <Ul>
+          <li>Snapshot, recent catalysts, fundamentals and the latest earnings.</li>
+          <li>Dated catalysts and events in the next one to three months.</li>
+          <li>The bull case and the bear case, the bear case even on a buy.</li>
+          <li>Analyst consensus, insiders and the chart.</li>
+        </Ul>
+        <P>Then the decision:</P>
+        <Ul>
+          <li>
+            <strong>A direction:</strong> long, short, or pass. A pass is a real answer, saved so the stock isn&apos;t pitched again.
+          </li>
+          <li>
+            <strong>A belief:</strong> one sentence that can be proven wrong, with an outcome, a timeframe and the reason.
+          </li>
+          <li>
+            <strong>A setup and its plan:</strong> the buy, the floor and the target all come from the setup&apos;s rules and the chart, never a round number.
+            The reward has to be at least twice the risk.
+          </li>
+          <li>
+            <strong>The <DocRef slug="triggers">triggers</DocRef></strong> that carry the plan, and a wake-up if the stock isn&apos;t ready to price yet.
+          </li>
+        </Ul>
+        <P>
+          It never sizes the trade. The buy is sized later by the risk to its floor, so an honest, tight floor is what earns size.
+        </P>
+      </DocSection>
+
+      <DocSection title="Checked before it's saved">
+        <P>
+          The decision goes through the same checks as every other save: the prices in the right order, the 2-to-1 reward, triggers that fit a stock we only
+          watch. A problem goes back to the Writer to fix in the same run; the thesis is saved only when it passes.
+        </P>
+      </DocSection>
+
+      <DocSection title="Tools">
+        <P>The data tools run in code before it writes; web search and the save are its own.</P>
         <AgentTools agent="writer" />
-      </Section>
+      </DocSection>
 
       <TechDetails
         rows={[
-          { label: "Runs as", value: <>Its own run, started by <Code>dispatch_thesis_research</Code> through <Code>app/thesis.write.requested</Code> (<Code>lib/inngest/functions/thesis-writer.ts</Code>, five at a time).</> },
+          { label: "Runs as", value: <>Its own run, started by <Code>dispatch_thesis_research</Code> through <Code>app/thesis.write.requested</Code> (<Code>lib/inngest/functions/thesis-writer.ts</Code>).</> },
           { label: "Model", value: <><Code>claude-sonnet-4-6</Code> with Anthropic&apos;s web search, up to 4 searches and 8 steps.</> },
-          { label: "Pipeline", value: <><Code>lib/agent/run-thesis-writer.ts</Code>; data pulls in <Code>thesis-research/pull-data.ts</Code>; checks in <Code>thesis-research/decision.ts</Code>; sections parsed by <Code>parse-sections.ts</Code>.</> },
-          { label: "Saved through", value: <><Code>record_thesis</Code> / <Code>update_thesis</Code>, with the same checks every other writer passes.</> },
+          { label: "Pipeline", value: <><Code>lib/agent/run-thesis-writer.ts</Code>; data in <Code>thesis-research/pull-data.ts</Code>; the decision&apos;s checks in <Code>thesis-research/decision.ts</Code>.</> },
+          { label: "Saved through", value: <><Code>submit_thesis</Code>, then <Code>record_thesis</Code> or <Code>update_thesis</Code>, with the same checks as every other save.</> },
         ]}
       />
     </DocBody>

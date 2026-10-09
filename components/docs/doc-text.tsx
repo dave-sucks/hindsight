@@ -15,8 +15,9 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageCircle, PenLine, Search, Sun, Zap, type LucideIcon } from "lucide-react";
+import { CheckCircle2, FileText, Flag, Layers, MessageCircle, PenLine, Search, Sun, UserRound, Zap, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ChatMock, type ChatStep } from "./chat-mock";
 import { Mono } from "./primitives";
 import { SourceMark, ToolDialog, useDocsTools } from "./tool-catalog";
 
@@ -81,23 +82,49 @@ export function ToolRef({ name }: { name: string }) {
   );
 }
 
-const AGENTS: Record<string, { title: string; icon: LucideIcon }> = {
+const REFS: Record<string, { title: string; icon: LucideIcon }> = {
   discovery: { title: "Discovery", icon: Search },
   writer: { title: "the Writer", icon: PenLine },
   "morning-runs": { title: "the morning run", icon: Sun },
   "trigger-runs": { title: "the trigger run", icon: Zap },
   chat: { title: "chat", icon: MessageCircle },
+  theses: { title: "theses", icon: FileText },
+  triggers: { title: "triggers", icon: Zap },
+  analysts: { title: "analysts", icon: UserRound },
+  situations: { title: "situations", icon: Flag },
+  approvals: { title: "approvals", icon: CheckCircle2 },
+  "under-the-hood": { title: "under the hood", icon: Layers },
 };
 
-/** Another agent named in a sentence. Opens its page. */
-export function AgentRef({ slug, children }: { slug: keyof typeof AGENTS; children?: ReactNode }) {
+/** Another page named in a sentence, an agent or a concept. Opens it. */
+export function DocRef({ slug, children }: { slug: keyof typeof REFS; children?: ReactNode }) {
   const pathname = usePathname();
-  const a = AGENTS[slug];
+  const a = REFS[slug];
   const href = pathname === "/docs" ? `/docs?doc=${slug}` : `/docs/${slug}`;
   return (
     <Link href={href} scroll={false} className={cn(pill, "font-medium hover:bg-muted")}>
       <a.icon className="size-3 text-muted-foreground" />
       {children ?? a.title}
     </Link>
+  );
+}
+
+/** The older name, for pages written before concepts could be linked too. */
+export const AgentRef = DocRef;
+
+/** A conversation shown as the docs' one kind of picture: the chat on the dotted ground, nothing around it. */
+export function ChatExample({ steps, caption }: { steps: readonly ChatStep[]; caption?: string }) {
+  return (
+    <figure className="flex flex-col gap-2">
+      <div
+        className="rounded-2xl border bg-muted/40 px-4 py-6 sm:px-10"
+        style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
+      >
+        <div className="mx-auto max-w-2xl">
+          <ChatMock title={caption ?? "Example"} steps={steps} bare />
+        </div>
+      </div>
+      {caption ? <figcaption className="text-xs text-muted-foreground">{caption}</figcaption> : null}
+    </figure>
   );
 }

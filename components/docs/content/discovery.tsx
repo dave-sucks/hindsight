@@ -1,8 +1,8 @@
 "use client";
 
-import { ChatMock, Tk } from "../chat-mock";
-import { AgentRef, DocSection, P, Prompts, ToolRef, Ul } from "../doc-text";
-import { Code, DocBody, DocHeader, Stage, TechDetails } from "../primitives";
+import { Tk } from "../chat-mock";
+import { ChatExample, DocRef, DocSection, P, Prompts, ToolRef, Ul } from "../doc-text";
+import { Code, DocBody, DocHeader, TechDetails } from "../primitives";
 import { AgentTools } from "../tool-catalog";
 
 export function DiscoveryDoc() {
@@ -13,12 +13,9 @@ export function DiscoveryDoc() {
         best to the Writer to research.
       </DocHeader>
 
-      <Stage label="Example">
-        <ChatMock
-          className="mx-auto max-w-2xl"
-          title="PEAD Specialist · discovery"
-          composer={false}
-          steps={[
+      <ChatExample
+        caption="Discovery for the PEAD Specialist, asked in chat."
+        steps={[
             { kind: "user", text: "Find drift names off this week's reports." },
             {
               kind: "tools",
@@ -47,8 +44,7 @@ export function DiscoveryDoc() {
               ],
             },
           ]}
-        />
-      </Stage>
+      />
 
       <DocSection title="What it does">
         <P>
@@ -56,14 +52,14 @@ export function DiscoveryDoc() {
           week&apos;s earnings, run one of the analyst&apos;s setup screens, look for dated catalysts, or check tickers you paste in.
         </P>
         <P>
-          It doesn&apos;t manage the book (that&apos;s <AgentRef slug="morning-runs" />) and it never buys. New stocks land on the watchlist, and a buy happens only
+          It doesn&apos;t manage the book (that&apos;s <DocRef slug="morning-runs" />) and it never buys. New stocks land on the watchlist, and a buy happens only
           when a stock&apos;s buy trigger fires and you approve it.
         </P>
       </DocSection>
 
       <DocSection title="Starting it">
         <P>
-          Discovery runs when you ask. Ask in <AgentRef slug="chat" /> with an analyst selected, or start a discovery run for one analyst. Try:
+          Discovery runs when you ask. Ask in <DocRef slug="chat" /> with an analyst selected, or start a discovery run for one analyst. Try:
         </P>
         <Prompts items={["Find drift names off this week's reports.", "Run the pullback screen and research what's left.", "Any FDA decisions in the next 60 days that fit?"]} />
       </DocSection>
@@ -101,7 +97,7 @@ export function DiscoveryDoc() {
       <DocSection title="What happens to each stock">
         <Ul>
           <li>
-            <strong>Sent to the Writer:</strong> <ToolRef name="dispatch_thesis_research" /> starts <AgentRef slug="writer" />, which writes the thesis with its
+            <strong>Sent to the Writer:</strong> <ToolRef name="dispatch_thesis_research" /> starts <DocRef slug="writer" />, which writes the thesis with its
             buy trigger, floor and target. Up to five per run.
           </li>
           <li>
