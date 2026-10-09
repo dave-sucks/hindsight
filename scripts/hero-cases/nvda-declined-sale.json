@@ -350,7 +350,12 @@
    "price": 212.21,
    "coFired": []
   },
-  "capacity": null
+  "capacity": null,
+  "situations": {
+   "codes": [
+    "PROTECTIVE_SALE"
+   ]
+  }
  },
  "toolCtx": {
   "analystId": "cmnhxpjio000004jvox6kl6c7",

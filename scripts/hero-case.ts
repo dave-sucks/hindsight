@@ -163,7 +163,9 @@ function systemFor(c: HeroCase): string {
         latestDigest: p.latestDigest ?? null,
         fired: { price: p.fired?.price ?? null },
         capacity: p.capacity ?? null,
-        situations: p.situations ?? stock?.situations ?? null,
+        // A case that names its situations takes their text from today's
+        // table, so a recorded case prints the guidance a live run prints.
+        situations: p.situations?.guidance ? p.situations : stock?.situations ?? null,
       });
     }
     case "thesis-writer": {
