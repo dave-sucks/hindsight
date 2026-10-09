@@ -24,9 +24,9 @@ interface TacticalPromptArgs {
   /** The analyst's row and the account's setup numbers (lib/agent/analyst-brief.ts). */
   analyst: BriefAnalyst;
   /**
-   * The stock as every door reads it: get_theses's row for it, full size
-   * (lib/agent/row-for-model.ts), and the two facts this prompt's own lines
-   * use. Null when the read failed.
+   * The stock as every door reads it: get_theses's short row for it with the
+   * setup's lines (stockFromRead, lib/agent/row-for-model.ts), and the two
+   * facts this prompt's own lines use. Null when the read failed.
    */
   stock: { ticker: string; direction: string | null; row: Record<string, unknown> | null };
   trigger: Trigger;
@@ -65,9 +65,10 @@ interface TacticalPromptArgs {
 }
 
 /**
- * The trigger run's stock, from its get_theses read (step 10): the full row
- * as every door reads it, and the situations it lists with the guidance
- * the trigger run can answer. Null when the read did not return the stock.
+ * The trigger run's stock, from its get_theses read (step 10): the short row
+ * every door reads, with the setup's decision lines (`setup_lines`), and the
+ * situations it lists with the guidance the trigger run can answer. The full
+ * row is one get_theses call away. Null when the read did not return the stock.
  */
 export function stockFromRead(
   read: { ok?: boolean; data?: unknown } | null | undefined,
@@ -79,7 +80,7 @@ export function stockFromRead(
   const status = String(row.status);
   const codes = Array.isArray(row.situations) ? (row.situations as SituationCode[]) : [];
   return {
-    row: rowForModel(row, { named: true, size: "full" }) as Record<string, unknown>,
+    row: rowForModel(row, { named: true, size: "short", setupLines: true }) as Record<string, unknown>,
     // The list names every situation; the guidance leaves out the ones only the morning run can answer.
     situations: { codes: guidanceCodes(status, codes), guidance: guidanceFor(guidanceCodes(status, codes, "INTRADAY_TACTICAL")) },
   };
@@ -174,13 +175,13 @@ Forbidden assistant-turn endings (each = run failure):
   - Any turn that ends without a tool call.
 
 ═══════════════════════════════════════════════════════════════════
-$${stock.ticker}, the full row (get_theses)
+$${stock.ticker}, its row (get_theses)
 ═══════════════════════════════════════════════════════════════════
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}
 
 **The row's \`belief\` IS your analyst's standing opinion on this name.** It's the one-sentence falsifiable claim the thesis was written around; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action. If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
 
-**Anchor your decision to the row's \`bull_case\` and \`bear_case\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`bear_case\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
+**Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
 ${trigger.action === "ENTER" || trigger.action === "ADD" ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
 ${digestSection}

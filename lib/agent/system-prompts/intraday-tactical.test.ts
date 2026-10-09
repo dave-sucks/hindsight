@@ -25,7 +25,7 @@ const trailTrigger: Trigger = {
   rationale: "Protect the gain.",
 };
 
-/** A saved get_theses row for HPE, the way the tool saves it; `row` renders it as the trigger run does (step 10). */
+/** A saved get_theses row for HPE, the way the tool saves it; `row` renders it as the trigger run does (step 10): the short row with the setup's lines. */
 function savedRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: "thesis_1", ticker: "HPE", status: "HOLDING", direction: "LONG", horizon: "TARGET", setupId: null,
@@ -35,7 +35,7 @@ function savedRow(overrides: Record<string, unknown> = {}): Record<string, unkno
     ...overrides,
   };
 }
-const row = (overrides: Record<string, unknown> = {}) => rowForModel(savedRow(overrides), { named: true, size: "full" }) as Record<string, unknown>;
+const row = (overrides: Record<string, unknown> = {}) => rowForModel(savedRow(overrides), { named: true, size: "short", setupLines: true }) as Record<string, unknown>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeArgs(overrides: Record<string, any> = {}): any {
@@ -101,7 +101,7 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
   const stop: Trigger = { id: "stop-969", predicate: { watch: "price", is: "below", value: 969 }, action: "EXIT", rationale: "Stop." };
   const trail: Trigger = { id: "trail-8", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, action: "EXIT", rationale: "Trail." };
 
-  it("the full row carries the plan's setup, every decision line for its horizon; the old block is gone", () => {
+  it("the row carries the plan's setup, every decision line for its horizon; the old block is gone", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ setupId: "PEAD", setup: setupChecklist("PEAD", "TARGET") }) } }));
     for (const line of setupLines(getSetup("PEAD")!, "TARGET")) expect(prompt).toContain(JSON.stringify(line));
     expect(prompt).toContain("Confirm a buy by: Gap held; Surprise and guidance confirmed");
@@ -190,7 +190,7 @@ describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () =>
       situations: { codes: ["BUY_BLOCKED_FULL"], guidance: guidanceFor(["BUY_BLOCKED_FULL"]) },
     }));
     expect(prompt).toContain("- Positions: 4 of 4 — this analyst is FULL. place_trade will refuse any new buy until one closes. It holds $ABT, $ASML, $CEG, $WST.");
-    expect(prompt.indexOf("this analyst is FULL")).toBeLessThan(prompt.indexOf("$ETN, the full row (get_theses)"));
+    expect(prompt.indexOf("this analyst is FULL")).toBeLessThan(prompt.indexOf("$ETN, its row (get_theses)"));
     expect(prompt).toContain(SITUATIONS.BUY_BLOCKED_FULL.guidance);
     expect(prompt).not.toContain("THE ANALYST'S ROOM");
     expect(prompt).not.toContain("READ THIS BEFORE YOU RESEARCH");

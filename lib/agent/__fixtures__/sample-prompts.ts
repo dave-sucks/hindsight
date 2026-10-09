@@ -28,13 +28,13 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
   tactical: () =>
     buildTacticalSystemPrompt({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
-      // The same stock as before step 10, as get_theses's full row.
+      // The same stock as before step 10, as the trigger run reads it: get_theses's short row with the setup's lines.
       stock: {
         ticker: "HPE",
         direction: "LONG",
         row: rowForModel(
           { id: "thesis_1", ticker: "HPE", status: "HOLDING", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"], entryPrice: 53, targetPrice: 70, stopLoss: 50, position: { quantity: 60, avgCost: 53.1, peakPrice: 62.7 }, triggers: [{ id: trailTrigger.id, says: sentenceOf(trailTrigger), rationale: trailTrigger.rationale }], situations: ["PROTECTIVE_SALE"] },
-          { named: true, size: "full" },
+          { named: true, size: "short", setupLines: true },
         ),
       },
       trigger: trailTrigger, position: { peakPrice: 62.7 }, latestDigest: null,

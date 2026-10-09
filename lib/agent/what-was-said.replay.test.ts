@@ -182,13 +182,13 @@ describe("the 09-14 trigger runs", () => {
       currentPrice: firedPrice,
     }).text;
     const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, rationale: "Gave back 8% from the high." } as Trigger;
-    // Since step 10 the trigger run reads the stock as get_theses's full row; what's been said is its `said`.
+    // Since step 10 the trigger run reads the stock as get_theses's short row with the setup's lines; what's been said is its `said`.
     return buildTacticalSystemPrompt({
       analyst: { name: fl.analyst.name, analystPrompt: null },
       stock: {
         ticker: "CEG",
         direction: "LONG",
-        row: rowForModel({ id: fx.thesis0918.id, ticker: "CEG", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER", context, coreBelief: "CEG compounds to $360+ over 24 months." }, { named: true, size: "full" }) as Row,
+        row: rowForModel({ id: fx.thesis0918.id, ticker: "CEG", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER", context, coreBelief: "CEG compounds to $360+ over 24 months." }, { named: true, size: "short", setupLines: true }) as Row,
       },
       trigger: trail,
       position: { peakPrice: 303.4 },
@@ -242,7 +242,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
       stock: {
         ticker: "MU",
         direction: "LONG",
-        row: rowForModel({ id: "cmrp6chyu000h04l5roqq5ha1", ticker: "MU", status: "HOLDING", direction: "LONG", horizon: "TARGET", context, coreBelief: "MU's HBM-driven earnings-upgrade cycle carries the stock through the next print." }, { named: true, size: "full" }) as Row,
+        row: rowForModel({ id: "cmrp6chyu000h04l5roqq5ha1", ticker: "MU", status: "HOLDING", direction: "LONG", horizon: "TARGET", context, coreBelief: "MU's HBM-driven earnings-upgrade cycle carries the stock through the next print." }, { named: true, size: "short", setupLines: true }) as Row,
       },
       trigger: sale,
       position: { peakPrice: 1100 },

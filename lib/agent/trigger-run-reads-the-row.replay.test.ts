@@ -1,9 +1,10 @@
 /**
  * trigger-run-reads-the-row.replay.test.ts — the trigger run reads its stock
  * the way every door reads it (step 10, docs/plans/AGENT_ARCHITECTURE.md
- * §11.6): get_theses on the ticker, the full row, with the fire as the lead
- * situation. Before step 10 it read the stock a second way, through its own
- * THESIS, THE SETUP and DEEP-RESEARCH EXCERPT blocks and a ladder of its own.
+ * §11.6): get_theses on the ticker, the short row with the setup's decision
+ * lines, the fire as the lead situation; the full row one call away. Before
+ * step 10 it read the stock a second way, through its own THESIS, THE SETUP
+ * and DEEP-RESEARCH EXCERPT blocks and a ladder of its own.
  *
  * Two production fires (lib/agent/__fixtures__/trigger-run-reads-2026-10.json):
  * DOCU 2026-09-28, the pullback buy at $67 on a watched stock; NVDA
@@ -17,11 +18,25 @@ import { buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-pro
 import { setupLines } from "@/lib/agent/analyst-brief";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { SITUATIONS } from "@/lib/agent/situations";
+import { rowForModel } from "@/lib/agent/row-for-model";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 type Fire = { now: string; price: number; thesis: Record<string, unknown> & { id: string; ticker: string; triggers: Trigger[] }; fire: { triggerId: string; at: string; price: number; summary: string }; position?: Record<string, unknown>; answer?: Record<string, unknown> };
 const fx = raw as unknown as { analyst: { name: string; setupIds: string[]; maxOpenPositions: number; minConfidence: number }; docu: Fire; nvda: Fire };
 
+/** What only the full row carries: the trigger run's row has none of it. */
+const FULL_ONLY = ["bull_case", "bear_case", "score_notes", "conviction_rationale", "variant_view", "history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
+/** The short row's keys the decision reads, every one present on both fires. */
+const SHORT_KEYS = ["stock", "id", "situations", "said", "plan", "triggers", "setup_lines", "snapshot", "score", "research"];
+const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>) => {
+  for (const k of SHORT_KEYS) expect([k, k in row]).toEqual([k, true]);
+  for (const k of FULL_ONLY) expect([k, k in row]).toEqual([k, false]);
+  expect(row).not.toHaveProperty("setup");
+  expect(String(row.research)).toMatch(/Full row: get_theses\(tickers: \["[A-Z]+"\]\)\.$/);
+  // Not vacuous: the same read, as a full row, carries the research.
+  const full = rowForModel(saved, { named: true, size: "full" }) as Record<string, unknown>;
+  for (const k of ["bull_case", "bear_case", "score_notes", "conviction_rationale"]) expect([k, k in full]).toEqual([k, true]);
+};
 const DELETED = ["THESIS (id:", "THE SETUP THIS PLAN WAS WRITTEN ON", "DEEP-RESEARCH EXCERPT", "CURRENT TRIGGER LADDER", "POSITION:\n"];
 /** What's been said arrives once, as the row's `said`, not as a block of its own. */
 const saidOnce = (prompt: string, ticker: string) => {
@@ -42,7 +57,8 @@ async function triggerRun(c: Fire) {
         thesis: [
           thesisRow({
             ...t,
-            coreBelief: null, keyAssumptions: [], invalidationConds: [], snapshot: null, bullCase: null, bearCase: null, convictionRationale: null,
+            // Placeholder research, so a full row would carry it and the trigger run's row is shown not to.
+            scoring: { composite: 7, trendStrength: { score: 2, note: "a score note" } },
             createdAt: new Date(String(t.createdAt)),
             researchUpdatedAt: new Date(String(t.researchUpdatedAt)),
             lastReviewedAt: t.lastReviewedAt ? new Date(String(t.lastReviewedAt)) : null,
@@ -72,20 +88,22 @@ async function triggerRun(c: Fire) {
       fired: { price: c.fire.price },
       situations: stock?.situations ?? null,
     });
-    return { stock, prompt };
+    const saved = ((result.data as { theses?: Array<Record<string, unknown>> }).theses ?? []).find((r) => r.id === t.id)!;
+    return { stock, prompt, saved };
   } finally {
     jest.useRealTimers();
   }
 }
 
 describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
-  it("the full row leads with the fire, carries the setup's lines for its horizon and the fired buy with its id", async () => {
-    const { stock, prompt } = await triggerRun(fx.docu);
+  it("the short row leads with the fire, carries the setup's lines for its horizon and the fired buy with its id, and none of the full row", async () => {
+    const { stock, prompt, saved } = await triggerRun(fx.docu);
     expect(stock).not.toBeNull();
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy level reached)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
     expect(row.setup_lines).toEqual(setupLines(getSetup("MA_PULLBACK")!, "TARGET"));
+    shortRow(row, saved);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.docu.fire.triggerId}]`))).toMatch(/^Buy if below \$67 · fired 09-28 13:30 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.BUY_ARRIVES.guidance);
@@ -96,13 +114,14 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
 });
 
 describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_theses", () => {
-  it("the full row leads with the sale, carries the position, the PEAD lines and the fired floor with its id", async () => {
-    const { stock, prompt } = await triggerRun(fx.nvda);
+  it("the short row leads with the sale, carries the position, the PEAD lines and the fired floor with its id, and none of the full row", async () => {
+    const { stock, prompt, saved } = await triggerRun(fx.nvda);
     expect(stock).not.toBeNull();
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("PROTECTIVE_SALE (sale signal)");
     expect(row.position).toMatch(/^33 sh at \$218\.23 → \$234\.24 \(\+7\.3%\), \$7,730; opened 08-31; high since we bought \$242\.51$/);
     expect(row.setup_lines).toEqual(setupLines(getSetup("PEAD")!, "TARGET"));
+    shortRow(row, saved);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.PROTECTIVE_SALE.guidance);
