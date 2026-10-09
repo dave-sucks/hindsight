@@ -69,10 +69,9 @@ const buy = { id: "trig_buy", predicate: { watch: "price", is: "below", value: 6
 const tactical = (analyst: BriefAnalyst, extra: Record<string, unknown> = {}) =>
   buildTacticalSystemPrompt({
     analyst,
-    thesis: { id: "thesis_1", ticker: "DOCU", direction: "LONG", horizon: "TARGET", setupId: "MA_PULLBACK", coreBelief: "Belief.", keyAssumptions: [], invalidationConds: [], entryPrice: 67, targetPrice: 83, stopLoss: 63, snapshotText: null, bullCaseBullets: [], bearCaseBullets: [], researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 }, allTriggers: [trail] },
+    stock: { ticker: "DOCU", direction: "LONG", row: { stock: "DOCU · held · LONG · MA_PULLBACK", id: "thesis_1" } },
     trigger: trail,
-    position: { quantity: 60, avgCost: 66, daysHeld: 10, peakPrice: 80 },
-    context: null,
+    position: { peakPrice: 80 },
     ...extra,
   } as never);
 

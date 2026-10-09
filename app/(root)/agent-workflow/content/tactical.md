@@ -1,12 +1,12 @@
 ---
 id: tactical
 title: Tactical Run
-summary: Single-thesis, single-decision focused run — spawned when a trigger fires. Reads the deep-research excerpt, validates the signal, takes at most one position action, closes out with an update.
+summary: Single-thesis, single-decision focused run — spawned when a trigger fires. Reads the stock's full row, validates the signal, takes at most one position action, closes out with an update.
 ---
 
 When the [Trigger Evaluator](agent:triggers) fires on a thesis, a Tactical Run spawns with a tight step budget focused on one question: did this trigger fire for a real reason, and if so, what's the right move?
 
-The thesis context includes a DEEP-RESEARCH EXCERPT — snapshot, top bull-case bullets, top bear-case bullets, and a `researchAge` annotation. Every decision anchors to that excerpt. The bear-case bullets in particular matter: if any of them have come true since the research was written, the trigger may be firing into an invalidated thesis.
+The stock arrives as its full row from `get_theses`, the same row every door reads: the plan, every trigger with its id, the setup's lines, the snapshot, the bull and bear cases, and when the research was written. Every decision anchors to that row. The bear case in particular matters: if any of it has come true since the research was written, the trigger may be firing into an invalidated thesis.
 
 It validates against fresh data, takes at most one position action, and always writes an `update_thesis` row as the close-out. `record_thesis` isn't in its allowlist — new coverage only happens in the [Daily Run](agent:agent) and [Discovery Run](agent:discovery).
 

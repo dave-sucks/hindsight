@@ -345,7 +345,10 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean): Row {
   put("belief", str(row.coreBelief) ? stripSourceTags(row.coreBelief as string) : null);
   put("assumptions", strings(row.keyAssumptions));
   put("would_prove_it_wrong", strings(row.invalidationConds));
-  put("setup", setupLine(row));
+  // The full row: the setup's every decision line for the stock's horizon (setupLines); the short row, the compact line.
+  const setupFull = size === "full" ? strings(obj(row.setup)?.lines) : [];
+  if (setupFull.length) put("setup_lines", setupFull);
+  else put("setup", setupLine(row));
   // The facts a situation's text refers to, by the names it uses.
   put("nameTheSetup", row.nameTheSetup);
   put("buyBlockedByFull", row.buyBlockedByFull);

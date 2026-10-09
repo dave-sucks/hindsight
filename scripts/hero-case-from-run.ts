@@ -29,10 +29,8 @@ import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { BRIEF_FIELDS } from "@/lib/agent/analyst-brief";
-import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
+import { createResearchTools } from "@/lib/agent/tools";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
-import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
-import { getThesisBearCaseBullets, getThesisBullCaseBullets, getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 
 const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
 
@@ -57,7 +55,7 @@ async function main() {
   const analyst = await prisma.agentConfig.findUniqueOrThrow({ where: { id: run.agentConfigId! } });
   const thesis = await prisma.thesis.findFirst({
     where: { ticker, researchRun: { agentConfigId: analyst.id }, status: { in: ["WATCHING", "HOLDING"] } },
-    include: { researchRun: { select: { agentConfigId: true } }, updates: { orderBy: { timestamp: "desc" }, take: 40, select: ACTIVITY_SELECT } },
+    include: { researchRun: { select: { agentConfigId: true } } },
   });
   // A stock retired since the run is found by the id its own read carried.
   const readId = (() => {
@@ -101,26 +99,24 @@ async function main() {
     const ladder = resolveThesisLadder(thesis as never, (await loadLevelSources([analyst.id])).get(analyst.id), `thesis=${thesis.id}`);
     const triggerId = (run.parameters as { triggerId?: string })?.triggerId;
     const trigger = ladder.find((t: { id: string }) => t.id === triggerId) ?? null;
-    if (!trigger) notes.push(`the fired trigger ${triggerId} is no longer on the stock — put it back by hand in promptArgs.trigger and promptArgs.thesis.allTriggers`);
-    const position = await prisma.position.findFirst({ where: { analystId: analyst.id, symbol: ticker, status: "OPEN" }, select: { quantity: true, avgCost: true, openedAt: true, peakPrice: true } });
+    if (!trigger) notes.push(`the fired trigger ${triggerId} is no longer on the stock — put it back by hand in promptArgs.trigger and promptArgs.savedRow.triggers`);
+    const position = await prisma.position.findFirst({ where: { analystId: analyst.id, symbol: ticker, status: "OPEN" }, select: { peakPrice: true } });
     const firedPrice = (() => { const u = messages[0]; const text = Array.isArray(u?.content) ? u.content.map((p) => p.text ?? "").join(" ") : String(u?.content ?? ""); const m = text.match(/fired at \$([\d.]+)/); return m ? Number(m[1]) : null; })();
+    // The stock as the trigger run reads it (step 10): get_theses on the ticker, saved as the tool saves it.
+    const tools = createResearchTools({ runId, userId: analyst.userId, accountId: analyst.accountId, analystId: analyst.id, runMode: "INTRADAY_TACTICAL", runEnvironment: env, minConfidence: analyst.minConfidence, maxOpenPositions: analyst.maxOpenPositions } as never) as unknown as Record<string, { execute: (a: unknown, o: unknown) => Promise<{ ok: boolean; data?: { theses?: Array<Record<string, unknown>> } }> }>;
+    const read = await tools.get_theses.execute({ tickers: [ticker] }, { toolCallId: "case", messages: [] });
+    const savedRow = (read.data?.theses ?? []).find((r) => r.id === thesis.id) ?? null;
+    if (!savedRow) notes.push("get_theses returned no row for the stock; fill promptArgs.savedRow by hand");
     promptArgs = {
       analyst: briefOf(analyst),
-      thesis: {
-        id: thesis.id, ticker, direction: thesis.direction, horizon: thesis.horizon, setupId: (thesis as { setupId?: string | null }).setupId ?? null,
-        coreBelief: thesis.coreBelief, keyAssumptions: thesis.keyAssumptions, invalidationConds: thesis.invalidationConds,
-        entryPrice: thesis.entryPrice != null ? Number(thesis.entryPrice) : null, targetPrice: thesis.targetPrice != null ? Number(thesis.targetPrice) : null, stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
-        snapshotText: getThesisSnapshotText(thesis as never) || null, bullCaseBullets: getThesisBullCaseBullets(thesis as never), bearCaseBullets: getThesisBearCaseBullets(thesis as never),
-        researchAge: classifyResearchAge(thesis.researchUpdatedAt, thesis.horizon as never, thesis.status as never), allTriggers: ladder,
-      },
+      savedRow,
       trigger,
-      position: position ? { quantity: Number(position.quantity), avgCost: Number(position.avgCost), daysHeld: Math.floor((run.startedAt.getTime() - position.openedAt.getTime()) / 86400000), peakPrice: position.peakPrice != null ? Number(position.peakPrice) : null } : null,
-      context: stockContextFor({ ticker, rows: thesis.updates.map((u) => ({ ...u, runMode: (u as { run?: { mode?: string } }).run?.mode ?? null })) as never, triggers: ladder, now: run.startedAt, currentPrice: firedPrice }).text,
+      position: position ? { peakPrice: position.peakPrice != null ? Number(position.peakPrice) : null } : null,
       latestDigest: null,
-      fired: { price: firedPrice, coFired: [] },
+      fired: { price: firedPrice },
       capacity: null,
     };
-    notes.push("promptArgs.thesis and context are the stock as it is today; check them against the run's day.");
+    notes.push("promptArgs.savedRow is the stock as it is today; check it against the run's day.");
   } else if (run.mode === "PRINCIPAL_CHAT") {
     mode = "principal"; runMode = "PRINCIPAL_CHAT";
     promptArgs = {
