@@ -116,7 +116,7 @@ export function situationsFor(s: SituationSources): SituationCode[] {
 export const SITUATIONS: Record<SituationCode, { name: string; guidance: string }> = {
   PROMOTED_AWAITING: {
     name: "promoted to live",
-    guidance: `When: this stock was promoted to live money and its paper position was closed at promotion. It needs a decision this run. \`needsAction\` carries the paper record: paperTenureDays, paperRealizedPnl, paperReviewCount.
+    guidance: `When: this stock was promoted to live money and its paper position was closed at promotion. It needs a decision this run. The row's \`paper_record\` line carries the paper record: days held, realized P&L, reviews.
 
 Answer, in order:
 1. Does the case still hold at today's price? Check with get_stock_data against the thesis and its triggers.
@@ -136,12 +136,12 @@ Mistakes:
 
 Answer, in order:
 1. Is the price past the line now (get_stock_data)? A give-back counts from the tracked high, kept over the whole holding, not from a high read off a chart window.
-2. Did the principal decline it? \`heldThroughFloor\` has the count, the floor, the recent low and their note; their words are in \`context\` too.
+2. Did the principal decline it? \`heldThroughFloor\` has the count, the floor, the recent low and their note; their words are in \`said\` too.
 
 What you can do:
 - Sell: close_position with reason STOP, answering belief_survived as its description says, or trim with manage_position partial_close; then one update_thesis saying why.
 - After a decline, propose the sale again with today's reasons: a sale asks every day its condition holds. Say which day of the breach it is, quote their note, and offer the recent low as a level for the line.
-- Or re-draw the line: update_thesis with edit_triggers on the fired trigger's id (\`triggers[]\` gives each id beside its words), as a price under structure you name, and say when you will look again. After a decline the line may come down at most 15%; nothing else may be loosened.
+- Or re-draw the line: update_thesis with edit_triggers on the fired trigger's id (the \`triggers\` lines give each id beside its words), as a price under structure you name, and say when you will look again. After a decline the line may come down at most 15%; nothing else may be loosened.
 - Two sales fired together: one decision covers both (all, some or none); name the rule you followed.
 
 Answered: a sale or trim, or the line re-drawn. A note that changes nothing leaves the sale asking again tomorrow; after a decline, complete_run does not take a note at all.
@@ -153,15 +153,15 @@ Mistakes:
   },
   BUY_ARRIVES: {
     name: "buy level reached",
-    guidance: `When: a buy trigger fired or is true now on a stock we watch and the analyst has room, or \`resolved.actionability\` is ENTER_NOW.
+    guidance: `When: a buy trigger fired or is true now on a stock we watch and the analyst has room, or the price sits at the plan's buy level.
 
 Answer, in order:
 1. Does the price still hold the level (get_stock_data)? If it touched and slipped back, say so.
-2. Did the setup's confirmation happen? By the setup (the row's \`setup\`; THE SETUP block in a trigger run): a breakout needs a close above the level on volume (get_stock_data: technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
-3. Is it chased? A spent crossing shows in \`resolved.planSanity\` as BUY_FIRED_UNANSWERED, with the setup's chase limit and how far past it the stock is.
+2. Did the setup's confirmation happen? By the setup (the row's \`setup\` line; THE SETUP block in a trigger run): a breakout needs a close above the level on volume (get_stock_data: technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
+3. Is it chased? A buy that fired unanswered shows in \`plan_checks\`, with the setup's chase limit and how far past it the stock is.
 4. Does a headline from the last hour contradict it (get_stock_data's news)? A buy into bad news is a fade.
-5. Did the principal decline this buy (\`context\`), with nothing they named changed since? Then say so and pass.
-6. Does the view still hold? At LOW \`conviction\`, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks \`variantView\`.
+5. Did the principal decline this buy (\`said\`), with nothing they named changed since? Then say so and pass.
+6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (full row, by ticker).
 
 What you can do:
 - Buy, only when every check above holds: place_trade (it sizes the buy), then one update_thesis saying why.
@@ -196,16 +196,16 @@ Mistakes:
   },
   ADD_OR_WINNER: {
     name: "add or near target",
-    guidance: `When: an add trigger fired or is true now on a stock we hold, or the holding has come three quarters of the way to its target or more (\`resolved.progressToTarget\` 0.75 or above). It is a decision point, not a hold by default.
+    guidance: `When: an add trigger fired or is true now on a stock we hold, or the holding has come three quarters of the way to its target or more (the \`plan\` line: 75% of the way or above). It is a decision point, not a hold by default.
 
 Answer, in order:
 1. Why did it move (get_stock_data; get_market_context for a drop)? A rise counts only if it confirms the thesis: the catalyst playing out, estimates rising, healthy structure, not an exhaustion chase. A drop counts only if it is market- or sector-wide, the thesis intact and support holding.
 2. Does the live price still confirm, with no headline against it, and does the reward to a justified target still beat the risk?
-3. Did the principal decline this add (\`context\`), with nothing they named changed since? Then say so and pass.
+3. Did the principal decline this add (\`said\`), with nothing they named changed since? Then say so and pass.
 
 What you can do (one of these):
 - Press: manage_position add_to_position (it sizes the add), then update_thesis raising the target, and the floor (stop_loss) under the bigger position.
-- Hold: raise the floor to lock a real share of the gain, under structure, with update_thesis stop_loss. \`resolved.ladderHealth\` shows what the floor locks in now. Breakeven only guards against a loss.
+- Hold: raise the floor to lock a real share of the gain, under structure, with update_thesis stop_loss. The \`protection\` line shows what the floor locks in now. Breakeven only guards against a loss.
 - Take: manage_position partial_close, or close_position.
 Then one update_thesis saying which and why. A trade may wait for the principal's approval.
 
@@ -278,11 +278,11 @@ Mistakes:
   },
   PROTECTION: {
     name: "floor to fix",
-    guidance: `When: a holding's floor locks in far less than its gain, so the gain can round-trip with no signal on the way down (\`resolved.ladderHealth\`: gainPct, flooredGainPct, isUnprotectedGain); or its floor would lose more than 1.5% of the account from what we paid (\`resolved.floorRisk\`: lossAtFloor, pctOfAccount). A normal buy is sized to risk 1% of the account unless the analyst sets otherwise.
+    guidance: `When: a holding's floor locks in far less than its gain, so the gain can round-trip with no signal on the way down (the \`protection\` line); or its floor would lose more than 1.5% of the account from what we paid (the \`floor_risk\` line). A normal buy is sized to risk 1% of the account unless the analyst sets otherwise.
 
 Answer, in order:
 1. What does the floor lock in, and what would it lose? Read those numbers.
-2. Where is real structure? \`resolved.floorRisk.structureBelow\` lists it when the floor is too far; otherwise the 20-day low, a swing low, the breakout level, an average (get_stock_data).
+2. Where is real structure? The \`floor_risk\` line names it when the floor is too far; otherwise the 20-day low, a swing low, the breakout level, an average (the \`chart\` line, or get_stock_data).
 
 What you can do:
 - Raise the floor under that structure: update_thesis with stop_loss. Tightening is always allowed. A compounder breathes wider than a trade.
@@ -296,7 +296,7 @@ Mistakes:
   },
   FIRST_RESEARCH: {
     name: "first research due",
-    guidance: `When: a seed is due its first research: a stock put on the watchlist with no view yet (no \`direction\`), its review clock due.
+    guidance: `When: a seed is due its first research: a stock put on the watchlist with no view yet (the \`stock\` line says "no view"), its review clock due.
 
 Answer, in order:
 1. Is there a tradeable view? Pull get_stock_data and what else you need.
@@ -315,10 +315,10 @@ Mistakes:
     guidance: `When: the review clock came due on a LONG or SHORT stock, or a review trigger fired or is true now and no other situation covers it.
 
 Answer, in order:
-1. Has the principal said something not yet answered (\`context\`)? Answer it first.
-2. Has the belief broken? On a stock you hold, go down \`invalidationConds\` and say for each whether it has happened. Price being down is not on the list unless you wrote it there.
-3. Is the setup still working? \`setup.failureSigns\`, \`setup.manage\`, \`setup.time\`.
-4. Did the world move past the levels? An add level blown through, a floor lagging the gain (\`resolved.ladderHealth\`), a fired checkpoint never replaced, a target the street re-rated past.
+1. Has the principal said something not yet answered (\`said\`)? Answer it first.
+2. Has the belief broken? On a stock you hold, go down \`would_prove_it_wrong\` and say for each whether it has happened. Price being down is not on the list unless you wrote it there.
+3. Is the setup still working? The \`setup\` line: its failure signs, the manage rule, the time limit.
+4. Did the world move past the levels? An add level blown through, a floor lagging the gain (the \`protection\` line), a fired checkpoint never replaced, a target the street re-rated past.
 
 What you can do:
 - Patch the plan: update_thesis with edit_triggers on the levels that moved, by id.
@@ -330,12 +330,12 @@ What you can do:
 Answered: one update_thesis on the stock. "The plan stands" is honest only when neither the story nor the levels moved.
 
 Mistakes:
-- The same answer to a review that fired again (\`needsAction.repeatLine\` says how often): change the plan, or say what differs from last time.
+- The same answer to a review that fired again (the \`repeat\` line says how often): change the plan, or say what differs from last time.
 - Deleting a level you still believe in to look at the name less.`,
   },
   STALE_RESEARCH: {
     name: "research stale",
-    guidance: `When: the research behind a committed view is older than its horizon allows, or missing (\`researchAge\`: daysOld against horizonThreshold). On a watched stock the next thing to happen could be a buy on it.
+    guidance: `When: the research behind a committed view is older than its horizon allows, or missing (the \`research\` line says when it was written). On a watched stock the next thing to happen could be a buy on it.
 
 Answer, in order:
 1. Does the old work still stand against today's data?
@@ -352,7 +352,7 @@ Mistakes:
   },
   PLAN_PROBLEM: {
     name: "plan check",
-    guidance: `When: a watched stock's plan contradicts the tape or the calendar. \`resolved.planSanity\` lists each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, a plan under 2:1, a score under the analyst's minimum, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (\`resolved.actionability\` STALE_PAST_CATALYST).
+    guidance: `When: a watched stock's plan contradicts the tape or the calendar. The \`plan_checks\` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, a plan under 2:1, a score under the analyst's minimum, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the \`catalyst\` line's date is behind us).
 
 Answer, in order:
 1. What does each check say? Read its numbers.
@@ -369,7 +369,7 @@ Mistakes:
   },
   YOUR_WORD_UNANSWERED: {
     name: "your word unanswered",
-    guidance: `When: the principal made a decision on this stock that no run has answered, or left a note since your last answer. Their words are in \`context\`, with the price then and now.
+    guidance: `When: the principal made a decision on this stock that no run has answered, or left a note since your last answer. Their words are in \`said\`, with the price then and now.
 
 Answer, in order:
 1. Which is it: an instruction, a question, a decline, a resized approval, a note?

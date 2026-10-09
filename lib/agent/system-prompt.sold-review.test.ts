@@ -43,7 +43,7 @@ describe("the built prompt names the sold-stock review; the answers arrive as gu
   it("names the block get_theses returns, and says every entry is work today", () => {
     const p = prompt();
     expect(p).toContain("`sold_to_review`");
-    expect(p).toContain("every one of them is work today");
+    expect(p).toContain("every `sold_to_review` entry");
   });
 
   it("the four answers, the call that puts one back on watch and how the rest clears are SOLD_ONE_REVIEW's", () => {
@@ -64,7 +64,7 @@ describe("the built prompt names the sold-stock review; the answers arrive as gu
   // The paragraph it sits in still has to say what it said before.
   it("leaves the rest of the book paragraph intact", () => {
     const p = prompt();
-    expect(p).toContain("`quiet_theses` rows are NOT your work today");
+    expect(p).toContain("the one-line entries in `quiet_theses` are not today's work");
     expect(p).toContain("`guidance`");
   });
 });
