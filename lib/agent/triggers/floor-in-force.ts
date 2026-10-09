@@ -44,19 +44,3 @@ export function thesisFloorStop(input: {
   });
   return levels.columns.stopLoss;
 }
-
-/**
- * What the ratchet compares against: the thesis's own floor, and only if
- * there is none, the position's mirror column.
- *
- * The fallback is not a hedge — a stock bought before the ladder existed, or
- * one whose thesis this tool can't resolve, still has a stop on the position
- * row and should still be protected by it. What the fallback must never do is
- * win over a real floor, which is the bug.
- */
-export function stopToRatchetAgainst(input: {
-  thesisFloor: number | null;
-  positionStopLoss: number | null;
-}): number | null {
-  return input.thesisFloor ?? input.positionStopLoss;
-}

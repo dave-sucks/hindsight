@@ -12,6 +12,7 @@ import {
   accountRow,
   REPLAY_ANALYST_ID,
   REPLAY_RUN_ID,
+  planTriggers,
 } from "@/lib/replay";
 import { applyTriggerCooldownDefaults, defaultCooldownDaysForPredicate } from "@/lib/agent/triggers/defaults";
 import { isBinaryBet } from "@/lib/agent/knowledge/setups";
@@ -38,6 +39,7 @@ const airSeed = (over: Record<string, unknown> = {}) => ({
       stopLoss: 135,
       catalystDate: new Date(Date.now() + 1 * 86_400_000),
       analystId: REPLAY_ANALYST_ID,
+      triggers: planTriggers({ entry: 150, target: 200, stop: 135 }),
       ...over,
     }),
   ],
@@ -122,6 +124,7 @@ describe("DAV-328 — a buy into a dated event is half, a buy after it is not", 
             stopLoss: 135,
             catalystDate: new Date(Date.now() + 64 * 86_400_000),
             analystId: REPLAY_ANALYST_ID,
+            triggers: planTriggers({ entry: 150, target: 200, stop: 135 }),
           }),
         ],
       },

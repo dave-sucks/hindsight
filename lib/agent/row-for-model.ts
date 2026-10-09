@@ -141,12 +141,12 @@ function line(row: Row): string {
     noClaim ? (failedOn ? `write-up failed ${etDay(failedOn)}` : "no write-up yet") : null,
     str(row.setupId) ?? str(row.horizon),
     price != null ? money(price) : null,
-    entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : null,
+    entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noPlan(row) ? "no plan" : null,
     target != null ? `target ${money(target)}` : null,
     floor != null ? `floor ${money(floor)}` : null,
     review ? `review ${etDay(review)}` : null,
     score != null ? `score ${score}` : null,
-    catalyst ? `catalyst ${isoDay(catalyst)}` : null,
+    catalyst ? `catalyst ${isoDay(catalyst)}` : catalystDateMissing(row) ? "catalyst date missing" : null,
     `id ${String(row.id)}`,
     // An account-wide read names each stock's analyst, last.
     str(row.analyst),
@@ -228,6 +228,11 @@ function priceLine(row: Row): string | null {
   return `${money(current)}${dp != null ? `, ${pct(dp)} today` : ""}${at ? ` (${etStamp(at)})` : ""}`;
 }
 
+/** A watched stock with a view and no buy level: nothing to buy on (step 12, part 3). */
+const noPlan = (row: Row) => row.status === "WATCHING" && str(row.direction) != null && num(row.entryPrice) == null;
+/** A dated-event stock with no date: nothing to schedule around (step 12, part 3). */
+const catalystDateMissing = (row: Row) => row.horizon === "CATALYST" && date(row.catalystDate) == null;
+
 function planLine(row: Row): string | null {
   const held = row.status === "HOLDING";
   const entry = num(row.entryPrice);
@@ -241,6 +246,7 @@ function planLine(row: Row): string | null {
     floor != null ? `floor ${money(floor)}` : null,
     progress != null ? `${Math.round(progress * 100)}% of the way to the target` : null,
   ].filter((x): x is string => x != null);
+  if (noPlan(row)) parts.unshift("no plan");
   return parts.length ? parts.join(" · ") : null;
 }
 
@@ -388,7 +394,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("chart", chartLine(row));
   put("research", researchLine(row, size));
   const catalyst = date(row.catalystDate);
-  put("catalyst", catalyst ? isoDay(catalyst) : null);
+  put("catalyst", catalyst ? isoDay(catalyst) : catalystDateMissing(row) ? "date missing" : null);
   put("repeat", str(obj(row.needsAction)?.repeatLine));
   // The conviction rule, on the row it applies to.
   if (held && row.conviction === "LOW") put("note", "Conviction is LOW: tighten the floor on this review.");

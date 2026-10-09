@@ -185,3 +185,25 @@ describe("the price the morning run's save reads for itself", () => {
     expect(written(r.db)).toHaveLength(1);
   });
 });
+
+describe("DOCU 10-07: back on watch with no plan (step 12, part 3)", () => {
+  it("the reply leads with it and the refusal's reason; the sold fill is no longer read as a buy; the row says no plan", async () => {
+    const { save } = await sentVerbatim("DOCU");
+    expect(save.refused).toBe(false);
+    expect(save.result.summary).toMatch(/^Back on watch with no plan: .*1\.71:1 is below the mandatory 2:1 minimum/);
+    const row = save.db.store.thesis[0];
+    expect(row).toMatchObject({ status: "WATCHING", entryPrice: null });
+    let line = "";
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
+      line = (await import("@/lib/agent/row-for-model")).rowForModel({ ...row }, { named: false, size: "line" }) as string;
+    });
+    expect(line).toContain("no plan");
+    expect(line).not.toContain("buy $67.73");
+  });
+
+  it("a save whose plan lands says nothing of the kind (ABT 10-07)", async () => {
+    const { save } = await sentVerbatim("ABT");
+    expect(String(save.result.summary)).not.toContain("Back on watch with no plan");
+  });
+});

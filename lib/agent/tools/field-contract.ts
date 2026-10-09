@@ -67,8 +67,7 @@ const RULE_DEFS = {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
     refusal: "protective_level_locked — names the level, the direction, and that the rest of the update lands.",
     // The morning and trigger runs read it on update_thesis's description and
-    // on manage_position's new_stop_loss, and in the refusal; their prompts
-    // no longer say it a third time.
+    // in the refusal; their prompts no longer say it a third time.
     markers: { chat: "only tighten" },
   },
   MIN_CONFIDENCE: {
@@ -146,7 +145,8 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("company_name", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("exchange", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("direction", "CHOSEN"),
-    ...PLAN_LEVELS,
+    // The target and floor are the thesis row's own (step 12, part 3); the buy carries no copy.
+    f("entry_price", "JUDGED", { rule: "LEVEL_ORDER", note: "The market order's expected price; it sizes the buy." }),
     f("thesis_id", "IDENTITY"),
     f("entry_rationale", "TEXT"),
     f("analyst_id", "IDENTITY", { note: "The chat names the analyst; a run is already bound to one." }),
@@ -158,8 +158,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("action", "CHOSEN"),
     f("reason", "TEXT"),
     f("close_pct", "JUDGED", { rule: "LEVEL_ORDER", note: "A percent of the position; clamped to 1–100." }),
-    f("new_target_price", "JUDGED", { rule: "LEVEL_ORDER" }),
-    f("new_stop_loss", "JUDGED", { rule: "RATCHET" }),
     f("close_reason", "CHOSEN"),
     f("add_notional", "COMPUTED", { principalOnly: true, note: "An add is half the entry's risk, capped (DAV-317)." }),
   ],

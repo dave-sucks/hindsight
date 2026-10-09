@@ -34,6 +34,23 @@ import {
   getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
+import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
+
+/**
+ * The plan a buy carries: the target and floor triggers on the thesis row,
+ * read with the same helper that writes the row's columns. The trade has no
+ * second source for them (step 12, part 3): in every place_trade call since
+ * 2026-09-10 where the row's plan can be checked (24 of 24) the call sent the
+ * row's own numbers back.
+ */
+export function planOfRow(row: { direction: string | null; status: string; triggers: unknown } | null): { target: number | null; stop: number | null } {
+  if (!row) return { target: null, stop: null };
+  const triggers = parseTriggersResilient(row.triggers).triggers as unknown as ResolvedTrigger[];
+  const { columns } = canonicalLevels({ triggers, direction: row.direction, status: row.status });
+  return { target: columns.targetPrice, stop: columns.stopLoss };
+}
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -71,9 +88,7 @@ const placeTradeSchema = z.object({
     company_name: z.string().optional().describe("Company name from get_stock_data"),
     exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
     direction: z.enum(["LONG", "SHORT"]),
-    entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the thesis's buy level (a price we have not reached), here today's price is the right answer."),
-    target_price: z.number(),
-    stop_loss: z.number(),
+    entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the thesis's buy level (a price we have not reached), here today's price is the right answer. The target and the floor are the thesis's own: the trade takes them from its plan."),
     // Principal chat only. Inside a run these two fields are not in the
     // schema at all — the analyst's rules size every buy, and a size the
     // model typed ($11,222 on PLTR, 2026-09-25) is what killed a fired buy.
@@ -241,13 +256,18 @@ export const placeTrade = defineTool({
       // null AND 'PENDING' (and any other non-committed value). A
       // null-direction seed must NEVER become trade-eligible. Regression:
       // place-trade.test.ts "rejects a null-direction (unresearched) seed".
+      // The row's plan rides on the same read (Guardrail 3 reads it).
+      let planRow: { direction: string | null; status: string; triggers: unknown } | null = null;
       {
         const directionCheck = await prisma.thesis.findUnique({
           where: { id: args.thesis_id },
           select: {
             direction: true,
+            status: true,
+            triggers: true,
           },
         });
+        planRow = directionCheck;
 
         // Note: there is NO staleness gate here. Research-age decisions
         // belong to the REVIEW flow, not the TRADE flow — the agent's
@@ -261,9 +281,9 @@ export const placeTrade = defineTool({
           directionCheck.direction !== "SHORT"
         ) {
           const msg =
-            `$${ticker}: cannot place_trade on an unresearched watchlist seed (direction is not committed to LONG/SHORT). It is a user/builder/editor seed awaiting first research — no target, no stop, no committed view. ` +
-            `Promote it first: call update_thesis(thesis_id="${args.thesis_id}", direction: "${args.direction}", horizon: ..., entry_price: ..., target_price: ..., stop_loss: ..., core_belief: ..., key_assumptions: [...], invalidation_conditions: [...]) ` +
-            `to commit. Then retry place_trade on the same thesis_id once the structural fields are set.`;
+            `$${ticker}: cannot place_trade on an unresearched watchlist seed (direction is not committed to LONG/SHORT). It is a seed awaiting first research — no target, no stop, no committed view. ` +
+            `Its view comes from the writer: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${args.thesis_id}", then wait_for_thesis_refresh. ` +
+            `Once it is LONG or SHORT with a plan, place_trade on the same thesis_id.`;
           return {
             summary: `Trade blocked: $${ticker} — thesis has no committed direction (promote via update_thesis first)`,
             data: {
@@ -344,17 +364,38 @@ export const placeTrade = defineTool({
         }
       }
 
-      // ── Guardrail 3: target/stop ordering vs entry_price ───────────
-      // For LONG, target must be ABOVE entry and stop BELOW entry.
-      // For SHORT, target must be BELOW entry and stop ABOVE entry.
-      // Without this, the model can pass stale numbers from an old
-      // WATCHING thesis (target set when price was lower) and the
-      // first price-monitor tick after fill closes the position
-      // because `currentPrice >= targetPrice` is satisfied at avgCost.
+      // ── Guardrail 3: the row's plan, in order against entry_price ──
+      // The target and the floor are the thesis row's own triggers (step 12,
+      // part 3); the call no longer carries them. A buy has always needed
+      // both: a row without one is told how to set it. For LONG the target
+      // sits ABOVE entry and the floor BELOW it; for SHORT the reverse.
+      // Without the ordering check a stale plan (a target set when the price
+      // was lower) closes the position on the first price-monitor tick after
+      // the fill, because `currentPrice >= targetPrice` holds at avgCost.
+      const plan = planOfRow(planRow);
+      if (plan.target == null || plan.stop == null) {
+        const missing = [plan.stop == null ? "floor" : null, plan.target == null ? "target" : null].filter(Boolean).join(" and ");
+        const fields = [plan.stop == null ? "stop_loss" : null, plan.target == null ? "target_price" : null].filter(Boolean).join(" and ");
+        const blockedMsg = `Trade blocked: $${ticker}'s plan has no ${missing}. Set it with update_thesis (${fields}) on thesis ${args.thesis_id}, then call place_trade again.`;
+        return {
+          summary: `Trade blocked: $${ticker} — the plan has no ${missing}`,
+          data: {
+            success: false,
+            ticker,
+            status: "FAILED" as const,
+            direction: args.direction,
+            message: blockedMsg,
+            tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+          },
+          sources: [],
+        };
+      }
+      const target = plan.target;
+      const stop = plan.stop;
       {
         const entry = args.entry_price;
-        const tgt = args.target_price;
-        const stp = args.stop_loss;
+        const tgt = target;
+        const stp = stop;
         let bad: string | null = null;
         if (args.direction === "LONG") {
           if (tgt <= entry) {
@@ -370,7 +411,7 @@ export const placeTrade = defineTool({
           }
         }
         if (bad) {
-          const blockedMsg = `Trade blocked: ${bad}. Recompute target and stop relative to the current price, then call place_trade again.`;
+          const blockedMsg = `Trade blocked: ${bad}. Move the plan's level with update_thesis (target_price / stop_loss) on thesis ${args.thesis_id}, then call place_trade again.`;
           return {
             summary: `Trade blocked: $${ticker} — invalid target/stop`,
             data: {
@@ -399,20 +440,20 @@ export const placeTrade = defineTool({
         if (Number.isFinite(livePrice) && livePrice > 0) {
           let bad: string | null = null;
           if (args.direction === "LONG") {
-            if (livePrice >= args.target_price) {
-              bad = `current price $${livePrice.toFixed(2)} is at or above target $${args.target_price.toFixed(2)} — a LONG would close on the next price tick`;
-            } else if (livePrice <= args.stop_loss) {
-              bad = `current price $${livePrice.toFixed(2)} is at or below stop $${args.stop_loss.toFixed(2)} — a LONG would close on the next price tick`;
+            if (livePrice >= target) {
+              bad = `current price $${livePrice.toFixed(2)} is at or above target $${target.toFixed(2)} — a LONG would close on the next price tick`;
+            } else if (livePrice <= stop) {
+              bad = `current price $${livePrice.toFixed(2)} is at or below stop $${stop.toFixed(2)} — a LONG would close on the next price tick`;
             }
           } else {
-            if (livePrice <= args.target_price) {
-              bad = `current price $${livePrice.toFixed(2)} is at or below target $${args.target_price.toFixed(2)} — a SHORT would close on the next price tick`;
-            } else if (livePrice >= args.stop_loss) {
-              bad = `current price $${livePrice.toFixed(2)} is at or above stop $${args.stop_loss.toFixed(2)} — a SHORT would close on the next price tick`;
+            if (livePrice <= target) {
+              bad = `current price $${livePrice.toFixed(2)} is at or below target $${target.toFixed(2)} — a SHORT would close on the next price tick`;
+            } else if (livePrice >= stop) {
+              bad = `current price $${livePrice.toFixed(2)} is at or above stop $${stop.toFixed(2)} — a SHORT would close on the next price tick`;
             }
           }
           if (bad) {
-            const blockedMsg = `Trade blocked: ${bad}. Recompute target and stop relative to the current price, then call place_trade again.`;
+            const blockedMsg = `Trade blocked: ${bad}. Move the plan's level with update_thesis (target_price / stop_loss) on thesis ${args.thesis_id}, then call place_trade again.`;
             return {
               summary: `Trade blocked: $${ticker} — target/stop already breached at live price`,
               data: {
@@ -476,7 +517,7 @@ export const placeTrade = defineTool({
               riskPct: sizingAnalyst?.riskPct,
               conviction: sizingThesis?.conviction,
               entry: args.entry_price,
-              stop: args.stop_loss,
+              stop: stop,
               direction: args.direction,
               binary,
               regime: accountRisk.regime?.regime ?? null,
@@ -519,7 +560,7 @@ export const placeTrade = defineTool({
         );
       }
       if (accountRisk?.open && accountRisk.equity) {
-        const perShare = args.direction === "SHORT" ? args.stop_loss - args.entry_price : args.entry_price - args.stop_loss;
+        const perShare = args.direction === "SHORT" ? stop - args.entry_price : args.entry_price - stop;
         const addedRisk = Math.max(0, perShare) * (resolvedShares ?? 0);
         sizingNotes.push(heatLine(accountRisk.open, accountRisk.equity, addedRisk));
         const ind = industryLine(accountRisk.open, await industryOf(ticker), ticker);
@@ -585,10 +626,10 @@ export const placeTrade = defineTool({
             status: "OPEN",
             quantity: finalShares,
             avgCost: args.entry_price,
-            targetPrice: args.target_price,
-            stopLoss: args.stop_loss,
+            targetPrice: target,
+            stopLoss: stop,
             // The risk taken — never moves; the scorecard's R (DAV-248).
-            initialStop: args.stop_loss,
+            initialStop: stop,
             // Per-thesis triggers (lib/agent/triggers/*) own ALL exit logic now.
             // The stop EXIT trigger (price-below from the horizon defaults) and
             // any added Target-Price / Movement-Amount EXIT fire via the trigger
@@ -637,7 +678,7 @@ export const placeTrade = defineTool({
             accountId: ctx.accountId,
             symbol: ticker,
             decision: "INITIATE",
-            reasoning: `${args.direction} ${finalShares} shares — submitting market order (target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)})`,
+            reasoning: `${args.direction} ${finalShares} shares — submitting market order (target $${target.toFixed(2)}, stop $${stop.toFixed(2)})`,
             thesisId: args.thesis_id,
             positionId: pos.id,
             orderId: ord.id,
@@ -655,8 +696,8 @@ export const placeTrade = defineTool({
                 ticker,
                 direction: args.direction,
                 entry: args.entry_price,
-                target_price: args.target_price,
-                stop_loss: args.stop_loss,
+                target_price: target,
+                stop_loss: stop,
                 shares: finalShares,
                 position_id: pos.id,
                 order_id: ord.id,
@@ -818,8 +859,8 @@ export const placeTrade = defineTool({
             direction: args.direction,
             shares: finalShares,
             entryPrice: args.entry_price,
-            targetPrice: args.target_price,
-            stopLoss: args.stop_loss,
+            targetPrice: target,
+            stopLoss: stop,
             positionId: position.id,
             orderId: order.id,
             alpacaOrderId: null,
@@ -990,8 +1031,8 @@ export const placeTrade = defineTool({
         analystId,
         ticker,
         fillPrice,
-        targetPrice: args.target_price,
-        stopLoss: args.stop_loss,
+        targetPrice: target,
+        stopLoss: stop,
         positionId: position.id,
         runId: ctx.runId,
         via: "place_trade",
@@ -1067,8 +1108,8 @@ export const placeTrade = defineTool({
               qty: emailedShares,
               avgCost: emailedAvgCost,
               currentPrice: fillPrice,
-              stopLoss: args.stop_loss,
-              targetPrice: args.target_price,
+              stopLoss: stop,
+              targetPrice: target,
               analystName: config.name,
               thesisSummary: thesis ? (getThesisSnapshotText(thesis) || null) : null,
               environment: positionEnvironment,
@@ -1093,7 +1134,7 @@ export const placeTrade = defineTool({
 
       const tickerTag = args.direction === "LONG" ? "Long" : "Short";
       const tickerSummary = didFill
-        ? `Placed ${args.direction} ${finalShares} shares @ $${fillPrice.toFixed(2)} — target $${args.target_price.toFixed(2)}, stop $${args.stop_loss.toFixed(2)}`
+        ? `Placed ${args.direction} ${finalShares} shares @ $${fillPrice.toFixed(2)} — target $${target.toFixed(2)}, stop $${stop.toFixed(2)}`
         : `Order submitted (pending): ${args.direction} ${finalShares} shares @ $${fillPrice.toFixed(2)}`;
 
       return {
@@ -1108,8 +1149,8 @@ export const placeTrade = defineTool({
           direction: args.direction,
           shares: finalShares,
           entryPrice: fillPrice,
-          targetPrice: args.target_price,
-          stopLoss: args.stop_loss,
+          targetPrice: target,
+          stopLoss: stop,
           positionId: position.id,
           orderId: order.id,
           alpacaOrderId,
