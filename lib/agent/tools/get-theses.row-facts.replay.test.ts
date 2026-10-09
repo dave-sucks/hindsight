@@ -12,6 +12,15 @@
  */
 import { replayTool, thesisRow, positionRow, thesisUpdateRow, agentConfigRow, REPLAY_ANALYST_ID, REPLAY_USER_ID } from "@/lib/replay";
 
+// A fixed clock inside the session (Wednesday 2026-10-07, 2 PM ET): the day's
+// change and its stamp are what a quote carries while the market is open, so
+// the test reads the same at any hour. Set before the dates below are made.
+jest.useFakeTimers({
+  now: new Date("2026-10-07T18:00:00Z"),
+  doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"],
+});
+afterAll(() => jest.useRealTimers());
+
 const DAY = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * DAY);
 const day = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
