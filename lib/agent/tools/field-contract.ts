@@ -74,7 +74,8 @@ const RULE_DEFS = {
   MIN_CONFIDENCE: {
     says: "A buy needs the analyst's minimum confidence (the composite score).",
     refusal: "place_trade / record_thesis — names the composite and the minimum.",
-    markers: { daily: "Min confidence", discovery: "Min confidence", chat: "minConfidence", writer: "minimum confidence" },
+    // Every door reads it in the analyst's brief (lib/agent/analyst-brief.ts).
+    markers: { daily: "Min confidence", discovery: "Min confidence", chat: "Min confidence", writer: "Min confidence" },
   },
   LEVEL_ORDER: {
     says: "Entry, target and stop sit in order against each other and the live price (long: stop < entry < target).",

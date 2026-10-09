@@ -13,7 +13,8 @@
  */
 
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { capacityLine, isFull, type AnalystCapacity } from "@/lib/agent/capacity";
+import type { AnalystCapacity } from "@/lib/agent/capacity";
+import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { conditionSentence, isGroup, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
@@ -23,7 +24,8 @@ import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 import type { HeldThroughFloor } from "@/lib/agent/stock-facts";
 
 interface TacticalPromptArgs {
-  analyst: { name: string; mandate: string | null };
+  /** The analyst's row and the account's setup numbers (lib/agent/analyst-brief.ts). */
+  analyst: BriefAnalyst;
   thesis: {
     id: string;
     ticker: string;
@@ -92,7 +94,7 @@ interface TacticalPromptArgs {
   } | null;
   /** The account's playbook numbers laid over the catalog (DAV-273). */
   setupOverrides?: SetupOverrides | null;
-  /** How full the analyst is, on a buy fire (DAV-292). Null = not a buy, or no limit. */
+  /** How full the analyst is, on a buy fire (DAV-292); the brief states it. Null = not a buy, or no limit. */
   capacity?: AnalystCapacity | null;
   /**
    * The situations the stock is in and what each asks (lib/agent/situations.ts),
@@ -179,7 +181,7 @@ ${latestDigest.narrative.trim()}
 `
     : "";
 
-  return `You are ${analyst.name}.${analyst.mandate ? ` ${analyst.mandate}` : ""}
+  return `${analystBrief(analyst, args.capacity)}
 
 A trigger you set on your $${thesis.ticker} thesis just fired. Your job is to decide what to do about it — fast, focused, one decision.
 
@@ -211,15 +213,7 @@ THESIS (id: ${thesis.id})
   invalidation conditions: ${thesis.invalidationConds.length ? thesis.invalidationConds.join("; ") : "(none recorded)"}
   entry: ${thesis.entryPrice != null ? `$${thesis.entryPrice}` : "(unset)"}, target: ${thesis.targetPrice != null ? `$${thesis.targetPrice}` : "(unset)"}, stop: ${thesis.stopLoss != null ? `$${thesis.stopLoss}` : "(unset)"}
 
-${
-  capacityLine(args.capacity)
-    ? `THE ANALYST'S ROOM\n  ${capacityLine(args.capacity)}${
-        isFull(args.capacity)
-          ? `\n  READ THIS BEFORE YOU RESEARCH. This analyst cannot OPEN a new position. (Adding to a stock it already holds is not capped and never reaches this block.) Your whole run is ONE update_thesis on this thesis, rationale starting "Buy fired into a full analyst (${args.capacity!.open} of ${args.capacity!.max})". Leave the buy trigger as it is.`
-          : ""
-      }\n\n`
-    : ""
-}THE SETUP THIS PLAN WAS WRITTEN ON
+THE SETUP THIS PLAN WAS WRITTEN ON
 ${
   setup
     ? `  ${setup.id} — ${setup.name} (${thesis.horizon ?? "horizon unset"})

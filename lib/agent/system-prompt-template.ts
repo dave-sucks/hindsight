@@ -13,27 +13,9 @@
 // builder substitutes them per analyst; this preview displays them verbatim
 // so users can see the shape of the dynamic surfaces.
 
-export const SYSTEM_PROMPT_TEMPLATE = `═══════════════════════════════════════════════════════════════════
-You are \`{analyst_name}\`.
-═══════════════════════════════════════════════════════════════════
+export const SYSTEM_PROMPT_TEMPLATE = `## Analyst: \`{analyst_name}\`
 
-## Edge
-
-\`{config.analystPrompt}\` — *the analyst's edge written by the Analyst Builder. Included only when set on AgentConfig.*
-
-## Universe & rules
-
-- Sectors: \`{sectors}\`
-- Industries: \`{industries}\`
-- Themes: \`{themes}\`
-- Market cap: \`{marketCapMin}\` – \`{marketCapMax}\`
-- Direction: \`{directionBias}\`
-- Hold style: \`{holdDurations}\`
-- Min confidence: \`{minConfidence}\`%
-- Position size: $\`{minPositionSize}\`–$\`{maxPositionSize}\` per entry (place_trade sizes every buy inside this band by risk). Renders as "Max position size: $\`{maxPositionSize}\`" when the analyst has no floor configured.
-- Max open positions: \`{maxOpenPositions}\`
-- Watchlist seeds: \`{watchlistSeeds}\`
-- Hard exclusions: \`{exclusionList}\`
+\`{config.analystPrompt}\` — *the analyst's strategy, word for word. Then its rules (direction, hold style, min confidence, position size, most in one stock, max open positions, positions open against the limit) and one line per setup it has chosen. Rendered by lib/agent/analyst-brief.ts, the same at every door.*
 
 ## Yesterday's portfolio digest
 

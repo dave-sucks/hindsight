@@ -182,7 +182,7 @@ describe("the 09-14 trigger runs", () => {
     }).text;
     const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, rationale: "Gave back 8% from the high." } as Trigger;
     return buildTacticalSystemPrompt({
-      analyst: { name: fl.analyst.name, mandate: null },
+      analyst: { name: fl.analyst.name, analystPrompt: null },
       thesis: {
         id: fx.thesis0918.id,
         ticker: "CEG",
@@ -250,7 +250,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
   it("the prompt lists the three open reviews and tells the run its update_thesis answers each, by name", () => {
     const context = stockContextFor({ ticker: "MU", rows: loaded, triggers: mu.triggers, now: new Date(mu.loadedAt) }).text!;
     const prompt = buildTacticalSystemPrompt({
-      analyst: { name: "PEAD Specialist", mandate: null },
+      analyst: { name: "PEAD Specialist", analystPrompt: null },
       thesis: {
         id: "cmrp6chyu000h04l5roqq5ha1",
         ticker: "MU",

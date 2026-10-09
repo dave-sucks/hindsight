@@ -59,11 +59,9 @@ import { prisma } from "@/lib/prisma";
 import { pullThesisData } from "@/lib/agent/thesis-research/pull-data";
 
 const baseOpts: Omit<WriterResearchPromptOpts, "mode" | "existingThesis"> = {
-  analystName: "Test Analyst",
-  analystPrompt: null,
+  analyst: { name: "Test Analyst", analystPrompt: null, minConfidence: 60 },
   ticker: "NVDA",
   reason: "Promotion refresh — write PROMOTED triggers",
-  minConfidence: 60,
   runDate: "2026-05-27",
 };
 
@@ -425,7 +423,7 @@ describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
     ...baseOpts,
     mode: "mint",
     existingThesis: null,
-    analystName: "PEAD Specialist",
+    analyst: { ...baseOpts.analyst, name: "PEAD Specialist" },
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
   });
 

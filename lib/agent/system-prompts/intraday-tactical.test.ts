@@ -23,7 +23,7 @@ const trailTrigger: Trigger = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeArgs(overrides: Record<string, any> = {}): any {
   return {
-    analyst: { name: "PEAD Specialist", mandate: null },
+    analyst: { name: "PEAD Specialist", analystPrompt: null },
     thesis: {
       id: "thesis_1",
       ticker: "HPE",
@@ -181,37 +181,28 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
 // DAV-292 — the tactical run reads how full the analyst is before it
 // researches. Replay: ETN, Secular Compounder, 2026-09-18 09:45 ET — the run
 // confirmed the buy by its setup, called place_trade, and only then learned
-// the analyst held 4 of 4.
+// the analyst held 4 of 4. Since step 10 the room is a line of the analyst's
+// brief, and what a buy into a full analyst should do is BUY_BLOCKED_FULL's.
 describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () => {
   const thesis = { ...makeArgs().thesis, ticker: "ETN", setupId: "COMPOUNDER_ACCUMULATION" };
-  it("a full analyst: says so first, and the run is one update — no research, no place_trade", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs({ thesis, capacity: { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] } }));
-    expect(prompt).toContain("THE ANALYST'S ROOM");
-    expect(prompt).toContain("Positions: 4 of 4 — this analyst is FULL.");
-    expect(prompt).toContain("READ THIS BEFORE YOU RESEARCH.");
-    expect(prompt).toContain('rationale starting "Buy fired into a full analyst (4 of 4)"');
-    expect(prompt).toContain("Leave the buy trigger as it is.");
-    expect(prompt.indexOf("THE ANALYST'S ROOM")).toBeLessThan(prompt.indexOf("THE SETUP THIS PLAN WAS WRITTEN ON"));
+  it("a full analyst: the brief says so before the stock; the answer is the situation's", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({
+      thesis,
+      capacity: { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] },
+      situations: { codes: ["BUY_BLOCKED_FULL"], guidance: guidanceFor(["BUY_BLOCKED_FULL"]) },
+    }));
+    expect(prompt).toContain("- Positions: 4 of 4 — this analyst is FULL. place_trade will refuse any new buy until one closes. It holds $ABT, $ASML, $CEG, $WST.");
+    expect(prompt.indexOf("this analyst is FULL")).toBeLessThan(prompt.indexOf("THE SETUP THIS PLAN WAS WRITTEN ON"));
+    expect(prompt).toContain(SITUATIONS.BUY_BLOCKED_FULL.guidance);
+    expect(prompt).not.toContain("THE ANALYST'S ROOM");
+    expect(prompt).not.toContain("READ THIS BEFORE YOU RESEARCH");
   });
   it("an analyst with room: the line only", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs({ thesis, capacity: { open: 4, max: 6, held: ["FIVE", "IOT", "MU", "NVDA"] } }));
-    expect(prompt).toContain("Positions: 4 of 6 — 2 free.");
-    expect(prompt).not.toContain("READ THIS BEFORE YOU RESEARCH.");
+    expect(prompt).toContain("- Positions: 4 of 6 — 2 free.");
   });
-  it("not a buy fire: no room block at all", () => {
-    expect(buildTacticalSystemPrompt(makeArgs({ thesis }))).not.toContain("THE ANALYST'S ROOM");
-  });
-});
-
-// The capacity block is for a fire that would OPEN a position. Adding to a
-// stock the analyst already holds takes no slot (caught 2026-09-18).
-describe("buildTacticalSystemPrompt — a full analyst can still add to what it owns", () => {
-  it("says OPEN a new position, not any buy", () => {
-    const prompt = buildTacticalSystemPrompt(
-      makeArgs({ thesis: { ...makeArgs().thesis, ticker: "ETN" }, capacity: { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] } }),
-    );
-    expect(prompt).toContain("cannot OPEN a new position");
-    expect(prompt).toContain("Adding to a stock it already holds is not capped");
+  it("not a buy fire: no room line at all", () => {
+    expect(buildTacticalSystemPrompt(makeArgs({ thesis }))).not.toContain("Positions:");
   });
 });
 

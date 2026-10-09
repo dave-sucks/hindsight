@@ -28,7 +28,7 @@ import type { ModelMessage } from "ai";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import { promptConfigFromAnalyst } from "@/lib/inngest/functions/morning-research";
+import { BRIEF_FIELDS } from "@/lib/agent/analyst-brief";
 import { stockContextFor, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
@@ -93,7 +93,7 @@ async function main() {
   if (run.mode === "MORNING_PLAN") {
     mode = "research-run"; runMode = "MORNING_PLAN";
     const creds = (await resolveAlpacaCredentials(analyst.userId, env)) ?? undefined;
-    promptArgs = { config: promptConfigFromAnalyst(analyst as never, watch), runInput: await buildRunInput(analyst.id, analyst.userId, creds) };
+    promptArgs = { config: briefOf(analyst), runInput: await buildRunInput(analyst.id, analyst.userId, creds) };
     notes.push("promptArgs.runInput is the account as it is today, not on the run's day; the stock rows the run read are in messages.");
   } else if (run.mode === "INTRADAY_TACTICAL") {
     mode = "tactical"; runMode = "INTRADAY_TACTICAL";
@@ -105,7 +105,7 @@ async function main() {
     const position = await prisma.position.findFirst({ where: { analystId: analyst.id, symbol: ticker, status: "OPEN" }, select: { quantity: true, avgCost: true, openedAt: true, peakPrice: true } });
     const firedPrice = (() => { const u = messages[0]; const text = Array.isArray(u?.content) ? u.content.map((p) => p.text ?? "").join(" ") : String(u?.content ?? ""); const m = text.match(/fired at \$([\d.]+)/); return m ? Number(m[1]) : null; })();
     promptArgs = {
-      analyst: { name: analyst.name, mandate: analyst.analystPrompt },
+      analyst: briefOf(analyst),
       thesis: {
         id: thesis.id, ticker, direction: thesis.direction, horizon: thesis.horizon, setupId: (thesis as { setupId?: string | null }).setupId ?? null,
         coreBelief: thesis.coreBelief, keyAssumptions: thesis.keyAssumptions, invalidationConds: thesis.invalidationConds,
@@ -125,9 +125,9 @@ async function main() {
     mode = "principal"; runMode = "PRINCIPAL_CHAT";
     promptArgs = {
       scopedAnalyst: {
-        id: analyst.id, name: analyst.name, analystPrompt: analyst.analystPrompt ?? null, directionBias: analyst.directionBias, holdDurations: analyst.holdDurations,
-        sectors: analyst.sectors, industries: analyst.industries, themes: analyst.themes, marketCapMin: analyst.marketCapMin != null ? Number(analyst.marketCapMin) : null, marketCapMax: analyst.marketCapMax != null ? Number(analyst.marketCapMax) : null,
-        watchlist: watch, exclusionList: analyst.exclusionList, minConfidence: analyst.minConfidence, maxPositionSize: Number(analyst.maxPositionSize), maxOpenPositions: analyst.maxOpenPositions,
+        id: analyst.id, ...briefOf(analyst), watchlist: watch,
+        sectors: analyst.sectors, industries: analyst.industries, themes: analyst.themes, exclusionList: analyst.exclusionList,
+        marketCapMin: analyst.marketCapMin != null ? Number(analyst.marketCapMin) : null, marketCapMax: analyst.marketCapMax != null ? Number(analyst.marketCapMax) : null,
       },
     };
   } else {
@@ -146,6 +146,11 @@ async function main() {
   console.log(`${file}: ${kept.length} messages kept of ${messages.length}, ${JSON.stringify(kept).length.toLocaleString("en-US")} characters`);
   console.log(`the run then did: ${decided.join(" | ")}`);
   for (const n of notes) console.log(`note: ${n}`);
+}
+
+/** The analyst as the brief reads it (lib/agent/analyst-brief.ts), money columns as numbers. */
+function briefOf(analyst: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(BRIEF_FIELDS.map((k) => [k, ["minPositionSize", "maxPositionSize", "maxPositionTotal"].includes(k) ? Number(analyst[k] ?? 0) : analyst[k] ?? null]));
 }
 
 /** A chat with no analyst selected: cut before the model's first turn. */

@@ -13,7 +13,6 @@ import type { PromptName } from "@/lib/agent/tools/field-contract";
 import { guidanceFor } from "@/lib/agent/situations";
 
 const runInput = {
-  analyst: { name: "Secular Compounder", mandate: null, voice: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, exclusionList: [], minConfidence: 70, minPositionSize: 3000, maxPositionSize: 10000, maxOpenPositions: 6 },
   portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
   watchlist: [], activeTheses: [], performance: null, recentClosedTrades: [], priorityReviews: [],
   triggersFiredSinceLastRun: [], triggersMatchingNow: [],
@@ -26,7 +25,7 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
   daily: () => buildDailyRunSystemPromptV2({ name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),
   tactical: () =>
     buildTacticalSystemPrompt({
-      analyst: { name: "PEAD Specialist", mandate: null },
+      analyst: { name: "PEAD Specialist", analystPrompt: null },
       thesis: { id: "thesis_1", ticker: "HPE", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"], entryPrice: 53, targetPrice: 70, stopLoss: 50, snapshotText: null, bullCaseBullets: [], bearCaseBullets: [], researchAge: { freshness: "fresh", daysOld: 1, horizonThreshold: 7 }, allTriggers: [trailTrigger] },
       trigger: trailTrigger, signal: null, position: { quantity: 60, avgCost: 53.1, daysHeld: 10, peakPrice: 62.7 }, recentUpdates: [], latestDigest: null,
       // A trail sale on a holding: the one situation it puts the stock in.
@@ -38,5 +37,5 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
       scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 6 },
     }),
   writer: () =>
-    buildWriterResearchPrompt({ analystPrompt: null, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", minConfidence: 70, runDate: "2026-09-25" } as never),
+    buildWriterResearchPrompt({ analyst: { analystPrompt: null, minConfidence: 70 }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-09-25" } as never),
 };
