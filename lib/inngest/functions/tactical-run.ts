@@ -189,6 +189,9 @@ export const tacticalRun = inngest.createFunction(
             accountId: true,
             name: true,
             analystPrompt: true,
+            directionBias: true,
+            holdDurations: true,
+            setupIds: true,
             sectors: true,
             minConfidence: true,
             minPositionSize: true,
@@ -750,7 +753,7 @@ export const tacticalRun = inngest.createFunction(
       const setupOverrides = await loadSetupOverrides(agentConfig.accountId);
       const systemPrompt = buildTacticalSystemPrompt({
         setupOverrides,
-        analyst: { name: agentConfig.name, mandate: agentConfig.analystPrompt },
+        analyst: { ...agentConfig, setupOverrides },
         thesis: {
           id: thesis.id,
           ticker: thesis.ticker,

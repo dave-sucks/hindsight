@@ -16,7 +16,7 @@
  */
 
 import type { RunInput } from "./run-input";
-import { capacityLine } from "@/lib/agent/capacity";
+import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 
@@ -52,58 +52,26 @@ export interface AgentConfigInput {
 // on each thesis row via get_theses' `needsAction` field.
 
 export function buildDailyRunSystemPromptV2(
-  config: AgentConfigInput,
+  analyst: BriefAnalyst,
   runInput: RunInput,
 ): string {
-  const name = config.name || "Research Analyst";
-  const directionLabel =
-    config.directionBias === "BOTH"
-      ? "Long & Short"
-      : config.directionBias === "LONG_ONLY"
-        ? "LONG only"
-        : config.directionBias === "SHORT_ONLY"
-          ? "SHORT only"
-          : (config.directionBias || "BOTH");
-  const hold = config.holdDurations?.length ? config.holdDurations.join(", ") : "SWING";
-  const minConf = config.minConfidence ?? 70;
-  const maxPosSize = config.maxPositionSize ?? 2500;
-  const minPosSize = config.minPositionSize ?? 0;
-  // Position sizing is a BAND, not a ceiling. When a floor is configured we
-  // state the band — place_trade rejects entries on either side of it, so the
-  // agent should size into it up front rather than learn from a rejection.
-  const posSizeLine =
-    minPosSize > 0
-      ? `- Position size: $${minPosSize.toLocaleString()}–$${maxPosSize.toLocaleString()} per entry (place_trade sizes every buy inside this band by risk)`
-      : `- Max position size: $${maxPosSize.toLocaleString()}`;
-  const maxOpenPos = config.maxOpenPositions ?? 5;
+  // How full this analyst is (DAV-292). The Compounder held 4 of 4 on
+  // 2026-09-18 with seven priced buy plans it could not buy, and nothing
+  // said so until place_trade refused ETN.
+  // Counted the way place_trade counts: held positions PLUS buys awaiting
+  // approval, which have already taken their slot.
+  const queued = runInput.pendingApprovalCount ?? 0;
+  const capacity = {
+    open: (runInput.portfolio?.positions?.length ?? 0) + queued,
+    max: analyst.maxOpenPositions ?? null,
+    held: (runInput.portfolio?.positions ?? []).map((p) => p.symbol),
+    awaitingApproval: queued,
+  };
 
   const sections: string[] = [];
 
-  // ── Identity ────────────────────────────────────────────────────────────
-  sections.push(
-    [
-      "═══════════════════════════════════════════════════════════════════",
-      `You are ${name}.`,
-      "═══════════════════════════════════════════════════════════════════",
-    ].join("\n"),
-  );
-
-  // ── Edge (analyst's existing analystPrompt — unchanged) ────────────────
-  if (config.analystPrompt) {
-    sections.push(`## Edge\n\n${config.analystPrompt}`);
-  }
-
-  // ── Universe & rules ───────────────────────────────────────────────────
-  sections.push(
-    [
-      "## Rules",
-      `- Direction: ${directionLabel}`,
-      `- Hold style: ${hold}`,
-      `- Min confidence: ${minConf}%`,
-      posSizeLine,
-      `- Max open positions: ${maxOpenPos}`,
-    ].join("\n"),
-  );
+  // ── The analyst (lib/agent/analyst-brief.ts, the same in every door) ───
+  sections.push(analystBrief(analyst, capacity));
 
   // ── House rules (lib/agent/house-rules.ts, the same in every door) ─────
   sections.push(HOUSE_RULES);
@@ -148,23 +116,9 @@ export function buildDailyRunSystemPromptV2(
     const equity = runInput.portfolio?.portfolioValue ?? 0;
     const cashPct = equity > 0 ? Math.round((cash / equity) * 100) : null;
     const atBuy = (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
-    // How full this analyst is (DAV-292). The Compounder held 4 of 4 on
-    // 2026-09-18 with seven priced buy plans it could not buy, and nothing
-    // said so until place_trade refused ETN.
-    // Counted the way place_trade counts: held positions PLUS buys awaiting
-    // approval, which have already taken their slot.
-    const queued = runInput.analyst?.pendingApprovalCount ?? 0;
-    const capacity = {
-      open: (runInput.portfolio?.positions?.length ?? 0) + queued,
-      max: config.maxOpenPositions ?? null,
-      held: (runInput.portfolio?.positions ?? []).map((p) => p.symbol),
-      awaitingApproval: queued,
-    };
-    const room = capacityLine(capacity);
     sections.push(
       [
         "## Regime and cash",
-        ...(room ? [room] : []),
         `Cash is $${Math.round(cash).toLocaleString()}${cashPct != null ? ` (${cashPct}% of equity)` : ""}. \`get_portfolio_context\` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.`,
         "- **Risk-on:** full size. **Cautious** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this market — say so on the row rather than buying one. **Risk-off** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
         `- **Cash duty.** Cash above 25% of equity, a watch name at its buy level${atBuy.length ? ` (today: ${atBuy.join(", ")})` : ""}, and a risk-on market: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`,

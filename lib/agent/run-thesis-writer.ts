@@ -42,6 +42,8 @@
 
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
+import { analystBrief, setupLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
+import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
@@ -80,7 +82,6 @@ import { updateThesis } from "@/lib/agent/tools/update-thesis";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { describeTrigger } from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { VOICE_RULES } from "@/lib/agent/voice";
 
 // ── Phase budgets ───────────────────────────────────────────────────────
 // V1's inner synthesis abort was 180s against an observed 187-192s EVERY
@@ -155,6 +156,9 @@ interface WriterAnalyst {
   name: string;
   setupIds: string[];
   analystPrompt: string | null;
+  directionBias: string;
+  holdDurations: string[];
+  maxOpenPositions: number;
   sectors: string[];
   industries: string[];
   themes: string[];
@@ -176,6 +180,9 @@ async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | nul
       name: true,
       setupIds: true,
       analystPrompt: true,
+      directionBias: true,
+      holdDurations: true,
+      maxOpenPositions: true,
       sectors: true,
       industries: true,
       themes: true,
@@ -297,13 +304,12 @@ async function buildWriterToolCtx(
 // ── Research prompt ─────────────────────────────────────────────────────
 
 export interface WriterResearchPromptOpts {
-  analystName: string;
-  analystPrompt: string | null;
+  /** The analyst's row and the account's setup numbers (lib/agent/analyst-brief.ts). */
+  analyst: BriefAnalyst;
   ticker: string;
   mode: "mint" | "refresh";
   existingThesis: WriterExistingThesis | null;
   reason: string;
-  minConfidence: number;
   /** ISO YYYY-MM-DD (UTC) — date-awareness block. */
   runDate: string;
   promotionContext?: RunThesisWriterArgs["promotionContext"];
@@ -313,7 +319,7 @@ export interface WriterResearchPromptOpts {
    * absent → no block.
    */
   setupRecord?: string[];
-  /** The setups this analyst writes on (setupsForAnalyst) — the prompt lists them. */
+  /** The setups this analyst writes on (setupsForAnalyst) — the prompt lists each in full (setupLines). */
   setups?: Setup[];
   /** P1-35: this analyst sold this ticker within the last 14 days. */
   priorExit?: {
@@ -458,22 +464,17 @@ rationale — the next daily run executes it, not you.
 YOUR SETUPS — every LONG/SHORT plan is written on one of these
 ═══════════════════════════════════════════════════════════════════
 ${setups
-  .map(
-    (s) => `${s.id} — ${s.name}
-  ${s.summary}
-  Needs: ${s.preconditions.join("; ")}
-  Entry: ${s.entry.text}
-  Stop: ${s.stop.text}
-  Target: ${s.target.text}
-  Time: ${s.time.text}`,
-  )
+  .map((s) => setupLines(s).join("\n  "))
   .join("\n\n")}
 `
     : "";
 
-  return `You are ${opts.analystName}, writing one deep-research thesis on $${T}.
+  return `${analystBrief(opts.analyst)}
 
-${opts.analystPrompt ? `Your strategy:\n${opts.analystPrompt}\n` : ""}${setupsBlock}
+${HOUSE_RULES}
+
+You are writing one deep-research thesis on $${T}.
+${setupsBlock}
 WHY YOU WERE DISPATCHED
 ${opts.reason}
 
@@ -605,7 +606,7 @@ every field; the judgment rules:
      stop hits, scaled by conviction (LOW ×0.5 … STRONG ×1.25). A tight,
      honest stop is what earns size.
    • confidence context: this analyst's minimum confidence for
-     trade-eligible coverage is ${opts.minConfidence}/100 — calibrate composite +
+     trade-eligible coverage is ${opts.analyst.minConfidence ?? 70}/100 — calibrate composite +
      conviction honestly against that bar.${
        opts.setupRecord?.length
          ? `\n   • your record by setup (closed trades since 2026-05-27):\n${opts.setupRecord.map((l) => `       ${l}`).join("\n")}`
@@ -621,9 +622,9 @@ ${priorExitBlock}
 ═══════════════════════════════════════════════════════════════════
 HOW YOU WRITE — your decision rationale and each trigger's note
 ═══════════════════════════════════════════════════════════════════
-The research note in STEP 1 keeps its sections and its citations; these
-rules cover what you put in submit_thesis for the owner to read.
-${VOICE_RULES}
+The research note in STEP 1 keeps its sections and its citations; the
+rules under "How you write" above cover what you put in submit_thesis
+for the owner to read.
 
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns
@@ -839,15 +840,14 @@ export async function writerResearchPhase(
     }
 
     // The playbook's numbers as this account set them (DAV-273).
-    const seatSetups = setupsForAnalyst(analyst.setupIds, await loadSetupOverrides(analyst.accountId));
+    const setupOverrides = await loadSetupOverrides(analyst.accountId);
+    const seatSetups = setupsForAnalyst(analyst.setupIds, setupOverrides);
     const systemPrompt = buildWriterResearchPrompt({
-      analystName: analyst.name,
-      analystPrompt: analyst.analystPrompt,
+      analyst: { ...analyst, setupOverrides },
       ticker: T,
       mode: args.mode,
       existingThesis,
       reason: args.reason,
-      minConfidence: analyst.minConfidence,
       runDate: new Date().toISOString().slice(0, 10),
       promotionContext: args.promotionContext ?? null,
       priorExit,

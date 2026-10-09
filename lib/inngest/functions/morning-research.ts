@@ -6,6 +6,7 @@ import { saveRunThread } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalNudge } from "@/lib/agent/refusal-carryover";
 import { MODES } from "@/lib/agent/modes";
@@ -21,50 +22,6 @@ import {
 } from "@/lib/market-hours";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
-
-/**
- * The analyst's row as the daily-run prompt wants it.
- *
- * Exported and pure so the one thing that goes wrong here is testable. This
- * used to pass `slotsRemaining` in `maxOpenPositions` ("Use remaining slots,
- * not max") — harmless while nothing did arithmetic with it, then DAV-292's
- * book line read it as the limit against the real open count and told a
- * half-full analyst it was full. A test on the prompt alone passes with that
- * bug restored, because the prompt was always handed a number by this name;
- * the fault was here. The prompt states the room itself and the tools own
- * the cap, so the prompt gets the LIMIT.
- */
-export function promptConfigFromAnalyst(
-  config: {
-    name: string;
-    analystPrompt: string | null;
-    directionBias: string;
-    holdDurations: string[];
-    sectors: string[];
-    signalTypes: string[];
-    minConfidence: number;
-    minPositionSize: unknown;
-    maxPositionSize: unknown;
-    maxOpenPositions: number;
-    exclusionList: string[];
-  },
-  watchlistSymbols: string[],
-) {
-  return {
-    name: config.name,
-    analystPrompt: config.analystPrompt ?? undefined,
-    directionBias: config.directionBias,
-    holdDurations: config.holdDurations,
-    sectors: config.sectors,
-    signalTypes: config.signalTypes,
-    minConfidence: config.minConfidence,
-    minPositionSize: Number(config.minPositionSize),
-    maxPositionSize: Number(config.maxPositionSize),
-    maxOpenPositions: config.maxOpenPositions,
-    watchlist: watchlistSymbols,
-    exclusionList: config.exclusionList,
-  };
-}
 
 export const morningResearch = inngest.createFunction(
   {
@@ -243,9 +200,6 @@ export const morningResearch = inngest.createFunction(
 
         console.log(`[morning-research] Starting agent run for ${config.name} (config=${config.id}, run=${run.id})`);
 
-        // 2c. Build system prompt with structured run input
-        const agentConfig = promptConfigFromAnalyst(config, watchlistSymbols);
-
         // Resolve per-user Alpaca credentials for this analyst's owner,
         // scoped to the run's environment (PAPER vs LIVE).
         const alpacaCreds =
@@ -264,7 +218,11 @@ export const morningResearch = inngest.createFunction(
         }
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
-        const systemPrompt = buildDailyRunSystemPromptV2(agentConfig, runInput);
+        // 2c. The prompt: the analyst's row (rendered once, lib/agent/analyst-brief.ts) and the run input.
+        const systemPrompt = buildDailyRunSystemPromptV2(
+          { ...config, setupOverrides: await loadSetupOverrides(config.accountId) },
+          runInput,
+        );
 
         // 2d. Create tools with run context, then enforce the
         // research-run allowlist (Fix #5). The unified route already

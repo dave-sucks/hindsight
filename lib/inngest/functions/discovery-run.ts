@@ -31,6 +31,7 @@ import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/to
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalNudge } from "@/lib/agent/refusal-carryover";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 
 export const discoveryRun = inngest.createFunction(
   {
@@ -240,28 +241,12 @@ export const discoveryRun = inngest.createFunction(
           money,
           bookBlock,
           setupRecord,
+          // The analyst's row: its brief and fence are rendered once
+          // (lib/agent/analyst-brief.ts), the strategy never truncated.
           config: {
-            name: config.name,
-            // FULL analystPrompt — never truncate. This is the analyst's
-            // edge, strategy, signal preferences, risk philosophy. Cutting
-            // it to 400 chars (prior behavior) reduced the analyst to a
-            // name and a fence; the agent had no idea who it was.
-            analystPrompt: config.analystPrompt ?? undefined,
-            sectors: config.sectors,
-            industries: config.industries,
-            themes: config.themes,
-            marketCapMin: config.marketCapMin,
-            marketCapMax: config.marketCapMax,
-            exclusionList: config.exclusionList,
-            // Strategy-relevant fields the prompt now uses to ground
-            // horizon selection, position sizing, and direction bias.
-            holdDurations: config.holdDurations,
-            directionBias: config.directionBias,
-            minConfidence: config.minConfidence,
-            maxPositionSize: Number(config.maxPositionSize),
-            maxOpenPositions: config.maxOpenPositions,
-            signalTypes: config.signalTypes,
+            ...config,
             watchlist: watchlistSymbols,
+            setupOverrides: await loadSetupOverrides(config.accountId),
           },
           // Phase 2 — exposed verbatim in the prompt body so the agent has
           // a value to plug into dispatch_thesis_research(analyst_id).

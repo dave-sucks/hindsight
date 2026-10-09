@@ -7,6 +7,7 @@
  */
 
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 
 // ── Model options per mode ────────────────────────────────────────────────────
 
@@ -593,24 +594,8 @@ export function buildPrincipalSystemPrompt(opts: {
    */
   moneyBlock?: string | null;
   bookBlock?: string | null;
-  scopedAnalyst?: {
-    id: string;
-    name: string;
-    analystPrompt: string | null;
-    directionBias: string;
-    holdDurations: string[];
-    sectors: string[];
-    industries: string[];
-    themes: string[];
-    /** Universe cap band in dollars. null = unbounded on that end. */
-    marketCapMin?: number | null;
-    marketCapMax?: number | null;
-    watchlist: string[];
-    exclusionList: string[];
-    minConfidence: number;
-    maxPositionSize: number;
-    maxOpenPositions: number;
-  } | null;
+  /** The analyst the chat is pinned to: its row, its watchlist, and the account's setup numbers. */
+  scopedAnalyst?: (BriefAnalyst & UniverseAnalyst & { id: string; name: string; watchlist: string[] }) | null;
 }): string {
   const scope = opts.scopedAnalyst;
   // Pre-rendered by the caller via context-bundle's formatters. Passed as
@@ -627,24 +612,12 @@ export function buildPrincipalSystemPrompt(opts: {
 This chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst. You don't need to pass analyst_id — the route handles it.
 
   • Analyst ID: \`${scope.id}\`
-  • Direction bias: ${scope.directionBias}
-  • Hold durations: ${scope.holdDurations.join(", ") || "—"}
-  • Sectors: ${scope.sectors.join(", ") || "—"}
-  • Industries: ${scope.industries.join(", ") || "—"}
-  • Themes: ${scope.themes.join(", ") || "—"}
-  • Market cap band: ${
-    scope.marketCapMin == null && scope.marketCapMax == null
-      ? "no bound"
-      : `${scope.marketCapMin != null ? `$${(scope.marketCapMin / 1e9).toFixed(scope.marketCapMin % 1e9 === 0 ? 0 : 1)}B` : "no floor"} – ${scope.marketCapMax != null ? `$${(scope.marketCapMax / 1e9).toFixed(scope.marketCapMax % 1e9 === 0 ? 0 : 1)}B` : "no ceiling"}`
-  } — this is a HARD fence. A name outside it cannot be traded by this seat, so it is not a candidate however good the setup reads. Nothing downstream rejects an out-of-band thesis for you: record_thesis has no market-cap check, so an out-of-band name minted here becomes a watchlist item that can never be acted on.
+${universeLines(scope).map((l) => `  • ${l}`).join("\n")}
+  The market cap band is a HARD fence. A name outside it cannot be traded by this seat, so it is not a candidate however good the setup reads. Nothing downstream rejects an out-of-band thesis for you: record_thesis has no market-cap check, so an out-of-band name minted here becomes a watchlist item that can never be acted on.
   • Watchlist: ${scope.watchlist.join(", ") || "(empty)"}
-  • Exclusion list: ${scope.exclusionList.join(", ") || "(empty)"}
-  • Sizing: minConfidence ${scope.minConfidence} · largest trade $${scope.maxPositionSize} · maxOpenPositions ${scope.maxOpenPositions}. Omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
+  • Sizing: omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
 
-Analyst prompt (the strategy):
-\`\`\`
-${scope.analystPrompt ?? "(no analystPrompt set)"}
-\`\`\`
+${analystBrief(scope)}
 
 Use \`get_theses\` and \`get_portfolio_context\` to pull current state without re-resolving the id. For cross-analyst questions ("how do my OTHER analysts compare"), use \`list_analysts\` etc.
 ${moneyBlock}${bookBlock}`

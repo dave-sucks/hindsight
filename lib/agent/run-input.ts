@@ -38,27 +38,8 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface RunInput {
-  analyst: {
-    name: string;
-    mandate: string | null;
-    voice: string | null;
-    directionBias: string;
-    holdDurations: string[];
-    sectors: string[];
-    // ── Universe (B1) ────────────────────────────────────────────────────
-    industries: string[];
-    themes: string[];
-    marketCapMin: number | null; // dollars; null = no lower bound
-    marketCapMax: number | null; // dollars; null = no upper bound
-    exclusionList: string[];
-    minConfidence: number;
-    /** Per-entry floor; 0 = none. See lib/agent/position-sizing.ts. */
-    minPositionSize: number;
-    maxPositionSize: number;
-    maxOpenPositions: number;
-    /** Buys awaiting approval — they have taken their slot already (place_trade counts them). */
-    pendingApprovalCount?: number;
-  };
+  /** Buys awaiting approval — they have taken their slot already (place_trade counts them). */
+  pendingApprovalCount?: number;
   portfolio: {
     cash: number;
     buyingPower: number;
@@ -851,24 +832,7 @@ export async function buildRunInput(
   );
 
   return {
-    analyst: {
-      name: config.name,
-      mandate: config.analystPrompt,
-      voice: null,
-      directionBias: config.directionBias,
-      holdDurations: config.holdDurations,
-      sectors: config.sectors,
-      industries: config.industries,
-      themes: config.themes,
-      marketCapMin: config.marketCapMin != null ? Number(config.marketCapMin) : null,
-      marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
-      exclusionList: config.exclusionList,
-      minConfidence: config.minConfidence,
-      minPositionSize: Number(config.minPositionSize),
-      maxPositionSize: Number(config.maxPositionSize),
-      maxOpenPositions: config.maxOpenPositions,
-      pendingApprovalCount,
-    },
+    pendingApprovalCount,
     portfolio: {
       cash,
       buyingPower,

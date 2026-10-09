@@ -143,14 +143,23 @@ async function liveReads(c: HeroCase, inSession: boolean): Promise<Record<string
 
 function systemFor(c: HeroCase): string {
   switch (c.mode) {
-    case "tactical":
-      return buildTacticalSystemPrompt(c.promptArgs as never);
-    case "thesis-writer":
-      return buildWriterResearchPrompt({ ...c.promptArgs, setups: setupsForAnalyst(c.promptArgs.setupIds as string[]) } as never);
+    case "tactical": {
+      // Cases saved before step 10 carry the analyst as { name, mandate }.
+      const a = c.promptArgs.analyst as Record<string, unknown>;
+      return buildTacticalSystemPrompt({ ...c.promptArgs, analyst: { ...a, analystPrompt: a.analystPrompt ?? a.mandate ?? null } } as never);
+    }
+    case "thesis-writer": {
+      // Cases saved before step 10 carry the analyst's fields loose on the arguments.
+      const p = c.promptArgs;
+      const analyst = (p.analyst as Record<string, unknown> | undefined) ?? { name: p.analystName, analystPrompt: p.analystPrompt, minConfidence: p.minConfidence, setupIds: p.setupIds };
+      return buildWriterResearchPrompt({ ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]) } as never);
+    }
     case "research-run": {
       // JSON turned the refusals' dates into strings; the builder wants dates.
-      const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }> };
+      const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
       for (const r of runInput.openRefusals ?? []) r.createdAt = new Date(r.createdAt);
+      // Cases saved before step 10 carry the count on the run input's analyst copy.
+      runInput.pendingApprovalCount ??= runInput.analyst?.pendingApprovalCount;
       return buildDailyRunSystemPromptV2(c.promptArgs.config as never, runInput as never);
     }
     default:
