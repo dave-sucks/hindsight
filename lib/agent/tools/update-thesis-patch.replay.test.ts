@@ -239,24 +239,3 @@ describe("the two production close-outs, replayed end to end", () => {
     });
   }
 });
-
-describe("manage_position(update_targets): the stop and target in place, sent back", () => {
-  it("NVDA 10-07 shape: stop $236 and target $322 restated — a no-op with no Activity line", async () => {
-    const fx = fixture.NVDA;
-    const thesis = thesisRow({ ...(fx.thesis as Row), status: "HOLDING" });
-    const r = await replayTool("manage-position", "managePosition", {
-      seed: {
-        thesis: [thesis],
-        position: [positionRow({ id: "pos_nvda", symbol: "NVDA", ...fx.position, stopLoss: 236, targetPrice: 322 })],
-      },
-      args: { symbol: "NVDA", action: "update_targets", new_stop_loss: 236, new_target_price: 322, reason: "Keeping the stop under the pivot and the target at the consensus median." },
-      ctx: tactical,
-      quotes: { NVDA: fx.price },
-    });
-    expect(r.refused).toBe(false);
-    expect(data(r)).toMatchObject({ success: true, status: "UNCHANGED" });
-    expect(r.db.store.thesisUpdate ?? []).toHaveLength(0);
-    expect(r.db.store.positionManagementAction ?? []).toHaveLength(0);
-    expect(r.db.store.positionEvent ?? []).toHaveLength(0);
-  });
-});

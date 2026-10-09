@@ -93,6 +93,7 @@ jest.mock("@/lib/proposals/maybe-await-approval", () => ({
   }),
 }));
 
+import { planTriggers } from "@/lib/replay/rows";
 import { placeTrade } from "./place-trade";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
@@ -141,7 +142,7 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
     // Provide args that fail Guardrail 3 (target below entry on a LONG)
     // and observe the rejection message: it is the invalid-shape one,
     // not the staleness one.
-    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 100, target: 90, stop: 80 }) });
     mockPositionFindFirst.mockResolvedValueOnce(null);
 
     const result = await makeTool(makeCtx()).execute({
@@ -167,7 +168,7 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
     // code takes the "uncertain submit" branch which returns success:true
     // with status:PENDING. The point: the staleness gate did NOT refuse
     // and the call reached external submission.
-    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 100, target: 120, stop: 90 }) });
     mockPositionFindFirst.mockResolvedValueOnce(null);
 
     // Live-price guardrail's quote fetch — non-fatal on throw, the live-
@@ -302,7 +303,7 @@ describe("place_trade — Guardrail 0: unresearched-seed direction gate (P1-24 B
     // A committed LONG must advance PAST Guardrail 0. We feed an invalid
     // target/stop so it fails at the LATER shape guard — proving the
     // direction gate let it through rather than rejecting on direction.
-    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 100, target: 90, stop: 80 }) });
     mockPositionFindFirst.mockResolvedValueOnce(null);
 
     const result = await makeTool(makeCtx()).execute({
@@ -374,7 +375,7 @@ describe("place_trade — analyst enabled gate (trading-paused)", () => {
       enabled: true,
       name: "Earnings Drift Trader",
     });
-    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 95, target: 115, stop: 85 }) });
     mockPositionFindFirst.mockResolvedValueOnce(null);
     mockGetLatestPrice.mockResolvedValueOnce(95);
     mockGetAccount.mockResolvedValueOnce({
@@ -405,7 +406,7 @@ describe("place_trade — analyst enabled gate (trading-paused)", () => {
   it("does NOT call agentConfig lookup when no effectiveAnalystId is in scope (defensive)", async () => {
     // Principal-chat outside an analyst scope: ctx.analystId = null AND no
     // args.analyst_id. The gate should silently skip (nothing to look up).
-    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 100, target: 120, stop: 90 }) });
     mockPositionFindFirst.mockResolvedValueOnce(null);
 
     await makeTool(makeCtx({ analystId: undefined })).execute({
@@ -441,7 +442,7 @@ describe("place_trade — analyst enabled gate (trading-paused)", () => {
  * regress.
  */
 describe("place_trade — Order.rationale source on OPEN proposals", () => {
-  function setupProposalPath(opts: { snapshot?: string; livePrice?: number } = {}): void {
+  function setupProposalPath(opts: { snapshot?: string; livePrice?: number; plan?: { entry: number; target: number; stop: number } } = {}): void {
     mockThesisFindUnique.mockReset();
     mockPositionFindFirst.mockReset();
     mockPositionCreate.mockReset();
@@ -457,8 +458,8 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
       enabled: true,
       name: "Test Analyst",
     });
-    // First findUnique call — directionCheck against thesis.direction.
-    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    // First findUnique call — directionCheck against thesis.direction, and the plan the buy carries.
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers(opts.plan ?? { entry: 30.59, target: 40, stop: 29.06 }) });
     // Second — the sizing lookup (conviction / horizon / setup, DAV-251).
     mockThesisFindUnique.mockResolvedValueOnce({ conviction: "MEDIUM", horizon: "TARGET", setupId: null });
     // Second findUnique call — the snapshot fetch in the proposal block.
@@ -562,7 +563,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
   it("falls back to thesis.snapshot when entry_rationale is absent (principal-chat one-shot path)", async () => {
     const fallbackSnapshot =
       "$NTNX is a watching candidate with a clean catalyst setup ahead of the print.";
-    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 80 });
+    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 80, plan: { entry: 80, target: 95, stop: 74 } });
 
     await makeTool(makeCtx()).execute({
       ticker: "NTNX",
@@ -583,7 +584,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
   it("falls back to snapshot when entry_rationale is an empty string", async () => {
     const fallbackSnapshot = "watching candidate, snapshot text";
-    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200 });
+    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200, plan: { entry: 200, target: 240, stop: 184 } });
 
     await makeTool(makeCtx()).execute({
       ticker: "TXN",
@@ -604,7 +605,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
   it("falls back to snapshot when entry_rationale is whitespace-only", async () => {
     const fallbackSnapshot = "snapshot text";
-    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200 });
+    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200, plan: { entry: 200, target: 240, stop: 184 } });
 
     await makeTool(makeCtx()).execute({
       ticker: "TXN",
@@ -658,7 +659,7 @@ describe("place_trade — sized by risk when no size is given (DAV-251)", () => 
     mockMaybeAwaitApproval.mockReset();
     // enabled check, then the riskPct lookup
     mockAgentConfigFindUnique.mockResolvedValue({ enabled: true, name: "Test Analyst", riskPct: 1 });
-    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 100, target: 130, stop: 90 }) });
     mockThesisFindUnique.mockResolvedValueOnce({ conviction: "HIGH", horizon: "TARGET", setupId: null });
     mockThesisFindUnique.mockResolvedValueOnce({ snapshot: { text: "watching", citations: [] } });
     mockPositionFindFirst.mockResolvedValueOnce(null);
@@ -723,7 +724,7 @@ describe("place_trade — analyst_id ownership guard (P1-18)", () => {
       name: "Catalyst Event PM",
     });
     mockThesisFindUnique
-      .mockResolvedValueOnce({ direction: "LONG" }) // directionCheck
+      .mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 21.95, target: 29, stop: 18.5 }) }) // directionCheck + the plan
       .mockResolvedValueOnce({
         snapshot: { text: "watch snapshot", citations: [] },
       }); // proposal-block snapshot fetch (unused when entry_rationale present)
@@ -832,7 +833,8 @@ describe("place_trade — analyst_id ownership guard (P1-18)", () => {
  * position size the agent didn't ask for — which matters on LIVE.
  */
 describe("place_trade — the analyst's rules size the buy, never the model (DAV-317)", () => {
-  function primeGate(): void {
+  /** The thesis row's plan the buy carries (its target and floor triggers). */
+  function primeGate(plan: { entry: number; target: number; stop: number } = { entry: 30, target: 40, stop: 26 }): void {
     mockThesisFindUnique.mockReset();
     mockPositionFindFirst.mockReset();
     mockPositionCreate.mockReset();
@@ -850,7 +852,7 @@ describe("place_trade — the analyst's rules size the buy, never the model (DAV
       name: "PEAD Specialist",
     });
     mockThesisFindUnique
-      .mockResolvedValueOnce({ direction: "LONG" }) // directionCheck
+      .mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers(plan) }) // directionCheck + the plan
       .mockResolvedValueOnce({ snapshot: { text: "snap", citations: [] } });
     mockPositionFindFirst.mockResolvedValueOnce(null);
     mockGetLatestPrice.mockResolvedValue(30);
@@ -909,7 +911,7 @@ describe("place_trade — the analyst's rules size the buy, never the model (DAV
   });
 
   it("inside a run, a share count the model typed is ignored the same way", async () => {
-    primeGate();
+    primeGate({ entry: 922, target: 1100, stop: 800 });
     mockGetLatestPrice.mockResolvedValue(922);
 
     const result = await makeTool(

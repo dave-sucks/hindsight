@@ -61,7 +61,7 @@ import {
   REPLAN_FLOOR_MAX_DROP_PCT,
 } from "@/lib/agent/declined-sale";
 import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
-import { isPlanLevelOnList, levelSlotOf, type LevelSlot } from "@/lib/agent/triggers/price-levels";
+import { canonicalLevels, isPlanLevelOnList, levelSlotOf, type LevelSlot } from "@/lib/agent/triggers/price-levels";
 import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 import {
   writeThesisUpdate,
@@ -1538,6 +1538,21 @@ export const updateThesis = defineTool({
           patch.retiredReason = null;
           patch.closedAt = null;
           patch.closeReason = null;
+          // The level columns are a cache of the triggers. Sold, the entry
+          // was the fill; watched again, it is the buy trigger's level, or
+          // nothing when there is none (DOCU 2026-10-07 kept its $67.73 fill
+          // as a "buy" after its new plan was refused). Read once more as a
+          // watched stock when no trigger op landed to read them.
+          if (patch.triggers === undefined) {
+            const { columns } = canonicalLevels({
+              triggers: parseTriggersResilient(existing.triggers).triggers as unknown as ResolvedTrigger[],
+              direction: existing.direction,
+              status: "WATCHING",
+            });
+            patch.entryPrice = columns.entryPrice;
+            patch.targetPrice = columns.targetPrice;
+            patch.stopLoss = columns.stopLoss;
+          }
         }
         updateType = "STATUS_CHANGED";
       }
@@ -1654,7 +1669,7 @@ export const updateThesis = defineTool({
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,
       });
-      const reviewedMeans = whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence);
+      const reviewedMeans = [...whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence), ...catalystDateMissing(existing)];
       return {
         summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}${notChanged ? ` ${notChanged}` : ""}`,
         data: {
@@ -1901,10 +1916,24 @@ export const updateThesis = defineTool({
       priceAtTime: resolvedPriceAtTime,
     });
     const flags = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
-    const means = [...flags, ...claimNotes];
+    const catalystNotes = catalystDateMissing({ ...existing, ...patch });
+    const means = [...flags, ...claimNotes, ...catalystNotes];
+    // Back on watch with no plan (step 12, part 3): the status landed and
+    // every plan level the call sent was refused, so the stock is watched
+    // with nothing to buy on. Said first, with the refusal's reason. DOCU
+    // 2026-10-07: put back on watch, its 1.71:1 plan refused, and the reply
+    // led with "Updated DOCU: WATCHING" as if the plan had come with it.
+    const after = { ...existing, ...patch } as Record<string, unknown>;
+    const sentPlan = triggerOps.some((o) => o.op === "level" || (o.op === "add" && levelSlotOf(o.trigger, (after.direction as string | null) ?? null) != null));
+    // A watched stock's plan is its buy: none left means nothing to buy on.
+    const noPlanLeft = after.entryPrice == null;
+    const backOnWatchNoPlan =
+      fieldChanges.status?.to === "WATCHING" && sentPlan && noPlanLeft
+        ? `Back on watch with no plan: ${refusedFields.find((r) => r.field === "triggers")?.reason ?? opResults.find((r) => !r.ok)?.reason ?? "the plan's levels were not applied."}`
+        : null;
 
     return {
-      summary: [summary, flags.length ? `⚠ ${flags[0]}` : null, ...claimNotes, notChanged || null].filter(Boolean).join(" "),
+      summary: [backOnWatchNoPlan, summary, flags.length ? `⚠ ${flags[0]}` : null, ...claimNotes, ...catalystNotes, notChanged || null].filter(Boolean).join(" "),
       data: {
         ok: true,
         thesis_id: existing.id,
@@ -1939,6 +1968,20 @@ function whatThisMeans(row: Record<string, unknown>, price: number | null, minCo
   });
   // The score line is about a buy; with no buy price there is none to refuse.
   return flags.filter((f) => f.kind !== "COMPOSITE_BELOW_MINIMUM" || n(row.entryPrice) != null).map((f) => `${row.ticker}: ${f.text}`);
+}
+
+/**
+ * A dated event with no date (step 12, part 3): information, never a refusal.
+ * A CATALYST row with no catalyst date can't be scheduled around: the
+ * pre-catalyst check (plan-sanity) has no day to count to. No row on the book
+ * was in this state in the 90 days to 2026-10-09; the line is for the save
+ * that would put one there.
+ */
+function catalystDateMissing(row: Record<string, unknown>): string[] {
+  const live = row.status !== "RETIRED" && row.status !== "PASSED";
+  return live && row.horizon === "CATALYST" && row.catalystDate == null
+    ? [`${row.ticker}: the catalyst date is missing, so the pre-catalyst check cannot schedule around the event. Set catalyst_date to the date the company announced.`]
+    : [];
 }
 
 /**

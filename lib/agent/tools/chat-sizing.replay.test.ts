@@ -16,7 +16,7 @@
  * largest trade, which is also the default, so only a different number
  * shows which one is read.
  */
-import { replayTool, thesisRow, positionRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
+import { replayTool, thesisRow, positionRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID, planTriggers } from "@/lib/replay";
 import { analystToolSettings } from "@/lib/agent/tool-context";
 
 const ROW = {
@@ -42,7 +42,7 @@ describe("a scoped chat's new buy, sized by the rules", () => {
   // before conviction, under $2,000, below the smallest trade.
   const seed = () => ({
     ...seedBase(),
-    thesis: [thesisRow({ id: "t_buy", ticker: "AAA", status: "WATCHING", direction: "LONG", conviction: "MEDIUM", entryPrice: 100, targetPrice: 200, stopLoss: 50, analystId: REPLAY_ANALYST_ID })],
+    thesis: [thesisRow({ id: "t_buy", ticker: "AAA", status: "WATCHING", direction: "LONG", conviction: "MEDIUM", entryPrice: 100, targetPrice: 200, stopLoss: 50, analystId: REPLAY_ANALYST_ID, triggers: planTriggers({ entry: 100, target: 200, stop: 50 }) })],
   });
   const buy = { ticker: "AAA", direction: "LONG", entry_price: 100, target_price: 200, stop_loss: 50, thesis_id: "t_buy" };
 
