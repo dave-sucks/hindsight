@@ -23,11 +23,9 @@ async function triggerRunSchema(): Promise<z.ZodTypeAny> {
   return schema!;
 }
 
-/** What the SDK hands the save: the call parsed by this door's schema, without the WATCHING this door doesn't take. */
+/** What the SDK hands the save: the call parsed by this door's schema, the fields it lacks (change_status among them) stripped. */
 async function asTheSdkHandsIt(call: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { change_status: _cs, ...rest } = call;
-  void _cs;
-  return (await triggerRunSchema()).parse(rest) as Record<string, unknown>;
+  return (await triggerRunSchema()).parse(call) as Record<string, unknown>;
 }
 
 const seedFor = (ticker: "ASML" | "NVDA" | "CEG" | "MU") => {
@@ -40,19 +38,17 @@ const seedFor = (ticker: "ASML" | "NVDA" | "CEG" | "MU") => {
   };
 };
 
-describe("sent verbatim, a real call bounces once at the SDK and lands on the retry", () => {
-  it("NVDA: the first call is an input error for change_status and saves nothing; the retry without it lands with the note", async () => {
+describe("sent verbatim, a real call lands on the first try", () => {
+  it("NVDA: its change_status WATCHING is not a field of this save, so the call lands once with the note", async () => {
     const fx = fixture.NVDA;
     const verbatim = fx.call as Record<string, unknown>;
-    const { change_status: _cs, ...retry } = verbatim;
-    void _cs;
     const usage = { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } };
     const call = (n: number, input: unknown) => ({ content: [{ type: "tool-call", toolCallId: `c${n}`, toolName: "update_thesis", input: JSON.stringify(input) }], finishReason: { unified: "tool-calls", raw: undefined }, usage, warnings: [] });
     let turn = 0;
     const model = new MockLanguageModelV3({
       doGenerate: async () => {
         turn++;
-        return turn === 1 ? call(1, verbatim) : turn === 2 ? call(2, retry) : { content: [{ type: "text", text: "done" }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] };
+        return turn === 1 ? call(1, verbatim) : { content: [{ type: "text", text: "done" }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] };
       },
     } as never);
     const saves: Replay[] = [];
@@ -71,10 +67,9 @@ describe("sent verbatim, a real call bounces once at the SDK and lands on the re
       },
       stopWhen: stepCountIs(3),
     });
-    const first = out.steps[0].content.filter((p) => p.type === "tool-error") as Array<{ error: unknown }>;
-    expect(first).toHaveLength(1);
-    expect(String(first[0].error)).toContain("change_status");
+    expect(out.steps[0].content.filter((p) => p.type === "tool-error")).toEqual([]);
     expect(saves).toHaveLength(1);
+    expect(saves[0].db.store.thesis[0]).toMatchObject({ status: "HOLDING" });
     expect(written(saves[0].db)).toEqual([expect.objectContaining({ rationale: fx.call.rationale })]);
   });
 });

@@ -167,7 +167,6 @@ What you can do:
 - Buy, only when every check above holds: place_trade (it sizes the buy), then one update_thesis saying why.
 - Re-price: update_thesis with edit_triggers on the buy's id, at a level from the chart's structure, named in the rationale.
 - Set the plan down: update_thesis with remove_trigger_ids naming the buy, floor and target, keeping a review, and one sentence on why this was not the entry.
-- Stop watching: change_status ARCHIVED; INVALIDATED only when the thesis should not exist at all.
 
 Answered: one of those. A buy left as a note comes back on the next morning run as a plan check or a live match; a note does answer a buy whose price slipped back.
 

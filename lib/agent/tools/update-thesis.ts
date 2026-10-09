@@ -86,14 +86,12 @@ import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 // The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
 const F = thesisFields();
 
-/** What change_status does, worded once; the trigger run's save takes the two retiring verbs only. */
+/** What change_status does, worded once. */
 const STATUS_RETIRE =
   "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
   "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead, when it has them. ";
 const STATUS_WATCH = "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). ";
 const STATUS_OWNED = "Holding and sold are not set here: place_trade and close_position flip them when the order fills.";
-/** The trigger run's: the retiring verbs are for a stock we watch (CEG and MU sent INVALIDATED on holdings, 10-08). */
-const STATUS_HELD = " Both are for a stock we watch: a stock we hold is sold first with close_position, which retires the thesis itself.";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -272,19 +270,20 @@ const WRITER_ONLY_UPDATE_FIELDS = {
  * changed was the note, a trigger, a stop, a target, a buy price. Direction,
  * belief, scores, horizon and the research snapshot are the morning run's and
  * the writer's; the price is the server's. The level fields stay because the
- * situation texts every run shares name them. change_status takes the two
- * retiring verbs: back to watch is the sale's fill, and WATCHING was sent in
- * every call of the four runs that failed (ASML 10-07; NVDA, CEG, MU 10-08).
+ * situation texts every run shares name them. No change_status: the run
+ * fills every field it is given, and filled it on every call (WATCHING in
+ * the four runs that failed, ASML 10-07 and NVDA, CEG, MU 10-08; INVALIDATED
+ * on NVDA 10-09 once WATCHING was gone), which on a stock we watch retires
+ * it. In the 30 days to 2026-10-09 no trigger run meant a status change; a
+ * holding it ends is sold with close_position, which retires the thesis.
  */
-const triggerRunSchema = updateSchema
-  .pick({
-    thesis_id: true, trigger_id: true, rationale: true,
-    add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
-    stop_loss: true, stop_basis: true, target_price: true, target_basis: true, entry_price: true,
-  })
-  .extend({ change_status: z.enum(["INVALIDATED", "ARCHIVED"]).optional().describe(`${STATUS_RETIRE}${STATUS_OWNED}${STATUS_HELD}`) });
+const triggerRunSchema = updateSchema.pick({
+  thesis_id: true, trigger_id: true, rationale: true,
+  add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
+  stop_loss: true, stop_basis: true, target_price: true, target_basis: true, entry_price: true,
+});
 
-/** The trigger run's door: its save has no price field and no way back to watch. */
+/** The trigger run's door: its save has no price field and no status change. */
 const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TACTICAL";
 
 /**
