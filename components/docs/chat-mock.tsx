@@ -7,6 +7,9 @@
  * components/ai-elements/tool-progress.tsx. Nothing here fetches; tickers are
  * drawn the way TickerChip draws them, with the numbers written in.
  *
+ * Thinking is drawn as a collapsed tool row, the same size and color as the
+ * tool calls around it.
+ *
  * Used by the /docs pages and the signed-out preview beside the sign-in form.
  */
 
@@ -20,7 +23,6 @@ import {
   ToolProgressTickerItem,
   type TickerActionIcon,
 } from "@/components/ai-elements/tool-progress";
-import { Reasoning } from "@/components/agent/Reasoning";
 import { SourceChips } from "@/components/assistant-ui/tool-uis/tool-ui-shared";
 import type { ToolSource } from "@/lib/agent/tool-result";
 import { cn } from "@/lib/utils";
@@ -67,7 +69,17 @@ function Step({ step, live = false }: { step: ChatStep; live?: boolean }) {
     return <div className="py-1.5 text-message text-foreground">{step.text}</div>;
   }
   if (step.kind === "reasoning") {
-    return <Reasoning isStreaming={live}>{step.text}</Reasoning>;
+    // Drawn as a tool row's header, so thinking and tool calls share one size and color.
+    return (
+      <ToolProgress>
+        <ToolProgressHeader>
+          <span className={cn(live && "shimmer-text")}>Reasoning</span>
+        </ToolProgressHeader>
+        <ToolProgressContent>
+          <ToolProgressItem>{step.text}</ToolProgressItem>
+        </ToolProgressContent>
+      </ToolProgress>
+    );
   }
   return (
     <ToolProgress defaultOpen>

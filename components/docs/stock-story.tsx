@@ -12,15 +12,14 @@
  */
 
 import { useEffect, useState } from "react";
-import { ArrowUp, ArrowUpRight, DollarSign, Settings2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, ArrowUp, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatMock, Tk, type ChatStep } from "./chat-mock";
 import { Mono } from "./primitives";
 import type { DocSlug } from "./registry";
 
-const STEP_MS = 1100;
-const HOLD_MS = 3400;
+const STEP_MS = 2600;
+const HOLD_MS = 7000;
 
 const CHAPTERS: ReadonlyArray<{ name: string; doc: DocSlug; blurb: string; steps: readonly ChatStep[] }> = [
   {
@@ -128,17 +127,8 @@ function MockComposer({ analyst }: { analyst: string }) {
         {analyst}
         <X className="size-3 text-muted-foreground/70" />
       </span>
-      <span className="px-1 py-1 text-sm text-muted-foreground">Ask about {analyst}…</span>
-      <span className="flex items-center justify-between">
-        <span className="flex items-center gap-1 text-muted-foreground">
-          <span className="grid size-7 place-items-center">
-            <Settings2 className="size-4" />
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 text-sm">
-            <DollarSign className="size-3.5" />
-            Stocks
-          </span>
-        </span>
+      <span className="flex items-center justify-between gap-3 pl-1">
+        <span className="text-sm font-light text-muted-foreground/60">Ask about {analyst}…</span>
         <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
           <ArrowUp className="size-4" />
         </span>
@@ -195,10 +185,14 @@ export function StockStory({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
               {open ? (
                 <div className="flex flex-col items-start gap-3 pb-4">
                   <p className="text-sm leading-6 text-muted-foreground">{x.blurb}</p>
-                  <Button variant="outline" size="sm" onClick={() => onOpen(x.doc)}>
+                  <button
+                    type="button"
+                    onClick={() => onOpen(x.doc)}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-foreground underline-offset-4 hover:underline"
+                  >
                     How it works
-                    <ArrowUpRight />
-                  </Button>
+                    <ArrowRight className="size-3.5" />
+                  </button>
                 </div>
               ) : null}
               {open ? <Progress key={i} ms={ms} /> : null}
