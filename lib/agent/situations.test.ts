@@ -240,3 +240,37 @@ describe("the live book after the close, replayed", () => {
     expect(situationsFor(src)).toEqual(s.codes);
   });
 });
+
+describe("a seed's claim is the writer's (step 12, part 1)", () => {
+  // MA as the chat minted it on 2026-09-29: no view, no claim, a strength wake and a 45-day review clock.
+  const ma = (now: Date) =>
+    input(
+      {
+        id: "cmum2tf9m000d04jfv0szuiap",
+        status: "WATCHING",
+        direction: null,
+        lastReviewedAt: null,
+        createdAt: new Date("2026-09-29T02:47:48.106Z"),
+        triggers: [
+          trig("e3c45d50-56de-4a17-9bf1-91e9c69c56ee", "REVIEW", { watch: "strength", value: 0, settings: { window: "6M" } }),
+          trig("a2e0f9b5-8b48-4e7a-b91e-7bc2bb350006", "REVIEW", { watch: "repeat", value: 45 }),
+        ],
+      },
+      { now },
+    );
+
+  it("MA, a live seed with a review clock: due, its one situation is FIRST_RESEARCH; not due, none", () => {
+    expect(situationsFor(sources(ma(new Date("2026-11-14T13:00:00Z"))))).toEqual(["FIRST_RESEARCH"]);
+    expect(situationsFor(sources(ma(new Date("2026-10-09T13:00:00Z"))))).toEqual([]);
+  });
+
+  it("FIRST_RESEARCH and a woken watch send the claim through the writer, and never ask a run to write it", () => {
+    for (const code of ["FIRST_RESEARCH", "QUIET_WATCH_WOKE"] as const) {
+      const text = guidanceFor([code])[code]!;
+      for (const words of ["dispatch_thesis_research", 'mode "refresh"', "existing_thesis_id", "wait_for_thesis_refresh", "commits the view"]) expect([code, words, text.includes(words)]).toEqual([code, words, true]);
+      for (const field of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([code, field, text.includes(field)]).toEqual([code, field, false]);
+    }
+    expect(SITUATIONS.FIRST_RESEARCH.guidance).toContain("No write-up yet");
+    expect(SITUATIONS.FIRST_RESEARCH.guidance).toContain("A failed write-up is dispatched again");
+  });
+});

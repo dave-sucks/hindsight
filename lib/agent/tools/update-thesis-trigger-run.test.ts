@@ -36,7 +36,7 @@ describe("the trigger run's save", () => {
 
   it("leaves the other doors' saves as they were", () => {
     const morning = Object.keys(schemaOf("MORNING_PLAN").shape);
-    expect(morning).toEqual(expect.arrayContaining(["direction", "horizon", "conviction", "setup_id", "catalyst_date"]));
+    expect(morning).toEqual(expect.arrayContaining(["horizon", "conviction", "setup_id", "catalyst_date", "change_status"]));
     const json = zodSchema(schemaOf("MORNING_PLAN") as never).jsonSchema as { properties: Record<string, { enum?: string[] }> };
     expect(json.properties.change_status.enum).toEqual(["INVALIDATED", "ARCHIVED", "WATCHING"]);
   });

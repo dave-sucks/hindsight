@@ -551,7 +551,7 @@ every field; the judgment rules:
 
    • direction: LONG / SHORT / PASS. PASS is a valid, gradeable outcome —
      use it when the research doesn't support a directional edge from
-     YOUR strategy's angle${opts.mode === "refresh" ? " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)" : ""}.
+     YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
    • R/R FLOOR — 2:1 MANDATORY. LONG: (target−entry)/(entry−stop);
      SHORT: (entry−target)/(stop−entry).
    • SETUP FIRST. Name the setup (setup_id) from YOUR SETUPS, then take
@@ -1330,11 +1330,17 @@ export function buildWriterSaveCall(
       },
     };
   }
-  // Role split (docs/THESIS_ARCHITECTURE.md §0): the writer refreshes
-  // research; it NEVER changes direction or status. A changed view is
-  // flagged in the rationale for the orchestrator to act on.
+  // Role split (docs/THESIS_ARCHITECTURE.md §0): on a stock with a view the
+  // writer refreshes research and NEVER changes direction or status; a
+  // changed view is flagged in the rationale for the orchestrator to act on.
+  // A stock with no view yet (a seed) gets its view from this refresh, the
+  // way a mint would (step 12, part 1: the claim is the writer's): direction
+  // commits it through update_thesis's seed path, and PASS lands PASSED.
+  // COGT 2026-09-28: a refresh with no direction put a LONG-shaped belief,
+  // a plan and a score on a row that stayed "no view".
+  const seed = existing != null && existing.direction == null;
   const directionFlag =
-    existing?.direction && d.direction !== existing.direction
+    !seed && existing?.direction && d.direction !== existing.direction
       ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existing.direction} — orchestrator should re-evaluate direction.`
       : "";
   // On a stock we own, the entry is the fill — update_thesis refuses an edit
@@ -1351,6 +1357,7 @@ export function buildWriterSaveCall(
     toolArgs: {
       thesis_id: args.existingThesisId,
       rationale: `${rationale}${directionFlag}`,
+      direction: seed ? d.direction : undefined,
       entry_price: pass || held ? undefined : d.entry_price,
       target_price: pass ? undefined : d.target_price,
       stop_loss: pass ? undefined : d.stop_loss,

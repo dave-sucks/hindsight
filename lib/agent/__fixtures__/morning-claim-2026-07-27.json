@@ -1,0 +1,273 @@
+{
+  "_note": "The newest morning-run update_thesis call that sent core_belief: MNKD, 2026-07-27 12:00 ET (run cms36e9lj000904l5b08231bp), verbatim from the run's saved thread, with MNKD's row as that run's own get_theses read carried it, cut to the fields the save reads. 0 of the 45 morning threads of the 30 days to 2026-10-09 carried one. The call also carries fields the save no longer has (structural_unchanged_reason, max_hold_days, next_review_at, triggers as a list); the row's triggers are in the shape stored then, one of a kind since deleted.",
+  "call": {
+    "thesis_id": "cmroebjhs000004jurlf36n58",
+    "rationale": "Reviewing MNKD after the July 26 catalyst window: the core event has resolved favorably. FDA approved Furoscix ReadyFlow, and the stock is confirming with a 6.2% move on 2.1x volume while holding above both the 20-day and 50-day. That means the old pre-PDUFA framing is stale. I am keeping the position but tightening the post-event risk plan and reclassifying the thesis from a dated catalyst hold to a TARGET-style post-approval re-rating hold, with financing now part of the risk context after the announced $50M private placement.",
+    "structural_unchanged_reason": "The underlying bullish belief is intact and actually confirmed by the FDA approval; I am changing the trade structure because the binary catalyst has resolved and the position now needs a post-event risk plan rather than a pre-event approval thesis.",
+    "price_at_time": 4.13,
+    "core_belief": "MNKD can re-rate toward $5.25-$5.75 over the next several months as ReadyFlow approval expands the commercial FUROSCIX opportunity and the market transitions from binary approval odds to launch adoption and revenue expectations.",
+    "key_assumptions": [
+      "FDA approval of ReadyFlow removes the core regulatory overhang and allows investors to focus on commercial uptake rather than approvability risk",
+      "Management can absorb the announced $50M financing without erasing the approval-related rerating through excessive dilution pressure",
+      "Post-approval prescription and launch commentary over the next 1-2 quarters support a broader FUROSCIX revenue ramp rather than a one-day sell-the-news spike"
+    ],
+    "invalidation_conditions": [
+      "Post-approval price action fails and MNKD closes back below $3.95, negating the breakout level established around approval",
+      "Management guidance or subsequent filings indicate weaker-than-expected ReadyFlow launch demand or financing stress that offsets the approval benefit",
+      "The stock materially underperforms after approval and loses the 50-day trend support, signaling the market is treating the approval as economically immaterial"
+    ],
+    "target_price": 5.5,
+    "stop_loss": 4,
+    "horizon": "TARGET",
+    "max_hold_days": 90,
+    "next_review_at": "2026-10-25T12:00:00.000Z",
+    "triggers": [
+      {
+        "id": "a06f9853-46a4-425e-8208-7e495a114aa0",
+        "predicate": {
+          "kind": "OR",
+          "predicates": [
+            {
+              "kind": "FILING",
+              "formType": "8-K"
+            },
+            {
+              "kind": "FILING",
+              "formType": "10-Q"
+            },
+            {
+              "kind": "FILING",
+              "formType": "10-K"
+            }
+          ]
+        },
+        "action": "REVIEW",
+        "rationale": "Material filings after approval can change the launch, financing, or commercialization setup and need review.",
+        "cooldownDays": 1,
+        "fireMode": "TACTICAL"
+      },
+      {
+        "id": "661d2640-07d3-4eaf-a978-69193002512c",
+        "predicate": {
+          "kind": "EARNINGS_BEAT"
+        },
+        "action": "REVIEW",
+        "rationale": "An earnings beat after approval could confirm FUROSCIX launch traction and justify pressing the post-event winner.",
+        "cooldownDays": 7,
+        "fireMode": "TACTICAL"
+      },
+      {
+        "id": "c6c1986d-c3ac-41b4-888c-734ccf370def",
+        "predicate": {
+          "kind": "EARNINGS_MISS",
+          "minSurprisePct": 3
+        },
+        "action": "REVIEW",
+        "rationale": "A miss after approval could suggest the launch is not changing the economic story fast enough and warrants reassessment.",
+        "cooldownDays": 7,
+        "fireMode": "TACTICAL"
+      },
+      {
+        "id": "9cc5909c-dd57-4331-a1ad-896d3edb586e",
+        "predicate": {
+          "kind": "GAIN_FROM_ENTRY",
+          "pct": 20,
+          "direction": "UP"
+        },
+        "action": "REVIEW",
+        "rationale": "If the position reaches roughly +20% from entry, reassess whether to bank gains or raise the target and floor.",
+        "cooldownDays": 7,
+        "fireMode": "TACTICAL"
+      },
+      {
+        "id": "caa63ecc-0081-4bd1-bd7f-0653d7bc1d9e",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 4
+        },
+        "action": "EXIT",
+        "rationale": "A break back below $4.00 after approval would negate the post-event breakout and justify exiting to protect capital.",
+        "cooldownDays": 1,
+        "fireMode": "TACTICAL"
+      },
+      {
+        "id": "14f4b73f-ed21-4cbb-8492-7e124ad34610",
+        "predicate": {
+          "kind": "GAIN_FROM_ENTRY",
+          "pct": 12,
+          "direction": "DOWN"
+        },
+        "action": "REVIEW",
+        "rationale": "If the position falls 12% from entry, reassess whether the post-approval hold is failing or just retracing.",
+        "cooldownDays": 7,
+        "fireMode": "TACTICAL"
+      },
+      {
+        "id": "new-mnkd-review-30d",
+        "predicate": {
+          "kind": "TIME_ELAPSED",
+          "days": 30
+        },
+        "action": "REVIEW",
+        "rationale": "Thirty-day post-approval check on launch traction, financing digestion, and whether the rerating is still unfolding.",
+        "cooldownDays": 24,
+        "fireMode": "TACTICAL"
+      }
+    ]
+  },
+  "price": 4.13,
+  "position": {
+    "avgCost": 4.04
+  },
+  "thesis": {
+    "id": "cmroebjhs000004jurlf36n58",
+    "ticker": "MNKD",
+    "status": "HOLDING",
+    "direction": "LONG",
+    "horizon": "CATALYST",
+    "entryPrice": 4.04,
+    "targetPrice": 5.5,
+    "stopLoss": 3.95,
+    "coreBelief": "MNKD reaches $5.50+ by July 26, 2026 on FDA approval of the FUROSCIX ReadyFlow autoinjector sNDA, because the PK-only review profile (no efficacy endpoint) carries near-best-in-class approval odds and the stock is mispriced relative to that probability.",
+    "keyAssumptions": [
+      "FDA reviews the ReadyFlow sNDA as a labeling/delivery device supplement with no new efficacy requirement, making a CRL unlikely without a clinical hold-level safety event",
+      "The pivotal Phase 1 PK crossover study (107.3% bioavailability vs IV furosemide) satisfies the FDA's primary evidentiary standard for the supplemental submission",
+      "No advisory committee meeting is convened, keeping the July 26 PDUFA date intact and avoiding a 3-month extension cycle"
+    ],
+    "invalidationConds": [
+      "FDA issues a Complete Response Letter (CRL) requiring additional efficacy or safety data beyond the healthy-volunteer PK crossover",
+      "PDUFA date is extended or FDA requests an adcom, resetting the review timeline to Q4 2026 or beyond",
+      "MNKD price closes below $3.40 (below the SMA50 level and prior technical support), signaling thesis-breaking technical deterioration pre-event"
+    ],
+    "conviction": "HIGH",
+    "convictionRationale": "This is the lowest binary-risk PDUFA in my current cohort — no new efficacy question, no novel mechanism. The FDA is reviewing a delivery device change for an already-approved drug. 107% bioavailability vs IV furosemide gives the agency a clean PK story. I like this in size 9 days before the event.",
+    "variantView": "Consensus underweights this as a routine device review; I think the PK data (107.3% bioavailability vs IV) makes a CRL nearly unjustifiable and the market is not pricing 73%+ approval odds into a stock still 38% off its 52w high.",
+    "scoring": {
+      "composite": 7,
+      "entryQuality": {
+        "note": "Clean pre-catalyst entry: price at $4.04, right at SMA20 consolidation support (-0.86%), RSI 52.8 (not overbought), 9 days to PDUFA — ideal accumulation window",
+        "score": 2
+      },
+      "trendStrength": {
+        "note": "Bullish SMA stack (SMA20 > SMA50); stock up 81% from 52w low of $2.23; currently consolidating just below SMA20 at -0.86% — constructive pre-catalyst pattern",
+        "score": 2
+      },
+      "relativeStrength": {
+        "note": "MNKD ranks 4/4 YTD in peer cohort (PURR, INBX, ARDX) at -41.4% YTD; lagging peers on price action, but catalyst setup is idiosyncratic and not peer-comparative",
+        "score": 1
+      },
+      "catalystFreshness": {
+        "note": "PDUFA July 26, 2026 confirmed by FDA acceptance of sNDA — 9 days out. Binary event with 73% estimated approval probability per biopharma tracker. Catalyst fully ahead.",
+        "score": 2
+      }
+    },
+    "catalystDate": "2026-07-26T00:00:00.000Z",
+    "triggers": [
+      {
+        "id": "7de42a86-ad73-4070-99e3-1be1daa57cd4",
+        "action": "EXIT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 3.4
+        },
+        "rationale": "A decisive break below $3.40 violates the thesis's technical support and signals pre-event deterioration.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "a06f9853-46a4-425e-8208-7e495a114aa0",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "OR",
+          "predicates": [
+            {
+              "kind": "FILING",
+              "formType": "8-K"
+            },
+            {
+              "kind": "FILING",
+              "formType": "10-Q"
+            },
+            {
+              "kind": "FILING",
+              "formType": "10-K"
+            }
+          ]
+        },
+        "rationale": "Material filings can change the pre-PDUFA risk/reward and must be re-underwritten immediately.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "661d2640-07d3-4eaf-a978-69193002512c",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "EARNINGS_BEAT"
+        },
+        "rationale": "An earnings beat could improve sentiment and alter the setup into the catalyst.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "c6c1986d-c3ac-41b4-888c-734ccf370def",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "EARNINGS_MISS",
+          "minSurprisePct": 3
+        },
+        "rationale": "An earnings miss of 3% or worse could weaken confidence ahead of the event.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "cac0764f-8bec-4e02-8866-58e6b46f23c5",
+        "action": "ADD",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 7,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "DOWN"
+        },
+        "rationale": "Add only if a sharp pullback is market-driven or technical while the catalyst thesis remains intact.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "9cc5909c-dd57-4331-a1ad-896d3edb586e",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 20,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "UP"
+        },
+        "rationale": "At roughly +20% from entry, reassess whether pre-event upside remaining still justifies holding full size into the catalyst.",
+        "cooldownDays": 7
+      },
+      {
+        "id": "caa63ecc-0081-4bd1-bd7f-0653d7bc1d9e",
+        "action": "EXIT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 3.95
+        },
+        "rationale": "After today's breakout, a break back below $3.95 would negate the new structure and justify exiting to protect capital.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "14f4b73f-ed21-4cbb-8492-7e124ad34610",
+        "action": "REVIEW",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 12,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "DOWN"
+        },
+        "rationale": "If the position falls 12% from entry, reassess whether the drawdown is noise or thesis damage.",
+        "cooldownDays": 7
+      }
+    ],
+    "researchUpdatedAt": "2026-07-22T12:01:28.863Z"
+  }
+}

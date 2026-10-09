@@ -86,6 +86,17 @@ function firstParagraph(text: string, max: number): string {
   return out || clean.slice(0, max).replace(/\s+\S*$/, "");
 }
 
+/**
+ * The stock's write-up, read off the `writerRun` fact (get_theses: the newest
+ * THESIS_WRITER run on the stock): a seed with no claim has none yet, and a
+ * failed run is said with its date, so the morning run dispatches again
+ * (step 12, part 1). Nothing silent.
+ */
+function writeUp(row: Row): { noClaim: boolean; failedOn: Date | null } {
+  const w = obj(row.writerRun) as { status?: string; startedAt?: unknown } | null;
+  return { noClaim: row.direction === null && !str(row.coreBelief), failedOn: w?.status === "FAILED" ? date(w.startedAt) : null };
+}
+
 /** When the research was written and at what price; how to get the whole thing. */
 function researchLine(row: Row, size: RowSize): string {
   const ago = (n: number) => `${n} day${n === 1 ? "" : "s"} ago`;
@@ -94,15 +105,19 @@ function researchLine(row: Row, size: RowSize): string {
   const w = obj(row.researchWritten) as { on?: string; price?: number; daysAgo?: number } | null;
   const age = num(obj(row.researchAge)?.daysOld);
   const priceThen = num(row.researchPriceThen);
+  const { noClaim, failedOn } = writeUp(row);
   let line: string;
   if (w?.on && num(w.price) != null) {
     // The writer's save gives the date and the price together; a later edit of a research field is said as an edit, never as the date of the writing.
     line = `Written ${w.on} at ${money(w.price!)}${num(w.daysAgo) != null ? `, ${ago(w.daysAgo!)}` : ""}${updated && updated > w.on ? `, edited ${updated}` : ""}.`;
-  } else if (updated) {
+  } else if (updated && !noClaim) {
     line = `Written ${updated}${priceThen != null ? ` at ${money(priceThen)}` : ""}${age != null ? `, ${ago(age)}` : ""}.`;
+  } else if (noClaim) {
+    line = failedOn ? `No write-up yet; the last write-up failed ${isoDay(failedOn)}.` : "No write-up yet.";
   } else {
     line = "No research written yet.";
   }
+  if (failedOn && !noClaim) line += ` The newest write-up failed ${isoDay(failedOn)}.`;
   return size === "full" ? line : `${line} Full row: get_theses(tickers: ["${String(row.ticker)}"]).`;
 }
 
@@ -118,10 +133,12 @@ function line(row: Row): string {
   const review = date(row.reviewDueAt);
   const score = num(row.composite);
   const catalyst = date(row.catalystDate);
+  const { noClaim, failedOn } = writeUp(row);
   return [
     String(row.ticker),
     stance(row.status),
     str(row.direction) ?? "no view",
+    noClaim ? (failedOn ? `write-up failed ${etDay(failedOn)}` : "no write-up yet") : null,
     str(row.setupId) ?? str(row.horizon),
     price != null ? money(price) : null,
     entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : null,

@@ -82,6 +82,7 @@ import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { computePlanSanity } from "@/lib/agent/plan-sanity";
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
+import { claimNamesOldLevel } from "@/lib/agent/tools/claim-names-level";
 
 // The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
 const F = thesisFields();
@@ -290,17 +291,29 @@ const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TA
  * The morning run's save: the same update_thesis, with what a morning review
  * changes. In the 30 days to 2026-10-08 its 45 runs made 285 saves: the note
  * on every one, the levels and their reasons, the trigger edits, a status
- * change, a setup named, a conviction tier with its reason. A seed's first
- * research and a woken watch commit through this door, so direction,
- * horizon, the belief fields and the catalyst date stay. Four leave:
- * price_at_time (224 calls, each a copy of the price the row showed; the
- * save reads the quote itself), snapshot (25 saves rewrote the writer's
- * cited paragraph uncited), scoring (the writer's number) and variant_view
- * (the writer's claim, which the conviction gate reads off the row).
- * change_status keeps its three values: this door puts a sold stock back on
- * watch.
+ * change, a setup named, a conviction tier with its reason. Horizon and the
+ * catalyst date stay. Four left first: price_at_time (224 calls, each a copy
+ * of the price the row showed; the save reads the quote itself), snapshot (25
+ * saves rewrote the writer's cited paragraph uncited), scoring (the writer's
+ * number) and variant_view (the writer's claim, which the conviction gate
+ * reads off the row). Then the claim (step 12, part 1): core_belief,
+ * key_assumptions and invalidation_conditions are the writer's and the
+ * owner's chat's, never a run's; a seed's first research and a woken watch
+ * go through the writer (dispatch_thesis_research, then
+ * wait_for_thesis_refresh), which commits the view. With the claim gone
+ * `direction` had nowhere to land from this door (a seed needs the claim, a
+ * thesis with a view is refused a flip or a pass), and a field that is
+ * offered gets filled, so it left too: a view is set or flipped by research
+ * or by the owner. change_status keeps its three values: this door puts a
+ * sold stock back on watch. Eighteen fields.
  */
-const morningRunSchema = updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, price_at_time: true, snapshot: true, scoring: true, variant_view: true });
+const THE_CLAIM = { core_belief: true, key_assumptions: true, invalidation_conditions: true } as const;
+const morningRunSchema = updateSchema.omit({
+  ...WRITER_ONLY_UPDATE_FIELDS,
+  price_at_time: true, snapshot: true, scoring: true, variant_view: true,
+  ...THE_CLAIM,
+  direction: true,
+});
 
 /** The morning run's door: its save has no price field; it reads the quote. */
 const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLAN";
@@ -560,6 +573,9 @@ export const updateThesis = defineTool({
       args = { ...args, [field]: undefined };
     };
     const opResults: TriggerOpResult[] = [];
+    // A level this call moves while the claim still names the old number:
+    // one sentence each in the reply (claim-names-level.ts).
+    const claimNotes: string[] = [];
     let stillPromoted = false;
 
     // The principal's edit wins (handEditsSince). Looked up only when the
@@ -801,20 +817,30 @@ export const updateThesis = defineTool({
       !isSoftWatchRow &&
       !args.direction
     ) {
+      // The same gate for every door; the words name only what the door has.
+      // The morning run's save carries no belief fields and no direction
+      // (step 12, part 1): a seed's claim is the writer's, so its answer is a
+      // dispatch, and the refusal says so instead of listing fields it lacks.
+      const message = isMorningRun(ctx)
+        ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
+          `then wait_for_thesis_refresh on the child run. The writer writes the belief, prices the plan and commits the view (LONG, SHORT or PASS); ` +
+          `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
+        : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
+          `Three legal commitments:\n` +
+          `  • \`direction: "LONG"\` + horizon + entry_price (or one buy trigger in add_triggers) + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
+          `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
+          `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
+          `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
       return {
-        summary: `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
+        summary: isMorningRun(ctx)
+          ? `$${existing.ticker} has no view yet — its claim is the writer's: dispatch_thesis_research, then wait_for_thesis_refresh.`
+          : `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
         data: {
           ok: false,
           error: "pending_update_without_direction",
           current_direction: existing.direction,
           ticker: existing.ticker,
-          message:
-            `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
-            `Three legal commitments:\n` +
-            `  • \`direction: "LONG"\` + horizon + entry_price (or one buy trigger in add_triggers) + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
-            `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
-            `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
-            `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`,
+          message,
         },
         sources: [],
       };
@@ -1359,6 +1385,16 @@ export const updateThesis = defineTool({
           // actually cost, written once by place_trade. On a watch row it
           // derives from the buy trigger like the others.
           if (!held) patch.entryPrice = check.columns.entryPrice;
+          const n = (v: unknown) => (v == null ? null : Number(v));
+          const before = { entryPrice: n(existing.entryPrice), targetPrice: n(existing.targetPrice), stopLoss: n(existing.stopLoss) };
+          claimNotes.push(
+            ...claimNamesOldLevel({
+              before,
+              after: { entryPrice: held ? before.entryPrice : check.columns.entryPrice, targetPrice: check.columns.targetPrice, stopLoss: check.columns.stopLoss },
+              coreBelief: (patch.coreBelief ?? existing.coreBelief) ?? null,
+              invalidationConds: patch.invalidationConds ?? existing.invalidationConds ?? [],
+            }),
+          );
         }
       }
     }
@@ -1842,10 +1878,11 @@ export const updateThesis = defineTool({
       triggerId: args.trigger_id,
       priceAtTime: resolvedPriceAtTime,
     });
-    const means = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
+    const flags = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
+    const means = [...flags, ...claimNotes];
 
     return {
-      summary: `${means.length ? `${summary} ⚠ ${means[0]}` : summary}${notChanged ? ` ${notChanged}` : ""}`,
+      summary: [summary, flags.length ? `⚠ ${flags[0]}` : null, ...claimNotes, notChanged || null].filter(Boolean).join(" "),
       data: {
         ok: true,
         thesis_id: existing.id,

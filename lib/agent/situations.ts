@@ -266,7 +266,7 @@ Answer, in order:
 1. What changed since you set the wake? Check with get_stock_data.
 
 What you can do (one of these):
-- Bring it back: update_thesis committing the full view (direction, horizon, prices, belief, assumptions, invalidation conditions, triggers), as a first research does.
+- Bring it back: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh; the writer writes the claim, prices the plan and commits the view, as a first research does. Then one update_thesis for what you still owe it, if anything.
 - Re-arm it: update_thesis with edit_triggers moving the wakes to the levels that matter now. Add a review clock (add_triggers watching "repeat") only if the stock has earned one, and say why.
 - Let it go: update_thesis with change_status ARCHIVED.
 
@@ -295,18 +295,19 @@ Mistakes:
   },
   FIRST_RESEARCH: {
     name: "first research due",
-    guidance: `When: a seed is due its first research: a stock put on the watchlist with no view yet (the \`stock\` line says "no view"), its review clock due.
+    guidance: `When: a seed is due its first research: a stock put on the watchlist with no view yet (the \`stock\` line says "no view"; the \`research\` line says "No write-up yet", and names the date when the last write-up failed), its review clock due.
 
 Answer, in order:
-1. Is there a tradeable view? Pull get_stock_data and what else you need.
+1. Has the write-up been written? The \`research\` line says. A failed one is dispatched again.
 
 What you can do:
-- Commit a view: update_thesis with direction LONG or SHORT, horizon, entry_price, target_price, stop_loss, core_belief, key_assumptions (two or more), invalidation_conditions (two or more), triggers, conviction with conviction_rationale, and a rationale. It stays on watch with its buy trigger; the save refuses a commitment missing a structural field.
-- Pass: update_thesis with direction PASS, invalidation_conditions (one or more) and a rationale. It leaves the watchlist and stays on the stock's page as a decision.
+- Have it researched: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh on the child run. The writer reads the stock, writes the claim (the belief, the assumptions, what would prove it wrong), prices the plan and commits the view, LONG, SHORT or PASS; the wait tool's reply says what landed, or why it failed.
+- Then decide what you still owe the stock, if anything: a level moved or a review clock, with one update_thesis saying why.
 
-Answered: one of the two. The save refuses a call on a seed with no direction; the seed stays, asked again tomorrow.
+Answered: the writer's save; your update_thesis after it only when something changed. A failed write-up is dispatched again; the seed stays, asked again on its clock.
 
 Mistakes:
+- Writing the claim yourself: a seed's claim is the writer's, and this save carries no belief fields. The save refuses a call on a seed with no direction.
 - Taking a watch with no clock for a seed: a seed comes due on its clock; a watch with no clock comes back only when one of its wakes fires.`,
   },
   REVIEW_DUE: {

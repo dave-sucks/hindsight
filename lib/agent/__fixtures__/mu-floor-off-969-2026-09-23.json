@@ -1,0 +1,190 @@
+{
+  "_note": "MU's morning-run update_thesis call of 2026-09-23 12:01 ET (run cmue1xmut000004jsnq1mbnxm), verbatim from the run's saved thread, and MU's row as that run's own get_theses read carried it, cut to the fields the save reads. The row's triggers are in the shape stored then; the stored-trigger reader still reads it. The call moved the floor $969 → $1,041 while what-proves-it-wrong still named $969.",
+  "call": {
+    "thesis_id": "cmrp6chyu000h04l5roqq5ha1",
+    "rationale": "MU's +5% day confirms the post-earnings drift is still alive, but with the stock at $1,096 and earnings due Sep 30 I need the ladder to do more work. Naming this what it is — PEAD — and raising the floor to $1041, just under the $1,042 breakout pivot, locks a real share of the gain while leaving room for normal volatility into the print.",
+    "structural_unchanged_reason": "The core belief is unchanged: the HBM-driven earnings-upgrade cycle is intact. This is a ladder patch only — price has moved far enough above the old floor that protection now belongs under the breakout pivot, not down near the prior repair zone.",
+    "trigger_id": "t5",
+    "price_at_time": 1096.16,
+    "target_price": 1100,
+    "stop_loss": 1041,
+    "setup_id": "PEAD",
+    "stop_basis": "Under the recent breakout pivot at $1,042 and above the Sep. 17 gap low $953.50; this tightens protection to the current post-breakout structure before the Sep. 30 print.",
+    "target_basis": "Original pre-earnings drift objective remains the first decision zone; above it I re-underwrite rather than mechanically extend into next week's print."
+  },
+  "price": 1096.16,
+  "position": {
+    "avgCost": 895.935
+  },
+  "thesis": {
+    "id": "cmrp6chyu000h04l5roqq5ha1",
+    "ticker": "MU",
+    "status": "HOLDING",
+    "direction": "LONG",
+    "horizon": "TARGET",
+    "setupId": null,
+    "entryPrice": 895.935,
+    "targetPrice": 1100,
+    "stopLoss": 969,
+    "coreBelief": "Micron's HBM supply is contracted through 2027 with $22B in strategic customer agreements and $18B in cash deposits already secured, sustaining a multi-quarter earnings-upgrade cycle that drives MU to $1,100 before the September 30 Q4 FY2026 print as each sequential record forces estimate revisions higher.",
+    "keyAssumptions": [
+      "HBM3E and HBM4 remain fully booked through 2027, with no customer deferrals or cancellations to the $22B in strategic customer agreements",
+      "Q4 FY2026 guidance of $50B revenue and ~86% gross margin is confirmed or exceeded on September 30, triggering another round of upward analyst estimate revisions"
+    ],
+    "invalidationConds": [
+      "MU closes below the $969 stop-loss, signaling a break below the 50-day SMA and invalidating the drift recovery",
+      "Q4 FY2026 earnings on September 30 deliver revenue materially below $50B guidance or guidance for Q1 FY2027 is cut, breaking the multi-quarter upgrade cycle",
+      "A major HBM customer (Nvidia, AMD) publicly reduces or delays memory commitments under the strategic customer agreements"
+    ],
+    "conviction": "MEDIUM",
+    "convictionRationale": "The fundamental case is as strong as it's ever been — two massive beats since the thesis opened, HBM fully booked through 2027, margins at 84.9% and guided higher. But the stock's failure to sustain above $1,100 after the Q3 FY2026 print, Druckenmiller's exit, and no insider buying at these levels keeps me honest. MEDIUM is the right read: the thesis is working but the drift is choppy, not clean.",
+    "variantView": "The market is treating today's AI-chip de-risking as a structural downgrade; I think it's a sentiment flush on a name with a multi-quarter HBM earnings upgrade cycle still intact — consensus hasn't cut numbers, just the multiple, which reopens the PEAD drift window.",
+    "scoring": {
+      "composite": 9,
+      "entryQuality": {
+        "note": "Refresh on a held position — stop-only tightening allowed. Entry set at $980 (a modest intraday pullback below today's $1,000.26 tape) to satisfy the priced-plan requirement; stop at $969 is the existing floor, unchanged.",
+        "score": 1
+      },
+      "trendStrength": {
+        "note": "SMA20 > SMA50, price above both, RSI 57.7, YTD +142.8% — structurally bullish despite -20% off the 52w high",
+        "score": 3
+      },
+      "relativeStrength": {
+        "note": "MU ranks 1/4 in revenue growth, YTD return, and composite score vs. NVDA, AVGO, AMD peer group",
+        "score": 3
+      },
+      "catalystFreshness": {
+        "note": "September 30 Q4 FY2026 print is 21 days out with $50B revenue guidance already set — hard catalyst with date, number, and analyst revision mechanics fully primed",
+        "score": 2
+      }
+    },
+    "catalystDate": null,
+    "triggers": [
+      {
+        "id": "t1",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 1100
+        },
+        "rationale": "$MU reaches $1,100, the original target zone — decide here: take it, trim it, or raise the target.",
+        "lastFiredAt": "2026-08-25T13:35:20.867Z",
+        "cooldownDays": 1
+      },
+      {
+        "id": "t2",
+        "action": "TRIM",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_ABOVE",
+          "level": 1150
+        },
+        "rationale": "Trim into a push toward and through the upper target zone if price nears $1,150.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "t3",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 880
+        },
+        "rationale": "A break below $880 would signal deeper technical damage — review whether the thesis is weakening structurally.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "t4",
+        "action": "EXIT",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "PRICE_BELOW",
+          "level": 969
+        },
+        "rationale": "Exit below $935 — the protective line raised on 8/24 (the original hard stop was $814). Below it this PEAD position is no longer respecting its protection; close it.",
+        "lastFiredAt": "2026-09-16T13:40:12.077Z",
+        "cooldownDays": 1
+      },
+      {
+        "id": "t5",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 4,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "UP"
+        },
+        "rationale": "A sharp 1-day gain could confirm momentum repair — review whether the drift is re-accelerating.",
+        "lastFiredAt": "2026-09-22T18:20:10.100Z",
+        "cooldownDays": 1
+      },
+      {
+        "id": "t6",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 4,
+          "kind": "PRICE_MOVE_PCT",
+          "window": "1D",
+          "direction": "DOWN"
+        },
+        "rationale": "A sharp 1-day drop could be either normal volatility or early thesis damage — review the cause.",
+        "lastFiredAt": "2026-09-14T13:35:04.471Z",
+        "cooldownDays": 1
+      },
+      {
+        "id": "t9",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "pct": 15,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "UP"
+        },
+        "rationale": "At +15% from entry, reassess whether trend repair is durable enough to add or tighten risk.",
+        "lastFiredAt": "2026-09-21T13:30:26.232Z",
+        "cooldownDays": 7
+      },
+      {
+        "id": "t10",
+        "action": "EXIT",
+        "source": "AGENT",
+        "fireMode": "DIRECT",
+        "predicate": {
+          "pct": 8,
+          "kind": "GAIN_FROM_ENTRY",
+          "direction": "DOWN"
+        },
+        "rationale": "Exit if the position falls 8% below entry; that is the hard loss cap for this PEAD setup.",
+        "cooldownDays": 0
+      },
+      {
+        "id": "t11",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "kind": "EARNINGS_BEAT",
+          "minSurprisePct": 5
+        },
+        "rationale": "If $MU again beats EPS by at least 5%, review whether the earnings-upgrade cycle remains intact and whether targets should rise.",
+        "cooldownDays": 7
+      }
+    ],
+    "triggerState": {
+      "cacf717e-af57-42e5-a9af-28835e20508d": {
+        "firedAt": "2026-09-14T13:40:11.705Z"
+      }
+    },
+    "researchUpdatedAt": "2026-09-09T03:41:26.855Z"
+  }
+}

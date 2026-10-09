@@ -84,10 +84,31 @@ describe("the one line", () => {
       "DOCU · watch · LONG · PEAD · $70.03 · buy $74.10 · target $83.00 · floor $68.90 · review 10-20 · score 8 · id t_docu",
     );
   });
-  it("leaves out what a stock lacks, says no view on a seed, and names the horizon when no setup is named", () => {
+  it("leaves out what a stock lacks, says no view and no write-up yet on a seed, and names the horizon when no setup is named", () => {
     expect(rowForModel({ id: "t_x", ticker: "XYZ", status: "WATCHING", direction: null, horizon: "CATALYST", catalystDate: "2026-11-02T00:00:00.000Z" }, { named: false, size: "line" })).toBe(
-      "XYZ · watch · no view · CATALYST · catalyst 2026-11-02 · id t_x",
+      "XYZ · watch · no view · no write-up yet · CATALYST · catalyst 2026-11-02 · id t_x",
     );
+  });
+  it("a seed whose newest write-up failed says so with the date; a watch with a claim but no view does not say no write-up", () => {
+    const seed = { id: "t_x", ticker: "XYZ", status: "WATCHING", direction: null, horizon: "COMPOUNDER" };
+    expect(rowForModel({ ...seed, writerRun: { status: "FAILED", startedAt: "2026-10-05T12:01:07.188Z" } }, { named: false, size: "line" })).toBe("XYZ · watch · no view · write-up failed 10-05 · COMPOUNDER · id t_x");
+    expect(rowForModel({ ...seed, writerRun: { status: "COMPLETE", startedAt: "2026-10-05T12:01:07.188Z" } }, { named: false, size: "line" })).toBe("XYZ · watch · no view · no write-up yet · COMPOUNDER · id t_x");
+    expect(rowForModel({ ...seed, coreBelief: "A claim the chat wrote." }, { named: false, size: "line" })).toBe("XYZ · watch · no view · COMPOUNDER · id t_x");
+  });
+});
+
+describe("the research line's write-up facts (step 12, part 1)", () => {
+  const seed = { id: "t_x", ticker: "XYZ", status: "WATCHING", direction: null, horizon: "COMPOUNDER", situations: ["FIRST_RESEARCH"] };
+  const research = (row: Row, size: "short" | "full" = "full") => (rowForModel(row, { named: size === "full", size }) as Row).research;
+  it("a seed with no claim: no write-up yet, and the date when the last one failed", () => {
+    expect(research(seed)).toBe("No write-up yet.");
+    expect(research({ ...seed, writerRun: { status: "FAILED", startedAt: "2026-10-05T12:01:07.188Z" } })).toBe("No write-up yet; the last write-up failed 2026-10-05.");
+    expect(research({ ...seed, writerRun: { status: "FAILED", startedAt: "2026-10-05T12:01:07.188Z" } }, "short")).toBe('No write-up yet; the last write-up failed 2026-10-05. Full row: get_theses(tickers: ["XYZ"]).');
+    expect(research({ ...seed, writerRun: { status: "COMPLETE", startedAt: "2026-10-05T12:01:07.188Z" } })).toBe("No write-up yet.");
+  });
+  it("a stock with research whose newest write-up failed says both", () => {
+    expect(research({ ...held(), writerRun: { status: "FAILED", startedAt: "2026-10-08T12:01:07.188Z" } })).toBe("Written 2026-10-05 at $39.55, 2 days ago. The newest write-up failed 2026-10-08.");
+    expect(research(held())).toBe("Written 2026-10-05 at $39.55, 2 days ago.");
   });
 });
 
