@@ -33,8 +33,8 @@ describe("the morning run's save", () => {
   });
 
   it("leaves the other doors' saves as they were", () => {
-    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(12);
-    expect(enumOf("INTRADAY_TACTICAL")).toEqual(["INVALIDATED", "ARCHIVED"]);
+    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(11);
+    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).not.toContain("change_status");
     const chat = Object.keys(schemaOf("PRINCIPAL_CHAT").shape);
     expect(chat).toHaveLength(25);
     expect(chat).toEqual(expect.arrayContaining(["price_at_time", "snapshot", "scoring", "variant_view"]));

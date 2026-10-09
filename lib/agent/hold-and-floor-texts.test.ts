@@ -26,13 +26,14 @@ const tool = (runMode: string) =>
 const statusText = (runMode: string) =>
   (zodSchema(tool(runMode).inputSchema as never).jsonSchema as { properties: { change_status: { description: string } } }).properties.change_status.description;
 
-it("the trigger run retires a thesis only on a stock we watch, and sells a stock we hold", () => {
+it("the trigger run retires nothing: it takes a watched stock's plan down by id, and sells a stock we hold", () => {
   const prompt = SAMPLE_PROMPTS.tactical();
-  expect(prompt).toContain('on a stock we watch, use update_thesis(change_status:\n     "INVALIDATED") instead of REVIEWED');
+  expect(prompt.replace(/\s+/g, " ")).toContain("on a stock we watch take its buy, floor and target down by id (remove_trigger_ids)");
+  expect(prompt).not.toMatch(/change_status|INVALIDATED|ARCHIVED/);
   expect(prompt.replace(/\s+/g, " ")).toContain(HELD);
-  expect(statusText("INTRADAY_TACTICAL")).toContain("Both are for a stock we watch: a stock we hold is sold first with close_position, which retires the thesis itself.");
-  // The other runs' change_status, which take WATCHING too, are unchanged.
-  expect(statusText("MORNING_PLAN")).not.toContain("Both are for a stock we watch");
+  // Its save has no change_status; the other runs' still take all three values.
+  expect((zodSchema(tool("INTRADAY_TACTICAL").inputSchema as never).jsonSchema as { properties: object }).properties).not.toHaveProperty("change_status");
+  expect(statusText("MORNING_PLAN")).toContain("WATCHING = put a stock you sold back on watch");
 });
 
 it("update_thesis names the declined-sale exception, at the save's own number", () => {

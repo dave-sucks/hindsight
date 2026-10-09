@@ -1,0 +1,228 @@
+{
+ "_note": "Two trigger-run update_thesis calls that carried a retiring change_status, verbatim: NVDA 2026-10-09 (run cmv119ei5000806jsp673sscw, a held stock, INVALIDATED) and a docu-trigger replay of 2026-10-09 on 00d905cf (DOCU 09-28 watched, ARCHIVED). Each stock as it stood at its fire. Only the fields the save reads.",
+ "nvda": {
+  "call": {
+   "thesis_id": "cmtg9nbdy000204jpc6cwawgg",
+   "trigger_id": "6306936b-bb02-4298-9ca0-90f586772512",
+   "rationale": "Selling Nvidia at $230.86. The stock is still below the $236 floor now after the trigger fired at $230.81, so I proposed the stop again and did not hold through a second day under that line. Your last note was clear that the first breach was a price stop, not a broken business thesis, and I agree: the guide-raise and estimate-revision story still stands, but this 39-day drift trade has lost the reclaim area and I am respecting the floor rather than widening it.",
+   "add_triggers": [],
+   "edit_triggers": [],
+   "remove_trigger_ids": [],
+   "stop_loss": 236,
+   "stop_basis": "Under the $237.88 breakout pivot and just beneath the recent reclaim area; that keeps the stock above structure while locking in a meaningful share of the gain.",
+   "target_price": 322,
+   "target_basis": "Analyst consensus median target at $322 over the 60-day post-print drift window.",
+   "entry_price": 218.2259,
+   "change_status": "INVALIDATED"
+  },
+  "fire": {
+   "at": "2026-10-09T14:00:48.072Z",
+   "price": 230.815,
+   "triggerId": "6306936b-bb02-4298-9ca0-90f586772512"
+  },
+  "position": {
+   "quantity": 33,
+   "avgCost": 218.2259,
+   "peakPrice": 242.505,
+   "stopLoss": 236,
+   "targetPrice": 322
+  },
+  "thesis": {
+   "id": "cmtg9nbdy000204jpc6cwawgg",
+   "ticker": "NVDA",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "PEAD",
+   "conviction": "MEDIUM",
+   "entryPrice": 218.2259,
+   "targetPrice": 322,
+   "stopLoss": 236,
+   "triggers": [
+    {
+     "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4",
+     "action": "REVIEW",
+     "predicate": {
+      "value": 7,
+      "watch": "repeat"
+     },
+     "rationale": "Look at this every 7 days, counting from the last real review.",
+     "source": "DEFAULT",
+     "cooldownDays": 7
+    },
+    {
+     "id": "6306936b-bb02-4298-9ca0-90f586772512",
+     "action": "EXIT",
+     "predicate": {
+      "is": "below",
+      "value": 236,
+      "watch": "price"
+     },
+     "rationale": "Under the $237.88 breakout pivot and just beneath the recent reclaim area; that keeps the stock above structure while locking in a meaningful share of the gain.",
+     "source": "AGENT",
+     "cooldownDays": 0
+    },
+    {
+     "id": "8f58e347-64c5-41bf-90f3-b17ac4466ae7",
+     "action": "REVIEW",
+     "predicate": {
+      "is": "above",
+      "value": 322,
+      "watch": "price"
+     },
+     "rationale": "Target $322 hit. Decide: close at target or trail higher with confidence intact.",
+     "source": "DEFAULT",
+     "cooldownDays": 1
+    },
+    {
+     "id": "1f2454ae-1a4d-4123-8502-fdcb85006401",
+     "action": "REVIEW",
+     "predicate": {
+      "is": "after",
+      "value": 60,
+      "watch": "from_date",
+      "variable": "buy"
+     },
+     "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
+     "source": "DEFAULT",
+     "cooldownDays": 60
+    },
+    {
+     "id": "5fbb5cdb-e4b3-4559-8703-eaf75798ae79",
+     "action": "TRIM",
+     "predicate": {
+      "is": "above",
+      "value": 16.6,
+      "watch": "move",
+      "settings": {
+       "fastWinnerPct": 20,
+       "fastWinnerDays": 21
+      },
+      "variable": "entry"
+     },
+     "rationale": "Up 16.6% from entry — 2R on a 8.3% stop. The prior high or a measured move; partial at 2R. Off for good once the stock has run 20% off the buy within 21 days: a winner that fast is held and managed on the trail, not cut in half.",
+     "source": "DEFAULT",
+     "cooldownDays": 7
+    },
+    {
+     "id": "ce4de003-2bc2-438d-a3cf-1b786d72f88f",
+     "action": "REVIEW",
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {
+        "is": "beat",
+        "value": 0,
+        "watch": "surprise"
+       },
+       {
+        "is": "below",
+        "value": 3,
+        "watch": "move",
+        "variable": "prev_close"
+       }
+      ]
+     },
+     "rationale": "A beat the market sold — the stock is down 3%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.",
+     "source": "DEFAULT",
+     "cooldownDays": 7
+    }
+   ]
+  }
+ },
+ "docu": {
+  "call": {
+   "thesis_id": "cmtu9lfhw000004i575f6xyig",
+   "trigger_id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+   "rationale": "Not acting yet on DocuSign at $65.88. The buy level fired, but this pullback setup asked for the touch to hold with a close above the prior day's high, and that confirmation is not here intraday; the gap-day low $64.16 still holds, so the thesis stays intact and the floor stays $63 under the last swing low.",
+   "add_triggers": [],
+   "edit_triggers": [],
+   "remove_trigger_ids": [],
+   "stop_loss": 63,
+   "stop_basis": "Under the gap-day low $64.16 and the recent swing low, with the floor left at $63 until a confirmed reversal prints.",
+   "target_price": 83,
+   "target_basis": "Prior high retest and measured drift objective at $83 stay in place.",
+   "entry_price": 67,
+   "change_status": "ARCHIVED"
+  },
+  "fire": {
+   "at": "2026-09-28T13:30:29.018Z",
+   "price": 65.88,
+   "triggerId": "8f8440b4-30bc-43c4-991b-069733b8c79e"
+  },
+  "thesis": {
+   "id": "cmtu9lfhw000004i575f6xyig",
+   "ticker": "DOCU",
+   "status": "WATCHING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "MA_PULLBACK",
+   "conviction": "MEDIUM",
+   "entryPrice": 67,
+   "targetPrice": 83,
+   "stopLoss": 63,
+   "triggers": [
+    {
+     "id": "05da8147-8aa7-415e-92dc-0dff5f8b228f",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "is": "beat",
+      "value": 0,
+      "watch": "surprise"
+     },
+     "rationale": "DOCU beat ≥5% — fresh PEAD triage required immediately. Check: revenue beat, ARR guidance raised, IAM mix still expanding, volume on gap day ≥1.5x. If all four conditions met, this is a new 60-day drift window. Do NOT enter on the gap day itself — wait 1-3 days.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "8956c980-d3f1-4c72-88cf-e3fcd5ebf1df",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "miss",
+      "value": 3,
+      "watch": "surprise"
+     },
+     "rationale": "Miss — entry conditions worsening. Consider removing.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+     "predicate": {
+      "watch": "price",
+      "is": "below",
+      "value": 67
+     },
+     "action": "ENTER",
+     "rationale": "I buy when it comes back down to $67.00.",
+     "source": "AGENT",
+     "cooldownDays": 1
+    },
+    {
+     "id": "af4d1172-ee7e-4ac1-9b92-12f2e83091e3",
+     "predicate": {
+      "watch": "price",
+      "is": "below",
+      "value": 63
+     },
+     "action": "EXIT",
+     "rationale": "Under the Sep 9 swing low $63.63 and the Sep 3 gap-day low $64.16 — if both break, the MA_PULLBACK thesis is wrong. -8% from entry would be $61.64; the structural level is tighter at $63.00.",
+     "source": "AGENT",
+     "cooldownDays": 1
+    },
+    {
+     "id": "6d1adc43-b748-423f-8109-bcc79296cd22",
+     "predicate": {
+      "watch": "price",
+      "is": "above",
+      "value": 83
+     },
+     "action": "REVIEW",
+     "rationale": "Prior 52-week high $83.29 / 1.272 Fibonacci extension from the June low to Sep high = $82.96. R/R 4:1 from entry $67 with floor $63.",
+     "source": "AGENT",
+     "cooldownDays": 1
+    }
+   ]
+  }
+ }
+}
