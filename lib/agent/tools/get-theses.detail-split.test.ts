@@ -27,6 +27,8 @@ jest.mock("@/lib/prisma", () => ({
     // resolve to their own rungs, which is what the split tests care about.
     agentConfig: { findMany: jest.fn().mockResolvedValue([]) },
     account: { findMany: jest.fn().mockResolvedValue([]) },
+    // The newest writer run on each stock (step 12, part 1): none here.
+    researchRun: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
 jest.mock("@/lib/alpaca", () => ({

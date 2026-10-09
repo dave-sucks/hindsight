@@ -403,6 +403,33 @@ export const getTheses = defineTool({
       for (const u of writerSaves) if (u.priceAtTime != null) researchWrittenByThesis.set(u.thesisId, { at: u.timestamp, price: u.priceAtTime });
     }
 
+    // The newest writer run on each stock (step 12, part 1): a failed
+    // write-up is said on the row with its date, and a seed with no claim
+    // reads "No write-up yet", so the morning run dispatches again instead
+    // of writing the claim itself. A writer run names its stock in
+    // parameters.existingThesisId (a refresh, from dispatch) or
+    // parameters.thesisId (the persist step).
+    const writerRunByThesis = new Map<string, { status: string; startedAt: Date }>();
+    if (theses.length > 0) {
+      const writerRuns = await prisma.researchRun.findMany({
+        where: {
+          mode: "THESIS_WRITER",
+          OR: theses.flatMap((t) => [
+            { parameters: { path: ["existingThesisId"], equals: t.id } },
+            { parameters: { path: ["thesisId"], equals: t.id } },
+          ]),
+        },
+        orderBy: { startedAt: "desc" },
+        select: { status: true, startedAt: true, parameters: true },
+      });
+      for (const r of writerRuns) {
+        const p = (r.parameters ?? {}) as { existingThesisId?: unknown; thesisId?: unknown };
+        for (const id of [p.existingThesisId, p.thesisId]) {
+          if (typeof id === "string" && !writerRunByThesis.has(id)) writerRunByThesis.set(id, { status: r.status, startedAt: r.startedAt });
+        }
+      }
+    }
+
     // The live stocks (held, watched, promoted): the ones whose missing or
     // old price the result says in words.
     const liveTheses = theses.filter(
@@ -480,6 +507,11 @@ export const getTheses = defineTool({
       conviction: t.conviction ?? null,
       composite: getThesisComposite(t),
       coreBelief: t.coreBelief,
+      // A seed's one line says "no write-up yet", or that its newest one failed.
+      writerRun: (() => {
+        const r = writerRunByThesis.get(t.id);
+        return r ? { status: r.status, startedAt: r.startedAt.toISOString() } : null;
+      })(),
       entryPrice: t.entryPrice,
       targetPrice: t.targetPrice,
       stopLoss: t.stopLoss,
@@ -567,6 +599,11 @@ export const getTheses = defineTool({
         researchWritten: (() => {
           const w = researchWrittenByThesis.get(t.id);
           return w ? { on: w.at.toISOString().slice(0, 10), price: w.price, daysAgo: Math.floor((Date.now() - w.at.getTime()) / 86_400_000) } : null;
+        })(),
+        // The newest writer run on the stock; the row says a failed one.
+        writerRun: (() => {
+          const r = writerRunByThesis.get(t.id);
+          return r ? { status: r.status, startedAt: r.startedAt.toISOString() } : null;
         })(),
         // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
         // recent protective (STOP) declines in the last 7d + the principal's
