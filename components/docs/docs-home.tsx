@@ -1,17 +1,16 @@
 "use client";
 
 /**
- * /docs — the home page: the loop as a canvas, the order to meet the product
- * in, the agents, the concepts, and every tool. Each card opens its page in a
+ * /docs — the home page: one stock's story through the agents, the workflow
+ * canvas, the agents, the concepts, and every tool. Each opens its page in a
  * sheet; `?doc=<slug>` deep-links one.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpRight, Maximize2, Search, X } from "lucide-react";
+import { ArrowUpRight, Maximize2, X } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Kbd } from "@/components/ui/kbd";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent } from "@/components/ui/sheet";
 import type { CatalogTool, DocsSetup } from "@/lib/docs/tools";
@@ -31,29 +30,10 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
   const params = useSearchParams();
   const openSlug = params.get("doc");
   const open = openSlug ? docBySlug(openSlug) : undefined;
-  const search = useRef<HTMLInputElement>(null);
-
   const setDoc = useCallback(
     (slug: DocSlug | null) => router.replace(slug ? `${pathname}?doc=${slug}` : pathname, { scroll: false }),
     [router, pathname],
   );
-
-  const focusSearch = useCallback(() => {
-    document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" });
-    window.setTimeout(() => search.current?.focus({ preventScroll: true }), 350);
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
-        e.preventDefault();
-        setDoc(null);
-        focusSearch();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [focusSearch, setDoc]);
 
   const agents = DOCS.filter((d) => d.group === "Agents");
   const concepts = DOCS.filter((d) => d.group === "Concepts");
@@ -64,18 +44,7 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
         <section className="flex flex-col gap-10">
           <div className="flex flex-col gap-5">
             <DocsNav />
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-6">
-              <Eyebrow>How Hindsight works</Eyebrow>
-              <button
-                type="button"
-                onClick={focusSearch}
-                className="inline-flex items-center gap-2 rounded-lg border bg-background px-2.5 py-1.5 text-sm text-muted-foreground transition hover:text-foreground"
-              >
-                <Search className="size-4" />
-                Search tools
-                <Kbd>/</Kbd>
-              </button>
-            </div>
+            <Eyebrow className="pt-6">How Hindsight works</Eyebrow>
             <TwoTone
               as="h1"
               size="hero"
@@ -158,13 +127,13 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
         <section id="tools" className="flex scroll-mt-20 flex-col gap-8" aria-labelledby="tools-h">
           <div className="flex flex-col gap-2.5">
             <Eyebrow>Tools</Eyebrow>
-            <TwoTone id="tools-h" lead="Everything an analyst can reach." rest="Market data, filings, the web and your book, and which agent can use what." />
+            <TwoTone id="tools-h" lead="Everything an analyst can reach." rest="Market data, filings, the web and your book. Each agent's own list is on its page." />
           </div>
-          <ToolCatalog searchRef={search} />
+          <ToolCatalog />
         </section>
 
         <footer className="flex flex-wrap justify-between gap-2 border-t pt-6 text-xs text-muted-foreground">
-          <span>Which agent has which tool is read from the code on every load.</span>
+          <span>Every tool is read from the code on every load.</span>
           <span>
             Each page also lives at its own address, like{" "}
             <Link href="/docs/triggers" className="underline underline-offset-2 hover:text-foreground">

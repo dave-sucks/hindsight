@@ -1,22 +1,19 @@
 "use client";
 
 /**
- * The tool catalog: a filterable grid of every tool an agent can call, each
- * opening a dialog with which agents have it and where it reads from. The
+ * The tool catalog: every tool an agent can call, filtered by kind, each
+ * opening a dialog with what it does and where it reads from. Which agent
+ * has a tool shows on that agent's page. The
  * list arrives built on the server (lib/docs/tool-catalog.ts) through
  * DocsDataProvider, so which agent has which tool is read from the code.
  */
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { Search, ShieldCheck } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ShieldCheck } from "lucide-react";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HindsightLogo from "@/components/HindsightLogo";
 import {
-  DOCS_AGENTS,
   TOOL_KINDS,
   TOOL_SOURCES,
   type CatalogTool,
@@ -88,17 +85,13 @@ function ToolCard({ tool, onOpen }: { tool: CatalogTool; onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="group flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 text-left transition hover:-translate-y-px hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex min-w-0 items-start gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className="flex items-center gap-3">
-        <SourceMark source={tool.sources[0]} />
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-foreground">{tool.name}</span>
-          <Mono className="truncate text-xs text-muted-foreground">{tool.code}</Mono>
-        </div>
-        {tool.approval ? <ShieldCheck className="ml-auto size-4 shrink-0 text-amber-500" aria-label="Needs your approval" /> : null}
-      </div>
-      <p className="line-clamp-2 text-sm text-muted-foreground">{tool.summary}</p>
+      <SourceMark source={tool.sources[0]} />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm font-medium text-foreground">{tool.name}</span>
+        <span className="line-clamp-2 text-sm text-muted-foreground">{tool.summary}</span>
+      </span>
     </button>
   );
 }
@@ -163,13 +156,14 @@ export function ToolDialog({ tool, onClose }: { tool: CatalogTool | null; onClos
 }
 
 function ToolDialogBody({ tool }: { tool: CatalogTool }) {
-  const kind = TOOL_KINDS.find((k) => k.id === tool.kind);
+  const [r, setR] = useState(0);
+  const res = tool.resources?.[r];
   return (
     <div className="flex max-h-[75vh] min-w-0 flex-col gap-5 overflow-y-auto">
       <DialogHeader>
-        <div className="flex items-start gap-3">
-          <SourceMark source={tool.sources[0]} size="lg" />
-          <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex items-center gap-3">
+          <SourceMark source={tool.sources[0]} />
+          <div className="flex min-w-0 flex-col">
             <DialogTitle>{tool.name}</DialogTitle>
             <Mono className="text-xs text-muted-foreground">{tool.code}</Mono>
           </div>
@@ -177,68 +171,40 @@ function ToolDialogBody({ tool }: { tool: CatalogTool }) {
         <DialogDescription>{tool.summary}</DialogDescription>
       </DialogHeader>
 
-      {tool.approval ? (
-        <div className="flex items-start gap-2.5 rounded-lg bg-amber-500/10 px-3 py-2.5 text-sm text-foreground">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-500" />
-          <span>Needs your approval. It becomes a proposal in your queue, with an email and a phone alert, and expires after 24 hours if you don&apos;t answer.</span>
-        </div>
-      ) : null}
-
-      <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Available to</p>
-        <div className="flex flex-wrap gap-1.5">
-          {DOCS_AGENTS.map((a) => (
-            <Badge key={a.id} variant={tool.agents.includes(a.id) ? "outline" : "muted"}>
-              {tool.agents.includes(a.id) ? a.name : <span className="line-through decoration-muted-foreground/40">{a.name}</span>}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Kind · sources</p>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {kind ? <Badge variant="secondary">{kind.name}</Badge> : null}
-          {tool.sources.map((s) => (
-            <Badge key={s} variant="outline">
-              {TOOL_SOURCES[s]}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
       {tool.resources?.length ? (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Where it reads from</p>
-          <Tabs defaultValue={0}>
-            <TabsList variant="line">
-              {tool.resources.map((r, i) => (
-                <TabsTrigger key={r.title} value={i}>
-                  {r.title}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {tool.resources.map((r, i) => (
-              <TabsContent key={r.title} value={i}>
-                <div className="flex flex-col gap-2 pt-2">
-                  <p className="text-sm text-muted-foreground">{r.description}</p>
-                  <Mono as="pre" className="overflow-x-auto rounded-lg border bg-muted/50 px-3 py-2 text-xs text-foreground">{r.endpoint}</Mono>
-                  {r.example ? (
-                    <Mono as="pre" className="overflow-x-auto rounded-lg bg-positive/10 px-3 py-2 text-xs text-positive">{r.example}</Mono>
-                  ) : null}
+        <div className="flex flex-col gap-3">
+          {tool.resources.length > 1 ? (
+            <ChipTabs
+              options={tool.resources.map((x, i) => ({ value: String(i), label: x.title }))}
+              value={String(r)}
+              onChange={(v) => v != null && setR(Number(v))}
+              clearable={false}
+            />
+          ) : null}
+          {res ? (
+            <>
+              <p className="text-sm text-muted-foreground">{res.description}</p>
+              <Mono as="pre" className="overflow-x-auto rounded-lg border bg-muted/50 px-3 py-2 text-xs text-foreground">
+                {res.endpoint}
+              </Mono>
+              {res.example ? (
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Example</p>
+                  <p className="text-sm text-foreground">{res.example}</p>
                 </div>
-              </TabsContent>
-            ))}
-          </Tabs>
+              ) : null}
+            </>
+          ) : null}
         </div>
       ) : null}
 
-      {tool.notes?.length ? (
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
-          {tool.notes.map((n) => (
-            <li key={n}>{n}</li>
+      {tool.approval || tool.notes?.length ? (
+        <div className="flex flex-col gap-1.5 border-t pt-4 text-sm text-muted-foreground">
+          {tool.approval ? <p>Needs your approval: it becomes a proposal in your queue, and expires after 24 hours if you don&apos;t answer.</p> : null}
+          {tool.notes?.map((n) => (
+            <p key={n}>{n}</p>
           ))}
-        </ul>
+        </div>
       ) : null}
     </div>
   );
@@ -246,79 +212,27 @@ function ToolDialogBody({ tool }: { tool: CatalogTool }) {
 
 // ── The full catalog ───────────────────────────────────────────────────────
 
-export function ToolCatalog({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }) {
+export function ToolCatalog() {
   const tools = useDocsTools();
-  const [agent, setAgent] = useState<DocsAgentId | "all">("all");
-  const [kind, setKind] = useState<ToolKind | null>(null);
-  const [q, setQ] = useState("");
+  const [kind, setKind] = useState<ToolKind | "all">("all");
   const [open, setOpen] = useState<CatalogTool | null>(null);
-
-  const query = q.trim().toLowerCase();
-  const shown = tools.filter(
-    (t) =>
-      (agent === "all" || t.agents.includes(agent)) &&
-      (!kind || t.kind === kind) &&
-      (!query || `${t.name} ${t.code} ${t.summary}`.toLowerCase().includes(query)),
-  );
-  const agentOptions = [
-    { value: "all" as const, label: `All agents · ${tools.length}` },
-    ...DOCS_AGENTS.map((a) => ({ value: a.id, label: `${a.name} · ${tools.filter((t) => t.agents.includes(a.id)).length}` })),
-  ];
+  // One list in the catalog's own order: market data first, then the book, edits, trades and run steps.
+  const order = TOOL_KINDS.map((k) => k.id);
+  const shown = tools.filter((t) => kind === "all" || t.kind === kind).toSorted((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-3">
-        <div className="max-w-full overflow-x-auto">
-          <ChipTabs
-            variant="tray"
-            options={agentOptions}
-            value={agent}
-            clearable={false}
-            onChange={(v) => setAgent((v ?? "all") as DocsAgentId | "all")}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <ChipTabs options={TOOL_KINDS.map((k) => ({ value: k.id, label: k.short }))} value={kind} onChange={setKind} />
-          <div className="ml-auto w-full sm:w-64">
-            <label htmlFor="docs-tool-search" className="sr-only">
-              Search tools
-            </label>
-            <InputGroup>
-              <InputGroupAddon>
-                <Search />
-              </InputGroupAddon>
-              <InputGroupInput id="docs-tool-search" ref={searchRef} type="search" placeholder="Search tools" value={q} onChange={(e) => setQ(e.target.value)} />
-            </InputGroup>
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
-          Showing {shown.length} of {tools.length} tools
-        </p>
+    <div className="flex flex-col gap-5">
+      <ChipTabs
+        options={[{ value: "all", label: "All" }, ...TOOL_KINDS.map((k) => ({ value: k.id, label: k.short }))]}
+        value={kind}
+        onChange={(v) => v && setKind(v as ToolKind | "all")}
+        clearable={false}
+      />
+      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        {shown.map((t) => (
+          <ToolCard key={t.code} tool={t} onOpen={() => setOpen(t)} />
+        ))}
       </div>
-
-      {shown.length === 0 ? (
-        <p className="rounded-xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          No tool matches. Clear the search or pick another agent.
-        </p>
-      ) : (
-        TOOL_KINDS.map((k) => {
-          const items = shown.filter((t) => t.kind === k.id);
-          if (items.length === 0) return null;
-          return (
-            <div key={k.id} className="flex flex-col gap-3">
-              <p className="flex items-baseline gap-2 text-sm font-medium text-foreground">
-                {k.name}
-                <span className="text-xs font-normal text-muted-foreground tabular-nums">{items.length}</span>
-              </p>
-              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                {items.map((t) => (
-                  <ToolCard key={t.code} tool={t} onOpen={() => setOpen(t)} />
-                ))}
-              </div>
-            </div>
-          );
-        })
-      )}
       <ToolDialog tool={open} onClose={() => setOpen(null)} />
     </div>
   );
