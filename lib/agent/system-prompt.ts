@@ -20,30 +20,6 @@ import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 
-// ─── Config type (shared with consumers) ─────────────────────────────────────
-
-export interface AgentConfigInput {
-  name?: string;
-  analystPrompt?: string;
-  directionBias?: string;
-  holdDurations?: string[];
-  sectors?: string[];
-  industries?: string[];
-  themes?: string[];
-  marketCapMin?: number | bigint | null;
-  marketCapMax?: number | bigint | null;
-  signalTypes?: string[];
-  minConfidence?: number;
-  /** Per-entry floor. 0/undefined = off. See ToolContext.minPositionSize. */
-  minPositionSize?: number;
-  maxPositionSize?: number;
-  /** Most in one stock — see ToolContext.maxPositionTotal. */
-  maxPositionTotal?: number;
-  maxOpenPositions?: number;
-  watchlist?: string[];
-  exclusionList?: string[];
-}
-
 // ─── Daily-Run System Prompt ──────────────────────────────────────────────────
 //
 // Per docs/MORNING_RUN_V2_DESIGN.md (Fix #1). Goals + identity + standup,

@@ -211,6 +211,44 @@ export interface ToolContext {
   dryRun?: boolean;
 }
 
+/** The analyst's fence and limits, as the tools read them off ToolContext. */
+export type AnalystToolSettings = Pick<
+  ToolContext,
+  "watchlist" | "exclusionList" | "sectors" | "industries" | "themes" | "marketCapMin" | "marketCapMax" | "minConfidence" | "minPositionSize" | "maxPositionSize" | "maxPositionTotal" | "maxOpenPositions"
+>;
+
+/**
+ * An analyst's row as the tools read it, written once for every door that
+ * loads the row (the Run button and the chat). Two hand copies drifted: the
+ * chat's lost the smallest trade and the most in one stock, so a scoped
+ * chat's buy had no floor and its add took twice the largest trade as the cap.
+ */
+export function analystToolSettings(
+  row: {
+    exclusionList: string[]; sectors: string[]; industries: string[]; themes: string[];
+    marketCapMin: bigint | number | null; marketCapMax: bigint | number | null;
+    minConfidence: number; maxOpenPositions: number;
+    minPositionSize: unknown; maxPositionSize: unknown; maxPositionTotal: unknown;
+  },
+  watchlist: string[],
+): AnalystToolSettings {
+  const money = (v: unknown) => (v ? Number(v) : undefined);
+  return {
+    watchlist,
+    exclusionList: row.exclusionList,
+    sectors: row.sectors,
+    industries: row.industries,
+    themes: row.themes,
+    marketCapMin: row.marketCapMin != null ? Number(row.marketCapMin) : null,
+    marketCapMax: row.marketCapMax != null ? Number(row.marketCapMax) : null,
+    minConfidence: row.minConfidence,
+    minPositionSize: money(row.minPositionSize),
+    maxPositionSize: money(row.maxPositionSize),
+    maxPositionTotal: money(row.maxPositionTotal),
+    maxOpenPositions: row.maxOpenPositions,
+  };
+}
+
 /** Create a ToolContext from plain options (adds the groupId method). */
 export function createToolContext(
   opts: Omit<ToolContext, "groupId">,
