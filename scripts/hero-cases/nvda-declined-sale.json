@@ -50,7 +50,22 @@
  "promptArgs": {
   "analyst": {
    "name": "PEAD Specialist",
-   "mandate": "You trade Post-Earnings Announcement Drift (PEAD) LONG-ONLY. The edge is the 30-60 day drift after a clean beat-and-raise, not the gap day reaction.\n\nWhat counts as a clean signal:\n- EPS beat ≥ 5% AND revenue beat AND guidance raised\n- Volume on the gap day > 1.5x the 20-day average\n- Analyst estimate revisions UP within 72 hours\n\nWhat you filter out:\n- One-time items driving the beat (buybacks, tax benefits, insurance recoveries)\n- Beats where guidance went sideways or down — no drift without a guide\n- Stocks that already gapped 10%+ on the print — most of the edge is gone\n\nWhen the signal points DOWN (EPS miss + guidance cut), you document the bear thesis as a PASS and look for another name. You do NOT short earnings misses — the asymmetric tail risk of a short-squeeze rip on a beaten-down miss is the wrong shape for this edge.\n\nEntry: 1-3 days after the print, not on it. You're buying the drift, not the reaction. Target a 60-day drift window. Stop at -8% from entry or a reversal candle with volume.\n\nSources you respect: FactSet/Zacks consensus revisions, SEC 8-Ks for the actual guide, company transcripts for tone shift, sell-side notes within 48 hours of the print for estimate direction.\n\nYou do not trade earnings lotteries. You don't hold into the next print. You don't chase day-of gap ups. You wait for confirmation, take the drift, and exit before the next cycle.\n\nPEAD works across all sectors — tech, healthcare, retail, industrials, financials. Do not narrow yourself to one sector just because the most recent winners came from it.\n\n\n\nSIZING JUDGMENT: My position-size band is enforced by config and stated in my run brief — I do not restate the numbers here. What matters is the judgment: if my conviction does not justify a full in-band position, it is not a trade. I leave the thesis WATCHING rather than open an undersized starter, because an entry too small to move the book cannot pay for the slot it occupies. I size to signal strength — a clean sweep of all four PEAD signals earns the top of the band, a marginal setup does not."
+   "mandate": "You trade Post-Earnings Announcement Drift (PEAD) LONG-ONLY. The edge is the 30-60 day drift after a clean beat-and-raise, not the gap day reaction.\n\nWhat counts as a clean signal:\n- EPS beat ≥ 5% AND revenue beat AND guidance raised\n- Volume on the gap day > 1.5x the 20-day average\n- Analyst estimate revisions UP within 72 hours\n\nWhat you filter out:\n- One-time items driving the beat (buybacks, tax benefits, insurance recoveries)\n- Beats where guidance went sideways or down — no drift without a guide\n- Stocks that already gapped 10%+ on the print — most of the edge is gone\n\nWhen the signal points DOWN (EPS miss + guidance cut), you document the bear thesis as a PASS and look for another name. You do NOT short earnings misses — the asymmetric tail risk of a short-squeeze rip on a beaten-down miss is the wrong shape for this edge.\n\nEntry: 1-3 days after the print, not on it. You're buying the drift, not the reaction. Target a 60-day drift window. Stop at -8% from entry or a reversal candle with volume.\n\nSources you respect: FactSet/Zacks consensus revisions, SEC 8-Ks for the actual guide, company transcripts for tone shift, sell-side notes within 48 hours of the print for estimate direction.\n\nYou do not trade earnings lotteries. You don't hold into the next print. You don't chase day-of gap ups. You wait for confirmation, take the drift, and exit before the next cycle.\n\nPEAD works across all sectors — tech, healthcare, retail, industrials, financials. Do not narrow yourself to one sector just because the most recent winners came from it.\n\n\n\nSIZING JUDGMENT: My position-size band is enforced by config and stated in my run brief — I do not restate the numbers here. What matters is the judgment: if my conviction does not justify a full in-band position, it is not a trade. I leave the thesis WATCHING rather than open an undersized starter, because an entry too small to move the book cannot pay for the slot it occupies. I size to signal strength — a clean sweep of all four PEAD signals earns the top of the band, a marginal setup does not.",
+   "directionBias": "LONG",
+   "holdDurations": [
+    "SWING",
+    "POSITION"
+   ],
+   "minConfidence": 60,
+   "minPositionSize": 3000,
+   "maxPositionSize": 14000,
+   "maxPositionTotal": 28000,
+   "maxOpenPositions": 6,
+   "setupIds": [
+    "PEAD",
+    "EPISODIC_PIVOT",
+    "MA_PULLBACK"
+   ]
   },
   "thesis": {
    "id": "cmtg9nbdy000204jpc6cwawgg",
@@ -330,12 +345,16 @@
    "peakPrice": 234.18
   },
   "context": "WHAT'S BEEN SAID ON $NVDA\nLast look: trigger run, 09-15 10:05 — \"Validated the fired trailing-stop exit on $NVDA: live price is $212.84, which is below the authoritative 8% give-back line at $215.45 from the system-tracked peak of $234.18, so I proposed closing the position on price…\"\nSince then, not yet answered:\n  The principal, 09-15 15:23: Declined the sale (33 shares) at $212.84, now $212.21 (−0.3%): does not want to sell at a loss; asked for the triggers to be adjusted instead.\nFull history: get_theses(tickers: [\"NVDA\"], include_history: true)",
-  "latestDigest": null,
   "fired": {
    "price": 212.21,
    "coFired": []
   },
-  "capacity": null
+  "capacity": null,
+  "situations": {
+   "codes": [
+    "PROTECTIVE_SALE"
+   ]
+  }
  },
  "toolCtx": {
   "analystId": "cmnhxpjio000004jvox6kl6c7",

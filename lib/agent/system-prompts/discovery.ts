@@ -19,8 +19,8 @@
  * no candidates). The weekly cron is the safety net so we never go
  * weeks without scanning the universe.
  */
-import type { AgentConfigInput } from "@/lib/agent/system-prompt";
-import { VOICE_RULES } from "@/lib/agent/voice";
+import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 
 /**
  * Per-discovery-run dispatch cap for the thesis-writer sub-agent.
@@ -47,7 +47,8 @@ import { VOICE_RULES } from "@/lib/agent/voice";
 export const DISPATCH_CAP = 5;
 
 export interface DiscoveryPromptArgs {
-  config: AgentConfigInput;
+  /** The analyst's row, its watchlist, and the account's setup numbers. */
+  config: BriefAnalyst & UniverseAnalyst & { signalTypes?: readonly string[] | null; watchlist?: readonly string[] | null };
   /**
    * AgentConfig.id — passed through so the agent can plug it into the
    * `analyst_id` arg on `dispatch_thesis_research`. The dispatch tool
@@ -84,44 +85,15 @@ export interface DiscoveryPromptArgs {
 
 export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
   const { config, analystId, existingTickers } = args;
-  const name = config.name || "Research Analyst";
-  const sectors = config.sectors?.length ? config.sectors.join(", ") : "all sectors";
-  const industries = config.industries?.length
-    ? config.industries.join(", ")
-    : "(no filter)";
-  const themes = config.themes?.length ? config.themes.join(", ") : "(no filter)";
-  const exclusions = config.exclusionList?.length
-    ? config.exclusionList.join(", ")
-    : "none";
   const existingList = existingTickers.length
     ? existingTickers.map((t) => `$${t}`).join(", ")
     : "(empty — fresh book)";
-
-  const bias = config.directionBias || "BOTH";
-  const directionLabel =
-    bias === "BOTH" ? "Long & Short"
-    : bias === "LONG_ONLY" ? "LONG only"
-    : bias === "SHORT_ONLY" ? "SHORT only"
-    : bias;
-  const holdDurations = config.holdDurations?.length
-    ? config.holdDurations.join(", ")
-    : "SWING";
-  const minConf = config.minConfidence ?? 70;
-  const maxPosSize = config.maxPositionSize ?? 500;
-  const minPosSize = config.minPositionSize ?? 0;
-  const maxOpenPos = config.maxOpenPositions ?? 5;
   const signalTypes = config.signalTypes?.length
     ? config.signalTypes.join(", ")
     : "(any)";
   const watchlist = config.watchlist?.length
     ? config.watchlist.map((t) => `$${t}`).join(", ")
     : "(empty)";
-  const capMin = config.marketCapMin != null
-    ? `$${(Number(config.marketCapMin) / 1_000_000_000).toFixed(1)}B`
-    : "no minimum";
-  const capMax = config.marketCapMax != null
-    ? `$${(Number(config.marketCapMax) / 1_000_000_000).toFixed(1)}B`
-    : "no maximum";
 
   // Step 1 is two pull tools, always: movers and the earnings calendar,
   // both fenced to names outside the analyst's coverage. There is no push
@@ -131,11 +103,9 @@ export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
   // into an inbox nobody reads now. Movers and the calendar are the two
   // ways a stock nobody covers announces itself; every seat reads both.
 
-  return `You are ${name}.${config.analystPrompt ? `
+  return `${analystBrief(config)}
 
-**Your operating manual** — your strategy, not background reading. This describes WHO you are as a trader, WHAT edge you hunt, WHAT signals matter to you, and HOW you size and exit. Read it before every thesis you write.
-
-${config.analystPrompt}` : ""}
+${HOUSE_RULES}
 
 This is a **discovery run**. Your job is to find ticker coverage worth adding to the WATCHING list — names that the daily run can promote to HOLDING later when conditions warrant.
 
@@ -155,17 +125,12 @@ YOUR CONFIG — what bounds your work this run
   Your analyst_id: ${analystId}
     ↑ pass this verbatim as \`analyst_id\` on every dispatch_thesis_research call.
 
-  Direction bias:    ${directionLabel}
-  Hold style(s):     ${holdDurations}
-  Min confidence:    ${minConf}%
-  Plans are the writer's job, not yours: a plan pays at least 2:1 against its stop and its levels sit in order (stop < entry < target); here you record PASS or dispatch.
-  Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (every buy is sized inside this band by risk)` : `max $${maxPosSize.toLocaleString()}`}${
+  Plans are the writer's job, not yours: a plan pays at least 2:1 against its stop and its levels sit in order (stop < entry < target); here you record PASS or dispatch.${
     args.money?.equityUSD != null
       ? `
   Account equity \u2248 $${Math.round(args.money.equityUSD).toLocaleString()} \u2014 a candidate you wouldn't commit at least the smallest trade to is a soft watch, a PASS, or a skip, not a dispatch.`
       : ""
   }
-  Max open slots:    ${maxOpenPos}
   Signal types you trade: ${signalTypes}
   Existing watchlist (curated by you): ${watchlist}
 
@@ -201,11 +166,7 @@ surface.
 Your universe is shown here for CONTEXT — to help you reason about
 which surfaced candidates fit your edge — not for you to re-filter.
 
-  Sectors:      ${sectors}
-  Industries:   ${industries}
-  Themes:       ${themes}
-  Market cap:   ${capMin} – ${capMax}
-  Hard exclusions: ${exclusions}
+${universeLines(config).map((l) => `  ${l}`).join("\n")}
   Already covered (the tools hide these): ${existingList}
 ${args.bookBlock ? `\n${args.bookBlock}\n` : ""}${
   args.setupRecord?.length
@@ -534,11 +495,6 @@ HARD CONSTRAINTS
     (the tools hide them anyway, so this should be impossible).
   • You cannot buy. A setup already true today is written by the writer
     as a buy at or near the price; it fires like any other.
-
-═══════════════════════════════════════════════════════════════════
-HOW YOU WRITE
-═══════════════════════════════════════════════════════════════════
-${VOICE_RULES}
 
 ═══════════════════════════════════════════════════════════════════
 FORMATTING

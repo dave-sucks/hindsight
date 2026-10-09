@@ -14,23 +14,21 @@
  * Actions:
  *   partial_close       — sell close_pct% of current shares
  *   add_to_position     — add add_notional dollars to the position
- *   update_targets      — change targetPrice and/or stopLoss
- *   move_stop_to_breakeven — set stopLoss = avgCost
  *
- * Plan changes (trim, target/stop move, breakeven move) ALSO write a
- * ThesisUpdate row on the paired thesis (DAV-198) — the thesis timeline is
- * the activity log the analyst and the sheet read; a stop move that only
- * landed in PositionManagementAction was invisible there.
+ * A level is not moved here. update_targets and move_stop_to_breakeven were
+ * deleted in step 12, part 3: they were a second path to the same edit as
+ * update_thesis's stop_loss / target_price, and they read the position's
+ * mirror column (MU 2026-10-08: its audit row moved the stop "from $969", the
+ * mirror, while the floor in force was $1,048). A level moves through
+ * update_thesis only, one trigger op at a time.
+ *
+ * A trim ALSO writes a ThesisUpdate row on the paired thesis (DAV-198) — the
+ * thesis timeline is the activity log the analyst and the sheet read.
  */
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
-import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
-import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
-import type { Trigger } from "@/lib/agent/triggers/types";
-import { stopMoveWeakensProtection } from "@/lib/agent/triggers/ratchet";
-import { thesisFloorStop, stopToRatchetAgainst } from "@/lib/agent/triggers/floor-in-force";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
@@ -69,7 +67,7 @@ function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
   return "uncertain";
 }
 
-type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "UNCHANGED" | "FAILED" | "PROPOSED";
+type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "FAILED" | "PROPOSED";
 
 interface ManagePositionTicker {
   ticker: string;
@@ -103,8 +101,6 @@ interface ManagePositionData {
   addedQty?: number;
   newTotalQty?: number;
   newAvgCost?: number;
-  newTargetPrice?: number | null;
-  newStopLoss?: number | null;
   trailPct?: number;
   portfolioUpdate?: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number };
 }
@@ -117,9 +113,7 @@ const schema = z.object({
   action: z.enum([
     "partial_close",
     "add_to_position",
-    "update_targets",
-    "move_stop_to_breakeven",
-  ]).describe("What to do with this position"),
+  ]).describe("What to do with this position. A stop or target moves through update_thesis (stop_loss, target_price)."),
   reason: z
     .string()
     .min(20)
@@ -143,10 +137,6 @@ const schema = z.object({
     .optional()
     .describe("For add_to_position: the dollar amount you want to add. Omit it and the add is sized by the analyst's rules."),
 
-  // update_targets
-  new_target_price: z.number().positive().optional().describe("New target price"),
-  new_stop_loss: z.number().positive().optional().describe("New stop loss price. On a held stock the stop only moves toward MORE protection (up for LONG, down for SHORT) — a loosening move is rejected; only the principal moves a safety line the other way."),
-
   // partial_close reason code
   close_reason: z
     .enum(["TARGET", "STOP", "THESIS_INVALIDATED", "RISK_MANAGEMENT", "MANUAL"])
@@ -155,74 +145,10 @@ const schema = z.object({
 });
 
 
-/**
- * Move a level on the paired thesis, not just on the position (DAV-195 L3).
- *
- * `Position.stopLoss` is read by one line of a digest email and evaluated by
- * nothing. So before this, "move the stop to breakeven" and "update targets"
- * changed a number and protected nothing at all — the agent reported a
- * tightened stop and the ladder was untouched.
- *
- * Writes the same shape the trigger edit path does (ops.ts): the TRIGGER
- * (what fires), the thesis columns (what is displayed), and an
- * audit row. The position column keeps being written by the caller so the
- * digest stays consistent.
- *
- * Best-effort: a position with no paired thesis (or a level this can't place)
- * leaves the position write alone rather than failing the whole action.
- */
-async function moveThesisLevels(args: {
-  thesisId: string | null;
-  ticker: string;
-  newStop?: number | null;
-  newTarget?: number | null;
-  runId: string | null;
-}): Promise<void> {
-  if (!args.thesisId) return;
-  if (args.newStop == null && args.newTarget == null) return;
-  try {
-    const thesis = await prisma.thesis.findUnique({
-      where: { id: args.thesisId },
-      select: { id: true, direction: true, status: true, triggers: true },
-    });
-    if (!thesis || thesis.status !== "HOLDING") return;
-
-    const stored = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
-    const applied = applyLevelArgs({
-      stored,
-      levels: {
-        ...(args.newStop != null ? { floor: args.newStop } : {}),
-        ...(args.newTarget != null ? { target: args.newTarget } : {}),
-      },
-      direction: thesis.direction,
-      status: thesis.status,
-      source: "AGENT",
-      mintId: () => randomUUID(),
-    });
-
-    await prisma.thesis.update({
-      where: { id: thesis.id },
-      data: {
-        triggers: applied.triggers as unknown as object[],
-        targetPrice: applied.columns.targetPrice,
-        stopLoss: applied.columns.stopLoss,
-      },
-      select: { id: true },
-    });
-  } catch (err) {
-    console.warn(
-      `[manage_position] level sync to thesis failed for ${args.ticker}:`,
-      err instanceof Error ? err.message : err,
-    );
-  }
-}
-
 export const managePosition = defineTool({
   description:
-    "Manage an existing open position with nuanced actions beyond binary buy/sell. " +
-    "Use this for position management short of a full exit: partial exits, " +
-    "target/stop updates, or adding to a winning position. " +
-    "Every action is audit-logged with your reason.",
+    "Manage an existing open position short of a full exit: a partial exit, or adding to a winning position. " +
+    "A stop or target moves through update_thesis. Every action is audit-logged with your reason.",
   schema,
   // A run's model never sees a size field (DAV-317).
   schemaFor: (ctx) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : schema.omit({ add_notional: true })),
@@ -237,10 +163,6 @@ export const managePosition = defineTool({
         return `Trimming ${t}${args.close_pct ? ` by ${args.close_pct}%` : ""}`;
       case "add_to_position":
         return `Adding to the ${t} position`;
-      case "update_targets":
-        return `Updating ${t} target and stop`;
-      case "move_stop_to_breakeven":
-        return `Moving ${t} stop to breakeven`;
       default:
         return `Managing the ${t} position`;
     }
@@ -291,38 +213,6 @@ export const managePosition = defineTool({
       analystId != null
         ? await findRelatedThesisId(analystId, ticker).catch(() => null)
         : null;
-
-    // The stop the ratchet below is allowed to compare against (DAV-296).
-    //
-    // It has to be the thesis's own floor trigger — what actually fires, and
-    // what `moveThesisLevels` is about to rewrite — not `Position.stopLoss`.
-    // That column is a mirror no agent write path maintains: `update_thesis`
-    // raises the thesis floor and leaves the mirror behind, so a gate reading
-    // the mirror sees a tightening where the real floor is being lowered.
-    // Falls back to the column for a stock whose thesis has no typed floor.
-    const floorInForce = await (async () => {
-      if (!auditThesisId) return position.stopLoss != null ? Number(position.stopLoss) : null;
-      try {
-        const thesis = await prisma.thesis.findUnique({
-          where: { id: auditThesisId },
-          select: { direction: true, status: true, triggers: true },
-        });
-        const floor =
-          thesis && thesis.status === "HOLDING"
-            ? thesisFloorStop({
-                triggers: parseTriggersResilient(thesis.triggers).triggers as Trigger[],
-                direction: thesis.direction,
-                avgCost: position.avgCost != null ? Number(position.avgCost) : null,
-              })
-            : null;
-        return stopToRatchetAgainst({
-          thesisFloor: floor,
-          positionStopLoss: position.stopLoss != null ? Number(position.stopLoss) : null,
-        });
-      } catch {
-        return position.stopLoss != null ? Number(position.stopLoss) : null;
-      }
-    })();
 
     try {
       switch (args.action) {
@@ -1041,279 +931,6 @@ export const managePosition = defineTool({
               addedQty: fillQty, newTotalQty, fillPrice, newAvgCost,
               message: `Added ${fillQty} shares of ${ticker} at $${fillPrice.toFixed(2)}. Position is now ${newTotalQty} shares at avg cost $${newAvgCost.toFixed(2)}.`,
               tickers: [{ ticker, tag: "Added", summary: `+${fillQty} shares @ $${fillPrice.toFixed(2)}. ${newTotalQty} total.`, actionIcon: "buy" }],
-            },
-            sources: [],
-          };
-        }
-
-        // ── UPDATE TARGETS ───────────────────────────────────────────────────
-        case "update_targets": {
-          if (!args.new_target_price && !args.new_stop_loss) {
-            return {
-              summary: `No target or stop provided`,
-              data: {
-                success: false, ticker, action: args.action, status: "FAILED" as const,
-                message: "Provide new_target_price and/or new_stop_loss.",
-                tickers: [{ ticker, tag: "Failed", summary: "Missing target/stop values", actionIcon: "failed" }],
-              },
-              sources: [],
-            };
-          }
-
-          // A save is a patch: the stop in force or the stored target, sent
-          // back, changes nothing and is dropped before the ratchet reads it.
-          // Both dropped writes nothing — no audit row, no Activity line.
-          const thesisTarget = auditThesisId
-            ? await prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { targetPrice: true } }).catch(() => null)
-            : null;
-          const storedTarget = thesisTarget ? thesisTarget.targetPrice : position.targetPrice;
-          if (args.new_stop_loss != null && args.new_stop_loss === floorInForce) args = { ...args, new_stop_loss: undefined };
-          if (args.new_target_price != null && args.new_target_price === storedTarget) args = { ...args, new_target_price: undefined };
-          if (!args.new_target_price && !args.new_stop_loss) {
-            return {
-              summary: `${ticker}: the stop and target sent are the ones in place — nothing changed`,
-              data: {
-                success: true, ticker, action: args.action, status: "UNCHANGED" as const,
-                newTargetPrice: storedTarget, newStopLoss: floorInForce,
-                message: `No change: ${ticker}'s stop and target are already what you sent.`,
-                tickers: [{ ticker, tag: "No change", summary: "Stop and target already in place", actionIcon: "hold" }],
-              },
-              sources: [],
-            };
-          }
-
-          // ── Protective-level ratchet (DAV-201, extends DAV-185) ─────────
-          // The stop number on a stock we own only moves toward MORE
-          // protection; lowering it is the principal's manual act. Today
-          // nothing sells off this column (the trigger ladder is what
-          // fires), but the Levels work makes these numbers real — the gate
-          // must exist before that lands, or the MU 2026-08-18 violation
-          // returns through this tool instead of update_thesis. Targets are
-          // not gated (taking profit earlier is not a safety change).
-          if (
-            args.new_stop_loss != null &&
-            stopMoveWeakensProtection({
-              direction: position.direction,
-              oldStop: floorInForce,
-              newStop: args.new_stop_loss,
-            })
-          ) {
-            const oldStopFmt = Number(floorInForce).toFixed(2);
-            console.warn(
-              `[tool] manage_position update_targets REJECTED for ${ticker} — stop ${oldStopFmt} → ${args.new_stop_loss} moves the wrong way (protective-level ratchet).`,
-            );
-            return {
-              summary: `Refused stop change on ${ticker} — protective levels only move toward more protection.`,
-              data: {
-                success: false, ticker, action: args.action, status: "FAILED" as const,
-                message:
-                  `Stop $${oldStopFmt} → $${args.new_stop_loss.toFixed(2)} moves the stop the wrong way on a stock we own. ` +
-                  `Protective levels only move toward MORE protection; only the principal moves a safety line down (thesis sheet or reject dialog). ` +
-                  `Keep the current stop — raising/tightening is fine. If you believe the level is wrong, say so in your rationale with the number you'd suggest.`,
-                tickers: [{ ticker, tag: "Refused", summary: `Stop lowering blocked ($${oldStopFmt} stands)`, actionIcon: "failed" }],
-              },
-              sources: [],
-            };
-          }
-
-          const updateData: Record<string, number> = {};
-          if (args.new_target_price) updateData.targetPrice = args.new_target_price;
-          if (args.new_stop_loss) updateData.stopLoss = args.new_stop_loss;
-          // The level that actually fires lives on the thesis, not here.
-          await moveThesisLevels({
-            thesisId: auditThesisId,
-            ticker,
-            newStop: args.new_stop_loss ?? null,
-            newTarget: args.new_target_price ?? null,
-            runId: ctx.runId ?? null,
-          });
-
-          await prisma.$transaction(async (tx) => {
-            await tx.position.update({ where: { id: position.id }, data: updateData });
-
-            await tx.positionEvent.create({
-              data: {
-                positionId: position.id,
-                eventType: "TARGET_UPDATED",
-                description: [
-                  args.new_target_price ? `Target: $${position.targetPrice?.toFixed(2) ?? "—"} → $${args.new_target_price.toFixed(2)}` : null,
-                  args.new_stop_loss ? `Stop: $${position.stopLoss?.toFixed(2) ?? "—"} → $${args.new_stop_loss.toFixed(2)}` : null,
-                ].filter(Boolean).join(" · "),
-                priceAt: null,
-              },
-            });
-
-            await tx.positionManagementAction.create({
-              data: {
-                positionId: position.id,
-                runId: ctx.runId ?? null,
-                actionType: "UPDATE_TARGETS",
-                source: "agent",
-                prevTargetPrice: position.targetPrice ?? null,
-                newTargetPrice: args.new_target_price ?? null,
-                prevStopLoss: position.stopLoss ?? null,
-                newStopLoss: args.new_stop_loss ?? null,
-                reason: args.reason,
-              },
-            });
-
-            if (ctx.runId) {
-              await tx.runEvent.create({
-                data: {
-                  runId: ctx.runId,
-                  type: "position_modified",
-                  title: `Updated targets: ${ticker}`,
-                  message: args.reason,
-                  payload: { ticker, action: "update_targets", prevTarget: position.targetPrice, newTarget: args.new_target_price, prevStop: position.stopLoss, newStop: args.new_stop_loss } as object,
-                },
-              });
-            }
-          });
-
-          const changes = [
-            args.new_target_price ? `target $${args.new_target_price.toFixed(2)}` : null,
-            args.new_stop_loss ? `stop $${args.new_stop_loss.toFixed(2)}` : null,
-          ].filter(Boolean).join(", ");
-
-          // DAV-198 — a level move is a plan change; the thesis timeline is
-          // where the analyst and the sheet read it back. Same numeric
-          // from/to shape the trigger-popover edit writes, so the timeline
-          // renders "Stop $X → $Y" for both paths.
-          if (auditThesisId) {
-            await writeThesisUpdate({
-              thesisId: auditThesisId,
-              type: "UPDATED",
-              summary: `Updated ${ticker} plan — ${changes}`,
-              rationale: args.reason,
-              fieldChanges: {
-                ...(args.new_target_price
-                  ? { targetPrice: { from: position.targetPrice ?? null, to: args.new_target_price } }
-                  : {}),
-                ...(args.new_stop_loss
-                  ? { stopLoss: { from: position.stopLoss ?? null, to: args.new_stop_loss } }
-                  : {}),
-              },
-              runId: ctx.runId ?? null,
-              tradeId: position.id,
-            });
-          }
-
-          return {
-            summary: `Updated ${ticker}: ${changes}`,
-            data: {
-              success: true, ticker, action: args.action, status: "UPDATED" as const,
-              newTargetPrice: args.new_target_price ?? position.targetPrice,
-              newStopLoss: args.new_stop_loss ?? position.stopLoss,
-              message: `Updated ${ticker} — ${changes}. Reason: ${args.reason}`,
-              tickers: [{ ticker, tag: "Updated", summary: `Set ${changes}`, actionIcon: "hold" }],
-            },
-            sources: [],
-          };
-        }
-
-        // ── MOVE STOP TO BREAKEVEN ────────────────────────────────────────────
-        case "move_stop_to_breakeven": {
-          // The floor in force, not the position's mirror column (DAV-296).
-          const prevStop = floorInForce;
-          const newStop = position.avgCost;
-
-          // Same ratchet as update_targets (DAV-201): "to breakeven" is a
-          // tightening move only when the stop sits BELOW breakeven. If the
-          // stop is already at or above avg cost, moving it back down to
-          // breakeven loosens live protection — refuse, don't quietly lower.
-          if (
-            stopMoveWeakensProtection({
-              direction: position.direction,
-              oldStop: prevStop != null ? Number(prevStop) : null,
-              newStop: Number(newStop),
-            })
-          ) {
-            const prevFmt = Number(prevStop).toFixed(2);
-            console.warn(
-              `[tool] manage_position move_stop_to_breakeven REJECTED for ${ticker} — stop ${prevFmt} already tighter than breakeven ${Number(newStop).toFixed(2)}.`,
-            );
-            return {
-              summary: `Refused breakeven move on ${ticker} — the stop is already tighter than breakeven.`,
-              data: {
-                success: false, ticker, action: args.action, status: "FAILED" as const,
-                message:
-                  `The stop is already $${prevFmt}, tighter than breakeven ($${Number(newStop).toFixed(2)}). ` +
-                  `Moving it to breakeven would loosen protection on a stock we own, and protective levels only move toward MORE protection. ` +
-                  `The current stop stands; nothing to do.`,
-                tickers: [{ ticker, tag: "Refused", summary: `Stop $${prevFmt} already tighter than breakeven`, actionIcon: "failed" }],
-              },
-              sources: [],
-            };
-          }
-
-          await moveThesisLevels({
-            thesisId: auditThesisId,
-            ticker,
-            newStop,
-            runId: ctx.runId ?? null,
-          });
-          await prisma.$transaction(async (tx) => {
-            await tx.position.update({
-              where: { id: position.id },
-              data: { stopLoss: newStop },
-            });
-
-            await tx.positionEvent.create({
-              data: {
-                positionId: position.id,
-                eventType: "STOP_MOVED",
-                description: `Stop moved to breakeven: $${prevStop?.toFixed(2) ?? "—"} → $${newStop.toFixed(2)} (avg cost)`,
-                priceAt: null,
-              },
-            });
-
-            await tx.positionManagementAction.create({
-              data: {
-                positionId: position.id,
-                runId: ctx.runId ?? null,
-                actionType: "MOVE_STOP_TO_BREAKEVEN",
-                source: "agent",
-                prevStopLoss: prevStop ?? null,
-                newStopLoss: newStop,
-                reason: args.reason,
-              },
-            });
-
-            if (ctx.runId) {
-              await tx.runEvent.create({
-                data: {
-                  runId: ctx.runId,
-                  type: "position_modified",
-                  title: `Stop → breakeven: ${ticker}`,
-                  message: `Moved ${ticker} stop to breakeven at $${newStop.toFixed(2)}. ${args.reason}`,
-                  payload: { ticker, action: "move_stop_to_breakeven", prevStop, newStop } as object,
-                },
-              });
-            }
-          });
-
-          // DAV-198 — same thesis-timeline write as update_targets.
-          if (auditThesisId) {
-            await writeThesisUpdate({
-              thesisId: auditThesisId,
-              type: "UPDATED",
-              summary: `Moved ${ticker} stop to breakeven $${newStop.toFixed(2)}`,
-              rationale: args.reason,
-              fieldChanges: {
-                stopLoss: { from: prevStop ?? null, to: newStop },
-              },
-              runId: ctx.runId ?? null,
-              tradeId: position.id,
-            });
-          }
-
-          return {
-            summary: `${ticker}: stop moved to breakeven $${newStop.toFixed(2)}`,
-            data: {
-              success: true, ticker, action: args.action, status: "UPDATED" as const,
-              newStopLoss: newStop,
-              message: `Stop loss moved to breakeven ($${newStop.toFixed(2)}) for ${ticker}. Trade now risk-free.`,
-              tickers: [{ ticker, tag: "BE stop", summary: `Stop at $${newStop.toFixed(2)} (breakeven)`, actionIcon: "hold" }],
             },
             sources: [],
           };

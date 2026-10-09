@@ -6,6 +6,7 @@
 
 import { getSetup, isNamedSetup, setupsForAnalyst, NO_SETUP_FITS, type Horizon } from "./setups";
 import type { SetupOverrides } from "./setup-overrides";
+import { setupLines } from "@/lib/agent/analyst-brief";
 
 export interface SetupChecklist {
   id: string;
@@ -19,6 +20,8 @@ export interface SetupChecklist {
   /** What the fill wrote onto the stock from this setup: a partial at this many R, the beat-that-sold review. */
   partialAtR: number | null;
   beatAndFadeReview: boolean;
+  /** The lines a fire checks, for this horizon (setupLines' decision cut): a row's `setup_lines`. */
+  lines: string[];
 }
 
 export function setupChecklist(
@@ -38,6 +41,7 @@ export function setupChecklist(
     time: s.time.text,
     partialAtR: s.manage.partialAtR,
     beatAndFadeReview: s.manage.beatAndFadeReview,
+    lines: setupLines(s, h, "decision"),
   };
 }
 

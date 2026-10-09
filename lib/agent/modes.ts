@@ -7,6 +7,7 @@
  */
 
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 
 // ── Model options per mode ────────────────────────────────────────────────────
 
@@ -421,7 +422,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "list_runs",
       "read_run",
       "read_accuracy_reports",
-      "list_theses_all",
       // The approval queue. Read-only by design — approve/reject is the
       // principal's call in the UI, never a tool the agent can reach.
       "list_proposals",
@@ -593,24 +593,8 @@ export function buildPrincipalSystemPrompt(opts: {
    */
   moneyBlock?: string | null;
   bookBlock?: string | null;
-  scopedAnalyst?: {
-    id: string;
-    name: string;
-    analystPrompt: string | null;
-    directionBias: string;
-    holdDurations: string[];
-    sectors: string[];
-    industries: string[];
-    themes: string[];
-    /** Universe cap band in dollars. null = unbounded on that end. */
-    marketCapMin?: number | null;
-    marketCapMax?: number | null;
-    watchlist: string[];
-    exclusionList: string[];
-    minConfidence: number;
-    maxPositionSize: number;
-    maxOpenPositions: number;
-  } | null;
+  /** The analyst the chat is pinned to: its row, its watchlist, and the account's setup numbers. */
+  scopedAnalyst?: (BriefAnalyst & UniverseAnalyst & { id: string; name: string; watchlist: string[] }) | null;
 }): string {
   const scope = opts.scopedAnalyst;
   // Pre-rendered by the caller via context-bundle's formatters. Passed as
@@ -627,24 +611,12 @@ export function buildPrincipalSystemPrompt(opts: {
 This chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst. You don't need to pass analyst_id — the route handles it.
 
   • Analyst ID: \`${scope.id}\`
-  • Direction bias: ${scope.directionBias}
-  • Hold durations: ${scope.holdDurations.join(", ") || "—"}
-  • Sectors: ${scope.sectors.join(", ") || "—"}
-  • Industries: ${scope.industries.join(", ") || "—"}
-  • Themes: ${scope.themes.join(", ") || "—"}
-  • Market cap band: ${
-    scope.marketCapMin == null && scope.marketCapMax == null
-      ? "no bound"
-      : `${scope.marketCapMin != null ? `$${(scope.marketCapMin / 1e9).toFixed(scope.marketCapMin % 1e9 === 0 ? 0 : 1)}B` : "no floor"} – ${scope.marketCapMax != null ? `$${(scope.marketCapMax / 1e9).toFixed(scope.marketCapMax % 1e9 === 0 ? 0 : 1)}B` : "no ceiling"}`
-  } — this is a HARD fence. A name outside it cannot be traded by this seat, so it is not a candidate however good the setup reads. Nothing downstream rejects an out-of-band thesis for you: record_thesis has no market-cap check, so an out-of-band name minted here becomes a watchlist item that can never be acted on.
+${universeLines(scope).map((l) => `  • ${l}`).join("\n")}
+  The market cap band is a HARD fence. A name outside it cannot be traded by this seat, so it is not a candidate however good the setup reads. Nothing downstream rejects an out-of-band thesis for you: record_thesis has no market-cap check, so an out-of-band name minted here becomes a watchlist item that can never be acted on.
   • Watchlist: ${scope.watchlist.join(", ") || "(empty)"}
-  • Exclusion list: ${scope.exclusionList.join(", ") || "(empty)"}
-  • Sizing: minConfidence ${scope.minConfidence} · largest trade $${scope.maxPositionSize} · maxOpenPositions ${scope.maxOpenPositions}. Omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
+  • Sizing: omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
 
-Analyst prompt (the strategy):
-\`\`\`
-${scope.analystPrompt ?? "(no analystPrompt set)"}
-\`\`\`
+${analystBrief(scope)}
 
 Use \`get_theses\` and \`get_portfolio_context\` to pull current state without re-resolving the id. For cross-analyst questions ("how do my OTHER analysts compare"), use \`list_analysts\` etc.
 ${moneyBlock}${bookBlock}`
@@ -706,7 +678,7 @@ Nothing auto-trades. When the account's approval toggle is on for a side, every 
 
   • "What's pending?" / "my open proposals" / "what's the agent asking me to do?" / "what sells are staged?" → \`list_proposals\`. Do NOT reach for \`read_database\` on \`order\` for this.
   • "Why did it want to sell $X?" → the \`rationale\` on the proposal is the answer; pair it with the thesis and \`get_stock_data\` if they're asking you to second-guess it.
-  • "Should I approve this?" → this is the highest-value question you get. Pull the proposal, re-read the thesis (\`get_theses\` / \`list_theses_all\`), pull fresh data on the name (\`get_stock_data\`, \`get_earnings_data\`, \`get_sec_filings\`, \`web_search\`), and give a real recommendation with the levels that would change your mind. Judging a staged exit on a loser means asking whether the invalidation actually fired or the name is just down — say which, plainly. Read the principal's notes on the thesis first.
+  • "Should I approve this?" → this is the highest-value question you get. Pull the proposal, re-read the thesis (\`get_theses\`), pull fresh data on the name (\`get_stock_data\`, \`get_earnings_data\`, \`get_sec_filings\`, \`web_search\`), and give a real recommendation with the levels that would change your mind. Judging a staged exit on a loser means asking whether the invalidation actually fired or the name is just down — say which, plainly. Read the principal's notes on the thesis first.
   • \`status:"REJECTED"\` / \`"EXPIRED"\` is the record of what the principal declined or ignored. A declined or expired sale means "not today", not "stop asking": the trigger asks again every day its condition holds.
 
 **You cannot approve or reject.** There is deliberately no write tool for it — the gate exists so a human decides. If the principal says "approve it," tell them to hit Approve on the card (or, if they want you to act directly, that means executing the trade yourself via \`close_position\` / \`place_trade\` under the same gate — say so before you do it).
@@ -722,7 +694,7 @@ The analyst never sees this chat. A note on the stock's thesis is how the princi
 - **When the principal asks for one** ("research XYZ and add a note to the thesis"), the ask is the yes. Do the research. If you dispatched the writer, wait for it (\`wait_for_thesis_refresh\`) so the thesis exists. Then write the note with \`write_note(thesis_id, text)\` and show its text in your reply.
 - **Otherwise, when research on a stock or a set of stocks reaches a conclusion** (why they like or doubt it, what they're waiting for, what would change their mind), end your turn by asking with \`ask_question\`. One stock: "Add this note to $X?", with the draft in the question's description and the options *Add it* / *Change it* / *No note*. Several stocks: one multi-select question with one option per stock (its one-line note) plus *None*. On *Add it*, write it. On *Change it*, take their edit and ask again. On *No note*, write nothing.
 
-\`write_note\` works unscoped: the thesis names its analyst (find the id with \`list_theses_all\`). A note is one Activity line, "Note added"; nothing happens to it afterward. Never write a note the principal didn't ask for or agree to, and never a second note for the same conclusion.
+\`write_note\` works unscoped: the thesis names its analyst (find the id with \`get_theses\`). A note is one Activity line, "Note added"; nothing happens to it afterward. Never write a note the principal didn't ask for or agree to, and never a second note for the same conclusion.
 
 ══════════════════════════════════════════════════════════════════════
 ## UNIVERSE — the discovery fence
@@ -843,7 +815,7 @@ You answer the user's actual question, not a generic restatement. Match the dept
   • **"How are my analysts performing?"** → \`list_analysts\` + \`read_accuracy_reports\`. Lead with the win-rate snapshot, then call out outliers (which analyst is best/worst, which has overdue theses). Don't dump tables; synthesize.
   • **"What did Catalyst Event Raider do this morning?"** → \`list_runs\` filtered to that analyst, latest first → \`read_run\` on the most recent MORNING_PLAN. Summarize the decisions, name the trades, flag failures.
   • **"How have my trades done?"** / "how is the PEAD analyst doing" / "which setup is working" / "what did we sell last week" → \`read_trade_results\` — win rate, average R, days held, give-back from the peak and realized dollars, overall and by setup and by analyst, plus the last closes one by one. Filter with \`analyst\`, \`setup_id\` or \`days\`. It is realized TRADE P&L on closes since the seats were rebuilt (2026-05-27) — never call it the account's return, which counts deposits separately. Open positions are not results: read those with \`get_portfolio_context\`.
-  • **"What do my analysts think about $NVDA?"** → \`list_theses_all\` ticker=NVDA. One line per analyst, direction + confidence + last update.
+  • **"What do my analysts think about $NVDA?"** → \`get_theses\` tickers=["NVDA"]. One row per analyst that holds or watches it, each naming its analyst.
   • **"Review my pending proposals"** → \`list_proposals\`. Lead with the count and the clock (what expires soonest). Then work the queue: for each one, is the rationale still true? Group by intent — staged exits on losers are a different conversation from staged buys. If they ask whether a name can rebound, that's real research, not a vibe: \`get_stock_data\` for the technical picture, \`get_earnings_data\` / \`get_sec_filings\` for the catalyst, \`web_search\` for what changed, then a per-name verdict with levels.
   • **"Review $X, $Y, $Z"** / any look at a stock whose case is a DATED event — an FDA decision, a trial readout, a deal close, a court date, a guidance change → \`get_theses\` + \`get_stock_data\` are the floor, not the job. **Read what the company actually filed before you conclude: \`get_sec_filings(ticker)\`, and say what the filings did or did not show.** The 8-K is the primary record of every one of those events; a secondary write-up is not. When the case rests on the print, \`get_earnings_data\` too.
   • **"Add this article to my analyst's watchlist"** (with URL or paste) → if scoped, \`web_search\` or paste-parse to extract candidate tickers, present them, then either dispatch the writer on each (\`dispatch_thesis_research(mode:"mint")\`, with the article's claims in \`reason\`) or mint the quiet-watch shape with a wake at the level that matters. If not scoped, ask which analyst.

@@ -1,0 +1,71 @@
+{
+  "_note": "ANET's place_trade call of 2026-08-20 14:16 UTC (trigger run cmt1lst6l000t04joaoms5x73), verbatim from the run's saved thread: it sent target $215 and stop $175.99. ANET's row as it stood at the call, rebuilt from the stored triggers and the audit trail (the trigger run's read was not saved): watched, LONG, its buy at $186.45 (the trigger that fired at 14:16), its target review at $215 and the writer's hard stop at $175.99 (the floor was raised to $184.50 on 08-26 and its sentence still says $175.99). The trailing give-back was added later and is left out.",
+  "call": {
+    "ticker": "ANET",
+    "company_name": "Arista Networks Inc",
+    "exchange": "NEW YORK STOCK EXCHANGE, INC.",
+    "direction": "LONG",
+    "entry_price": 186.76,
+    "target_price": 215,
+    "stop_loss": 175.99,
+    "notional": 7000,
+    "shares": 0,
+    "thesis_id": "cmt0zqjmc000504l5zq6djk32",
+    "entry_rationale": "I’m buying $ANET here because the entry trigger is still valid and the earnings-drift setup remains intact after the pullback. The stock is trading at $186.76, still above the $186.45 entry level that triggered this review, and there is no fresh contradicting headline such as a guidance cut or negative preannouncement. This is a TARGET-horizon PEAD trade, so today’s low volume is context, not a rejection, and the structure still looks healthy with price near the 20-day moving average (its average price over the last month) and well above the 50-day moving average at $176.66. My target is $215, where I’d take profit if the post-earnings drift continues over the next 60 days, and my stop is $175.99, where I’d sell to cap the loss at about 5.8% below entry if the setup breaks.",
+    "analyst_id": "cmnhxpjio000004jvox6kl6c7"
+  },
+  "price": 186.76,
+  "thesis": {
+    "id": "cmt0zqjmc000504l5zq6djk32",
+    "ticker": "ANET",
+    "status": "WATCHING",
+    "direction": "LONG",
+    "horizon": "TARGET",
+    "setupId": null,
+    "conviction": "HIGH",
+    "entryPrice": 186.45,
+    "targetPrice": 215,
+    "stopLoss": 175.99,
+    "triggers": [
+      {
+        "id": "anet_buy",
+        "action": "ENTER",
+        "source": "AGENT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "watch": "price",
+          "is": "above",
+          "value": 186.45
+        },
+        "rationale": "Price above $186.45 — consider entry.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "61c7c342-b7b5-47fc-8939-680fa3da5c9e",
+        "action": "REVIEW",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "watch": "price",
+          "is": "above",
+          "value": 215
+        },
+        "rationale": "Target $215 hit. Decide: close at target or trail higher with confidence intact.",
+        "cooldownDays": 1
+      },
+      {
+        "id": "09a4a3f1-6a7d-4e39-9506-9f5cf0c50ed2",
+        "action": "EXIT",
+        "source": "DEFAULT",
+        "fireMode": "TACTICAL",
+        "predicate": {
+          "watch": "price",
+          "is": "below",
+          "value": 175.99
+        },
+        "rationale": "Hard stop at $175.99.",
+        "cooldownDays": 0
+      }
+    ]
+  }
+}

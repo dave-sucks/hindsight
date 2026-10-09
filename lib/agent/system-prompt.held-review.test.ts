@@ -25,20 +25,14 @@ import { replayTool, thesisRow, positionRow, thesisUpdateRow } from "@/lib/repla
 
 const runInput = () =>
   ({
-    analyst: {
-      name: "Secular Compounder", mandate: null, voice: null, directionBias: "LONG_ONLY",
-      holdDurations: ["POSITION"], sectors: [], industries: [], themes: [],
-      marketCapMin: null, marketCapMax: null, exclusionList: [],
-      minConfidence: 70, minPositionSize: 3000, maxPositionSize: 14000, maxOpenPositions: 6,
-    },
     portfolio: {
       cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [],
       exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 },
     },
-    watchlist: [], activeTheses: [], performance: null, recentClosedTrades: [],
+    watchlist: [], activeTheses: [],
     priorityReviews: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [],
     earnings: { reportingSoon: [], justReported: [] },
-    filings: { recent: [] }, intelligencePolicy: { maxSignalsPerRun: 0 },
+    filings: { recent: [] },
   }) as unknown as RunInput;
 
 const built = () =>
@@ -68,7 +62,7 @@ describe("answering a fired review: REVIEW_DUE's guidance, which the read carrie
   });
 
   it("tells a held stock's review to go down its invalidation conditions", () => {
-    expect(review).toContain("go down `invalidationConds` and say for each whether it has happened");
+    expect(review).toContain("go down `would_prove_it_wrong` and say for each whether it has happened");
     expect(review).toContain("A condition that happened is an exit");
   });
 

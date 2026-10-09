@@ -1,11 +1,11 @@
 /**
- * manage-position-thesis-audit.test.ts — plan changes land on the thesis
+ * manage-position-thesis-audit.test.ts — a trim lands on the thesis
  * timeline (DAV-198).
  *
  * Before this, manage_position wrote PositionManagementAction / PositionEvent
- * rows but never a ThesisUpdate — so a stop move, target change, or trim was
- * invisible in the thesis activity log the analyst and the sheet read. These
- * tests prove each plan-changing action writes one UPDATED row on the paired
+ * rows but never a ThesisUpdate — so a trim was invisible in the thesis
+ * activity log the analyst and the sheet read. These tests prove a trim
+ * writes one UPDATED row on the paired
  * thesis (resolved via findRelatedThesisId, the same linkage the proposal
  * audit rows use), and that a position with no resolvable thesis still
  * completes the action without an audit write.
@@ -100,10 +100,10 @@ function makeTool(): { execute: (args: any) => Promise<any> } {
 const REASON =
   "Raising protection into earnings — the setup has played out faster than planned.";
 
-describe("manage_position — plan changes write the thesis history row (DAV-198)", () => {
+describe("manage_position — a trim writes the thesis history row (DAV-198)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockThesisFindUnique.mockResolvedValue(null); // moveThesisLevels no-ops
+    mockThesisFindUnique.mockResolvedValue(null);
     mockFindRelatedThesisId.mockResolvedValue("thesis_1");
     mockMaybeAwaitApproval.mockResolvedValue(null);
     // Run the tx callback against the same mocked delegates.
@@ -119,70 +119,6 @@ describe("manage_position — plan changes write the thesis history row (DAV-198
         tradeDecision: { create: jest.fn().mockResolvedValue({}) },
         order: { create: mockOrderCreate, update: mockOrderUpdate, findMany: jest.fn().mockResolvedValue([]) },
         $queryRaw: jest.fn().mockResolvedValue([]),
-      }),
-    );
-  });
-
-  it("update_targets writes an UPDATED row with target and stop from → to", async () => {
-    mockPositionFindFirst.mockResolvedValueOnce(makeOpenPosition());
-
-    const result = await makeTool().execute({
-      symbol: "NVDA",
-      action: "update_targets",
-      reason: REASON,
-      new_target_price: 130,
-      new_stop_loss: 95,
-    });
-
-    expect(result.data.status).toBe("UPDATED");
-    expect(mockWriteThesisUpdate).toHaveBeenCalledTimes(1);
-    expect(mockWriteThesisUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        thesisId: "thesis_1",
-        type: "UPDATED",
-        rationale: REASON,
-        runId: "run_test_198",
-        tradeId: "pos_1",
-        fieldChanges: {
-          targetPrice: { from: 120, to: 130 },
-          stopLoss: { from: 90, to: 95 },
-        },
-      }),
-    );
-  });
-
-  it("update_targets with only a stop diffs only the stop", async () => {
-    mockPositionFindFirst.mockResolvedValueOnce(makeOpenPosition());
-
-    await makeTool().execute({
-      symbol: "NVDA",
-      action: "update_targets",
-      reason: REASON,
-      new_stop_loss: 95,
-    });
-
-    const call = mockWriteThesisUpdate.mock.calls[0][0];
-    expect(call.fieldChanges).toEqual({ stopLoss: { from: 90, to: 95 } });
-  });
-
-  it("move_stop_to_breakeven writes an UPDATED row with the stop moving to avg cost", async () => {
-    mockPositionFindFirst.mockResolvedValueOnce(makeOpenPosition());
-
-    const result = await makeTool().execute({
-      symbol: "NVDA",
-      action: "move_stop_to_breakeven",
-      reason: REASON,
-    });
-
-    expect(result.data.status).toBe("UPDATED");
-    expect(mockWriteThesisUpdate).toHaveBeenCalledTimes(1);
-    expect(mockWriteThesisUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        thesisId: "thesis_1",
-        type: "UPDATED",
-        rationale: REASON,
-        tradeId: "pos_1",
-        fieldChanges: { stopLoss: { from: 90, to: 100 } },
       }),
     );
   });
@@ -222,18 +158,22 @@ describe("manage_position — plan changes write the thesis history row (DAV-198
     expect(mockWriteThesisUpdate.mock.calls[0][0].summary).toContain("Trimmed NVDA 30%");
   });
 
-  it("a position with no resolvable thesis still completes without an audit write", async () => {
+  it("a trim on a position with no resolvable thesis still completes without an audit write", async () => {
     mockPositionFindFirst.mockResolvedValueOnce(makeOpenPosition());
     mockFindRelatedThesisId.mockRejectedValueOnce(new Error("no thesis"));
+    mockOrderCreate.mockResolvedValueOnce({ id: "order_1", quantity: 3 });
+    (closePositionPartial as jest.Mock).mockResolvedValueOnce({ id: "alp_1" });
+    (getOrder as jest.Mock).mockResolvedValueOnce({ status: "filled", filled_avg_price: "110", filled_qty: "3" });
 
     const result = await makeTool().execute({
       symbol: "NVDA",
-      action: "update_targets",
+      action: "partial_close",
       reason: REASON,
-      new_stop_loss: 95,
+      close_pct: 30,
+      close_reason: "RISK_MANAGEMENT",
     });
 
-    expect(result.data.status).toBe("UPDATED");
+    expect(result.data.status).toBe("PARTIAL_CLOSE");
     expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
   });
 });

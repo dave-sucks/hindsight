@@ -10,7 +10,8 @@
    "close_position {\"ticker\":\"FIVE\",\"reason\":\"STOP\",\"notes\":\"I’m selling FIVE because the post-earnings drift setup has broken. The stock closed around $222.38, which is below our"
   ],
   "notes": [
-   "promptArgs.runInput is the account as it is today, trimmed to what the prompt builder reads; the stock rows the run read are in messages"
+   "promptArgs.runInput is the account as it is today, trimmed to what the prompt builder reads; the stock rows the run read are in messages",
+   "Back-filled 2026-10-08 (step 8): position, proposals, price, chart, inheritedTriggers and situations on every recorded get_theses full row, as of each row's resolved.resolvedAt; today's inherited rules against today's stored triggers; the chart absent where no snapshot existed by then. context and principalDirective are as recorded."
   ]
  },
  "expect": {
@@ -904,7 +905,67 @@
            "rejectMessage": null,
            "recentLow": 216.865
           },
-          "principalDirective": null
+          "principalDirective": null,
+          "position": {
+           "quantity": 24,
+           "avgCost": 248.05,
+           "openedAt": "2026-09-10T15:57:17.215Z",
+           "peakPrice": 250.83
+          },
+          "proposals": [],
+          "price": {
+           "current": 222.47,
+           "dayChangePct": -2.17,
+           "asOf": "2026-09-25T12:00:23.833Z"
+          },
+          "chart": {
+           "asOf": "2026-09-24",
+           "sma20": 240.78,
+           "sma50": 232.24,
+           "sma200": 213.45,
+           "rsi14": 38,
+           "move5dPct": -5,
+           "move20dPct": -9.9,
+           "high20": 260.12,
+           "low20": 216.67,
+           "high52w": 263.88,
+           "low52w": 137.77,
+           "volumeAvg20": 1314037,
+           "atr14": 10.14,
+           "rsVsSpy1M": -14.4,
+           "rsVsSpy3M": 14.7
+          },
+          "inheritedTriggers": [
+           {
+            "id": "f552414c-ff2a-455d-b779-d5401ac9ea98",
+            "says": "Sell if below 12% from the high since we bought, once it has been up 10%",
+            "rationale": "Gave back 12% from the high, once the position had been up 10% — bank the run.",
+            "cooldownDays": 0,
+            "setBy": "PRINCIPAL",
+            "level": "ANALYST"
+           },
+           {
+            "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+            "says": "Review if within 5 days before earnings",
+            "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+            "cooldownDays": 30,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "30059604-b755-4848-b938-b636464815c3",
+            "says": "Review if it files something material with the SEC",
+            "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",
+            "lastFiredAt": "2026-09-24T13:30:08.799Z",
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           }
+          ],
+          "situations": [
+           "PROTECTIVE_SALE",
+           "REVIEW_DUE",
+           "FILING"
+          ]
          },
          {
           "id": "cmu6d6bkr000604jhdzhz6fjl",
@@ -1240,7 +1301,70 @@
           },
           "unapprovedExitCount": 0,
           "heldThroughFloor": null,
-          "principalDirective": null
+          "principalDirective": null,
+          "position": null,
+          "proposals": [],
+          "price": {
+           "current": 120.5,
+           "dayChangePct": 0.87,
+           "asOf": "2026-09-25T12:00:23.833Z"
+          },
+          "chart": {
+           "asOf": "2026-09-24",
+           "sma20": 122.82,
+           "sma50": 133.05,
+           "sma200": 116.6,
+           "rsi14": 43,
+           "move5dPct": 6.9,
+           "move20dPct": -11.3,
+           "high20": 138.17,
+           "low20": 110.36,
+           "high52w": 154,
+           "low52w": 74.25,
+           "volumeAvg20": 393575,
+           "atr14": 4.97,
+           "rsVsSpy1M": -11.1,
+           "rsVsSpy3M": -17.4
+          },
+          "inheritedTriggers": [
+           {
+            "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+            "says": "Review if within 5 days before earnings",
+            "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+            "cooldownDays": 30,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
+            "says": "Review if earnings beat any amount",
+            "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
+            "cooldownDays": 7,
+            "lastFiredAt": "2026-10-01T13:30:08.593Z",
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+            "says": "Review if earnings miss any amount",
+            "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+            "cooldownDays": 7,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "30059604-b755-4848-b938-b636464815c3",
+            "says": "Review if it files something material with the SEC",
+            "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",
+            "lastFiredAt": "2026-09-29T13:30:18.747Z",
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           }
+          ],
+          "situations": [
+           "FILING",
+           "PLAN_PROBLEM"
+          ]
          },
          {
           "id": "cmrp6chyu000h04l5roqq5ha1",
@@ -1742,7 +1866,98 @@
           },
           "unapprovedExitCount": 20,
           "heldThroughFloor": null,
-          "principalDirective": null
+          "principalDirective": null,
+          "position": {
+           "quantity": 13,
+           "avgCost": 895.935,
+           "openedAt": "2026-07-17T16:51:25.540Z",
+           "peakPrice": 1091.66
+          },
+          "proposals": [],
+          "price": {
+           "current": 1077.72,
+           "dayChangePct": 0.54,
+           "asOf": "2026-09-25T12:00:23.833Z"
+          },
+          "chart": {
+           "asOf": "2026-09-24",
+           "sma20": 986.8,
+           "sma50": 937.03,
+           "sma200": 656.92,
+           "rsi14": 62,
+           "move5dPct": 6.1,
+           "move20dPct": 15.2,
+           "high20": 1105.5,
+           "low20": 902.6,
+           "high52w": 1255,
+           "low52w": 154.65,
+           "volumeAvg20": 25453298,
+           "atr14": 48.93,
+           "rsVsSpy1M": 15.7,
+           "rsVsSpy3M": -15.4
+          },
+          "inheritedTriggers": [
+           {
+            "id": "f552414c-ff2a-455d-b779-d5401ac9ea98",
+            "says": "Sell if below 12% from the high since we bought, once it has been up 10%",
+            "rationale": "Gave back 12% from the high, once the position had been up 10% — bank the run.",
+            "cooldownDays": 0,
+            "setBy": "PRINCIPAL",
+            "level": "ANALYST"
+           },
+           {
+            "id": "56be49ac-b01b-4101-8c51-377aa1bab0ac",
+            "says": "Review if below 12% from our entry",
+            "rationale": "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us.",
+            "cooldownDays": 7,
+            "setBy": "PRINCIPAL",
+            "level": "ANALYST"
+           },
+           {
+            "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
+            "says": "Add if above 7% from yesterday's close",
+            "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+            "cooldownDays": 3,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "b459cc93-12a4-43f1-8904-d8a8cd846b93",
+            "says": "Review every 7 days",
+            "rationale": "Look at this every 7 days, counting from the last real review.",
+            "cooldownDays": 7,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+            "says": "Review if within 5 days before earnings",
+            "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+            "cooldownDays": 30,
+            "lastFiredAt": "2026-09-28T13:30:14.102Z",
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+            "says": "Review if earnings miss any amount",
+            "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+            "cooldownDays": 7,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "30059604-b755-4848-b938-b636464815c3",
+            "says": "Review if it files something material with the SEC",
+            "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           }
+          ],
+          "situations": [
+           "REVIEW_DUE",
+           "ADD_OR_WINNER"
+          ]
          },
          {
           "id": "cmt0zqtsl000a04l5oj023qic",
@@ -1967,7 +2182,67 @@
           },
           "unapprovedExitCount": 0,
           "heldThroughFloor": null,
-          "principalDirective": null
+          "principalDirective": null,
+          "position": null,
+          "proposals": [],
+          "price": {
+           "current": 45.645,
+           "dayChangePct": -0.6,
+           "asOf": "2026-09-25T12:00:23.833Z"
+          },
+          "chart": {
+           "asOf": "2026-09-24",
+           "sma20": 48.86,
+           "sma50": 50.34,
+           "sma200": 55.99,
+           "rsi14": 38,
+           "move5dPct": 1.5,
+           "move20dPct": -10.9,
+           "high20": 53.95,
+           "low20": 44.46,
+           "high52w": 71.07,
+           "low52w": 42.62,
+           "volumeAvg20": 580122,
+           "atr14": 1.63,
+           "rsVsSpy1M": -11.4,
+           "rsVsSpy3M": -7.7
+          },
+          "inheritedTriggers": [
+           {
+            "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+            "says": "Review if within 5 days before earnings",
+            "rationale": "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+            "cooldownDays": 30,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
+            "says": "Review if earnings beat any amount",
+            "rationale": "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
+            "cooldownDays": 7,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+            "says": "Review if earnings miss any amount",
+            "rationale": "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+            "cooldownDays": 7,
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           },
+           {
+            "id": "30059604-b755-4848-b938-b636464815c3",
+            "says": "Review if it files something material with the SEC",
+            "rationale": "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",
+            "setBy": "DEFAULT",
+            "level": "ACCOUNT"
+           }
+          ],
+          "situations": [
+           "PLAN_PROBLEM"
+          ]
          }
         ],
         "quiet_theses": [

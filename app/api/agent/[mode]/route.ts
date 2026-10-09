@@ -18,11 +18,12 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { createResearchTools } from "@/lib/agent/tools";
+import { analystToolSettings, type AnalystToolSettings } from "@/lib/agent/tool-context";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
-import type { AgentConfigInput } from "@/lib/agent/system-prompt";
+import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
@@ -197,7 +198,9 @@ export async function POST(
     // ── System prompt + tools ──────────────────────────────────────────────
 
     let systemPrompt: string;
-    let agentConfig: AgentConfigInput = (config as AgentConfigInput) || {};
+    // The analyst's fence and limits the tools enforce: the body's when no
+    // analyst row is loaded, else the row's (analystToolSettings).
+    let agentConfig: AnalystToolSettings = (config as AnalystToolSettings) || {};
 
     if (agentMode === "research-run") {
       // Load analyst config from DB
@@ -212,32 +215,17 @@ export async function POST(
             )?.agentConfigId ?? undefined
           : undefined);
 
+      // What the model reads about the analyst (lib/agent/analyst-brief.ts):
+      // the row itself when there is one, else whatever the body sent.
+      let briefAnalyst: BriefAnalyst = (config as BriefAnalyst) || {};
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
           where: { id: resolvedAnalystId, accountId },
         });
         if (ac) {
+          briefAnalyst = { ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) };
           const watchlistSymbols = await getWatchlistSymbols(ac.id);
-          agentConfig = {
-            name: ac.name,
-            analystPrompt: ac.analystPrompt ?? undefined,
-            directionBias: ac.directionBias,
-            holdDurations: ac.holdDurations,
-            sectors: ac.sectors,
-            // ── Universe (B1) ─────────────────────────────────────────
-            industries: ac.industries,
-            themes: ac.themes,
-            marketCapMin: ac.marketCapMin != null ? Number(ac.marketCapMin) : null,
-            marketCapMax: ac.marketCapMax != null ? Number(ac.marketCapMax) : null,
-            signalTypes: ac.signalTypes,
-            minConfidence: ac.minConfidence,
-            minPositionSize: ac.minPositionSize ? Number(ac.minPositionSize) : undefined,
-            maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
-            maxPositionTotal: ac.maxPositionTotal ? Number(ac.maxPositionTotal) : undefined,
-            maxOpenPositions: ac.maxOpenPositions,
-            watchlist: watchlistSymbols,
-            exclusionList: ac.exclusionList,
-          };
+          agentConfig = analystToolSettings(ac, watchlistSymbols);
         }
       }
 
@@ -254,39 +242,20 @@ export async function POST(
       // V2 is the only path as of 2026-05-16. P0-11 (manual UI runs got
       // V1) is closed by this swap. The legacy V1 builder is marked
       // @deprecated in lib/agent/system-prompt.ts; no caller remains.
-      systemPrompt = runInput
-        ? buildDailyRunSystemPromptV2(agentConfig, runInput)
-        : buildDailyRunSystemPromptV2(agentConfig, {
-            analyst: {
-              name: (agentConfig.name as string) || "Research Analyst",
-              mandate: (agentConfig.analystPrompt as string) || null,
-              voice: null,
-              directionBias: (agentConfig.directionBias as string) || "BOTH",
-              holdDurations: (agentConfig.holdDurations as string[]) || ["SWING"],
-              sectors: (agentConfig.sectors as string[]) || [],
-              industries: (agentConfig.industries as string[]) || [],
-              themes: (agentConfig.themes as string[]) || [],
-              marketCapMin: (agentConfig.marketCapMin as number | null) ?? null,
-              marketCapMax: (agentConfig.marketCapMax as number | null) ?? null,
-              exclusionList: (agentConfig.exclusionList as string[]) || [],
-              minConfidence: (agentConfig.minConfidence as number) ?? 60,
-              minPositionSize: (agentConfig.minPositionSize as number) ?? 0,
-              maxPositionSize: (agentConfig.maxPositionSize as number) ?? 10000,
-              maxOpenPositions: (agentConfig.maxOpenPositions as number) ?? 5,
-            },
-            portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
-            watchlist: [],
-            activeTheses: [],
-            performance: null,
-            recentClosedTrades: [],
-            priorityReviews: null,
-            triggersFiredSinceLastRun: [],
-            triggersMatchingNow: [],
-            earnings: { reportingSoon: [], justReported: [] },
-            filings: { recent: [] },
-            intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
-            openRefusals: [],
-          });
+      systemPrompt = buildDailyRunSystemPromptV2(
+        briefAnalyst,
+        runInput ?? {
+          portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
+          watchlist: [],
+          activeTheses: [],
+          priorityReviews: null,
+          triggersFiredSinceLastRun: [],
+          triggersMatchingNow: [],
+          earnings: { reportingSoon: [], justReported: [] },
+          filings: { recent: [] },
+          openRefusals: [],
+        },
+      );
 
     } else if (agentMode === "builder") {
       systemPrompt = BUILDER_SYSTEM_PROMPT;
@@ -341,40 +310,12 @@ export async function POST(
         alpacaCreds =
           (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
         const principalWatchlistSymbols = await getWatchlistSymbols(ac.id);
-        // Hydrate agentConfig for tool guardrails (place_trade etc.).
-        agentConfig = {
-          name: ac.name,
-          analystPrompt: ac.analystPrompt ?? undefined,
-          directionBias: ac.directionBias,
-          holdDurations: ac.holdDurations,
-          sectors: ac.sectors,
-          industries: ac.industries,
-          themes: ac.themes,
-          marketCapMin: ac.marketCapMin != null ? Number(ac.marketCapMin) : null,
-          marketCapMax: ac.marketCapMax != null ? Number(ac.marketCapMax) : null,
-          signalTypes: ac.signalTypes,
-          minConfidence: ac.minConfidence,
-          maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
-          maxOpenPositions: ac.maxOpenPositions,
-          watchlist: principalWatchlistSymbols,
-          exclusionList: ac.exclusionList,
-        };
+        // The tools' fence and limits (place_trade etc.), the same mapping as the Run button's.
+        agentConfig = analystToolSettings(ac, principalWatchlistSymbols);
         scopedAnalyst = {
-          id: ac.id,
-          name: ac.name,
-          analystPrompt: ac.analystPrompt ?? null,
-          directionBias: ac.directionBias,
-          holdDurations: ac.holdDurations,
-          sectors: ac.sectors,
-          industries: ac.industries,
-          themes: ac.themes,
-          marketCapMin: ac.marketCapMin != null ? Number(ac.marketCapMin) : null,
-          marketCapMax: ac.marketCapMax != null ? Number(ac.marketCapMax) : null,
+          ...ac,
           watchlist: principalWatchlistSymbols,
-          exclusionList: ac.exclusionList,
-          minConfidence: ac.minConfidence,
-          maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : 0,
-          maxOpenPositions: ac.maxOpenPositions,
+          setupOverrides: await loadSetupOverrides(ac.accountId),
         };
 
         // ── The seat's money + book (DAV-207 Move 1) ──────────────────────

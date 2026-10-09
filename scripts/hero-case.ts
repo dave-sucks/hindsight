@@ -34,7 +34,10 @@ import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { MODES, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
-import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { toStoredPredicate } from "@/lib/agent/triggers/condition/stored";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -143,19 +146,73 @@ async function liveReads(c: HeroCase, inSession: boolean): Promise<Record<string
 
 function systemFor(c: HeroCase): string {
   switch (c.mode) {
-    case "tactical":
-      return buildTacticalSystemPrompt(c.promptArgs as never);
-    case "thesis-writer":
-      return buildWriterResearchPrompt({ ...c.promptArgs, setups: setupsForAnalyst(c.promptArgs.setupIds as string[]) } as never);
+    case "tactical": {
+      // Cases saved before step 10 carry the analyst as { name, mandate }.
+      const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const a = p.analyst as Record<string, unknown>;
+      // The stock as the trigger run reads it: get_theses's saved row (a case
+      // saved since step 10), or, for an older case, the row rebuilt from the
+      // stock the old prompt was handed.
+      const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
+      const stock = stockFromRead({ ok: true, data: { theses: [saved] } }, String(saved.id));
+      return buildTacticalSystemPrompt({
+        analyst: { ...a, analystPrompt: (a.analystPrompt ?? a.mandate ?? null) as string | null },
+        stock: { ticker: String(saved.ticker), direction: (saved.direction as string | null) ?? null, row: stock?.row ?? null },
+        trigger: p.trigger,
+        position: p.position ? { peakPrice: p.position.peakPrice ?? null } : null,
+        fired: { price: p.fired?.price ?? null },
+        capacity: p.capacity ?? null,
+        // A case that names its situations takes their text from today's
+        // table, so a recorded case prints the guidance a live run prints.
+        situations: p.situations?.guidance ? p.situations : stock?.situations ?? null,
+      });
+    }
+    case "thesis-writer": {
+      // Cases saved before step 10 carry the analyst's fields loose on the arguments.
+      const p = c.promptArgs;
+      const analyst = (p.analyst as Record<string, unknown> | undefined) ?? { name: p.analystName, analystPrompt: p.analystPrompt, minConfidence: p.minConfidence, setupIds: p.setupIds };
+      return buildWriterResearchPrompt({ ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]) } as never);
+    }
     case "research-run": {
       // JSON turned the refusals' dates into strings; the builder wants dates.
-      const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }> };
+      const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
       for (const r of runInput.openRefusals ?? []) r.createdAt = new Date(r.createdAt);
+      // Cases saved before step 10 carry the count on the run input's analyst copy.
+      runInput.pendingApprovalCount ??= runInput.analyst?.pendingApprovalCount;
       return buildDailyRunSystemPromptV2(c.promptArgs.config as never, runInput as never);
     }
     default:
       return buildPrincipalSystemPrompt(c.promptArgs as never);
   }
+}
+
+/**
+ * A trigger case saved before step 10 holds the stock as the old prompt's
+ * hand-built object; this is the saved get_theses row built from those
+ * fields, so the replay reads the row a live trigger run reads. The fire's
+ * time was not saved, so the fired rung carries no "fired" mark; the prompt
+ * names it with its id in TRIGGER THAT FIRED.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function savedRowFromOldCase(p: Record<string, any>): Record<string, unknown> {
+  const t = p.thesis;
+  const held = p.position != null;
+  return {
+    id: t.id, ticker: t.ticker, status: held ? "HOLDING" : "WATCHING", direction: t.direction, horizon: t.horizon, setupId: t.setupId ?? null,
+    context: p.context ?? null,
+    coreBelief: t.coreBelief, keyAssumptions: t.keyAssumptions, invalidationConds: t.invalidationConds,
+    entryPrice: t.entryPrice, targetPrice: t.targetPrice, stopLoss: t.stopLoss,
+    position: held ? { quantity: p.position.quantity, avgCost: p.position.avgCost, peakPrice: p.position.peakPrice ?? null } : null,
+    triggers: ((t.allTriggers ?? []) as Trigger[]).map((x) => ({ id: x.id, says: sentenceOf(x, held), rationale: x.rationale })),
+    snapshot: t.snapshotText ? { text: t.snapshotText } : null,
+    bullCase: { bullets: ((t.bullCaseBullets ?? []) as string[]).map((text) => ({ text })) },
+    bearCase: { bullets: ((t.bearCaseBullets ?? []) as string[]).map((text) => ({ text })) },
+    setup: setupChecklist(t.setupId, t.horizon),
+    researchAge: t.researchAge ?? null,
+    researchUpdatedAt: t.researchAge?.lastWrittenAt ?? null,
+    heldThroughFloor: p.heldThroughFloor ?? null,
+    situations: p.situations?.codes ?? [],
+  };
 }
 
 /** Every value at a dot path; `*` steps into each element of an array; `$sum` adds the `score` of each child; `$count` is the number of children. */
@@ -389,7 +446,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       const a = (c.input ?? {}) as Record<string, unknown>;
       return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
     });
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid }) + "\n");
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };
@@ -404,7 +461,16 @@ async function main() {
   const names = args.includes("--all")
     ? readdirSync("scripts/hero-cases").filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, "")).sort()
     : args.filter((a) => !a.startsWith("--") && a !== String(runs) && a !== writtenPath);
-  if (names.length === 0) throw new Error("usage: hero-case.ts <case>... | --all  [--runs N]");
+  if (names.length === 0) throw new Error("usage: hero-case.ts <case>... | --all  [--runs N] [--print]");
+  // --print: each case's system prompt, built as a run builds it, and no model call.
+  if (args.includes("--print")) {
+    for (const name of names) {
+      const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
+      c.promptArgs = inStoredShape(c.promptArgs) as HeroCase["promptArgs"];
+      console.log(`===== ${name} (${c.mode})\n${systemFor(c)}`);
+    }
+    return;
+  }
   const results = [];
   const inSession = args.includes("--live-reads-in-session");
   for (const name of names) results.push(await runCase(name, runs, writtenPath, inSession));

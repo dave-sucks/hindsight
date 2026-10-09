@@ -140,7 +140,17 @@ describe("the fixture is the production call", () => {
       "Removed: sell below $132": "Removed: Take the plan down if below $132",
       "Removed: review above $146": "Removed: Review if above $146",
     };
-    expect(lines).toEqual(fx.savedOps.map(({ op, id, text }) => ({ op, id, text: SAID_NOW[text] ?? text })));
+    // Two of its adds asked for "only on the close" and landed on a trigger
+    // already there; the save dropped the setting then and carries it now
+    // (2026-10-09), so these four lines say so.
+    const ON_THE_CLOSE: Record<string, string> = {
+      "Target $210 → $146": "Target $210 → $146; Target: fires on the close",
+      "Review if below $132: wording updated": "Review if below $132: fires on the close",
+      "Removed: Review if below $132": "Removed: Review if below $132 · only on the close",
+      "Removed: Review if above $146": "Removed: Review if above $146 · only on the close",
+    };
+    const now = (text: string) => ON_THE_CLOSE[SAID_NOW[text] ?? text] ?? SAID_NOW[text] ?? text;
+    expect(lines).toEqual(fx.savedOps.map(({ op, id, text }) => ({ op, id, text: now(text) })));
     expect(stored.map((t) => kindOf(t.predicate))).toEqual(["EARNINGS_SINCE"]);
   });
 });

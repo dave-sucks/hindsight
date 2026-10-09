@@ -88,11 +88,16 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
       .describe("Why the stop is there, with the chart number it sits under (\"under the base low $207.25, 1.6 ATR from entry\"). It becomes the floor trigger's sentence."),
     catalyst_date: z.string().datetime().describe("When the dated event lands, as the company announced it (ISO timestamp). Required when horizon is CATALYST."),
     catalyst_day: z.string().describe("When the dated event lands, as the company announced it (YYYY-MM-DD). Required when horizon is CATALYST."),
-    core_belief: z.string().describe("One sentence: what you believe will happen, by when, and why. The claim that breaks the thesis when it stops being true."),
+    core_belief: z
+      .string()
+      .describe("One sentence: what you believe will happen and why. No dates and no price levels here: the catalyst date and the plan carry those."),
     key_assumptions: z.array(z.string()).describe("Specific, checkable premises that must stay true for the core belief: two or more on LONG or SHORT."),
     invalidation_conditions: z
       .array(z.string())
-      .describe("Specific things that would prove the thesis wrong: two or more on LONG or SHORT. Exits are graded against them; on a PASS they are what would change your mind."),
+      .describe(
+        "Specific things you could observe that would prove the thesis wrong (a close below the 50-day average, a guidance cut), two or more on LONG or SHORT, " +
+          "never a price level: the floor carries it. Exits are graded against them; on a PASS they are what would change your mind.",
+      ),
     scoring: z
       .object({ trendStrength: part(3), relativeStrength: part(3), entryQuality: part(2), catalystFreshness: part(2) })
       .describe(SCORING),

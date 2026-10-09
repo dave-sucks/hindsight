@@ -1,18 +1,18 @@
 /**
  * get-theses.the-read.replay.test.ts — what the model reads of get_theses
- * (docs/plans/AGENT_ARCHITECTURE.md, steps 4b and 4c).
+ * (docs/plans/AGENT_ARCHITECTURE.md, steps 4b, 4c and 8).
  *
  * In September, 27 of 40 morning opening reads asked for include_history on
  * the whole book because this tool's description invited it, and that turned
  * every row full: 180,000-330,000 characters re-sent on every later step. The
- * writer's research text (snapshot, bull and bear cases, score notes) rode on
- * every full row too, as old as the writer's last visit.
+ * writer's research text rode on every full row too, as old as the writer's
+ * last visit.
  *
- * Now: the raw history comes back on a read of named stocks; every row says
- * when its research was written and at what price. The research text stays on
- * every full row: a run left to ask for it never did (now-needs-research,
- * 0/12, also with a line saying how). The screen gets the whole result as
- * before.
+ * Now: a stock in a situation is the short row (the belief, the plan, the
+ * snapshot's first paragraph, the score; no bull or bear case); the raw
+ * history and the research essays come back on a read of named stocks; every
+ * row says when its research was written and at what price. The screen gets
+ * the whole result as before.
  *
  * Through the real get_theses execute and its real model-output hook.
  */
@@ -94,40 +94,54 @@ async function read(args: Record<string, unknown>) {
   };
   const model = tool.toModelOutput({ toolCallId: "c1", input: args, output: result }).value.data;
   const screen = result.data as Record<string, unknown>;
-  const row = (d: Record<string, unknown>) => ((d.theses as Array<Record<string, unknown>>) ?? []).find((t) => t.ticker === "SYK") as Record<string, unknown>;
+  // The screen's row has a ticker; the model's row opens with its stock line.
+  const row = (d: Record<string, unknown>) => ((d.theses as Array<Record<string, unknown>>) ?? []).find((t) => t.ticker === "SYK" || String(t.stock ?? "").startsWith("SYK ·")) as Record<string, unknown>;
   return { model, screen, modelRow: row(model), screenRow: row(screen) };
 }
 
 describe("get_theses — the read", () => {
-  it("the opening read with include_history: no history, the research text kept, and a dated research line", async () => {
+  it("the opening read with include_history: the short row, no history, no essays, and a dated research line", async () => {
     const { model, modelRow } = await read({ include_history: true });
     expect(modelRow).toBeDefined();
     expect(modelRow.history).toBeUndefined();
-    // A run left to ask for the research never did (now-needs-research), so it stays on the row.
-    expect(modelRow.snapshot).toEqual(snapshot);
-    expect(modelRow.bullCase).toEqual(bull);
-    expect(modelRow.bearCase).toEqual(bear);
-    expect((modelRow.scoring as Record<string, { note?: string }>).trendStrength.note).toMatch(/51 days ago/);
-    expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348, 51 days ago\.$/);
-    expect(modelRow.triggerState).toBeUndefined();
+    expect(modelRow.stock).toBe("SYK · watch · LONG · BASE_BREAKOUT · conviction MEDIUM");
+    // The short row carries the snapshot's first paragraph and the score; the cases and the notes are the full row's.
+    expect(modelRow.snapshot).toBe(snapshot.text);
+    expect(modelRow.score).toBe("7/10 (entry 1 · trend 2 · relative strength 2 · catalyst 2)");
+    expect(modelRow).not.toHaveProperty("bull_case");
+    expect(modelRow).not.toHaveProperty("bear_case");
+    expect(modelRow).not.toHaveProperty("score_notes");
+    expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348\.00, 51 days ago\. Full row: get_theses\(tickers: \["SYK"\]\)\.$/);
+    expect(modelRow).not.toHaveProperty("triggerState");
     expect(String(model.historyNote)).toMatch(/named stocks/);
   });
 
   it("asking for history on the whole book no longer sends every stock full", async () => {
     const { model } = await read({ include_history: true });
-    // The quiet split stays on: the held stock with nothing due is a roster line, not a full row.
-    const full = (model.theses as Array<{ ticker: string }>).map((t) => t.ticker);
-    const quiet = (model.quiet_theses as Array<{ ticker: string }>).map((t) => t.ticker);
+    // The quiet split stays on: the held stock with nothing due is one line, not a row.
+    const full = (model.theses as Array<{ stock: string }>).map((t) => t.stock.split(" · ")[0]);
+    const quiet = (model.quiet_theses as string[]).map((line) => line.split(" · ")[0]);
     expect(full).toEqual(["SYK"]);
     expect(quiet).toEqual(["CEG"]);
+    expect(model.quiet_theses).toEqual([expect.stringMatching(/^CEG · held · LONG · COMPOUNDER_ACCUMULATION · \$280\.00 · entry \$250\.00 · target \$340\.00 · floor \$262\.00 · review \d\d-\d\d · score 7 · id t_ceg$/)]);
   });
 
-  it("a read of a named stock keeps the history and the research text", async () => {
+  it("a read of a named stock is the full row: the history, the cases and the score notes", async () => {
     const { modelRow } = await read({ tickers: ["SYK"], include_history: true });
     expect(Array.isArray(modelRow.history) && (modelRow.history as unknown[]).length).toBeGreaterThan(0);
-    expect(modelRow.snapshot).toEqual(snapshot);
-    expect((modelRow.scoring as Record<string, { note?: string }>).trendStrength.note).toMatch(/51 days ago/);
-    expect(String(modelRow.research)).toMatch(/at \$348/);
+    expect(modelRow.snapshot).toBe(snapshot.text);
+    expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);
+    expect(modelRow.bear_case).toEqual(["Capacity auction prices fall back."]);
+    expect((modelRow.score_notes as Record<string, string>).trend).toMatch(/51 days ago/);
+    expect(String(modelRow.research)).toMatch(/at \$348\.00/);
+  });
+
+  it("the guidance arrives with the rows, read off their situations", async () => {
+    const { model, screenRow } = await read({});
+    const sent = Object.keys(model.guidance as Record<string, string>);
+    expect(sent).toContain("REVIEW_DUE");
+    for (const code of sent) expect(screenRow.situations).toContain(code);
+    expect(sent).toHaveLength((screenRow.situations as string[]).length);
   });
 
   it("the screen still gets the whole row", async () => {

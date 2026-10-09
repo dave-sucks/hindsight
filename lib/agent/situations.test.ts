@@ -6,7 +6,7 @@
 import { readFileSync, statSync } from "fs";
 import path from "path";
 import { computeNeedsAction, type NeedsActionInput } from "./needs-action";
-import { guidanceCodes, guidanceFor, listsTheStock, measuresOf, SITUATIONS, situationLabels, situationsFor, type SituationCode, type SituationSources } from "./situations";
+import { guidanceCodes, guidanceFor, listsTheStock, measuresOf, SITUATIONS, situationLabels, situationsFor, TRIGGER_RUN_LINES, type SituationCode, type SituationSources } from "./situations";
 import type { Trigger } from "./triggers/types";
 
 const NOW = new Date("2026-05-09T21:00:00Z"); // a Saturday: no session
@@ -160,7 +160,7 @@ describe("the guidance: each situation's text, once", () => {
     expect(guidanceCodes("HOLDING", ["REVIEW_DUE", "ADD_OR_WINNER"])).toEqual(["REVIEW_DUE", "ADD_OR_WINNER"]);
   });
   it("a trigger run is not handed a situation whose answer needs fields its save lacks", () => {
-    const codes: SituationCode[] = ["PROTECTIVE_SALE", "NO_SETUP_NAMED", "FIRST_RESEARCH", "STALE_RESEARCH"];
+    const codes: SituationCode[] = ["PROTECTIVE_SALE", "NO_SETUP_NAMED", "FIRST_RESEARCH", "STALE_RESEARCH", "SOLD_ONE_REVIEW"];
     expect(guidanceCodes("HOLDING", codes, "INTRADAY_TACTICAL")).toEqual(["PROTECTIVE_SALE", "STALE_RESEARCH"]);
     expect(guidanceCodes("HOLDING", codes, "MORNING_PLAN")).toEqual(codes);
     expect(guidanceCodes("HOLDING", codes)).toEqual(codes);
@@ -238,5 +238,101 @@ describe("the live book after the close, replayed", () => {
     const src: SituationSources = { ...s.src, needs, triggers: i.thesis.triggers };
     expect(listsTheStock(src)).toBe(s.listed);
     expect(situationsFor(src)).toEqual(s.codes);
+  });
+});
+
+describe("a seed's claim is the writer's (step 12, part 1)", () => {
+  // MA as the chat minted it on 2026-09-29: no view, no claim, a strength wake and a 45-day review clock.
+  const ma = (now: Date) =>
+    input(
+      {
+        id: "cmum2tf9m000d04jfv0szuiap",
+        status: "WATCHING",
+        direction: null,
+        lastReviewedAt: null,
+        createdAt: new Date("2026-09-29T02:47:48.106Z"),
+        triggers: [
+          trig("e3c45d50-56de-4a17-9bf1-91e9c69c56ee", "REVIEW", { watch: "strength", value: 0, settings: { window: "6M" } }),
+          trig("a2e0f9b5-8b48-4e7a-b91e-7bc2bb350006", "REVIEW", { watch: "repeat", value: 45 }),
+        ],
+      },
+      { now },
+    );
+
+  it("MA, a live seed with a review clock: due, its one situation is FIRST_RESEARCH; not due, none", () => {
+    expect(situationsFor(sources(ma(new Date("2026-11-14T13:00:00Z"))))).toEqual(["FIRST_RESEARCH"]);
+    expect(situationsFor(sources(ma(new Date("2026-10-09T13:00:00Z"))))).toEqual([]);
+  });
+
+  it("FIRST_RESEARCH and a woken watch send the claim through the writer, and never ask a run to write it", () => {
+    for (const code of ["FIRST_RESEARCH", "QUIET_WATCH_WOKE"] as const) {
+      const text = guidanceFor([code])[code]!;
+      for (const words of ["dispatch_thesis_research", 'mode "refresh"', "existing_thesis_id", "wait_for_thesis_refresh", "commits the view"]) expect([code, words, text.includes(words)]).toEqual([code, words, true]);
+      for (const field of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([code, field, text.includes(field)]).toEqual([code, field, false]);
+    }
+    expect(SITUATIONS.FIRST_RESEARCH.guidance).toContain("No write-up yet");
+    expect(SITUATIONS.FIRST_RESEARCH.guidance).toContain("A failed write-up is dispatched again");
+  });
+});
+
+describe("the words per run (step 12, part 2)", () => {
+  const ALL = Object.keys(SITUATIONS) as SituationCode[];
+  it("every trigger-run line replaces a line of its text, word for word", () => {
+    for (const [code, pairs] of Object.entries(TRIGGER_RUN_LINES) as Array<[SituationCode, ReadonlyArray<readonly [string, string]>]>) {
+      for (const [line] of pairs) expect([code, line, SITUATIONS[code].guidance.includes(line)]).toEqual([code, line, true]);
+    }
+  });
+  it("the trigger run's guidance never names change_status, INVALIDATED or ARCHIVED; it takes the plan down by id and the morning run decides", () => {
+    const text = Object.values(guidanceFor(guidanceCodes("WATCHING", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
+    const promoted = Object.values(guidanceFor(guidanceCodes("PROMOTED", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
+    for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) {
+      expect([word, text.includes(word)]).toEqual([word, false]);
+      expect([word, promoted.includes(word)]).toEqual([word, false]);
+    }
+    expect(guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE).toContain("take its buy, floor and target down by id (remove_trigger_ids) and say so in the note; the morning run decides");
+    expect(guidanceFor(["PROMOTED_AWAITING"], "INTRADAY_TACTICAL").PROMOTED_AWAITING).toContain("the stock stays promoted and the morning run decides");
+  });
+  it("the morning run and the chat keep the verbs", () => {
+    for (const runMode of ["MORNING_PLAN", "PRINCIPAL_CHAT", undefined]) {
+      expect(guidanceFor(["REVIEW_DUE"], runMode).REVIEW_DUE).toContain("change_status INVALIDATED on a stock we watch");
+      expect(guidanceFor(["QUIET_WATCH_WOKE"], runMode).QUIET_WATCH_WOKE).toContain("change_status ARCHIVED");
+      expect(guidanceFor(["PROMOTED_AWAITING"], runMode).PROMOTED_AWAITING).toContain('change_status "WATCHING"');
+    }
+  });
+  it("every text stays under the cap in every run's words", () => {
+    for (const code of ALL) for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN"]) expect([code, runMode, guidanceFor([code], runMode)[code]!.length <= 2_200]).toEqual([code, runMode, true]);
+  });
+  it("a refresh changes a stock's levels or tier", () => {
+    expect(SITUATIONS.STALE_RESEARCH.guidance).toContain("change its levels or tier if the new work changed your view");
+    expect(SITUATIONS.STALE_RESEARCH.guidance).not.toContain("levels or conviction");
+  });
+});
+
+describe("MA 2026-10-09: a fired review on a seed with its own clock is its first research (step 12, part 2)", () => {
+  // MA's row and the strength wake's fire at 13:30:17 UTC, as stored.
+  const ma = input(
+    {
+      id: "cmum2tf9m000d04jfv0szuiap",
+      status: "WATCHING",
+      direction: null,
+      lastReviewedAt: null,
+      createdAt: new Date("2026-09-29T02:47:48.106Z"),
+      triggers: [
+        trig("e3c45d50-56de-4a17-9bf1-91e9c69c56ee", "REVIEW", { watch: "strength", value: 0, settings: { window: "6M" } }),
+        trig("a2e0f9b5-8b48-4e7a-b91e-7bc2bb350006", "REVIEW", { watch: "repeat", value: 45 }),
+      ],
+    },
+    { now: new Date("2026-10-09T14:00:00Z"), activity: [{ type: "TRIGGER_FIRED", timestamp: new Date("2026-10-09T13:30:17.414Z"), triggerId: "e3c45d50-56de-4a17-9bf1-91e9c69c56ee", runId: null }] },
+  );
+  it("codes FIRST_RESEARCH, not REVIEW_DUE", () => {
+    expect(situationsFor(sources(ma))).toEqual(["FIRST_RESEARCH"]);
+  });
+  it("without a clock of its own the same fire is a woken watch, as before", () => {
+    const quiet = { ...ma, thesis: { ...ma.thesis, triggers: ma.thesis.triggers.slice(0, 1) } };
+    expect(situationsFor(sources(quiet))).toEqual(["QUIET_WATCH_WOKE"]);
+  });
+  it("a review fired on a stock with a view is still REVIEW_DUE", () => {
+    const withView = { ...ma, thesis: { ...ma.thesis, direction: "LONG" } };
+    expect(situationsFor(sources(withView))).toEqual(["REVIEW_DUE"]);
   });
 });

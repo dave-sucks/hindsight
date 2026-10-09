@@ -177,3 +177,18 @@ export function accountRow(over: Row = {}): Row {
     ...over,
   };
 }
+
+/**
+ * A plan as the row stores it: a buy, a target and a floor trigger at these
+ * prices. place_trade reads the target and the floor off a thesis's triggers
+ * (step 12, part 3), not off its level columns, so a row a buy is tested on
+ * carries them.
+ */
+export function planTriggers(p: { entry: number; target: number; stop: number; direction?: "LONG" | "SHORT" }): Row[] {
+  const long = p.direction !== "SHORT";
+  return [
+    { id: "plan_buy", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: long ? "above" : "below", value: p.entry }, rationale: "The buy.", cooldownDays: 1 },
+    { id: "plan_target", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: long ? "above" : "below", value: p.target }, rationale: "The target.", cooldownDays: 1 },
+    { id: "plan_floor", action: "EXIT", source: "AGENT", predicate: { watch: "price", is: long ? "below" : "above", value: p.stop }, rationale: "The floor.", cooldownDays: 0 },
+  ];
+}

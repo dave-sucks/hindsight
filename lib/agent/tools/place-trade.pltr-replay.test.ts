@@ -13,7 +13,7 @@
  * sized by the rules — and the principal's own number, from the chat, is
  * honored with a line when it sits outside the band.
  */
-import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
+import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID, planTriggers } from "@/lib/replay";
 
 const PLTR_THESIS = "cmqop233h000n04l57odbcpup";
 
@@ -46,6 +46,7 @@ const seed = () => ({
       targetPrice: 249.26,
       stopLoss: 164.55,
       analystId: REPLAY_ANALYST_ID,
+      triggers: planTriggers({ entry: 192.75, target: 249.26, stop: 164.55 }),
     }),
   ],
   // The Secular Compounder's limits on 2026-09-25.

@@ -1,0 +1,138 @@
+{
+  "_note": "The writer's refresh of COGT on 2026-09-28 01:03 UTC (run cmukjnhy4000604l5up1m1661, dispatched by the chat with mode refresh on a seed): its accepted submit_thesis decision, verbatim from the run's saved thread. The row as it stood before that save is read off the record: direction null, no claim, no levels (the audit row's from-values), the one wake the chat had set (its words as the refresh left them: the refresh edited only its wording), horizon CATALYST and the event date set the day before. The refresh landed the claim, the plan and the score, and the row stayed \"no view\".",
+  "run": {
+    "mode": "refresh",
+    "existingThesisId": "cmugfvp6q000f04jtjfjnaqd7",
+    "ticker": "COGT",
+    "price": 32.31
+  },
+  "decision": {
+    "add_triggers": [
+      {
+        "action": "ENTER",
+        "predicate": {
+          "kind": "AND",
+          "predicates": [
+            {
+              "basis": "close",
+              "kind": "PRICE_ABOVE",
+              "level": 36.95
+            },
+            {
+              "kind": "VOLUME_RATIO",
+              "min": 1.5
+            }
+          ]
+        },
+        "rationale": "PRE_CATALYST reclaim: close above 20-day high $36.85 (entry $36.95) on ≥1.5× volume confirms institutional participation in the run-up — this is the buy signal the setup requires."
+      },
+      {
+        "action": "REVIEW",
+        "predicate": {
+          "days": 14,
+          "from": "LAST_REVIEW",
+          "kind": "REVIEW_CADENCE"
+        },
+        "rationale": "Bi-weekly cadence review: check whether the reclaim is approaching, whether any FDA communication has surfaced, and whether the entry window is still open (set down if <21 days to PDUFA with no fill)."
+      },
+      {
+        "action": "REVIEW",
+        "predicate": {
+          "days": 21,
+          "from": "EVENT",
+          "kind": "REVIEW_CADENCE",
+          "side": "BEFORE"
+        },
+        "rationale": "21 days before the Nov 30 PDUFA: per PRE_CATALYST rules, if the buy has not filled, set the plan down — the run-up did not materialize, which is this setup's first invalidation signal."
+      }
+    ],
+    "catalyst_date": "2026-11-30",
+    "conviction": "MEDIUM",
+    "conviction_rationale": "The clinical and regulatory setup is genuinely strong — Priority Review, Breakthrough Therapy, RTOR, no AdCom, and a clean FDA acceptance letter across all three NDAs. The transaminase signal is partially de-risked: all Grade 3 events resolved, no Grade 4, and 1.5% discontinued for liver enzymes. But the chart is deeply broken, the reclaim entry is 14% away, institutional RS is heavily negative, and there is zero insider buying in the 90 days before a binary event — none of that is consistent with HIGH conviction. This is a trade I want, at a price I haven't been offered yet. Medium is honest; STRONG/HIGH would require the reclaim to actually fire with volume confirmation.",
+    "core_belief": "Bezuclastinib receives FDA approval for GIST by November 30, 2026, driven by Priority Review, RTOR, Breakthrough Therapy Designation, no identified review issues, and a statistically decisive Phase 3 PEAK result (HR 0.50, p<0.0001) that is the strongest efficacy signal ever produced in second-line GIST.",
+    "direction": "LONG",
+    "edit_triggers": [
+      {
+        "action": "REVIEW",
+        "id": "453c773d-c21d-4f93-b342-1012914eadc4",
+        "level": 27,
+        "rationale": "Retaining the $27 downside review level from the prior watch note — unchanged; it remains the appropriate structural trip-wire (~16% below current price) to flag a market re-pricing of negative FDA outcome risk."
+      }
+    ],
+    "entry_on_close": true,
+    "entry_price": 36.95,
+    "horizon": "CATALYST",
+    "invalidation_conditions": [
+      "A CRL or FDA information request materially related to hepatotoxicity — this would invalidate the thesis immediately regardless of price level.",
+      "The reclaim trigger ($36.95 close) does not fire by November 9, 2026 (21 days before the PDUFA) — per PRE_CATALYST rules, a buy that has not filled with 21 days to go is set down; the run-up did not happen, which is this setup's first failure sign.",
+      "Stock closes below the $34.91 swing low after entry — confirms the reclaim was a false break and structural support has given way.",
+      "A competitor secures a label expansion directly into second-line imatinib-pretreated GIST before the PDUFA, materially compressing the commercial opportunity."
+    ],
+    "key_assumptions": [
+      "FDA does not impose a CRL on the basis of the transaminase safety imbalance (Grade 3+ ALT/AST 10.8% vs 1.4%) — all events resolved with no Grade 4, supporting a manageable label rather than a rejection.",
+      "The GIST PDUFA date of November 30, 2026 does not slip — the NDA is under RTOR with no identified review issues and no AdCom required, removing the two most common delay triggers.",
+      "Cash runway of $865.9M through late 2028 prevents a dilutive equity raise that would cap any post-approval upside.",
+      "The 20-day reclaim ($36.85 close) fires with above-average volume before the entry window closes (21 days to go = ~November 9) — a run-up without a volume-confirmed reclaim is not an entry signal."
+    ],
+    "rationale": "COGT is 63 days from a high-conviction FDA binary — Priority Review, Breakthrough Therapy, RTOR, no AdCom, and a 50% PFS risk reduction in Phase 3. The prior watch note's residual risk (Grade 3+ transaminase imbalance at 10.8% vs. 1.4%) has been partially de-risked by ASCO data showing full resolution of all events and no Grade 4 toxicity, but the FDA label outcome remains open. The chart is BROKEN and the reclaim entry ($36.95, close above 20-day high $36.85) is 14% away; the thesis stays WATCHING until that level prints. R/R at the reclaim clears 3.1:1 to the $43.35 measured-move target with a stop under the $34.91 swing low (1.41 ATR). No position is open and no level is being chased at $32.31.",
+    "scoring": {
+      "catalystFreshness": {
+        "note": "GIST PDUFA Nov 30, 2026 (63 days), inside the 14-70 day PRE_CATALYST window; Priority Review, RTOR, Breakthrough Therapy Designation, no AdCom, no identified review issues — all three accelerants confirmed in the clean acceptance letter.",
+        "score": 2
+      },
+      "entryQuality": {
+        "note": "Reclaim entry ($36.95 close above 20-day high $36.85) is 14.3% above current price ($32.31) — condition not formed today; trigger is set but not live.",
+        "score": 0
+      },
+      "relativeStrength": {
+        "note": "vs SPY: 1M -12.7pts, 3M -21.0pts, 6M -31.9pts; vs XBI: 1M -4.1pts, 3M -15.0pts, 6M -37.5pts — severe underperformance across all windows.",
+        "score": 0
+      },
+      "trendStrength": {
+        "note": "Chart BROKEN: price below all four falling MAs (50-day $36.80, 200-day $36.58), Trend Template 2/8, RSI 39.8, up/down volume ratio 0.82 — confirmed distribution phase.",
+        "score": 0
+      }
+    },
+    "setup_id": "PRE_CATALYST",
+    "stop_basis": "Under the August 20 swing low ($34.91) — 1.41 ATR below entry ($36.95 − $34.91 = $2.04; ATR $1.45); meets the 1 ATR minimum structural requirement for PRE_CATALYST.",
+    "stop_loss": 34.91,
+    "target_basis": "Measured move: 20-day range depth ($36.85 − $30.35 = $6.50) added to the reclaim pivot ($36.85) = $43.35; aligns with 52-week high at $43.73. R/R = $6.40/$2.04 = 3.1:1.",
+    "target_price": 43.35,
+    "variant_view": "Consensus treats the transaminase signal as cosmetic and prices PEAK efficacy as a near-certainty for approval; I think the FDA label negotiation on hepatic monitoring is still open and could produce a delay or restricted label that the market isn't pricing, making the binary less clean than consensus implies — falsifiable if the PDUFA produces an approval with standard labeling and no REMS by November 30."
+  },
+  "thesis": {
+    "id": "cmugfvp6q000f04jtjfjnaqd7",
+    "ticker": "COGT",
+    "status": "WATCHING",
+    "direction": null,
+    "horizon": "CATALYST",
+    "setupId": null,
+    "entryPrice": null,
+    "targetPrice": null,
+    "stopLoss": null,
+    "coreBelief": null,
+    "keyAssumptions": [],
+    "invalidationConds": [],
+    "conviction": null,
+    "convictionRationale": null,
+    "variantView": null,
+    "scoring": null,
+    "catalystDate": "2026-11-30T00:00:00.000Z",
+    "triggers": [
+      {
+        "id": "453c773d-c21d-4f93-b342-1012914eadc4",
+        "action": "REVIEW",
+        "source": "AGENT",
+        "predicate": {
+          "is": "below",
+          "value": 27,
+          "watch": "price"
+        },
+        "rationale": "Retaining the $27 downside review level from the prior watch note — unchanged; it remains the appropriate structural trip-wire (~16% below current price) to flag a market re-pricing of negative FDA outcome risk.",
+        "cooldownDays": 1
+      }
+    ],
+    "triggerState": {},
+    "researchUpdatedAt": null
+  }
+}

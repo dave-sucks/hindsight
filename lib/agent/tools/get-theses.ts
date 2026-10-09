@@ -27,10 +27,12 @@ import { triggerForAgent } from "@/lib/agent/triggers/format";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { readPrice } from "@/lib/market-data/quote-age";
+import { chartFacts } from "@/lib/market-data/indicator-snapshot";
+import { ROW_FACTS, rowForModel, sizeFor, type RowSize } from "@/lib/agent/row-for-model";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
-import { loadStockFacts } from "@/lib/agent/stock-facts";
+import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
 import {
@@ -100,18 +102,18 @@ const schema = z.object({
     .min(1)
     .max(50)
     .optional()
-    .describe("Max theses to return. Default 25, hard cap 50."),
+    .describe("Max theses to return. Default 25, or 50 on a read with no analyst; hard cap 50."),
   detail: z
     .enum(["actionable", "book"])
     .optional()
     .describe(
-      "Row weight. \"actionable\": full rows only for stocks with work today, the rest as one-line entries in `quiet_theses`. \"book\": full rows for everything. Default: \"actionable\" on the Daily Run's unfiltered read, \"book\" everywhere else and whenever you filter by ticker or id.",
+      "\"actionable\" (the default): a stock in a situation is a row in `theses`, a quiet stock one line in `quiet_theses`. \"book\": every stock as a row. A read by ticker or id is always the full row.",
     ),
 });
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book); each row carries the snapshot and the bull and bear cases, and says when that research was written and at what price. The raw activity log comes back when you read named stocks (tickers or ids). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; `needsAction` is a row's lead, `situations` lists every situation the stock is in, and `guidance` says once per read what each situation asks and what answers it; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses`: its situations, what's been said, the position and any proposal waiting, the price, the plan, the protection, every trigger with its id, the belief, the setup, the snapshot's first paragraph, the score, the chart numbers and when the research was written; `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: the bull and bear cases, the conviction rationale, the variant view, the score notes, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
   schema,
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
@@ -125,7 +127,7 @@ export const getTheses = defineTool({
   // for it never did (now-needs-research, 0/12 with and without a line
   // saying how). Each row also says when its research was written and at
   // what price.
-  forModel: (result, input) => {
+  forModel: (result, input, ctx) => {
     if (!result.ok) return result;
     const data = result.data as Record<string, unknown> | undefined;
     if (!data) return result;
@@ -133,15 +135,37 @@ export const getTheses = defineTool({
     const { cards, ...rest } = data;
     const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
     if (!Array.isArray(rest.theses)) return { ...result, data: rest };
-    const theses = (rest.theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, named));
+    // The one builder (lib/agent/row-for-model.ts): each listed row at the
+    // size its situations call for, each quiet row as one line. The guidance
+    // is read off the rows' situations here, so a recorded read replays with
+    // it (scripts/hero-case.ts) the way a live one carries it.
+    const rows = rest.theses as Array<Record<string, unknown>>;
+    const theses = rows.map((row) => rowForModel(row, { named, size: sizeFor(row, named) }));
+    const quiet = Array.isArray(rest.quiet_theses) ? (rest.quiet_theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, { named, size: "line" })) : rest.quiet_theses;
+    const sold = Array.isArray(rest.sold_to_review) ? (rest.sold_to_review as Array<{ situations?: SituationCode[] }>) : [];
+    // Worded for the run that reads it: the trigger run's save has no status
+    // change, so its texts take the plan down by id instead (step 12, part 2).
+    const guidance = guidanceFor(
+      [
+        ...rows.flatMap((r) => guidanceCodes(String(r.status), Array.isArray(r.situations) ? (r.situations as SituationCode[]) : [], ctx.runMode)),
+        ...sold.flatMap((x) => x.situations ?? []).filter((c) => guidanceCodes("RETIRED", [c], ctx.runMode).length > 0),
+      ],
+      ctx.runMode,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { guidance: _screenGuidance, left_out: leftOut, ...restWithoutGuidance } = rest;
     return {
       ...result,
       data: {
-        ...rest,
+        ...restWithoutGuidance,
+        ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
         theses,
+        ...(Array.isArray(quiet) ? { quiet_theses: quiet } : {}),
         ...(!named && input?.include_history
           ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `context` already sums up what's been said." }
           : {}),
+        // The last line of the read, when its cap left stocks out.
+        ...(leftOut ? { left_out: leftOut } : {}),
       },
     };
   },
@@ -173,7 +197,8 @@ export const getTheses = defineTool({
     const statuses = (args.status ?? ["HOLDING", "WATCHING", "PROMOTED"]).map((s) =>
       s.toString(),
     );
-    const limit = Math.min(args.limit ?? 25, 50);
+    // An account-wide read (the chat with no analyst) covers every analyst's book: the cap by default.
+    const limit = Math.min(args.limit ?? (ctx.analystId ? 25 : 50), 50);
     const histLimit = Math.min(args.history_limit ?? 5, 50);
 
     // ── Row weight (2026-08-13 morning-cost fix) ────────────────────────
@@ -207,10 +232,10 @@ export const getTheses = defineTool({
         (args.status && args.status.length > 0) ||
         (args.horizon && args.horizon.length > 0)
       );
-    const detailMode: "actionable" | "book" = explicitTarget
-      ? "book"
-      : args.detail ??
-        (ctx.runMode === "MORNING_PLAN" && !explicitScope ? "actionable" : "book");
+    // The same default for every door (step 8): a stock in a situation is a
+    // row, a quiet stock one line, whoever reads. A read by ticker or id, or
+    // filtered by status or horizon, lists every row it matched.
+    const detailMode: "actionable" | "book" = explicitTarget || explicitScope ? "book" : (args.detail ?? "actionable");
     // Set when the live-quote fetch throws — forces full-book detail so a
     // data outage can't hide actionable rows behind the quiet split.
     let priceFetchFailed = false;
@@ -306,7 +331,8 @@ export const getTheses = defineTool({
         setupId: true,
         // The analyst's own setups are what a row with none may choose from
         // (DAV-285, DAV-280) — read off the row, not a second query.
-        researchRun: { select: { agentConfig: { select: { setupIds: true } } } },
+        // On an account-wide read, each stock's analyst: its rules, its minimum score, its name on the row.
+        researchRun: { select: { agentConfigId: true, agentConfig: { select: { setupIds: true, minConfidence: true, name: true } } } },
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name. snapshot/bullCase/bearCase are
@@ -326,6 +352,9 @@ export const getTheses = defineTool({
           : {}),
       },
     });
+
+    // A read that reached its cap says how many stocks it left out; one count, only then.
+    const leftOut = theses.length === limit ? Math.max(0, (await prisma.thesis.count({ where })) - theses.length) : 0;
 
     // History: one batched query, grouped per thesis on return. Avoids the
     // N+1 we'd get from a per-thesis findMany, even at limit=50.
@@ -377,6 +406,33 @@ export const getTheses = defineTool({
         select: { thesisId: true, priceAtTime: true, timestamp: true },
       });
       for (const u of writerSaves) if (u.priceAtTime != null) researchWrittenByThesis.set(u.thesisId, { at: u.timestamp, price: u.priceAtTime });
+    }
+
+    // The newest writer run on each stock (step 12, part 1): a failed
+    // write-up is said on the row with its date, and a seed with no claim
+    // reads "No write-up yet", so the morning run dispatches again instead
+    // of writing the claim itself. A writer run names its stock in
+    // parameters.existingThesisId (a refresh, from dispatch) or
+    // parameters.thesisId (the persist step).
+    const writerRunByThesis = new Map<string, { status: string; startedAt: Date }>();
+    if (theses.length > 0) {
+      const writerRuns = await prisma.researchRun.findMany({
+        where: {
+          mode: "THESIS_WRITER",
+          OR: theses.flatMap((t) => [
+            { parameters: { path: ["existingThesisId"], equals: t.id } },
+            { parameters: { path: ["thesisId"], equals: t.id } },
+          ]),
+        },
+        orderBy: { startedAt: "desc" },
+        select: { status: true, startedAt: true, parameters: true },
+      });
+      for (const r of writerRuns) {
+        const p = (r.parameters ?? {}) as { existingThesisId?: unknown; thesisId?: unknown };
+        for (const id of [p.existingThesisId, p.thesisId]) {
+          if (typeof id === "string" && !writerRunByThesis.has(id)) writerRunByThesis.set(id, { status: r.status, startedAt: r.startedAt });
+        }
+      }
     }
 
     // The live stocks (held, watched, promoted): the ones whose missing or
@@ -438,18 +494,29 @@ export const getTheses = defineTool({
     const fullTheses = theses.filter((t) => isFullDetail(t));
     const quietTheses = theses.filter((t) => !isFullDetail(t));
 
+    // The analyst a stock belongs to, named on an account-wide read only.
+    const analystOf = (t: (typeof theses)[number]) =>
+      ctx.analystId ? {} : { analyst: t.researchRun?.agentConfig?.name ?? null };
+
     // Compact index row — the roster line for a thesis nothing fired on.
     // Enough to reason about exposure and to decide whether to drill down
     // (get_theses(tickers: ["X"]) returns the full row), nothing more.
     const quietRows = quietTheses.map((t) => ({
       id: t.id,
       ticker: t.ticker,
+      ...analystOf(t),
       status: t.status,
       direction: t.direction,
       horizon: t.horizon,
+      setupId: t.setupId ?? null,
       conviction: t.conviction ?? null,
       composite: getThesisComposite(t),
       coreBelief: t.coreBelief,
+      // A seed's one line says "no write-up yet", or that its newest one failed.
+      writerRun: (() => {
+        const r = writerRunByThesis.get(t.id);
+        return r ? { status: r.status, startedAt: r.startedAt.toISOString() } : null;
+      })(),
       entryPrice: t.entryPrice,
       targetPrice: t.targetPrice,
       stopLoss: t.stopLoss,
@@ -495,6 +562,7 @@ export const getTheses = defineTool({
         // has been said in the lines this read reached.
         context: contextByThesisId.get(t.id)?.text ?? null,
         ...t,
+        ...analystOf(t),
         // The stock's own triggers, each as its sentence and id.
         triggers: (Array.isArray(t.triggers) ? (t.triggers as Trigger[]) : []).map((x) => triggerForAgent(x, t.status === "HOLDING")),
         triggerCount,
@@ -537,6 +605,11 @@ export const getTheses = defineTool({
           const w = researchWrittenByThesis.get(t.id);
           return w ? { on: w.at.toISOString().slice(0, 10), price: w.price, daysAgo: Math.floor((Date.now() - w.at.getTime()) / 86_400_000) } : null;
         })(),
+        // The newest writer run on the stock; the row says a failed one.
+        writerRun: (() => {
+          const r = writerRunByThesis.get(t.id);
+          return r ? { status: r.status, startedAt: r.startedAt.toISOString() } : null;
+        })(),
         // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
         // recent protective (STOP) declines in the last 7d + the principal's
         // verbatim reject message + the recent low (lowest low since the last
@@ -547,6 +620,12 @@ export const getTheses = defineTool({
         // way (agents may raise, never lower); moving a line down is the
         // principal's manual act. null when no recent protective declines.
         heldThroughFloor: facts.heldThroughFloor.get(t.id) ?? null,
+        // The facts the row lacked (step 8): the open position, the orders
+        // awaiting approval, the price with the day's change, the chart
+        // numbers the trigger check reads, and the rules the stock inherits
+        // from the analyst and the account. Saved for the screen and the
+        // run; rowForModel decides what the model reads of them.
+        ...rowFacts(t, load, resolverPriceMap[t.ticker] ?? null),
       };
     });
 
@@ -719,7 +798,7 @@ export const getTheses = defineTool({
         ? "No theses match those filters."
         : `${theses.length} thes${theses.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching${promotedCount > 0 ? `, ${promotedCount} promoted` : ""})${
             quietRows.length > 0
-              ? ` — ${enriched.length} actionable in full, ${quietRows.length} quiet as index rows`
+              ? ` — ${enriched.length} in a situation, ${quietRows.length} quiet`
               : ""
           }.`;
     // A price that is missing or old is said in words (lib/market-data/
@@ -745,7 +824,7 @@ export const getTheses = defineTool({
     // order (lib/agent/situations.ts). A promoted stock calls for the
     // promotion's text alone; quiet rows are not today's work.
     const guidance = guidanceFor([
-      ...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id))),
+      ...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id), ctx.runMode)),
       ...soldToReview.flatMap((x) => x.situations),
     ]);
 
@@ -766,14 +845,15 @@ export const getTheses = defineTool({
         quiet_theses: quietRows,
         ...(quietRows.length > 0
           ? {
-              note:
-                `${quietRows.length} quiet thes${quietRows.length === 1 ? "is" : "es"} returned as index rows (nothing fired, no review due — the trigger system already evaluated them). ` +
-                `They need no touch this run. To read one in full: get_theses(tickers: ["<TICKER>"]).`,
+              note: `${quietRows.length} quiet stock${quietRows.length === 1 ? "" : "s"}, one line each, not today's work; the full row by ticker: get_theses(tickers: ["<TICKER>"]).`,
             }
           : {}),
         // Stocks sold in the last two weeks that no run has answered for
         // yet (DAV-240). One look each, then they clear.
         ...(soldToReview.length > 0 ? { sold_to_review: soldToReview } : {}),
+        ...(leftOut > 0
+          ? { left_out: `${leftOut} more stock${leftOut === 1 ? "" : "s"} match${leftOut === 1 ? "es" : ""} this read and ${leftOut === 1 ? "is" : "are"} not shown; ask for ${leftOut === 1 ? "it" : "them"} by ticker, status or horizon.` }
+          : {}),
         // ThesisCardData[] for ThesisCardRenderer — drives the
         // "Read theses" carousel in the chat (full-detail rows only).
         cards,
@@ -783,35 +863,32 @@ export const getTheses = defineTool({
   },
 });
 
-/** Fields on a live row that only ever carry bookkeeping or a state the row cannot be in. */
-const NOT_FOR_THE_MODEL = ["sourceSignalIds", "sourceKind", "parentThesisId", "invalidatedAt", "invalidReason", "closedAt", "closeReason", "promotedAt", "paperTenureDays", "paperRealizedPnl", "paperReviewCount"];
-
 /**
- * One full row as the model reads it (see forModel above). The screen and a
- * saved run keep the whole row.
+ * The facts for one row, off the one load (work-inputs.ts). Numbers and
+ * dates, no sentences: the builder writes the words.
  */
-export function rowForModel(row: Record<string, unknown>, named: boolean): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...row };
-  // The evaluator's fire bookkeeping for inherited triggers; the run reads
-  // what fired from needsAction and context.
-  delete out.triggerState;
-  for (const k of NOT_FOR_THE_MODEL) {
-    const v = out[k];
-    if (v == null || (Array.isArray(v) && v.length === 0) || v === 0) delete out[k];
-  }
-  // The writer's save gives the date and the price together; a later edit of
-  // a research field is said as an edit, never as the date of the writing.
-  const updated = typeof row.researchUpdatedAt === "string" ? row.researchUpdatedAt.slice(0, 10) : row.researchUpdatedAt instanceof Date ? row.researchUpdatedAt.toISOString().slice(0, 10) : null;
-  const w = row.researchWritten as { on: string; price: number; daysAgo: number } | null | undefined;
-  const ago = (n: number) => `${n} day${n === 1 ? "" : "s"} ago`;
-  const age = (row.researchAge as { daysOld?: number | null } | undefined)?.daysOld;
-  out.research = w
-    ? `Written ${w.on} at $${w.price}, ${ago(w.daysAgo)}${updated && updated > w.on ? `, edited ${updated}` : ""}.`
-    : updated
-      ? `Written ${updated}${age != null ? `, ${ago(age)}` : ""}.`
-      : "No research written yet.";
-  delete out.researchWritten;
-  delete out.researchUpdatedAt;
-  if (!named) delete out.history;
-  return out;
+function rowFacts(
+  t: { id: string; ticker: string; status: string },
+  load: StockFacts["load"],
+  currentPrice: number | null,
+): Record<(typeof ROW_FACTS)[number], unknown> {
+  const pos = load.positions.get(t.id);
+  const snap = load.indicators.get(t.ticker.toUpperCase());
+  const dayChange = load.dayChange[t.ticker];
+  return {
+    position: pos ? { quantity: pos.quantity, avgCost: pos.avgCost, openedAt: pos.openedAt, peakPrice: pos.peakPrice } : null,
+    proposals: load.proposals.get(t.id) ?? [],
+    price:
+      currentPrice != null && currentPrice > 0
+        ? { current: currentPrice, dayChangePct: typeof dayChange === "number" ? dayChange : null, asOf: load.priceAsOf[t.ticker] ?? null }
+        : null,
+    chart: snap ? chartFacts(snap, currentPrice) : null,
+    // The ladder's inherited rungs, each as its sentence with the level it
+    // comes from; the stock's own are `triggers`.
+    inheritedTriggers: (load.ladders.get(t.id) ?? [])
+      .filter((x) => ((x as { level?: string }).level ?? "THESIS") !== "THESIS")
+      .map((x) => ({ ...triggerForAgent(x, t.status === "HOLDING"), level: (x as { level?: string }).level })),
+  };
 }
+
+export { ROW_FACTS, rowForModel, type RowSize };

@@ -7,18 +7,14 @@ import { SITUATIONS } from "./situations";
 import type { RunInput } from "./run-input";
 
 const runInput = {
-  analyst: { name: "PEAD Specialist", mandate: null, voice: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, exclusionList: [], minConfidence: 70, minPositionSize: 3000, maxPositionSize: 14000, maxOpenPositions: 6 },
   portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
   watchlist: [],
   activeTheses: [],
-  performance: null,
-  recentClosedTrades: [],
   priorityReviews: [],
   triggersFiredSinceLastRun: [],
   triggersMatchingNow: [{ thesisId: "t", ticker: "IOT", triggerId: "b", action: "ENTER", predicateSummary: "price above $39.55", rationale: "", matchDetail: "" }],
   earnings: { reportingSoon: [], justReported: [] },
   filings: { recent: [{ ticker: "PRAX", date: "2026-07-02", tier: "serious" as const, summary: "8-K — auditor change (4.01)", url: "https://www.sec.gov/prax" }] },
-  intelligencePolicy: { maxSignalsPerRun: 0 },
 } as unknown as RunInput;
 
 const prompt = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000 }, runInput);
@@ -50,7 +46,7 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("## Filings on your book this week");
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
     // The setup's checklist and the filing's reading are guidance now.
-    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("`setup.failureSigns`");
+    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("The `setup` line: its failure signs, the manage rule, the time limit.");
     expect(SITUATIONS.FILING.guidance).toContain("Read it first");
     expect(prompt).not.toContain("REVIEW from a filing trigger");
   });

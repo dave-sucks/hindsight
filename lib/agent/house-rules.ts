@@ -1,11 +1,11 @@
 /**
  * house-rules.ts — the text every analyst gets through every door (the
- * morning run, the trigger run and the chat), written once. Each of those
- * three prompt builders inserts HOUSE_RULES at one place and carries no copy
- * of its own. What belongs here is a sentence that is true for every analyst,
- * whatever its strategy or job, in all three doors: the account's standing
- * rules, how a decision is answered, and the voice rules, which are included
- * from voice.ts and still written only there. What does not belong: anything
+ * morning run, the trigger run, the chat, the writer and discovery), written
+ * once. Each of those five prompt builders inserts HOUSE_RULES at one place
+ * and carries no copy of its own. What belongs here is a sentence that is
+ * true for every analyst, whatever its strategy or job, in every door: the
+ * account's standing rules, how a decision is answered, and the voice rules,
+ * which are included from voice.ts and still written only there. What does not belong: anything
  * one door does on its own (the morning's walk through the book, the trigger
  * run's one decision, the chat's conversation), anything about one analyst,
  * what a tool or a field does (its description says that), and the text for

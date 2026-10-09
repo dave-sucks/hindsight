@@ -61,7 +61,7 @@ import {
   REPLAN_FLOOR_MAX_DROP_PCT,
 } from "@/lib/agent/declined-sale";
 import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
-import { isPlanLevelOnList, levelSlotOf, type LevelSlot } from "@/lib/agent/triggers/price-levels";
+import { canonicalLevels, isPlanLevelOnList, levelSlotOf, type LevelSlot } from "@/lib/agent/triggers/price-levels";
 import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 import {
   writeThesisUpdate,
@@ -82,18 +82,17 @@ import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { computePlanSanity } from "@/lib/agent/plan-sanity";
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
+import { claimNamesOldLevel } from "@/lib/agent/tools/claim-names-level";
 
 // The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
 const F = thesisFields();
 
-/** What change_status does, worded once; the trigger run's save takes the two retiring verbs only. */
+/** What change_status does, worded once. */
 const STATUS_RETIRE =
   "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
   "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead, when it has them. ";
 const STATUS_WATCH = "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). ";
 const STATUS_OWNED = "Holding and sold are not set here: place_trade and close_position flip them when the order fills.";
-/** The trigger run's: the retiring verbs are for a stock we watch (CEG and MU sent INVALIDATED on holdings, 10-08). */
-const STATUS_HELD = " Both are for a stock we watch: a stock we hold is sold first with close_position, which retires the thesis itself.";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -272,23 +271,72 @@ const WRITER_ONLY_UPDATE_FIELDS = {
  * changed was the note, a trigger, a stop, a target, a buy price. Direction,
  * belief, scores, horizon and the research snapshot are the morning run's and
  * the writer's; the price is the server's. The level fields stay because the
- * situation texts every run shares name them. change_status takes the two
- * retiring verbs: back to watch is the sale's fill, and WATCHING was sent in
- * every call of the four runs that failed (ASML 10-07; NVDA, CEG, MU 10-08).
+ * situation texts every run shares name them. No change_status: the run
+ * fills every field it is given, and filled it on every call (WATCHING in
+ * the four runs that failed, ASML 10-07 and NVDA, CEG, MU 10-08; INVALIDATED
+ * on NVDA 10-09 once WATCHING was gone), which on a stock we watch retires
+ * it. In the 30 days to 2026-10-09 no trigger run meant a status change; a
+ * holding it ends is sold with close_position, which retires the thesis.
  */
-const triggerRunSchema = updateSchema
-  .pick({
-    thesis_id: true, trigger_id: true, rationale: true,
-    add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
-    stop_loss: true, stop_basis: true, target_price: true, target_basis: true, entry_price: true,
-  })
-  .extend({ change_status: z.enum(["INVALIDATED", "ARCHIVED"]).optional().describe(`${STATUS_RETIRE}${STATUS_OWNED}${STATUS_HELD}`) });
+const triggerRunSchema = updateSchema.pick({
+  thesis_id: true, trigger_id: true, rationale: true,
+  add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
+  stop_loss: true, stop_basis: true, target_price: true, target_basis: true, entry_price: true,
+});
 
-/** The trigger run's door: its save has no price field and no way back to watch. */
+/** The trigger run's door: its save has no price field and no status change. */
 const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TACTICAL";
+
+/**
+ * The morning run's save: the same update_thesis, with what a morning review
+ * changes. In the 30 days to 2026-10-08 its 45 runs made 285 saves: the note
+ * on every one, the levels and their reasons, the trigger edits, a status
+ * change, a setup named, a conviction tier with its reason. Horizon and the
+ * catalyst date stay. Four left first: price_at_time (224 calls, each a copy
+ * of the price the row showed; the save reads the quote itself), snapshot (25
+ * saves rewrote the writer's cited paragraph uncited), scoring (the writer's
+ * number) and variant_view (the writer's claim, which the conviction gate
+ * reads off the row). Then the claim (step 12, part 1): core_belief,
+ * key_assumptions and invalidation_conditions are the writer's and the
+ * owner's chat's, never a run's; a seed's first research and a woken watch
+ * go through the writer (dispatch_thesis_research, then
+ * wait_for_thesis_refresh), which commits the view. With the claim gone
+ * `direction` had nowhere to land from this door (a seed needs the claim, a
+ * thesis with a view is refused a flip or a pass), and a field that is
+ * offered gets filled, so it left too: a view is set or flipped by research
+ * or by the owner. change_status keeps its three values: this door puts a
+ * sold stock back on watch. Eighteen fields.
+ */
+const THE_CLAIM = { core_belief: true, key_assumptions: true, invalidation_conditions: true } as const;
+/**
+ * The rest of the write-up, the writer's alone (step 12, part 2): the cited
+ * snapshot, the score and the variant view, and the price the caller read
+ * (the save reads the quote itself). The chat's saves carried one of them in
+ * 14 of its 25 update_thesis calls in the 60 days to 2026-10-09; HPE
+ * 2026-10-02 rewrote the snapshot and took the score 9 → 7 uncited.
+ */
+const THE_WRITE_UPS_REST = { price_at_time: true, snapshot: true, scoring: true, variant_view: true } as const;
+const morningRunSchema = updateSchema.omit({
+  ...WRITER_ONLY_UPDATE_FIELDS,
+  ...THE_WRITE_UPS_REST,
+  ...THE_CLAIM,
+  direction: true,
+});
+
+/** The morning run's door: its save has no price field; it reads the quote. */
+const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLAN";
 
 /** The chat never answers a fired trigger, so it has no trigger to name (0 of its 58 calls in the same 30 days). */
 const NOT_THE_CHATS = { trigger_id: true } as const;
+
+/**
+ * The owner's chat's save: the claim, the view, the plan, the verdict and the
+ * note. The write-up is the writer's (step 12, part 2): twenty-one fields.
+ */
+const chatSchema = updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_WRITE_UPS_REST, ...NOT_THE_CHATS });
+
+/** The doors whose save has no variant_view: a top tier sent there is stored MEDIUM until the writer gives it one. */
+const DOORS_WITHOUT_VARIANT_VIEW: ReadonlySet<string> = new Set(["MORNING_PLAN", "INTRADAY_TACTICAL", "PRINCIPAL_CHAT"]);
 
 /**
  * The doors whose agent has record_thesis (lib/agent/modes.ts), so the only
@@ -437,9 +485,11 @@ export const updateThesis = defineTool({
       ? updateSchema
       : isTriggerRun(ctx)
         ? triggerRunSchema
-        : ctx.runMode === "PRINCIPAL_CHAT"
-          ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_CHATS })
-          : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
+        : isMorningRun(ctx)
+          ? morningRunSchema
+          : ctx.runMode === "PRINCIPAL_CHAT"
+            ? chatSchema
+            : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 
@@ -540,6 +590,9 @@ export const updateThesis = defineTool({
       args = { ...args, [field]: undefined };
     };
     const opResults: TriggerOpResult[] = [];
+    // A level this call moves while the claim still names the old number:
+    // one sentence each in the reply (claim-names-level.ts).
+    const claimNotes: string[] = [];
     let stillPromoted = false;
 
     // The principal's edit wins (handEditsSince). Looked up only when the
@@ -614,12 +667,19 @@ export const updateThesis = defineTool({
       );
       const buyEdit = (e: NonNullable<UpdateArgs["edit_triggers"]>[number]) =>
         editNumber(e).value != null && (e.action === "ENTER" || enterIds.has(e.id));
-      // A refusal names only fields this door has: the trigger run's save has no price field.
+      // A refusal names only fields this door has: the trigger run's, the
+      // morning run's and the chat's saves have no price field.
       const noPrice = isTriggerRun(ctx)
         ? `The quote for ${existing.ticker} failed and the fire carries no price, so whether the buy level is a pullback (below the price) ` +
           `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
-        : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
-          `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
+        : isMorningRun(ctx)
+          ? `The quote for ${existing.ticker} failed, so whether the buy level is a pullback (below the price) ` +
+            `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
+          : ctx.runMode === "PRINCIPAL_CHAT"
+            ? `The quote for ${existing.ticker} failed, so whether the buy level is a pullback (below the price) ` +
+              `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is and send it again once get_stock_data has a live price.`
+            : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
+              `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
       // On a stock we hold the entry is the fill, refused as its own op below.
       if (args.entry_price != null && existing.status !== "HOLDING") refuseField("entry_price", noPrice, "no live price");
       for (const e of (args.edit_triggers ?? []).filter(buyEdit)) {
@@ -777,20 +837,30 @@ export const updateThesis = defineTool({
       !isSoftWatchRow &&
       !args.direction
     ) {
+      // The same gate for every door; the words name only what the door has.
+      // The morning run's save carries no belief fields and no direction
+      // (step 12, part 1): a seed's claim is the writer's, so its answer is a
+      // dispatch, and the refusal says so instead of listing fields it lacks.
+      const message = isMorningRun(ctx)
+        ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
+          `then wait_for_thesis_refresh on the child run. The writer writes the belief, prices the plan and commits the view (LONG, SHORT or PASS); ` +
+          `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
+        : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
+          `Three legal commitments:\n` +
+          `  • \`direction: "LONG"\` + horizon + entry_price (or one buy trigger in add_triggers) + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
+          `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
+          `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
+          `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
       return {
-        summary: `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
+        summary: isMorningRun(ctx)
+          ? `$${existing.ticker} has no view yet — its claim is the writer's: dispatch_thesis_research, then wait_for_thesis_refresh.`
+          : `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
         data: {
           ok: false,
           error: "pending_update_without_direction",
           current_direction: existing.direction,
           ticker: existing.ticker,
-          message:
-            `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
-            `Three legal commitments:\n` +
-            `  • \`direction: "LONG"\` + horizon + entry_price (or one buy trigger in add_triggers) + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
-            `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
-            `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
-            `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`,
+          message,
         },
         sources: [],
       };
@@ -853,7 +923,10 @@ export const updateThesis = defineTool({
           (args.conviction === "STRONG" || args.conviction === "HIGH") &&
           (!args.variant_view || args.variant_view.trim().length === 0)
         ) {
-          convictionDowngradeNote = `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
+          // The morning run's and the chat's saves have no variant_view; the writer gives one.
+          convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
+            ? `Stored as MEDIUM: ${args.conviction} needs a variant view, which the writer gives it.`
+            : `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
         }
         if (missing.length > 0) {
           return {
@@ -927,7 +1000,9 @@ export const updateThesis = defineTool({
         (effectiveConviction === "STRONG" || effectiveConviction === "HIGH") &&
         (!effectiveVariantView || effectiveVariantView.trim().length === 0)
       ) {
-        convictionDowngradeNote = `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
+        convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
+          ? `Stored as MEDIUM: ${effectiveConviction} needs a variant view and none is on the row; the writer gives it.`
+          : `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
       }
 
       // Consistency gates (Gate A, Gate B) REMOVED 2026-05-31.
@@ -959,6 +1034,7 @@ export const updateThesis = defineTool({
         fireMode: e.fire_mode,
         rationale: e.rationale,
         cooldownDays: e.cooldown_days,
+        close: e.close,
       })),
       ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
       ...(args.entry_price !== undefined
@@ -1331,6 +1407,16 @@ export const updateThesis = defineTool({
           // actually cost, written once by place_trade. On a watch row it
           // derives from the buy trigger like the others.
           if (!held) patch.entryPrice = check.columns.entryPrice;
+          const n = (v: unknown) => (v == null ? null : Number(v));
+          const before = { entryPrice: n(existing.entryPrice), targetPrice: n(existing.targetPrice), stopLoss: n(existing.stopLoss) };
+          claimNotes.push(
+            ...claimNamesOldLevel({
+              before,
+              after: { entryPrice: held ? before.entryPrice : check.columns.entryPrice, targetPrice: check.columns.targetPrice, stopLoss: check.columns.stopLoss },
+              coreBelief: (patch.coreBelief ?? existing.coreBelief) ?? null,
+              invalidationConds: patch.invalidationConds ?? existing.invalidationConds ?? [],
+            }),
+          );
         }
       }
     }
@@ -1452,6 +1538,21 @@ export const updateThesis = defineTool({
           patch.retiredReason = null;
           patch.closedAt = null;
           patch.closeReason = null;
+          // The level columns are a cache of the triggers. Sold, the entry
+          // was the fill; watched again, it is the buy trigger's level, or
+          // nothing when there is none (DOCU 2026-10-07 kept its $67.73 fill
+          // as a "buy" after its new plan was refused). Read once more as a
+          // watched stock when no trigger op landed to read them.
+          if (patch.triggers === undefined) {
+            const { columns } = canonicalLevels({
+              triggers: parseTriggersResilient(existing.triggers).triggers as unknown as ResolvedTrigger[],
+              direction: existing.direction,
+              status: "WATCHING",
+            });
+            patch.entryPrice = columns.entryPrice;
+            patch.targetPrice = columns.targetPrice;
+            patch.stopLoss = columns.stopLoss;
+          }
         }
         updateType = "STATUS_CHANGED";
       }
@@ -1568,7 +1669,7 @@ export const updateThesis = defineTool({
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,
       });
-      const reviewedMeans = whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence);
+      const reviewedMeans = [...whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence), ...catalystDateMissing(existing)];
       return {
         summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}${notChanged ? ` ${notChanged}` : ""}`,
         data: {
@@ -1814,10 +1915,25 @@ export const updateThesis = defineTool({
       triggerId: args.trigger_id,
       priceAtTime: resolvedPriceAtTime,
     });
-    const means = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
+    const flags = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
+    const catalystNotes = catalystDateMissing({ ...existing, ...patch });
+    const means = [...flags, ...claimNotes, ...catalystNotes];
+    // Back on watch with no plan (step 12, part 3): the status landed and
+    // every plan level the call sent was refused, so the stock is watched
+    // with nothing to buy on. Said first, with the refusal's reason. DOCU
+    // 2026-10-07: put back on watch, its 1.71:1 plan refused, and the reply
+    // led with "Updated DOCU: WATCHING" as if the plan had come with it.
+    const after = { ...existing, ...patch } as Record<string, unknown>;
+    const sentPlan = triggerOps.some((o) => o.op === "level" || (o.op === "add" && levelSlotOf(o.trigger, (after.direction as string | null) ?? null) != null));
+    // A watched stock's plan is its buy: none left means nothing to buy on.
+    const noPlanLeft = after.entryPrice == null;
+    const backOnWatchNoPlan =
+      fieldChanges.status?.to === "WATCHING" && sentPlan && noPlanLeft
+        ? `Back on watch with no plan: ${refusedFields.find((r) => r.field === "triggers")?.reason ?? opResults.find((r) => !r.ok)?.reason ?? "the plan's levels were not applied."}`
+        : null;
 
     return {
-      summary: `${means.length ? `${summary} ⚠ ${means[0]}` : summary}${notChanged ? ` ${notChanged}` : ""}`,
+      summary: [backOnWatchNoPlan, summary, flags.length ? `⚠ ${flags[0]}` : null, ...claimNotes, ...catalystNotes, notChanged || null].filter(Boolean).join(" "),
       data: {
         ok: true,
         thesis_id: existing.id,
@@ -1852,6 +1968,20 @@ function whatThisMeans(row: Record<string, unknown>, price: number | null, minCo
   });
   // The score line is about a buy; with no buy price there is none to refuse.
   return flags.filter((f) => f.kind !== "COMPOSITE_BELOW_MINIMUM" || n(row.entryPrice) != null).map((f) => `${row.ticker}: ${f.text}`);
+}
+
+/**
+ * A dated event with no date (step 12, part 3): information, never a refusal.
+ * A CATALYST row with no catalyst date can't be scheduled around: the
+ * pre-catalyst check (plan-sanity) has no day to count to. No row on the book
+ * was in this state in the 90 days to 2026-10-09; the line is for the save
+ * that would put one there.
+ */
+function catalystDateMissing(row: Record<string, unknown>): string[] {
+  const live = row.status !== "RETIRED" && row.status !== "PASSED";
+  return live && row.horizon === "CATALYST" && row.catalystDate == null
+    ? [`${row.ticker}: the catalyst date is missing, so the pre-catalyst check cannot schedule around the event. Set catalyst_date to the date the company announced.`]
+    : [];
 }
 
 /**

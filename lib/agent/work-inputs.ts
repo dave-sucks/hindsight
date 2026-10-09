@@ -6,6 +6,8 @@
  * the account's equity. get_theses, the thesis sheet's quote route and
  * complete_run all read it here, so every surface computes the same list
  * from the same inputs. Moved from get_theses, which loaded it this way.
+ * What the flag math reads, the row keeps (step 8): the day's change, the
+ * chart snapshot and the orders awaiting approval ride on the load too.
  *
  * Fail-soft as the read was: a lookup that throws leaves its fields empty
  * and says so; nothing here refuses anything.
@@ -15,6 +17,7 @@ import { getAccount, getBars, type AlpacaCredentials } from "@/lib/alpaca";
 import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { computeLadderHealth, isLadderEditUpdate } from "@/lib/agent/ladder-health";
@@ -35,7 +38,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 
 export interface WorkContext {
   userId?: string;
-  /** The analyst whose rules the ladder inherits and whose positions count; none ⇒ the stock's own triggers. */
+  /** The analyst whose rules the ladder inherits and whose positions count; none ⇒ each stock's own analyst (an account-wide read). */
   analystId?: string | null;
   runEnvironment?: "PAPER" | "LIVE";
   alpacaCreds?: AlpacaCredentials;
@@ -50,6 +53,17 @@ export interface OpenPosition {
   avgCost: number;
   quantity: number;
   peakPrice: number | null;
+}
+
+/** An order of this analyst's in the principal's queue: proposed, not yet approved. */
+export interface PendingProposal {
+  id: string;
+  side: "BUY" | "SELL";
+  /** OPEN, CLOSE, PARTIAL_CLOSE or ADD; null on an old row. */
+  intent: string | null;
+  quantity: number;
+  createdAt: Date;
+  expiresAt: Date | null;
 }
 
 /** An audit row the ladder-edit scan reads. */
@@ -68,8 +82,14 @@ export interface WorkLoad {
   ladders: Map<string, Trigger[]>;
   livePrice: Record<string, number>;
   priceAsOf: Record<string, string>;
+  /** The day's change in %, per ticker, from the quote; absent when the quote had no prior close. */
+  dayChange: Record<string, number>;
   priceFetchFailed: boolean;
+  /** The 06:30 chart snapshot per upper-case ticker, the one the trigger check reads. */
+  indicators: Map<string, IndicatorSnapshot>;
   positions: Map<string, OpenPosition>;
+  /** The orders awaiting the principal's approval, per thesis. */
+  proposals: Map<string, PendingProposal[]>;
   unapprovedExitCount: Map<string, number>;
   declines: Map<string, DeclineSummary>;
   recentLow: Map<string, number>;
@@ -90,20 +110,26 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
           id: true, ticker: true, status: true, direction: true, horizon: true, entryPrice: true, targetPrice: true,
           triggers: true, triggerState: true, createdAt: true, lastReviewedAt: true, researchUpdatedAt: true,
           paperTenureDays: true, paperRealizedPnl: true, paperReviewCount: true, promotedAt: true,
+          researchRun: { select: { agentConfigId: true } },
         },
       })
     : [];
+  // The analyst each stock belongs to: the read's, or on an account-wide read
+  // (the chat with no analyst) the stock's own, so every stock inherits its
+  // own analyst's rules and counts its own analyst's position.
+  const analystOf = (t: (typeof theses)[number]): string | null => ctx.analystId ?? t.researchRun?.agentConfigId ?? null;
+  const analystIds = Array.from(new Set(theses.map(analystOf).filter((id): id is string => !!id)));
   const live = theses.filter((t) => LIVE.has(t.status));
   const load: WorkLoad = {
-    inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, priceFetchFailed: false,
-    positions: new Map(), unapprovedExitCount: new Map(), declines: new Map(), recentLow: new Map(),
+    inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, priceFetchFailed: false,
+    indicators: new Map(), positions: new Map(), proposals: new Map(), unapprovedExitCount: new Map(), declines: new Map(), recentLow: new Map(),
     lastLadderEditAt: new Map(), ladderEditRows: new Map(), equity: null, activityFailed: false,
   };
 
   // The live price, once, from the one place it comes from (live-quote): the
   // tape in the session, the last close outside it.
   // The day's change rides with it, for a trigger on the day's move.
-  const dayChange: Record<string, number> = {};
+  const dayChange = load.dayChange;
   if (live.length > 0) {
     try {
       const quotes = ctx.prices
@@ -125,8 +151,8 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   // The resolved ladder: the stock's own triggers plus what it inherits from
   // the analyst and the account. A holding protected by an inherited floor
   // must not read as unprotected.
-  const levelSources = ctx.analystId ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId) : undefined;
-  for (const t of theses) load.ladders.set(t.id, resolveThesisLadder(t, levelSources, `thesis=${t.id}`) as Trigger[]);
+  const levelSources = await loadLevelSources(analystIds);
+  for (const t of theses) load.ladders.set(t.id, resolveThesisLadder(t, levelSources.get(analystOf(t) ?? ""), `thesis=${t.id}`) as Trigger[]);
 
   // The open position per held stock (scoped by analyst, and environment when
   // known), and the closes the principal did not approve on it: rejected or
@@ -142,13 +168,17 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
           ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
           ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
         },
-        select: { id: true, symbol: true, openedAt: true, avgCost: true, quantity: true, peakPrice: true, environment: true },
+        select: { id: true, symbol: true, openedAt: true, avgCost: true, quantity: true, peakPrice: true, environment: true, analystId: true },
         orderBy: { openedAt: "desc" },
       });
-      const bySymbol = new Map<string, (typeof open)[number]>();
-      for (const p of open) if (!bySymbol.has(p.symbol)) bySymbol.set(p.symbol, p);
+      // Newest first per stock; on an account-wide read, per stock and analyst (a
+      // stock with no analyst takes the newest of any). A scoped read's query
+      // already holds only its analyst's positions.
+      const keyOf = (analyst: string | null, symbol: string) => (ctx.analystId || !analyst ? symbol : `${analyst}|${symbol}`);
+      const byKey = new Map<string, (typeof open)[number]>();
+      for (const p of open) for (const key of new Set([keyOf(p.analystId, p.symbol), p.symbol])) if (!byKey.has(key)) byKey.set(key, p);
       for (const t of theses) {
-        const p = t.status === "HOLDING" ? bySymbol.get(t.ticker) : undefined;
+        const p = t.status === "HOLDING" ? byKey.get(keyOf(analystOf(t), t.ticker)) : undefined;
         if (!p) continue;
         positionEnv ??= p.environment as "PAPER" | "LIVE";
         const peak = p.peakPrice != null && Number.isFinite(Number(p.peakPrice)) ? Number(p.peakPrice) : null;
@@ -183,6 +213,31 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
       }
     } catch (err) {
       console.warn("[work-inputs] open-position / declined-close lookup failed:", err);
+    }
+  }
+
+  // The orders awaiting the principal's approval on the live stocks, in one
+  // query: a buy or add proposed and not yet approved, a sale in the queue.
+  // The row says so, so a run does not propose it again (step 8). An order
+  // carries its thesis since 2026-08-18; a proposal lives a day, so every
+  // open one has it.
+  if (live.length > 0) {
+    try {
+      const awaiting = await prisma.order.findMany({
+        where: {
+          userId: ctx.userId, status: "AWAITING_APPROVAL", thesisId: { in: live.map((t) => t.id) },
+          ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, thesisId: true, side: true, intent: true, quantity: true, createdAt: true, expiresAt: true },
+      });
+      for (const o of awaiting) {
+        if (!o.thesisId) continue;
+        const p: PendingProposal = { id: o.id, side: o.side === "SELL" ? "SELL" : "BUY", intent: o.intent ?? null, quantity: Number(o.quantity), createdAt: o.createdAt, expiresAt: o.expiresAt ?? null };
+        load.proposals.set(o.thesisId, [...(load.proposals.get(o.thesisId) ?? []), p]);
+      }
+    } catch (err) {
+      console.warn("[work-inputs] awaiting-approval lookup failed:", err);
     }
   }
 
@@ -255,6 +310,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   if (live.length > 0) {
     try {
       for (const [ticker, snap] of await loadIndicatorSnapshots(live.map((t) => t.ticker.toUpperCase()))) {
+        load.indicators.set(ticker, snap);
         if (snap.atr14 != null && snap.atr14 > 0) atr.set(ticker, snap.atr14);
         structure.set(ticker, { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] });
       }
@@ -299,7 +355,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     console.warn("[work-inputs] activity scan failed; open fires read from the newest line only:", err);
   }
 
-  const pending = ctx.analystId ? await getPendingEntryTickers(ctx.analystId) : new Set<string>();
+  const pending = new Map(await Promise.all(analystIds.map(async (id) => [id, await getPendingEntryTickers(id)] as const)));
   for (const t of live) {
     const price = load.livePrice[t.ticker];
     // No prior close to measure from: 0, which no move threshold matches.
@@ -324,7 +380,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
       recentUpdates: streak.get(t.id),
       latestQuote: quote,
       now,
-      hasPendingEntryProposal: pending.has(t.ticker),
+      hasPendingEntryProposal: pending.get(analystOf(t) ?? "")?.has(t.ticker) ?? false,
       equity: load.equity,
     };
     // A declined sale, judged against the ladder's floor and the live price.

@@ -1,0 +1,98 @@
+{
+ "_note": "DOCU's trigger run of 2026-09-28: its update_thesis call verbatim, and the stock at the fire (13:30:29Z, $65.88): the plan the 09-27 chat set (buy $67, floor $63, target $83) and the two earnings reviews. Only the fields the save reads.",
+ "call": {
+  "thesis_id": "cmtu9lfhw000004i575f6xyig",
+  "rationale": "Passed on the $DOCU entry. The trigger fired correctly and the live quote is still below $67, but the MA_PULLBACK setup's own confirmation is missing: this setup requires a reversal close above the prior day's high after touching the moving average, and at 09:30 ET we do not have that close yet. Price is also sitting below the 20-day moving average at $67.43 rather than reclaiming it, so the pullback has not proven it held. No contradicting headline is visible in recent news, and the thesis itself is still intact, but this is an unconfirmed touch, not the confirmed drift entry the plan called for. Ladder intact: entry $67, stop $63, and target $83 still match the standing plan until a proper reversal confirms.",
+  "structural_unchanged_reason": "The core belief still holds: the post-earnings drift thesis remains alive, the gap-day low/invalidation level has not been broken, and there is no fresh company-specific negative headline contradicting the ARR guide raise or IAM inflection.",
+  "trigger_id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+  "price_at_time": 65.88,
+  "snapshot": {
+   "text": "$DOCU pulled back to the planned buy zone and triggered the price alert at $65.88, but the defined MA_PULLBACK confirmation has not occurred yet. The stock is trading below its rising 20-day moving average ($67.43) in the opening minutes, with no reversal close above the prior day's high to prove support held. Relative strength remains strong and no fresh thesis-breaking news is visible, so the setup stays WATCHING rather than promoted on an unconfirmed dip.",
+   "citations": [
+    {
+     "title": "get_stock_data DOCU live quote, technicals, news",
+     "kind": "STRUCTURED"
+    }
+   ]
+  }
+ },
+ "fire": {
+  "at": "2026-09-28T13:30:29.018Z",
+  "price": 65.88,
+  "triggerId": "8f8440b4-30bc-43c4-991b-069733b8c79e"
+ },
+ "thesis": {
+  "id": "cmtu9lfhw000004i575f6xyig",
+  "ticker": "DOCU",
+  "status": "WATCHING",
+  "direction": "LONG",
+  "horizon": "TARGET",
+  "setupId": "MA_PULLBACK",
+  "conviction": "MEDIUM",
+  "entryPrice": 67,
+  "targetPrice": 83,
+  "stopLoss": 63,
+  "triggers": [
+   {
+    "id": "05da8147-8aa7-415e-92dc-0dff5f8b228f",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "predicate": {
+     "is": "beat",
+     "value": 0,
+     "watch": "surprise"
+    },
+    "rationale": "DOCU beat ≥5% — fresh PEAD triage required immediately. Check: revenue beat, ARR guidance raised, IAM mix still expanding, volume on gap day ≥1.5x. If all four conditions met, this is a new 60-day drift window. Do NOT enter on the gap day itself — wait 1-3 days.",
+    "cooldownDays": 7
+   },
+   {
+    "id": "8956c980-d3f1-4c72-88cf-e3fcd5ebf1df",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "predicate": {
+     "is": "miss",
+     "value": 3,
+     "watch": "surprise"
+    },
+    "rationale": "Miss — entry conditions worsening. Consider removing.",
+    "cooldownDays": 7
+   },
+   {
+    "id": "8f8440b4-30bc-43c4-991b-069733b8c79e",
+    "predicate": {
+     "watch": "price",
+     "is": "below",
+     "value": 67
+    },
+    "action": "ENTER",
+    "rationale": "I buy when it comes back down to $67.00.",
+    "source": "AGENT",
+    "cooldownDays": 1
+   },
+   {
+    "id": "af4d1172-ee7e-4ac1-9b92-12f2e83091e3",
+    "predicate": {
+     "watch": "price",
+     "is": "below",
+     "value": 63
+    },
+    "action": "EXIT",
+    "rationale": "Under the Sep 9 swing low $63.63 and the Sep 3 gap-day low $64.16 — if both break, the MA_PULLBACK thesis is wrong. -8% from entry would be $61.64; the structural level is tighter at $63.00.",
+    "source": "AGENT",
+    "cooldownDays": 1
+   },
+   {
+    "id": "6d1adc43-b748-423f-8109-bcc79296cd22",
+    "predicate": {
+     "watch": "price",
+     "is": "above",
+     "value": 83
+    },
+    "action": "REVIEW",
+    "rationale": "Prior 52-week high $83.29 / 1.272 Fibonacci extension from the June low to Sep high = $82.96. R/R 4:1 from entry $67 with floor $63.",
+    "source": "AGENT",
+    "cooldownDays": 1
+   }
+  ]
+ }
+}

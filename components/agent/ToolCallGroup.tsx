@@ -20,6 +20,12 @@ import {
   ToolProgressHeader,
   ToolProgressContent,
 } from "@/components/ai-elements/tool-progress";
+import { GlobeIcon } from "lucide-react";
+import {
+  extractToolSources,
+  dedupeSources,
+  SourceChips,
+} from "@/components/assistant-ui/tool-uis/tool-ui-shared";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -202,9 +208,26 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
           header = tickers.length > 0 ? `${block.groupId} ${tickers.join(", ")}` : block.groupId;
         }
 
+        // Every source the group's calls cited, de-duplicated by url and shown
+        // ONCE at the end. Seven sibling calls to Finnhub used to print seven
+        // identical chip rows, one under each line.
+        const groupSources = dedupeSources(
+          block.parts.flatMap(({ part }) => {
+            const raw = (part.result ?? part.output) as Record<string, unknown> | undefined;
+            return raw ? extractToolSources({ ...raw, _sources: raw.sources }) : [];
+          }),
+        );
+        // One icon, and only for the calls that left the system.
+        const allWebSearch = block.parts.every(({ part }) => part.toolName === "web_search");
+
         return (
           <ToolProgress key={`group-${idx}`} defaultOpen={true}>
-            <ToolProgressHeader loading={loadingAny}>{header}</ToolProgressHeader>
+            <ToolProgressHeader
+              loading={loadingAny}
+              icon={allWebSearch ? GlobeIcon : undefined}
+            >
+              {header}
+            </ToolProgressHeader>
             <ToolProgressContent>
               {block.parts.map(({ part, index }) => {
                 const rawResult = part.result ?? part.output;
@@ -222,6 +245,7 @@ export function ToolCallGroup({ startIndex, endIndex }: ToolGroupProps) {
                   />
                 );
               })}
+              <SourceChips sources={groupSources} />
             </ToolProgressContent>
           </ToolProgress>
         );
