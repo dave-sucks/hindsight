@@ -20,9 +20,8 @@ const pos = (symbol: string) => ({
 const runInput = (symbols: string[]) =>
   ({
     portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: symbols.map(pos), exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
-    watchlist: [], activeTheses: [], performance: null, recentClosedTrades: [], priorityReviews: [],
+    watchlist: [], activeTheses: [], priorityReviews: [],
     triggersFiredSinceLastRun: [], triggersMatchingNow: [], earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] },
-    intelligencePolicy: { maxSignalsPerRun: 0 },
   }) as unknown as RunInput;
 
 describe("the PEAD Specialist on 2026-09-18 — 4 open, limit 6", () => {

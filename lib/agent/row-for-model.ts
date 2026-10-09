@@ -131,6 +131,8 @@ function line(row: Row): string {
     score != null ? `score ${score}` : null,
     catalyst ? `catalyst ${isoDay(catalyst)}` : null,
     `id ${String(row.id)}`,
+    // An account-wide read names each stock's analyst, last.
+    str(row.analyst),
   ].filter((x): x is string => x != null).join(" · ");
 }
 
@@ -332,6 +334,8 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
 
   put("stock", [String(row.ticker), stance(row.status), str(row.direction) ?? "no view", str(row.setupId) ?? str(row.horizon), str(row.conviction) ? `conviction ${row.conviction}` : null].filter(Boolean).join(" · "));
   put("id", row.id);
+  // An account-wide read names each stock's analyst.
+  put("analyst", str(row.analyst));
   put("situations", codes.map((c) => `${c}${SITUATIONS[c] ? ` (${SITUATIONS[c].name})` : ""}`));
   put("said", str(row.context));
   put("position", positionLine(row, price));

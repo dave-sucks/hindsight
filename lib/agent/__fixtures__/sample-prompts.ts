@@ -16,9 +16,9 @@ import { sentenceOf } from "@/lib/agent/triggers/condition";
 
 const runInput = {
   portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
-  watchlist: [], activeTheses: [], performance: null, recentClosedTrades: [], priorityReviews: [],
+  watchlist: [], activeTheses: [], priorityReviews: [],
   triggersFiredSinceLastRun: [], triggersMatchingNow: [],
-  earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, intelligencePolicy: { maxSignalsPerRun: 0 }, openRefusals: [],
+  earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, openRefusals: [],
 } as unknown as RunInput;
 
 const trailTrigger = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." };

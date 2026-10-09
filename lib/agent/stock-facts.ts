@@ -37,8 +37,8 @@ export interface FactsRow {
   horizon: string | null;
   createdAt: Date;
   scoring: unknown;
-  /** The analyst's own setups, which a row with none may choose from. */
-  researchRun: { agentConfig: { setupIds: string[] } | null } | null;
+  /** The stock's analyst: its own setups, which a row with none may choose from, and on an account-wide read its minimum score. */
+  researchRun: { agentConfigId?: string | null; agentConfig: { setupIds: string[]; minConfidence?: number | null } | null } | null;
 }
 
 export interface FactsContext extends WorkContext {
@@ -145,8 +145,10 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
   // Supersession (Conviction Expression v4 §6): the newest terminal or
   // passed sibling on the same analyst, per ticker, so the resolver can flag
   // an older live row a newer sister thesis killed (the two-ZS case).
+  // Per analyst: on an account-wide read each stock is matched against its own analyst's rows only.
+  const analystOf = (t: FactsRow): string => ctx.analystId ?? t.researchRun?.agentConfigId ?? "";
   const tickers = Array.from(new Set(theses.map((t) => t.ticker)));
-  const supersession = buildSupersessionMap(
+  const terminal =
     tickers.length > 0
       ? await prisma.thesis.findMany({
           where: {
@@ -156,10 +158,13 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
             status: { in: ["RETIRED", "PASSED"] },
           },
           orderBy: { createdAt: "desc" },
-          select: { id: true, ticker: true, createdAt: true },
+          select: { id: true, ticker: true, createdAt: true, researchRun: { select: { agentConfigId: true } } },
         })
-      : [],
-  );
+      : [];
+  const supersessionByAnalyst = new Map<string, ReturnType<typeof buildSupersessionMap>>();
+  for (const id of new Set(theses.map(analystOf))) {
+    supersessionByAnalyst.set(id, buildSupersessionMap(terminal.filter((r) => !id || (ctx.analystId ?? r.researchRun?.agentConfigId) === id)));
+  }
 
   // Daily ranges for the plan check's noise test (DAV-188): one batched
   // snapshot call, only for watched rows with a stop and an entry to compare.
@@ -240,13 +245,13 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
           horizon: t.horizon ?? null,
           createdAt: t.createdAt,
           scoring: t.scoring,
-          minConfidence: ctx.minConfidence ?? null,
+          minConfidence: ctx.minConfidence ?? t.researchRun?.agentConfig?.minConfidence ?? null,
           parsedTriggers: load.ladders.get(t.id) ?? [],
           positionOpenedAt: w?.positionOpenedAt ?? null,
         },
         currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
         priceAsOf: load.priceAsOf[t.ticker] ?? null,
-        supersession: supersession.get(t.ticker) ?? null,
+        supersession: supersessionByAnalyst.get(analystOf(t))?.get(t.ticker) ?? null,
         now,
       }),
     );

@@ -26,7 +26,7 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   tactical: 10_426,
   writer: 11_398,
   discovery: 20_765,
-  chat: 32_079,
+  chat: 32_065,
 };
 
 /**
@@ -36,10 +36,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
  * by accident just as easily.
  */
 const RECORDED_TOOLS: Record<string, number> = {
-  "research-run": 34_637,
-  tactical: 28_103,
-  discovery: 34_949,
-  principal: 66_205,
+  "research-run": 34_670,
+  tactical: 28_136,
+  discovery: 34_982,
+  principal: 65_564,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", discovery: "DISCOVERY", principal: "PRINCIPAL_CHAT" };
 

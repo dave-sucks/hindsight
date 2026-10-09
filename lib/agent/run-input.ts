@@ -13,7 +13,6 @@
 
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
-import { parseIntelligencePolicy, type IntelligencePolicy } from "@/lib/intelligence/types";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
@@ -114,26 +113,6 @@ export interface RunInput {
     bearCaseBullets: string[];
     researchAge: ResearchAge;
   }>;
-  performance: {
-    winRate: number | null;
-    totalTrades: number;
-    calibrationNote: string | null;
-    // Per-signal win rates (top signals by count)
-    signalAccuracy: Array<{ signal: string; winRate: number | null; count: number }> | null;
-    // Confidence calibration: are high-confidence theses actually winning more?
-    calibrationBuckets: Array<{ label: string; expectedWinRate: number; actualWinRate: number | null; count: number }> | null;
-    // LONG vs SHORT directional performance
-    directionStats: { long: { winRate: number | null; count: number }; short: { winRate: number | null; count: number } } | null;
-  } | null;
-  recentClosedTrades: Array<{
-    symbol: string;
-    direction: string | null;
-    outcome: string | null;
-    pnlPct: number;
-    closeReason: string | null;
-    daysHeld: number;
-    lesson: string | null;
-  }>;
   // Positions flagged by the price monitor in the last 24h — must be reviewed
   priorityReviews: Array<{
     symbol: string;
@@ -192,7 +171,6 @@ export interface RunInput {
     recent: Array<{ ticker: string; date: string; tier: "serious" | "material"; summary: string; url: string }>;
     error?: string;
   };
-  intelligencePolicy: IntelligencePolicy;
   // The analyst's refused tool calls from the last 7 days that were never
   // redone (2026-09-25). Rendered as "Blocked last time — resolve today":
   // a refusal is carried to the next run, never dropped.
@@ -491,131 +469,6 @@ export async function buildRunInput(
       : 999,
   }));
 
-  // 6. Performance — load rich calibration data from the latest AccuracyReport
-  // (Prior brief removed 2026-04-30 — agent reads durable thesis state +
-  // triggers fired since last run instead of a synthesized AnalystBriefing.)
-  let latestAccuracy: {
-    winRate: number | null; tradesAnalyzed: number | null;
-    narrativeSummary: string | null;
-    signalAccuracy: unknown;
-    calibrationData: unknown;
-    directionStats: unknown;
-  } | null = null;
-  try {
-    latestAccuracy = await prisma.accuracyReport.findFirst({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        winRate: true, tradesAnalyzed: true, narrativeSummary: true,
-        signalAccuracy: true, calibrationData: true, directionStats: true,
-      },
-    });
-  } catch (err) {
-    console.error("[buildRunInput] FAILED performance:", err);
-  }
-
-  // Parse signal accuracy — top 8 by count
-  type RawSignal = { signal: string; winRate: number | null; count: number };
-  type RawBucket = { label: string; expectedWinRate: number; winRate: number | null; count: number };
-  type RawDirStats = Record<string, { winRate: number | null; count: number }>;
-
-  const parsedSignals: Array<{ signal: string; winRate: number | null; count: number }> | null = (() => {
-    try {
-      const raw = latestAccuracy?.signalAccuracy;
-      if (!Array.isArray(raw) || raw.length === 0) return null;
-      return (raw as RawSignal[])
-        .filter((s) => s.count > 0)
-        .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
-        .slice(0, 8)
-        .map((s) => ({ signal: s.signal, winRate: s.winRate, count: s.count }));
-    } catch { return null; }
-  })();
-
-  const parsedBuckets: Array<{ label: string; expectedWinRate: number; actualWinRate: number | null; count: number }> | null = (() => {
-    try {
-      const raw = latestAccuracy?.calibrationData;
-      if (!Array.isArray(raw) || raw.length === 0) return null;
-      return (raw as RawBucket[])
-        .filter((b) => b.count > 0)
-        .map((b) => ({ label: b.label, expectedWinRate: b.expectedWinRate, actualWinRate: b.winRate, count: b.count }));
-    } catch { return null; }
-  })();
-
-  const parsedDirStats: { long: { winRate: number | null; count: number }; short: { winRate: number | null; count: number } } | null = (() => {
-    try {
-      const raw = latestAccuracy?.directionStats as RawDirStats | null;
-      if (!raw) return null;
-      const long = raw["LONG"] ?? raw["long"];
-      const short = raw["SHORT"] ?? raw["short"];
-      if (!long && !short) return null;
-      return {
-        long: { winRate: long?.winRate ?? null, count: long?.count ?? 0 },
-        short: { winRate: short?.winRate ?? null, count: short?.count ?? 0 },
-      };
-    } catch { return null; }
-  })();
-
-  const performance = latestAccuracy
-    ? {
-        winRate: latestAccuracy.winRate ? Number(latestAccuracy.winRate) : null,
-        totalTrades: latestAccuracy.tradesAnalyzed ?? 0,
-        calibrationNote: latestAccuracy.narrativeSummary
-          ? String(latestAccuracy.narrativeSummary).slice(0, 400)
-          : null,
-        signalAccuracy: parsedSignals,
-        calibrationBuckets: parsedBuckets,
-        directionStats: parsedDirStats,
-      }
-    : null;
-
-  // 8. Recent closed trades
-  let recentTrades: Array<{
-    symbol: string; direction: string; outcome: string | null;
-    avgCost: number; closePrice: number | null; closeReason: string | null;
-    closedAt: Date | null; openedAt: Date; realizedPnl: number | null;
-    agentEvaluation: string | null;
-  }> = [];
-  try {
-    recentTrades = await prisma.position.findMany({
-      where: { userId, status: "CLOSED", analystId },
-      orderBy: { closedAt: "desc" },
-      take: 10,
-      select: {
-        symbol: true, direction: true, outcome: true, avgCost: true,
-        closePrice: true, closeReason: true, closedAt: true, openedAt: true,
-        realizedPnl: true, agentEvaluation: true,
-      },
-    });
-  } catch (err) {
-    console.error("[buildRunInput] FAILED closedTrades:", err);
-  }
-
-  const recentClosedTrades = recentTrades.map((t) => {
-    const avgCost = Number(t.avgCost);
-    const pnlPct =
-      avgCost > 0 && t.realizedPnl != null
-        ? (t.realizedPnl / avgCost) * 100
-        : 0;
-    const daysHeld =
-      t.closedAt && t.openedAt
-        ? Math.floor(
-            (t.closedAt.getTime() - t.openedAt.getTime()) /
-              (1000 * 60 * 60 * 24),
-          )
-        : 0;
-    return {
-      symbol: t.symbol,
-      direction: t.direction,
-      outcome: t.outcome,
-      pnlPct: Math.round(pnlPct * 100) / 100,
-      closeReason: t.closeReason,
-      daysHeld,
-      lesson: t.agentEvaluation
-        ? t.agentEvaluation.slice(0, 200)
-        : null,
-    };
-  });
-
   // 9. Priority reviews — NEAR_TARGET / NEAR_STOP alerts from price monitor (last 24h)
   let priorityReviews: RunInput["priorityReviews"] = null;
   if (openPositions.length > 0) {
@@ -822,13 +675,10 @@ export async function buildRunInput(
   const openRefusals = await listOpenRefusalsForAnalyst(config.id, 7);
 
   // 13. Intelligence policy
-  const intelligencePolicy = parseIntelligencePolicy(
-    (config as Record<string, unknown>).intelligencePolicy
-  );
 
   // ── Structured load summary ────────────────────────────────────────
   console.log(
-    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} hasPerformance=${!!performance} closedTrades=${recentClosedTrades.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)} policy.maxSignals=${intelligencePolicy.maxSignalsPerRun}`,
+    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
   );
 
   return {
@@ -901,14 +751,11 @@ export async function buildRunInput(
         ),
       };
     }),
-    performance,
-    recentClosedTrades,
     priorityReviews,
     triggersFiredSinceLastRun,
     triggersMatchingNow,
     earnings,
     filings,
-    intelligencePolicy,
   };
 }
 

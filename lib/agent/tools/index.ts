@@ -56,7 +56,6 @@ import { readAnalystConfig } from "./read-analyst-config";
 import { listRuns } from "./list-runs";
 import { readRun } from "./read-run";
 import { readAccuracyReports } from "./read-accuracy-reports";
-import { listThesesAll } from "./list-theses-all";
 import { listProposals } from "./list-proposals";
 import { readDatabase } from "./read-database";
 
@@ -218,7 +217,6 @@ export function createResearchTools(
     list_runs: listRuns(newCtx),
     read_run: readRun(newCtx),
     read_accuracy_reports: readAccuracyReports(newCtx),
-    list_theses_all: listThesesAll(newCtx),
     list_proposals: listProposals(newCtx),
     read_database: readDatabase(newCtx),
   };
@@ -280,6 +278,5 @@ export { readAnalystConfig } from "./read-analyst-config";
 export { listRuns } from "./list-runs";
 export { readRun } from "./read-run";
 export { readAccuracyReports } from "./read-accuracy-reports";
-export { listThesesAll } from "./list-theses-all";
 export { listProposals } from "./list-proposals";
 export { readDatabase } from "./read-database";

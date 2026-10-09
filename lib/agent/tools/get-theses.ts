@@ -102,7 +102,7 @@ const schema = z.object({
     .min(1)
     .max(50)
     .optional()
-    .describe("Max theses to return. Default 25, hard cap 50."),
+    .describe("Max theses to return. Default 25, or 50 on a read with no analyst; hard cap 50."),
   detail: z
     .enum(["actionable", "book"])
     .optional()
@@ -148,7 +148,7 @@ export const getTheses = defineTool({
       ...sold.flatMap((x) => x.situations ?? []),
     ]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { guidance: _screenGuidance, ...restWithoutGuidance } = rest;
+    const { guidance: _screenGuidance, left_out: leftOut, ...restWithoutGuidance } = rest;
     return {
       ...result,
       data: {
@@ -159,6 +159,8 @@ export const getTheses = defineTool({
         ...(!named && input?.include_history
           ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `context` already sums up what's been said." }
           : {}),
+        // The last line of the read, when its cap left stocks out.
+        ...(leftOut ? { left_out: leftOut } : {}),
       },
     };
   },
@@ -190,7 +192,8 @@ export const getTheses = defineTool({
     const statuses = (args.status ?? ["HOLDING", "WATCHING", "PROMOTED"]).map((s) =>
       s.toString(),
     );
-    const limit = Math.min(args.limit ?? 25, 50);
+    // An account-wide read (the chat with no analyst) covers every analyst's book: the cap by default.
+    const limit = Math.min(args.limit ?? (ctx.analystId ? 25 : 50), 50);
     const histLimit = Math.min(args.history_limit ?? 5, 50);
 
     // ── Row weight (2026-08-13 morning-cost fix) ────────────────────────
@@ -323,7 +326,8 @@ export const getTheses = defineTool({
         setupId: true,
         // The analyst's own setups are what a row with none may choose from
         // (DAV-285, DAV-280) — read off the row, not a second query.
-        researchRun: { select: { agentConfig: { select: { setupIds: true } } } },
+        // On an account-wide read, each stock's analyst: its rules, its minimum score, its name on the row.
+        researchRun: { select: { agentConfigId: true, agentConfig: { select: { setupIds: true, minConfidence: true, name: true } } } },
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name. snapshot/bullCase/bearCase are
@@ -343,6 +347,9 @@ export const getTheses = defineTool({
           : {}),
       },
     });
+
+    // A read that reached its cap says how many stocks it left out; one count, only then.
+    const leftOut = theses.length === limit ? Math.max(0, (await prisma.thesis.count({ where })) - theses.length) : 0;
 
     // History: one batched query, grouped per thesis on return. Avoids the
     // N+1 we'd get from a per-thesis findMany, even at limit=50.
@@ -455,12 +462,17 @@ export const getTheses = defineTool({
     const fullTheses = theses.filter((t) => isFullDetail(t));
     const quietTheses = theses.filter((t) => !isFullDetail(t));
 
+    // The analyst a stock belongs to, named on an account-wide read only.
+    const analystOf = (t: (typeof theses)[number]) =>
+      ctx.analystId ? {} : { analyst: t.researchRun?.agentConfig?.name ?? null };
+
     // Compact index row — the roster line for a thesis nothing fired on.
     // Enough to reason about exposure and to decide whether to drill down
     // (get_theses(tickers: ["X"]) returns the full row), nothing more.
     const quietRows = quietTheses.map((t) => ({
       id: t.id,
       ticker: t.ticker,
+      ...analystOf(t),
       status: t.status,
       direction: t.direction,
       horizon: t.horizon,
@@ -513,6 +525,7 @@ export const getTheses = defineTool({
         // has been said in the lines this read reached.
         context: contextByThesisId.get(t.id)?.text ?? null,
         ...t,
+        ...analystOf(t),
         // The stock's own triggers, each as its sentence and id.
         triggers: (Array.isArray(t.triggers) ? (t.triggers as Trigger[]) : []).map((x) => triggerForAgent(x, t.status === "HOLDING")),
         triggerCount,
@@ -796,6 +809,9 @@ export const getTheses = defineTool({
         // Stocks sold in the last two weeks that no run has answered for
         // yet (DAV-240). One look each, then they clear.
         ...(soldToReview.length > 0 ? { sold_to_review: soldToReview } : {}),
+        ...(leftOut > 0
+          ? { left_out: `${leftOut} more stock${leftOut === 1 ? "" : "s"} match${leftOut === 1 ? "es" : ""} this read and ${leftOut === 1 ? "is" : "are"} not shown; ask for ${leftOut === 1 ? "it" : "them"} by ticker, status or horizon.` }
+          : {}),
         // ThesisCardData[] for ThesisCardRenderer — drives the
         // "Read theses" carousel in the chat (full-detail rows only).
         cards,
