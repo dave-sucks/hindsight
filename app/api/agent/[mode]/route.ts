@@ -18,8 +18,8 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { createResearchTools } from "@/lib/agent/tools";
+import { analystToolSettings, type AnalystToolSettings } from "@/lib/agent/tool-context";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
-import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
@@ -198,7 +198,9 @@ export async function POST(
     // ── System prompt + tools ──────────────────────────────────────────────
 
     let systemPrompt: string;
-    let agentConfig: AgentConfigInput = (config as AgentConfigInput) || {};
+    // The analyst's fence and limits the tools enforce: the body's when no
+    // analyst row is loaded, else the row's (analystToolSettings).
+    let agentConfig: AnalystToolSettings = (config as AnalystToolSettings) || {};
 
     if (agentMode === "research-run") {
       // Load analyst config from DB
@@ -215,7 +217,7 @@ export async function POST(
 
       // What the model reads about the analyst (lib/agent/analyst-brief.ts):
       // the row itself when there is one, else whatever the body sent.
-      let briefAnalyst: BriefAnalyst = agentConfig;
+      let briefAnalyst: BriefAnalyst = (config as BriefAnalyst) || {};
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
           where: { id: resolvedAnalystId, accountId },
@@ -223,26 +225,7 @@ export async function POST(
         if (ac) {
           briefAnalyst = { ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) };
           const watchlistSymbols = await getWatchlistSymbols(ac.id);
-          agentConfig = {
-            name: ac.name,
-            analystPrompt: ac.analystPrompt ?? undefined,
-            directionBias: ac.directionBias,
-            holdDurations: ac.holdDurations,
-            sectors: ac.sectors,
-            // ── Universe (B1) ─────────────────────────────────────────
-            industries: ac.industries,
-            themes: ac.themes,
-            marketCapMin: ac.marketCapMin != null ? Number(ac.marketCapMin) : null,
-            marketCapMax: ac.marketCapMax != null ? Number(ac.marketCapMax) : null,
-            signalTypes: ac.signalTypes,
-            minConfidence: ac.minConfidence,
-            minPositionSize: ac.minPositionSize ? Number(ac.minPositionSize) : undefined,
-            maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
-            maxPositionTotal: ac.maxPositionTotal ? Number(ac.maxPositionTotal) : undefined,
-            maxOpenPositions: ac.maxOpenPositions,
-            watchlist: watchlistSymbols,
-            exclusionList: ac.exclusionList,
-          };
+          agentConfig = analystToolSettings(ac, watchlistSymbols);
         }
       }
 
@@ -327,24 +310,8 @@ export async function POST(
         alpacaCreds =
           (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
         const principalWatchlistSymbols = await getWatchlistSymbols(ac.id);
-        // Hydrate agentConfig for tool guardrails (place_trade etc.).
-        agentConfig = {
-          name: ac.name,
-          analystPrompt: ac.analystPrompt ?? undefined,
-          directionBias: ac.directionBias,
-          holdDurations: ac.holdDurations,
-          sectors: ac.sectors,
-          industries: ac.industries,
-          themes: ac.themes,
-          marketCapMin: ac.marketCapMin != null ? Number(ac.marketCapMin) : null,
-          marketCapMax: ac.marketCapMax != null ? Number(ac.marketCapMax) : null,
-          signalTypes: ac.signalTypes,
-          minConfidence: ac.minConfidence,
-          maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : undefined,
-          maxOpenPositions: ac.maxOpenPositions,
-          watchlist: principalWatchlistSymbols,
-          exclusionList: ac.exclusionList,
-        };
+        // The tools' fence and limits (place_trade etc.), the same mapping as the Run button's.
+        agentConfig = analystToolSettings(ac, principalWatchlistSymbols);
         scopedAnalyst = {
           ...ac,
           watchlist: principalWatchlistSymbols,
