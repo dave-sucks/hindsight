@@ -86,6 +86,8 @@ export type TriggerOp =
       fireMode?: "TACTICAL" | "DIRECT";
       rationale?: string;
       cooldownDays?: number;
+      /** A price level fires only on the 16:20 close pass; false = intraday. Absent = as it was. */
+      close?: boolean;
     }
   | { op: "remove"; id: string }
   /**
@@ -368,12 +370,15 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       }
       predicate = group ? { ...group, conditions: group.conditions.map((c: When, i: number) => (i === op.part ? next : c)) } : next;
     }
-    // ...unless the caller says when it fires.
-    if (meta.close !== undefined && !isGroup(predicate) && isLevel(predicate)) {
+    // ...unless the caller says when it fires: the edit's own `close`, or
+    // the plan level's basis. It applies to a price level only.
+    const close = op.close ?? meta.close;
+    const closeNotApplied = close !== undefined && (isGroup(predicate) || !isLevel(predicate));
+    if (close !== undefined && !closeNotApplied) {
       const { settings, ...plain } = predicate as Condition;
       const { close: _old, ...rest } = settings ?? {};
       void _old;
-      const kept = meta.close ? { ...rest, close: true } : rest;
+      const kept = close ? { ...rest, close: true } : rest;
       predicate = Object.keys(kept).length ? { ...plain, settings: kept } : plain;
     }
     const action = op.action ?? target.action;
@@ -421,9 +426,15 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       parts.push(`${name}: cooldown ${op.cooldownDays} days`);
     if (parts.length === 0 && rationale !== target.rationale)
       parts.push(`${name}: wording updated`);
+    // Said, not dropped: "on the close" means nothing to a trigger that isn't
+    // a price level. Alone, it comes back by id with the reason (a no-op the
+    // save would drop unseen); with other changes, it rides on their line.
+    const notOnClose = `${name}: on the close is for a price level, so its timing is as it was`;
     if (parts.length === 0) {
+      if (closeNotApplied) return refuse("edit", op.id, `${name}: timing as it was`, `${notOnClose}.`);
       return refuse("edit", op.id, `${name}: no change`, "Nothing to change — the trigger already has these values.", true);
     }
+    if (closeNotApplied) parts.push(notOnClose);
     const text = parts.join("; ");
 
     const blocked = ratchetReason(next);
@@ -448,6 +459,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       // there, which keeps its id and with it its fired state.
       const n = numberOf(trigger.predicate);
       const typed = shapeOf(trigger.predicate);
+      // The add's "only on the close" comes with it: dropped here, an on-close
+      // buy sent onto the buy already there stayed intraday (VST 09-28).
+      const close = typed && !isGroup(typed) && typed.settings?.close !== undefined ? typed.settings.close === true : undefined;
       return doEdit(
         {
           op: "edit",
@@ -457,6 +471,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
           rationale: trigger.rationale,
           ...(trigger.fireMode !== undefined ? { fireMode: trigger.fireMode } : {}),
           ...(trigger.cooldownDays !== undefined ? { cooldownDays: trigger.cooldownDays } : {}),
+          ...(close !== undefined ? { close } : {}),
         },
         { above: typed ? levelOf(typed)?.above : undefined },
       );
