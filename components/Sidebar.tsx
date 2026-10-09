@@ -256,9 +256,9 @@ export default function AppSidebar({
                   Settings
                 </DropdownMenuItem>
 
-                <DropdownMenuItem onClick={() => router.push('/agent-workflow')}>
+                <DropdownMenuItem onClick={() => router.push('/docs')}>
                   <Workflow className="h-3.5 w-3.5" />
-                  Agent Workflow
+                  How it works
                 </DropdownMenuItem>
 
                 <DropdownMenuItem onClick={() => onProductTour?.()}>
