@@ -2,25 +2,23 @@
 
 /**
  * /docs — the home page: one stock's story through the agents, the workflow
- * canvas, the agents, the concepts, and every tool. Each opens its page in a
+ * canvas, the concepts as cards, and every tool. Each opens its page in a
  * sheet; `?doc=<slug>` deep-links one.
  */
 
 import { useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpRight, Maximize2, X } from "lucide-react";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Maximize2, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent } from "@/components/ui/sheet";
 import type { CatalogTool, DocsSetup } from "@/lib/docs/tools";
-import { cn } from "@/lib/utils";
-import { AgentAsset } from "./agent-assets";
+import { ConceptCards } from "./concept-cards";
 import { LoopCanvas } from "./loop-canvas";
 import { Eyebrow, TwoTone } from "./primitives";
 import { DocCrumbs } from "./doc-crumbs";
 import { DocsNav } from "./docs-nav";
-import { DOCS, docBySlug, type DocSlug } from "./registry";
+import { docBySlug, type DocSlug } from "./registry";
 import { StockStory } from "./stock-story";
 import { DocsDataProvider, ToolCatalog } from "./tool-catalog";
 
@@ -35,8 +33,6 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
     [router, pathname],
   );
 
-  const agents = DOCS.filter((d) => d.group === "Agents");
-  const concepts = DOCS.filter((d) => d.group === "Concepts");
 
   return (
     <DocsDataProvider tools={tools} setups={setups}>
@@ -63,65 +59,12 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
           <LoopCanvas onOpen={setDoc} />
         </section>
 
-        <section className="flex flex-col gap-8" aria-labelledby="agents-h">
-          <div className="flex flex-col gap-2.5">
-            <Eyebrow>The agents</Eyebrow>
-            <TwoTone id="agents-h" lead="Five agents, one desk." rest="Each wakes for its own reason and uses its own tools. Here is what each one looks like at work." />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-            {agents.map((d, i) => (
-              <div
-                key={d.slug}
-                className={cn(
-                  "group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-card text-left transition hover:-translate-y-0.5 hover:border-foreground/20 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring",
-                  i < 2 ? "lg:col-span-3" : "lg:col-span-2",
-                )}
-              >
-                {/* The whole card opens the page. A layered button, so the
-                    chat picture's own buttons aren't nested inside it. */}
-                <button type="button" onClick={() => setDoc(d.slug)} className="absolute inset-0 z-10 focus-visible:outline-none" aria-label={`Open ${d.title}`} />
-                <div
-                  className="relative h-56 overflow-hidden border-b bg-muted/40 px-5 pt-5"
-                  style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
-                >
-                  <div className="pointer-events-none">
-                    <AgentAsset slug={d.slug} />
-                  </div>
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-muted/80 to-transparent" />
-                </div>
-                <div className="flex flex-col gap-1 p-5">
-                  <span className="flex items-center gap-2 text-base font-medium text-foreground">
-                    <d.icon className="size-4 text-muted-foreground" />
-                    {d.title}
-                    <ArrowUpRight className="ml-auto size-4 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
-                  </span>
-                  <span className="text-sm text-muted-foreground">{d.blurb}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
         <section className="flex flex-col gap-8" aria-labelledby="concepts-h">
           <div className="flex flex-col gap-2.5">
             <Eyebrow>Concepts</Eyebrow>
             <TwoTone id="concepts-h" lead="The few ideas everything is built on." rest="Learn these and every screen makes sense." />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {concepts.map((d) => (
-              <button key={d.slug} type="button" onClick={() => setDoc(d.slug)} className="group grid w-full text-left">
-                <Card>
-                  <CardHeader>
-                    <span className="mb-2 grid size-8 place-items-center rounded-lg border bg-muted text-muted-foreground transition group-hover:text-foreground">
-                      <d.icon className="size-4" />
-                    </span>
-                    <CardTitle>{d.title}</CardTitle>
-                    <CardDescription>{d.blurb}</CardDescription>
-                  </CardHeader>
-                </Card>
-              </button>
-            ))}
-          </div>
+          <ConceptCards onOpen={setDoc} />
         </section>
 
         <section id="tools" className="flex scroll-mt-20 flex-col gap-8" aria-labelledby="tools-h">

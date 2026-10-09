@@ -19,12 +19,12 @@ export function Eyebrow({ children, className }: { children: ReactNode; classNam
 }
 
 const TWO_TONE_SIZE = {
-  hero: "text-3xl leading-[1.1] sm:text-4xl lg:text-5xl max-w-[26ch]",
-  page: "text-3xl leading-[1.1] sm:text-4xl max-w-[24ch]",
-  section: "text-2xl leading-tight sm:text-3xl max-w-[28ch]",
-  sub: "text-xl leading-snug max-w-[34ch]",
+  hero: "text-2xl leading-tight sm:text-3xl lg:text-4xl max-w-[30ch]",
+  page: "text-2xl leading-tight sm:text-3xl max-w-[26ch]",
+  section: "text-xl leading-snug sm:text-2xl max-w-[34ch]",
+  sub: "text-lg leading-snug max-w-[38ch]",
   /** The sentence every doc opens with: large, and as wide as the page. */
-  intro: "text-2xl leading-tight sm:text-3xl",
+  intro: "text-xl leading-snug sm:text-2xl",
 } as const;
 
 /** A headline in two tones: the claim, then the explanation in muted ink. */
