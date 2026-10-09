@@ -85,7 +85,7 @@ function ToolCard({ tool, onOpen }: { tool: CatalogTool; onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="flex min-w-0 items-start gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex min-w-0 items-start gap-3 rounded-xl border bg-background p-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <SourceMark source={tool.sources[0]} />
       <span className="flex min-w-0 flex-col gap-0.5">
