@@ -230,12 +230,6 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     sources: ["hindsight", "alpaca"],
     summary: "Open positions with live price, gain, days held, distance from the high, floor and target; cash, equity, open risk and the daily digest.",
   },
-  list_theses_all: {
-    name: "Every thesis",
-    kind: "book",
-    sources: ["hindsight"],
-    summary: "Theses across every analyst, or everyone's view of one stock.",
-  },
   list_proposals: {
     name: "Waiting for you",
     kind: "book",
