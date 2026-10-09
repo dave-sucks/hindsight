@@ -101,9 +101,11 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
   const stop: Trigger = { id: "stop-969", predicate: { watch: "price", is: "below", value: 969 }, action: "EXIT", rationale: "Stop." };
   const trail: Trigger = { id: "trail-8", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, action: "EXIT", rationale: "Trail." };
 
-  it("the row carries the plan's setup, every decision line for its horizon; the old block is gone", () => {
+  it("the row carries the lines a fire checks for the plan's setup and horizon; the old block is gone", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ setupId: "PEAD", setup: setupChecklist("PEAD", "TARGET") }) } }));
-    for (const line of setupLines(getSetup("PEAD")!, "TARGET")) expect(prompt).toContain(JSON.stringify(line));
+    for (const line of setupLines(getSetup("PEAD")!, "TARGET", "decision")) expect(prompt).toContain(JSON.stringify(line));
+    // The summary and the preconditions are the brief's and the writer's, not the row's.
+    expect(prompt).not.toContain(JSON.stringify(setupLines(getSetup("PEAD")!, "TARGET")[0]));
     expect(prompt).toContain("Confirm a buy by: Gap held; Surprise and guidance confirmed");
     expect(prompt).not.toContain("THE SETUP THIS PLAN WAS WRITTEN ON");
     expect(prompt).not.toContain("Volume — horizon-conditional");

@@ -96,13 +96,13 @@ async function triggerRun(c: Fire) {
 }
 
 describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
-  it("the short row leads with the fire, carries the setup's lines for its horizon and the fired buy with its id, and none of the full row", async () => {
+  it("the short row leads with the fire, carries the lines a fire checks for its setup and horizon and the fired buy with its id, and none of the full row", async () => {
     const { stock, prompt, saved } = await triggerRun(fx.docu);
     expect(stock).not.toBeNull();
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy level reached)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
-    expect(row.setup_lines).toEqual(setupLines(getSetup("MA_PULLBACK")!, "TARGET"));
+    expect(row.setup_lines).toEqual(setupLines(getSetup("MA_PULLBACK")!, "TARGET", "decision"));
     shortRow(row, saved);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.docu.fire.triggerId}]`))).toMatch(/^Buy if below \$67 · fired 09-28 13:30 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
@@ -120,7 +120,7 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("PROTECTIVE_SALE (sale signal)");
     expect(row.position).toMatch(/^33 sh at \$218\.23 → \$234\.24 \(\+7\.3%\), \$7,730; opened 08-31; high since we bought \$242\.51$/);
-    expect(row.setup_lines).toEqual(setupLines(getSetup("PEAD")!, "TARGET"));
+    expect(row.setup_lines).toEqual(setupLines(getSetup("PEAD")!, "TARGET", "decision"));
     shortRow(row, saved);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));

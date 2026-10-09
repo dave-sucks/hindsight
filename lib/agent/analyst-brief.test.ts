@@ -212,6 +212,15 @@ describe("setupLines", () => {
     const lines = setupLines(pullback);
     expect(lines.filter((l) => l.startsWith("Manage"))).toEqual(Object.entries(pullback.trail).map(([h, t]) => `Manage (${h}): ${t}`));
   });
+  it("three cuts of one text: the brief's first line, the writer's all, a row's decision lines", () => {
+    const all = setupLines(pullback, "TARGET");
+    const decision = setupLines(pullback, "TARGET", "decision");
+    expect(all[0]).toBe(`MA_PULLBACK — ${pullback.name}: ${pullback.summary}`);
+    expect(all[1]).toBe(`Needs: ${pullback.preconditions.join("; ")}`);
+    expect(decision).toEqual(all.slice(2));
+    expect(decision[0]).toMatch(/^Entry: /);
+    expect(decision.at(-1)).toMatch(/^Failure looks like: /);
+  });
   it("carries the confirmation and the failure signs the trigger run reads", () => {
     const lines = setupLines(pullback, "TARGET");
     expect(lines).toContain(`Failure looks like: ${pullback.failureSigns.join("; ")}`);
