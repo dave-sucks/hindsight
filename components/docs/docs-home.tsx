@@ -36,7 +36,7 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
 
   return (
     <DocsDataProvider tools={tools} setups={setups}>
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-24 px-4 pb-32 pt-6 sm:px-6 lg:pt-10">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-24 px-4 pb-32 pt-6 sm:px-6 lg:pt-10">
         <section className="flex flex-col gap-10">
           <div className="flex flex-col gap-5">
             <DocsNav />

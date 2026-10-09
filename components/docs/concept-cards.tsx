@@ -4,27 +4,26 @@
  * The Guide's concepts as a bento in Framer's style: one frame split by
  * hairlines, each cell a picture with its words inside it, no inner cards.
  *
- *   Theses and analysts, full width: a miniature of the thesis sheet with
- *   the chat floating over it, talking about the book.
+ *   Theses, full width: a miniature of the thesis sheet.
  *   Then four small cells, kept minimal: triggers as a live check feed,
  *   situations as a book of dots, a proposal waiting for a yes, the clock.
+ *   Analysts, full width: the roster.
  *
  * Every ticker and number is an example.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Area, AreaChart } from "recharts";
+import { Area, AreaChart, YAxis } from "recharts";
 import { ArrowRight, ArrowUpRight, Clock, Flag } from "lucide-react";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
-import { ChatMock, Tk } from "./chat-mock";
 import { Mono } from "./primitives";
 import type { DocSlug } from "./registry";
 import { PillRow } from "./trigger-bits";
 
 const FADE_BOTTOM = { maskImage: "linear-gradient(to bottom, black 60%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, black 60%, transparent)" };
 
-// ── The big cell: a thesis sheet with the chat over it ─────────────────────
+// ── The big cells ──────────────────────────────────────────────────────────
 
 /** A day's tape for the chart: a gentle climb with some noise, the same every render. */
 const TAPE = Array.from({ length: 64 }, (_, i) => ({ i, v: 404 + i * 0.42 + Math.sin(i * 0.9) * 2.4 + Math.sin(i * 0.23) * 3 }));
@@ -75,6 +74,7 @@ function SheetMock() {
                 <stop offset="100%" stopColor="var(--color-v)" stopOpacity={0} />
               </linearGradient>
             </defs>
+            <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
             <Area dataKey="v" type="monotone" stroke="var(--color-v)" strokeWidth={1.5} fill="url(#docs-sheet-fill)" isAnimationActive={false} />
           </AreaChart>
         </ChartContainer>
@@ -87,44 +87,20 @@ function SheetMock() {
   );
 }
 
-function BookCell({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
+/** A full-width row: the words on the left, the picture on the right, nothing cropped. */
+function WideCell({ title, line, link, onOpen, children }: { title: string; line: string; link: string; onOpen: () => void; children: ReactNode }) {
   return (
-    <div className="relative flex min-h-[40rem] flex-col overflow-hidden bg-background lg:col-span-3">
-      {/* The sheet, as a miniature, sitting in the cell. */}
-      <div className="pointer-events-none absolute left-6 top-8 origin-top-left scale-[0.62] sm:left-10 lg:left-16" style={FADE_BOTTOM} aria-hidden>
-        <SheetMock />
-      </div>
-      {/* The chat, floating over it. */}
-      <div className="pointer-events-none absolute right-6 top-10 hidden w-[22rem] flex-col gap-1 rounded-2xl border bg-popover/95 p-4 shadow-xl backdrop-blur-sm md:flex lg:right-16" aria-hidden>
-        <ChatMock
-          bare
-          title="Chat"
-          steps={[
-            { kind: "user", text: "What am I holding, and does anything need me today?" },
-            {
-              kind: "tools",
-              label: "Reading your book",
-              rows: [
-                { ticker: "AAPL", tag: "Quiet", text: "25 shares · up 5.7%" },
-                { ticker: "NVDA", tag: "Quiet", text: "40 shares · up 21.4%" },
-                { ticker: "CRWD", tag: "Floor to fix", text: "14 shares · up 6.9% · floor under cost" },
-              ],
-            },
-            { kind: "text", text: <>Six holdings, five quiet. <Tk s="CRWD" c={1.44} /> is up 7% with its floor still under what we paid; I&apos;d raise it to $410.</> },
-          ]}
-        />
-      </div>
-      <div className="relative mt-auto flex flex-col gap-3 bg-gradient-to-t from-background via-background to-transparent p-6 pt-24 sm:p-10 sm:pt-24">
-        <p className="max-w-md text-base leading-7">
-          <span className="font-medium text-foreground">Theses and analysts.</span>{" "}
-          <span className="text-muted-foreground">
-            Every stock carries a thesis: a belief, a plan and the triggers that act on it. Every thesis belongs to an analyst, a trading style with its own rules.
-          </span>
+    <div className="grid items-center gap-8 bg-background p-6 sm:p-10 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16 lg:p-14">
+      <div className="flex max-w-md flex-col gap-3 self-end">
+        <p className="text-base leading-7">
+          <span className="font-medium text-foreground">{title}</span> <span className="text-muted-foreground">{line}</span>
         </p>
-        <span className="flex gap-5">
-          <CellLink onClick={() => onOpen("theses")}>Theses</CellLink>
-          <CellLink onClick={() => onOpen("analysts")}>Analysts</CellLink>
+        <span>
+          <CellLink onClick={onOpen}>{link}</CellLink>
         </span>
+      </div>
+      <div className="pointer-events-none flex justify-center" aria-hidden>
+        {children}
       </div>
     </div>
   );
@@ -225,6 +201,29 @@ function Morning() {
   );
 }
 
+/** Analysts: the roster, each with its style and the one rule its holdings inherit. */
+function Roster() {
+  const rows = [
+    { n: "PEAD Specialist", s: "Post-earnings drift", r: "Sells 12% off the high", c: "bg-blue-500" },
+    { n: "Secular Compounder", s: "Long-term compounders", r: "Sells 25% off the high", c: "bg-violet-400" },
+    { n: "Catalyst Event PM", s: "Dated events", r: "Reviews 10 days before", c: "bg-sky-400" },
+  ];
+  return (
+    <div className="flex w-[34rem] max-w-full flex-col divide-y rounded-2xl border bg-background">
+      {rows.map((r) => (
+        <span key={r.n} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-sm">
+          <span className={cn("size-2 rounded-full", r.c)} />
+          <span className="flex min-w-0 flex-col">
+            <span className="font-medium text-foreground">{r.n}</span>
+            <span className="text-xs text-muted-foreground">{r.s}</span>
+          </span>
+          <span className="text-xs text-muted-foreground">{r.r}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 const SMALL: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span: string }> = [
   { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerFeed />, span: "lg:col-span-2" },
   { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <Dots />, span: "" },
@@ -236,7 +235,17 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
   return (
     // One frame; the 1px gaps over the border color are the hairlines between cells.
     <div className="grid gap-px overflow-hidden rounded-2xl border bg-border lg:grid-cols-3">
-      <BookCell onOpen={onOpen} />
+      <WideCell
+        title="Theses."
+        line="Every stock carries one: a belief we can be wrong about, the plan that acts on it, and the triggers that watch it."
+        link="Theses"
+        onOpen={() => onOpen("theses")}
+      >
+        {/* The sheet drawn at full size, shown smaller; zoom keeps its layout size honest, so nothing is cropped. */}
+        <div style={{ zoom: 0.62 }}>
+          <SheetMock />
+        </div>
+      </WideCell>
       {SMALL.map((c) => (
         <div key={c.slug} className={cn("group relative flex min-h-80 flex-col bg-background has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-inset has-[button:focus-visible]:ring-ring", c.span)}>
           <button type="button" onClick={() => onOpen(c.slug)} className="absolute inset-0 z-10 focus-visible:outline-none" aria-label={`Open ${c.title}`} />
@@ -252,6 +261,14 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           </p>
         </div>
       ))}
+      <WideCell
+        title="Analysts."
+        line="A trading style with its own universe, sizing and sell rules. Every thesis belongs to one, and inherits its rules."
+        link="Analysts"
+        onOpen={() => onOpen("analysts")}
+      >
+        <Roster />
+      </WideCell>
     </div>
   );
 }
