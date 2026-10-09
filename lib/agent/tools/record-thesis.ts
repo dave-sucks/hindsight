@@ -700,7 +700,12 @@ export const recordThesis = defineTool({
       // a buy that could only fire after a dip below and a re-cross.
       let quoteForEntrySide: number | null = null;
       let freshForStamp: number | null = null;
-      if (args.direction !== "PASS") {
+      // A PASS has no entry side to resolve, so it skipped the quote — but a
+      // SOFT WATCH is a PASS that keeps watching, and its coverage row is
+      // measured from the price on the day it opened. Without a quote its
+      // CREATED row carried no price and the row had nothing to anchor to
+      // (ABBV, FTNT and MA, all minted 2026-09-29). A hard pass still skips.
+      if (args.direction !== "PASS" || passKeepsWatch) {
         try {
           const q = await getStockQuote(args.ticker);
           if (q && Number.isFinite(q.c) && q.c > 0) quoteForEntrySide = q.c;
@@ -1375,7 +1380,12 @@ export const recordThesis = defineTool({
         rationale: narrativeText,
         signalIds: sourceSignalIds,
         runId: ctx.runId,
-        priceAtTime: args.entry_price ?? null,
+        // A soft watch has no entry price — that is the whole point of it —
+        // so it stamps what the stock cost when we started watching. Every
+        // other path keeps the value it has always written.
+        priceAtTime: passKeepsWatch
+          ? (freshForStamp ?? quoteForEntrySide ?? null)
+          : (args.entry_price ?? null),
       });
 
       // Transition parent thesis lifecycle.

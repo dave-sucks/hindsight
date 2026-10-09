@@ -67,6 +67,31 @@ export type ToolUIItem =
         | "failed";
     }
   | { kind: "generic"; text: string }
+  /**
+   * Many things of the SAME shape. A tool returns one of these instead of a
+   * row per item when its rows all carry the same fields — a firm-wide
+   * earnings calendar is twenty-one sentences with identical structure, which
+   * is a table written out longhand.
+   *
+   * The columns are declared once and each row is a flat array in that order:
+   * repeating the keys on every row is payload saying the same thing N times.
+   * Nothing in the renderer knows what the columns mean — a tool opts in, and
+   * one that has no repeated shape never does.
+   *
+   * `align` marks the columns whose values are numbers, so they line up.
+   * `tone` on a cell colours it by sign, for a column like a beat or a miss.
+   */
+  | {
+      kind: "table";
+      columns: readonly string[];
+      /** Columns (by index) to right-align. Numbers line up, words don't. */
+      align?: readonly number[];
+      rows: ReadonlyArray<{
+        /** Renders the app's ticker avatar in a leading column. */
+        ticker?: string;
+        cells: ReadonlyArray<string | { text: string; tone?: "pos" | "neg" }>;
+      }>;
+    }
   | {
       kind: "proposal";
       orderId: string;

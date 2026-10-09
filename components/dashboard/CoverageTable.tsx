@@ -14,7 +14,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { getTradeStatusDisplay } from "@/lib/trade-status";
-import { cn } from "@/lib/utils";
+import { cn, pnlColor } from "@/lib/utils";
 import { PriceChange } from "@/components/ui/price-change";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { ChipTabs } from "@/components/ui/chip-tabs";
@@ -94,14 +94,19 @@ function Move({
   if (mode === "dollar") {
     const d = moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
     if (d == null) return <span className="text-muted-foreground/40">—</span>;
-    if (flat) {
-      return (
-        <span className="tabular-nums text-sm text-muted-foreground">
-          {formatSignedCurrency(d)}
-        </span>
-      );
-    }
-    return <PnlBadge value={d} format="currency" className="text-xs" />;
+    // Money is TEXT, percent is a BADGE — the app's rule everywhere, and the
+    // Lifetime column two cells over proves it: "+$87.68" plain beside a
+    // "+0.88%" chip. The $ mode shipped dollars in badges and broke it.
+    return (
+      <span
+        className={cn(
+          "tabular-nums text-sm",
+          flat ? "text-muted-foreground" : pnlColor(d),
+        )}
+      >
+        {formatSignedCurrency(d)}
+      </span>
+    );
   }
 
   if (flat) return <span className="tabular-nums text-sm text-muted-foreground">{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>;
