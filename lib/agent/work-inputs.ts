@@ -38,7 +38,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 
 export interface WorkContext {
   userId?: string;
-  /** The analyst whose rules the ladder inherits and whose positions count; none ⇒ the stock's own triggers. */
+  /** The analyst whose rules the ladder inherits and whose positions count; none ⇒ each stock's own analyst (an account-wide read). */
   analystId?: string | null;
   runEnvironment?: "PAPER" | "LIVE";
   alpacaCreds?: AlpacaCredentials;
@@ -110,9 +110,15 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
           id: true, ticker: true, status: true, direction: true, horizon: true, entryPrice: true, targetPrice: true,
           triggers: true, triggerState: true, createdAt: true, lastReviewedAt: true, researchUpdatedAt: true,
           paperTenureDays: true, paperRealizedPnl: true, paperReviewCount: true, promotedAt: true,
+          researchRun: { select: { agentConfigId: true } },
         },
       })
     : [];
+  // The analyst each stock belongs to: the read's, or on an account-wide read
+  // (the chat with no analyst) the stock's own, so every stock inherits its
+  // own analyst's rules and counts its own analyst's position.
+  const analystOf = (t: (typeof theses)[number]): string | null => ctx.analystId ?? t.researchRun?.agentConfigId ?? null;
+  const analystIds = Array.from(new Set(theses.map(analystOf).filter((id): id is string => !!id)));
   const live = theses.filter((t) => LIVE.has(t.status));
   const load: WorkLoad = {
     inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, priceFetchFailed: false,
@@ -145,8 +151,8 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   // The resolved ladder: the stock's own triggers plus what it inherits from
   // the analyst and the account. A holding protected by an inherited floor
   // must not read as unprotected.
-  const levelSources = ctx.analystId ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId) : undefined;
-  for (const t of theses) load.ladders.set(t.id, resolveThesisLadder(t, levelSources, `thesis=${t.id}`) as Trigger[]);
+  const levelSources = await loadLevelSources(analystIds);
+  for (const t of theses) load.ladders.set(t.id, resolveThesisLadder(t, levelSources.get(analystOf(t) ?? ""), `thesis=${t.id}`) as Trigger[]);
 
   // The open position per held stock (scoped by analyst, and environment when
   // known), and the closes the principal did not approve on it: rejected or
@@ -162,13 +168,17 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
           ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
           ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
         },
-        select: { id: true, symbol: true, openedAt: true, avgCost: true, quantity: true, peakPrice: true, environment: true },
+        select: { id: true, symbol: true, openedAt: true, avgCost: true, quantity: true, peakPrice: true, environment: true, analystId: true },
         orderBy: { openedAt: "desc" },
       });
-      const bySymbol = new Map<string, (typeof open)[number]>();
-      for (const p of open) if (!bySymbol.has(p.symbol)) bySymbol.set(p.symbol, p);
+      // Newest first per stock; on an account-wide read, per stock and analyst (a
+      // stock with no analyst takes the newest of any). A scoped read's query
+      // already holds only its analyst's positions.
+      const keyOf = (analyst: string | null, symbol: string) => (ctx.analystId || !analyst ? symbol : `${analyst}|${symbol}`);
+      const byKey = new Map<string, (typeof open)[number]>();
+      for (const p of open) for (const key of new Set([keyOf(p.analystId, p.symbol), p.symbol])) if (!byKey.has(key)) byKey.set(key, p);
       for (const t of theses) {
-        const p = t.status === "HOLDING" ? bySymbol.get(t.ticker) : undefined;
+        const p = t.status === "HOLDING" ? byKey.get(keyOf(analystOf(t), t.ticker)) : undefined;
         if (!p) continue;
         positionEnv ??= p.environment as "PAPER" | "LIVE";
         const peak = p.peakPrice != null && Number.isFinite(Number(p.peakPrice)) ? Number(p.peakPrice) : null;
@@ -345,7 +355,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     console.warn("[work-inputs] activity scan failed; open fires read from the newest line only:", err);
   }
 
-  const pending = ctx.analystId ? await getPendingEntryTickers(ctx.analystId) : new Set<string>();
+  const pending = new Map(await Promise.all(analystIds.map(async (id) => [id, await getPendingEntryTickers(id)] as const)));
   for (const t of live) {
     const price = load.livePrice[t.ticker];
     // No prior close to measure from: 0, which no move threshold matches.
@@ -370,7 +380,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
       recentUpdates: streak.get(t.id),
       latestQuote: quote,
       now,
-      hasPendingEntryProposal: pending.has(t.ticker),
+      hasPendingEntryProposal: pending.get(analystOf(t) ?? "")?.has(t.ticker) ?? false,
       equity: load.equity,
     };
     // A declined sale, judged against the ladder's floor and the live price.

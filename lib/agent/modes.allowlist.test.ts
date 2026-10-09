@@ -24,7 +24,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { MODES, type AgentMode } from "@/lib/agent/modes";
+import { MODES, buildPrincipalSystemPrompt, type AgentMode } from "@/lib/agent/modes";
 
 /**
  * The registered tool names, read out of the source of `createResearchTools`.
@@ -64,6 +64,8 @@ const DELETED = [
   "read_analyst_inbox_stats",
   "list_monitors",
 ];
+/** Deleted in step 10: the chat reads the account through get_theses with no analyst. */
+const DELETED_READS = ["list_theses_all"];
 const SIGNAL_TOOLS = [...KEPT_UNLISTED, ...DELETED];
 
 function allowlistOf(mode: AgentMode): readonly string[] {
@@ -92,6 +94,16 @@ describe("mode tool allowlists", () => {
 
   it("no longer registers the deleted signal tools", () => {
     expect(DELETED.filter((n) => REGISTERED.has(n))).toEqual([]);
+  });
+
+  it("step 10: the chat's own cross-analyst list is gone, from the catalog, every list and the chat's text", () => {
+    expect(DELETED_READS.filter((n) => REGISTERED.has(n))).toEqual([]);
+    for (const mode of MODE_NAMES) expect([mode, allowlistOf(mode).filter((n) => DELETED_READS.includes(n))]).toEqual([mode, []]);
+    expect(allowlistOf("principal")).toContain("get_theses");
+    expect(allowlistOf("principal")).toContain("list_analysts");
+    const unscoped = buildPrincipalSystemPrompt({ scopedAnalyst: null });
+    for (const n of DELETED_READS) expect(unscoped).not.toContain(n);
+    expect(unscoped).toContain("\`get_theses\` tickers=[\"NVDA\"]. One row per analyst that holds or watches it, each naming its analyst.");
   });
 
   // With the inbox gone, the builder and editor seed and check a fence off the

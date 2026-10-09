@@ -24,7 +24,6 @@ import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
@@ -266,14 +265,11 @@ export async function POST(
           portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
           watchlist: [],
           activeTheses: [],
-          performance: null,
-          recentClosedTrades: [],
           priorityReviews: null,
           triggersFiredSinceLastRun: [],
           triggersMatchingNow: [],
           earnings: { reportingSoon: [], justReported: [] },
           filings: { recent: [] },
-          intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
           openRefusals: [],
         },
       );

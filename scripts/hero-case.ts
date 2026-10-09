@@ -188,7 +188,7 @@ function systemFor(c: HeroCase): string {
 /**
  * A trigger case saved before step 10 holds the stock as the old prompt's
  * hand-built object; this is the saved get_theses row built from those
- * fields, so the replay reads the full row as a live run does. The fire's
+ * fields, so the replay reads the row a live trigger run reads. The fire's
  * time was not saved, so the fired rung carries no "fired" mark; the prompt
  * names it with its id in TRIGGER THAT FIRED.
  */

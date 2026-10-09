@@ -10,14 +10,11 @@ const runInput = {
   portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
   watchlist: [],
   activeTheses: [],
-  performance: null,
-  recentClosedTrades: [],
   priorityReviews: [],
   triggersFiredSinceLastRun: [],
   triggersMatchingNow: [{ thesisId: "t", ticker: "IOT", triggerId: "b", action: "ENTER", predicateSummary: "price above $39.55", rationale: "", matchDetail: "" }],
   earnings: { reportingSoon: [], justReported: [] },
   filings: { recent: [{ ticker: "PRAX", date: "2026-07-02", tier: "serious" as const, summary: "8-K — auditor change (4.01)", url: "https://www.sec.gov/prax" }] },
-  intelligencePolicy: { maxSignalsPerRun: 0 },
 } as unknown as RunInput;
 
 const prompt = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000 }, runInput);
