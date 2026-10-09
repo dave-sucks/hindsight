@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { thesisForTradeRow } from "@/lib/thesis/row-thesis";
+import { watchAnchorPrice } from "@/lib/thesis/watch-anchor";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import { getLatestPrices } from "@/lib/alpaca";
@@ -177,6 +178,15 @@ export async function getCoverageData(
         id: true, ticker: true, direction: true, entryPrice: true,
         createdAt: true, updatedAt: true,
         researchRun: { select: { agentConfig: { select: { name: true } } } },
+        // The EARLIEST event carrying a price — what the stock cost when the
+        // watch opened. Passed rows take the LATEST for the same reason: the
+        // price at the moment the state began. See lib/thesis/watch-anchor.ts.
+        updates: {
+          where: { priceAtTime: { not: null } },
+          orderBy: { timestamp: "asc" },
+          take: 1,
+          select: { timestamp: true, priceAtTime: true },
+        },
       },
     }).catch(() => [] as never[]),
     prisma.thesis.findMany({
@@ -264,7 +274,28 @@ export async function getCoverageData(
   d30.setUTCDate(d30.getUTCDate() - 30);
   const target30 = d30.toISOString().slice(0, 10);
 
+  // The day each watch opened — the Watching rows are measured from the price
+  // on that day (lib/thesis/watch-anchor.ts). The same daily bars the 1D/5D/30D
+  // columns already pull carry it, so this costs no extra call: only the
+  // lookback grows, from 45 days to far enough back to reach the oldest watch.
+  // The day is the EASTERN one. A mint at 02:47 UTC is 22:47 the previous
+  // evening in New York, so reading the UTC date would anchor on the NEXT
+  // session's close — a whole day of movement we were not watching for.
+  const etDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const watchStartByTicker = new Map<string, string>();
+  for (const t of watchingTheses) {
+    const day = etDay(t.createdAt);
+    const prev = watchStartByTicker.get(t.ticker);
+    if (!prev || day < prev) watchStartByTicker.set(t.ticker, day);
+  }
+  const oldestWatch = [...watchStartByTicker.values()].sort()[0];
+  const candleDays = oldestWatch
+    ? Math.max(45, Math.ceil((Date.now() - Date.parse(`${oldestWatch}T00:00:00Z`)) / 86_400_000) + 5)
+    : 45;
+
   const moves = new Map<string, { oneDayPct: number | null; fiveDayPct: number | null; thirtyDayPct: number | null }>();
+  /** ticker → the close on the day its watch opened. */
+  const watchStartClose = new Map<string, number>();
   await Promise.all(
     tickers.map(async (tk) => {
       const current = prices[tk];
@@ -272,8 +303,20 @@ export async function getCoverageData(
         moves.set(tk, { oneDayPct: null, fiveDayPct: null, thirtyDayPct: null });
         return;
       }
-      const candles = await getStockCandles(tk, 45).catch(() => []);
+      const candles = await getStockCandles(tk, candleDays).catch(() => []);
       const completed = candles.filter((c) => c.date < todayEt); // drop today's partial bar
+
+      // The close on the watch's first day — or the last one before it, so a
+      // watch opened on a weekend or a holiday still has an anchor.
+      const startedOn = watchStartByTicker.get(tk);
+      if (startedOn) {
+        let close: number | null = null;
+        for (const c of candles) {
+          if (c.date <= startedOn) close = c.close;
+          else break;
+        }
+        if (close != null && Number.isFinite(close) && close > 0) watchStartClose.set(tk, close);
+      }
       const prevClose = completed[completed.length - 1]?.close ?? null;
       const close5 = completed[completed.length - 5]?.close ?? null;
       let close30: number | null = null; // last completed close on/before 30 cal. days ago
@@ -336,7 +379,20 @@ export async function getCoverageData(
   // ── Watching ───────────────────────────────────────────────────────────────
   const watching: CoverageRow[] = watchingTheses.map((t) => {
     const current = prices[t.ticker] ?? null;
-    const anchor = t.entryPrice ?? null;
+    // The price when the watch opened — NOT `entryPrice`, which is the planned
+    // buy level (a cache of the ENTER trigger) and is absent on 22 of 28
+    // watched names, because most carry only REVIEW triggers. This column is
+    // "what have I missed since I started watching", so it measures from a
+    // price someone observed. See lib/thesis/watch-anchor.ts.
+    const stampedRow = t.updates?.[0];
+    const anchor = watchAnchorPrice({
+      startedOn: etDay(t.createdAt),
+      stamped:
+        stampedRow?.priceAtTime != null
+          ? { on: etDay(stampedRow.timestamp), price: Number(stampedRow.priceAtTime) }
+          : null,
+      closeOnStart: watchStartClose.get(t.ticker) ?? null,
+    });
     const sinceDollar = current != null && anchor != null ? current - anchor : null;
     const sincePct =
       sinceDollar != null && anchor != null && anchor !== 0 ? (sinceDollar / anchor) * 100 : null;
