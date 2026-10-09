@@ -150,11 +150,14 @@ describe("refuse the field, land the call", () => {
     }
   });
 
-  it("no live price on a watch: the buy level is refused by name, the note lands", async () => {
+  it.each([
+    ["MORNING_PLAN", "Leave the buy as it is"],
+    ["PRINCIPAL_CHAT", "price_at_time"],
+  ])("no live price on a watch (%s): the buy level is refused by name in that door's words, the note lands", async (runMode, words) => {
     const watch = asml({ status: "WATCHING", triggers: [] });
-    const r = await replay(closeOut({ price_at_time: undefined, entry_price: 1700, trigger_id: undefined }), { thesis: watch, quotes: {}, ctx: { runMode: "MORNING_PLAN" } });
+    const r = await replay(closeOut({ price_at_time: undefined, entry_price: 1700, trigger_id: undefined }), { thesis: watch, quotes: {}, ctx: { runMode } });
     expect(r.refused).toBe(false);
-    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "entry_price", reason: expect.stringContaining("price_at_time") })]);
+    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "entry_price", reason: expect.stringContaining(words) })]);
     expect(written(r.db)).toHaveLength(1);
   });
 

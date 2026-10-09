@@ -32,9 +32,11 @@ describe("writer-only research fields", () => {
     });
   }
 
-  it("an agent keeps the fields it uses: snapshot on update_thesis, the plan and the belief on both", () => {
+  it("an agent keeps the fields it uses: the snapshot on the chat's update_thesis, the plan and the belief on both", () => {
     const u = fields("MORNING_PLAN", "update_thesis");
-    for (const f of ["snapshot", "entry_price", "stop_loss", "core_belief", "add_triggers", "scoring"]) expect(u).toContain(f);
+    for (const f of ["entry_price", "stop_loss", "core_belief", "add_triggers"]) expect(u).toContain(f);
+    const c = fields("PRINCIPAL_CHAT", "update_thesis");
+    for (const f of ["snapshot", "scoring"]) expect(c).toContain(f);
     const r = fields("PRINCIPAL_CHAT", "record_thesis");
     for (const f of ["ticker", "direction", "reasoning_summary", "triggers", "stock_fundamentals", "core_belief"]) expect(r).toContain(f);
   });

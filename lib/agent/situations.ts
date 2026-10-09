@@ -302,7 +302,7 @@ Answer, in order:
 1. Is there a tradeable view? Pull get_stock_data and what else you need.
 
 What you can do:
-- Commit a view: update_thesis with direction LONG or SHORT, horizon, entry_price, target_price, stop_loss, core_belief, key_assumptions (two or more), invalidation_conditions (two or more), triggers and a rationale. It stays on watch with its buy trigger; the save refuses a commitment missing a structural field.
+- Commit a view: update_thesis with direction LONG or SHORT, horizon, entry_price, target_price, stop_loss, core_belief, key_assumptions (two or more), invalidation_conditions (two or more), triggers, conviction with conviction_rationale, and a rationale. It stays on watch with its buy trigger; the save refuses a commitment missing a structural field.
 - Pass: update_thesis with direction PASS, invalidation_conditions (one or more) and a rationale. It leaves the watchlist and stays on the stock's page as a decision.
 
 Answered: one of the two. The save refuses a call on a seed with no direction; the seed stays, asked again tomorrow.
