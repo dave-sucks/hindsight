@@ -59,7 +59,7 @@ function Step({ step, live = false }: { step: ChatStep; live?: boolean }) {
   if (step.kind === "user") {
     return (
       <div className="flex justify-end py-2 pl-12">
-        <div className="rounded-2xl bg-muted px-4 py-2.5 text-message text-foreground">{step.text}</div>
+        <div className="rounded-2xl bg-muted px-3.5 py-2 text-message text-foreground">{step.text}</div>
       </div>
     );
   }

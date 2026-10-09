@@ -7,11 +7,12 @@
  * headline in chat before saying yes. The list on the left is the agents,
  * closed to just their names; the open one says one sentence and links to
  * its page. The conversation on the right streams in with the chat's own
- * parts and moves on when it finishes. Every ticker and number is an example.
+ * parts, rising from a still composer scoped to the analyst, and moves on
+ * when it finishes. Every ticker and number is an example.
  */
 
 import { useEffect, useState } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUp, ArrowUpRight, DollarSign, Settings2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ChatMock, Tk, type ChatStep } from "./chat-mock";
@@ -115,6 +116,37 @@ const CHAPTERS: ReadonlyArray<{ name: string; doc: DocSlug; blurb: string; steps
   },
 ];
 
+/** The analyst the whole story works for. */
+const ANALYST = "PEAD Specialist";
+
+/** The chat's composer, drawn still: scoped to the analyst, the way the chat shows it. */
+function MockComposer({ analyst }: { analyst: string }) {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 rounded-xl border bg-background/80 p-2.5 backdrop-blur-sm" aria-hidden>
+      <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+        <span className="size-1.5 rounded-full bg-muted-foreground/70" />
+        {analyst}
+        <X className="size-3 text-muted-foreground/70" />
+      </span>
+      <span className="px-1 py-1 text-sm text-muted-foreground">Ask about {analyst}…</span>
+      <span className="flex items-center justify-between">
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <span className="grid size-7 place-items-center">
+            <Settings2 className="size-4" />
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 text-sm">
+            <DollarSign className="size-3.5" />
+            Stocks
+          </span>
+        </span>
+        <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
+          <ArrowUp className="size-4" />
+        </span>
+      </span>
+    </div>
+  );
+}
+
 /** The line under the open chapter, filling until the next one. */
 function Progress({ ms }: { ms: number }) {
   const [full, setFull] = useState(false);
@@ -174,14 +206,19 @@ export function StockStory({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           );
         })}
       </ol>
+      {/* One tall frame that never changes size: the chat rises from the
+          composer, and older lines fade out under the top edge. */}
       <div
-        className="flex min-h-[27rem] items-end rounded-2xl border bg-muted/40 p-4 sm:p-8"
+        className="flex h-[80vh] max-h-[52rem] min-h-[34rem] flex-col rounded-2xl border bg-muted/40 px-4 pb-4 sm:px-10 sm:pb-8"
         style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
       >
-        <div className="flex w-full flex-col gap-3 rounded-xl border bg-background p-5 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{c.name}</p>
+        <div
+          className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-end overflow-hidden pb-4"
+          style={{ maskImage: "linear-gradient(to bottom, transparent, black 18%)", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 18%)" }}
+        >
           <ChatMock key={i} title={c.name} steps={c.steps} play bare stepMs={STEP_MS} />
         </div>
+        <MockComposer analyst={ANALYST} />
       </div>
     </div>
   );
