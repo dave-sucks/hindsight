@@ -3,7 +3,7 @@
 /**
  * One request to the model, drawn as squares of 1,000 characters: the parts
  * every request carries, then the ones pulled in only when needed. Two
- * states: the Oct 2 request and the same request after #816 and #817.
+ * states: the Oct 2 request and the same request today, after the rebuild.
  * Hovering a line lights its squares; the toggles add the optional parts.
  */
 
@@ -66,9 +66,9 @@ export function RequestGrid({ data }: { data: FrameworkData }) {
       ? [
           { id: "job", label: "Job prompt", body: "What this door is for and what woke it: here, the morning's walk through the book.", chars: job, source: "measured" },
           { id: "house", label: "House rules", body: "The few sentences true for every analyst everywhere: your word first, and how to write.", chars: data.houseRulesChars, source: "measured" },
-          { id: "analyst", label: "Analyst brief", body: "Who it works for: the strategy you wrote, word for word, its rule numbers, how full it is, its setups.", chars: MEASURED_REQUEST.after.analystBrief, source: "#817 · the Compounder" },
+          { id: "analyst", label: "Analyst brief", body: "Who it works for: the strategy you wrote, word for word, its rule numbers, how full it is, its setups.", chars: MEASURED_REQUEST.after.analystBrief, source: "Measured on the Compounder" },
           { id: "tools", label: "Tool menu", body: `The ${morning?.tools.length ?? ""} tools it may call, each described in full on every request, used or not.`, chars: morning?.toolChars ?? 0, source: "measured", href: "/docs#tools", hrefLabel: "Catalog" },
-          { id: "read", label: "The read", body: "Your book: every holding and watch, each at the size today needs.", chars: MEASURED_REQUEST.after.read, source: "#816 · a real request", href: "#read", hrefLabel: "Zoom in" },
+          { id: "read", label: "The read", body: "Your book: every holding and watch, each at the size today needs.", chars: MEASURED_REQUEST.after.read, source: "Measured on a real request", href: "#read", hrefLabel: "Zoom in" },
         ]
       : [
           { id: "instructions", label: "Instructions", body: "The job, the analyst written out its own way at each door, and a lecture on every situation whether a stock was in it or not.", chars: MEASURED_REQUEST.before.instructions, source: "Oct 2 · a real request" },
@@ -131,7 +131,7 @@ export function RequestGrid({ data }: { data: FrameworkData }) {
             onChange={(v) => v && setWhen(v)}
             options={[
               { value: "before", label: MEASURED_REQUEST.before.date },
-              { value: "after", label: "With #816 and #817" },
+              { value: "after", label: "Today" },
             ]}
           />
           <Mono className="text-xs text-muted-foreground tabular-nums">

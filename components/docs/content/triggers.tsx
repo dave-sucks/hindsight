@@ -5,16 +5,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TRIGGER_TYPES, actionLabel } from "@/lib/agent/triggers/condition";
 import { TRIGGER_TYPE_DOCS } from "@/lib/docs/trigger-examples";
 import { cn } from "@/lib/utils";
-import { Code, DocBody, DocHeader, Section, Stage, Steps, TechDetails, Trio } from "../primitives";
+import { DocRef, DocSection, P, Ul } from "../doc-text";
+import { Code, DocBody, DocHeader, Stage, TechDetails } from "../primitives";
 import { ExamplePill, PillRow } from "../trigger-bits";
 
-const ACTIONS = [
-  { label: "Buy", dot: "bg-positive", body: "Fires once, on the day the price crosses its level." },
-  { label: "Add", dot: "bg-positive", body: "Asks whether to press a winner." },
-  { label: "Trim", dot: "bg-amber-500", body: "Takes part of the position off." },
-  { label: "Sell", dot: "bg-negative", body: "The floor, the trail, the time limit." },
-  { label: "Review", dot: "bg-chart-2", body: "Wakes the analyst to look and decide." },
-] as const;
 
 function Word({ word, cap, tone }: { word: string; cap?: string; tone?: "sell" | "plain" }) {
   return (
@@ -99,10 +93,9 @@ function FireBars({ days }: { days: readonly ("off" | "fire" | "buy")[] }) {
 export function TriggersDoc() {
   return (
     <DocBody>
-      <DocHeader
-        lead="Write the plan once. Triggers keep it."
-        rest="Every trigger is one sentence: when to buy, add, trim, sell or look again. The system checks each one all day and wakes an analyst the moment one comes true."
-      />
+      <DocHeader lead="Write the plan once. Triggers keep it." rest="Every trigger is one sentence: when to buy, add, trim, sell or look again.">
+        The system checks each one all day and wakes the analyst the moment one comes true.
+      </DocHeader>
 
       <Stage>
         <div className="flex flex-col items-center gap-8 py-2">
@@ -112,64 +105,76 @@ export function TriggersDoc() {
             <Word word="below" cap="Watch" />
             <Word word="$40.80" cap="Level" />
           </div>
-          <div className="grid w-full max-w-2xl grid-cols-2 gap-2 sm:grid-cols-5">
-            {ACTIONS.map((a) => (
-              <div key={a.label} className="flex flex-col gap-1 rounded-lg border bg-background p-2.5">
-                <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                  <span className={cn("size-1.5 rounded-full", a.dot)} />
-                  {a.label}
-                </span>
-                <span className="text-xs leading-snug text-muted-foreground">{a.body}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </Stage>
 
-      <Trio
-        items={[
-          { title: "Checked all day", body: "Every five minutes the market is open, plus a pass at 4:20 PM on the day's close." },
-          { title: "Written in plain words", body: "The same sentence everywhere: on the pill, in Activity, and in what the analyst reads." },
-          { title: "Never trades on its own", body: "A fire becomes a decision. Every trade becomes a proposal you approve." },
-        ]}
-      />
+      <DocSection title="What a trigger is">
+        <P>
+          A trigger is a condition and an action, written as one sentence: &ldquo;Sell if below $40.80&rdquo;, &ldquo;Review 7 days before earnings&rdquo;.
+          The same sentence appears everywhere: on the pill on the thesis sheet, in Activity, and in what the analyst reads. A{" "}
+          <DocRef slug="theses">thesis</DocRef>&apos;s whole plan is its triggers, including its buy, its floor and its target.
+        </P>
+        <P>There are five actions:</P>
+        <Ul>
+          <li>
+            <strong>Buy</strong> opens a position on a stock we watch.
+          </li>
+          <li>
+            <strong>Add</strong> asks whether to press a winner.
+          </li>
+          <li>
+            <strong>Trim</strong> takes part of a position off.
+          </li>
+          <li>
+            <strong>Sell</strong> is the floor, the trail or the time limit.
+          </li>
+          <li>
+            <strong>Review</strong> wakes the analyst to look and decide, without an order behind it.
+          </li>
+        </Ul>
+      </DocSection>
 
-      <Section eyebrow="Five kinds" lead="Price, chart, earnings, filings, time." rest="Pick a kind to see real triggers and how each is checked. Click a pill to open it.">
+      <DocSection title="Five kinds">
+        <P>Price, chart, earnings, filings and time. Pick a kind to see real triggers and how each is checked; click a pill to open it.</P>
         <TypeTabs />
-      </Section>
+      </DocSection>
 
-      <Section eyebrow="When one fires" lead="From a match to a proposal in minutes." rest="Nothing is skipped and nothing trades without you.">
-        <Steps
-          items={[
-            { title: "It matches", body: "The check finds the condition true and writes the fire into the stock's Activity." },
-            { title: "An analyst wakes", body: "A buy, add, trim or sale wakes a trigger run within minutes. A review waits for the next morning run." },
-            { title: "It decides", body: "The analyst reads the stock, the fire and your notes, then acts, holds, or redraws the plan." },
-            { title: "You approve", body: "Any trade lands in your queue with its reason. Nothing fills until you say yes." },
-          ]}
-        />
-      </Section>
+      <DocSection title="When they're checked">
+        <P>
+          Every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the day&apos;s close. The chart numbers (averages, highs,
+          volume, strength against the market) are worked out at 6:30 every morning, so every check that day reads the same numbers.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="Two ways to fire" lead="Protection keeps asking. Buys don't chase.">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-3 rounded-xl border bg-card p-5">
-            <p className="text-sm font-medium text-foreground">Sales and reviews are standing orders</p>
+      <DocSection title="When one fires">
+        <P>
+          The fire is written into the stock&apos;s Activity, with the price that fired it. A buy, add, trim or sale wakes a{" "}
+          <DocRef slug="trigger-runs">trigger run</DocRef> within minutes; a review waits for the analyst&apos;s next{" "}
+          <DocRef slug="morning-runs">morning run</DocRef>. Either way, a trigger never trades on its own: anything it leads to is a{" "}
+          <DocRef slug="approvals">proposal</DocRef> you approve.
+        </P>
+      </DocSection>
+
+      <DocSection title="Protection keeps asking. Buys don't chase.">
+        <Ul>
+          <li>
+            <strong>Sales and reviews are standing orders.</strong> They ask every day their condition holds. Decline a sale and it asks again tomorrow, so a
+            floor is never quietly forgotten.
             <FireBars days={["off", "fire", "fire", "fire", "off"]} />
-            <p className="text-sm text-muted-foreground">
-              They ask every day their condition holds. Decline a sale and it asks again tomorrow, so a floor is never quietly forgotten.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 rounded-xl border bg-card p-5">
-            <p className="text-sm font-medium text-foreground">A buy fires once, on the cross</p>
+          </li>
+          <li>
+            <strong>A buy fires once, on the cross.</strong> It fires on the day the price reaches its level, not every day it stays there. A level set after the
+            close is measured from the price it was set at.
             <FireBars days={["off", "off", "buy", "off", "off"]} />
-            <p className="text-sm text-muted-foreground">
-              A buy fires on the day the price crosses its level, not every day it stays past it. A level set after the close is measured from the
-              price it was set at.
-            </p>
-          </div>
-        </div>
-      </Section>
+          </li>
+        </Ul>
+      </DocSection>
 
-      <Section eyebrow="Three layers" lead="Rules come from three places." rest="The closest one wins.">
+      <DocSection title="Rules come from three places">
+        <P>
+          A stock&apos;s triggers are its own, plus the ones it inherits from its <DocRef slug="analysts">analyst</DocRef> and from the account. The closest
+          one wins: a trigger on the thesis beats the analyst&apos;s, which beats the account&apos;s.
+        </P>
         <Stage>
           <div className="mx-auto flex max-w-2xl flex-col gap-3">
             {[
@@ -222,30 +227,19 @@ export function TriggersDoc() {
             once.
           </p>
         </Stage>
-      </Section>
+      </DocSection>
 
-      <Section eyebrow="Rest periods" lead="Each trigger knows when to stay quiet." rest="So one condition doesn't ask fifty times a day.">
-        <div className="overflow-x-auto rounded-xl border">
-          <table className="w-full text-sm">
-            <tbody className="divide-y">
-              {[
-                ["A price level, a day's move, volume, RSI", "At most once a day"],
-                ["The move from our entry", "Once a week, so a milestone isn't asked twice"],
-                ["A beat or a miss, a report heads-up", "Once per report"],
-                ["A new filing", "Once per filing"],
-                ["Insider buying", "Once every 30 days"],
-                ["A review on a state, like below the 200-day", "At most once a week while it holds"],
-                ["The floor and the trail on a holding", "Every day until it's answered"],
-              ].map(([what, rest]) => (
-                <tr key={what}>
-                  <td className="px-4 py-2.5 text-foreground">{what}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{rest}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Section>
+      <DocSection title="Rest periods">
+        <P>Each trigger knows when to stay quiet, so one condition doesn&apos;t ask fifty times a day.</P>
+        <Ul>
+          <li>A price level, a day&apos;s move, volume or RSI: at most once a day.</li>
+          <li>The move from our entry: once a week, so a milestone isn&apos;t asked twice.</li>
+          <li>A beat or a miss, or a heads-up before a report: once per report.</li>
+          <li>A new filing: once per filing. Insider buying: once every 30 days.</li>
+          <li>A review on a state, like being below the 200-day: at most once a week while it holds.</li>
+          <li>The floor and the trail on a holding: every day until it&apos;s answered.</li>
+        </Ul>
+      </DocSection>
 
       <TechDetails
         rows={[

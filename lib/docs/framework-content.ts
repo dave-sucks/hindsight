@@ -31,7 +31,7 @@ export interface FrameworkData {
   situations: FrameworkSituation[];
 }
 
-/** The doors in words. `save` is how many fields its save may send (Roadmap, step 10). */
+/** The doors in words. `save` is how many fields its update_thesis may send (step 12, pinned by update-thesis-doors.test.ts). */
 export const DOOR_COPY: Record<FrameworkDoorId, { name: string; woken: string; job: string; read: string; analyst: string; save: string }> = {
   morning: {
     name: "Morning run",
@@ -39,15 +39,15 @@ export const DOOR_COPY: Record<FrameworkDoorId, { name: string; woken: string; j
     job: "Walk the whole book, every holding and every watch, and act where something changed.",
     read: "Asks for its book once and gets every stock at the size today needs.",
     analyst: "Always. It works for one analyst.",
-    save: "26 fields",
+    save: "18 fields: the plan, the verdict and the note",
   },
   trigger: {
     name: "Trigger run",
     woken: "A trigger fires on one of its stocks",
     job: "One stock, one decision: sell, buy, add, or say why not.",
-    read: "Its one stock arrives in its own prompt block today. Step 10 (#818) moves it into the read.",
+    read: "Its one stock's row from the same read every agent uses, with the fired trigger beside it.",
     analyst: "Always. The stock belongs to one analyst.",
-    save: "12 fields",
+    save: "11 fields: the plan and the note",
   },
   chat: {
     name: "Chat",
@@ -55,7 +55,7 @@ export const DOOR_COPY: Record<FrameworkDoorId, { name: string; woken: string; j
     job: "Answer you, look things up, and act only when you say so.",
     read: "Asks for stocks by name when the conversation needs them.",
     analyst: "When you open the chat on an analyst.",
-    save: "25 fields",
+    save: "21 fields: also the belief and direction",
   },
   discovery: {
     name: "Discovery",
@@ -63,7 +63,7 @@ export const DOOR_COPY: Record<FrameworkDoorId, { name: string; woken: string; j
     job: "Find up to five new stocks worth watching, inside the analyst's universe.",
     read: "Only the tickers it already covers, so it doesn't bring back the same names.",
     analyst: "Always. It searches for one analyst.",
-    save: "A new watch, with record_thesis",
+    save: "A pass or a watch with record_thesis; every new plan is the Writer's",
   },
   writer: {
     name: "Writer",
@@ -71,7 +71,7 @@ export const DOOR_COPY: Record<FrameworkDoorId, { name: string; woken: string; j
     job: "Research one stock in depth and write its whole thesis.",
     read: "Its own pull of the stock's data, run in code before it writes.",
     analyst: "Always. It writes in the analyst's strategy.",
-    save: "The whole thesis, with submit_thesis",
+    save: "35 fields: the whole thesis, including the write-up only it may change",
   },
 };
 

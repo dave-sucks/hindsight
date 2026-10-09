@@ -34,7 +34,7 @@ export function DoorInspector({ data }: { data: FrameworkData }) {
     {
       label: "House rules",
       on: door.houseRules,
-      text: door.houseRules ? `In its prompt, ${fmt(data.houseRulesChars)} characters.` : "Not in its prompt yet. #817 adds them here.",
+      text: door.houseRules ? `In its prompt, ${fmt(data.houseRulesChars)} characters.` : "Not in its prompt.",
     },
     { label: "Analyst brief", on: true, text: copy.analyst },
     { label: "The read", on: true, text: copy.read },

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, Gauge, Rocket, ShieldCheck } from "lucide-react";
+import { CalendarClock, Rocket, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ChatMock } from "../chat-mock";
-import { Anatomy, Code, DocBody, DocHeader, Section, Stage, TechDetails } from "../primitives";
+import { ChatExample, DocRef, DocSection, P, Ul } from "../doc-text";
+import { Code, DocBody, DocHeader, Stage, TechDetails } from "../primitives";
 import { useDocsSetups } from "../tool-catalog";
 import { PillRow } from "../trigger-bits";
 
@@ -101,10 +101,9 @@ function Playbook() {
 export function AnalystsDoc() {
   return (
     <DocBody>
-      <DocHeader
-        lead="Hire an analyst for every style."
-        rest="An analyst is a trading style with its own universe, sizing and sell rules. You build one by talking to it, and it works your book every weekday morning."
-      />
+      <DocHeader lead="Hire an analyst for every style." rest="An analyst is a trading style with its own universe, sizing and sell rules.">
+        You build one by describing it, and it works its book every weekday morning.
+      </DocHeader>
 
       <Stage label="Your analysts">
         <div className="flex flex-col gap-3 py-1">
@@ -128,77 +127,94 @@ export function AnalystsDoc() {
         </div>
       </Stage>
 
-      <Section eyebrow="Anatomy" lead="What makes an analyst." rest="Each part is a setting you can read and change on its page.">
-        <Anatomy
-          items={[
-            { title: "Strategy", body: "Its edge in its own words: what it buys, what it filters out, what it never does." },
-            { title: "Universe", body: "Markets, sectors, industries, themes and a market-cap band. The exclusion list always wins." },
-            { title: "Setups", body: "The kinds of trade it takes, each with a checklist for the buy, the stop, the target and the time limit." },
-            { title: "Sizing", body: "Three numbers: the smallest trade, the largest, and the most it will hold in one stock." },
-            { title: "Sell rules", body: "Its Triggers tab: the rules every one of its holdings inherits, like a trail off the high." },
-            { title: "Run days", body: "Which mornings it reviews its book. A market holiday is never a run day." },
+      <DocSection title="What an analyst is">
+        <P>
+          Each analyst is one way of trading, run by the agents. It has its own book of <DocRef slug="theses">theses</DocRef>, its own watchlist and its own
+          money rules, and every agent that works on one of its stocks reads it first. You can run several side by side: one buying post-earnings drift, one
+          owning long-term compounders, one trading dated events.
+        </P>
+      </DocSection>
+
+      <DocSection title="What makes one">
+        <Ul>
+          <li>
+            <strong>Strategy:</strong> its edge in your words: what it buys, what it filters out, what it never does. Every agent reads it word for word.
+          </li>
+          <li>
+            <strong>Universe:</strong> the markets, sectors, industries, themes and market-cap band it looks in. Its exclusion list always wins.
+          </li>
+          <li>
+            <strong>Setups:</strong> the kinds of trade it takes, chosen from the playbook below.
+          </li>
+          <li>
+            <strong>Sizing:</strong> the smallest trade, the largest, and the most it will hold in one stock.
+          </li>
+          <li>
+            <strong>Sell rules:</strong> its own <DocRef slug="triggers">triggers</DocRef>, inherited by every stock it holds, like a trail 12% off the high.
+          </li>
+          <li>
+            <strong>Run days:</strong> which mornings it reviews its book. Every weekday by default.
+          </li>
+        </Ul>
+      </DocSection>
+
+      <DocSection title="What every agent reads about it">
+        <P>
+          Whichever agent is working (a <DocRef slug="morning-runs">morning run</DocRef>, a <DocRef slug="trigger-runs">trigger run</DocRef>,{" "}
+          <DocRef slug="chat" /> on this analyst, <DocRef slug="discovery" /> or <DocRef slug="writer" />), it reads the same brief: the analyst&apos;s name, its
+          strategy word for word, its rule numbers, how many slots are free, and one line per setup it has chosen. It&apos;s written once, so no two agents
+          can describe the same analyst differently.
+        </P>
+      </DocSection>
+
+      <DocSection title="It never picks a size">
+        <P>
+          Every buy is sized by risk: the dollars at risk divided by the distance to the floor, scaled by conviction, then held inside the analyst&apos;s band. An
+          add risks half of the first buy. A tight, honest floor is what earns a bigger position.
+        </P>
+        <Ul>
+          <li>
+            <strong>Smallest trade:</strong> a normal buy. Below this, it isn&apos;t worth the slot.
+          </li>
+          <li>
+            <strong>Largest trade:</strong> a high-conviction buy, and the ceiling for one order.
+          </li>
+          <li>
+            <strong>Most in one stock:</strong> where adding to a winner stops.
+          </li>
+        </Ul>
+      </DocSection>
+
+      <DocSection title="The playbook">
+        <P>
+          Every analyst trades from the same playbook of setups, each with its checklist for the buy, the floor, the target and the time limit. An analyst picks
+          the ones that fit its style. Pick one to read it.
+        </P>
+        <Playbook />
+      </DocSection>
+
+      <DocSection title="Built by conversation">
+        <P>
+          Describe the style and the builder interviews you with question cards, checks the idea against today&apos;s market, and proposes the whole analyst
+          side by side for you to accept. The editor on an analyst&apos;s page changes one the same way.
+        </P>
+        <ChatExample
+          caption="Building a new analyst."
+          steps={[
+            { kind: "user", text: "I want an analyst that buys biotech run-ups into FDA decisions." },
+            { kind: "tools", label: "Pulling FDA decisions in the next 70 days, firm-wide", rows: [{ text: "23 dated decisions · 9 above a $1B market cap · 4 already run 30%+" }] },
+            { kind: "text", text: "Enough supply to work with. How close to the decision should it sell: the day before, a week before, or hold through it?" },
           ]}
         />
-      </Section>
-
-      <Section eyebrow="Sizing" lead="It never picks a size." rest="Every buy is sized by risk: the dollars at risk over the distance to the floor, scaled by conviction, then held inside the analyst's band. An add risks half of the first buy.">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { t: "Smallest trade", b: "A normal buy. Below this, it isn't worth the slot." },
-            { t: "Largest trade", b: "A high-conviction buy. The ceiling for one order." },
-            { t: "Most in one stock", b: "Where adding to a winner stops." },
-          ].map((c) => (
-            <div key={c.t} className="flex flex-col gap-1.5 rounded-xl border bg-card p-4">
-              <Gauge className="size-4 text-muted-foreground" />
-              <p className="text-sm font-medium text-foreground">{c.t}</p>
-              <p className="text-sm text-muted-foreground">{c.b}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      <Section eyebrow="The playbook" lead="Setups are written down." rest="Every analyst trades from the same playbook of setups; each picks the ones that fit its style. Pick one to read it.">
-        <Playbook />
-      </Section>
-
-      <Section eyebrow="Built by conversation" lead="Describe the style. It builds the analyst." rest="The builder interviews you with question cards, checks the idea against today's market, and proposes the whole setup side by side for you to accept.">
-        <Stage label="Example">
-          <ChatMock
-            className="mx-auto max-w-2xl"
-            title="New analyst"
-            steps={[
-              { kind: "user", text: "I want an analyst that buys biotech run-ups into FDA decisions." },
-              {
-                kind: "tools",
-                label: "Pulling FDA decisions in the next 70 days, firm-wide",
-                rows: [{ text: "23 dated decisions · 9 above a $1B market cap · 4 already run 30%+" }],
-              },
-              {
-                kind: "text",
-                text: (
-                  <div className="flex flex-col gap-3">
-                    <span>Enough supply to work with. How close to the decision should it sell?</span>
-                    <span className="flex flex-wrap gap-1.5">
-                      {["The day before", "A week before", "Hold through it"].map((o) => (
-                        <span key={o} className="rounded-full border px-3 py-1 text-sm text-foreground">
-                          {o}
-                        </span>
-                      ))}
-                    </span>
-                  </div>
-                ),
-              },
-            ]}
-          />
-        </Stage>
-      </Section>
+      </DocSection>
 
       <TechDetails
         rows={[
           { label: "Stored as", value: <><Code>AgentConfig</Code>: <Code>analystPrompt</Code>, the universe fields, <Code>exclusionList</Code>, <Code>minPositionSize</Code> / <Code>maxPositionSize</Code> / <Code>maxPositionTotal</Code>, <Code>runDaysOfWeek</Code>, <Code>triggers</Code>.</> },
-          { label: "Sizing", value: <><Code>lib/agent/position-sizing.ts</Code> (<Code>sizeByRisk</Code>), shared by the trade tools and the Settings screen.</> },
+          { label: "The brief", value: <><Code>analystBrief</Code> in <Code>lib/agent/analyst-brief.ts</Code>, the one text every door puts in its prompt.</> },
+          { label: "Sizing", value: <><Code>sizeByRisk</Code> in <Code>lib/agent/position-sizing.ts</Code>, shared by the trade tools and the Settings screen.</> },
           { label: "Setups", value: <><Code>lib/agent/knowledge/setups.ts</Code></> },
-          { label: "Sell rules", value: <>Resolved thesis → analyst → account by <Code>lib/agent/triggers/levels</Code>; most specific wins.</> },
+          { label: "Sell rules", value: <>Resolved thesis → analyst → account; the most specific wins. Inherited, never copied onto a thesis.</> },
           { label: "Builder", value: <><Code>builder</Code> and <Code>editor</Code> modes, <Code>gpt-4o</Code>, with <Code>ask_question</Code> and <Code>suggest_config</Code>.</> },
         ]}
       />

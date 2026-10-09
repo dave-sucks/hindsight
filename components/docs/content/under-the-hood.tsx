@@ -2,7 +2,10 @@
 
 import type { ReactNode } from "react";
 import type { ToolSource } from "@/lib/docs/tools";
-import { Code, DocBody, DocHeader, Mono, Section, Stage, TechDetails } from "../primitives";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { DocRef, DocSection, P, Ul } from "../doc-text";
+import { Code, DocBody, DocHeader, Stage, TechDetails } from "../primitives";
 import { SourceMark } from "../tool-catalog";
 
 const LAYERS: readonly { tag: string; title: string; body: string; chips: ReactNode }[] = [
@@ -57,15 +60,13 @@ const MODELS: readonly [string, string, string][] = [
   ["Analyst builder", "GPT-4o", "Fast, because you're waiting on it in a conversation."],
 ];
 
-const NOT_AVAILABLE = ["Analyst price targets", "Forward revenue and EPS estimates", "An economic calendar", "Options chains"];
 
 export function UnderTheHoodDoc() {
   return (
     <DocBody>
-      <DocHeader
-        lead="Under the hood."
-        rest="Where the data comes from, when everything runs, which model does what, and what the analysts actually read."
-      />
+      <DocHeader lead="Under the hood." rest="Where the data comes from, when everything runs, and which model does what.">
+        The parts underneath the agents, for when you want to know how something actually works.
+      </DocHeader>
 
       <Stage>
         <div className="mx-auto flex max-w-2xl flex-col items-stretch">
@@ -88,59 +89,51 @@ export function UnderTheHoodDoc() {
         </div>
       </Stage>
 
-      <Section eyebrow="The day" lead="Everything runs on a clock." rest="Eastern time, on trading days unless it says otherwise.">
-        <ol className="flex flex-col">
+      <DocSection title="Everything runs on a clock">
+        <P>Eastern time, on trading days unless it says otherwise.</P>
+        <Ul>
           {CLOCK.map(([t, b]) => (
-            <li key={t} className="grid gap-1 border-t py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-              <span className="text-xs font-medium text-foreground tabular-nums sm:pt-0.5">{t}</span>
-              <span className="text-sm text-muted-foreground">{b}</span>
+            <li key={t}>
+              <strong>{t}:</strong> {b}
             </li>
           ))}
-        </ol>
-      </Section>
+        </Ul>
+      </DocSection>
 
-      <Section eyebrow="Models" lead="The right model for each job.">
-        <div className="overflow-x-auto rounded-xl border">
-          <table className="w-full min-w-[34rem] text-sm">
-            <tbody className="divide-y">
-              {MODELS.map(([who, model, why]) => (
-                <tr key={who}>
-                  <td className="px-4 py-3 text-foreground">{who}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-foreground">
-                    <Mono>{model}</Mono>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{why}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Section>
+      <DocSection title="Where the data comes from">
+        <P>
+          Live prices and every bar come from Alpaca, off the consolidated tape, with Finnhub behind it if a price can&apos;t be had. A live price is never
+          cached, and every quote carries the time it printed, so a stale one is said out loud instead of passed off as now. Earnings, company numbers, news
+          and insider trades come from Finnhub; filings straight from the SEC; the web from Perplexity and Claude&apos;s own search; X from Grok.
+        </P>
+        <P>
+          Some data isn&apos;t on any plan we hold: analyst price targets, forward revenue and EPS estimates, an economic calendar and options chains. The tools
+          say so when asked, and never guess.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="What an analyst is told" lead="Three layers of instructions, and one read." rest="The house rules every agent shares, the analyst's own brief, and the job for this run. What a stock needs arrives with the stock, never in the prompt.">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { t: "House rules", b: "How every agent writes and how your word is read. One file, shared by every door." },
-            { t: "The analyst brief", b: "Its strategy, rules, sizing and universe." },
-            { t: "The job", b: "The morning's review, one fired stock, or your question." },
-          ].map((c) => (
-            <div key={c.t} className="flex flex-col gap-1.5 rounded-xl border bg-card p-4">
-              <p className="text-sm font-medium text-foreground">{c.t}</p>
-              <p className="text-sm text-muted-foreground">{c.b}</p>
-            </div>
+      <DocSection title="The right model for each job">
+        <Ul>
+          {MODELS.map(([who, model, why]) => (
+            <li key={who}>
+              <strong>{who}:</strong> {model}. {why}
+            </li>
           ))}
-        </div>
-      </Section>
+        </Ul>
+      </DocSection>
 
-      <Section eyebrow="What we don't have" lead="Said plainly, never guessed." rest="No data plan we hold serves these. The tools report them as missing instead of making them up.">
-        <div className="flex flex-wrap gap-1.5">
-          {NOT_AVAILABLE.map((n) => (
-            <span key={n} className="rounded-full border border-dashed px-3 py-1 text-sm text-muted-foreground">
-              {n}
-            </span>
-          ))}
-        </div>
-      </Section>
+      <DocSection title="What an agent is told">
+        <P>
+          Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the
+          analyst&apos;s brief, and the read of its stocks. What a stock needs arrives with the stock, through its{" "}
+          <DocRef slug="situations">situations</DocRef>, never in a prompt. The Framework tab takes one request apart, piece by piece, with every size measured
+          from the code.
+        </P>
+        <Link href="/docs/framework" className="inline-flex w-fit items-center gap-1 text-sm font-medium text-foreground underline-offset-4 hover:underline">
+          Open the Framework
+          <ArrowRight className="size-3.5" />
+        </Link>
+      </DocSection>
 
       <TechDetails
         rows={[

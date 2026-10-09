@@ -2,7 +2,8 @@
 
 import { Bell, Clock, Mail } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
-import { Anatomy, Code, DocBody, DocHeader, Section, Stage, TechDetails, Trio } from "../primitives";
+import { DocRef, DocSection, P, ToolRef, Ul } from "../doc-text";
+import { Code, DocBody, DocHeader, Stage, TechDetails } from "../primitives";
 
 function ProposalMock() {
   return (
@@ -59,10 +60,9 @@ function PushMock() {
 export function ApprovalsDoc() {
   return (
     <DocBody>
-      <DocHeader
-        lead="Analysts propose. You approve."
-        rest="Every buy, sale, add and trim an analyst wants waits in your queue with its reason. Nothing fills until you say yes."
-      />
+      <DocHeader lead="Analysts propose. You approve." rest="Every buy, sale, add and trim an analyst wants waits in your queue with its reason.">
+        Nothing fills until you say yes.
+      </DocHeader>
 
       <Stage label="Example">
         <div className="grid items-center gap-5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
@@ -71,38 +71,55 @@ export function ApprovalsDoc() {
         </div>
       </Stage>
 
-      <Trio
-        items={[
-          { title: "Everywhere at once", body: "The moment a run proposes a trade, it's in your queue, your inbox and on your phone." },
-          { title: "A day to decide", body: "A proposal expires after 24 hours. A sale whose line is still crossed asks again the next day." },
-          { title: "Your answer counts", body: "A decline is recorded and read by every run after. Asking again takes new reasons, said plainly." },
-        ]}
-      />
+      <DocSection title="How a trade reaches you">
+        <P>
+          No agent trades on its own. When a <DocRef slug="morning-runs">morning run</DocRef>, a <DocRef slug="trigger-runs">trigger run</DocRef> or{" "}
+          <DocRef slug="chat" /> decides to buy or sell, the order stops at a gate and becomes a proposal. It lands in your queue, your inbox and on your phone at
+          the same moment, and nothing reaches the broker until you approve it.
+        </P>
+      </DocSection>
 
-      <Section eyebrow="What a proposal carries" lead="Everything you need to say yes or no.">
-        <Anatomy
-          items={[
-            { title: "The trade", body: "The stock, buy or sell, the shares and the price it expects." },
-            { title: "The reason", body: "In the analyst's words: the call, the stock, the price, then why." },
-            { title: "What caused it", body: "The trigger that fired, or the run that decided it." },
-            { title: "The clock", body: "When it expires if you don't answer." },
-          ]}
-        />
-      </Section>
+      <DocSection title="What a proposal carries">
+        <Ul>
+          <li>
+            <strong>The trade:</strong> the stock, buy or sell, the shares and the price it expects.
+          </li>
+          <li>
+            <strong>The reason:</strong> in the analyst&apos;s words: the call, the stock and the price, then why.
+          </li>
+          <li>
+            <strong>What caused it:</strong> the trigger that fired, or the run that decided it.
+          </li>
+          <li>
+            <strong>The clock:</strong> when it expires if you don&apos;t answer.
+          </li>
+        </Ul>
+      </DocSection>
 
-      <Section eyebrow="Live and paper" lead="Real money always asks." rest="On a live account every buy and sale needs your approval by default. A paper account can let its analysts trade on their own; that's a setting you choose.">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {[
-            { t: "Live account", b: "Buys and sales need your approval. Recommended, and on unless you change it." },
-            { t: "Paper account", b: "Off by default, so analysts can practise freely. Turn it on to review every paper trade too." },
-          ].map((c) => (
-            <div key={c.t} className="flex flex-col gap-1.5 rounded-xl border bg-card p-4">
-              <p className="text-sm font-medium text-foreground">{c.t}</p>
-              <p className="text-sm text-muted-foreground">{c.b}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
+      <DocSection title="A day to decide">
+        <P>
+          A proposal expires after 24 hours. Until then it isn&apos;t a holding and isn&apos;t counted in your positions or your P&amp;L. A sale whose line is
+          still crossed asks again the next day, so a floor is never quietly forgotten.
+        </P>
+      </DocSection>
+
+      <DocSection title="Your answer counts">
+        <P>
+          A decline is recorded and read by every run after it. Asking again takes new reasons, said plainly. Agents can read the queue with{" "}
+          <ToolRef name="list_proposals" />, but approving and declining are never their tools: that click is always yours.
+        </P>
+      </DocSection>
+
+      <DocSection title="Live and paper">
+        <Ul>
+          <li>
+            <strong>Live account:</strong> buys and sales need your approval, on unless you change it.
+          </li>
+          <li>
+            <strong>Paper account:</strong> off by default, so analysts can practise freely. Turn it on to review every paper trade too.
+          </li>
+        </Ul>
+      </DocSection>
 
       <TechDetails
         rows={[
