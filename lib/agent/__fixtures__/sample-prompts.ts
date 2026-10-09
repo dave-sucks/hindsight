@@ -37,7 +37,7 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
           { named: true, size: "short", setupLines: true },
         ),
       },
-      trigger: trailTrigger, position: { peakPrice: 62.7 }, latestDigest: null,
+      trigger: trailTrigger, position: { peakPrice: 62.7 },
       // A trail sale on a holding: the one situation it puts the stock in.
       situations: { codes: ["PROTECTIVE_SALE"], guidance: guidanceFor(["PROTECTIVE_SALE"]) },
     } as never),

@@ -127,7 +127,7 @@ export const getTheses = defineTool({
   // for it never did (now-needs-research, 0/12 with and without a line
   // saying how). Each row also says when its research was written and at
   // what price.
-  forModel: (result, input) => {
+  forModel: (result, input, ctx) => {
     if (!result.ok) return result;
     const data = result.data as Record<string, unknown> | undefined;
     if (!data) return result;
@@ -143,10 +143,15 @@ export const getTheses = defineTool({
     const theses = rows.map((row) => rowForModel(row, { named, size: sizeFor(row, named) }));
     const quiet = Array.isArray(rest.quiet_theses) ? (rest.quiet_theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, { named, size: "line" })) : rest.quiet_theses;
     const sold = Array.isArray(rest.sold_to_review) ? (rest.sold_to_review as Array<{ situations?: SituationCode[] }>) : [];
-    const guidance = guidanceFor([
-      ...rows.flatMap((r) => guidanceCodes(String(r.status), Array.isArray(r.situations) ? (r.situations as SituationCode[]) : [])),
-      ...sold.flatMap((x) => x.situations ?? []),
-    ]);
+    // Worded for the run that reads it: the trigger run's save has no status
+    // change, so its texts take the plan down by id instead (step 12, part 2).
+    const guidance = guidanceFor(
+      [
+        ...rows.flatMap((r) => guidanceCodes(String(r.status), Array.isArray(r.situations) ? (r.situations as SituationCode[]) : [], ctx.runMode)),
+        ...sold.flatMap((x) => x.situations ?? []).filter((c) => guidanceCodes("RETIRED", [c], ctx.runMode).length > 0),
+      ],
+      ctx.runMode,
+    );
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { guidance: _screenGuidance, left_out: leftOut, ...restWithoutGuidance } = rest;
     return {
@@ -819,7 +824,7 @@ export const getTheses = defineTool({
     // order (lib/agent/situations.ts). A promoted stock calls for the
     // promotion's text alone; quiet rows are not today's work.
     const guidance = guidanceFor([
-      ...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id))),
+      ...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id), ctx.runMode)),
       ...soldToReview.flatMap((x) => x.situations),
     ]);
 

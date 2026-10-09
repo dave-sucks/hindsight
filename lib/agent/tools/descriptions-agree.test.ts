@@ -30,7 +30,10 @@ function wordsOf(p: Prop): string {
 }
 
 function describe_(tool: string, field: string): string {
-  const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode: "PRINCIPAL_CHAT", runEnvironment: "PAPER" } as never) as Record<string, { inputSchema: unknown }>;
+  // update_thesis is read through the writer's door, the one that carries every field: since step 12,
+  // part 2 the chat's has no snapshot, score, variant view or read price. The words are the same at every door.
+  const runMode = tool === "update_thesis" ? "THESIS_WRITER" : "PRINCIPAL_CHAT";
+  const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode, runEnvironment: "PAPER" } as never) as Record<string, { inputSchema: unknown }>;
   const js = zodSchema(all[tool].inputSchema as never).jsonSchema as { properties: Record<string, Prop> };
   return wordsOf(js.properties[field]);
 }

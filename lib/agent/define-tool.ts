@@ -54,7 +54,7 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
    * re-sent on every step that follows. `input` is the call's arguments, so
    * what the model reads can depend on what it asked for.
    */
-  forModel?: (result: ToolResult<TData>, input: z.infer<TSchema> | undefined) => unknown;
+  forModel?: (result: ToolResult<TData>, input: z.infer<TSchema> | undefined, ctx: ToolContext) => unknown;
   /** Which UI renderer handles this tool's result */
   ui: ToolUI;
   /** Optional phase key — tools with the same groupId collapse in the UI */
@@ -122,7 +122,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
             toModelOutput: ({ output, input }: { output: ToolResult<TData>; input: unknown }) => ({
               type: "json" as const,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              value: options.forModel!(output, input as z.infer<TSchema> | undefined) as any,
+              value: options.forModel!(output, input as z.infer<TSchema> | undefined, ctx) as any,
             }),
           }
         : {}),

@@ -39,7 +39,7 @@ const RECORDED_TOOLS: Record<string, number> = {
   "research-run": 31_813,
   tactical: 27_674,
   discovery: 35_104,
-  principal: 65_925,
+  principal: 63_681,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", discovery: "DISCOVERY", principal: "PRINCIPAL_CHAT" };
 

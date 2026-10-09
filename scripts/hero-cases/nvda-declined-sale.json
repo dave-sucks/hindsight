@@ -345,7 +345,6 @@
    "peakPrice": 234.18
   },
   "context": "WHAT'S BEEN SAID ON $NVDA\nLast look: trigger run, 09-15 10:05 — \"Validated the fired trailing-stop exit on $NVDA: live price is $212.84, which is below the authoritative 8% give-back line at $215.45 from the system-tracked peak of $234.18, so I proposed closing the position on price…\"\nSince then, not yet answered:\n  The principal, 09-15 15:23: Declined the sale (33 shares) at $212.84, now $212.21 (−0.3%): does not want to sell at a loss; asked for the triggers to be adjusted instead.\nFull history: get_theses(tickers: [\"NVDA\"], include_history: true)",
-  "latestDigest": null,
   "fired": {
    "price": 212.21,
    "coFired": []

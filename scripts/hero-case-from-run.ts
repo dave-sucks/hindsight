@@ -112,7 +112,6 @@ async function main() {
       savedRow,
       trigger,
       position: position ? { peakPrice: position.peakPrice != null ? Number(position.peakPrice) : null } : null,
-      latestDigest: null,
       fired: { price: firedPrice },
       capacity: null,
     };
