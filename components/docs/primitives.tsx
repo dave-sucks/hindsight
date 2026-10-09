@@ -203,12 +203,12 @@ export function DocHeader({ lead, rest, children }: { lead: ReactNode; rest?: Re
   return (
     <header className="flex flex-col gap-4">
       <TwoTone lead={lead} rest={rest} size="intro" as="h2" />
-      {children ? <p className="max-w-[65ch] text-base leading-7 text-muted-foreground">{children}</p> : null}
+      {children ? <p className="max-w-[65ch] text-base leading-relaxed text-muted-foreground">{children}</p> : null}
     </header>
   );
 }
 
 /** The vertical rhythm of a doc body. */
 export function DocBody({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-14">{children}</div>;
+  return <div className="flex flex-col gap-10">{children}</div>;
 }

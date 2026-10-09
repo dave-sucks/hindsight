@@ -52,108 +52,71 @@ export function DiscoveryDoc() {
 
       <DocSection title="What it does">
         <P>
-          Discovery only looks at stocks the analyst doesn&apos;t already cover. The tools it reads from hide every stock the analyst holds or watches, so a run spends
-          its time on names that are new. You can ask it to:
+          Discovery only looks at stocks the analyst doesn&apos;t already cover; its tools hide everything on the book. You can ask it to find names off this
+          week&apos;s earnings, run one of the analyst&apos;s setup screens, look for dated catalysts, or check tickers you paste in.
         </P>
-        <Ul>
-          <li>Find names off this week&apos;s earnings reports</li>
-          <li>Run one of the analyst&apos;s setup screens and research what clears it</li>
-          <li>Look for dated catalysts, like FDA decisions, in a window</li>
-          <li>Check a list of tickers you paste in</li>
-        </Ul>
         <P>
-          It doesn&apos;t manage stocks already on the book. That&apos;s <AgentRef slug="morning-runs" />. And it never buys: every stock it adds lands on the watchlist, and
-          a buy only happens later, when that stock&apos;s buy trigger fires and you approve the proposal.
+          It doesn&apos;t manage the book (that&apos;s <AgentRef slug="morning-runs" />) and it never buys. New stocks land on the watchlist, and a buy happens only
+          when a stock&apos;s buy trigger fires and you approve it.
         </P>
       </DocSection>
 
       <DocSection title="Starting it">
         <P>
-          Discovery runs when you ask for it. Open <AgentRef slug="chat" /> with an analyst selected and ask for new names, or start a discovery run for one analyst.
-          A run can carry a focus, like &ldquo;this week&apos;s earnings&rdquo;, which decides where it looks first. The chat has the same discovery tools, so a
-          conversation can do the whole job and show you the plans as they land.
+          Discovery runs when you ask. Ask in <AgentRef slug="chat" /> with an analyst selected, or start a discovery run for one analyst. Try:
         </P>
-        <P>Try asking:</P>
-        <Prompts
-          items={[
-            "Find drift names off this week's reports.",
-            "Run the pullback screen and research what's left.",
-            "Any FDA decisions in the next 60 days that fit this analyst?",
-            "Look at SMMT, IOT and SRRK. Worth a watch?",
-          ]}
-        />
+        <Prompts items={["Find drift names off this week's reports.", "Run the pullback screen and research what's left.", "Any FDA decisions in the next 60 days that fit?"]} />
       </DocSection>
 
       <DocSection title="Where it looks">
-        <P>
-          <strong>Setup screens.</strong> <ToolRef name="run_screen" /> returns a candidate list for one of the analyst&apos;s setups with the numbers already worked
-          out: the size of the beat and the reaction for post-earnings drift, the gap for an episodic pivot, the distance to a rising average for a pullback. Every
-          stock that failed the screen comes back with its reason.
-        </P>
-        <P>
-          <strong>Earnings.</strong> <ToolRef name="get_earnings_calendar" /> shows who just reported, against the estimate, biggest beats first, or who reports soon.
-          When you ask for discovery off a report window, this is where it starts.
-        </P>
-        <P>
-          <strong>Movers.</strong> <ToolRef name="get_market_movers" /> lists today&apos;s gainers, losers and most active stocks outside the analyst&apos;s coverage:
-          how a stock nobody covers shows up on price and volume.
-        </P>
-        <P>
-          <strong>Catalysts and the web.</strong> <ToolRef name="get_catalyst_calendar" /> reads dated FDA decisions from the companies&apos; own filings.{" "}
-          <ToolRef name="web_search" /> and <ToolRef name="twitter_search" /> check a story before it becomes a thesis.
-        </P>
+        <Ul>
+          <li>
+            <strong>Setup screens:</strong> <ToolRef name="run_screen" /> gives a candidate list for one setup, numbers worked out, with every reject and its reason.
+          </li>
+          <li>
+            <strong>Earnings:</strong> <ToolRef name="get_earnings_calendar" /> shows who just reported, biggest beats first, or who reports soon.
+          </li>
+          <li>
+            <strong>Movers:</strong> <ToolRef name="get_market_movers" /> lists today&apos;s gainers, losers and most active outside the analyst&apos;s coverage.
+          </li>
+          <li>
+            <strong>Catalysts and the web:</strong> <ToolRef name="get_catalyst_calendar" /> for dated FDA decisions; <ToolRef name="web_search" /> and{" "}
+            <ToolRef name="twitter_search" /> to check a story.
+          </li>
+        </Ul>
       </DocSection>
 
       <DocSection title="How it decides">
         <P>
-          Discovery reads the whole pool before researching anything, and says in a sentence or two what caught its eye on each name and what it would need to
-          check. Names that plainly don&apos;t fit (outside the universe, a penny stock off the movers list) are dropped right there.
+          It reads the whole pool first and drops what plainly doesn&apos;t fit. For the rest, <ToolRef name="get_theses" /> checks that no other analyst already
+          covers the stock, and <ToolRef name="get_stock_data" /> gives the price, chart and news. Each stock is scored on trend, strength against the market, entry
+          and how fresh its catalyst is; 4 out of 10 or better earns a deeper look.
         </P>
         <P>
-          For the rest, the research is deliberately cheap. <ToolRef name="get_theses" /> checks whether another analyst on the account already covers the stock in the
-          same direction; if one does, it moves on. <ToolRef name="get_stock_data" /> gives the live price, the chart and the week&apos;s news. Each stock is then scored
-          on four things: the trend, its strength against the market, the quality of the entry, and how fresh its catalyst is. A score of 4 out of 10 or better is
-          worth a deeper look.
-        </P>
-        <P>
-          Off an earnings report, the order of weight is: both lines beat and guidance went up, first. An earnings beat with a revenue miss is discounted, because the
-          beat came from cost. A beat where the stock fell means the market wanted more, so it reads the call before trusting the number.
+          It works for one analyst and reads its strategy, rules, universe and record by setup first. A stock the analyst used to own, with a fresh catalyst, counts
+          as a lead.
         </P>
       </DocSection>
 
       <DocSection title="What happens to each stock">
-        <P>Every stock it researched ends one of four ways, and the run&apos;s summary lists each one with where it went.</P>
         <Ul>
           <li>
-            <strong>Sent to the Writer.</strong> <ToolRef name="dispatch_thesis_research" /> starts <AgentRef slug="writer" /> on the stock, up to five per run.
-            The Writer does the deep research and writes the thesis with its buy trigger, floor and target.
+            <strong>Sent to the Writer:</strong> <ToolRef name="dispatch_thesis_research" /> starts <AgentRef slug="writer" />, which writes the thesis with its
+            buy trigger, floor and target. Up to five per run.
           </li>
           <li>
-            <strong>Kept on watch.</strong> Strong, but out of slots this run or not ready yet. <ToolRef name="record_thesis" /> puts it on the watchlist without a
-            plan, with a wake-up condition if one makes sense, like a price level or a date before its report.
+            <strong>Kept on watch:</strong> strong but not ready, saved with <ToolRef name="record_thesis" /> and an optional wake-up, like a price or a date.
           </li>
           <li>
-            <strong>Passed.</strong> Researched and declined. The pass is recorded with what would change the verdict, so the next discovery that meets the stock reads
-            &ldquo;we already looked, and here&apos;s why not.&rdquo;
+            <strong>Passed:</strong> recorded with what would change the verdict, so the next look starts from it.
           </li>
           <li>
-            <strong>Skipped.</strong> Dropped before research. No record, just a line in the summary.
+            <strong>Skipped:</strong> dropped before research, a line in the summary.
           </li>
         </Ul>
         <P>
-          A run ends with <ToolRef name="record_run_summary" /> and <ToolRef name="complete_run" />. The Writers it started keep working after it finishes; each one
-          lands as its own run. In chat, <ToolRef name="wait_for_thesis_refresh" /> waits for them so you see the finished plans in the conversation.
-        </P>
-      </DocSection>
-
-      <DocSection title="What it knows about the analyst">
-        <P>
-          Discovery works for one analyst at a time, and reads it before it starts: the strategy you wrote, word for word, its rules on direction and size, and its
-          universe of sectors, industries, themes, market cap and exclusions. The universe is for judgment; the tools have already hidden what&apos;s covered.
-        </P>
-        <P>
-          It also reads the analyst&apos;s book, including stocks it used to own. A past holding with a fresh catalyst is a lead, not a used-up name. And it reads the
-          analyst&apos;s record by setup, so the patterns that have paid are the ones it looks for first.
+          The run ends with <ToolRef name="record_run_summary" />. Writers it started keep going and land as their own runs; in chat,{" "}
+          <ToolRef name="wait_for_thesis_refresh" /> waits for them.
         </P>
       </DocSection>
 

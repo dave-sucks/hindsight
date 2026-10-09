@@ -29,12 +29,12 @@ export function H2({ id, children }: { id?: string; children: ReactNode }) {
 }
 
 export function P({ children }: { children: ReactNode }) {
-  return <p className="max-w-[65ch] text-sm leading-7 text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">{children}</p>;
+  return <p className="max-w-[65ch] text-sm leading-6 text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">{children}</p>;
 }
 
 export function Ul({ children }: { children: ReactNode }) {
   return (
-    <ul className="flex max-w-[65ch] list-disc flex-col gap-1.5 pl-5 text-sm leading-7 text-muted-foreground marker:text-muted-foreground/50 [&_strong]:font-medium [&_strong]:text-foreground">
+    <ul className="flex max-w-[65ch] list-disc flex-col gap-1 pl-5 text-sm leading-6 text-muted-foreground marker:text-muted-foreground/50 [&_strong]:font-medium [&_strong]:text-foreground">
       {children}
     </ul>
   );
@@ -56,7 +56,7 @@ export function Prompts({ items }: { items: readonly string[] }) {
 /** One block of doc text: a heading and what follows it, spaced like a page. */
 export function DocSection({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-3">
       <H2 id={id}>{title}</H2>
       {children}
     </section>
