@@ -9,15 +9,17 @@
 import { useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpRight, Search } from "lucide-react";
+import { ArrowUpRight, Maximize2, Search, X } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Kbd } from "@/components/ui/kbd";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Sheet, SheetClose, SheetContent } from "@/components/ui/sheet";
 import type { CatalogTool, DocsSetup } from "@/lib/docs/tools";
 import { cn } from "@/lib/utils";
 import { AgentAsset } from "./agent-assets";
 import { LoopCanvas } from "./loop-canvas";
 import { Eyebrow, TwoTone } from "./primitives";
+import { DocCrumbs } from "./doc-crumbs";
 import { DocsNav } from "./docs-nav";
 import { DOCS, GET_STARTED, docBySlug, type DocSlug } from "./registry";
 import { Scenarios } from "./scenarios";
@@ -196,19 +198,25 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
       </div>
 
       <Sheet open={open != null} onOpenChange={(o) => (o ? null : setDoc(null))}>
-        <SheetContent side="right" size="xl" floating>
+        <SheetContent side="right" size="xl" floating showCloseButton={false} aria-label={open?.title}>
           {open ? (
-            <div className="flex flex-col gap-10 px-6 pb-16 pt-6 sm:px-10">
-              <div className="flex items-center gap-2 pr-10 text-sm text-muted-foreground">
-                <SheetTitle>{open.title}</SheetTitle>
-                <span aria-hidden>·</span>
-                <span>{open.group}</span>
-                <Link href={`/docs/${open.slug}`} className="ml-auto inline-flex items-center gap-1 hover:text-foreground">
-                  Open as page
-                  <ArrowUpRight className="size-3.5" />
-                </Link>
+            <div className="flex flex-col">
+              {/* One row: where the page sits, then expand and close, the way Notion's peek does it. */}
+              <div className="flex items-center gap-2 py-3 pl-6 pr-3 sm:pl-10">
+                <DocCrumbs group={open.group} title={open.title} />
+                <span className="ml-auto flex items-center gap-0.5">
+                  <Link href={`/docs/${open.slug}`} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Open as page" title="Open as page">
+                    <Maximize2 />
+                  </Link>
+                  <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
+                    <X />
+                    <span className="sr-only">Close</span>
+                  </SheetClose>
+                </span>
               </div>
-              <open.Content />
+              <div className="flex flex-col px-6 pb-16 pt-6 sm:px-10">
+                <open.Content />
+              </div>
             </div>
           ) : null}
         </SheetContent>

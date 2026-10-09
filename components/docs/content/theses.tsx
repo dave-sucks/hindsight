@@ -155,7 +155,6 @@ export function ThesesDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Concept"
         lead="Every position starts with a thesis."
         rest="What we believe, why, what would prove us wrong, and the triggers that act on it. Written once, kept current every run."
       />

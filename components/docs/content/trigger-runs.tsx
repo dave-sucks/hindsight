@@ -11,7 +11,6 @@ export function TriggerRunsDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Agent · Trigger runs"
         lead="When a stock moves, an analyst looks."
         rest="A trigger fires, and within minutes an analyst reads that one stock, checks what's true now, and proposes what to do."
       />

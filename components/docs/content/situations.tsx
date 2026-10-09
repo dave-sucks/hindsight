@@ -76,7 +76,6 @@ export function SituationsDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Concept"
         lead="It knows what needs attention."
         rest="A stock is in a situation when something about it needs an answer today. Sixteen of them, worked out fresh on every read, each with its own guidance for the analyst."
       />

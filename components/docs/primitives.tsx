@@ -23,6 +23,8 @@ const TWO_TONE_SIZE = {
   page: "text-3xl leading-[1.1] sm:text-4xl max-w-[24ch]",
   section: "text-2xl leading-tight sm:text-3xl max-w-[28ch]",
   sub: "text-xl leading-snug max-w-[34ch]",
+  /** The sentence every doc opens with: large, and as wide as the page. */
+  intro: "text-2xl leading-tight sm:text-3xl",
 } as const;
 
 /** A headline in two tones: the claim, then the explanation in muted ink. */
@@ -192,12 +194,16 @@ export function TechDetails({ rows }: { rows: ReadonlyArray<{ label: string; val
   );
 }
 
-/** The doc's own opening: eyebrow, headline, then whatever comes first. */
-export function DocHeader({ eyebrow, lead, rest }: { eyebrow: string; lead: ReactNode; rest: ReactNode }) {
+/**
+ * How every doc opens: one large two-tone sentence, the full width of the
+ * page, then a short description when the sentence needs one. Where the page
+ * sits (Agents / Discovery) is the breadcrumb's job, not the header's.
+ */
+export function DocHeader({ lead, rest, children }: { lead: ReactNode; rest?: ReactNode; children?: ReactNode }) {
   return (
-    <header className="flex flex-col gap-3">
-      <Eyebrow>{eyebrow}</Eyebrow>
-      <TwoTone lead={lead} rest={rest} size="page" as="h2" />
+    <header className="flex flex-col gap-4">
+      <TwoTone lead={lead} rest={rest} size="intro" as="h2" />
+      {children ? <p className="max-w-[65ch] text-base leading-7 text-muted-foreground">{children}</p> : null}
     </header>
   );
 }

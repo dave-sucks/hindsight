@@ -20,7 +20,6 @@ export function WriterDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Agent · The Writer"
         lead="Deep research on one stock, in about four minutes."
         rest="The Writer pulls the numbers, reads the filings and the web, and writes the thesis: the case for and against, the belief, and a plan made of triggers."
       />

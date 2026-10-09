@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The plain parts of a doc page: a title, headings, paragraphs, lists, a few
+ * The plain parts of a doc page: headings, paragraphs, lists, a few
  * example prompts, and the inline references that name a tool or another
  * agent inside a sentence. Docs are mostly text; the visual assets sit
  * between paragraphs where a picture explains faster.
@@ -19,17 +19,6 @@ import { MessageCircle, PenLine, Search, Sun, Zap, type LucideIcon } from "lucid
 import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
 import { SourceMark, ToolDialog, useDocsTools } from "./tool-catalog";
-
-/** The page's title and the one paragraph that says what the thing is. */
-export function DocTitle({ kicker, title, children }: { kicker: string; title: string; children: ReactNode }) {
-  return (
-    <header className="flex flex-col gap-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{kicker}</p>
-      <h2 className="text-3xl font-medium tracking-tight text-foreground">{title}</h2>
-      <p className="max-w-[60ch] text-base leading-7 text-muted-foreground">{children}</p>
-    </header>
-  );
-}
 
 export function H2({ id, children }: { id?: string; children: ReactNode }) {
   return (

@@ -1,17 +1,17 @@
 "use client";
 
 import { ChatMock, Tk } from "../chat-mock";
-import { AgentRef, DocSection, DocTitle, P, Prompts, ToolRef, Ul } from "../doc-text";
-import { Code, DocBody, Stage, TechDetails } from "../primitives";
+import { AgentRef, DocSection, P, Prompts, ToolRef, Ul } from "../doc-text";
+import { Code, DocBody, DocHeader, Stage, TechDetails } from "../primitives";
 import { AgentTools } from "../tool-catalog";
 
 export function DiscoveryDoc() {
   return (
     <DocBody>
-      <DocTitle kicker="Agent" title="Discovery">
-        Discovery finds new stocks for an analyst to watch. It looks where new names show up, like fresh earnings, today&apos;s movers and setup screens, checks each one
-        against the analyst&apos;s rules, and sends the best to the Writer to research.
-      </DocTitle>
+      <DocHeader lead="Find it before it's obvious." rest="Discovery finds new stocks for an analyst to watch.">
+        It looks where new names show up, like fresh earnings, today&apos;s movers and setup screens, checks each one against the analyst&apos;s rules, and sends the
+        best to the Writer to research.
+      </DocHeader>
 
       <Stage label="Example">
         <ChatMock

@@ -63,7 +63,6 @@ export function UnderTheHoodDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Concept"
         lead="Under the hood."
         rest="Where the data comes from, when everything runs, which model does what, and what the analysts actually read."
       />

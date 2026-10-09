@@ -102,7 +102,6 @@ export function AnalystsDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Concept"
         lead="Hire an analyst for every style."
         rest="An analyst is a trading style with its own universe, sizing and sell rules. You build one by talking to it, and it works your book every weekday morning."
       />

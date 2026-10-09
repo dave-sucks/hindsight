@@ -19,7 +19,6 @@ export function ChatDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Agent · Chat"
         lead="Ask anything. It sees the whole desk."
         rest="Talk to one analyst about its book, or to the whole account. It reads the same theses, runs the same research, and can change a plan or propose a trade while you watch."
       />

@@ -100,7 +100,6 @@ export function TriggersDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Concept"
         lead="Write the plan once. Triggers keep it."
         rest="Every trigger is one sentence: when to buy, add, trim, sell or look again. The system checks each one all day and wakes an analyst the moment one comes true."
       />

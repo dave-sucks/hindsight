@@ -60,7 +60,6 @@ export function ApprovalsDoc() {
   return (
     <DocBody>
       <DocHeader
-        eyebrow="Concept"
         lead="Analysts propose. You approve."
         rest="Every buy, sale, add and trim an analyst wants waits in your queue with its reason. Nothing fills until you say yes."
       />
