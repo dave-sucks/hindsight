@@ -151,13 +151,15 @@ describe("refuse the field, land the call", () => {
   });
 
   it.each([
-    ["MORNING_PLAN", "Leave the buy as it is"],
-    ["PRINCIPAL_CHAT", "price_at_time"],
+    ["MORNING_PLAN", "Leave the buy as it is; the next run can move it."],
+    // The chat's save has no price field since step 12, part 2: its words never name one.
+    ["PRINCIPAL_CHAT", "Leave the buy as it is and send it again once get_stock_data has a live price."],
   ])("no live price on a watch (%s): the buy level is refused by name in that door's words, the note lands", async (runMode, words) => {
     const watch = asml({ status: "WATCHING", triggers: [] });
     const r = await replay(closeOut({ price_at_time: undefined, entry_price: 1700, trigger_id: undefined }), { thesis: watch, quotes: {}, ctx: { runMode } });
     expect(r.refused).toBe(false);
     expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "entry_price", reason: expect.stringContaining(words) })]);
+    expect(refusedOf(r)[0].reason).not.toContain("price_at_time");
     expect(written(r.db)).toHaveLength(1);
   });
 

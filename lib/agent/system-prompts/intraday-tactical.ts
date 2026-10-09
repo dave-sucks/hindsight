@@ -41,13 +41,6 @@ interface TacticalPromptArgs {
     peakPrice?: number | null;
   } | null;
   /**
-   * Latest account-level PortfolioDigest narrative (Feature A,
-   * docs/plans/PORTFOLIO_DIGEST.md). Account-scoped book context for
-   * cross-run continuity — optional; null when no digest exists yet.
-   * Replaces the deprecated per-analyst AnalystBriefing.
-   */
-  latestDigest?: { narrative: string; date: string } | null;
-  /**
    * The fire itself: the price it fired at (the price you act on when your
    * own quote fails — DAV-265). A trigger that fired with it on the same
    * pass (one run decides both — DAV-254) is in the run's kickoff line and
@@ -82,12 +75,12 @@ export function stockFromRead(
   return {
     row: rowForModel(row, { named: true, size: "short", setupLines: true }) as Record<string, unknown>,
     // The list names every situation; the guidance leaves out the ones only the morning run can answer.
-    situations: { codes: guidanceCodes(status, codes), guidance: guidanceFor(guidanceCodes(status, codes, "INTRADAY_TACTICAL")) },
+    situations: { codes: guidanceCodes(status, codes), guidance: guidanceFor(guidanceCodes(status, codes, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL") },
   };
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
-  const { analyst, stock, trigger, position, latestDigest, fired } = args;
+  const { analyst, stock, trigger, position, fired } = args;
   // The situations the stock is in, each with what it asks, printed where
   // the per-situation text used to sit (lib/agent/situations.ts).
   const guidance = Object.entries(args.situations?.guidance ?? {}) as Array<[SituationCode, string]>;
@@ -142,14 +135,11 @@ PATH: the predicate fired on the 5-minute check.${
   close.
 `;
 
-  const digestSection = latestDigest?.narrative
-    ? `
-═══════════════════════════════════════════════════════════════════
-YESTERDAY'S PORTFOLIO DIGEST (account-level book context)
-═══════════════════════════════════════════════════════════════════
-${latestDigest.narrative.trim()}
-`
-    : "";
+  // Yesterday's account digest is not printed here (step 12, part 2): a
+  // day-old narrative of the whole book, it told the trigger runs of
+  // 2026-10-07 "no pending proposals" while ASML's own row carried its sale
+  // awaiting approval. The stock's row says what waits on the stock
+  // (`proposal_waiting`).
 
   return `${analystBrief(analyst, args.capacity)}
 
@@ -184,7 +174,7 @@ ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_
 **Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
 ${trigger.action === "ENTER" || trigger.action === "ADD" ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
-${digestSection}
+
 ═══════════════════════════════════════════════════════════════════
 TRIGGER THAT FIRED (id: ${trigger.id})
 ═══════════════════════════════════════════════════════════════════

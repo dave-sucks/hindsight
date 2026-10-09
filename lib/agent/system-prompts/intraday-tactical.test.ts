@@ -9,7 +9,7 @@
  * protection alarm.
  */
 
-import { buildTacticalSystemPrompt } from "./intraday-tactical";
+import { buildTacticalSystemPrompt, stockFromRead } from "./intraday-tactical";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { setupLines } from "@/lib/agent/analyst-brief";
 import { getSetup } from "@/lib/agent/knowledge/setups";
@@ -44,7 +44,6 @@ function makeArgs(overrides: Record<string, any> = {}): any {
     stock: { ticker: "HPE", direction: "LONG", row: row() },
     trigger: trailTrigger,
     position: { peakPrice: 62.7 },
-    latestDigest: null,
     ...overrides,
   };
 }
@@ -222,5 +221,45 @@ describe("buildTacticalSystemPrompt — a declined sale is asked again", () => {
     const add: Trigger = { ...enter, id: "trig_add", action: "ADD" };
     expect(buildTacticalSystemPrompt(makeArgs({ trigger: enter, position: null }))).toContain(PASS);
     expect(buildTacticalSystemPrompt(makeArgs({ trigger: add }))).toContain(PASS);
+  });
+});
+
+describe("buildTacticalSystemPrompt — the stock's own row, not yesterday's digest (step 12, part 2)", () => {
+  // ASML's real sale proposal (Order cmux0e18w000m04jhodrm7pn3): a CLOSE of 5 shares, placed 2026-10-06 18:25 UTC, expiring a
+  // day later. The 10-07 digest that the trigger run printed said "no pending proposals"; the row said this.
+  const asml = () =>
+    savedRow({
+      id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML",
+      proposals: [{ side: "SELL", intent: "CLOSE", quantity: 5, createdAt: "2026-10-06T18:25:18.399Z", expiresAt: "2026-10-07T18:25:18.399Z" }],
+    });
+
+  it("prints no digest, and the row's waiting sale with its times", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }));
+    expect(prompt).not.toMatch(/DIGEST/i);
+    expect(prompt).toContain('"proposal_waiting": "sell 5 sh, placed 10-06 14:25 ET, expires 10-07 14:25 ET"');
+  });
+
+  it("the run takes no digest input at all", () => {
+    // Compile time: latestDigest is not an argument of the trigger run's prompt.
+    const noDigestArgument: "latestDigest" extends keyof Parameters<typeof buildTacticalSystemPrompt>[0] ? false : true = true;
+    expect(noDigestArgument).toBe(true);
+    const prompt = buildTacticalSystemPrompt({ ...makeArgs(), latestDigest: { narrative: "No pending proposals.", date: "2026-10-07" } });
+    expect(prompt).not.toContain("No pending proposals.");
+  });
+});
+
+describe("the trigger run's situation words (step 12, part 2)", () => {
+  const ALL = Object.keys(SITUATIONS) as Array<keyof typeof SITUATIONS>;
+  it("never name a status change: its save has none", () => {
+    for (const status of ["HOLDING", "WATCHING", "PROMOTED"]) {
+      const read = stockFromRead({ ok: true, data: { theses: [savedRow({ status, situations: ALL })] } }, "thesis_1")!;
+      const text = Object.values(read.situations.guidance).join("\n");
+      expect(text.length).toBeGreaterThan(0);
+      for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) expect([status, word, text.includes(word)]).toEqual([status, word, false]);
+    }
+  });
+  it("the morning run's and the chat's keep the verbs", () => {
+    const text = Object.values(guidanceFor(ALL)).join("\n");
+    for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) expect([word, text.includes(word)]).toEqual([word, true]);
   });
 });

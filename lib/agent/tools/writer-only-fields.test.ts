@@ -32,13 +32,14 @@ describe("writer-only research fields", () => {
     });
   }
 
-  it("an agent keeps the fields it uses: the plan on the morning run's update_thesis, the snapshot and the belief on the chat's", () => {
+  it("an agent keeps the fields it uses: the plan on the morning run's update_thesis, the claim on the chat's", () => {
     const u = fields("MORNING_PLAN", "update_thesis");
     for (const f of ["entry_price", "stop_loss", "add_triggers"]) expect(u).toContain(f);
-    // The claim is the writer's and the chat's (step 12, part 1).
+    // The claim is the writer's and the chat's (step 12, part 1); the rest of the write-up the writer's (part 2).
     expect(u).not.toContain("core_belief");
     const c = fields("PRINCIPAL_CHAT", "update_thesis");
-    for (const f of ["snapshot", "scoring", "core_belief"]) expect(c).toContain(f);
+    for (const f of ["core_belief", "direction", "entry_price"]) expect(c).toContain(f);
+    for (const f of ["snapshot", "scoring", "variant_view", "price_at_time"]) expect(c).not.toContain(f);
     const r = fields("PRINCIPAL_CHAT", "record_thesis");
     for (const f of ["ticker", "direction", "reasoning_summary", "triggers", "stock_fundamentals", "core_belief"]) expect(r).toContain(f);
   });

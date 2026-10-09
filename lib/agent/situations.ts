@@ -61,12 +61,14 @@ function fireCodes(s: SituationSources, triggerId: string, action: string): Situ
   if (earnings) codes.push("EARNINGS");
   if (filing) codes.push("FILING");
   if (codes.length === 0) {
-    // A watch with no direction and no review clock of its own comes back only when a wake fires.
-    const quiet =
-      s.status === "WATCHING" &&
-      s.direction == null &&
-      !s.triggers.some((t) => own(t) && measuresOf(t.predicate).some((m) => m.id === "repeat"));
-    codes.push(action === "REVIEW" && quiet ? "QUIET_WATCH_WOKE" : "REVIEW_DUE");
+    // A watch with no view: with no review clock of its own it comes back only
+    // when a wake fires (QUIET_WATCH_WOKE); with one it is a seed, and any
+    // review on it is its first research, never a plan to patch (MA
+    // 2026-10-09: its strength wake fired and coded REVIEW_DUE, a review of a
+    // plan the stock does not have).
+    const noView = s.status === "WATCHING" && s.direction == null;
+    const ownClock = s.triggers.some((t) => own(t) && measuresOf(t.predicate).some((m) => m.id === "repeat"));
+    codes.push(action === "REVIEW" && noView ? (ownClock ? "FIRST_RESEARCH" : "QUIET_WATCH_WOKE") : "REVIEW_DUE");
   }
   return codes;
 }
@@ -341,7 +343,7 @@ Answer, in order:
 1. Does the old work still stand against today's data?
 
 What you can do:
-- Refresh it (the default): dispatch_thesis_research with mode "refresh", then wait_for_thesis_refresh, then re-read the stock and change its levels or conviction if the new work changed your view.
+- Refresh it (the default): dispatch_thesis_research with mode "refresh", then wait_for_thesis_refresh, then re-read the stock and change its levels or tier if the new work changed your view.
 - Re-affirm it: update_thesis saying in one concrete sentence why it still stands ("the backlog case is unchanged; Q2 confirmed it").
 - Stop paying for it: drop the review clock, and the plan's triggers too if the plan is dead.
 
@@ -422,8 +424,53 @@ Mistakes:
   },
 };
 
-/** Situations whose answer needs fields the trigger run's save lacks (a setup's exits, a full commitment), so the morning run answers them. */
-const NOT_FOR_THE_TRIGGER_RUN: ReadonlySet<SituationCode> = new Set(["NO_SETUP_NAMED", "FIRST_RESEARCH"]);
+/**
+ * Situations whose answer needs fields the trigger run's save lacks, so the
+ * morning run answers them: a setup's exits, a full commitment, and putting a
+ * sold stock back on watch (change_status, which the trigger run's save has
+ * not had since #825; a sold stock is never a trigger run's stock anyway).
+ */
+const NOT_FOR_THE_TRIGGER_RUN: ReadonlySet<SituationCode> = new Set(["NO_SETUP_NAMED", "FIRST_RESEARCH", "SOLD_ONE_REVIEW"]);
+
+/**
+ * The trigger run's words where a text names a status change (step 12, part
+ * 2): its save has no change_status (#825), so where the morning run and the
+ * chat retire, drop or defer a stock, the trigger run takes the plan down by
+ * id and says so in its note, and the morning run decides. Each pair is a
+ * line of the text above, word for word, and the line the trigger run reads
+ * in its place; situations.test.ts holds every line to its text.
+ */
+export const TRIGGER_RUN_LINES: Partial<Record<SituationCode, ReadonlyArray<readonly [string, string]>>> = {
+  PROMOTED_AWAITING: [
+    [
+      `- Defer: update_thesis with change_status "WATCHING". The next run looks at it again.`,
+      `- Defer: one update_thesis saying why. This run's save has no status change: the stock stays promoted and the morning run decides.`,
+    ],
+    [
+      `- A note in place of the decision: the stock stays promoted and is asked again on the next run.`,
+      `- Deferring without a reason: the morning run decides on what your note says.`,
+    ],
+  ],
+  QUIET_WATCH_WOKE: [
+    [
+      `- Let it go: update_thesis with change_status ARCHIVED.`,
+      `- Let it go: update_thesis with remove_trigger_ids naming its wakes, and say in the note that it can go. It stays on the watchlist with nothing to wake it; dropping it for good is the morning run's call.`,
+    ],
+  ],
+  REVIEW_DUE: [
+    [
+      `- No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.`,
+      `- No longer applicable: on a stock we watch, take its buy, floor and target down by id (remove_trigger_ids) and say so in the note; the morning run decides whether it stays on the book. A stock we hold is sold with close_position, which retires the thesis.`,
+    ],
+  ],
+};
+
+/** A situation's text as this run reads it: the trigger run's lines in place of the status verbs its save lacks. */
+function guidanceText(code: SituationCode, runMode?: string): string {
+  const text = SITUATIONS[code].guidance;
+  if (runMode !== "INTRADAY_TACTICAL") return text;
+  return (TRIGGER_RUN_LINES[code] ?? []).reduce((t, [line, theirs]) => t.replace(line, theirs), text);
+}
 
 /** The codes whose guidance a stock calls for: on a promoted stock, only the promotion's; in a trigger run, none it can't answer. */
 export function guidanceCodes(status: string, codes: readonly SituationCode[], runMode?: string): SituationCode[] {
@@ -431,11 +478,11 @@ export function guidanceCodes(status: string, codes: readonly SituationCode[], r
   return runMode === "INTRADAY_TACTICAL" ? codes.filter((c) => !NOT_FOR_THE_TRIGGER_RUN.has(c)) : [...codes];
 }
 
-/** The guidance for these codes, each text once, in rank order. */
-export function guidanceFor(codes: Iterable<SituationCode>): Partial<Record<SituationCode, string>> {
+/** The guidance for these codes, each text once, in rank order, worded for the run that reads it. */
+export function guidanceFor(codes: Iterable<SituationCode>, runMode?: string): Partial<Record<SituationCode, string>> {
   const wanted = new Set(codes);
   const out: Partial<Record<SituationCode, string>> = {};
-  for (const code of Object.keys(SITUATIONS) as SituationCode[]) if (wanted.has(code)) out[code] = SITUATIONS[code].guidance;
+  for (const code of Object.keys(SITUATIONS) as SituationCode[]) if (wanted.has(code)) out[code] = guidanceText(code, runMode);
   return out;
 }
 

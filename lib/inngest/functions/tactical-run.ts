@@ -614,32 +614,6 @@ export const tacticalRun = inngest.createFunction(
           )
         : allTools;
 
-      // Latest account-level portfolio digest for cross-run book context
-      // (Feature A). Scoped to THIS run's book (runEnvironment) — PAPER and LIVE
-      // share an accountId but have separate digests; reading the wrong book's
-      // narrative is incoherent context. Non-fatal: a missing digest degrades
-      // to "no continuity".
-      let latestDigest: { narrative: string; date: string } | null = null;
-      try {
-        const digestRow = await prisma.portfolioDigest.findFirst({
-          where: { accountId: agentConfig.accountId, environment: runEnvironment },
-          orderBy: { date: "desc" },
-          take: 1,
-          select: { narrative: true, date: true },
-        });
-        if (digestRow?.narrative) {
-          latestDigest = {
-            narrative: digestRow.narrative,
-            date: digestRow.date.toISOString(),
-          };
-        }
-      } catch (digestErr) {
-        console.warn(
-          `[tactical-run] portfolio digest lookup failed — continuing without continuity context:`,
-          digestErr instanceof Error ? digestErr.message : digestErr,
-        );
-      }
-
       // The stock, read the way every door reads it (step 10): get_theses on
       // this ticker, after the fire's own line is written, so the fire and
       // anything else true on the stock are its situations. The model reads
@@ -661,7 +635,6 @@ export const tacticalRun = inngest.createFunction(
         stock: { ticker: thesis.ticker, direction: thesis.direction, row: read?.row ?? null },
         trigger,
         position,
-        latestDigest,
         fired: { price: fired.firedPrice ?? null },
         capacity: ctx.capacity ?? null,
         situations: read?.situations ?? null,

@@ -8,7 +8,7 @@
  * chat's; everything else (the plan, the verdict, the note) is everyone's,
  * except the trigger run, whose save takes the plan and the note only. The
  * score, the variant view, the cited snapshot and the price the caller read
- * are the writer's and the chat's today. A field present gets filled: 224 of
+ * are the writer's too (step 12, part 2). A field present gets filled: 224 of
  * 285 morning saves in 30 days sent price_at_time back, 25 rewrote the
  * writer's snapshot, and CORT's research sections were overwritten by a
  * morning run — so a door offers only what its caller may change.
@@ -45,10 +45,10 @@ const ROWS: Record<string, string[]> = {
 };
 const EVERY_FIELD = Object.values(ROWS).flat().sort();
 
-/** The eight sections and the data block: the writer only. */
-const WRITER_ONLY = ["recent_catalysts", "fundamentals", "latest_earnings", "catalysts_and_events", "bull_case", "bear_case", "analyst_consensus", "insider_technical", "research_data"];
-/** The writer's and the chat's: the claim, the view, the score, the variant view, the snapshot, the price the caller read. */
-const WRITER_AND_CHAT = [...ROWS.claim, "direction", "scoring", "variant_view", "snapshot", "price_at_time"];
+/** The write-up, and the price the caller read (the save reads the quote itself): the writer only. */
+const WRITER_ONLY = [...ROWS["write-up"], "price_at_time"];
+/** The writer's and the chat's: the claim and the view. */
+const WRITER_AND_CHAT = [...ROWS.claim, "direction"];
 
 const EXPECTED: Record<(typeof DOORS)[number][1], string[]> = {
   THESIS_WRITER: EVERY_FIELD,
@@ -68,7 +68,7 @@ describe("what a save may change, by who is saving", () => {
     }
     lines.push(`| **fields** | | ${DOORS.map(([, m]) => byDoor[m].length).join(" | ")} |`);
     console.log(lines.join("\n"));
-    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([35, 25, 18, 11]);
+    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([35, 21, 18, 11]);
   });
 
   it("every field of the tool is in one row of the rule", () => {
@@ -79,16 +79,16 @@ describe("what a save may change, by who is saving", () => {
     expect(byDoor[runMode]).toEqual(EXPECTED[runMode]);
   });
 
-  it("the write-up's eight sections and data block are the writer's only", () => {
+  it("the write-up (the eight sections, the data block, the snapshot, the score, the variant view) and the read price are the writer's only", () => {
     for (const f of WRITER_ONLY) expect([f, DOORS.filter(([, m]) => byDoor[m].includes(f)).map(([n]) => n)]).toEqual([f, ["writer"]]);
   });
 
-  it("the claim, the view, the score, the variant view, the snapshot and the read price are the writer's and the chat's", () => {
+  it("the claim and the view are the writer's and the chat's", () => {
     for (const f of WRITER_AND_CHAT) expect([f, DOORS.filter(([, m]) => byDoor[m].includes(f)).map(([n]) => n)]).toEqual([f, ["writer", "chat"]]);
   });
 
   it("the morning run's save carries no claim and no direction: a view is set or flipped by research or by the owner", () => {
-    for (const f of [...ROWS.claim, "direction", ...WRITER_ONLY, "scoring", "variant_view", "snapshot", "price_at_time"]) expect([f, byDoor.MORNING_PLAN.includes(f)]).toEqual([f, false]);
+    for (const f of [...ROWS.claim, "direction", ...WRITER_ONLY]) expect([f, byDoor.MORNING_PLAN.includes(f)]).toEqual([f, false]);
   });
 
   it("the trigger run's save is the plan and the note: no verdict, no claim, no write-up, no price", () => {

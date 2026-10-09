@@ -160,7 +160,6 @@ function systemFor(c: HeroCase): string {
         stock: { ticker: String(saved.ticker), direction: (saved.direction as string | null) ?? null, row: stock?.row ?? null },
         trigger: p.trigger,
         position: p.position ? { peakPrice: p.position.peakPrice ?? null } : null,
-        latestDigest: p.latestDigest ?? null,
         fired: { price: p.fired?.price ?? null },
         capacity: p.capacity ?? null,
         // A case that names its situations takes their text from today's

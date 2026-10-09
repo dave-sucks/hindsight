@@ -41,8 +41,9 @@ describe("the morning run's save", () => {
     expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(11);
     expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).not.toContain("change_status");
     const chat = Object.keys(schemaOf("PRINCIPAL_CHAT").shape);
-    expect(chat).toHaveLength(25);
-    expect(chat).toEqual(expect.arrayContaining(["price_at_time", "snapshot", "scoring", "variant_view"]));
+    expect(chat).toHaveLength(21);
+    for (const f of ["price_at_time", "snapshot", "scoring", "variant_view"]) expect(chat).not.toContain(f);
+    expect(chat).toEqual(expect.arrayContaining(["core_belief", "key_assumptions", "invalidation_conditions", "direction"]));
     expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(35);
     expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(26);
   });

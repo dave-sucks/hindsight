@@ -308,9 +308,17 @@ const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TA
  * sold stock back on watch. Eighteen fields.
  */
 const THE_CLAIM = { core_belief: true, key_assumptions: true, invalidation_conditions: true } as const;
+/**
+ * The rest of the write-up, the writer's alone (step 12, part 2): the cited
+ * snapshot, the score and the variant view, and the price the caller read
+ * (the save reads the quote itself). The chat's saves carried one of them in
+ * 14 of its 25 update_thesis calls in the 60 days to 2026-10-09; HPE
+ * 2026-10-02 rewrote the snapshot and took the score 9 → 7 uncited.
+ */
+const THE_WRITE_UPS_REST = { price_at_time: true, snapshot: true, scoring: true, variant_view: true } as const;
 const morningRunSchema = updateSchema.omit({
   ...WRITER_ONLY_UPDATE_FIELDS,
-  price_at_time: true, snapshot: true, scoring: true, variant_view: true,
+  ...THE_WRITE_UPS_REST,
   ...THE_CLAIM,
   direction: true,
 });
@@ -320,6 +328,15 @@ const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLA
 
 /** The chat never answers a fired trigger, so it has no trigger to name (0 of its 58 calls in the same 30 days). */
 const NOT_THE_CHATS = { trigger_id: true } as const;
+
+/**
+ * The owner's chat's save: the claim, the view, the plan, the verdict and the
+ * note. The write-up is the writer's (step 12, part 2): twenty-one fields.
+ */
+const chatSchema = updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_WRITE_UPS_REST, ...NOT_THE_CHATS });
+
+/** The doors whose save has no variant_view: a top tier sent there is stored MEDIUM until the writer gives it one. */
+const DOORS_WITHOUT_VARIANT_VIEW: ReadonlySet<string> = new Set(["MORNING_PLAN", "INTRADAY_TACTICAL", "PRINCIPAL_CHAT"]);
 
 /**
  * The doors whose agent has record_thesis (lib/agent/modes.ts), so the only
@@ -471,7 +488,7 @@ export const updateThesis = defineTool({
         : isMorningRun(ctx)
           ? morningRunSchema
           : ctx.runMode === "PRINCIPAL_CHAT"
-            ? updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...NOT_THE_CHATS })
+            ? chatSchema
             : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
@@ -650,16 +667,19 @@ export const updateThesis = defineTool({
       );
       const buyEdit = (e: NonNullable<UpdateArgs["edit_triggers"]>[number]) =>
         editNumber(e).value != null && (e.action === "ENTER" || enterIds.has(e.id));
-      // A refusal names only fields this door has: the trigger run's and the
-      // morning run's saves have no price field.
+      // A refusal names only fields this door has: the trigger run's, the
+      // morning run's and the chat's saves have no price field.
       const noPrice = isTriggerRun(ctx)
         ? `The quote for ${existing.ticker} failed and the fire carries no price, so whether the buy level is a pullback (below the price) ` +
           `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
         : isMorningRun(ctx)
           ? `The quote for ${existing.ticker} failed, so whether the buy level is a pullback (below the price) ` +
             `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
-          : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
-            `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
+          : ctx.runMode === "PRINCIPAL_CHAT"
+            ? `The quote for ${existing.ticker} failed, so whether the buy level is a pullback (below the price) ` +
+              `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is and send it again once get_stock_data has a live price.`
+            : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
+              `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
       // On a stock we hold the entry is the fill, refused as its own op below.
       if (args.entry_price != null && existing.status !== "HOLDING") refuseField("entry_price", noPrice, "no live price");
       for (const e of (args.edit_triggers ?? []).filter(buyEdit)) {
@@ -903,8 +923,8 @@ export const updateThesis = defineTool({
           (args.conviction === "STRONG" || args.conviction === "HIGH") &&
           (!args.variant_view || args.variant_view.trim().length === 0)
         ) {
-          // The morning run's save has no variant_view; the writer gives one.
-          convictionDowngradeNote = isMorningRun(ctx)
+          // The morning run's and the chat's saves have no variant_view; the writer gives one.
+          convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
             ? `Stored as MEDIUM: ${args.conviction} needs a variant view, which the writer gives it.`
             : `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
         }
@@ -980,7 +1000,9 @@ export const updateThesis = defineTool({
         (effectiveConviction === "STRONG" || effectiveConviction === "HIGH") &&
         (!effectiveVariantView || effectiveVariantView.trim().length === 0)
       ) {
-        convictionDowngradeNote = `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
+        convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
+          ? `Stored as MEDIUM: ${effectiveConviction} needs a variant view and none is on the row; the writer gives it.`
+          : `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
       }
 
       // Consistency gates (Gate A, Gate B) REMOVED 2026-05-31.
