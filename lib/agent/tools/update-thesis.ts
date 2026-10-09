@@ -878,7 +878,10 @@ export const updateThesis = defineTool({
           (args.conviction === "STRONG" || args.conviction === "HIGH") &&
           (!args.variant_view || args.variant_view.trim().length === 0)
         ) {
-          convictionDowngradeNote = `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
+          // The morning run's save has no variant_view; the writer gives one.
+          convictionDowngradeNote = isMorningRun(ctx)
+            ? `Stored as MEDIUM: ${args.conviction} needs a variant view, which the writer gives it.`
+            : `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
         }
         if (missing.length > 0) {
           return {

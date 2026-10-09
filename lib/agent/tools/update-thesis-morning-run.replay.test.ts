@@ -127,6 +127,36 @@ describe("four real morning calls, sent verbatim through the SDK's loop to the m
   });
 });
 
+describe("a seed's first research at HIGH through the morning run's save", () => {
+  it("is stored as MEDIUM with a note that names no field this door lacks", async () => {
+    const seed = thesisRow({ id: "t_seed", ticker: "AAA", status: "WATCHING", direction: null, entryPrice: null, targetPrice: null, stopLoss: null, triggers: [] });
+    const r = await replayTool("update-thesis", "updateThesis", {
+      seed: { thesis: [seed] },
+      args: {
+        thesis_id: "t_seed",
+        rationale: "First research: the pullback to the 50-day is the entry, the prior high the target.",
+        direction: "LONG",
+        horizon: "TARGET",
+        entry_price: 95,
+        target_price: 130,
+        stop_loss: 88,
+        core_belief: "Orders re-accelerate into the second half and the stock re-rates to the prior high.",
+        key_assumptions: ["Orders grow again next quarter.", "Margins hold above 20%."],
+        invalidation_conditions: ["Orders fall again next quarter.", "A close under $88."],
+        conviction: "HIGH",
+        conviction_rationale: "The order data turned before the price did.",
+      },
+      ctx: morning,
+      quotes: { AAA: 100 },
+    });
+    expect(r.refused).toBe(false);
+    const row = r.db.store.thesis[0];
+    expect(row).toMatchObject({ direction: "LONG", conviction: "MEDIUM" });
+    expect(String(row.convictionRationale)).toContain("Stored as MEDIUM: HIGH needs a variant view, which the writer gives it.");
+    expect(String(row.convictionRationale)).not.toContain("none was given");
+  });
+});
+
 describe("the price the morning run's save reads for itself", () => {
   const watch = () =>
     thesisRow({
