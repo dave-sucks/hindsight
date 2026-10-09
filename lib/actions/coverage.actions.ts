@@ -282,9 +282,43 @@ export async function getCoverageData(
   // evening in New York, so reading the UTC date would anchor on the NEXT
   // session's close — a whole day of movement we were not watching for.
   const etDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
+  // A name can come BACK to the watchlist after being bought and sold, or
+  // after a pass. The current watch began the day it returned, not the day the
+  // thesis was first written — DOCU was written 2026-09-09 at $62.50, bought,
+  // sold, and came back on 2026-10-07 at $68.22, so measuring from September
+  // credits it with a run it was held through.
+  //
+  // Read off the transition itself, never the latest STATUS_CHANGED: ABT, EME
+  // and PRAX each have one too, and theirs says `to: "HOLDING"` — the day they
+  // LEFT the watchlist. Anchoring on that would be worse than today.
+  const rewatchByThesis = new Map<string, { at: Date; price: number | null }>();
+  if (watchingTheses.length > 0) {
+    const rows = await prisma.thesisUpdate
+      .findMany({
+        where: {
+          thesisId: { in: watchingTheses.map((t) => t.id) },
+          fieldChanges: { path: ["status", "to"], equals: "WATCHING" },
+        },
+        orderBy: { timestamp: "desc" },
+        select: { thesisId: true, timestamp: true, priceAtTime: true },
+      })
+      .catch(() => [] as { thesisId: string; timestamp: Date; priceAtTime: unknown }[]);
+    for (const r of rows) {
+      if (rewatchByThesis.has(r.thesisId)) continue; // desc — first is the latest
+      rewatchByThesis.set(r.thesisId, {
+        at: r.timestamp,
+        price: r.priceAtTime != null ? Number(r.priceAtTime) : null,
+      });
+    }
+  }
+  /** The day the CURRENT watch began — the return if there was one, else the mint. */
+  const watchStart = (t: { id: string; createdAt: Date }) =>
+    etDay(rewatchByThesis.get(t.id)?.at ?? t.createdAt);
+
   const watchStartByTicker = new Map<string, string>();
   for (const t of watchingTheses) {
-    const day = etDay(t.createdAt);
+    const day = watchStart(t);
     const prev = watchStartByTicker.get(t.ticker);
     if (!prev || day < prev) watchStartByTicker.set(t.ticker, day);
   }
@@ -384,13 +418,21 @@ export async function getCoverageData(
     // watched names, because most carry only REVIEW triggers. This column is
     // "what have I missed since I started watching", so it measures from a
     // price someone observed. See lib/thesis/watch-anchor.ts.
+    // On a return, the transition row IS the opening event — its own price if
+    // it carries one, otherwise that day's close. The thesis's first-ever
+    // priced row belongs to the previous watch and must not be reached for.
+    const returned = rewatchByThesis.get(t.id);
     const stampedRow = t.updates?.[0];
+    const stamped = returned
+      ? returned.price != null
+        ? { on: etDay(returned.at), price: returned.price }
+        : null
+      : stampedRow?.priceAtTime != null
+        ? { on: etDay(stampedRow.timestamp), price: Number(stampedRow.priceAtTime) }
+        : null;
     const anchor = watchAnchorPrice({
-      startedOn: etDay(t.createdAt),
-      stamped:
-        stampedRow?.priceAtTime != null
-          ? { on: etDay(stampedRow.timestamp), price: Number(stampedRow.priceAtTime) }
-          : null,
+      startedOn: watchStart(t),
+      stamped,
       closeOnStart: watchStartClose.get(t.ticker) ?? null,
     });
     const sinceDollar = current != null && anchor != null ? current - anchor : null;
@@ -407,7 +449,7 @@ export async function getCoverageData(
       sinceDollar,
       sincePct,
       anchorPrice: anchor,
-      anchorAt: t.createdAt.toISOString(),
+      anchorAt: (rewatchByThesis.get(t.id)?.at ?? t.createdAt).toISOString(),
       anchorVerb: "Watching since",
       tradeState: null,
       shares: null,

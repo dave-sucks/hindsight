@@ -50,6 +50,36 @@ describe("watchAnchorPrice", () => {
     ).toBe(10.29);
   });
 
+  // DOCU: written 2026-09-09 at $62.50, bought, sold, and back on the
+  // watchlist 2026-10-07 at $68.22. The current watch began in October — the
+  // September price credits it with a run it was HELD through, which is a
+  // different question and already answered on the Trades tab.
+  it("a name that came back anchors on the day it came back", () => {
+    const returned = watchAnchorPrice({
+      startedOn: "2026-10-07",
+      stamped: { on: "2026-10-07", price: 68.22 },
+      closeOnStart: 68.4,
+    })!;
+    expect(returned).toBe(68.22);
+    const now = 71.8;
+    expect(((now - returned) / returned) * 100).toBeCloseTo(5.25, 1);
+
+    // What the first-watch price would have claimed instead.
+    const fromTheMint = watchAnchorPrice({
+      startedOn: "2026-09-09",
+      stamped: { on: "2026-09-09", price: 62.5 },
+      closeOnStart: 62.6,
+    })!;
+    expect(((now - fromTheMint) / fromTheMint) * 100).toBeCloseTo(14.88, 1);
+  });
+
+  // The transition row does not always carry a price; that day's close does.
+  it("a return with no price on the transition falls to that day's close", () => {
+    expect(
+      watchAnchorPrice({ startedOn: "2026-10-07", stamped: null, closeOnStart: 68.4 }),
+    ).toBe(68.4);
+  });
+
   it("is null when there is nothing at all", () => {
     expect(watchAnchorPrice({ startedOn: "2026-09-29", stamped: null, closeOnStart: null })).toBeNull();
   });
