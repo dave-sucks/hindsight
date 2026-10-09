@@ -986,6 +986,7 @@ export const updateThesis = defineTool({
         fireMode: e.fire_mode,
         rationale: e.rationale,
         cooldownDays: e.cooldown_days,
+        close: e.close,
       })),
       ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
       ...(args.entry_price !== undefined

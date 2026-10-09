@@ -335,6 +335,7 @@ export const editTriggerOpSchema = z.looseObject({
   fire_mode: z.enum(["TACTICAL", "DIRECT"]).optional(),
   rationale: z.string().optional().describe("REQUIRED when the value changes — the sentence moves with the number."),
   cooldown_days: z.number().int().min(0).max(90).optional(),
+  close: z.boolean().optional().describe("A price level: true fires only on the 16:20 close pass; false = intraday."),
 });
 
 /**

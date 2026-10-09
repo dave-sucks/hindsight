@@ -108,7 +108,12 @@
    "price": 65.88,
    "coFired": []
   },
-  "capacity": null
+  "capacity": null,
+  "situations": {
+   "codes": [
+    "BUY_ARRIVES"
+   ]
+  }
  },
  "toolCtx": {
   "analystId": "cmnhxpjio000004jvox6kl6c7",
