@@ -158,10 +158,21 @@ function thenNow(then: number | null, now: number | null): string {
 
 const INTENT: Record<string, string> = { CLOSE: "the sale", PARTIAL_CLOSE: "the partial sale", OPEN: "the buy", ADD: "the add" };
 
+/** What a removal by hand asks of the analysts; the app writes it on the row (thesis-edit.ts). */
+export const KEEP_IT_REMOVED = "Don't add it back unless the thesis changes.";
+
+/**
+ * How a removal in the cleanup of copied rules (scripts/sweep-frozen-copies.ts)
+ * begins its summary; thesis-edit.ts writes it from here. Those removals took
+ * template lines off stocks and decided nothing about a stock, so the read
+ * leaves them out. The rows carry no other marker.
+ */
+export const COPIED_RULE_CLEANUP = "Removed a copied rule from ";
+
 /**
  * The principal's decision on one line, or null when there is nothing to
- * decide: a plain approval (the position shows it), an expiry, a hand edit
- * that only removed triggers.
+ * decide: a plain approval (the position shows it), an expiry, the cleanup
+ * of copied rules.
  */
 export function principalDecision(r: ActivityRow, priceThen: number | null = null, priceNow: number | null = null): PrincipalDecision | null {
   if (!isPrincipalRow(r)) return null;
@@ -188,12 +199,14 @@ export function principalDecision(r: ActivityRow, priceThen: number | null = nul
   if (r.type.startsWith("PROPOSAL_")) return null;
 
   // A hand edit: only the change. The rationale on these lines is the app's
-  // sentence, not the principal's words.
+  // sentence, not the principal's words. A removal says it stays removed:
+  // ABT 10-07, a run read the principal's added buy and never its removal,
+  // and set the buy again.
+  if ((r.summary ?? "").startsWith(COPIED_RULE_CLEANUP)) return null;
   const ops = changesOf(r).triggerOps?.to ?? [];
-  const kept = ops.filter((o) => o?.op !== "remove");
-  if (ops.length > 0 && kept.length === 0) return null;
-  const change = kept.map((o) => o.text).filter(Boolean).join("; ") || oneLine(r.summary ?? "");
-  return change ? { at: r.timestamp, line: `Set by hand: ${change}${at}`, wantsAnswer: true } : null;
+  const change = ops.map((o) => o.text).filter(Boolean).join("; ") || oneLine(r.summary ?? "");
+  const keep = ops.some((o) => o?.op === "remove") ? `. ${KEEP_IT_REMOVED}` : "";
+  return change ? { at: r.timestamp, line: `Set by hand: ${change}${at}${keep}`, wantsAnswer: true } : null;
 }
 
 const RUN_WORDS: Record<string, string> = {
