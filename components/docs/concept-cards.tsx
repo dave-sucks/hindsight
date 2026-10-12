@@ -16,7 +16,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Area, AreaChart, YAxis } from "recharts";
 import { ArrowRight, ArrowUpRight, Clock } from "lucide-react";
+import { StockLogo } from "@/components/StockLogo";
+import { Badge } from "@/components/ui/badge";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
+import { FlameIcon } from "@/components/ui/flame-icon";
 import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
 import type { DocSlug } from "./registry";
@@ -34,41 +37,44 @@ const CHART: ChartConfig = { v: { label: "Price", color: "var(--positive)" } };
 function SheetMock() {
   return (
     <div className="flex w-[84rem] flex-col gap-6 rounded-3xl border bg-background p-10 shadow-sm">
-      <span className="inline-flex items-center gap-2.5 self-start rounded-full bg-muted px-4 py-1.5 text-2xl text-foreground">
-        <span className="size-2.5 rounded-full bg-muted-foreground" />
-        Agent Watch
-      </span>
-      <div className="flex items-center gap-5">
-        <span className="grid size-20 place-items-center rounded-2xl bg-blue-600 text-3xl font-bold text-white">A</span>
-        <span className="flex flex-col gap-1">
-          <span className="text-5xl font-medium text-foreground">Arista Networks</span>
-          <Mono className="text-2xl text-muted-foreground">ANET · NYSE</Mono>
+      {/* The sheet's own badges, drawn at their size again inside the miniature. */}
+      <div className="flex items-center gap-1.5" style={{ zoom: 1.8 }}>
+        <Badge variant="secondary">
+          <span className="agent-watch-dot size-1.5 shrink-0 rounded-full bg-foreground" />
+          <span className="shimmer-text">Agent Watch</span>
+        </Badge>
+        <Badge variant="secondary">
+          <FlameIcon className="size-3" />
+          High Conviction
+        </Badge>
+      </div>
+      <div className="flex items-center gap-4">
+        <StockLogo ticker="ANET" size="lg" className="size-16 rounded-xl" />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-4xl font-medium text-foreground">Arista Networks</span>
+          <Mono className="text-xl text-muted-foreground">ANET · NYSE</Mono>
         </span>
       </div>
-      <p className="flex items-baseline gap-5 text-5xl font-medium tabular-nums">
+      <p className="flex items-baseline gap-4 text-4xl font-medium tabular-nums">
         <span className="text-foreground">$134.20</span>
         <span className="text-positive">+$2.86</span>
         <span className="text-positive">↗ 2.18%</span>
       </p>
-      <span className="inline-flex self-start rounded-2xl bg-muted p-1.5 text-2xl">
-        <span className="rounded-xl bg-background px-5 py-2 text-foreground shadow-sm">Thesis</span>
-        <span className="px-5 py-2 text-muted-foreground">Activity</span>
-      </span>
-      <p className="text-3xl leading-snug text-foreground">
+      <p className="text-2xl leading-snug text-foreground">
         Watching Arista at $134.20. Its investor day on Nov 12 should raise its AI networking targets. I&apos;d rather buy the pullback to the 20-day average
         near $128 than chase the run-up, so the buy waits there.
       </p>
-      <p className="text-2xl text-muted-foreground">Catalyst Event PM · written Oct 12</p>
+      <p className="text-xl text-muted-foreground">Catalyst Event PM · written Oct 12</p>
       <div className="flex flex-col gap-4 rounded-3xl border p-6">
         <div className="flex items-center justify-between">
-          <span className="inline-flex rounded-2xl border p-1 text-2xl">
+          <span className="inline-flex rounded-2xl border p-1 text-xl">
             {["1D", "1W", "1M", "3M", "1Y"].map((r, i) => (
               <span key={r} className={cn("px-5 py-1.5", i === 0 ? "rounded-xl bg-muted text-foreground" : "text-muted-foreground")}>
                 {r}
               </span>
             ))}
           </span>
-          <span className="text-3xl text-positive tabular-nums">+$2.86 ↗ 2.18%</span>
+          <span className="text-2xl text-positive tabular-nums">+$2.86 ↗ 2.18%</span>
         </div>
         <div className="h-[22rem]">
           <ChartContainer config={CHART} className="h-full w-full">
