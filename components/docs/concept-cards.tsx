@@ -14,11 +14,10 @@
  */
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Area, Bar, Cell, ComposedChart, ReferenceLine, XAxis, YAxis } from "recharts";
+import { Area, ComposedChart, XAxis, YAxis } from "recharts";
 import { ArrowRight, ArrowUpRight, Clock } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { Badge } from "@/components/ui/badge";
-import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { FlameIcon } from "@/components/ui/flame-icon";
 import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
@@ -42,39 +41,95 @@ function seeded(seed: number) {
   };
 }
 
+/** Twenty trading days, Sep 14 to Oct 9, six points a day. Example numbers only. */
+const DAYS = ["Sep 14", "Sep 15", "Sep 16", "Sep 17", "Sep 18", "Sep 21", "Sep 22", "Sep 23", "Sep 24", "Sep 25", "Sep 28", "Sep 29", "Sep 30", "Oct 1", "Oct 2", "Oct 5", "Oct 6", "Oct 7", "Oct 8", "Oct 9"];
+const PER_DAY = 6;
+
 /**
- * A made-up session in 5-minute bars, 9:30 to 4:00: a random walk from the
- * prior close to today's last price, with volume heavier at the open and the
- * close, the way a real day trades. Example numbers only.
+ * A made-up month for the example stock: it runs up to where we start
+ * watching, pulls back to the 20-day where we buy, then runs to the target
+ * where we sell. The path goes through those anchors, with seeded noise on top.
  */
-const PREV_CLOSE = 131.34;
-const LAST = 134.2;
+const ANCHORS: ReadonlyArray<[index: number, price: number]> = [
+  [0, 125.6],
+  [26, 134.2],
+  [52, 128.4],
+  [84, 140.9],
+  [100, 145.8],
+  [119, 143.6],
+];
 const TAPE = (() => {
-  const rand = seeded(7);
-  const n = 79;
-  const walk = [0];
-  for (let i = 1; i < n; i++) walk.push(walk[i - 1] + (rand() - 0.47) * 0.42);
-  const drift = (LAST - PREV_CLOSE - walk[n - 1]) / (n - 1);
-  return walk.map((w, i) => {
-    const v = PREV_CLOSE + w + drift * i + (i === 0 ? 0 : 0.6);
-    const edge = Math.min(i, n - 1 - i);
-    const volume = (edge < 6 ? 2.4 - edge * 0.25 : 0.7) * (0.5 + rand());
-    const mins = 9 * 60 + 30 + i * 5;
-    return { i, v: Number(v.toFixed(2)), volume, up: i === 0 || walk[i] >= walk[i - 1], t: `${((Math.floor(mins / 60) + 11) % 12) + 1}:${String(mins % 60).padStart(2, "0")}` };
+  const rand = seeded(11);
+  const n = DAYS.length * PER_DAY;
+  return Array.from({ length: n }, (_, i) => {
+    const k = ANCHORS.findIndex(([at]) => at >= i);
+    const [i1, p1] = ANCHORS[Math.max(0, k)];
+    const [i0, p0] = ANCHORS[Math.max(0, k - 1)];
+    const base = i1 === i0 ? p1 : p0 + ((p1 - p0) * (i - i0)) / (i1 - i0);
+    const pinned = ANCHORS.some(([at]) => at === i);
+    return { i, v: Number((base + (pinned ? 0 : (rand() - 0.5) * 1.6)).toFixed(2)), day: DAYS[Math.floor(i / PER_DAY)] };
   });
 })();
-const CHART: ChartConfig = { v: { label: "Price", color: "var(--positive)" }, volume: { label: "Volume", color: "var(--positive)" } };
+/** The chart's box inside the 84rem sheet: the sheet less its padding, the chart card's padding and border. */
+const CHART_W = 1214;
+const CHART_H = 352;
 const AXIS_TICK = { fontSize: 18, fill: "var(--muted-foreground)" };
 
-/** The thesis sheet for a stock we only watch, drawn at the real panel's size and shown as a miniature: one column, top to bottom. */
+/** The thesis's life in three moments, each a point on the chart and a state of the sheet. */
+const MOMENTS = [
+  {
+    at: 26,
+    marker: "Watching",
+    status: { label: "Agent Watch", dot: "bg-foreground", shimmer: true },
+    price: "$134.20",
+    change: "+$2.86 ↗ 2.18%",
+    up: true,
+    summary:
+      "Watching Arista at $134.20. Its investor day on Nov 12 should raise its AI networking targets. I'd rather buy the pullback to the 20-day average near $128 than chase the run-up, so the buy waits there.",
+    written: "Sep 18",
+  },
+  {
+    at: 52,
+    marker: "Bought",
+    status: { label: "Holding", dot: "bg-blue-500", shimmer: false },
+    price: "$128.40",
+    change: "−$1.12 ↘ 0.86%",
+    up: false,
+    summary:
+      "Bought 40 shares of Arista at $128.40, on the pullback to the 20-day. The floor is $122, under the last swing low, and the target is $146, ahead of the November investor day.",
+    written: "Sep 24",
+  },
+  {
+    at: 100,
+    marker: "Sold",
+    status: { label: "Sold", dot: "bg-muted-foreground", shimmer: false },
+    price: "$145.80",
+    change: "+$3.40 ↗ 2.39%",
+    up: true,
+    summary:
+      "Sold Arista at $145.80, at the target, up 13.6% on the trade. The run-up has priced in most of what the investor day should bring, so I took the gain rather than hold through it.",
+    written: "Oct 6",
+  },
+] as const;
+
+/** The thesis sheet for one stock, drawn at the real panel's size and shown as a miniature, stepping from watching to bought to sold. */
 function SheetMock() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setStep((s) => (s + 1) % MOMENTS.length), 5000);
+    return () => window.clearInterval(id);
+  }, []);
+  const m = MOMENTS[step];
+  const left = `${(m.at / (TAPE.length - 1)) * 100}%`;
+
   return (
     <div className="flex w-[84rem] flex-col gap-6 rounded-3xl border bg-background p-10 shadow-sm">
       {/* The sheet's own badges, drawn at their size again inside the miniature. */}
       <div className="flex items-center gap-1.5" style={{ zoom: 1.8 }}>
         <Badge variant="secondary">
-          <span className="agent-watch-dot size-1.5 shrink-0 rounded-full bg-foreground" />
-          <span className="shimmer-text">Agent Watch</span>
+          <span className={cn("size-1.5 shrink-0 rounded-full transition-colors duration-500", m.status.dot, m.status.shimmer && "agent-watch-dot")} />
+          <span className={cn(m.status.shimmer && "shimmer-text")}>{m.status.label}</span>
         </Badge>
         <Badge variant="secondary">
           <FlameIcon className="size-3" />
@@ -89,48 +144,47 @@ function SheetMock() {
         </span>
       </div>
       <p className="flex items-baseline gap-4 text-4xl font-medium tabular-nums">
-        <span className="text-foreground">$134.20</span>
-        <span className="text-positive">+$2.86</span>
-        <span className="text-positive">↗ 2.18%</span>
+        <span className="text-foreground">{m.price}</span>
+        <span className={m.up ? "text-positive" : "text-negative"}>{m.change}</span>
       </p>
-      <p className="text-2xl leading-snug text-foreground">
-        Watching Arista at $134.20. Its investor day on Nov 12 should raise its AI networking targets. I&apos;d rather buy the pullback to the 20-day average
-        near $128 than chase the run-up, so the buy waits there.
+      <p key={step} className="min-h-[6.5rem] text-2xl leading-snug text-foreground animate-in fade-in-0 duration-700">
+        {m.summary}
       </p>
-      <p className="text-xl text-muted-foreground">Catalyst Event PM · written Oct 12</p>
+      <p className="text-xl text-muted-foreground">Catalyst Event PM · written {m.written}</p>
       <div className="flex flex-col gap-4 rounded-3xl border p-6">
         <div className="flex items-center justify-between">
           <span className="inline-flex rounded-2xl border p-1 text-xl">
-            {["1D", "1W", "1M", "3M", "1Y"].map((r, i) => (
-              <span key={r} className={cn("px-5 py-1.5", i === 0 ? "rounded-xl bg-muted text-foreground" : "text-muted-foreground")}>
+            {["1D", "1W", "1M", "3M", "1Y"].map((r) => (
+              <span key={r} className={cn("px-5 py-1.5", r === "1M" ? "rounded-xl bg-muted text-foreground" : "text-muted-foreground")}>
                 {r}
               </span>
             ))}
           </span>
-          <span className="text-2xl text-positive tabular-nums">+$2.86 ↗ 2.18%</span>
+          <span className="text-2xl text-positive tabular-nums">+$18.00 ↗ 14.33%</span>
         </div>
         {/* Mono, so the axis labels read like the real chart's. */}
-        <Mono className="block h-[22rem]">
-          <ChartContainer config={CHART} className="h-full w-full">
-            <ComposedChart data={TAPE} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="docs-sheet-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--color-v)" stopOpacity={0.16} />
-                  <stop offset="100%" stopColor="var(--color-v)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="t" interval={11} tickLine={false} axisLine={false} tick={AXIS_TICK} tickMargin={10} />
-              <YAxis yAxisId="p" orientation="left" mirror tickLine={false} axisLine={false} tick={AXIS_TICK} tickCount={4} domain={["dataMin - 0.4", "dataMax + 0.3"]} tickFormatter={(x: number) => x.toFixed(0)} />
-              <YAxis yAxisId="vol" hide domain={[0, (max: number) => max * 5]} />
-              <ReferenceLine yAxisId="p" y={PREV_CLOSE} stroke="var(--muted-foreground)" strokeDasharray="4 6" strokeOpacity={0.5} />
-              <Bar yAxisId="vol" dataKey="volume" isAnimationActive={false}>
-                {TAPE.map((d) => (
-                  <Cell key={d.i} fill={d.up ? "var(--positive)" : "var(--negative)"} fillOpacity={0.35} />
-                ))}
-              </Bar>
-              <Area yAxisId="p" dataKey="v" type="linear" stroke="var(--color-v)" strokeWidth={2.5} fill="url(#docs-sheet-fill)" isAnimationActive={false} />
-            </ComposedChart>
-          </ChartContainer>
+        <Mono className="relative block">
+          {/* A fixed size, not a measured one: the sheet is a fixed width, and a measured chart inside a zoomed
+              miniature comes out a different width in different browsers. */}
+          <ComposedChart width={CHART_W} height={CHART_H} data={TAPE} margin={{ top: 48, right: 0, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="docs-sheet-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--positive)" stopOpacity={0.16} />
+                <stop offset="100%" stopColor="var(--positive)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="day" interval={PER_DAY * 4 - 1} tickLine={false} axisLine={false} tick={AXIS_TICK} tickMargin={10} />
+            <YAxis orientation="left" mirror tickLine={false} axisLine={false} tick={AXIS_TICK} tickCount={4} domain={["dataMin - 2", "dataMax + 1"]} tickFormatter={(x: number) => x.toFixed(0)} />
+            <Area dataKey="v" type="linear" stroke="var(--positive)" strokeWidth={2.5} fill="url(#docs-sheet-fill)" isAnimationActive={false} />
+          </ComposedChart>
+          {/* The moment we're on: a dashed line and its badge, sliding along the chart. */}
+          <span className="pointer-events-none absolute bottom-10 top-0 border-l-2 border-dashed border-muted-foreground/60 transition-[left] duration-700 ease-out" style={{ left }} />
+          <span
+            className="pointer-events-none absolute top-0 -translate-x-1/2 rounded-full border bg-background px-4 py-1 text-xl text-foreground shadow-sm transition-[left] duration-700 ease-out"
+            style={{ left }}
+          >
+            {m.marker}
+          </span>
         </Mono>
       </div>
       {/* The sheet's own trigger pills, drawn at their size again inside the miniature. */}
