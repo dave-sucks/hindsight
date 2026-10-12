@@ -14,7 +14,7 @@
  *    add and the fire, not the removal.
  *
  * Two parts: since the last answer, a removal is one of the principal's
- * decisions, with what it asks; and a "Removed by you" block keeps the
+ * decisions, with what it asks; and a "Removed by the principal" block keeps the
  * newest three after a run has answered, until a trigger reading the same
  * is back on the stock. The 09-28 cleanup of copied rules is in neither.
  *
@@ -90,7 +90,7 @@ describe("the 10-07 08:00 read, the run that set the buy again", () => {
 
   it("and it opens the block under the principal's notes (ABT has none)", () => {
     expect(read().text).toMatch(
-      /^WHAT'S BEEN SAID ON \$ABT\nRemoved by you:\n {2}10-06: Buy if below 6% from the close 5 days ago\. Don't add it back unless the thesis changes\.\nLast look: morning run, 10-05 08:04 — "ABT is already out on a protective stop/,
+      /^WHAT'S BEEN SAID ON \$ABT\nRemoved by the principal:\n {2}10-06: Buy if below 6% from the close 5 days ago\. Don't add it back unless the thesis changes\.\nLast look: morning run, 10-05 08:04 — "ABT is already out on a protective stop/,
     );
   });
 });
@@ -100,12 +100,12 @@ describe("after a run answers: the 10-07 08:05 answer", () => {
   const after = new Date(new Date(answer.timestamp).getTime() + 1000).toISOString();
   const read = () => stockContextFor({ ticker: "ABT", rows: rowsBefore(after), triggers: ladder("morning1008"), now: new Date(after), currentPrice: answer.priceAtTime });
 
-  it("the removal leaves the since-the-last-answer block, and stays in the Removed-by-you block", () => {
+  it("the removal leaves the since-the-last-answer block, and stays in the Removed-by-the-principal block", () => {
     const { text, unansweredDecision } = read();
     expect(text).toContain("Last look: morning run, 10-07 08:05");
     expect(text).toContain("Nothing since.");
     expect(text).not.toContain("Set by hand: Removed:");
-    expect(text).toContain(`Removed by you:\n  10-06: ${REMOVED_BUY}. ${KEEP}\nLast look:`);
+    expect(text).toContain(`Removed by the principal:\n  10-06: ${REMOVED_BUY}. ${KEEP}\nLast look:`);
     // The lasting block puts nothing on the list by itself.
     expect(unansweredDecision).toBeNull();
   });
@@ -116,16 +116,16 @@ describe("a removed trigger back on the stock", () => {
 
   it("is not said as removed; the principal's other removal still is", () => {
     const without = stockContextFor({ ticker: "ABT", rows: rowsBefore(readAt), triggers: ladder("morning1008"), now: new Date(readAt), currentPrice: price }).text!;
-    expect(without).toContain(`Removed by you:\n  10-07: Review if below $110. ${KEEP}\n  10-06: ${REMOVED_BUY}. ${KEEP}\n`);
+    expect(without).toContain(`Removed by the principal:\n  10-07: Review if below $110. ${KEEP}\n  10-06: ${REMOVED_BUY}. ${KEEP}\n`);
     const back = stockContextFor({ ticker: "ABT", rows: rowsBefore(readAt), triggers: [...ladder("morning1008"), stored(fx.removedBuy)], now: new Date(readAt), currentPrice: price }).text!;
-    expect(back).toContain(`Removed by you:\n  10-07: Review if below $110. ${KEEP}\nLast look:`);
+    expect(back).toContain(`Removed by the principal:\n  10-07: Review if below $110. ${KEEP}\nLast look:`);
     expect(back).not.toContain(`10-06: ${REMOVED_BUY}`);
   });
 
   it("on the 10-07 read, with the 6% buy back, there is no block at all", () => {
     const { readAt: at1007, price: p1007 } = fx.runs.morning1007;
     const back = stockContextFor({ ticker: "ABT", rows: rowsBefore(at1007), triggers: [...ladder("morning1007"), stored(fx.removedBuy)], now: new Date(at1007), currentPrice: p1007 }).text!;
-    expect(back).not.toContain("Removed by you:");
+    expect(back).not.toContain("Removed by the principal:");
     // What the principal decided on 10-06 is still history since the last answer.
     expect(back).toContain(`Set by hand: Removed: ${REMOVED_BUY}`);
   });
@@ -168,9 +168,9 @@ describe("a mixed edit: the keep sentence sits right after the removed item", ()
     );
   });
 
-  it("the Removed-by-you block takes the removal only", () => {
+  it("the Removed-by-the-principal block takes the removal only", () => {
     const text = buildStockContext({ ticker: "ABT", rows: [variant([remove, add])], labelFor: () => null, now: new Date(fx.runs.morning1007.readAt) }).text!;
-    expect(text).toContain(`Removed by you:\n  10-06: ${REMOVED_BUY}. ${KEEP}\nLast look:`);
+    expect(text).toContain(`Removed by the principal:\n  10-06: ${REMOVED_BUY}. ${KEEP}\nLast look:`);
     expect(text).not.toContain("10-06: Review if above $10");
   });
 });
@@ -199,7 +199,7 @@ describe("counted inside the cap with the notes, and never cut", () => {
       labelFor: (id) => ({ label: `alert ${id}`, rationale: "y".repeat(200) }),
       now: at(20),
     });
-    expect(text).toContain(`"${long}"\nRemoved by you:\n  10-06: Review if above $40. ${KEEP}\n  10-06: Review if above $30. ${KEEP}\n  10-06: Review if above $20. ${KEEP}\nLast look:`);
+    expect(text).toContain(`"${long}"\nRemoved by the principal:\n  10-06: Review if above $40. ${KEEP}\n  10-06: Review if above $30. ${KEEP}\n  10-06: Review if above $20. ${KEEP}\nLast look:`);
     expect(text).not.toContain("Review if above $10.");
     expect(text).toMatch(/ and \d more fired since: /);
     expect(text!.length - long.length).toBeLessThanOrEqual(1_600);
@@ -254,7 +254,7 @@ describe("the 10-08 08:00 read of ABT, through get_theses", () => {
     expect(full).not.toBeNull();
     const said = (rowForModel(full!, { named: false, size: sizeFor(full!, false) }) as Record<string, unknown>).said as string;
     expect(said).toMatch(
-      /^WHAT'S BEEN SAID ON \$ABT\nRemoved by you:\n {2}10-07: Review if below \$110\. Don't add it back unless the thesis changes\.\n {2}10-06: Buy if below 6% from the close 5 days ago\. Don't add it back unless the thesis changes\.\nLast look: morning run, 10-07 08:05/,
+      /^WHAT'S BEEN SAID ON \$ABT\nRemoved by the principal:\n {2}10-07: Review if below \$110\. Don't add it back unless the thesis changes\.\n {2}10-06: Buy if below 6% from the close 5 days ago\. Don't add it back unless the thesis changes\.\nLast look: morning run, 10-07 08:05/,
     );
     expect(said).toContain(`  The principal, 10-07 10:58: Set by hand: Removed: Review if below $110 at $97.95, now $98.73 (+0.8%). ${KEEP}`);
     expect(said).toContain("  The principal, 10-07 10:04: Set by hand: Added: Review if below $110 at $98.16, now $98.73 (+0.6%)");

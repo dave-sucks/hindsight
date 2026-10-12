@@ -329,7 +329,7 @@ export function buildStockContext(args: {
     lines.push(`  ${etStamp(n.timestamp)}${then}: "${oneLine(n.rationale ?? "")}"`);
   }
   // Counted against the cap with the notes, and like them never cut.
-  if (removed.length) lines.push("Removed by you:");
+  if (removed.length) lines.push("Removed by the principal:");
   for (const x of removed) lines.push(`  ${etStamp(x.at).slice(0, 5)}: ${x.sentence}. ${KEEP_IT_REMOVED}`);
   const said = last?.rationale?.trim() ? ` — "${sentences(last.rationale.split(/\n\s*\n\s*\[/)[0])}"` : "";
   lines.push(last ? `Last look: ${(last.runMode && RUN_WORDS[last.runMode]) ?? "a run"}, ${etStamp(last.timestamp)}${said}` : "Last look: none on record.");
