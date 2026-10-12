@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * The Guide's concepts as a bento in Framer's style: one frame split by
- * hairlines, each cell a picture with its words inside it, no inner cards.
+ * The Guide's concepts as a bento of soft cards (Cursor's and Lightfield's
+ * style): the words at the top, the picture below. A big picture starts at
+ * the card's left padding and runs off its right and bottom edges.
  *
  *   Row one: theses across two columns (a miniature of the thesis sheet),
  *   then analysts (the roster).
@@ -32,7 +33,8 @@ const CHART: ChartConfig = { v: { label: "Price", color: "var(--positive)" } };
 /** The thesis sheet, drawn at full size and shown as a miniature. */
 function SheetMock() {
   return (
-    <div className="flex w-[40rem] flex-col gap-5 rounded-2xl border bg-background p-7 shadow-sm">
+    <div className="grid w-[70rem] grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-8 rounded-2xl border bg-background p-8 shadow-sm">
+      <div className="flex flex-col gap-5">
       <div className="flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-sm text-foreground">
           <span className="size-1.5 rounded-full bg-blue-500" />
@@ -65,7 +67,9 @@ function SheetMock() {
       </div>
       <p className="text-xl leading-snug text-foreground">Drifts toward $480 over two months as estimates rise; the beat and raise held its gap on heavy volume.</p>
       <p className="text-sm text-muted-foreground">PEAD Specialist · written Oct 5</p>
-      <div className="h-36 rounded-xl border p-3">
+      </div>
+      <div className="flex flex-col gap-5">
+      <div className="h-64 rounded-xl border p-3">
         <ChartContainer config={CHART} className="h-full w-full">
           <AreaChart data={TAPE} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
@@ -82,6 +86,8 @@ function SheetMock() {
       <div className="flex flex-col gap-2">
         <PillRow action="EXIT" specs={[{ action: "EXIT", when: { watch: "price", is: "below", value: 384 }, why: "The floor." }]} />
         <PillRow action="REVIEW" specs={[{ action: "REVIEW", when: { watch: "report", is: "before", value: 7 }, why: "A week before the print." }]} />
+        <PillRow action="ADD" specs={[{ action: "ADD", when: { watch: "move", is: "above", value: 12, variable: "entry" }, why: "Press it once the drift is confirmed." }]} />
+      </div>
       </div>
     </div>
   );
@@ -160,9 +166,12 @@ function Roster() {
     { n: "PEAD Specialist", s: "Post-earnings drift · sells 12% off the high", c: "bg-blue-500" },
     { n: "Secular Compounder", s: "Compounders · sells 25% off the high", c: "bg-violet-400" },
     { n: "Catalyst Event PM", s: "Dated events · looks 10 days before", c: "bg-sky-400" },
+    { n: "Momentum Leader", s: "52-week highs · sells under the 50-day", c: "bg-emerald-400" },
+    { n: "Pullback Buyer", s: "Rising averages · sells 8% off the high", c: "bg-amber-400" },
+    { n: "Biotech Run-up", s: "FDA dates · sells the day before", c: "bg-rose-400" },
   ];
   return (
-    <div className="flex w-full max-w-sm flex-col divide-y rounded-2xl border bg-background">
+    <div className="flex w-[26rem] flex-col divide-y rounded-2xl border bg-background shadow-sm">
       {rows.map((r) => (
         <span key={r.n} className="flex items-center gap-3 px-4 py-3">
           <span className={cn("size-2 shrink-0 rounded-full", r.c)} />
@@ -176,21 +185,21 @@ function Roster() {
   );
 }
 
-const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; tall?: boolean }> = [
+const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; bleed?: boolean }> = [
   {
     slug: "theses",
     title: "Theses",
     line: "Every stock carries one: a belief we can be wrong about, the plan that acts on it, and the triggers that watch it.",
     // The sheet drawn at full size and shown smaller; zoom keeps its layout size honest, so nothing is cropped.
     art: (
-      <div style={{ zoom: 0.62 }}>
+      <div style={{ zoom: 0.8 }}>
         <SheetMock />
       </div>
     ),
     span: "lg:col-span-2",
-    tall: true,
+    bleed: true,
   },
-  { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <Roster />, tall: true },
+  { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <Roster />, bleed: true },
   { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerFeed /> },
   { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <Proposal /> },
   { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <Dots /> },
@@ -198,28 +207,28 @@ const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: Re
 
 export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
   return (
-    // One frame; the 1px gaps over the border color are the hairlines between cells.
-    <div className="grid gap-px overflow-hidden rounded-2xl border bg-border lg:grid-cols-3">
+    <div className="grid gap-3 lg:grid-cols-3">
       {CELLS.map((c) => (
         <div
           key={c.slug}
           className={cn(
-            "group relative flex flex-col bg-background has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-inset has-[button:focus-visible]:ring-ring",
-            c.tall ? "min-h-[34rem]" : "min-h-80",
+            "group relative flex flex-col overflow-hidden rounded-xl bg-muted/50 transition-colors hover:bg-muted/70 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring",
+            c.bleed ? "h-[27rem]" : "h-80",
             c.span,
           )}
         >
           <button type="button" onClick={() => onOpen(c.slug)} className="absolute inset-0 z-10 focus-visible:outline-none" aria-label={`Open ${c.title}`} />
-          <div className="pointer-events-none flex flex-1 items-center justify-center px-6 pt-8" aria-hidden>
-            {c.art}
-          </div>
-          <p className="p-6 text-sm leading-6 sm:px-8">
-            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+          <div className="flex flex-col gap-1 p-5">
+            <span className="inline-flex items-center gap-1 text-sm font-medium text-foreground">
               {c.title}
               <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
-            </span>{" "}
-            <span className="text-muted-foreground">{c.line}</span>
-          </p>
+            </span>
+            <span className="max-w-md text-sm leading-6 text-muted-foreground">{c.line}</span>
+          </div>
+          {/* The picture: a big one sits at the left padding and runs off the right and bottom edges; a small one sits in the space left. */}
+          <div className="pointer-events-none relative min-h-0 flex-1" aria-hidden>
+            {c.bleed ? <div className="absolute left-5 top-1">{c.art}</div> : <div className="flex h-full items-center px-5 pb-5">{c.art}</div>}
+          </div>
         </div>
       ))}
     </div>
