@@ -11,16 +11,19 @@
       {
         "action": "ENTER",
         "predicate": {
-          "kind": "AND",
-          "predicates": [
+          "match": "all",
+          "conditions": [
             {
-              "basis": "close",
-              "kind": "PRICE_ABOVE",
-              "level": 36.95
+              "watch": "price",
+              "is": "above",
+              "value": 36.95,
+              "settings": {
+                "close": true
+              }
             },
             {
-              "kind": "VOLUME_RATIO",
-              "min": 1.5
+              "watch": "volume",
+              "value": 1.5
             }
           ]
         },
@@ -29,19 +32,18 @@
       {
         "action": "REVIEW",
         "predicate": {
-          "days": 14,
-          "from": "LAST_REVIEW",
-          "kind": "REVIEW_CADENCE"
+          "watch": "repeat",
+          "value": 14
         },
         "rationale": "Bi-weekly cadence review: check whether the reclaim is approaching, whether any FDA communication has surfaced, and whether the entry window is still open (set down if <21 days to PDUFA with no fill)."
       },
       {
         "action": "REVIEW",
         "predicate": {
-          "days": 21,
-          "from": "EVENT",
-          "kind": "REVIEW_CADENCE",
-          "side": "BEFORE"
+          "watch": "from_date",
+          "is": "before",
+          "value": 21,
+          "variable": "event"
         },
         "rationale": "21 days before the Nov 30 PDUFA: per PRE_CATALYST rules, if the buy has not filled, set the plan down — the run-up did not materialize, which is this setup's first invalidation signal."
       }

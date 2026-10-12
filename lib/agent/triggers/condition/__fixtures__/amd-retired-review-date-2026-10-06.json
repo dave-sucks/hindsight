@@ -1,0 +1,69 @@
+[
+ {
+  "id": "4a95aff6-b88c-442b-9d83-cc0377c74f5e",
+  "action": "EXIT",
+  "predicate": {
+   "is": "below",
+   "value": 380,
+   "watch": "price"
+  },
+  "rationale": "Exit if price drops significantly, indicating momentum shift.",
+  "cooldownDays": 1
+ },
+ {
+  "id": "47c0b2b4-bd5f-4d0f-8bf9-c0ebf9998e9d",
+  "action": "EXIT",
+  "predicate": {
+   "is": "above",
+   "value": 460,
+   "watch": "price"
+  },
+  "rationale": "Take profit at target price level.",
+  "lastFiredAt": "2026-05-11T14:30:36.553Z",
+  "cooldownDays": 1
+ },
+ {
+  "id": "c0c3b685-ff6a-473f-b511-0725c0819ff0",
+  "action": "ENTER",
+  "predicate": {
+   "is": "above",
+   "value": 460,
+   "watch": "price"
+  },
+  "rationale": "Entry trigger — price broke above $460. Validate setup and consider INITIATE.",
+  "lastFiredAt": "2026-05-11T14:30:36.553Z",
+  "cooldownDays": 1
+ },
+ {
+  "id": "259994f7-b1ca-451c-9b57-f1249a0ae76e",
+  "action": "REVIEW",
+  "predicate": {
+   "kind": "REVIEW_DATE_HIT"
+  },
+  "rationale": "Scheduled review date reached. Walk the thesis against today's tape.",
+  "lastFiredAt": "2026-05-15T13:15:34.485Z",
+  "cooldownDays": 1
+ },
+ {
+  "id": "baf05161-103c-412c-a9cb-ec832f0ca114",
+  "action": "REVIEW",
+  "predicate": {
+   "is": "beat",
+   "value": 0,
+   "watch": "surprise"
+  },
+  "rationale": "Beat — short-term tape may flip in our favor before the entry trigger.",
+  "cooldownDays": 7
+ },
+ {
+  "id": "eca5d9aa-02c0-4cf9-85eb-eeede53a626e",
+  "action": "REVIEW",
+  "predicate": {
+   "is": "miss",
+   "value": 3,
+   "watch": "surprise"
+  },
+  "rationale": "Miss — entry conditions deteriorating. Consider removing.",
+  "cooldownDays": 7
+ }
+]
