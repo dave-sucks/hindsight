@@ -2,7 +2,7 @@
  * defaults.test.ts — verifies the P1-3 fix.
  *
  * Pre-fix: watchingEntryTrigger read `thesis.targetPrice` and emitted
- * PRICE_ABOVE(targetPrice) → ENTER. Since `targetPrice` was the
+ * price above(targetPrice) → ENTER. Since `targetPrice` was the
  * take-profit level when the thesis went ACTIVE, the default ENTER
  * fired at the same level as the take-profit EXIT — buying at the sell
  * level. Production bug: MDB 2026-05-25.
@@ -18,7 +18,7 @@
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { Condition, When } from "@/lib/agent/triggers/condition";
 import {
   applyTriggerCooldownDefaults,
@@ -31,7 +31,7 @@ import {
 } from "./defaults";
 import { accountSeedTriggers } from "./seed-account";
 import { triggersArraySchema } from "./schema";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
 
 function base(overrides: Partial<ThesisShape> = {}): ThesisShape {
@@ -66,7 +66,7 @@ describe("defaultTriggersForHorizon — WATCHING ENTER trigger (P1-3 fix)", () =
   });
 
   it("LONG WATCHING CATALYST (catalyst far out) — ENTER fires at entryPrice", () => {
-    // CATALYST defaults to event-based ENTER (EARNINGS_BEAT) when
+    // CATALYST defaults to event-based ENTER (earnings beat) when
     // catalystDate is within 7 days. With catalystDate further out,
     // falls back to the standard breakout-entry default.
     const farFuture = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -79,7 +79,7 @@ describe("defaultTriggersForHorizon — WATCHING ENTER trigger (P1-3 fix)", () =
     expect(enter?.predicate).toEqual({ watch: "price", is: "above", value: 175 });
   });
 
-  it("SHORT WATCHING — ENTER fires PRICE_BELOW(entryPrice), direction-aware", () => {
+  it("SHORT WATCHING — ENTER fires price below(entryPrice), direction-aware", () => {
     const triggers = defaultTriggersForHorizon(
       "TARGET",
       base({ direction: "SHORT", entryPrice: 175, targetPrice: 110, stopLoss: 195 }),
@@ -112,7 +112,7 @@ describe("defaultTriggersForHorizon — WATCHING ENTER trigger (P1-3 fix)", () =
     const triggers = defaultTriggersForHorizon("TARGET", base(), "HELD");
     const targetTrigger = triggers.find(
       (t) =>
-        kindOf(t.predicate) === "PRICE_ABOVE" &&
+        shapeName(t.predicate) === "price:above" &&
         (t.predicate as Condition).value === 240,
     );
     expect(targetTrigger).toBeDefined();
@@ -140,7 +140,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
     };
   }
 
-  it("REVIEW + REVIEW_CADENCE + cooldownDays:0 → overwrites with the cadence itself", () => {
+  it("REVIEW + review clock + cooldownDays:0 → overwrites with the cadence itself", () => {
     const t = mkTrigger({
       action: "REVIEW",
       predicate: { watch: "repeat", value: 14 },
@@ -152,7 +152,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
     expect(out.cooldownDays).toBe(14);
   });
 
-  it("REVIEW + PRICE_BELOW + cooldownDays:0 → overwrites with per-kind default 1", () => {
+  it("REVIEW + price below + cooldownDays:0 → overwrites with per-kind default 1", () => {
     const t = mkTrigger({
       action: "REVIEW",
       predicate: { watch: "price", is: "below", value: 108 },
@@ -162,7 +162,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
     expect(out.cooldownDays).toBe(1);
   });
 
-  it("ENTER + EARNINGS_BEAT + cooldownDays:0 → overwrites with per-kind default 7", () => {
+  it("ENTER + earnings beat + cooldownDays:0 → overwrites with per-kind default 7", () => {
     const t = mkTrigger({
       action: "ENTER",
       predicate: { watch: "surprise", is: "beat", value: 0 },
@@ -182,7 +182,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
     expect(out.cooldownDays).toBe(0);
   });
 
-  it("EXIT + cooldownDays:0 on PRICE_ABOVE target is preserved", () => {
+  it("EXIT + cooldownDays:0 on price above target is preserved", () => {
     const t = mkTrigger({
       action: "EXIT",
       predicate: { watch: "price", is: "above", value: 268 },
@@ -236,21 +236,22 @@ const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
  * rules on the analyst (its Triggers tab).
  */
 describe("defaultTriggersForHorizon — HELD carries only the thesis's own levels", () => {
-  const CONSTANT_KINDS = new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "PRICE_MOVE_PCT"]);
+  // A % sell rule or scale-in: a move from our entry, from the high, or from a recent close.
+  const percentRule = (p: unknown) => /^move:(above|below):(entry|peak|prev_close|close_5d|close_20d)$/.test(shapeName(p) ?? "");
 
   for (const horizon of HELD_HORIZONS) {
     it(`HELD ${horizon} stamps no scale-in and no percentage sell rule`, () => {
       const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
       expect(triggers.filter((t) => t.action === "ADD")).toEqual([]);
-      expect(triggers.filter((t) => CONSTANT_KINDS.has(kindOf(t.predicate) ?? ""))).toEqual([]);
+      expect(triggers.filter((t) => percentRule(t.predicate))).toEqual([]);
     });
 
     it(`HELD ${horizon} keeps its review clock and its floor`, () => {
       const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
-      expect(triggers.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toHaveLength(1);
+      expect(triggers.filter((t) => shapeName(t.predicate) === "repeat")).toHaveLength(1);
       expect(
         triggers.some(
-          (t) => t.action === "EXIT" && kindOf(t.predicate) === "PRICE_BELOW" && (t.predicate as Condition).value === 168,
+          (t) => t.action === "EXIT" && shapeName(t.predicate) === "price:below" && (t.predicate as Condition).value === 168,
         ),
       ).toBe(true);
     });
@@ -258,7 +259,7 @@ describe("defaultTriggersForHorizon — HELD carries only the thesis's own level
     it(`WATCHING ${horizon} has no ADD and no protection rungs`, () => {
       const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
       expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
-      expect(triggers.filter((t) => CONSTANT_KINDS.has(kindOf(t.predicate) ?? ""))).toEqual([]);
+      expect(triggers.filter((t) => percentRule(t.predicate))).toEqual([]);
     });
   }
 
@@ -295,10 +296,10 @@ describe("mergeTriggers", () => {
       },
     ];
     const merged = mergeTriggers(defaultTriggersForHorizon("TARGET", base(), "HELD"), agent);
-    const floors = merged.filter((t) => kindOf(t.predicate) === "PRICE_BELOW" && t.action === "EXIT");
+    const floors = merged.filter((t) => shapeName(t.predicate) === "price:below" && t.action === "EXIT");
     expect(floors).toHaveLength(1);
     expect(floors[0].id).toBe("agent-1");
-    expect(merged.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(true);
+    expect(merged.some((t) => shapeName(t.predicate) === "repeat")).toBe(true);
   });
 });
 
@@ -307,7 +308,7 @@ describe("defaultTriggersForHorizon — WATCHING carries only the author's level
   for (const horizon of HELD_HORIZONS) {
     it(`WATCHING ${horizon} template carries NO review clock`, () => {
       const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
-      expect(triggers.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toHaveLength(0);
+      expect(triggers.filter((t) => shapeName(t.predicate) === "repeat")).toHaveLength(0);
     });
 
     it(`WATCHING ${horizon} with no prices emits NOTHING`, () => {
@@ -320,10 +321,10 @@ describe("defaultTriggersForHorizon — WATCHING carries only the author's level
     });
 
     it(`WATCHING ${horizon} emits ONLY the author's own levels`, () => {
-      const kinds = new Set(defaultTriggersForHorizon(horizon, base(), "WATCHING").map((t) => kindOf(t.predicate)));
-      expect(kinds.has("REVIEW_CADENCE")).toBe(false);
-      expect(kinds.has("EARNINGS_BEAT")).toBe(false);
-      expect(kinds.has("EARNINGS_MISS")).toBe(false);
+      const kinds = new Set(defaultTriggersForHorizon(horizon, base(), "WATCHING").map((t) => shapeName(t.predicate)));
+      expect(kinds.has("repeat")).toBe(false);
+      expect(kinds.has("surprise:beat")).toBe(false);
+      expect(kinds.has("surprise:miss")).toBe(false);
     });
   }
 
@@ -335,7 +336,7 @@ describe("defaultTriggersForHorizon — WATCHING carries only the author's level
 
 // ── ENTER dedup bucket ────────────────────────────────────────────────
 
-describe("triggerBucket — ENTER on a price level is one bucket", () => {
+describe("triggerSlot — ENTER on a price level is one bucket", () => {
   it("treats breakout and dip entry rungs as the same intent", () => {
     // An ENTER rung on an absolute price is ONE decision — "where I start
     // this position" — however it's phrased. Without collapsing them, a
@@ -350,7 +351,7 @@ describe("triggerBucket — ENTER on a price level is one bucket", () => {
       predicate: { watch: "price", is: "below", value: 262 } as When,
     };
 
-    expect(triggerBucket(breakout)).toBe(triggerBucket(dip));
+    expect(triggerSlot(breakout)).toBe(triggerSlot(dip));
     expect(mergeTriggers([dip], [breakout]).filter((t) => t.action === "ENTER")).toHaveLength(1);
   });
 });

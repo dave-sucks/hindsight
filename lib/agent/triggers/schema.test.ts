@@ -8,7 +8,7 @@
  */
 
 import { zodSchema } from "ai";
-import { toStoredPredicate, waitsForClose } from "./condition";
+import { waitsForClose } from "./condition";
 import { parseTriggersResilient, predicateInputSchema, triggerActionSchema, triggerPredicateSchema, triggersArraySchema } from "./schema";
 
 const good = {
@@ -75,7 +75,7 @@ describe("parseTriggersResilient", () => {
   });
 });
 
-describe("REVIEW_CADENCE keeps its counting-from choice through the schema", () => {
+describe("review clock keeps its counting-from choice through the schema", () => {
   it("'sell 30 days after the buy' survives the parse as a count from the buy — on main it came back as a review clock", () => {
     const parsed = triggerPredicateSchema.parse({ watch: "from_date", is: "after", value: 30, variable: "buy" });
     expect(parsed).toEqual({ watch: "from_date", is: "after", value: 30, variable: "buy" });
@@ -97,9 +97,35 @@ describe("the condition a model writes", () => {
     expect(schema.parse({ watch: "price", is: "above", value: 183, settings: { close: true } })).toEqual({ watch: "price", is: "above", value: 183, settings: { close: true } });
   });
 
-  it("names the measures once, not once per level of nesting", () => {
+  it("defines each measure once, not once per level of nesting", () => {
     const json = JSON.stringify(zodSchema(predicateInputSchema() as never).jsonSchema);
-    expect(json.split("Measures: price").length - 1).toBe(1);
+    expect(json.split('"Condition":{').length - 1).toBe(1);
+    for (const watch of ["price", "move", "volume", "rsi", "strength", "gap", "report", "surprise", "filing", "insiders", "repeat", "from_date"]) {
+      expect({ watch, branches: json.split(`"const":"${watch}"`).length - 1 }).toEqual({ watch, branches: 1 });
+    }
+  });
+
+  it("offers each measure only its own fields", () => {
+    const json = zodSchema(predicateInputSchema() as never).jsonSchema as { definitions: { Condition: { oneOf?: unknown[]; anyOf?: unknown[] } } };
+    const arms = (json.definitions.Condition.oneOf ?? json.definitions.Condition.anyOf ?? []) as Array<{ properties: Record<string, { properties?: Record<string, unknown> }> }>;
+    const fields = Object.fromEntries(arms.map((a) => [(a.properties.watch as { const?: string }).const, Object.keys(a.properties.settings?.properties ?? {})]));
+    expect(fields).toEqual({
+      price: ["close"],
+      move: ["fastWinnerPct", "fastWinnerDays", "startOnceUpPct", "widenAtr"],
+      volume: [],
+      rsi: ["period"],
+      strength: ["window"],
+      gap: ["volume", "withinDays"],
+      report: ["fromDay"],
+      surprise: [],
+      filing: [],
+      insiders: ["days"],
+      repeat: [],
+      from_date: [],
+    });
+    // A price reads a line in `value` and has no `variable`; a move has one.
+    const price = arms.find((a) => (a.properties.watch as { const?: string }).const === "price")!;
+    expect(Object.keys(price.properties)).toEqual(["watch", "is", "value", "settings"]);
   });
 });
 
@@ -122,10 +148,9 @@ describe("a setting the measure doesn't take is dropped at the gate", () => {
     expect(triggerPredicateSchema.parse(closeBuy)).toEqual(closeBuy);
   });
 
-  it("so does storage, for every writer", () => {
-    expect(toStoredPredicate(undeclared)).toEqual({ watch: "move", is: "below", value: 7, variable: "prev_close" });
+  it("inside a group too", () => {
     const group = { match: "all", conditions: [undeclared, { watch: "volume", value: 1.5, settings: { window: "3M" } }] };
-    expect(toStoredPredicate(group)).toEqual({ match: "all", conditions: [{ watch: "move", is: "below", value: 7, variable: "prev_close" }, { watch: "volume", value: 1.5 }] });
+    expect(triggerPredicateSchema.parse(group)).toEqual({ match: "all", conditions: [{ watch: "move", is: "below", value: 7, variable: "prev_close" }, { watch: "volume", value: 1.5 }] });
   });
 });
 

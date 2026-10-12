@@ -9,8 +9,9 @@
       {
         "id": "393f4a46-6789-4003-a86e-c9c08c9a9a7b",
         "predicate": {
-          "kind": "PRICE_ABOVE",
-          "level": 145
+          "watch": "price",
+          "is": "above",
+          "value": 145
         },
         "action": "REVIEW",
         "rationale": "Reclaim of the falling 50-day (~$145-146 zone) would be the first Trend Template repair signal and the earliest point at which a buy trigger could be armed. Review to re-score; do not buy automatically until composite reaches 7+.",

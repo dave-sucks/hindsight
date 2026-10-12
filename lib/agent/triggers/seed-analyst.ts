@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { analystStandingTriggers, signatureSetup } from "@/lib/agent/knowledge/seat-rules";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { parseLevelTriggers } from "./load-levels";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { sentenceOf } from "./condition/describe";
 import type { Trigger } from "./types";
 
@@ -35,16 +35,16 @@ export interface ReseedDiff {
 export function reseedDiff(setupIds: readonly string[], existing: Trigger[], mintId: () => string = randomUUID): ReseedDiff {
   const template = analystStandingTriggers(setupIds, mintId);
   const sig = signatureSetup(setupIds);
-  const byBucket = new Map(existing.map((t) => [triggerBucket(t), t] as const));
-  const templateBuckets = new Set(template.map(triggerBucket));
+  const byBucket = new Map(existing.map((t) => [triggerSlot(t), t] as const));
+  const templateBuckets = new Set(template.map(triggerSlot));
   const toAdd: Trigger[] = [];
   const present: ReseedDiff["present"] = [];
   for (const t of template) {
-    const hit = byBucket.get(triggerBucket(t));
+    const hit = byBucket.get(triggerSlot(t));
     if (hit) present.push({ template: t, existing: hit });
     else toAdd.push(t);
   }
-  const foreign = existing.filter((t) => !templateBuckets.has(triggerBucket(t)));
+  const foreign = existing.filter((t) => !templateBuckets.has(triggerSlot(t)));
   return { setupName: sig ? (getSetup(sig)?.name ?? sig) : null, toAdd, present, foreign };
 }
 

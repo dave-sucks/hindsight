@@ -5,7 +5,7 @@
  */
 
 import { applyLevelArgs } from "./price-levels";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { applyTriggerOps } from "./ops";
 import type { Trigger } from "./types";
 
@@ -24,7 +24,7 @@ describe("record_thesis path — applyLevelArgs", () => {
   it("the stop and target reasons become their triggers' sentences", () => {
     const t = mint({ notes: { floor: "under the base low $228.77, 2.3 ATR", target: "measured move: 13.3% base depth added to the pivot" } });
     expect(t.find((x) => x.action === "EXIT")!.rationale).toBe("under the base low $228.77, 2.3 ATR");
-    expect(t.find((x) => x.action === "REVIEW" && kindOf(x.predicate) === "PRICE_ABOVE")!.rationale).toBe("measured move: 13.3% base depth added to the pivot");
+    expect(t.find((x) => x.action === "REVIEW" && shapeName(x.predicate) === "price:above")!.rationale).toBe("measured move: 13.3% base depth added to the pivot");
   });
 
   it("entry_on_close makes the buy fire on the close only", () => {

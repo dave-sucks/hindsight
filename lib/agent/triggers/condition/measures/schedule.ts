@@ -3,25 +3,22 @@
 
 import type { MeasureDef } from "../measure";
 import { DATE_VARIABLES, variableDef } from "../variables";
-import type { LegacyPredicate } from "../legacy-types";
 
 export const repeat: MeasureDef = {
   id: "repeat",
   type: "schedule",
   label: "Repeat",
   word: "Every",
-  value: { suffix: "days", placeholder: "30", integer: true, min: 1 },
+  value: { suffix: "days", placeholder: "30", range: { what: "A repeat", unit: " days", integer: true, min: 1, max: 365 } },
   actions: ["REVIEW"],
   timed: true,
   clock: true,
   // The cadence is the interval.
   cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "repeat" }),
+  fits: (c) => c.value != null,
+  shape: "A repeat takes a number of days.",
   // Counted from the last review.
-  legacy: {
-    from: { REVIEW_CADENCE: (p) => ((p.from ?? "LAST_REVIEW") === "LAST_REVIEW" ? { watch: "repeat", value: p.days } : null) },
-    to: (c): LegacyPredicate | null => (c.value != null ? { kind: "REVIEW_CADENCE", days: c.value } : null),
-  },
 };
 
 export const fromDate: MeasureDef = {
@@ -32,27 +29,16 @@ export const fromDate: MeasureDef = {
     { is: "after", label: "After" },
     { is: "before", label: "Before" },
   ],
-  value: { suffix: "days", placeholder: "60", integer: true, min: 1 },
+  value: { suffix: "days", placeholder: "60", range: { what: "A date count", unit: " days", integer: true, min: 1, max: 365 } },
   variables: { mode: "from", options: DATE_VARIABLES, title: "Counted from", word: () => "from", required: "Choose what to count from." },
   actions: ["TRIM", "EXIT", "REVIEW"],
   timed: true,
   says: (c) => `${c.value ?? 0} ${c.value === 1 ? "day" : "days"} ${c.is ?? "after"} ${c.variable ? variableDef(c.variable).words : "a date"}`,
   cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "from_date", is: "after", variable: "buy" }),
+  // After the buy, or either side of the event date.
+  fits: (c) =>
+    c.value != null && (c.is === "after" || c.is === "before") && (c.variable === "event" || (c.variable === "buy" && c.is === "after")),
+  shape: "A date count runs after the buy, or before or after the event date.",
   check: (c) => (c.variable === "buy" && c.is === "before" ? "The buy is already in the past. Pick After." : null),
-  legacy: {
-    from: {
-      REVIEW_CADENCE: (p) => {
-        if (p.from === "BUY") return { watch: "from_date", is: "after", value: p.days, variable: "buy" };
-        if (p.from === "EVENT") return { watch: "from_date", is: p.side === "BEFORE" ? "before" : "after", value: p.days, variable: "event" };
-        return null;
-      },
-    },
-    to: (c): LegacyPredicate | null => {
-      if (c.value == null || (c.is !== "after" && c.is !== "before")) return null;
-      if (c.variable === "buy") return c.is === "after" ? { kind: "REVIEW_CADENCE", days: c.value, from: "BUY" } : null;
-      if (c.variable === "event") return { kind: "REVIEW_CADENCE", days: c.value, from: "EVENT", side: c.is === "before" ? "BEFORE" : "AFTER" };
-      return null;
-    },
-  },
 };

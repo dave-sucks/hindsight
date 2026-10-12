@@ -8,7 +8,7 @@
  * Two things used to silently block that exact edit:
  *
  *   1. the plan ⇒ cadence stamp keyed on DIRECTION, so any directional
- *      resend without a REVIEW_CADENCE was re-clocked — even one whose
+ *      resend without a review clock was re-clocked — even one whose
  *      whole point was removing the clock. It now keys on the PLAN
  *      (isPlanLevel on the final ladder, or a level arg on the call).
  *   2. the enter-guard refused any directional WATCHING array without an
@@ -56,7 +56,7 @@ jest.mock("@/lib/agent/triggers/load-levels", () => ({
 }));
 
 import { updateThesis } from "./update-thesis";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -161,7 +161,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     const data = patchedData();
     const triggers = (data.triggers ?? []) as Trigger[];
     // The clock the agent removed stays removed — no silent re-stamp.
-    expect(triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(
+    expect(triggers.some((t) => shapeName(t.predicate) === "repeat")).toBe(
       false,
     );
     // The wakes survive.
@@ -187,7 +187,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
-    expect(triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(
+    expect(triggers.some((t) => shapeName(t.predicate) === "repeat")).toBe(
       false,
     );
     // The plan is untouched — entry and floor both survive.
@@ -210,7 +210,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
-    expect(triggers.some((t) => kindOf(t.predicate) === "REVIEW_CADENCE")).toBe(
+    expect(triggers.some((t) => shapeName(t.predicate) === "repeat")).toBe(
       false,
     );
   });

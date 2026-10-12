@@ -49,7 +49,9 @@
       {
         "id": "661d2640-07d3-4eaf-a978-69193002512c",
         "predicate": {
-          "kind": "EARNINGS_BEAT"
+          "watch": "surprise",
+          "is": "beat",
+          "value": 0
         },
         "action": "REVIEW",
         "rationale": "An earnings beat after approval could confirm FUROSCIX launch traction and justify pressing the post-event winner.",
@@ -59,8 +61,9 @@
       {
         "id": "c6c1986d-c3ac-41b4-888c-734ccf370def",
         "predicate": {
-          "kind": "EARNINGS_MISS",
-          "minSurprisePct": 3
+          "watch": "surprise",
+          "is": "miss",
+          "value": 3
         },
         "action": "REVIEW",
         "rationale": "A miss after approval could suggest the launch is not changing the economic story fast enough and warrants reassessment.",
@@ -70,9 +73,10 @@
       {
         "id": "9cc5909c-dd57-4331-a1ad-896d3edb586e",
         "predicate": {
-          "kind": "GAIN_FROM_ENTRY",
-          "pct": 20,
-          "direction": "UP"
+          "watch": "move",
+          "is": "above",
+          "value": 20,
+          "variable": "entry"
         },
         "action": "REVIEW",
         "rationale": "If the position reaches roughly +20% from entry, reassess whether to bank gains or raise the target and floor.",
@@ -82,8 +86,9 @@
       {
         "id": "caa63ecc-0081-4bd1-bd7f-0653d7bc1d9e",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 4
+          "watch": "price",
+          "is": "below",
+          "value": 4
         },
         "action": "EXIT",
         "rationale": "A break back below $4.00 after approval would negate the post-event breakout and justify exiting to protect capital.",
@@ -93,9 +98,10 @@
       {
         "id": "14f4b73f-ed21-4cbb-8492-7e124ad34610",
         "predicate": {
-          "kind": "GAIN_FROM_ENTRY",
-          "pct": 12,
-          "direction": "DOWN"
+          "watch": "move",
+          "is": "below",
+          "value": 12,
+          "variable": "entry"
         },
         "action": "REVIEW",
         "rationale": "If the position falls 12% from entry, reassess whether the post-approval hold is failing or just retracing.",
@@ -168,8 +174,9 @@
         "action": "EXIT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 3.4
+          "watch": "price",
+          "is": "below",
+          "value": 3.4
         },
         "rationale": "A decisive break below $3.40 violates the thesis's technical support and signals pre-event deterioration.",
         "cooldownDays": 1
@@ -203,7 +210,9 @@
         "action": "REVIEW",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "EARNINGS_BEAT"
+          "watch": "surprise",
+          "is": "beat",
+          "value": 0
         },
         "rationale": "An earnings beat could improve sentiment and alter the setup into the catalyst.",
         "cooldownDays": 7
@@ -213,8 +222,9 @@
         "action": "REVIEW",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "EARNINGS_MISS",
-          "minSurprisePct": 3
+          "watch": "surprise",
+          "is": "miss",
+          "value": 3
         },
         "rationale": "An earnings miss of 3% or worse could weaken confidence ahead of the event.",
         "cooldownDays": 7
@@ -224,10 +234,10 @@
         "action": "ADD",
         "fireMode": "TACTICAL",
         "predicate": {
-          "pct": 7,
-          "kind": "PRICE_MOVE_PCT",
-          "window": "1D",
-          "direction": "DOWN"
+          "watch": "move",
+          "is": "below",
+          "value": 7,
+          "variable": "prev_close"
         },
         "rationale": "Add only if a sharp pullback is market-driven or technical while the catalyst thesis remains intact.",
         "cooldownDays": 1
@@ -237,9 +247,10 @@
         "action": "REVIEW",
         "fireMode": "TACTICAL",
         "predicate": {
-          "pct": 20,
-          "kind": "GAIN_FROM_ENTRY",
-          "direction": "UP"
+          "watch": "move",
+          "is": "above",
+          "value": 20,
+          "variable": "entry"
         },
         "rationale": "At roughly +20% from entry, reassess whether pre-event upside remaining still justifies holding full size into the catalyst.",
         "cooldownDays": 7
@@ -249,8 +260,9 @@
         "action": "EXIT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 3.95
+          "watch": "price",
+          "is": "below",
+          "value": 3.95
         },
         "rationale": "After today's breakout, a break back below $3.95 would negate the new structure and justify exiting to protect capital.",
         "cooldownDays": 1
@@ -260,9 +272,10 @@
         "action": "REVIEW",
         "fireMode": "TACTICAL",
         "predicate": {
-          "pct": 12,
-          "kind": "GAIN_FROM_ENTRY",
-          "direction": "DOWN"
+          "watch": "move",
+          "is": "below",
+          "value": 12,
+          "variable": "entry"
         },
         "rationale": "If the position falls 12% from entry, reassess whether the drawdown is noise or thesis damage.",
         "cooldownDays": 7

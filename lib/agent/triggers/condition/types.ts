@@ -4,7 +4,7 @@
  *   watch (the measure) · is (its button) · value (what you type) or variable (what you insert) · settings
  *
  * Everything about a measure (its tab, buttons, input, settings, words,
- * slot, the actions it can take, and how it reads a row stored as a kind)
+ * slot, the actions it can take, and what it refuses)
  * lives on its catalog entry in ./measures. Nothing else branches on a
  * measure. docs/plans/TRIGGER_TYPES.md §3, §5 and §6.
  *
@@ -62,8 +62,31 @@ export type SettingValue = number | boolean | string;
 export type Settings = Readonly<Record<string, SettingValue>>;
 
 /** One setting, declared on the measure (the RSI's length) or the variable (the trailing options on the high since we bought). */
+/**
+ * Where a number may sit, and how a refusal says so. The form, the save and
+ * the agents' schema all read it (./range), so they refuse the same number
+ * with the same sentence: "Volume takes more than 0× and up to 50×; 60× isn't."
+ */
+export interface Range {
+  /** Who the sentence is about: "Volume", "A trail". */
+  what: string;
+  /** "$" before the number; "%", "×" right after it; " days" after the last bound only. */
+  unit?: string;
+  /** Inclusive bounds. */
+  min?: number;
+  max?: number;
+  /** Exclusive bounds: more than `over`, under `under`. */
+  over?: number;
+  under?: number;
+  integer?: boolean;
+  /** Said after the refusal: why the bound is there. */
+  why?: string;
+}
+
 export interface SettingDef {
   key: string;
+  /** Where its number may sit, when it is a number. */
+  range?: Range;
   /** The select above the input. A setting with no options is one only an agent writes; the form carries it unchanged. */
   options?: readonly { value: SettingValue; label: string }[];
   /** The select's name, for screen readers. */
@@ -96,21 +119,8 @@ export interface Group {
 
 export type When = Condition | Group;
 
-/**
- * A stored condition no current kind can read (old review-date, deleted in
- * August). Kept verbatim so nothing is lost; it never fires.
- */
-export interface Retired {
-  retired: true;
-  was: unknown;
-}
-
-export function isGroup(w: When | Retired): w is Group {
+export function isGroup(w: When): w is Group {
   return typeof w === "object" && w != null && "match" in w && Array.isArray((w as Group).conditions);
-}
-
-export function isRetired(w: When | Retired): w is Retired {
-  return typeof w === "object" && w != null && (w as Retired).retired === true;
 }
 
 /** Every plain condition in a When, in order. */

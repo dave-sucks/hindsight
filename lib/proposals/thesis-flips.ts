@@ -27,7 +27,7 @@ import {
   reviewCadenceTrigger,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
-import { triggerBucket } from "@/lib/agent/triggers/bucket";
+import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import {
   acceptedOps,
@@ -195,10 +195,10 @@ export async function armHeldLadderOnFill(opts: {
     // A template trigger whose bucket the analyst already filled is left
     // alone: the add would become an edit of theirs, and the fill must not
     // move a level the analyst chose.
-    const taken = new Set(stored.map(triggerBucket));
+    const taken = new Set(stored.map(triggerSlot));
     const applied = applyTriggerOps({
       stored,
-      ops: ops.filter((o) => o.op !== "add" || !taken.has(triggerBucket(o.trigger))),
+      ops: ops.filter((o) => o.op !== "add" || !taken.has(triggerSlot(o.trigger))),
       direction: watchingThesis.direction,
       status: "HOLDING",
       actor: "SYSTEM",

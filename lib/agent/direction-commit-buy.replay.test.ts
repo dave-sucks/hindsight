@@ -17,7 +17,7 @@
  * breakout and a buy on a pullback): a plan with two different buys saves,
  * shown here on the CRWD writer mint of the same day.
  */
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 
 type Trig = { id: string; action: string; predicate: Record<string, unknown> };
@@ -209,6 +209,6 @@ describe("committing a direction uses the buy already on the stock", () => {
     expect(refused).toBe(false);
     const rows = db.store.thesis as Array<Record<string, unknown>>;
     expect(rows).toHaveLength(1);
-    expect(buysOf(rows[0].triggers).map((t) => kindOf(t.predicate)).sort()).toEqual(["NEAR_SMA", "PRICE_BELOW"]);
+    expect(buysOf(rows[0].triggers).map((t) => shapeName(t.predicate)).sort()).toEqual(["move:near:sma20", "price:below"]);
   });
 });

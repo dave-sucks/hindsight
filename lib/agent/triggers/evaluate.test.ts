@@ -26,7 +26,7 @@ function makeCtx(partial: Partial<EvaluationContext> = {}): EvaluationContext {
 describe("evaluateTrigger", () => {
   // ── Price-based ─────────────────────────────────────────────────────
 
-  describe("PRICE_ABOVE", () => {
+  describe("price above", () => {
     const predicate: When = { watch: "price", is: "above", value: 100 };
 
     it("fires when latestQuote.price > level", () => {
@@ -44,7 +44,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("PRICE_BELOW", () => {
+  describe("price below", () => {
     const predicate: When = { watch: "price", is: "below", value: 100 };
 
     it("fires when latestQuote.price < level", () => {
@@ -57,7 +57,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("PRICE_MOVE_PCT", () => {
+  describe("move from a close", () => {
     // recentPrices: 30 days of synthetic closes leading up to NOW.
     // Day 0 (30 days ago) close = 100; +1/day; day 30 (NOW) close = 130.
     const recentPrices = Array.from({ length: 30 }, (_, i) => ({
@@ -101,7 +101,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("GAIN_FROM_ENTRY", () => {
+  describe("move from entry", () => {
     const up10: When = { watch: "move", is: "above", value: 10, variable: "entry" };
     const down10: When = { watch: "move", is: "below", value: 10, variable: "entry" };
 
@@ -184,7 +184,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("TRAILING_FROM_HIGH", () => {
+  describe("trail", () => {
     const trail8: When = { watch: "move", is: "below", value: 8, variable: "peak" };
 
     it("LONG fires when price gives back pct from the peak", () => {
@@ -264,7 +264,7 @@ describe("evaluateTrigger", () => {
   const at = (price: number, extra: Partial<EvaluationContext> = {}) =>
     makeCtx({ latestQuote: { price, changePct: 0, prevClose: 159 }, indicators: snap, ...extra });
 
-  describe("VS_SMA", () => {
+  describe("price vs an average", () => {
     it("fires off the snapshot's average — the kind that never had one", () => {
       const p: When = { watch: "price", is: "above", variable: "sma50" };
       expect(evaluateTrigger(p, at(140))).toBe(true);
@@ -285,7 +285,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("NEAR_SMA", () => {
+  describe("near an average", () => {
     const p: When = { watch: "move", is: "near", value: 2, variable: "sma50" };
     it("fires within the band on either side", () => {
       expect(evaluateTrigger(p, at(136))).toBe(true);
@@ -296,7 +296,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("VOLUME_RATIO", () => {
+  describe("volume", () => {
     const p: When = { watch: "volume", value: 1.5 };
     it("fires on today's volume ÷ the 20-day average", () => {
       expect(evaluateTrigger(p, at(150, { today: { volume: 1_600_000 } }))).toBe(true);
@@ -307,7 +307,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("NEW_HIGH", () => {
+  describe("new high", () => {
     it("20D: above the prior 20 sessions' high", () => {
       const p: When = { watch: "price", is: "above", variable: "high20" };
       expect(evaluateTrigger(p, at(161))).toBe(true);
@@ -320,7 +320,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("PCT_FROM_52W_HIGH", () => {
+  describe("near the 52-week high", () => {
     const p: When = { watch: "move", is: "near", value: 5, variable: "high52" };
     it("fires within 5% of the high, and above it", () => {
       expect(evaluateTrigger(p, at(172))).toBe(true);
@@ -331,7 +331,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("RS_VS_SPY", () => {
+  describe("strength vs the S&P", () => {
     it("reads the window's excess return", () => {
       expect(evaluateTrigger({ watch: "strength", value: 10, settings: { window: "3M" } }, at(150))).toBe(true);
       expect(evaluateTrigger({ watch: "strength", value: 0, settings: { window: "6M" } }, at(150))).toBe(false);
@@ -339,7 +339,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("GAP_UP", () => {
+  describe("gap", () => {
     it("fires on today's gap: open vs prior close, on volume", () => {
       const p: When = { watch: "gap", value: 8, settings: { volume: 3 } };
       expect(evaluateTrigger(p, at(175, { today: { open: 172, volume: 3_500_000 } }))).toBe(true);
@@ -368,7 +368,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("PRICE_MOVE_PCT 5D / 20D — off the snapshot's closes", () => {
+  describe("move from a close 5D / 20D — off the snapshot's closes", () => {
     it("5D: the live price vs the close five sessions back", () => {
       // closes[55] = 155 → 170 is +9.7%.
       expect(evaluateTrigger({ watch: "move", is: "above", value: 9, variable: "close_5d" }, at(170))).toBe(true);
@@ -385,7 +385,7 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("PRICE_ABOVE basis: close", () => {
+  describe("price above basis: close", () => {
     const p: When = { watch: "price", is: "above", value: 160, settings: { close: true } };
     it("never fires on an intraday pass", () => {
       expect(evaluateTrigger(p, at(165, { session: "INTRADAY" }))).toBe(false);
@@ -440,7 +440,7 @@ describe("evaluateTrigger", () => {
       };
     }
 
-    it("fires EARNINGS_BEAT off a reported beat", () => {
+    it("fires earnings beat off a reported beat", () => {
       const predicate: When = { watch: "surprise", is: "beat", value: 0 };
       expect(evaluateTrigger(predicate, makeCtx({ earnings: report() }))).toBe(
         true,
@@ -457,13 +457,13 @@ describe("evaluateTrigger", () => {
       ).toBe(false);
     });
 
-    it("does not fire EARNINGS_BEAT on a reported miss", () => {
+    it("does not fire earnings beat on a reported miss", () => {
       const ctx = makeCtx({ earnings: report({ surprisePct: -4 }) });
       expect(evaluateTrigger({ watch: "surprise", is: "beat", value: 0 }, ctx)).toBe(false);
       expect(evaluateTrigger({ watch: "surprise", is: "miss", value: 0 }, ctx)).toBe(true);
     });
 
-    it("compares EARNINGS_MISS thresholds on the absolute surprise", () => {
+    it("compares earnings miss thresholds on the absolute surprise", () => {
       const ctx = makeCtx({ earnings: report({ surprisePct: -5 }) });
       expect(
         evaluateTrigger({ watch: "surprise", is: "miss", value: 3 }, ctx),
@@ -487,7 +487,7 @@ describe("evaluateTrigger", () => {
     });
 
     // ── The heads-up BEFORE a report ─────────────────────────────────
-    describe("EARNINGS_WITHIN", () => {
+    describe("before-earnings", () => {
       const NOW_SEP_27 = new Date("2026-09-27T14:30:00Z");
       const upcoming: EarningsReport = {
         ...report({ symbol: "MU", reportDate: "2026-09-30", hour: "amc" }),
@@ -532,7 +532,7 @@ describe("evaluateTrigger", () => {
     });
 
     // ── The window AFTER a report ────────────────────────────────────
-    describe("EARNINGS_SINCE", () => {
+    describe("after-earnings", () => {
       const reported = report({ reportDate: "2026-08-26", surprisePct: 3.8 });
       const at = (iso: string) => makeCtx({ earnings: reported, now: new Date(`${iso}T15:00:00Z`) });
 
@@ -582,9 +582,9 @@ describe("evaluateTrigger", () => {
   // ── Time-based ──────────────────────────────────────────────────────
 
 
-  describe("REVIEW_CADENCE", () => {
+  describe("review clock", () => {
     // Counted from the last ACTUAL review, not from a date someone typed.
-    // The old REVIEW_DATE_HIT read a stored review-date column, which was a
+    // The old old review-date trigger read a stored review-date column, which was a
     // second store of the same idea and the one nothing fired on.
     const cadence: When = { watch: "repeat", value: 7 };
 
@@ -729,7 +729,7 @@ describe("shouldFire", () => {
   });
 
   it("falls back to predicate-kind default cooldown when cooldownDays is absent", () => {
-    // PRICE_ABOVE has a 1-day default cooldown. Fired 1 minute ago →
+    // price above has a 1-day default cooldown. Fired 1 minute ago →
     // still inside the default window, so should NOT re-fire.
     const trigger: Trigger = {
       ...baseTrigger,
@@ -773,7 +773,7 @@ describe("shouldFire", () => {
     // This is the exact shape that caused the 2026-06-02 NVDA loop:
     // REVIEW action with cooldownDays=0, fired seconds ago. Pre-fix this
     // returned 'match' (no rate limit). Post-fix the evaluator falls back
-    // to the PRICE_ABOVE per-kind default (1d) and blocks the re-fire.
+    // to the price above per-kind default (1d) and blocks the re-fire.
     const trigger: Trigger = {
       ...baseTrigger,
       action: "REVIEW",
@@ -802,7 +802,7 @@ describe("shouldFire", () => {
   });
 
   it("TRIM + cooldownDays=0 + recent lastFiredAt → COOLDOWN (IREN $76.87 shape)", () => {
-    // IREN had TRIM PRICE_ABOVE $76.87 with cooldownDays:0 — would have
+    // IREN had TRIM price above $76.87 with cooldownDays:0 — would have
     // partial-closed every 5 minutes if price held above target.
     const trigger: Trigger = {
       ...baseTrigger,
@@ -818,7 +818,7 @@ describe("shouldFire", () => {
   });
 
   it("REVIEW + cooldownDays=0 + lastFiredAt past default → MATCH (default cooldown expired)", () => {
-    // PRICE_ABOVE default cooldown is 1 day. Fired 2 days ago → expired
+    // price above default cooldown is 1 day. Fired 2 days ago → expired
     // → fires. Confirms we're falling back to the default, not blocking
     // forever.
     const trigger: Trigger = {
@@ -984,7 +984,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
   });
 });
 
-describe("REVIEW_CADENCE — counting from the buy or the thesis's event date (one trigger, three anchors)", () => {
+describe("review clock — counting from the buy or the thesis's event date (one trigger, three anchors)", () => {
   // Replayed from the book on 2026-09-16: MU bought 2026-07-17 20:51 UTC
   // (PEAD Specialist, TARGET); SRRK's event date 2026-09-30 (Catalyst
   // Event PM); AGIO's 2026-11-01. On main `from` and `side` are stripped by

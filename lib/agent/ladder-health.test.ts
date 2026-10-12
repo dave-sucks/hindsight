@@ -257,7 +257,7 @@ describe("computeLadderHealth — predicate composition", () => {
     expect(h.floor).toBeNull();
   });
 
-  it("counts a GAIN_FROM_ENTRY DOWN EXIT as a floor at avgCost × (1 − pct/100)", () => {
+  it("counts a move-from-entry loss EXIT as a floor at avgCost × (1 − pct/100)", () => {
     const drawdownExit: Trigger = {
       id: "trig-dd",
       predicate: { watch: "move", is: "below", value: 12, variable: "entry" },
@@ -296,7 +296,7 @@ describe("computeLadderHealth — nearest forward rung", () => {
     expect(h.nearestRung?.distancePct).toBeCloseTo(9.09, 1);
   });
 
-  it("excludes already-matching rungs (a PRICE_ABOVE below the current price)", () => {
+  it("excludes already-matching rungs (a price above below the current price)", () => {
     const stale: Trigger = {
       id: "trig-stale",
       predicate: { watch: "price", is: "above", value: 105 },
@@ -312,7 +312,7 @@ describe("computeLadderHealth — nearest forward rung", () => {
     expect(h.nearestRung?.triggerId).toBe("trig-stop");
   });
 
-  it("maps a GAIN_FROM_ENTRY UP rung to its implied price", () => {
+  it("maps a move-from-entry gain rung to its implied price", () => {
     const milestone: Trigger = {
       id: "trig-up10",
       predicate: { watch: "move", is: "above", value: 10, variable: "entry" },
@@ -369,7 +369,7 @@ describe("computeLadderHealth — SHORT (inverted math)", () => {
     expect(h.isUnprotectedGain).toBe(false);
   });
 
-  it("a PRICE_BELOW take-profit on a short is NOT a floor", () => {
+  it("a price below take-profit on a short is NOT a floor", () => {
     const takeProfit = exitBelow(70, "trig-tp");
     const h = computeLadderHealth({
       ...baseShort,

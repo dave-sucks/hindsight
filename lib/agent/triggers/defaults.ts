@@ -22,11 +22,11 @@
  * trigger so cooldown stamps survive subsequent merges.
  */
 
-import { shapeOf } from "./condition/legacy";
+import { shapeOf } from "./condition/valid";
 import { defaultCooldownDays, reviewClockDays } from "./condition/rules";
 import { randomUUID } from "node:crypto";
 import type { Trigger } from "./types";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { flooredCooldownDays } from "./state-cooldown";
 import type { When } from "@/lib/agent/triggers/condition";
 
@@ -713,15 +713,6 @@ export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {
 }
 
 /**
- * `triggerBucket` — the `(predicateKey, action)` precedence key — moved to
- * ./bucket on 2026-08-05 so the cascade resolver (./levels) and the client
- * trigger UI can share it without pulling this module's `node:crypto`
- * import into the browser bundle. Re-exported here so existing import
- * paths keep working.
- */
-export { triggerBucket };
-
-/**
  * Merge agent-supplied triggers with horizon defaults. Agent wins per
  * (predicate, action) bucket; defaults fill the gaps. Returns a fresh
  * array; never mutates inputs.
@@ -734,13 +725,13 @@ export function mergeTriggers(
   const out: Trigger[] = [];
 
   for (const t of agentSupplied) {
-    const key = triggerBucket(t);
+    const key = triggerSlot(t);
     if (seen.has(key)) continue; // dedupe within agent's own list
     seen.add(key);
     out.push(t.id ? t : { ...t, id: createId() });
   }
   for (const t of defaults) {
-    const key = triggerBucket(t);
+    const key = triggerSlot(t);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(t);

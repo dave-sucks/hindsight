@@ -52,7 +52,7 @@ describe("describeCluster — the audit row names the buyers", () => {
   });
 });
 
-describe("INSIDER_CLUSTER — the trigger kind", () => {
+describe("insider buying — the trigger kind", () => {
   const snap = { insiderBuys: openMarketBuys(rows) } as unknown as IndicatorSnapshot;
   const ctx = (now: string) => ({ indicators: snap, thesis: { createdAt: new Date() }, now: new Date(now) });
 

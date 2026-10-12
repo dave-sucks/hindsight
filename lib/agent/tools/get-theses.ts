@@ -564,7 +564,7 @@ export const getTheses = defineTool({
         ...t,
         ...analystOf(t),
         // The stock's own triggers, each as its sentence and id.
-        triggers: (Array.isArray(t.triggers) ? (t.triggers as Trigger[]) : []).map((x) => triggerForAgent(x, t.status === "HOLDING")),
+        triggers: (Array.isArray(t.triggers) ? (t.triggers as unknown as Trigger[]) : []).map((x) => triggerForAgent(x, t.status === "HOLDING")),
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,

@@ -36,10 +36,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
  * by accident just as easily.
  */
 const RECORDED_TOOLS: Record<string, number> = {
-  "research-run": 31_427,
-  tactical: 27_288,
-  discovery: 35_104,
-  principal: 63_295,
+  "research-run": 31_848,
+  tactical: 27_709,
+  discovery: 35_525,
+  principal: 64_137,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", discovery: "DISCOVERY", principal: "PRINCIPAL_CHAT" };
 

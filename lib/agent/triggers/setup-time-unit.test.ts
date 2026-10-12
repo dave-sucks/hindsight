@@ -17,7 +17,7 @@
  * rising-average setup, whose limit is 10 sessions.
  */
 import { setupExitTriggers } from "./setup-exits";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { sessionsToCalendarDays } from "@/lib/market-hours";
 
@@ -29,7 +29,7 @@ const timeTrigger = (setupId: string, horizon: string, boughtAt: string) =>
     stop: 98,
     mintId: () => "x",
     boughtAt: new Date(boughtAt),
-  }).find((t) => kindOf(t.predicate) === "REVIEW_CADENCE");
+  }).find((t) => shapeName(t.predicate) === "from_date:after:buy");
 
 describe("a setup's time limit is counted in its own unit", () => {
   it("ABT: 10 sessions from the 2026-09-11 buy is 14 calendar days, not 10", () => {

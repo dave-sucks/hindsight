@@ -1,7 +1,7 @@
 /**
  * one-close-per-position.test.ts — replay of SMMT, LIVE, 2026-09-15 16:45:24 UTC.
  *
- * The $17.40 floor (PRICE_BELOW) and the 8% trail (TRAILING_FROM_HIGH) fired on
+ * The $17.40 floor (price below) and the 8% trail (trail) fired on
  * the same trigger check. Two DIRECT tactical runs started 122 ms apart and
  * each called closeOpenPosition(price_monitor, STOP); two 450-share close
  * proposals landed 180 ms apart on a 450-share position:
