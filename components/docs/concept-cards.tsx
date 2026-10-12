@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Area, AreaChart, YAxis } from "recharts";
+import { Area, Bar, Cell, ComposedChart, ReferenceLine, XAxis, YAxis } from "recharts";
 import { ArrowRight, ArrowUpRight, Clock } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { Badge } from "@/components/ui/badge";
@@ -30,8 +30,41 @@ const FADE_BOTTOM = { maskImage: "linear-gradient(to bottom, black 60%, transpar
 // ── The big cells ──────────────────────────────────────────────────────────
 
 /** A day's tape for the chart: a gentle climb with some noise, the same every render. */
-const TAPE = Array.from({ length: 64 }, (_, i) => ({ i, v: 131.3 + i * 0.045 + Math.sin(i * 0.9) * 0.45 + Math.sin(i * 0.23) * 0.6 }));
-const CHART: ChartConfig = { v: { label: "Price", color: "var(--positive)" } };
+/** A seeded random, so the made-up tape is the same on every render and on the server. */
+function seeded(seed: number) {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * A made-up session in 5-minute bars, 9:30 to 4:00: a random walk from the
+ * prior close to today's last price, with volume heavier at the open and the
+ * close, the way a real day trades. Example numbers only.
+ */
+const PREV_CLOSE = 131.34;
+const LAST = 134.2;
+const TAPE = (() => {
+  const rand = seeded(7);
+  const n = 79;
+  const walk = [0];
+  for (let i = 1; i < n; i++) walk.push(walk[i - 1] + (rand() - 0.47) * 0.42);
+  const drift = (LAST - PREV_CLOSE - walk[n - 1]) / (n - 1);
+  return walk.map((w, i) => {
+    const v = PREV_CLOSE + w + drift * i + (i === 0 ? 0 : 0.6);
+    const edge = Math.min(i, n - 1 - i);
+    const volume = (edge < 6 ? 2.4 - edge * 0.25 : 0.7) * (0.5 + rand());
+    const mins = 9 * 60 + 30 + i * 5;
+    return { i, v: Number(v.toFixed(2)), volume, up: i === 0 || walk[i] >= walk[i - 1], t: `${((Math.floor(mins / 60) + 11) % 12) + 1}:${String(mins % 60).padStart(2, "0")}` };
+  });
+})();
+const CHART: ChartConfig = { v: { label: "Price", color: "var(--positive)" }, volume: { label: "Volume", color: "var(--positive)" } };
+const AXIS_TICK = { fontSize: 18, fill: "var(--muted-foreground)" };
 
 /** The thesis sheet for a stock we only watch, drawn at the real panel's size and shown as a miniature: one column, top to bottom. */
 function SheetMock() {
@@ -76,20 +109,29 @@ function SheetMock() {
           </span>
           <span className="text-2xl text-positive tabular-nums">+$2.86 ↗ 2.18%</span>
         </div>
-        <div className="h-[22rem]">
+        {/* Mono, so the axis labels read like the real chart's. */}
+        <Mono className="block h-[22rem]">
           <ChartContainer config={CHART} className="h-full w-full">
-            <AreaChart data={TAPE} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
+            <ComposedChart data={TAPE} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="docs-sheet-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--color-v)" stopOpacity={0.22} />
+                  <stop offset="0%" stopColor="var(--color-v)" stopOpacity={0.16} />
                   <stop offset="100%" stopColor="var(--color-v)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
-              <Area dataKey="v" type="monotone" stroke="var(--color-v)" strokeWidth={2.5} fill="url(#docs-sheet-fill)" isAnimationActive={false} />
-            </AreaChart>
+              <XAxis dataKey="t" interval={11} tickLine={false} axisLine={false} tick={AXIS_TICK} tickMargin={10} />
+              <YAxis yAxisId="p" orientation="left" mirror tickLine={false} axisLine={false} tick={AXIS_TICK} tickCount={4} domain={["dataMin - 0.4", "dataMax + 0.3"]} tickFormatter={(x: number) => x.toFixed(0)} />
+              <YAxis yAxisId="vol" hide domain={[0, (max: number) => max * 5]} />
+              <ReferenceLine yAxisId="p" y={PREV_CLOSE} stroke="var(--muted-foreground)" strokeDasharray="4 6" strokeOpacity={0.5} />
+              <Bar yAxisId="vol" dataKey="volume" isAnimationActive={false}>
+                {TAPE.map((d) => (
+                  <Cell key={d.i} fill={d.up ? "var(--positive)" : "var(--negative)"} fillOpacity={0.35} />
+                ))}
+              </Bar>
+              <Area yAxisId="p" dataKey="v" type="linear" stroke="var(--color-v)" strokeWidth={2.5} fill="url(#docs-sheet-fill)" isAnimationActive={false} />
+            </ComposedChart>
           </ChartContainer>
-        </div>
+        </Mono>
       </div>
       {/* The sheet's own trigger pills, drawn at their size again inside the miniature. */}
       <div className="flex flex-col gap-3" style={{ zoom: 1.7 }}>
@@ -228,7 +270,7 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
         <div
           key={c.slug}
           className={cn(
-            "group relative flex flex-col overflow-hidden rounded-xl border-4 border-transparent bg-muted/50 transition-colors hover:bg-muted/70 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring",
+            "group relative flex flex-col overflow-hidden rounded-xl border border-transparent bg-muted/50 transition-colors hover:bg-muted/70 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring",
             c.bleed ? "h-[38rem]" : "h-80",
             c.span,
           )}
