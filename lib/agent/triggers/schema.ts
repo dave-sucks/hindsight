@@ -13,7 +13,7 @@ import type { Condition, Direction, SettingDef, VariableId, Watch, When } from "
 import type { MeasureDef } from "./condition/measure";
 import { MEASURES, declaredOnly, settingDefs } from "./condition/catalog";
 import { notACondition, refusalOf } from "./condition/valid";
-import { rangeShort, settingRefusal } from "./condition/range";
+import { settingRefusal } from "./condition/range";
 
 /**
  * A trigger's condition, in the condition shape (./condition): one its
@@ -36,9 +36,9 @@ export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
  * value, what it is measured from, its own settings), so a model has nothing
  * to fill that the measure doesn't read. It is the form's fields: a price's
  * one input takes a dollar number or a line (the 50-day average), and a
- * filing's is which filing. Each value and setting says its range, read from
- * the catalog (./condition/range), and the save holds it to that range with
- * the same sentence. A field a branch doesn't list is dropped. The condition
+ * filing's is which filing. A number's range is not written here: the save
+ * holds each value and setting to the catalog's range (./condition/range) and
+ * a refusal names the number. A field a branch doesn't list is dropped. The condition
  * is defined once per tool (`Condition`); `toStored` maps it onto the stored
  * shape. An old kind is refused with the list of measures.
  */
@@ -101,49 +101,42 @@ function fittingVariables(m: MeasureDef) {
 }
 
 /** A measure's settings: its own, and on a measure counted from a variable, that variable's (the trail's, on a move). */
-function measureSettings(m: MeasureDef) {
-  const own = m.settings ?? [];
-  const fromVariables = m.variables?.mode === "from" ? fittingVariables(m).flatMap((o) => (o.settings ?? []).map((d) => ({ d, with: o.id }))) : [];
-  return [...own.map((d) => ({ d, with: undefined as string | undefined })), ...fromVariables];
+function measureSettings(m: MeasureDef): readonly SettingDef[] {
+  const fromVariables = m.variables?.mode === "from" ? fittingVariables(m).flatMap((o) => o.settings ?? []) : [];
+  return [...(m.settings ?? []), ...fromVariables];
 }
 
-/** One measure's condition: its own fields only, each saying its range. */
+/**
+ * One measure's condition: its own fields only. A number's range is not
+ * said here: the save holds it to the catalog's range and refuses with the
+ * sentence naming the number (./condition/range).
+ */
 function measureBranch(m: MeasureDef) {
   // The branch's fields say what the measure takes; its sentence (`m.shape`) is for a refusal, not repeated here.
   const shape: Record<string, z.ZodTypeAny> = { watch: z.literal(m.id) };
   if (m.buttons) shape.is = z.enum(m.buttons.map((b) => b.is) as [Direction, ...Direction[]]);
   const fitting = fittingVariables(m);
   const ids = fitting.map((o) => o.id) as [VariableId, ...VariableId[]];
-  // Each button's or variable's range, named by its own field values ("near sma*", "below peak"), then the
-  // measure's own where a button still reads it.
-  const covered = m.buttons != null && m.buttons.every((b) => m.value.ranges?.some((r) => r.is === b.is && r.variables == null));
-  const named = (r: NonNullable<MeasureDef["value"]["ranges"]>[number]) =>
-    [r.is, r.variables && (r.variables.length > 2 ? `${r.variables[0].replace(/\d+$/, "")}*` : r.variables.join("|"))].filter(Boolean).join(" ");
-  const ranges = [
-    ...(m.value.ranges ?? []).map((r) => `${named(r)} ${rangeShort(r.range)}`),
-    ...(m.value.range && !covered ? [`${m.value.ranges?.length ? "else " : ""}${rangeShort(m.value.range)}`] : []),
-  ].join("; ");
   if (m.value.none) {
     shape.value = z.enum(ids);
   } else if (m.variables?.mode === "replace") {
-    shape.value = z.union([z.number(), z.enum(ids)]).describe(`A price ${ranges}, or a line.`);
+    shape.value = z.union([z.number(), z.enum(ids)]);
   } else {
-    const n = z.number().describe(ranges);
-    shape.value = m.value.zero != null ? n.optional() : n;
+    shape.value = m.value.zero != null ? z.number().optional() : z.number();
   }
   if (m.variables?.mode === "from") shape.variable = z.enum(ids);
   const settings = measureSettings(m);
   if (settings.length) {
     const fields: Record<string, z.ZodTypeAny> = {};
-    for (const { d, with: from } of settings) {
+    for (const d of settings) {
       if (fields[d.key]) continue;
       const sample = d.options?.[0]?.value ?? d.default;
-      // A setting with choices is its enum; a number says its range; one that belongs to a variable says which.
+      // A setting with choices is its enum; a yes/no says what yes means.
       const typed = d.options
         ? typeof sample === "boolean"
           ? z.boolean().describe(`true: ${d.options.find((o) => o.value === true)?.label.toLowerCase()}.`)
           : z.literal(d.options.map((o) => o.value) as [string | number, ...(string | number)[]])
-        : z.number().describe(`${d.range ? rangeShort(d.range) : "a number"}${from ? `, with ${from}` : ""}`);
+        : z.number();
       fields[d.key] = typed.optional();
     }
     shape.settings = z.object(fields).optional();

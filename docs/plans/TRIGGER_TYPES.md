@@ -698,7 +698,10 @@ the agents' schema and the form all refuse with it, so the form can't accept
 what the save refuses; the review's edge values (within 15% of the 50-day, a
 0.5% trail, the report day as days before it, 7 days after earnings, volume
 60×, 12 insiders, every 400 days, a gap within 12 days) are the test. The
-ranges are the old schema's. The cascade key has one name, `triggerSlot` in
+ranges are the old schema's. The agents' tool definitions are one branch per
+measure with its own fields and no range text: a number out of range comes
+back refused by name, so writing the range into the definition taught nothing
+a refusal doesn't. The cascade key has one name, `triggerSlot` in
 `condition/slot.ts` (`bucket.ts` folded in). A parity test
 ran it against the old spelling and schema over every stored condition, every
 measure × direction × variable × number edge, filing groups of every size and
