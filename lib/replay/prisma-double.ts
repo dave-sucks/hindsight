@@ -91,12 +91,24 @@ function cmp(a: unknown, b: unknown): number {
   return unsupported("comparison between", [a, b]);
 }
 
+/**
+ * Postgres `@>` on JSON, which Prisma's `array_contains` compiles to: every
+ * element wanted is contained in some element held, an object by its own
+ * keys (`[{ op: "remove" }]` matches an op that also carries an id and text).
+ */
+function jsonContains(have: unknown, want: unknown): boolean {
+  if (Array.isArray(want)) return Array.isArray(have) && want.every((w) => have.some((h) => jsonContains(h, w)));
+  if (isPlainObject(want)) return isPlainObject(have) && Object.entries(want).every(([k, w]) => jsonContains(have[k], w));
+  return sameScalar(have, want);
+}
+
 /** One field's filter: a scalar, or an operator object Prisma understands. */
 function matchField(actual: unknown, expected: unknown): boolean {
   if (!isPlainObject(expected)) return sameScalar(actual, expected);
 
   // A JSON-column path filter: `{ path: ["ticker"], equals: "CYTK" }`. Real
-  // shape, used by the dispatch in-flight gate against ResearchRun.parameters.
+  // shape, used by the dispatch in-flight gate against ResearchRun.parameters,
+  // and with `array_contains` by the read of the principal's removals.
   if (Array.isArray((expected as Record<string, unknown>).path)) {
     const { path, ...rest } = expected as { path: string[] } & Record<string, unknown>;
     let at: unknown = actual;
@@ -108,7 +120,7 @@ function matchField(actual: unknown, expected: unknown): boolean {
   }
 
   // A nested relation filter — rows carry relations inline, so recurse.
-  const opKeys = ["equals", "in", "notIn", "not", "gt", "gte", "lt", "lte", "contains", "startsWith", "mode"];
+  const opKeys = ["equals", "in", "notIn", "not", "gt", "gte", "lt", "lte", "contains", "startsWith", "mode", "array_contains"];
   const keys = Object.keys(expected);
   // `mode` is Prisma's case-insensitivity flag only beside a string filter
   // ("insensitive" / "default"); on a relation it is a field (a run's mode).
@@ -157,6 +169,9 @@ function matchField(actual: unknown, expected: unknown): boolean {
       case "startsWith":
         if (typeof actual !== "string" || typeof v !== "string") return false;
         if (!actual.toLowerCase().startsWith(v.toLowerCase())) return false;
+        break;
+      case "array_contains":
+        if (!Array.isArray(actual) || !jsonContains(actual, Array.isArray(v) ? v : [v])) return false;
         break;
       default:
         return unsupported("where operator", { [op]: v });

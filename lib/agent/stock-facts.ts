@@ -126,7 +126,14 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
     if (!input) continue;
     context.set(
       t.id,
-      stockContextFor({ ticker: t.ticker, rows: input.activity ?? [], triggers: input.thesis.triggers, now: input.now, currentPrice: input.latestQuote?.price ?? null }),
+      stockContextFor({
+        ticker: t.ticker,
+        rows: input.activity ?? [],
+        removals: load.removedByHand.get(t.id),
+        triggers: input.thesis.triggers,
+        now: input.now,
+        currentPrice: input.latestQuote?.price ?? null,
+      }),
     );
     needs.set(t.id, computeNeedsAction(input));
   }

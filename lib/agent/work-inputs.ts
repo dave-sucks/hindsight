@@ -30,7 +30,7 @@ import {
   type DeclineSummary,
 } from "@/lib/agent/declined-sale";
 import { ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
-import type { ActivityRow } from "@/lib/agent/stock-context";
+import { COPIED_RULE_CLEANUP, type ActivityRow } from "@/lib/agent/stock-context";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
 import type { NeedsActionInput } from "@/lib/agent/needs-action";
@@ -98,6 +98,8 @@ export interface WorkLoad {
   equity: number | null;
   /** The activity read failed: open fires fall back to each stock's newest line. A caller that owes on fires fails loud. */
   activityFailed: boolean;
+  /** Each live stock's removals by the principal's hand, at any age, newest first: what's been said shows them. */
+  removedByHand: Map<string, ActivityRow[]>;
 }
 
 const LIVE = new Set(["HOLDING", "WATCHING", "PROMOTED"]);
@@ -123,7 +125,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   const load: WorkLoad = {
     inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, priceFetchFailed: false,
     indicators: new Map(), positions: new Map(), proposals: new Map(), unapprovedExitCount: new Map(), declines: new Map(), recentLow: new Map(),
-    lastLadderEditAt: new Map(), ladderEditRows: new Map(), equity: null, activityFailed: false,
+    lastLadderEditAt: new Map(), ladderEditRows: new Map(), equity: null, activityFailed: false, removedByHand: new Map(),
   };
 
   // The live price, once, from the one place it comes from (live-quote): the
@@ -353,6 +355,30 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   } catch (err) {
     load.activityFailed = true;
     console.warn("[work-inputs] activity scan failed; open fires read from the newest line only:", err);
+  }
+
+  // The principal's removals by hand at any age, by their own query like the
+  // notes: a run is told what not to add back after the window has moved on.
+  // The cleanup of copied rules was not a decision about the stock.
+  try {
+    const removals = await prisma.thesisUpdate.findMany({
+      where: {
+        thesisId: { in: liveIds },
+        runId: null,
+        AND: [
+          { fieldChanges: { path: ["triggerOps", "to"], array_contains: [{ op: "remove" }] } },
+          { OR: [{ fieldChanges: { path: ["source", "to"], equals: "USER" } }, { rationale: { startsWith: "[USER]" } }] },
+        ],
+        NOT: { summary: { startsWith: COPIED_RULE_CLEANUP } },
+      },
+      orderBy: { timestamp: "desc" },
+      select: ACTIVITY_SELECT,
+    });
+    for (const row of removals) {
+      load.removedByHand.set(row.thesisId, [...(load.removedByHand.get(row.thesisId) ?? []), { ...row, runMode: row.run?.mode ?? null }]);
+    }
+  } catch (err) {
+    console.warn("[work-inputs] removals-by-hand lookup failed; the read goes without them:", err);
   }
 
   const pending = new Map(await Promise.all(analystIds.map(async (id) => [id, await getPendingEntryTickers(id)] as const)));
