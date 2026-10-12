@@ -335,7 +335,7 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
               {c.title}
               <ArrowRight className="size-4 -translate-x-1 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
             </span>
-            <span className="max-w-md text-sm leading-6 text-muted-foreground">{c.line}</span>
+            <span className="text-sm leading-6 text-muted-foreground">{c.line}</span>
           </div>
           {/* The picture: a big one sits at the left padding and runs off the right and bottom edges; a small one sits in the space left. */}
           <div className="pointer-events-none relative min-h-0 flex-1" aria-hidden>

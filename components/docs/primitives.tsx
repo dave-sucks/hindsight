@@ -19,10 +19,10 @@ export function Eyebrow({ children, className }: { children: ReactNode; classNam
 }
 
 const TWO_TONE_SIZE = {
-  hero: "text-2xl leading-tight sm:text-3xl lg:text-4xl max-w-[30ch]",
-  page: "text-2xl leading-tight sm:text-3xl max-w-[26ch]",
-  section: "text-xl leading-snug sm:text-2xl max-w-[34ch]",
-  sub: "text-lg leading-snug max-w-[38ch]",
+  hero: "text-2xl leading-tight sm:text-3xl lg:text-4xl lg:max-w-[70%]",
+  page: "text-2xl leading-tight sm:text-3xl lg:max-w-[70%]",
+  section: "text-xl leading-snug sm:text-2xl lg:max-w-[70%]",
+  sub: "text-lg leading-snug lg:max-w-[70%]",
   /** The sentence every doc opens with: large, and as wide as the page. */
   intro: "text-xl leading-snug sm:text-2xl",
 } as const;
