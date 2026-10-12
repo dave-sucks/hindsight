@@ -6,25 +6,24 @@
  * the card's left padding and runs off its right and bottom edges.
  *
  *   Row one: theses across two columns (a miniature of the thesis sheet),
- *   then analysts (the roster).
- *   Row two, kept minimal: triggers as a live check feed, a proposal
- *   waiting for a yes, situations as a book of dots.
+ *   then one analyst's desk (its month, book, rules and universe).
+ *   Row two: triggers as a running check log, a proposal being approved,
+ *   and the morning's work list with each stock's situation.
  *
  * Every ticker and number is an example.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Area, ComposedChart, XAxis, YAxis } from "recharts";
-import { ArrowRight, ArrowUpRight, Clock } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, Clock, MousePointer2 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { FlameIcon } from "@/components/ui/flame-icon";
 import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
 import type { DocSlug } from "./registry";
 import { PillRow } from "./trigger-bits";
-
-const FADE_BOTTOM = { maskImage: "linear-gradient(to bottom, black 60%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, black 60%, transparent)" };
 
 // ── The big cells ──────────────────────────────────────────────────────────
 
@@ -203,101 +202,305 @@ function SheetMock() {
   );
 }
 
+// ── The analyst ────────────────────────────────────────────────────────────
+
+/** One analyst's desk: its month, what it holds and watches, its rules and universe, what it did lately. Three analysts take turns. */
+const DESKS = [
+  {
+    initials: "PS",
+    color: "bg-blue-500",
+    name: "PEAD Specialist",
+    style: "Buys the drift after a beat",
+    pnl: "+$2,305",
+    up: true,
+    summary:
+      "Holding four and watching nine. CRWD is up 8% since its beat, so its floor moved up to $384 on Tuesday. Sold SHOP at the target on Monday. AMD reports Thursday; the buy waits for the number.",
+    holding: [
+      { s: "CRWD", p: 8.2 },
+      { s: "NET", p: 3.1 },
+      { s: "DDOG", p: -1.4 },
+      { s: "ZS", p: 5.6 },
+    ],
+    watching: ["AMD", "SNOW", "MDB", "PANW", "OKTA"],
+    watchingMore: 4,
+    rules: ["Sells 12% off the high", "$2k–$4k a trade"],
+    universe: ["Software", "Semis", "Over $2B"],
+    recent: [
+      { t: "Tue", l: "Raised CRWD's floor to $384" },
+      { t: "Mon", l: "Sold SHOP at $112, up 11%" },
+      { t: "Fri", l: "Started watching AMD before its report" },
+    ],
+  },
+  {
+    initials: "SC",
+    color: "bg-violet-500",
+    name: "Secular Compounder",
+    style: "Holds the long winners",
+    pnl: "+$4,118",
+    up: true,
+    summary:
+      "Holding six and watching three. AVGO beat and raised; the drop that followed was the sector, not the company, so nothing changed. LLY is 4% from the buy. No sales this month.",
+    holding: [
+      { s: "AVGO", p: 18.4 },
+      { s: "MSFT", p: 6.9 },
+      { s: "LLY", p: 2.2 },
+      { s: "COST", p: -0.8 },
+    ],
+    watching: ["ASML", "V", "ISRG"],
+    watchingMore: 0,
+    rules: ["Sells 25% off the high", "$3k–$6k a trade"],
+    universe: ["Any sector", "Over $50B"],
+    recent: [
+      { t: "Wed", l: "Reviewed AVGO after its report" },
+      { t: "Mon", l: "Added to MSFT on the pullback" },
+      { t: "Sep 30", l: "Set a buy on ISRG at $512" },
+    ],
+  },
+  {
+    initials: "BR",
+    color: "bg-rose-500",
+    name: "Biotech Run-up",
+    style: "Trades into FDA dates",
+    pnl: "−$612",
+    up: false,
+    summary:
+      "Holding two and watching five. SRRK slid after a peer's trial miss and is near its floor. VKTX's date is in 18 days; it sells the day before, whatever the price.",
+    holding: [
+      { s: "VKTX", p: 9.7 },
+      { s: "SRRK", p: -6.3 },
+    ],
+    watching: ["MDGL", "AXSM", "IONS", "SMMT", "ALNY"],
+    watchingMore: 0,
+    rules: ["Sells the day before the date", "$1k–$2k a trade"],
+    universe: ["Biotech", "$1B–$20B"],
+    recent: [
+      { t: "Thu", l: "Sold IONS at the floor, down 7%" },
+      { t: "Tue", l: "Bought VKTX at $61.20" },
+      { t: "Mon", l: "Passed on ARWR: no date in range" },
+    ],
+  },
+] as const;
+
+function useCycle(length: number, ms: number) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setI((x) => (x + 1) % length), ms);
+    return () => window.clearInterval(id);
+  }, [length, ms]);
+  return i;
+}
+
+function Label({ children }: { children: ReactNode }) {
+  return <span className="text-xs text-muted-foreground">{children}</span>;
+}
+
+function AnalystDesk() {
+  const d = DESKS[useCycle(DESKS.length, 6000)];
+  return (
+    <div key={d.name} className="flex w-[calc(100%+2.5rem)] flex-col gap-4 rounded-2xl border bg-background p-5 pr-[3.75rem] shadow-sm animate-in fade-in-0 duration-700">
+      <div className="flex items-start gap-3">
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg text-xs font-medium text-white", d.color)}>{d.initials}</span>
+        <span className="flex min-w-0 flex-col">
+          <span className="text-sm font-medium text-foreground">{d.name}</span>
+          <span className="text-xs text-muted-foreground">{d.style}</span>
+        </span>
+        <span className="ml-auto flex flex-col items-end">
+          <span className={cn("text-sm font-medium tabular-nums", d.up ? "text-positive" : "text-negative")}>{d.pnl}</span>
+          <span className="text-xs text-muted-foreground">this month</span>
+        </span>
+      </div>
+      <p className="text-sm leading-6 text-foreground">{d.summary}</p>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label>Holding</Label>
+          <div className="flex flex-col gap-1.5">
+            {d.holding.map((h) => (
+              <span key={h.s} className="flex items-center gap-2 text-xs">
+                <StockLogo ticker={h.s} size="xs" />
+                <span className="text-foreground">{h.s}</span>
+                <span className={cn("ml-auto pr-2 tabular-nums", h.p >= 0 ? "text-positive" : "text-negative")}>
+                  {h.p >= 0 ? "+" : "−"}
+                  {Math.abs(h.p).toFixed(1)}%
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Watching</Label>
+          <span className="flex items-center">
+            {d.watching.map((s) => (
+              <span key={s} className="-ml-1 rounded-md ring-2 ring-background first:ml-0">
+                <StockLogo ticker={s} size="sm" />
+              </span>
+            ))}
+            {d.watchingMore ? <span className="ml-2 text-xs text-muted-foreground">+{d.watchingMore}</span> : null}
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label>Rules</Label>
+          <span className="flex flex-wrap gap-1">
+            {d.rules.map((r) => (
+              <Badge key={r} variant="muted">
+                {r}
+              </Badge>
+            ))}
+          </span>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Universe</Label>
+          <span className="flex flex-wrap gap-1">
+            {d.universe.map((u) => (
+              <Badge key={u} variant="outline">
+                {u}
+              </Badge>
+            ))}
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2 border-t pt-4">
+        <Label>Lately</Label>
+        {d.recent.map((r) => (
+          <span key={r.l} className="flex items-center gap-3 text-xs">
+            <span className="w-12 shrink-0 text-muted-foreground">{r.t}</span>
+            <span className="text-foreground">{r.l}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── The small cells ────────────────────────────────────────────────────────
 
-/** Triggers: the five-minute check, as a feed. Most lines are quiet; one fires and goes to the analyst. */
+/** Triggers: the five-minute check as a running log. Most sentences stay false; one comes true and goes to the analyst. */
 const CHECKS = [
-  { t: "10:35", s: "NVDA", l: "8 rules checked" },
-  { t: "10:35", s: "AAPL", l: "5 rules checked" },
-  { t: "10:40", s: "CRWD", l: "Fell 5% in a day", fired: true },
-  { t: "10:40", s: "SHOP", l: "6 rules checked" },
-  { t: "10:45", s: "AMD", l: "Reports in 7 days", fired: true },
-  { t: "10:45", s: "CEG", l: "4 rules checked" },
-  { t: "10:50", s: "MSFT", l: "7 rules checked" },
+  { s: "CRWD", l: "Sell if below $384" },
+  { s: "NVDA", l: "Trim if up 30% from our entry" },
+  { s: "AMD", l: "Review 3 days before earnings", fired: true },
+  { s: "SHOP", l: "Buy if near the 20-day average" },
+  { s: "CEG", l: "Sell if 12% off the high" },
+  { s: "MSFT", l: "Review every 30 days" },
+  { s: "ANET", l: "Buy if above $134", fired: true },
+  { s: "LLY", l: "Sell if below the 50-day" },
 ];
 
-function TriggerFeed() {
+const clock = (step: number) => {
+  const m = 10 * 60 + 30 + Math.floor(step / 2) * 5;
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+};
+
+function TriggerLog() {
   const [n, setN] = useState(0);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => setN((x) => x + 1), 2200);
+    const id = window.setInterval(() => setN((x) => x + 1), 2400);
     return () => window.clearInterval(id);
   }, []);
-  const rows = Array.from({ length: 5 }, (_, k) => CHECKS[(n + k) % CHECKS.length]);
+  const rows = Array.from({ length: 6 }, (_, k) => ({ ...CHECKS[(n + CHECKS.length * 4 - k) % CHECKS.length], at: clock(n + CHECKS.length * 4 - k) }));
   return (
-    <ol className="flex w-full max-w-sm flex-col" style={FADE_BOTTOM}>
-      {rows.map((r, k) => (
-        <li key={`${n}-${k}`} className={cn("flex items-center gap-3 py-1.5 text-sm", k === 0 && "animate-in fade-in-0 slide-in-from-top-1 duration-500")}>
-          <Mono className="w-10 text-xs text-muted-foreground tabular-nums">{r.t}</Mono>
-          <span className={cn("size-1.5 shrink-0 rounded-full", r.fired ? "bg-blue-500" : "bg-muted-foreground/30")} />
-          <span className={cn("w-12", r.fired ? "text-foreground" : "text-muted-foreground")}>{r.s}</span>
-          <span className={cn("min-w-0 truncate", r.fired ? "text-foreground" : "text-muted-foreground/70")}>{r.l}</span>
-          {r.fired ? (
-            <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-blue-500">
-              To the analyst
-              <ArrowUpRight className="size-3" />
-            </span>
-          ) : null}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-/** Situations: a book of dots, a few lit. */
-function Dots() {
-  const lit = new Set([5, 14, 27]);
-  return (
-    <div className="grid grid-cols-8 gap-3">
-      {Array.from({ length: 32 }, (_, i) => (
-        <span key={i} className={cn("size-2 rounded-full", lit.has(i) ? "bg-blue-500" : "border border-muted-foreground/30")} />
-      ))}
-    </div>
-  );
-}
-
-/** Approvals: one proposal, waiting. */
-function Proposal() {
-  return (
-    <div className="flex items-center gap-3 rounded-full border bg-background py-1.5 pl-4 pr-1.5 text-sm shadow-sm">
-      <span className="text-foreground">Buy 14 CRWD</span>
-      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-        <Clock className="size-3" />
-        23h
+    <div className="flex w-[22rem] flex-col">
+      <span className="inline-flex w-fit items-center gap-2 rounded-full border bg-background py-1 pl-2.5 pr-3 text-xs text-foreground shadow-sm">
+        <span className="size-2 animate-pulse rounded-full bg-blue-500" />
+        Checking 214 triggers
       </span>
-      <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">Approve</span>
+      <ol className="ml-[0.9rem] flex flex-col border-l pt-2">
+        {rows.map((r, k) => (
+          <li
+            key={`${n}-${k}`}
+            className={cn("relative flex items-center gap-2.5 py-1.5 pl-4 text-xs", k === 0 && "animate-in fade-in-0 slide-in-from-top-2 duration-500")}
+            style={k > 2 ? { filter: `blur(${(k - 2) * 0.8}px)`, opacity: 1 - (k - 2) * 0.22 } : undefined}
+          >
+            <span className={cn("absolute -left-[3.5px] size-1.5 rounded-full", r.fired ? "bg-blue-500" : "bg-muted-foreground/40")} />
+            <StockLogo ticker={r.s} size="xs" />
+            <span className={cn("truncate", r.fired ? "font-medium text-foreground" : "text-muted-foreground")}>{r.l}</span>
+            <span className={cn("ml-auto shrink-0 tabular-nums", r.fired ? "text-blue-500" : "text-muted-foreground/70")}>{r.fired ? "Came true" : r.at}</span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
 
-/** Analysts: the roster, each with its style and the one rule its holdings inherit. */
-function Roster() {
-  const rows = [
-    { n: "PEAD Specialist", s: "Post-earnings drift · sells 12% off the high", c: "bg-blue-500" },
-    { n: "Secular Compounder", s: "Compounders · sells 25% off the high", c: "bg-violet-400" },
-    { n: "Catalyst Event PM", s: "Dated events · looks 10 days before", c: "bg-sky-400" },
-    { n: "Momentum Leader", s: "52-week highs · sells under the 50-day", c: "bg-emerald-400" },
-    { n: "Pullback Buyer", s: "Rising averages · sells 8% off the high", c: "bg-amber-400" },
-    { n: "Biotech Run-up", s: "FDA dates · sells the day before", c: "bg-rose-400" },
-    { n: "Dividend Grower", s: "Rising payouts · sells on a dividend cut", c: "bg-teal-400" },
-    { n: "Deep Value", s: "Cheap on cash flow · sells at fair value", c: "bg-orange-400" },
-  ];
+/** Approvals: a proposal waiting, a cursor that approves it, and the fill. */
+function ApprovalCard() {
+  const phase = useCycle(4, 1600);
+  const done = phase === 3;
   return (
-    <div className="flex w-[26rem] flex-col divide-y rounded-2xl border bg-background shadow-sm">
-      {rows.map((r) => (
-        <span key={r.n} className="flex items-center gap-3 px-4 py-3">
-          <span className={cn("size-2 shrink-0 rounded-full", r.c)} />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium text-foreground">{r.n}</span>
-            <span className="truncate text-xs text-muted-foreground">{r.s}</span>
-          </span>
+    <div className="relative w-[21rem] rounded-2xl border bg-background p-4 shadow-sm">
+      <div className="flex items-center gap-2.5">
+        <StockLogo ticker="CRWD" size="sm" />
+        <span className="text-sm font-medium text-foreground">Sell 14 CRWD</span>
+        <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <Clock className="size-3" />
+          23h left
         </span>
-      ))}
+      </div>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">Closed under the $384 floor. The drift after the beat is over, so the PEAD Specialist wants out.</p>
+      <div className="mt-3 flex h-7 items-center gap-2">
+        {done ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-positive animate-in fade-in-0 duration-300">
+            <Check className="size-3.5" />
+            Approved · sold at $383.20
+          </span>
+        ) : (
+          <>
+            <span className={cn(buttonVariants({ variant: "outline", size: "sm" }), "flex-1")}>Decline</span>
+            <span className={cn(buttonVariants({ size: "sm" }), "flex-1 transition-transform", phase === 2 && "scale-95")}>Approve</span>
+          </>
+        )}
+      </div>
+      <MousePointer2
+        className={cn(
+          "absolute size-4 fill-foreground text-background transition-all duration-700 ease-out",
+          phase === 0 ? "-bottom-6 right-2 opacity-0" : "bottom-3 right-16 opacity-100",
+          done && "opacity-0",
+        )}
+      />
     </div>
   );
 }
 
-const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; bleed?: boolean }> = [
+/** Situations: the morning's work list, each stock with the reason it needs an answer today. */
+const WORK = [
+  { s: "CRWD", tag: "sale signal", l: "Closed under the $384 floor." },
+  { s: "AMD", tag: "earnings", l: "Reports Thursday after the close." },
+  { s: "NVDA", tag: "floor to fix", l: "Up 31%, with the floor still at our entry." },
+  { s: "SNOW", tag: "review due", l: "Thirty days since the last look." },
+  { s: "ANET", tag: "buy level reached", l: "Pulled back to the 20-day average." },
+  { s: "LLY", tag: "your word unanswered", l: "Your note on Monday asked about the 50-day." },
+];
+
+function WorkList() {
+  return (
+    <div className="flex w-[calc(100%+2.5rem)] flex-col gap-3 rounded-2xl border bg-background p-4 pr-[3.5rem] shadow-sm">
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        Morning run · 8:02 AM
+        <ChevronRight className="size-3" />
+      </span>
+      <span className="text-sm font-medium text-foreground">Six stocks need an answer today</span>
+      <ul className="flex flex-col gap-2.5">
+        {WORK.map((w) => (
+          <li key={w.s} className="flex items-start gap-2.5 text-xs">
+            <StockLogo ticker={w.s} size="xs" />
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="flex items-center gap-1.5">
+                <span className="font-medium text-foreground">{w.s}</span>
+                <Badge variant="muted">{w.tag}</Badge>
+              </span>
+              <span className="text-muted-foreground">{w.l}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; big?: boolean; fit: "bleed" | "center" }> = [
   {
     slug: "theses",
     title: "Theses",
@@ -309,12 +512,13 @@ const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: Re
       </div>
     ),
     span: "lg:col-span-2",
-    bleed: true,
+    big: true,
+    fit: "bleed",
   },
-  { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <Roster />, bleed: true },
-  { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerFeed /> },
-  { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <Proposal /> },
-  { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <Dots /> },
+  { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <AnalystDesk />, big: true, fit: "bleed" },
+  { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerLog />, fit: "bleed" },
+  { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <ApprovalCard />, fit: "center" },
+  { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <WorkList />, fit: "bleed" },
 ];
 
 export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
@@ -325,7 +529,7 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           key={c.slug}
           className={cn(
             "group relative flex flex-col overflow-hidden rounded-xl border border-transparent bg-muted/50 transition-colors hover:bg-muted/70 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring",
-            c.bleed ? "h-[38rem]" : "h-80",
+            c.big ? "h-[38rem]" : "h-96",
             c.span,
           )}
         >
@@ -339,7 +543,7 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           </div>
           {/* The picture: a big one sits at the left padding and runs off the right and bottom edges; a small one sits in the space left. */}
           <div className="pointer-events-none relative min-h-0 flex-1" aria-hidden>
-            {c.bleed ? <div className="absolute left-5 top-1">{c.art}</div> : <div className="flex h-full items-center px-5 pb-5">{c.art}</div>}
+            {c.fit === "bleed" ? <div className="absolute left-5 right-0 top-1">{c.art}</div> : <div className="flex h-full items-center px-5 pb-5">{c.art}</div>}
           </div>
         </div>
       ))}
