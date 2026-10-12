@@ -15,7 +15,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Area, AreaChart, YAxis } from "recharts";
-import { ArrowRight, ArrowUpRight, Clock, Flag } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Clock } from "lucide-react";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
@@ -27,67 +27,75 @@ const FADE_BOTTOM = { maskImage: "linear-gradient(to bottom, black 60%, transpar
 // ── The big cells ──────────────────────────────────────────────────────────
 
 /** A day's tape for the chart: a gentle climb with some noise, the same every render. */
-const TAPE = Array.from({ length: 64 }, (_, i) => ({ i, v: 404 + i * 0.42 + Math.sin(i * 0.9) * 2.4 + Math.sin(i * 0.23) * 3 }));
+const TAPE = Array.from({ length: 64 }, (_, i) => ({ i, v: 131.3 + i * 0.045 + Math.sin(i * 0.9) * 0.45 + Math.sin(i * 0.23) * 0.6 }));
 const CHART: ChartConfig = { v: { label: "Price", color: "var(--positive)" } };
 
-/** The thesis sheet, drawn at full size and shown as a miniature. */
+/** The thesis sheet for a stock we only watch, drawn at the real panel's size and shown as a miniature: one column, top to bottom. */
 function SheetMock() {
   return (
-    <div className="grid w-[70rem] grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-8 rounded-2xl border bg-background p-8 shadow-sm">
-      <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-sm text-foreground">
-          <span className="size-1.5 rounded-full bg-blue-500" />
-          Holding
-        </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-sm text-foreground">High conviction</span>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-sm text-amber-500">
-          <Flag className="size-3.5" />
-          Floor to fix
-        </span>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="grid size-12 place-items-center rounded-xl bg-red-500 text-lg font-bold text-white">C</span>
-        <span className="flex flex-col">
-          <span className="text-2xl font-medium text-foreground">CrowdStrike</span>
-          <Mono className="text-sm text-muted-foreground">CRWD · NASDAQ</Mono>
+    <div className="flex w-[84rem] flex-col gap-6 rounded-3xl border bg-background p-10 shadow-sm">
+      <span className="inline-flex items-center gap-2.5 self-start rounded-full bg-muted px-4 py-1.5 text-2xl text-foreground">
+        <span className="size-2.5 rounded-full bg-muted-foreground" />
+        Agent Watch
+      </span>
+      <div className="flex items-center gap-5">
+        <span className="grid size-20 place-items-center rounded-2xl bg-blue-600 text-3xl font-bold text-white">A</span>
+        <span className="flex flex-col gap-1">
+          <span className="text-5xl font-medium text-foreground">Arista Networks</span>
+          <Mono className="text-2xl text-muted-foreground">ANET · NYSE</Mono>
         </span>
       </div>
-      <p className="flex items-baseline gap-3 text-3xl font-medium tabular-nums">
-        <span className="text-foreground">$431.80</span>
-        <span className="text-positive">+$6.12</span>
-        <span className="text-positive">↗ 1.44%</span>
+      <p className="flex items-baseline gap-5 text-5xl font-medium tabular-nums">
+        <span className="text-foreground">$134.20</span>
+        <span className="text-positive">+$2.86</span>
+        <span className="text-positive">↗ 2.18%</span>
       </p>
-      <div className="flex items-center justify-between rounded-xl border px-4 py-3 text-base">
-        <span className="flex flex-col gap-0.5">
-          <span className="text-foreground">Bought 14 shares at $404.10, now trading at $431.80</span>
-          <span className="text-sm text-muted-foreground">Opened Oct 5 · 4d held · View trade →</span>
-        </span>
-        <span className="text-positive tabular-nums">+$387.80 ↗ 6.85%</span>
+      <span className="inline-flex self-start rounded-2xl bg-muted p-1.5 text-2xl">
+        <span className="rounded-xl bg-background px-5 py-2 text-foreground shadow-sm">Thesis</span>
+        <span className="px-5 py-2 text-muted-foreground">Activity</span>
+      </span>
+      <p className="text-3xl leading-snug text-foreground">
+        Watching Arista at $134.20. Its investor day on Nov 12 should raise its AI networking targets. I&apos;d rather buy the pullback to the 20-day average
+        near $128 than chase the run-up, so the buy waits there.
+      </p>
+      <p className="text-2xl text-muted-foreground">Catalyst Event PM · written Oct 12</p>
+      <div className="flex flex-col gap-4 rounded-3xl border p-6">
+        <div className="flex items-center justify-between">
+          <span className="inline-flex rounded-2xl border p-1 text-2xl">
+            {["1D", "1W", "1M", "3M", "1Y"].map((r, i) => (
+              <span key={r} className={cn("px-5 py-1.5", i === 0 ? "rounded-xl bg-muted text-foreground" : "text-muted-foreground")}>
+                {r}
+              </span>
+            ))}
+          </span>
+          <span className="text-3xl text-positive tabular-nums">+$2.86 ↗ 2.18%</span>
+        </div>
+        <div className="h-[22rem]">
+          <ChartContainer config={CHART} className="h-full w-full">
+            <AreaChart data={TAPE} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="docs-sheet-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--color-v)" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="var(--color-v)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
+              <Area dataKey="v" type="monotone" stroke="var(--color-v)" strokeWidth={2.5} fill="url(#docs-sheet-fill)" isAnimationActive={false} />
+            </AreaChart>
+          </ChartContainer>
+        </div>
       </div>
-      <p className="text-xl leading-snug text-foreground">Drifts toward $480 over two months as estimates rise; the beat and raise held its gap on heavy volume.</p>
-      <p className="text-sm text-muted-foreground">PEAD Specialist · written Oct 5</p>
-      </div>
-      <div className="flex flex-col gap-5">
-      <div className="h-64 rounded-xl border p-3">
-        <ChartContainer config={CHART} className="h-full w-full">
-          <AreaChart data={TAPE} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="docs-sheet-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--color-v)" stopOpacity={0.25} />
-                <stop offset="100%" stopColor="var(--color-v)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
-            <Area dataKey="v" type="monotone" stroke="var(--color-v)" strokeWidth={1.5} fill="url(#docs-sheet-fill)" isAnimationActive={false} />
-          </AreaChart>
-        </ChartContainer>
-      </div>
-      <div className="flex flex-col gap-2">
-        <PillRow action="EXIT" specs={[{ action: "EXIT", when: { watch: "price", is: "below", value: 384 }, why: "The floor." }]} />
-        <PillRow action="REVIEW" specs={[{ action: "REVIEW", when: { watch: "report", is: "before", value: 7 }, why: "A week before the print." }]} />
-        <PillRow action="ADD" specs={[{ action: "ADD", when: { watch: "move", is: "above", value: 12, variable: "entry" }, why: "Press it once the drift is confirmed." }]} />
-      </div>
+      {/* The sheet's own trigger pills, drawn at their size again inside the miniature. */}
+      <div className="flex flex-col gap-3" style={{ zoom: 1.7 }}>
+        <PillRow action="ENTER" held={false} specs={[{ action: "ENTER", when: { watch: "move", is: "near", value: 2, variable: "sma20" }, why: "Buy the pullback, not the run-up." }]} />
+        <PillRow
+          action="REVIEW"
+          held={false}
+          specs={[
+            { action: "REVIEW", when: { watch: "from_date", is: "before", value: 3, variable: "event" }, why: "Three days before the investor day." },
+            { action: "REVIEW", when: { watch: "repeat", value: 30 }, why: "A monthly look while it waits." },
+          ]}
+        />
       </div>
     </div>
   );
@@ -169,6 +177,8 @@ function Roster() {
     { n: "Momentum Leader", s: "52-week highs · sells under the 50-day", c: "bg-emerald-400" },
     { n: "Pullback Buyer", s: "Rising averages · sells 8% off the high", c: "bg-amber-400" },
     { n: "Biotech Run-up", s: "FDA dates · sells the day before", c: "bg-rose-400" },
+    { n: "Dividend Grower", s: "Rising payouts · sells on a dividend cut", c: "bg-teal-400" },
+    { n: "Deep Value", s: "Cheap on cash flow · sells at fair value", c: "bg-orange-400" },
   ];
   return (
     <div className="flex w-[26rem] flex-col divide-y rounded-2xl border bg-background shadow-sm">
@@ -192,7 +202,7 @@ const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: Re
     line: "Every stock carries one: a belief we can be wrong about, the plan that acts on it, and the triggers that watch it.",
     // The sheet drawn at full size and shown smaller; zoom keeps its layout size honest, so nothing is cropped.
     art: (
-      <div style={{ zoom: 0.8 }}>
+      <div style={{ zoom: 0.6 }}>
         <SheetMock />
       </div>
     ),
@@ -212,16 +222,16 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
         <div
           key={c.slug}
           className={cn(
-            "group relative flex flex-col overflow-hidden rounded-xl bg-muted/50 transition-colors hover:bg-muted/70 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring",
-            c.bleed ? "h-[27rem]" : "h-80",
+            "group relative flex flex-col overflow-hidden rounded-xl border-4 border-transparent bg-muted/50 transition-colors hover:bg-muted/70 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring",
+            c.bleed ? "h-[38rem]" : "h-80",
             c.span,
           )}
         >
           <button type="button" onClick={() => onOpen(c.slug)} className="absolute inset-0 z-10 focus-visible:outline-none" aria-label={`Open ${c.title}`} />
           <div className="flex flex-col gap-1 p-5">
-            <span className="inline-flex items-center gap-1 text-sm font-medium text-foreground">
+            <span className="inline-flex items-center gap-1.5 text-base font-medium text-foreground">
               {c.title}
-              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+              <ArrowRight className="size-4 -translate-x-1 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
             </span>
             <span className="max-w-md text-sm leading-6 text-muted-foreground">{c.line}</span>
           </div>
