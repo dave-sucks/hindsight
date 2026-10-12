@@ -4,10 +4,10 @@
  * The Guide's concepts as a bento in Framer's style: one frame split by
  * hairlines, each cell a picture with its words inside it, no inner cards.
  *
- *   Theses, full width: a miniature of the thesis sheet.
- *   Then four small cells, kept minimal: triggers as a live check feed,
- *   situations as a book of dots, a proposal waiting for a yes, the clock.
- *   Analysts, full width: the roster.
+ *   Row one: theses across two columns (a miniature of the thesis sheet),
+ *   then analysts (the roster).
+ *   Row two, kept minimal: triggers as a live check feed, a proposal
+ *   waiting for a yes, situations as a book of dots.
  *
  * Every ticker and number is an example.
  */
@@ -87,34 +87,6 @@ function SheetMock() {
   );
 }
 
-/** A full-width row: the words on the left, the picture on the right, nothing cropped. */
-function WideCell({ title, line, link, onOpen, children }: { title: string; line: string; link: string; onOpen: () => void; children: ReactNode }) {
-  return (
-    <div className="grid items-center gap-8 bg-background p-6 sm:p-10 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16 lg:p-14">
-      <div className="flex max-w-md flex-col gap-3 self-end">
-        <p className="text-base leading-7">
-          <span className="font-medium text-foreground">{title}</span> <span className="text-muted-foreground">{line}</span>
-        </p>
-        <span>
-          <CellLink onClick={onOpen}>{link}</CellLink>
-        </span>
-      </div>
-      <div className="pointer-events-none flex justify-center" aria-hidden>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function CellLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} className="inline-flex items-center gap-1 text-sm font-medium text-foreground underline-offset-4 hover:underline">
-      {children}
-      <ArrowRight className="size-3.5" />
-    </button>
-  );
-}
-
 // ── The small cells ────────────────────────────────────────────────────────
 
 /** Triggers: the five-minute check, as a feed. Most lines are quiet; one fires and goes to the analyst. */
@@ -182,72 +154,61 @@ function Proposal() {
   );
 }
 
-/** Under the hood: the morning's clock. */
-function Morning() {
-  return (
-    <ol className="flex flex-col gap-2 text-sm" style={FADE_BOTTOM}>
-      {[
-        ["06:25", "Sources checked"],
-        ["06:30", "Chart numbers"],
-        ["08:00", "Morning runs"],
-        ["16:20", "Close pass"],
-      ].map(([t, l], i) => (
-        <li key={t} className="flex items-center gap-3">
-          <Mono className="text-xs text-muted-foreground tabular-nums">{t}</Mono>
-          <span className={i === 2 ? "text-foreground" : "text-muted-foreground"}>{l}</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
 /** Analysts: the roster, each with its style and the one rule its holdings inherit. */
 function Roster() {
   const rows = [
-    { n: "PEAD Specialist", s: "Post-earnings drift", r: "Sells 12% off the high", c: "bg-blue-500" },
-    { n: "Secular Compounder", s: "Long-term compounders", r: "Sells 25% off the high", c: "bg-violet-400" },
-    { n: "Catalyst Event PM", s: "Dated events", r: "Reviews 10 days before", c: "bg-sky-400" },
+    { n: "PEAD Specialist", s: "Post-earnings drift · sells 12% off the high", c: "bg-blue-500" },
+    { n: "Secular Compounder", s: "Compounders · sells 25% off the high", c: "bg-violet-400" },
+    { n: "Catalyst Event PM", s: "Dated events · looks 10 days before", c: "bg-sky-400" },
   ];
   return (
-    <div className="flex w-[34rem] max-w-full flex-col divide-y rounded-2xl border bg-background">
+    <div className="flex w-full max-w-sm flex-col divide-y rounded-2xl border bg-background">
       {rows.map((r) => (
-        <span key={r.n} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-sm">
-          <span className={cn("size-2 rounded-full", r.c)} />
+        <span key={r.n} className="flex items-center gap-3 px-4 py-3">
+          <span className={cn("size-2 shrink-0 rounded-full", r.c)} />
           <span className="flex min-w-0 flex-col">
-            <span className="font-medium text-foreground">{r.n}</span>
-            <span className="text-xs text-muted-foreground">{r.s}</span>
+            <span className="truncate text-sm font-medium text-foreground">{r.n}</span>
+            <span className="truncate text-xs text-muted-foreground">{r.s}</span>
           </span>
-          <span className="text-xs text-muted-foreground">{r.r}</span>
         </span>
       ))}
     </div>
   );
 }
 
-const SMALL: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span: string }> = [
-  { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerFeed />, span: "lg:col-span-2" },
-  { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <Dots />, span: "" },
-  { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <Proposal />, span: "" },
-  { slug: "under-the-hood", title: "Under the hood", line: "Data sources, schedules, models and the prompts themselves.", art: <Morning />, span: "lg:col-span-2" },
+const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; tall?: boolean }> = [
+  {
+    slug: "theses",
+    title: "Theses",
+    line: "Every stock carries one: a belief we can be wrong about, the plan that acts on it, and the triggers that watch it.",
+    // The sheet drawn at full size and shown smaller; zoom keeps its layout size honest, so nothing is cropped.
+    art: (
+      <div style={{ zoom: 0.62 }}>
+        <SheetMock />
+      </div>
+    ),
+    span: "lg:col-span-2",
+    tall: true,
+  },
+  { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <Roster />, tall: true },
+  { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerFeed /> },
+  { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <Proposal /> },
+  { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <Dots /> },
 ];
 
 export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
   return (
     // One frame; the 1px gaps over the border color are the hairlines between cells.
     <div className="grid gap-px overflow-hidden rounded-2xl border bg-border lg:grid-cols-3">
-      <WideCell
-        title="Theses."
-        line="Every stock carries one: a belief we can be wrong about, the plan that acts on it, and the triggers that watch it."
-        link="Theses"
-        onOpen={() => onOpen("theses")}
-      >
-        {/* The sheet drawn at full size, shown smaller; zoom keeps its layout size honest, so nothing is cropped. */}
-        <div style={{ zoom: 0.62 }}>
-          <SheetMock />
-        </div>
-      </WideCell>
-      {SMALL.map((c) => (
-        <div key={c.slug} className={cn("group relative flex min-h-80 flex-col bg-background has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-inset has-[button:focus-visible]:ring-ring", c.span)}>
+      {CELLS.map((c) => (
+        <div
+          key={c.slug}
+          className={cn(
+            "group relative flex flex-col bg-background has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-inset has-[button:focus-visible]:ring-ring",
+            c.tall ? "min-h-[34rem]" : "min-h-80",
+            c.span,
+          )}
+        >
           <button type="button" onClick={() => onOpen(c.slug)} className="absolute inset-0 z-10 focus-visible:outline-none" aria-label={`Open ${c.title}`} />
           <div className="pointer-events-none flex flex-1 items-center justify-center px-6 pt-8" aria-hidden>
             {c.art}
@@ -261,14 +222,6 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           </p>
         </div>
       ))}
-      <WideCell
-        title="Analysts."
-        line="A trading style with its own universe, sizing and sell rules. Every thesis belongs to one, and inherits its rules."
-        link="Analysts"
-        onOpen={() => onOpen("analysts")}
-      >
-        <Roster />
-      </WideCell>
     </div>
   );
 }
