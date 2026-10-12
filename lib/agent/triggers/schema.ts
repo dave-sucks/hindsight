@@ -101,9 +101,10 @@ function fittingVariables(m: MeasureDef) {
 }
 
 /** A measure's settings: its own, and on a measure counted from a variable, that variable's (the trail's, on a move). */
-function measureSettings(m: MeasureDef): readonly SettingDef[] {
-  const fromVariables = m.variables?.mode === "from" ? fittingVariables(m).flatMap((o) => o.settings ?? []) : [];
-  return [...(m.settings ?? []), ...fromVariables];
+function measureSettings(m: MeasureDef) {
+  const own = m.settings ?? [];
+  const fromVariables = m.variables?.mode === "from" ? fittingVariables(m).flatMap((o) => (o.settings ?? []).map((d) => ({ d, with: o.id }))) : [];
+  return [...own.map((d) => ({ d, with: undefined as string | undefined })), ...fromVariables];
 }
 
 /**
@@ -128,15 +129,18 @@ function measureBranch(m: MeasureDef) {
   const settings = measureSettings(m);
   if (settings.length) {
     const fields: Record<string, z.ZodTypeAny> = {};
-    for (const d of settings) {
+    for (const { d, with: from } of settings) {
       if (fields[d.key]) continue;
       const sample = d.options?.[0]?.value ?? d.default;
-      // A setting with choices is its enum; a yes/no says what yes means.
+      // A setting with choices is its enum; a yes/no says what yes means; one that belongs to a variable
+      // says which, since the save drops it on a condition measured from any other.
       const typed = d.options
         ? typeof sample === "boolean"
           ? z.boolean().describe(`true: ${d.options.find((o) => o.value === true)?.label.toLowerCase()}.`)
           : z.literal(d.options.map((o) => o.value) as [string | number, ...(string | number)[]])
-        : z.number();
+        : from
+          ? z.number().describe(`With ${from}.`)
+          : z.number();
       fields[d.key] = typed.optional();
     }
     shape.settings = z.object(fields).optional();
