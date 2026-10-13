@@ -134,8 +134,9 @@ export interface ApplyTriggerOpsInput {
    */
   actor: "AGENT" | "PRINCIPAL" | "SYSTEM";
   /**
-   * The principal declined or let expire a protective sale on this stock in
-   * the last week, and the price is still past the line (DAV-315).
+   * The principal declined a protective sale on this stock in the last
+   * week, and the price is still past the line (DAV-315). A sale left to
+   * lapse is not a decline and never sets this (2026-10-13).
    *
    * This is the ONE case where an agent may move a protective floor DOWN.
    * The 2026-08-16 ruling — only humans lower a safety line — stands

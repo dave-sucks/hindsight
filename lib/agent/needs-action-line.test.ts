@@ -72,6 +72,17 @@ describe("the flag is a name and at most one fact", () => {
       "Sale declined",
       "3×, last 2026-09-28",
     ],
+    // A lapse is not a decline (2026-10-13): MU's two lapsed sales in the window on 10-13.
+    [
+      { kind: "SALE_DECLINED", declineCount: 0, lapseCount: 2, lastDeclinedAt: "2026-10-09T16:50:50.647Z", rejectMessage: null, floorPrice: 1005, recentLow: 978.5 },
+      "Sale lapsed",
+      "2×, last 2026-10-09",
+    ],
+    [
+      { kind: "SALE_DECLINED", declineCount: 1, lapseCount: 1, lastDeclinedAt: "2026-10-08T16:59:50.559Z", rejectMessage: null, floorPrice: 1835, recentLow: null },
+      "Sale declined",
+      "1 declined, 1 lapsed, last 2026-10-08",
+    ],
     [
       { kind: "TRIGGER_FIRED", triggerId: "t1", action: "REVIEW", summary: "Price below the 200-day", firedAt: "2026-09-29T13:40:00.000Z" },
       "Trigger fired",

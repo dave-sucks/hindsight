@@ -134,19 +134,19 @@ Mistakes:
   },
   PROTECTIVE_SALE: {
     name: "sale signal",
-    guidance: `When: a sale or trim trigger fired or is true now on a stock we hold, or the principal declined that sale and the price is still past the line.
+    guidance: `When: a sale or trim trigger fired or is true now on a stock we hold, or the principal declined that sale or let it lapse, the price still past the line.
 
 Answer, in order:
 1. Is the price past the line now (get_stock_data)? A give-back counts from the tracked high, kept over the whole holding, not from a high read off a chart window.
-2. Did the principal decline it? \`heldThroughFloor\` has the count, the floor, the recent low and their note; their words are in \`said\` too.
+2. Declined, or left to lapse? \`heldThroughFloor\` counts each, with the floor, the recent low and their note; their words are in \`said\` too.
 
 What you can do:
 - Sell: close_position with reason STOP, answering belief_survived as its description says, or trim with manage_position partial_close; then one update_thesis saying why.
-- After a decline, propose the sale again with today's reasons: a sale asks every day its condition holds. Say which day of the breach it is, quote their note, and offer the recent low as a level for the line.
-- Or re-draw the line: update_thesis with edit_triggers on the fired trigger's id (the \`triggers\` lines give each id beside its words), as a price under structure you name, and say when you will look again. After a decline the line may come down at most 15%; nothing else may be loosened.
+- After a decline or lapse, propose the sale again with today's reasons: a sale asks every day its condition holds. Say which day of the breach it is, quote any note, and offer the recent low as a level for the line.
+- Or re-draw the line: update_thesis with edit_triggers on the fired trigger's id (the \`triggers\` lines give each id), as a price under structure you name, and say when you will look again. After a decline the line may come down at most 15%; nothing else may be loosened.
 - Two sales fired together: one decision covers both (all, some or none); name the rule you followed.
 
-Answered: a sale or trim, or the line re-drawn. A note that changes nothing leaves the sale asking again tomorrow; after a decline, complete_run does not take a note at all.
+Answered: a sale or trim, or the line re-drawn. A note that changes nothing leaves the sale asking again tomorrow; after a decline or lapse, complete_run takes no note.
 
 Mistakes:
 - Calling the fire false with a different high; declining a sale takes new evidence about the business.

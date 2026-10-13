@@ -627,10 +627,11 @@ async function runCompleteRunPreflight(
       ) ?? null;
     if (needsAction == null) continue;
 
-    // A declined sale takes the strong bar (DAV-315): the ticket's words are
-    // "a note-only REVIEWED row does not clear it." Answering means
-    // re-drawing the floor or proposing the sale again — both write a
-    // non-REVIEWED row. IOT's 09-21 run wrote exactly the weak kind.
+    // A declined or lapsed sale takes the strong bar (DAV-315): the ticket's
+    // words are "a note-only REVIEWED row does not clear it." Answering means
+    // re-drawing the floor (after a decline only) or proposing the sale
+    // again — both write a non-REVIEWED row. IOT's 09-21 run wrote exactly
+    // the weak kind. A lapse is "ask me again" (2026-10-13), so it keeps it.
     const needsSubstantiveAnswer = needsAction.kind === "SALE_DECLINED";
     const resolved = needsSubstantiveAnswer
       ? substantivelyAddressedThesisIds.has(t.id)
@@ -656,6 +657,7 @@ async function runCompleteRunPreflight(
     } else if (needsAction.kind === "SALE_DECLINED") {
       detail = declinedSaleLine({
         declineCount: needsAction.declineCount,
+        lapseCount: needsAction.lapseCount,
         lastDeclinedAt: needsAction.lastDeclinedAt,
         rejectMessage: needsAction.rejectMessage,
         floorPrice: needsAction.floorPrice,

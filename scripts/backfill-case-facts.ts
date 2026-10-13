@@ -224,7 +224,7 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
         .filter((o) => o.positionId === pos.id && o.side === "SELL" && o.intent === declined.intent && o.closeReason === declined.closeReason)
         .filter((o) => !isSystemicRejection(o.rejectionMessage) && o.createdAt >= declined.createdAt.gte)
         .filter((o) => { const r = resolvedAt(o); return r != null && r <= at && (declined.status.in as string[]).includes(o.status); })
-        .map((o) => ({ createdAt: o.createdAt, rejectionMessage: o.rejectionMessage }));
+        .map((o) => ({ createdAt: o.createdAt, rejectionMessage: o.rejectionMessage, status: o.status }));
       const folded = foldDeclines(declineRows);
       if (folded) {
         const floor = computeLadderHealth({ direction, avgCost: position?.avgCost ?? null, currentPrice: price, peakPrice: position?.peakPrice ?? null, triggers: ladder, atr14: snap?.atr14 ?? null, lastLadderEditAt: null, now: at })?.floor?.price ?? null;

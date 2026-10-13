@@ -1233,9 +1233,10 @@ export const updateThesis = defineTool({
         // DAV-315: did the principal decline a protective sale on this stock
         // in the last week? If so the ratchet lets this edit move the floor
         // DOWN — the decline is the human act the one-way rule reserves that
-        // to. Nothing else about the ratchet changes; see `saleDeclined` on
-        // ApplyTriggerOpsInput. A lookup failure falls back to false, which
-        // is the strict behaviour we have today.
+        // to. A sale left to lapse is not one (2026-10-13: NVDA's floor came
+        // down $236 → $217 on lapses alone). Nothing else about the ratchet
+        // changes; see `saleDeclined` on ApplyTriggerOpsInput. A lookup
+        // failure falls back to false, which is the strict behaviour.
         let saleDeclined: { floorPrice: number | null } | null = null;
         // No live price, no exemption. The work list errs loud when the
         // price is unknown (a missing quote is not evidence the decline was
@@ -1274,7 +1275,7 @@ export const updateThesis = defineTool({
                 recentLow: null,
                 now: new Date(),
               });
-              if (work) saleDeclined = { floorPrice: work.floorPrice };
+              if (work && work.declineCount > 0) saleDeclined = { floorPrice: work.floorPrice };
             }
           } catch (err) {
             console.warn(

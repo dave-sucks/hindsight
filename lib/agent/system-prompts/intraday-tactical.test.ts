@@ -147,10 +147,10 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
   });
 
   it("ASML 10-07: a declined sale's facts are on the row under the morning row's name, so PROTECTIVE_SALE's pointer is true here too", () => {
-    const declined = { floorPrice: 1835, heldThroughCount: 1, rejectMessage: null, recentLow: 1785.74 };
+    const declined = { floorPrice: 1835, declined: 1, lapsed: 0, rejectMessage: null, recentLow: 1785.74 };
     const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ heldThroughFloor: declined }) } }));
     expect(prompt).toContain(`"heldThroughFloor": ${JSON.stringify(declined, null, 2).replace(/\n/g, "\n  ")}`);
-    expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` has the count, the floor, the recent low and their note");
+    expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` counts each, with the floor, the recent low and their note");
   });
 
   it("no declined sale: nothing prints", () => {

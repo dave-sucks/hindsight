@@ -107,7 +107,8 @@ export async function heldThroughNoteForPosition(args: {
     }
 
     return buildHeldThroughNote({
-      declineCount: folded.declineCount,
+      // Its words already say "declined it or let it expire": both count.
+      declineCount: folded.declineCount + folded.lapseCount,
       rejectMessage: folded.rejectMessage,
       recentExtreme,
       direction,

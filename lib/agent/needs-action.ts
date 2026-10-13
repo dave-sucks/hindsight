@@ -121,8 +121,10 @@ export type NeedsAction =
     }
   | {
       /**
-       * The principal declined (or let expire) a protective sale, the price
-       * is still past the line, and no run has answered it (DAV-315).
+       * The principal declined a protective sale or let it lapse, the price
+       * is still past the line, and no run has answered it (DAV-315). The
+       * two are counted apart: a lapse is "ask me again", never a decline
+       * (2026-10-13).
        *
        * Ranks ABOVE the trigger kinds deliberately. The floor is a standing
        * order, so while the breach persists TRIGGER_FIRED or
@@ -132,7 +134,11 @@ export type NeedsAction =
        * useful, statement of the same situation.
        */
       kind: "SALE_DECLINED";
+      /** Declined (REJECTED). Zero when the sale only lapsed. */
       declineCount: number;
+      /** Left to lapse (EXPIRED). Absent on reads saved before 2026-10-13, which counted lapses as declines. */
+      lapseCount?: number;
+      /** When the newest of either was answered. */
       lastDeclinedAt: string;
       /** The principal's own words, verbatim. */
       rejectMessage: string | null;
@@ -410,6 +416,7 @@ export function computeNeedsAction(
     ? {
         kind: "SALE_DECLINED",
         declineCount: d.declineCount,
+        lapseCount: d.lapseCount ?? 0,
         lastDeclinedAt: d.lastDeclinedAt,
         rejectMessage: d.rejectMessage,
         floorPrice: d.floorPrice,
