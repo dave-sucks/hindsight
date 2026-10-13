@@ -564,7 +564,7 @@ export const getTheses = defineTool({
         ...t,
         ...analystOf(t),
         // The stock's own triggers, each as its sentence and id.
-        triggers: (Array.isArray(t.triggers) ? (t.triggers as Trigger[]) : []).map((x) => triggerForAgent(x, t.status === "HOLDING")),
+        triggers: (Array.isArray(t.triggers) ? (t.triggers as unknown as Trigger[]) : []).map((x) => triggerForAgent(x, t.status === "HOLDING")),
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
@@ -597,9 +597,9 @@ export const getTheses = defineTool({
           t.status,
         ),
         // P1-28 (L2): unapproved close proposals on this held position (Order
-        // ledger) — rejected by the user OR ignored to expiry. >0 means "you
-        // proposed this exit and the user declined N×" — don't re-propose
-        // unless the thesis materially changed. 0 for non-HOLDING rows.
+        // ledger) — rejected by the user OR left to lapse. Not on the model's
+        // row (rowForModel leaves it out); a lapse is "ask me again", never a
+        // decline (2026-10-13). 0 for non-HOLDING rows.
         unapprovedExitCount: load.unapprovedExitCount.get(t.id) ?? 0,
         researchWritten: (() => {
           const w = researchWrittenByThesis.get(t.id);
@@ -611,7 +611,8 @@ export const getTheses = defineTool({
           return r ? { status: r.status, startedAt: r.startedAt.toISOString() } : null;
         })(),
         // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
-        // recent protective (STOP) declines in the last 7d + the principal's
+        // recent protective (STOP) sales declined or left to lapse in the
+        // last 7d, counted apart (2026-10-13) + the principal's
         // verbatim reject message + the recent low (lowest low since the last
         // ladder edit; recent HIGH for SHORT). Informational only: use it to
         // enrich the daily exit-proposal rationale ("3rd day under your $860

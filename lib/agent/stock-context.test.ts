@@ -108,12 +108,16 @@ describe("the principal's decisions, as read", () => {
     expect(principalDecision(docu, 68.18)).toMatchObject({ line: "Approved the buy, cut from 162 to 120 shares at $68.18", wantsAnswer: true });
   });
 
-  it("nothing to decide is not shown: a plain approval, a removal-only hand edit", () => {
+  it("nothing to decide is not shown: a plain approval, the cleanup of copied rules", () => {
     expect(principalDecision(rows.find((r) => r.type === "PROPOSAL_APPROVED")!)).toBeNull();
-    expect(principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!)).toBeNull();
     for (const r of rows.filter((x) => x.summary?.startsWith("Removed a copied rule from CEG"))) {
       expect(principalDecision(r)).toBeNull();
     }
+  });
+
+  it("a removal by hand is a decision, read like any hand edit (CEG 09-14 22:29 ET)", () => {
+    const d = principalDecision(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!);
+    expect(d).toMatchObject({ wantsAnswer: true, line: "Set by hand: Removed: Trailing 8% from high → exit" });
   });
 
   it("a level set by hand shows only the change, not the app's own sentence", () => {
@@ -133,7 +137,10 @@ describe("the block, counted from the analyst's last answer", () => {
 
   it("09-30 morning read: the last look, and the one review nobody answered — nothing else", () => {
     const { text, unansweredDecision } = block("2026-09-30T12:04:25Z", 261.25);
-    expect(text).toMatch(/^WHAT'S BEEN SAID ON \$CEG\nLast look: morning run, 09-28 08:04 — "CEG's repeated 200-day review/);
+    // The principal's 09-14 removal of the 8% trail is still said, six run answers later.
+    expect(text).toMatch(
+      /^WHAT'S BEEN SAID ON \$CEG\nRemoved by the principal \(don't add these back unless the thesis changes\):\n  09-14 22:29: Trailing 8% from high → exit\nLast look: morning run, 09-28 08:04 — "CEG's repeated 200-day review/,
+    );
     expect(text).toContain("Since then, not yet answered:\n  15% off the high → review — 09-28 11:20 at $257.63.");
     expect(text).toContain("If yes, hold and raise the floor under real structure (the 20-day low, the breakout level).");
     // The cleanup, the answered 09-14 decline, the approval, the bookkeeping: all gone.
@@ -142,7 +149,8 @@ describe("the block, counted from the analyst's last answer", () => {
     expect(text).not.toContain("Approved");
     expect(text).not.toContain("buy price set");
     expect(unansweredDecision).toBeNull();
-    expect(text!.length).toBeLessThan(700);
+    // Under 700 before the principal's removal joined it as two short lines.
+    expect(text!.replace(/Removed by the principal .*\n(  .*\n)+/, "").length).toBeLessThan(700);
   });
 
   it("09-18 morning read: the 09-16 answer and all three fires since it, collapsed", () => {

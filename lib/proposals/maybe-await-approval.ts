@@ -202,10 +202,8 @@ export async function maybeAwaitApproval(
   //   • #381 tactical snooze (tactical-run.ts): skips re-SPAWNING a tactical run
   //     within 4h of a pending/rejected close — saves GPT cost, still ~1 alert/run.
   //
-  // The proper cure for repeat-fatigue is NOT silence — it's the morning run
-  // re-drawing the floor on a held-through breach (trail it to the recent low) so
-  // alerts track a live line instead of a stale one. That is the follow-on build;
-  // see docs/plans/PROPOSAL_FATIGUE.md. This change just stops the bleeding.
+  // Repeat-fatigue is never cured by silence: the sale asks every day its
+  // condition holds, and only the principal lowers the line (2026-10-13).
 
   const expiresAt = new Date(Date.now() + PROPOSAL_TTL_MS);
 

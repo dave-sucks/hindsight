@@ -2,7 +2,7 @@
  * record-thesis-review-clock.test.ts — the review clock is chosen, never
  * inherited (DAV-209).
  *
- * A watched name is reviewed iff it carries its own REVIEW_CADENCE rung.
+ * A watched name is reviewed iff it carries its own review clock rung.
  * That rung is an ordinary trigger: record_thesis adds one when the caller
  * sends one, and never otherwise. No clock is the default and a legal state
  * — nothing looks at the name until one of its own triggers fires. These
@@ -45,7 +45,7 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 import { recordThesis } from "./record-thesis";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -113,7 +113,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
 
     const triggers = createdTriggers();
     expect(
-      triggers.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      triggers.filter((t) => shapeName(t.predicate) === "repeat"),
     ).toHaveLength(0);
     // The plan itself is intact — no clock is not no triggers.
     expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
@@ -138,7 +138,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
 
     const triggers = createdTriggers();
     expect(
-      triggers.filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      triggers.filter((t) => shapeName(t.predicate) === "repeat"),
     ).toHaveLength(0);
     expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
   });
@@ -160,7 +160,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
     expect(result.ok).toBe(true);
 
     const cadences = createdTriggers().filter(
-      (t) => kindOf(t.predicate) === "REVIEW_CADENCE",
+      (t) => shapeName(t.predicate) === "repeat",
     );
     expect(cadences).toHaveLength(1);
     // 3, not the TARGET horizon's 7 — nothing overrides the caller.
@@ -174,7 +174,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
     expect(result.ok).toBe(true);
 
     expect(
-      createdTriggers().filter((t) => kindOf(t.predicate) === "REVIEW_CADENCE"),
+      createdTriggers().filter((t) => shapeName(t.predicate) === "repeat"),
     ).toHaveLength(0);
   });
 
@@ -194,7 +194,7 @@ describe("record_thesis — the review clock is asked for, never assumed", () =>
     expect(result.ok).toBe(true);
 
     const cadences = createdTriggers().filter(
-      (t) => kindOf(t.predicate) === "REVIEW_CADENCE",
+      (t) => shapeName(t.predicate) === "repeat",
     );
     expect(cadences).toHaveLength(1);
     expect(cadences[0].predicate).toEqual({ watch: "repeat", value: 14 });

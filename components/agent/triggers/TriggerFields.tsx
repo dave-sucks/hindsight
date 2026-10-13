@@ -300,7 +300,7 @@ function ValueInput({
         // Text, not type="number": a number input won't shrink, and its arrows nudge a price by 1.
         <InputGroupInput
           type="text"
-          inputMode={v.integer ? "numeric" : "decimal"}
+          inputMode={v.range?.integer ? "numeric" : "decimal"}
           size={6}
           value={text}
           placeholder={v.placeholder}

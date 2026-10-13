@@ -2,7 +2,7 @@
  * intraday-tactical.test.ts — the tracked-peak contract for trail fires
  * (DAV-186).
  *
- * A TRAILING_FROM_HIGH fire must hand the agent the system's remembered
+ * A trail fire must hand the agent the system's remembered
  * peak (Position.peakPrice) and the exact fire line, and tell it the number
  * is authoritative — the HPE 2026-08-18 miss was the validating agent
  * re-deriving a "peak" from a short chart window and declining a genuine
@@ -147,10 +147,10 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
   });
 
   it("ASML 10-07: a declined sale's facts are on the row under the morning row's name, so PROTECTIVE_SALE's pointer is true here too", () => {
-    const declined = { floorPrice: 1835, heldThroughCount: 1, rejectMessage: null, recentLow: 1785.74 };
+    const declined = { floorPrice: 1835, declined: 1, lapsed: 0, rejectMessage: null, recentLow: 1785.74 };
     const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ heldThroughFloor: declined }) } }));
     expect(prompt).toContain(`"heldThroughFloor": ${JSON.stringify(declined, null, 2).replace(/\n/g, "\n  ")}`);
-    expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` has the count, the floor, the recent low and their note");
+    expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` counts each, with the floor, the recent low and their note");
   });
 
   it("no declined sale: nothing prints", () => {

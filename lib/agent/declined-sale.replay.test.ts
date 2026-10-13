@@ -144,7 +144,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
     expect(iot?.needsAction?.kind).not.toBe("SALE_DECLINED");
   });
 
-  it("2. the run may lower the floor after a decline, with a reason", async () => {
+  it("2. the run may not lower the floor after a decline: only the principal does", async () => {
     const { result } = await replayTool("update-thesis", "updateThesis", {
       seed: {
         thesis: [iotThesis()],
@@ -160,9 +160,9 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
       quotes: { IOT: PRICE_NEXT_DAY },
     });
 
-    expect(floorOp(result)?.ok).toBe(true);
-    // And it actually moved — an accepted op that changes nothing is not a fix.
-    expect(storedStop(result)).toBe(40.5);
+    expect(floorOp(result)?.ok).toBe(false);
+    expect(floorOp(result)?.reason ?? "").toMatch(/weakens the protection/i);
+    expect(storedStop(result)).toBe(FLOOR);
   });
 
   it("3. the same lowering with no declined sale is still refused", async () => {
@@ -225,94 +225,5 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
     expect(crashed).toBe(false);
     expect(result.summary).toMatch(/refused/i);
     expect(JSON.stringify(result)).toContain("IOT");
-  });
-});
-
-/**
- * The three edits the QB landed on the first cut of this PR (2026-09-27).
- * All three went through because the exemption filtered out every LOWERED
- * violation while a decline was live. A decline is "not at this price" —
- * not a week of open season on the stock.
- */
-describe("DAV-315 — what a decline does NOT unlock", () => {
-  const TRAIL = {
-    id: "trg_trail",
-    predicate: { watch: "move", is: "below", value: 8, variable: "peak" },
-    action: "EXIT",
-    rationale: "Seat trail.",
-    cooldownDays: 0,
-    source: "PRINCIPAL",
-  };
-
-  it("6. the floor cannot be dropped to a level that is not a floor ($41.40 → $5)", async () => {
-    const { result } = await replayTool("update-thesis", "updateThesis", {
-      seed: {
-        thesis: [iotThesis()],
-        position: [iotPosition()],
-        order: [declinedSaleOrder()],
-      },
-      args: { thesis_id: "t_iot", stop_loss: 5, rationale: "Giving it lots of room." },
-      quotes: { IOT: PRICE_NEXT_DAY },
-    });
-
-    // 15% below $41.40 is $35.19. $5 is not re-drawing a floor, it is
-    // removing one, and removing one is the principal's act.
-    expect(storedStop(result)).toBe(FLOOR);
-  });
-
-  it("7. the trail is not the line that was declined (8% → 30%)", async () => {
-    const { result } = await replayTool("update-thesis", "updateThesis", {
-      seed: {
-        thesis: [iotThesis({ triggers: [...(iotThesis().triggers as unknown[]), TRAIL] })],
-        position: [iotPosition()],
-        order: [declinedSaleOrder()],
-      },
-      args: {
-        thesis_id: "t_iot",
-        edit_triggers: [{ id: "trg_trail", pct: 30, rationale: "Widen it." }],
-      },
-      quotes: { IOT: PRICE_NEXT_DAY },
-    });
-
-    const op = (
-      result as { data?: { trigger_ops?: Array<{ id: string; ok: boolean }> } }
-    ).data?.trigger_ops?.find((o) => o.id === "trg_trail");
-    expect(op?.ok ?? false).toBe(false);
-  });
-
-  it("8. once the price recovers above the line, the decline is spent", async () => {
-    const { result } = await replayTool("update-thesis", "updateThesis", {
-      seed: {
-        thesis: [iotThesis()],
-        position: [iotPosition()],
-        order: [declinedSaleOrder()],
-      },
-      // $38 is inside the 15% bound, so only the recovery stops this one.
-      args: { thesis_id: "t_iot", stop_loss: 38, rationale: "Room." },
-      quotes: { IOT: 46 },
-    });
-
-    expect(storedStop(result)).toBe(FLOOR);
-  });
-  it("9. with no live price the floor stays where it is — lowering a safety line errs strict", async () => {
-    // QB review: a quote outage is not evidence the price is still past the
-    // line. The work item still fires without a quote (case 1's rule); the
-    // exemption does not.
-    const { result } = await replayTool("update-thesis", "updateThesis", {
-      seed: {
-        thesis: [iotThesis()],
-        position: [iotPosition()],
-        order: [declinedSaleOrder()],
-      },
-      args: {
-        thesis_id: "t_iot",
-        stop_loss: 40.5,
-        rationale: "You declined the $41.40 sale to give it room. Re-drawn to $40.50.",
-      },
-      quotes: {},
-    });
-
-    expect(floorOp(result)?.ok).toBe(false);
-    expect(storedStop(result)).toBe(FLOOR);
   });
 });

@@ -54,7 +54,7 @@
  * Pure — no prisma, no clock. The sweep and the tests share it.
  */
 
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { isGroup, measureOf, shapeOf } from "./condition";
 import type { Trigger } from "./types";
 
@@ -119,14 +119,14 @@ export function frozenCopies({
   sharedRationales,
 }: FrozenCopyInput): FrozenCopy[] {
   const above = new Map<string, { level: "ANALYST" | "ACCOUNT"; value: number | null }>();
-  for (const t of account) above.set(triggerBucket(t), { level: "ACCOUNT", value: triggerValue(t) });
+  for (const t of account) above.set(triggerSlot(t), { level: "ACCOUNT", value: triggerValue(t) });
   // Analyst last: the nearer rule is the one that governs once the copy goes.
-  for (const t of analyst) above.set(triggerBucket(t), { level: "ANALYST", value: triggerValue(t) });
+  for (const t of analyst) above.set(triggerSlot(t), { level: "ANALYST", value: triggerValue(t) });
 
   const out: FrozenCopy[] = [];
   for (const t of own) {
     if (!isPortfolioPolicyRung(t)) continue;
-    const bucket = triggerBucket(t);
+    const bucket = triggerSlot(t);
     const governing = above.get(bucket);
     const rationale = (t.rationale ?? "").trim();
     const templateWrote = rationale.length > 0 && sharedRationales.has(rationale);

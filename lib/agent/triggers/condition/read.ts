@@ -15,9 +15,9 @@ import { trailFireLevel } from "../trail";
 import { liveRsi, movePctOverSessions, volumeRatio, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { insiderCluster } from "@/lib/market-data/insider-cluster";
 import { unfiredMatches } from "@/lib/market-data/sec-events";
-import { fromLegacy } from "./legacy";
+import { shapeOf } from "./valid";
 import type { Condition, Watch, When } from "./types";
-import { conditionsOf, isGroup, isRetired } from "./types";
+import { conditionsOf, isGroup } from "./types";
 import { num } from "./words";
 
 interface Reader {
@@ -254,15 +254,15 @@ export function whenHolds(w: When, ctx: EvaluationContext): boolean {
 /** The condition shape's answers to `shouldFire`'s three questions, read off the catalog. */
 export const SHAPE_CHECKER: Checker = {
   holds: (p, ctx) => {
-    const w = fromLegacy(p);
-    return !isRetired(w) && whenHolds(w, ctx);
+    const w = shapeOf(p);
+    return w != null && whenHolds(w, ctx);
   },
   readsPrice: (p) => {
-    const w = fromLegacy(p);
-    return !isRetired(w) && conditionsOf(w).some((c) => READERS[c.watch].readsPrice?.(c) === true);
+    const w = shapeOf(p);
+    return w != null && conditionsOf(w).some((c) => READERS[c.watch].readsPrice?.(c) === true);
   },
   readsUpcomingReport: (p) => {
-    const w = fromLegacy(p);
-    return !isRetired(w) && conditionsOf(w).some((c) => READERS[c.watch].readsReport?.(c) === true);
+    const w = shapeOf(p);
+    return w != null && conditionsOf(w).some((c) => READERS[c.watch].readsReport?.(c) === true);
   },
 };

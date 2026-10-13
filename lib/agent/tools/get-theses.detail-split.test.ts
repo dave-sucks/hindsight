@@ -297,6 +297,7 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
         positionId: "pos_held",
         rejectionMessage: "hold, re-propose if it drops more",
         closeReason: "STOP",
+        status: "REJECTED",
         createdAt: new Date(Date.now() - 2 * 86_400_000),
       },
     ]);
@@ -347,7 +348,8 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     // $90 floor, recent low $84.20" — informational only.
     expect(row.heldThroughFloor).toEqual({
       floorPrice: 90,
-      heldThroughCount: 1,
+      declined: 1,
+      lapsed: 0,
       rejectMessage: "hold, re-propose if it drops more",
       recentLow: 84.2,
     });

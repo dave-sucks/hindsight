@@ -19,7 +19,10 @@
  * trigger run, complete_run and the thesis sheet all use this rule.
  *
  * The principal's newest notes (notes.ts) come first. A note is information:
- * never an answer, never a plan change, and nothing closes it.
+ * never an answer, never a plan change, and nothing closes it. Under them,
+ * the triggers the principal removed by hand, at any age, under one header
+ * that says what they ask: an answer does not close a removal either
+ * (ABT 10-07: a run never read the removal and set the buy again).
  *
  * Pure: needs-action.ts imports it; trigger labels come from the caller.
  */
@@ -111,6 +114,51 @@ export function newestNotes(rows: ActivityRow[]): ActivityRow[] {
   return newestFirst(rows).filter((r) => r.type === "NOTE").slice(0, NOTES_SHOWN);
 }
 
+/** What a removal by hand asks of the analysts; the app writes it on the row (thesis-edit.ts). */
+export const KEEP_IT_REMOVED = "Don't add it back unless the thesis changes.";
+
+/** The same ask, said once over the removals block. */
+const REMOVALS_HEADER = "Removed by the principal (don't add these back unless the thesis changes):";
+
+/**
+ * How a removal in the cleanup of copied rules (scripts/sweep-frozen-copies.ts)
+ * begins its summary; thesis-edit.ts writes it from here. Those removals took
+ * template lines off stocks and decided nothing about a stock, so the read
+ * leaves them out. The rows carry no other marker.
+ */
+export const COPIED_RULE_CLEANUP = "Removed a copied rule from ";
+
+const isCopiedRuleCleanup = (r: ActivityRow) => (r.summary ?? "").startsWith(COPIED_RULE_CLEANUP);
+
+/** How many of the principal's removals an agent is shown: the newest. */
+export const REMOVALS_SHOWN = 3;
+
+export interface RemovedTrigger {
+  at: Date;
+  /** The trigger as it read when it was removed: "Buy if below 6% from the close 5 days ago". */
+  sentence: string;
+}
+
+/**
+ * Every trigger the principal removed by hand, newest first, each sentence
+ * once (its newest removal). The cleanup of copied rules is left out.
+ */
+export function removedByHand(rows: ActivityRow[]): RemovedTrigger[] {
+  const out: RemovedTrigger[] = [];
+  const seen = new Set<string>();
+  for (const r of newestFirst(rows)) {
+    if (!isPrincipalRow(r) || r.type.startsWith("PROPOSAL_") || isCopiedRuleCleanup(r)) continue;
+    for (const o of changesOf(r).triggerOps?.to ?? []) {
+      if (o?.op !== "remove") continue;
+      const sentence = oneLine(o.text ?? "").replace(/^Removed:\s*/, "").replace(/\.$/, "");
+      if (!sentence || seen.has(sentence.toLowerCase())) continue;
+      seen.add(sentence.toLowerCase());
+      out.push({ at: r.timestamp, sentence });
+    }
+  }
+  return out;
+}
+
 /** Every trigger fired after the newest agent answer, newest first. */
 export function openFires(rows: ActivityRow[]): OpenFire[] {
   const byTrigger = new Map<string, OpenFire>();
@@ -160,8 +208,8 @@ const INTENT: Record<string, string> = { CLOSE: "the sale", PARTIAL_CLOSE: "the 
 
 /**
  * The principal's decision on one line, or null when there is nothing to
- * decide: a plain approval (the position shows it), an expiry, a hand edit
- * that only removed triggers.
+ * decide: a plain approval (the position shows it), an expiry, the cleanup
+ * of copied rules.
  */
 export function principalDecision(r: ActivityRow, priceThen: number | null = null, priceNow: number | null = null): PrincipalDecision | null {
   if (!isPrincipalRow(r)) return null;
@@ -187,12 +235,12 @@ export function principalDecision(r: ActivityRow, priceThen: number | null = nul
   }
   if (r.type.startsWith("PROPOSAL_")) return null;
 
-  // A hand edit: only the change. The rationale on these lines is the app's
-  // sentence, not the principal's words.
+  // A hand edit: only the change, a removal included (ABT 10-07: a run read
+  // the principal's added buy and never its removal, and set the buy again).
+  // The rationale on these lines is the app's sentence, not the principal's words.
+  if (isCopiedRuleCleanup(r)) return null;
   const ops = changesOf(r).triggerOps?.to ?? [];
-  const kept = ops.filter((o) => o?.op !== "remove");
-  if (ops.length > 0 && kept.length === 0) return null;
-  const change = kept.map((o) => o.text).filter(Boolean).join("; ") || oneLine(r.summary ?? "");
+  const change = ops.map((o) => o?.text).filter(Boolean).join("; ") || oneLine(r.summary ?? "");
   return change ? { at: r.timestamp, line: `Set by hand: ${change}${at}`, wantsAnswer: true } : null;
 }
 
@@ -215,8 +263,16 @@ export function etStamp(d: Date): string {
 export function buildStockContext(args: {
   ticker: string;
   rows: ActivityRow[];
+  /**
+   * The principal's removals by hand at any age, loaded on their own like the
+   * notes (work-inputs.ts), so the activity window does not decide whether a
+   * run is told. Read together with `rows`; a row in both counts once.
+   */
+  removals?: ActivityRow[];
   /** The stock's resolved triggers, by id: what the fire was, and its rule. */
   labelFor: (triggerId: string) => TriggerLabel | null;
+  /** Whether a trigger reading as this sentence is on the stock now: a removal it came back from is not shown. */
+  onStock?: (sentence: string) => boolean;
   now: Date;
   /** The live price, for "now" beside the principal's price then. */
   currentPrice?: number | null;
@@ -236,7 +292,12 @@ export function buildStockContext(args: {
   const unansweredDecision =
     decisions.find((d) => d.wantsAnswer) ??
     (newNote ? { at: newNote.timestamp, line: `Note: ${oneLine(newNote.rationale ?? "")}`, wantsAnswer: true } : null);
-  if (!last && decisions.length === 0 && fires.length === 0 && !notes.length) {
+  // What the principal took off the stock stays said after a run answers it;
+  // not once a trigger reading the same is back on the stock.
+  const removed = removedByHand([...rows, ...(args.removals ?? [])])
+    .filter((x) => !args.onStock?.(x.sentence))
+    .slice(0, REMOVALS_SHOWN);
+  if (!last && decisions.length === 0 && fires.length === 0 && !notes.length && !removed.length) {
     return { text: null, openFires: fires, unansweredDecision, principalNote: null };
   }
 
@@ -247,6 +308,9 @@ export function buildStockContext(args: {
     const then = thenNow(n.priceAtTime ?? null, args.currentPrice ?? null);
     lines.push(`  ${etStamp(n.timestamp)}${then}: "${oneLine(n.rationale ?? "")}"`);
   }
+  // Counted against the cap with the notes, and like them never cut.
+  if (removed.length) lines.push(REMOVALS_HEADER);
+  for (const x of removed) lines.push(`  ${etStamp(x.at)}: ${x.sentence}`);
   const said = last?.rationale?.trim() ? ` — "${sentences(last.rationale.split(/\n\s*\n\s*\[/)[0])}"` : "";
   lines.push(last ? `Last look: ${(last.runMode && RUN_WORDS[last.runMode]) ?? "a run"}, ${etStamp(last.timestamp)}${said}` : "Last look: none on record.");
   const tail = `Full history: get_theses(tickers: ["${T}"], include_history: true)`;

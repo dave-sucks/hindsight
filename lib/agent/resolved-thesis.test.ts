@@ -164,7 +164,7 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     expect(r.staleness).toBe("STALE");
   });
 
-  it("ENTER_NOW when ENTER trigger PRICE_ABOVE fires", () => {
+  it("ENTER_NOW when ENTER trigger price above fires", () => {
     const enterTrigger: Trigger = {
       id: "trg_test_enter",
       action: "ENTER",

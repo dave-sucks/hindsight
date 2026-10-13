@@ -45,8 +45,8 @@
           {
             "action": "REVIEW",
             "predicate": {
-              "days": 30,
-              "kind": "REVIEW_CADENCE"
+              "watch": "repeat",
+              "value": 30
             },
             "rationale": "Wake in 30 days (late October 2026) to assess whether a base is forming above the $15.88 range low ahead of the Q3 earnings print (est. Nov 4) and the pre-PDUFA window. If a 20+ session coil within 15% is visible, price the entry then."
           }

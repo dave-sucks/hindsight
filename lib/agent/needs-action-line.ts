@@ -53,14 +53,21 @@ export function needsActionFlag(na: NeedsAction): NeedsActionFlag {
         name: "Research stale",
         detail: na.freshness === "missing" ? "never written" : `${na.daysOld ?? "?"} days old`,
       };
-    case "SALE_DECLINED":
+    case "SALE_DECLINED": {
+      // A lapse is not a decline (2026-10-13): a sale only left to lapse says so.
+      const lapses = na.lapseCount ?? 0;
+      const last = na.lastDeclinedAt.slice(0, 10);
+      const n = na.declineCount + lapses;
       return {
-        name: "Sale declined",
+        name: na.declineCount > 0 ? "Sale declined" : "Sale lapsed",
         detail:
-          na.declineCount > 1
-            ? `${na.declineCount}×, last ${na.lastDeclinedAt.slice(0, 10)}`
-            : na.lastDeclinedAt.slice(0, 10),
+          na.declineCount > 0 && lapses > 0
+            ? `${na.declineCount} declined, ${lapses} lapsed, last ${last}`
+            : n > 1
+              ? `${n}×, last ${last}`
+              : last,
       };
+    }
     case "FLOOR_TOO_FAR":
       return {
         name: "Floor too far",

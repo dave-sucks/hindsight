@@ -166,6 +166,8 @@ describe("the 09-30 morning read of CEG, through get_theses", () => {
     expect(context).toContain("Last look: morning run, 09-28 08:04");
     expect(context).toContain("09-28 11:20 at $257.63");
     expect(context).toContain(RAISE_THE_FLOOR);
+    // The principal's own removal of the 8% trail, 09-14 22:29 ET, six run answers back.
+    expect(context).toContain("Removed by the principal (don't add these back unless the thesis changes):\n  09-14 22:29: Trailing 8% from high → exit\nLast look:");
     expect(context).not.toContain("copied rule");
     expect(context).not.toContain(DECLINE_ENDS);
   });

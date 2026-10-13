@@ -13,6 +13,7 @@
  * Through `get_theses`'s real execute, so the flag is proven to reach the run
  * rather than just to compute.
  */
+import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { replayTool, thesisRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 import vstRaw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
 
@@ -116,7 +117,7 @@ describe("DAV-321 — a watched stock with no way to buy it", () => {
   });
 
   it("a moving-average entry counts — the flag reads the trigger, not the price column", async () => {
-    // GD, GEV and SYK carry a VS_SMA buy and no entry PRICE. Keying this on
+    // GD, GEV and SYK carry a price vs an average buy and no entry PRICE. Keying this on
     // `entryPrice` would have flagged all three for having a plan.
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: {
@@ -266,18 +267,18 @@ describe("DAV-321 ruling 4 — a buy still live inside the last 21 days", () => 
 describe("a watched stock waiting on a review at a price, with no buy", () => {
   const vst = vstRaw as unknown as {
     currentPrice: number;
-    submit: { add_triggers: Array<{ action: string; predicate: { kind: string } } & Record<string, unknown>> };
+    submit: { add_triggers: Array<{ action: string; predicate: unknown } & Record<string, unknown>> };
   };
   const saved = vst.submit.add_triggers.map((t, i) => ({ id: `v${i}`, ...t }));
   const vstRow = (triggers: unknown[]) =>
     watch({ id: "t_vst", ticker: "VST", horizon: "COMPOUNDER", setupId: "COMPOUNDER_ACCUMULATION", triggers });
 
   it("VST with the triggers the writer saved is not flagged NO_BUY_LEVEL", async () => {
-    expect(saved.map((t) => [t.action, t.predicate.kind])).toEqual([
-      ["REVIEW", "PRICE_ABOVE"],
-      ["REVIEW", "REVIEW_CADENCE"],
-      ["REVIEW", "PRICE_BELOW"],
-      ["REVIEW", "EARNINGS_SINCE"],
+    expect(saved.map((t) => [t.action, shapeName(t.predicate)])).toEqual([
+      ["REVIEW", "price:above"],
+      ["REVIEW", "repeat"],
+      ["REVIEW", "price:below"],
+      ["REVIEW", "report:after"],
     ]);
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [vstRow(saved)] },
@@ -289,7 +290,7 @@ describe("a watched stock waiting on a review at a price, with no buy", () => {
 
   it("the same VST without the $146 review — its clocks and the $132 review below — is still flagged", async () => {
     // A review below the price is a "something broke" line, not a way in.
-    const withoutWake = saved.filter((t) => t.predicate.kind !== "PRICE_ABOVE");
+    const withoutWake = saved.filter((t) => shapeName(t.predicate) !== "price:above");
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [vstRow(withoutWake)] },
       args: { tickers: ["VST"] },
@@ -319,7 +320,7 @@ describe("a watched stock waiting on a review at a price, with no buy", () => {
   it("a review at a price the analyst passes down is not the stock's own wake", async () => {
     const { result } = await replayTool("get-theses", "getTheses", {
       seed: {
-        thesis: [vstRow(saved.filter((t) => t.predicate.kind === "REVIEW_CADENCE"))],
+        thesis: [vstRow(saved.filter((t) => shapeName(t.predicate) === "repeat"))],
         agentConfig: [
           {
             id: REPLAY_ANALYST_ID,

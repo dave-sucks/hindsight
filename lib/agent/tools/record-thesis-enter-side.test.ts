@@ -5,7 +5,7 @@
  * The HPE shape (2026-09-09): the writer wrote "pullback entry at $54.75"
  * with the stock at $57.08. record_thesis's own quote failed (three writers
  * hitting the vendor at once), the old fail-open picked "breakout", and the
- * row stored ENTER PRICE_ABOVE 54.75 — a buy that could only fire after a
+ * row stored ENTER price above 54.75 — a buy that could only fire after a
  * dip below and a re-cross. DOCU and FIVE in the same batch got a quote and
  * the right side. These tests pin the fix: the caller's `current_price`
  * stands in for a failed quote, and with neither the mint is refused.
@@ -112,14 +112,14 @@ beforeEach(() => {
 });
 
 describe("record_thesis — the buy level's side needs a price", () => {
-  it("quote fails, current_price passed → pullback level below the price is PRICE_BELOW (the HPE shape)", async () => {
+  it("quote fails, current_price passed → pullback level below the price is price below (the HPE shape)", async () => {
     mockGetStockQuote.mockRejectedValue(new Error("429"));
     const result = await run(hpeArgs({ current_price: 57.08 }));
     expect(result.ok).toBe(true);
     expect(enterRung().predicate).toEqual({ watch: "price", is: "below", value: 54.75 });
   });
 
-  it("quote fails, current_price passed → level above the price is PRICE_ABOVE (a breakout)", async () => {
+  it("quote fails, current_price passed → level above the price is price above (a breakout)", async () => {
     mockGetStockQuote.mockResolvedValue(null);
     const result = await run(hpeArgs({ entry_price: 60, target_price: 80, stop_loss: 54, current_price: 57.08 }));
     expect(result.ok).toBe(true);

@@ -27,7 +27,7 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { armHeldLadderOnFill } from "./thesis-flips";
 
 const BASE = {
@@ -151,8 +151,8 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
     // DAV-250: the sell rules and scale-ins are the account's rules for this
     // horizon and apply by inheritance. A stamped copy would beat them
     // forever — that is how ASML ended up with an 8% automatic sale.
-    const triggers = data.triggers as Array<{ action: string; predicate: { kind: string } }>;
-    expect(triggers.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH")).toBe(false);
+    const triggers = data.triggers as Array<{ action: string; predicate: unknown }>;
+    expect(triggers.some((t) => shapeName(t.predicate) === "move:below:peak")).toBe(false);
     expect(triggers.some((t) => t.action === "ADD")).toBe(false);
     // And the target column is read off the surviving rung, not lost.
     expect(data.targetPrice).toBe(2800);
@@ -179,7 +179,7 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
     });
     await armHeldLadderOnFill({ ...BASE, ticker: "ASML", fillPrice: 1716.09, targetPrice: 2800, stopLoss: 1580 });
     const triggers = thesisUpdate.mock.calls[0][0].data.triggers as Array<{ id: string; action: string; predicate: unknown }>;
-    const trails = triggers.filter((t) => kindOf(t.predicate) === "TRAILING_FROM_HIGH" && t.action === "EXIT");
+    const trails = triggers.filter((t) => shapeName(t.predicate) === "move:below:peak" && t.action === "EXIT");
     expect(trails).toEqual([expect.objectContaining({ id: "my-trail", predicate: { watch: "move", is: "below", value: 6, variable: "peak" } })]);
     // The audit row lists each op — one line per change.
     const fc = thesisUpdateCreate.mock.calls[0][0].data.fieldChanges as { triggerOps: { to: Array<{ op: string; text: string }> } };

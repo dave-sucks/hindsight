@@ -66,8 +66,9 @@
         "source": "AGENT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_ABOVE",
-          "level": 1100
+          "watch": "price",
+          "is": "above",
+          "value": 1100
         },
         "rationale": "$MU reaches $1,100, the original target zone — decide here: take it, trim it, or raise the target.",
         "lastFiredAt": "2026-08-25T13:35:20.867Z",
@@ -79,8 +80,9 @@
         "source": "AGENT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_ABOVE",
-          "level": 1150
+          "watch": "price",
+          "is": "above",
+          "value": 1150
         },
         "rationale": "Trim into a push toward and through the upper target zone if price nears $1,150.",
         "cooldownDays": 1
@@ -91,8 +93,9 @@
         "source": "AGENT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 880
+          "watch": "price",
+          "is": "below",
+          "value": 880
         },
         "rationale": "A break below $880 would signal deeper technical damage — review whether the thesis is weakening structurally.",
         "cooldownDays": 1
@@ -103,8 +106,9 @@
         "source": "AGENT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "PRICE_BELOW",
-          "level": 969
+          "watch": "price",
+          "is": "below",
+          "value": 969
         },
         "rationale": "Exit below $935 — the protective line raised on 8/24 (the original hard stop was $814). Below it this PEAD position is no longer respecting its protection; close it.",
         "lastFiredAt": "2026-09-16T13:40:12.077Z",
@@ -116,10 +120,10 @@
         "source": "AGENT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "pct": 4,
-          "kind": "PRICE_MOVE_PCT",
-          "window": "1D",
-          "direction": "UP"
+          "watch": "move",
+          "is": "above",
+          "value": 4,
+          "variable": "prev_close"
         },
         "rationale": "A sharp 1-day gain could confirm momentum repair — review whether the drift is re-accelerating.",
         "lastFiredAt": "2026-09-22T18:20:10.100Z",
@@ -131,10 +135,10 @@
         "source": "AGENT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "pct": 4,
-          "kind": "PRICE_MOVE_PCT",
-          "window": "1D",
-          "direction": "DOWN"
+          "watch": "move",
+          "is": "below",
+          "value": 4,
+          "variable": "prev_close"
         },
         "rationale": "A sharp 1-day drop could be either normal volatility or early thesis damage — review the cause.",
         "lastFiredAt": "2026-09-14T13:35:04.471Z",
@@ -146,9 +150,10 @@
         "source": "AGENT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "pct": 15,
-          "kind": "GAIN_FROM_ENTRY",
-          "direction": "UP"
+          "watch": "move",
+          "is": "above",
+          "value": 15,
+          "variable": "entry"
         },
         "rationale": "At +15% from entry, reassess whether trend repair is durable enough to add or tighten risk.",
         "lastFiredAt": "2026-09-21T13:30:26.232Z",
@@ -160,9 +165,10 @@
         "source": "AGENT",
         "fireMode": "DIRECT",
         "predicate": {
-          "pct": 8,
-          "kind": "GAIN_FROM_ENTRY",
-          "direction": "DOWN"
+          "watch": "move",
+          "is": "below",
+          "value": 8,
+          "variable": "entry"
         },
         "rationale": "Exit if the position falls 8% below entry; that is the hard loss cap for this PEAD setup.",
         "cooldownDays": 0
@@ -173,8 +179,9 @@
         "source": "AGENT",
         "fireMode": "TACTICAL",
         "predicate": {
-          "kind": "EARNINGS_BEAT",
-          "minSurprisePct": 5
+          "watch": "surprise",
+          "is": "beat",
+          "value": 5
         },
         "rationale": "If $MU again beats EPS by at least 5%, review whether the earnings-upgrade cycle remains intact and whether targets should rise.",
         "cooldownDays": 7

@@ -38,7 +38,7 @@
 import type { ResolvedTrigger } from "./levels";
 import type { Trigger, TriggerAction } from "./types";
 import { isDirectEligiblePredicate } from "./types";
-import { triggerBucket } from "./bucket";
+import { triggerSlot } from "./condition/slot";
 import { samePredicate } from "./condition/stored";
 import {
   conditionSentence,
@@ -67,7 +67,6 @@ import {
   describeRatchetViolation,
   protectiveRatchetViolations,
 } from "./ratchet";
-import { declineReplanAllows } from "@/lib/agent/declined-sale";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import type { When } from "@/lib/agent/triggers/condition";
 
@@ -133,23 +132,6 @@ export interface ApplyTriggerOpsInput {
    * trigger keeps its DEFAULT stamp.
    */
   actor: "AGENT" | "PRINCIPAL" | "SYSTEM";
-  /**
-   * The principal declined or let expire a protective sale on this stock in
-   * the last week, and the price is still past the line (DAV-315).
-   *
-   * This is the ONE case where an agent may move a protective floor DOWN.
-   * The 2026-08-16 ruling — only humans lower a safety line — stands
-   * everywhere else, and it stands here too in substance: the decline IS
-   * the human act. The principal saw the sale, said no, and on IOT even
-   * named the level he wanted ("raise the stop to around $40.50"). Without
-   * this, the only legal answer to that instruction was to do nothing,
-   * which is what happened for nine days.
-   *
-   * Scope is deliberately narrow: LOWERED only. Deleting the floor outright
-   * (REMOVED) or turning off its automatic fire (FIREMODE_DEMOTED) is not
-   * re-planning, and stays refused.
-   */
-  saleDeclined?: { floorPrice: number | null } | null;
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
   /** Stamped on buy triggers this call writes (./written-price). Defaults to `currentPrice`. */
@@ -214,8 +196,8 @@ export function collision(
 ): Trigger | undefined {
   const slot = levelSlotOf(t, direction);
   if (slot) return stored.find((s) => levelSlotOf(s, direction) === slot);
-  const bucket = triggerBucket(t);
-  return stored.find((s) => triggerBucket(s) === bucket);
+  const bucket = triggerSlot(t);
+  return stored.find((s) => triggerSlot(s) === bucket);
 }
 
 const MAX_TRIGGERS = 20;
@@ -228,7 +210,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   let stored = input.stored;
   const results: TriggerOpResult[] = [];
 
-  const inheritedByBucket = new Map(inherited.map((t) => [triggerBucket(t), t]));
+  const inheritedByBucket = new Map(inherited.map((t) => [triggerSlot(t), t]));
 
   // What a call deletes applies before what it writes (VST 2026-09-28). A
   // call that removes a trigger and adds its replacement means "replace".
@@ -257,23 +239,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   /** The one gate an agent's edit runs on a stock we own. */
   const ratchetReason = (next: Trigger[]): string | null => {
     if (actor !== "AGENT" || !held) return null;
-    let v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });
-    // DAV-315: a declined sale unlocks re-drawing THAT floor, bounded.
-    // `declineReplanAllows` is the whole policy — floor only, absolute level
-    // only, no more than 15% below the line he declined. Everything it does
-    // not explicitly allow stays refused.
-    if (input.saleDeclined) {
-      const declinedFloor = input.saleDeclined.floorPrice;
-      v = v.filter(
-        (x) =>
-          !declineReplanAllows({
-            reason: x.reason,
-            afterPredicate: x.after?.predicate,
-            declinedFloor,
-            direction,
-          }),
-      );
-    }
+    const v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });
     return v.length ? v.map(describeRatchetViolation).join(" ") : null;
   };
 
@@ -478,7 +444,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     const id = trigger.id || mintId();
     const text = `Added: ${describeTrigger(trigger, held)}`;
-    const above = inheritedByBucket.get(triggerBucket(trigger));
+    const above = inheritedByBucket.get(triggerSlot(trigger));
     if (
       above &&
       samePredicate(above.predicate, trigger.predicate) &&
@@ -503,8 +469,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const doReplace = (id: string, trigger: Trigger) => {
     const target = stored.find((t) => t.id === id);
     if (!target) return refuse("edit", id, `Change trigger ${id}`, notStored(id));
-    const sameSlot = triggerBucket(target) === triggerBucket(trigger);
-    const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerBucket(s) === triggerBucket(trigger));
+    const sameSlot = triggerSlot(target) === triggerSlot(trigger);
+    const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerSlot(s) === triggerSlot(trigger));
     const text = `Changed: ${describeTrigger(target, held)} → ${describeTrigger(trigger, held)}`;
     if (clash) {
       return refuse("edit", id, text, `This stock already has "${describeTrigger(clash, held)}". Edit that one instead.`);

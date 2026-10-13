@@ -58,7 +58,7 @@ const rules = () => ({
 /** CEG on 09-30 before 12:07 ET, with the floor trigger at `floor`. */
 function seed0930(floor: number) {
   const triggers = fx.thesisBefore.triggers.map((t) =>
-    t.id === fx.principalEdit.floorTriggerId ? { ...t, predicate: { ...(t.predicate as Row), level: floor } } : t,
+    t.id === fx.principalEdit.floorTriggerId ? { ...t, predicate: { ...(t.predicate as Row), value: floor } } : t,
   );
   return {
     ...rules(),
@@ -126,7 +126,7 @@ describe("the fixture is the production case", () => {
     expect(fx.position).toMatchObject({ quantity: 39, initialQty: 30, peakPrice: 303.4 });
     expect(fx.position.avgCost).toBeCloseTo(276.9, 2);
     expect(fx.principalEdit).toMatchObject({ from: 220, to: 248 });
-    expect(fx.analyst.triggers).toContainEqual(expect.objectContaining({ action: "EXIT", predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 } }));
+    expect(fx.analyst.triggers).toContainEqual(expect.objectContaining({ action: "EXIT", predicate: { watch: "move", is: "below", value: 25, variable: "peak" } }));
     expect(fx.lastUpdateBefore).toMatchObject({ type: "TRIGGER_FIRED", summary: "Price below $256.42 — review — deferred to the next daily review" });
     expect(TRAIL_FLOOR).toBe(227.55);
   });

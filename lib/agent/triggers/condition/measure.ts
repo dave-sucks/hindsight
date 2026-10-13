@@ -9,9 +9,8 @@
  */
 
 import type { TriggerAction } from "../types";
-import type { Condition, Direction, SettingDef, SettingValue, TriggerType, Watch, When } from "./types";
+import type { Condition, Direction, Range, SettingDef, TriggerType, Watch } from "./types";
 import type { VariableDef } from "./variables";
-import type { LegacyPredicate } from "./legacy-types";
 
 export interface ValueDef {
   /** "$" before the number. */
@@ -21,12 +20,10 @@ export interface ValueDef {
   placeholder: string;
   /** No number at all: the input holds only a variable chip (a filing). */
   none?: boolean;
-  /** Whole numbers only (days, insiders). */
-  integer?: boolean;
-  min?: number;
-  max?: number;
-  /** A negative number means something (strength vs. the S&P). */
-  allowNegative?: boolean;
+  /** Where the number may sit (./range). The form, the save and the agents' schema all read it. */
+  range?: Range;
+  /** Where it sits instead for one button or one variable; the first that matches wins. */
+  ranges?: readonly { is?: Direction; variables?: readonly string[]; range: Range }[];
   /** What the line under the input says while the number is missing. */
   missing?: string;
   /** How 0 reads ("any amount" for a beat of 0%). */
@@ -57,11 +54,6 @@ export interface PillPart {
   label: string;
   value?: string;
 }
-
-type Kind = LegacyPredicate["kind"];
-
-/** How a measure reads a row stored as a kind (before the backfill), one reader per kind. A reader returns null for a predicate another measure owns. Goes with the translator in PR 4. */
-export type LegacyReaders = { [K in Kind]?: (p: Extract<LegacyPredicate, { kind: K }>) => When | null };
 
 /** Where a condition sits on the chart: its price now (null until it has one), which side of the trade, and whether the price moves. */
 export interface Line {
@@ -126,22 +118,29 @@ export interface MeasureDef {
   fresh: () => Condition;
   /** What's wrong beyond the number and the variable, in one sentence, or null. */
   check?: (c: Condition, ctx: CheckContext) => string | null;
-  /** How this measure reads the old kinds (rows stored before the cutover) and spells itself as one for the save check. Goes with the translator in PR 4. */
-  legacy: {
-    from: LegacyReaders;
-    to: (c: Condition) => LegacyPredicate | null;
-    /** "Any of" several of these conditions, written as one kind (several filing events). */
-    foldAny?: (cs: Condition[]) => LegacyPredicate | null;
-  };
+  /**
+   * Whether the condition says something this measure can check: a button it
+   * has, a variable it reads with that button, a number where it needs one.
+   * The {x} menu offers only the variables that fit.
+   */
+  fits: (c: Condition) => boolean;
+  /** Said when a condition doesn't `fit`: what the measure takes. */
+  shape: string;
+  /**
+   * A fact about the numbers beyond their ranges, in one sentence, or null
+   * ("can't end on day 2 before it starts on day 3"). Every number's range is
+   * data (`value.range`, a setting's `range`); this is the rest.
+   */
+  rule?: (c: Condition) => string | null;
+  /**
+   * "Any of" several of these conditions read as one rule (several filing
+   * events): what's wrong with that rule (null for nothing), or undefined
+   * when they aren't one rule and each is checked on its own.
+   */
+  problemAny?: (cs: readonly Condition[]) => string | null | undefined;
 }
 
 export const BELOW_ABOVE = [
   { is: "below", label: "Below" },
   { is: "above", label: "Above" },
 ] as const;
-
-/** A condition with the settings that are set (an absent stored field stays absent). */
-export function withSettings(c: Condition, settings: Record<string, SettingValue | undefined>): Condition {
-  const set = Object.fromEntries(Object.entries(settings).filter(([, v]) => v !== undefined)) as Record<string, SettingValue>;
-  return Object.keys(set).length ? { ...c, settings: set } : c;
-}

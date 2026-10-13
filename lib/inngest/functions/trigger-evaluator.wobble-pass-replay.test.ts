@@ -182,7 +182,7 @@ const at = (hhmmss: string) => new Date(`2026-09-30T${hhmmss}Z`);
 
 describe("the fixture is the production case", () => {
   it("the buy fired at $331.47, the run passed at $330.83, and the price was $332.42 at the next check", () => {
-    expect(BUY).toMatchObject({ action: "ENTER", predicate: { kind: "PRICE_ABOVE", level: 331 }, cooldownDays: 1 });
+    expect(BUY).toMatchObject({ action: "ENTER", predicate: { watch: "price", is: "above", value: 331 }, cooldownDays: 1 });
     expect(fx.tape.priorClose).toBeLessThan(331); // the crossing holds all day
     expect(fx.tape.fire.price).toBeCloseTo(331.47, 2);
     expect(PASS).toMatchObject({ triggerId: BUY.id, priceAtTime: 330.83 });

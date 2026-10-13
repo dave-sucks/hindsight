@@ -453,12 +453,12 @@ describe("submit_thesis edit_triggers — the same form update_thesis saves (DAV
 });
 
 describe("submit_thesis carries the trigger once", () => {
-  it("triggers and add_triggers point at one definition, so the measures guide appears one time", () => {
+  it("triggers and add_triggers point at one definition, so each measure appears one time", () => {
     const json = JSON.stringify(zodSchema(thesisDecisionSchema).jsonSchema);
-    expect(json.split("Measures: price").length - 1).toBe(1);
     expect(json.split('"$ref":"#/definitions/Trigger"').length - 1).toBe(2);
     // The condition, with its lists and settings, is defined once too.
-    expect(json.split('"sma150"').length - 1).toBe(2); // once as a line, once as what a move is measured from
     expect(json.split('"Condition":{').length - 1).toBe(1);
+    expect(json.split('"const":"price"').length - 1).toBe(1);
+    expect(json.split('"sma150"').length - 1).toBe(2); // once as a price's line, once as what a move is measured from
   });
 });

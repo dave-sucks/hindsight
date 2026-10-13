@@ -28,7 +28,7 @@
 
 // ── Signal-side enums (mirrors of Signal table columns the router has) ──
 
-import { shapeOf } from "./condition/legacy";
+import { shapeOf } from "./condition/valid";
 import { isDirectEligible, isLevel, onTheClose, protectiveCloseReason } from "./condition/rules";
 import type { Condition, When } from "./condition/types";
 

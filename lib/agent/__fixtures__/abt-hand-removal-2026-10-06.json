@@ -1,0 +1,390 @@
+{
+  "_about": "ABT, Secular Compounder, watched after a stop-out. Built read-only on 2026-10-12. `updates` is every Activity line on ABT from the 10-05 morning run's answer to the 10-08 morning run's, plus one of the six 09-28 removals in the cleanup of copied rules, each with its run mode joined in, as stored; `fieldChanges` keeps only the keys the read looks at (source, triggerOps). On 10-06 the principal added a buy above $100.60 (15:42 ET), changed it to a buy 6% below the close 5 days ago (15:45), removed it (16:15) and added a review above $10 (17:12). The 10-07 morning run read the add and the change, never the removal, and set a buy at $100.60 again; on 10-07 the principal added a review below $110 (10:04), it fired (10:05), and they removed it (10:58), which the 10-08 morning run did not read either. `runs.*.said` is ABT's `context` in that run's get_theses result (RunMessage), and `price` the price it was read at. `at.*` is the ABT row from the same result: its plan columns, review times and own triggers as the row listed them (`says`, `rationale`, `cooldownDays`, `setBy`); the result does not carry predicates, so `action` and `predicate` are rebuilt from `says` and the test checks they read back the same. No inherited rules were on the row. `removedBuy` is the trigger removed at 16:15, rebuilt the same way.",
+  "runs": {
+    "morning1007": {
+      "id": "cmuy27qla001604leogd6f51o",
+      "mode": "MORNING_PLAN",
+      "readAt": "2026-10-07T12:04:10.462Z",
+      "price": 98.5,
+      "said": "WHAT'S BEEN SAID ON $ABT\nLast look: morning run, 10-05 08:04 — \"ABT is already out on a protective stop and this review is the post-exit answer: I still do not see evidence that the core business belief broke, but I also do not see an honest re-entry plan yet.\"\nSince then, not yet answered:\n  The principal, 10-06 17:12: Set by hand: Added: Review if above $10 at $97.50, now $98.50 (+1.0%)\n  The principal, 10-06 15:45: Set by hand: Changed: Buy if above $100.60 → Buy if below 6% from the close 5 days ago at $97.50, now $98.50 (+1.0%)\n  The principal, 10-06 15:42: Set by hand: Added: Buy if above $100.60 at $97.50, now $98.50 (+1.0%)\nFull history: get_theses(tickers: [\"ABT\"], include_history: true)"
+    },
+    "morning1008": {
+      "id": "cmuzhn9pf001y06l4btbckm7k",
+      "mode": "MORNING_PLAN",
+      "readAt": "2026-10-08T12:03:55.491Z",
+      "price": 98.73,
+      "said": "WHAT'S BEEN SAID ON $ABT\nLast look: morning run, 10-07 08:05 — \"Still watching ABT at $98.16. The business thesis may survive, but the stock is still broken: below the 20-day, 50-day, 150-day, and 200-day averages with no real base to buy against.\"\nSince then, not yet answered:\n  The principal, 10-07 10:04: Set by hand: Added: Review if below $110 at $98.16, now $98.73 (+0.6%)\n  Review if below $110 — 10-07 10:05 at $97.95.\nFull history: get_theses(tickers: [\"ABT\"], include_history: true)"
+    }
+  },
+  "thesis": {
+    "id": "cmspld5md000504l72u7ft9ve",
+    "ticker": "ABT",
+    "status": "WATCHING",
+    "direction": "LONG",
+    "horizon": "COMPOUNDER",
+    "setupId": "MA_PULLBACK",
+    "createdAt": "2026-08-12T04:30:55.669Z"
+  },
+  "at": {
+    "morning1007": {
+      "entryPrice": null,
+      "targetPrice": null,
+      "stopLoss": null,
+      "lastReviewedAt": "2026-10-05T12:04:36.369Z",
+      "researchUpdatedAt": "2026-10-02T13:35:33.558Z",
+      "triggers": [
+        {
+          "id": "4503a4f5-f854-41df-aed3-3913027d5650",
+          "action": "REVIEW",
+          "predicate": {
+            "watch": "price",
+            "is": "above",
+            "value": 10
+          },
+          "says": "Review if above $10",
+          "rationale": "Review if above $10. You set this.",
+          "cooldownDays": 1,
+          "setBy": "PRINCIPAL"
+        }
+      ]
+    },
+    "morning1008": {
+      "entryPrice": 100.6,
+      "targetPrice": 135,
+      "stopLoss": 95.48,
+      "lastReviewedAt": "2026-10-07T12:05:38.019Z",
+      "researchUpdatedAt": "2026-10-07T12:05:37.978Z",
+      "triggers": [
+        {
+          "id": "b2fd082b-c335-456a-8ae2-7c28a534a2fb",
+          "action": "ENTER",
+          "predicate": {
+            "watch": "price",
+            "is": "above",
+            "value": 100.6,
+            "settings": {
+              "close": true
+            }
+          },
+          "says": "Buy if above $100.60 · only on the close",
+          "rationale": "I buy when it breaks above $100.60.",
+          "cooldownDays": 1,
+          "setBy": "AGENT"
+        },
+        {
+          "id": "0fca7ab6-e139-4992-8bcf-2ea0b8431b81",
+          "action": "EXIT",
+          "predicate": {
+            "watch": "price",
+            "is": "below",
+            "value": 95.48
+          },
+          "says": "Take the plan down if below $95.48",
+          "rationale": "The floor sits just under the 61.8% retracement at $95.48 and near the recent washout zone. If ABT reclaims $100.60 and then loses that area, the repair failed.",
+          "cooldownDays": 1,
+          "setBy": "AGENT"
+        },
+        {
+          "id": "14bc783b-b5b1-471d-98b4-025d2fa74bd2",
+          "action": "REVIEW",
+          "predicate": {
+            "watch": "price",
+            "is": "above",
+            "value": 135
+          },
+          "says": "Review if above $135",
+          "rationale": "The underlying Libre / diagnostics compounder case still points to the mid-$130s if the stock can repair. That remains the right upside marker, but only after a real reclaim.",
+          "cooldownDays": 1,
+          "setBy": "AGENT"
+        }
+      ]
+    }
+  },
+  "updates": [
+    {
+      "id": "cmulfjb6s0001cyy7zadb1j9o",
+      "type": "UPDATED",
+      "timestamp": "2026-09-28T15:56:05.092Z",
+      "triggerId": null,
+      "summary": "Removed a copied rule from ABT — Price up 7% today → add",
+      "rationale": "[USER] Removed the \"ADD\" trigger (Price up 7% today) in the cleanup of copied rules: the same sentence sits on other stocks — a template wrote it; the account's rule governs from here. Don't re-create it on the stock.",
+      "fieldChanges": {
+        "source": {
+          "to": "USER",
+          "from": null
+        },
+        "triggerOps": {
+          "to": [
+            {
+              "id": "24c7d002-b633-452b-95c6-39c8497c40a4",
+              "op": "remove",
+              "text": "Removed: Price up 7% today → add"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": null,
+      "priceAtTime": null,
+      "runMode": null
+    },
+    {
+      "id": "cmuv7clea001904jp4wijsfi5",
+      "type": "UPDATED",
+      "timestamp": "2026-10-05T12:04:36.562Z",
+      "triggerId": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+      "summary": "Updated ABT: Removed: review every 1 days",
+      "rationale": "ABT is already out on a protective stop and this review is the post-exit answer: I still do not see evidence that the core business belief broke, but I also do not see an honest re-entry plan yet. The stock is only back to $97.50, still below the 200-day, and the old $96 floor is now just noise on a watchlist name rather than real structure. Because I already treated the stop-out as price damage with belief survived, the right follow-through is to keep ABT on watch with no priced buy plan until it forms a reclaim or base worth underwriting again, not to pretend the old MA-pullback ladder still means something after it failed.\n\n[Belief unchanged: Libre / Exact Sciences / Volt can still make this a future compounder, but the prior MA-pullback structure failed and no replacement setup exists yet.]",
+      "fieldChanges": {
+        "triggerOps": {
+          "to": [
+            {
+              "id": "28aae3d9-b54c-4bcf-8d60-f9d2bdf45d9e",
+              "op": "remove",
+              "text": "Removed: review every 1 days"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": "cmuv7aa5b000z04jpvs90uaun",
+      "priceAtTime": 97.5,
+      "runMode": "MORNING_PLAN"
+    },
+    {
+      "id": "cmux35i2m000004l5g5sysefb",
+      "type": "UPDATED",
+      "timestamp": "2026-10-06T19:42:39.549Z",
+      "triggerId": null,
+      "summary": "You added a trigger on ABT: Buy if above $100.60",
+      "rationale": "You added this trigger: Buy if above $100.60. It stands until you change it.",
+      "fieldChanges": {
+        "source": {
+          "to": "USER",
+          "from": null
+        },
+        "triggerOps": {
+          "to": [
+            {
+              "id": "c2471391-9d46-4ac8-a885-4f3a4dee91bb",
+              "op": "add",
+              "text": "Added: Buy if above $100.60"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": null,
+      "priceAtTime": null,
+      "runMode": null
+    },
+    {
+      "id": "cmux39n9z000004jzq3yot7ld",
+      "type": "UPDATED",
+      "timestamp": "2026-10-06T19:45:52.918Z",
+      "triggerId": null,
+      "summary": "You changed a trigger on ABT: Buy if below 6% from the close 5 days ago",
+      "rationale": "You changed this trigger to: Buy if below 6% from the close 5 days ago. It stands until you change it.",
+      "fieldChanges": {
+        "source": {
+          "to": "USER",
+          "from": null
+        },
+        "triggerOps": {
+          "to": [
+            {
+              "id": "074f429d-a389-4cf3-830e-c94a078f5b8d",
+              "op": "edit",
+              "text": "Changed: Buy if above $100.60 → Buy if below 6% from the close 5 days ago"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": null,
+      "priceAtTime": null,
+      "runMode": null
+    },
+    {
+      "id": "cmux4b45u000004lb81fg7ai0",
+      "type": "UPDATED",
+      "timestamp": "2026-10-06T20:15:01.074Z",
+      "triggerId": null,
+      "summary": "You removed a trigger on ABT: Buy if below 6% from the close 5 days ago",
+      "rationale": "You removed this trigger: Buy if below 6% from the close 5 days ago. Don't add it back unless the thesis changes.",
+      "fieldChanges": {
+        "source": {
+          "to": "USER",
+          "from": null
+        },
+        "triggerOps": {
+          "to": [
+            {
+              "id": "074f429d-a389-4cf3-830e-c94a078f5b8d",
+              "op": "remove",
+              "text": "Removed: Buy if below 6% from the close 5 days ago"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": null,
+      "priceAtTime": null,
+      "runMode": null
+    },
+    {
+      "id": "cmux6cj2j000004l6fubzxpfp",
+      "type": "UPDATED",
+      "timestamp": "2026-10-06T21:12:06.282Z",
+      "triggerId": null,
+      "summary": "You added a trigger on ABT: Review if above $10",
+      "rationale": "You added this trigger: Review if above $10. It stands until you change it.",
+      "fieldChanges": {
+        "source": {
+          "to": "USER",
+          "from": null
+        },
+        "triggerOps": {
+          "to": [
+            {
+              "id": "4503a4f5-f854-41df-aed3-3913027d5650",
+              "op": "add",
+              "text": "Added: Review if above $10"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": null,
+      "priceAtTime": null,
+      "runMode": null
+    },
+    {
+      "id": "cmuy29mb1001b04lewvrjvsji",
+      "type": "UPDATED",
+      "timestamp": "2026-10-07T12:05:38.221Z",
+      "triggerId": null,
+      "summary": "Updated ABT: Removed: Review if above $10, Entry set: $100.60, Stop set: $95.48, Target set: $135, rationale updated",
+      "rationale": "Still watching ABT at $98.16. The business thesis may survive, but the stock is still broken: below the 20-day, 50-day, 150-day, and 200-day averages with no real base to buy against. I am simplifying the re-entry plan to one honest condition instead of stacking duplicate wakes around the same level: wait for a reclaim of $100.60 and leave the rest alone.",
+      "fieldChanges": {
+        "triggerOps": {
+          "to": [
+            {
+              "id": "4503a4f5-f854-41df-aed3-3913027d5650",
+              "op": "remove",
+              "text": "Removed: Review if above $10"
+            },
+            {
+              "id": "b2fd082b-c335-456a-8ae2-7c28a534a2fb",
+              "op": "add",
+              "text": "Entry set: $100.60"
+            },
+            {
+              "id": "0fca7ab6-e139-4992-8bcf-2ea0b8431b81",
+              "op": "add",
+              "text": "Stop set: $95.48"
+            },
+            {
+              "id": "14bc783b-b5b1-471d-98b4-025d2fa74bd2",
+              "op": "add",
+              "text": "Target set: $135"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": "cmuy27qla001604leogd6f51o",
+      "priceAtTime": 98.16,
+      "runMode": "MORNING_PLAN"
+    },
+    {
+      "id": "cmuy6id72000004l8f6igo3ky",
+      "type": "UPDATED",
+      "timestamp": "2026-10-07T14:04:24.782Z",
+      "triggerId": null,
+      "summary": "You added a trigger on ABT: Review if below $110",
+      "rationale": "You added this trigger: Review if below $110. It stands until you change it.",
+      "fieldChanges": {
+        "source": {
+          "to": "USER",
+          "from": null
+        },
+        "triggerOps": {
+          "to": [
+            {
+              "id": "6d0614f4-38e9-4d4b-8e6e-a5661fc3f58b",
+              "op": "add",
+              "text": "Added: Review if below $110"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": null,
+      "priceAtTime": null,
+      "runMode": null
+    },
+    {
+      "id": "cmuy6jf7u000504jnbscw4w51",
+      "type": "TRIGGER_FIRED",
+      "timestamp": "2026-10-07T14:05:14.058Z",
+      "triggerId": "6d0614f4-38e9-4d4b-8e6e-a5661fc3f58b",
+      "summary": "Review if below $110",
+      "rationale": "Review if below $110. You set this.",
+      "fieldChanges": {},
+      "runId": null,
+      "priceAtTime": 97.95,
+      "runMode": null
+    },
+    {
+      "id": "cmuy8ge5m000005l3qi5ztu01",
+      "type": "UPDATED",
+      "timestamp": "2026-10-07T14:58:51.946Z",
+      "triggerId": null,
+      "summary": "You removed a trigger on ABT: Review if below $110",
+      "rationale": "You removed this trigger: Review if below $110. Don't add it back unless the thesis changes.",
+      "fieldChanges": {
+        "source": {
+          "to": "USER",
+          "from": null
+        },
+        "triggerOps": {
+          "to": [
+            {
+              "id": "6d0614f4-38e9-4d4b-8e6e-a5661fc3f58b",
+              "op": "remove",
+              "text": "Removed: Review if below $110"
+            }
+          ],
+          "from": null
+        }
+      },
+      "runId": null,
+      "priceAtTime": null,
+      "runMode": null
+    },
+    {
+      "id": "cmuzhntda002006l4m6cis5ol",
+      "type": "REVIEWED",
+      "timestamp": "2026-10-08T12:04:20.974Z",
+      "triggerId": "6d0614f4-38e9-4d4b-8e6e-a5661fc3f58b",
+      "summary": "Reviewed ABT thesis — no changes",
+      "rationale": "Still watching ABT at $98.73. Your hand-set review at $110 forced the re-check, and the answer is unchanged: the business thesis may survive, but the stock is still broken below the 20-day $101.10, 50-day $106.48, 150-day $99.15, and 200-day $103.61 with no real base to buy against. I am keeping the $100.60 close-confirmation entry and leaving the rest of the plan intact.",
+      "fieldChanges": {},
+      "runId": "cmuzhn9pf001y06l4btbckm7k",
+      "priceAtTime": 98.73,
+      "runMode": "MORNING_PLAN"
+    }
+  ],
+  "removedBuy": {
+    "id": "074f429d-a389-4cf3-830e-c94a078f5b8d",
+    "action": "ENTER",
+    "predicate": {
+      "watch": "move",
+      "is": "below",
+      "value": 6,
+      "variable": "close_5d"
+    },
+    "says": "Buy if below 6% from the close 5 days ago"
+  }
+}

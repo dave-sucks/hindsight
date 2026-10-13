@@ -6,7 +6,7 @@
  * no beat-that-sold review.
  */
 import { setupExitTriggers, heldSetupExitOps, BEAT_AND_FADE_DOWN_PCT } from "./setup-exits";
-import { kindOf } from "@/lib/agent/triggers/condition/__fixtures__/kind-of";
+import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 
 let n = 0;
@@ -15,10 +15,10 @@ const mintId = () => `t${++n}`;
 describe("setupExitTriggers", () => {
   it("IOT on PEAD: the 60-day limit from the buy, a partial at 2R (+15.5%) and the beat-that-sold review", () => {
     const out = setupExitTriggers({ setup: getSetup("PEAD")!, horizon: "TARGET", entry: 39.83, stop: 36.74, mintId });
-    expect(out.map((t) => [t.action, kindOf(t.predicate)])).toEqual([
-      ["REVIEW", "REVIEW_CADENCE"],
-      ["TRIM", "GAIN_FROM_ENTRY"],
-      ["REVIEW", "AND"],
+    expect(out.map((t) => [t.action, shapeName(t.predicate)])).toEqual([
+      ["REVIEW", "from_date:after:buy"],
+      ["TRIM", "move:above:entry"],
+      ["REVIEW", "all"],
     ]);
     expect(out[0].predicate).toEqual({ watch: "from_date", is: "after", value: 60, variable: "buy" });
     // The partial carries the big-winner switch: once IOT has run 20% off
@@ -36,12 +36,12 @@ describe("setupExitTriggers", () => {
 
   it("a pullback on a TARGET horizon gets the beat-that-sold review but no partial", () => {
     const out = setupExitTriggers({ setup: getSetup("MA_PULLBACK")!, horizon: "TARGET", entry: 54.48, stop: 50.7, mintId });
-    expect(out.map((t) => kindOf(t.predicate))).toEqual(["REVIEW_CADENCE", "AND"]);
+    expect(out.map((t) => shapeName(t.predicate))).toEqual(["from_date:after:buy", "all"]);
   });
 
   it("no stop → no partial (there is no R to measure)", () => {
     const out = setupExitTriggers({ setup: getSetup("PEAD")!, horizon: "TARGET", entry: 39.83, stop: null, mintId });
-    expect(out.map((t) => kindOf(t.predicate))).toEqual(["REVIEW_CADENCE", "AND"]);
+    expect(out.map((t) => shapeName(t.predicate))).toEqual(["from_date:after:buy", "all"]);
   });
 });
 
@@ -52,12 +52,12 @@ describe("heldSetupExitOps — a held stock whose review just named its setup", 
   let n = 0;
   const mintId = () => `held-${++n}`;
   const kinds = (ops: ReturnType<typeof heldSetupExitOps>) =>
-    ops.map((o) => (o.op === "add" ? `${o.trigger.action}:${kindOf(o.trigger.predicate)}` : o.op));
+    ops.map((o) => (o.op === "add" ? `${o.trigger.action}:${shapeName(o.trigger.predicate)}` : o.op));
 
   it("MU (production 2026-09-17: cost $895.94, floor already raised to $969): no partial sale from a floor above cost", () => {
     const ops = heldSetupExitOps({ setup: pead, horizon: "TRADE", entry: 895.935, stop: 969, direction: "LONG", stored: [], mintId });
-    expect(kinds(ops)).not.toContain("TRIM:GAIN_FROM_ENTRY");
-    expect(kinds(ops)).toContain("REVIEW:REVIEW_CADENCE");
+    expect(kinds(ops)).not.toContain("TRIM:move:above:entry");
+    expect(kinds(ops)).toContain("REVIEW:from_date:after:buy");
   });
 
   it("a floor still under cost writes the partial from the real cost and floor", () => {
