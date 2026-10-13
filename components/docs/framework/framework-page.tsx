@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * /docs/framework — how an agent is put together: one request taken apart,
- * every door opened up, the read zoomed in, and the instructions that travel
+ * /docs/framework — how an agent is put together: one request taken apart
+ * (the same parts for every agent), every door opened up, the read zoomed in, and the instructions that travel
  * with a stock. The numbers come measured from the server (lib/docs/framework.ts).
  */
 
 import type { ReactNode } from "react";
-import { ArrowRight, BookOpen, FileSearch, Layers, ListChecks, Wrench } from "lucide-react";
+import { BookOpen, FileSearch, Layers, ListChecks, Wrench } from "lucide-react";
 import type { FrameworkData } from "@/lib/docs/framework-content";
 import { DocsNav } from "../docs-nav";
 import { Eyebrow, Mono, TwoTone } from "../primitives";
@@ -15,13 +15,6 @@ import { DoorInspector } from "./door-inspector";
 import { ReadDemo } from "./read-demo";
 import { RequestGrid } from "./request-grid";
 import { SituationsGrid } from "./situations-grid";
-
-const DOORS = ["Your chat", "A clock", "A trigger fires", "You start discovery", "Another agent asks"];
-const SHARED = ["House rules", "Analyst brief", "The read", "The save"];
-const OUT = [
-  { t: "Edits", b: "Theses, floors and plans. Each one a line in Activity." },
-  { t: "Proposals", b: "Buys, sales, adds and trims, in your queue the moment they're made." },
-];
 
 export function FrameworkPage({ data }: { data: FrameworkData }) {
   const fmt = (n: number) => n.toLocaleString("en-US");
@@ -37,52 +30,12 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
             as="h1"
             size="hero"
             lead="One agent, many doors."
-            rest="An agent is a job and a list of tools, started by a door. What every agent shares is written once, so they all behave the same."
+            rest="Every agent is sent the same parts on every request: its job, the house rules, the analyst, its tools and the read. Only the sizes change."
           />
         </div>
 
-        {/* Doors in, the agent defined once, what comes out. */}
-        <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.3fr)_auto_minmax(0,1fr)]">
-          <Column label="A door starts it">
-            {DOORS.map((d) => (
-              <span key={d} className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground">
-                {d}
-              </span>
-            ))}
-          </Column>
-          <Arrow />
-          <Column label="The agent, defined once" strong>
-            <span className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground">Its job prompt, one per door</span>
-            <span className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground">Its tools, a list per door</span>
-            <span className="pt-2 text-xs text-muted-foreground">Shared by every agent</span>
-            <span className="grid grid-cols-2 gap-1.5">
-              {SHARED.map((s) => (
-                <span key={s} className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-foreground">
-                  {s}
-                </span>
-              ))}
-            </span>
-          </Column>
-          <Arrow />
-          <Column label="What comes out">
-            {OUT.map((o) => (
-              <span key={o.t} className="flex flex-col gap-0.5 rounded-lg border bg-background px-3 py-2">
-                <span className="text-sm font-medium text-foreground">{o.t}</span>
-                <span className="text-sm text-muted-foreground">{o.b}</span>
-              </span>
-            ))}
-            <span className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">Nothing trades until you approve.</span>
-          </Column>
-        </div>
-      </section>
-
-      <Block
-        eyebrow="One request"
-        lead="What the model is sent, piece by piece."
-        rest="An agent gets its whole prompt again on every request, and a morning run makes about fifteen. So the size of one request is the cost of the run, and what's in it is what the agent knows."
-      >
         <RequestGrid data={data} />
-      </Block>
+      </section>
 
       <Block
         eyebrow="The doors"
@@ -151,26 +104,6 @@ function Block({ id, eyebrow, lead, rest, children }: { id?: string; eyebrow: st
       </div>
       {children}
     </section>
-  );
-}
-
-function Column({ label, strong, children }: { label: string; strong?: boolean; children: ReactNode }) {
-  return (
-    <div
-      className="flex flex-col gap-1.5 rounded-2xl border bg-muted/40 p-4"
-      style={strong ? { backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" } : undefined}
-    >
-      <p className="pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      {children}
-    </div>
-  );
-}
-
-function Arrow() {
-  return (
-    <span className="grid place-items-center text-muted-foreground" aria-hidden>
-      <ArrowRight className="size-4 rotate-90 lg:rotate-0" />
-    </span>
   );
 }
 
