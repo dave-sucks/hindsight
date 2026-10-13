@@ -335,7 +335,7 @@ const CHECKS: ReadonlyArray<{ s: string; l: string; act?: string }> = [
   { s: "CEG", l: "Gapped up 6% at the open" },
 ];
 
-function TriggerLog() {
+export function TriggerLog() {
   const [n, setN] = useState(0);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
