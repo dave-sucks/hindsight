@@ -1,0 +1,698 @@
+{
+ "_note": "Production rows, read-only, cut to the fields the save and the read use. NVDA: the PEAD Specialist's morning update_thesis call of 2026-10-13 12:01:10 UTC (run cmv6mq1t0000006l810x3g7l4), verbatim from the run's saved thread, on NVDA's row as that run's own get_theses read carried it (the floor trigger at $236 with its rationale then; the save moved it to $217), and NVDA's sale orders as they stood at the save: the 10-12 proposal was still AWAITING_APPROVAL (it was flipped to EXPIRED at 12:30). MU: the PEAD Specialist's row as its 10-13 08:00 ET read carried it, and MU's sale orders since 09-28 as they stood at 07:59 ET; mu.decline0916 is MU's own real decline of 2026-09-16, for the variant. ASML: the Secular Compounder's one real decline in the 7 days before 10-13 (REJECTED 10-08), its rows as they stood at the 10-09 morning read. A rejection message is the owner's words and is replaced; the repo is public.",
+ "nvda": {
+  "at": "2026-10-13T12:01:10.000Z",
+  "price": 226.32,
+  "call": {
+   "thesis_id": "cmtg9nbdy000204jpc6cwawgg",
+   "rationale": "Holding Nvidia at $226.32. The price is still below the old $236 floor, but there is no company-specific break, no material filing, and the stock is basing above a rising 50-day average with the real support lower near the $216.74 retrace and the $208.93 swing low. You already declined the first sale, so I am moving the floor down once to $217.00, under current structure and within the allowed reset, and I will sell if that level breaks.",
+   "trigger_id": "6306936b-bb02-4298-9ca0-90f586772512",
+   "stop_loss": 217,
+   "setup_id": "PEAD",
+   "stop_basis": "Under the 38.2% retrace at $216.74 and above the $208.93 swing low, about 1.7 ATR below the current $226.32 price; a break there would mean the base is failing rather than just backing off the prior high.",
+   "conviction": "LOW",
+   "conviction_rationale": "The guide-driven drift case is aging and the latest EPS beats remain modest, but the stock is still above rising intermediate support and no fundamental evidence has broken the thesis yet."
+  },
+  "thesis": {
+   "id": "cmtg9nbdy000204jpc6cwawgg",
+   "ticker": "NVDA",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "NONE",
+   "entryPrice": 218.2259,
+   "targetPrice": null,
+   "stopLoss": 236,
+   "coreBelief": "NVDA drifts to the analyst consensus median of $322 within 60 days post-print as the Q4 FY2026 $65B revenue guide-raise and FY2028 70%-growth commitment mechanically force 21+ sell-side firms to revise models upward, pulling institutional price targets and fund flows toward the stock.",
+   "keyAssumptions": [
+    "Q4 FY2026 revenue comes in at or above the $65B guided midpoint, confirming no demand collapse between print and report",
+    "Gross margins hold in the mid-70% range through Q4, preventing a margin-compression narrative that would arrest estimate revisions"
+   ],
+   "invalidationConds": [
+    "NVDA closes below $200.15 on any session — automated stop, drift thesis broken",
+    "Any pre-announcement or guidance reduction before the Q4 print signaling revenue below $63B or gross margin below 72%, which would reverse the estimate-revision tailwind that drives the drift"
+   ],
+   "conviction": "LOW",
+   "convictionRationale": "The earnings drift worked, but the clean post-print window is now mature and price has lost the protection line. I still respect the business and estimate-revision story, but not enough to keep a committed PEAD hold under a failed floor.",
+   "scoring": {
+    "composite": 8,
+    "entryQuality": {
+     "note": "Position already held above entry ($217.55); stock consolidating 2.4% above 20-day with no distribution — thesis confirmed in progress, no re-entry needed",
+     "score": 2
+    },
+    "trendStrength": {
+     "note": "SMA20 ($220.52) > SMA50 ($211.23), price above both, RSI 56.2 — confirmed bullish trend with no exhaustion signal; 52-week position at 89%",
+     "score": 3
+    },
+    "relativeStrength": {
+     "note": "NVDA YTD +17% ranks 4/4 vs peers (AMD +101%, MU +143%, AVGO +21%); composite score 82 vs 95 for top peers — relative laggard in the group, though absolute trend is intact",
+     "score": 1
+    },
+    "catalystFreshness": {
+     "note": "Aug 26 print is 14 days old; guide-raise to $65B Q4 and FY2028 70% growth flag are fresh and active; estimate revisions from 21+ sell-side firms are still flowing through; ex-dividend Sep 10 is a near-term micro-catalyst",
+     "score": 2
+    }
+   },
+   "catalystDate": null,
+   "triggerState": {
+    "1758189f-7614-4193-92e2-b913264f3307": {
+     "firedAt": "2026-09-14T19:55:09.053Z"
+    },
+    "8d64ad2b-b2b5-4202-9724-ec984efad75e": {
+     "firedAt": "2026-10-06T13:30:13.347Z"
+    }
+   },
+   "researchUpdatedAt": "2026-09-09T03:40:48.296Z",
+   "createdAt": "2026-08-30T20:32:41.062Z",
+   "lastReviewedAt": "2026-10-12T12:01:00.367Z",
+   "triggers": [
+    {
+     "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "value": 7,
+      "watch": "repeat"
+     },
+     "rationale": "Look at this every 7 days, counting from the last real review.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "6306936b-bb02-4298-9ca0-90f586772512",
+     "action": "EXIT",
+     "source": "AGENT",
+     "predicate": {
+      "is": "below",
+      "value": 236,
+      "watch": "price"
+     },
+     "rationale": "Under the $237.88 breakout pivot and just beneath the recent reclaim area; that keeps the stock above structure while locking in a meaningful share of the gain.",
+     "lastFiredAt": "2026-10-12T19:55:04.768Z",
+     "cooldownDays": 0
+    },
+    {
+     "id": "1f2454ae-1a4d-4123-8502-fdcb85006401",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "after",
+      "value": 60,
+      "watch": "from_date",
+      "variable": "buy"
+     },
+     "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
+     "cooldownDays": 60
+    },
+    {
+     "id": "5fbb5cdb-e4b3-4559-8703-eaf75798ae79",
+     "action": "TRIM",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "above",
+      "value": 16.6,
+      "watch": "move",
+      "settings": {
+       "fastWinnerPct": 20,
+       "fastWinnerDays": 21
+      },
+      "variable": "entry"
+     },
+     "rationale": "Up 16.6% from entry — 2R on a 8.3% stop. The prior high or a measured move; partial at 2R. Off for good once the stock has run 20% off the buy within 21 days: a winner that fast is held and managed on the trail, not cut in half.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "ce4de003-2bc2-438d-a3cf-1b786d72f88f",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {
+        "is": "beat",
+        "value": 0,
+        "watch": "surprise"
+       },
+       {
+        "is": "below",
+        "value": 3,
+        "watch": "move",
+        "variable": "prev_close"
+       }
+      ]
+     },
+     "rationale": "A beat the market sold — the stock is down 3%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.",
+     "cooldownDays": 7
+    }
+   ]
+  },
+  "position": {
+   "id": "cmtha1mcg000804kyrns3lpjg",
+   "quantity": 33,
+   "avgCost": 218.2259,
+   "peakPrice": 242.505,
+   "openedAt": "2026-08-31T13:53:39.975Z"
+  },
+  "orders": [
+   {
+    "id": "cmu1acw19001404l8szu4pcaq",
+    "positionId": "cmtha1mcg000804kyrns3lpjg",
+    "environment": "LIVE",
+    "symbol": "NVDA",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 33,
+    "closeReason": "STOP",
+    "status": "EXPIRED",
+    "createdAt": "2026-09-14T13:35:43.791Z",
+    "expiresAt": "2026-09-15T13:35:44.235Z",
+    "updatedAt": "2026-09-15T14:00:19.493Z",
+    "rejectionMessage": null
+   },
+   {
+    "id": "cmu2quxrx000o04k0mir4slq7",
+    "positionId": "cmtha1mcg000804kyrns3lpjg",
+    "environment": "LIVE",
+    "symbol": "NVDA",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 33,
+    "closeReason": "STOP",
+    "status": "REJECTED",
+    "createdAt": "2026-09-15T14:05:25.884Z",
+    "expiresAt": "2026-09-16T14:05:26.333Z",
+    "updatedAt": "2026-09-15T19:23:27.843Z",
+    "rejectionMessage": "(the owner's note on this decline — not kept: the repo is public)"
+   },
+   {
+    "id": "cmu4522hq000204l82uco79hf",
+    "positionId": "cmtha1mcg000804kyrns3lpjg",
+    "environment": "LIVE",
+    "symbol": "NVDA",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 33,
+    "closeReason": "STOP",
+    "status": "REJECTED",
+    "createdAt": "2026-09-16T13:30:39.395Z",
+    "expiresAt": "2026-09-17T13:30:39.819Z",
+    "updatedAt": "2026-09-16T18:59:08.774Z",
+    "rejectionMessage": "(the owner's note on this decline — not kept: the repo is public)"
+   },
+   {
+    "id": "cmuzksfl0000506jpropedvot",
+    "positionId": "cmtha1mcg000804kyrns3lpjg",
+    "environment": "LIVE",
+    "symbol": "NVDA",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 33,
+    "closeReason": "STOP",
+    "status": "EXPIRED",
+    "createdAt": "2026-10-08T13:31:54.807Z",
+    "expiresAt": "2026-10-09T13:31:54.807Z",
+    "updatedAt": "2026-10-09T14:00:31.356Z",
+    "rejectionMessage": null
+   },
+   {
+    "id": "cmv119r32000706jvuus49iv5",
+    "positionId": "cmtha1mcg000804kyrns3lpjg",
+    "environment": "LIVE",
+    "symbol": "NVDA",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 33,
+    "closeReason": "STOP",
+    "status": "EXPIRED",
+    "createdAt": "2026-10-09T14:01:02.929Z",
+    "expiresAt": "2026-10-10T14:01:02.929Z",
+    "updatedAt": "2026-10-12T08:00:44.163Z",
+    "rejectionMessage": null
+   },
+   {
+    "id": "cmv57as7m000306l6k2dz4msx",
+    "positionId": "cmtha1mcg000804kyrns3lpjg",
+    "environment": "LIVE",
+    "symbol": "NVDA",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 33,
+    "closeReason": "STOP",
+    "status": "AWAITING_APPROVAL",
+    "createdAt": "2026-10-12T12:00:53.419Z",
+    "expiresAt": "2026-10-13T12:00:53.419Z",
+    "updatedAt": "2026-10-12T12:00:53.419Z",
+    "rejectionMessage": null
+   }
+  ],
+  "readThen": {
+   "heldThroughFloor": {
+    "floorPrice": 236,
+    "heldThroughCount": 2,
+    "rejectMessage": null,
+    "recentLow": 224.9
+   },
+   "needsAction": {
+    "kind": "SALE_DECLINED",
+    "declineCount": 2,
+    "lastDeclinedAt": "2026-10-10T14:01:02.929Z",
+    "rejectMessage": null,
+    "floorPrice": 236,
+    "recentLow": 224.9
+   }
+  }
+ },
+ "mu": {
+  "at": "2026-10-13T11:59:00.000Z",
+  "price": 989.04,
+  "thesis": {
+   "id": "cmrp6chyu000h04l5roqq5ha1",
+   "ticker": "MU",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "setupId": "PEAD",
+   "entryPrice": 895.935,
+   "targetPrice": 1100,
+   "stopLoss": 1005,
+   "conviction": "LOW",
+   "catalystDate": null,
+   "triggerState": {
+    "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace": {
+     "firedAt": "2026-09-28T13:30:14.102Z",
+     "firedReports": [
+      "2026-09-30"
+     ]
+    },
+    "cacf717e-af57-42e5-a9af-28835e20508d": {
+     "firedAt": "2026-09-14T13:40:11.705Z"
+    }
+   },
+   "researchUpdatedAt": "2026-10-02T12:00:57.472Z",
+   "createdAt": "2026-07-17T16:50:48.438Z",
+   "lastReviewedAt": "2026-10-12T13:30:47.633Z",
+   "triggers": [
+    {
+     "id": "t1",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 1100,
+      "watch": "price"
+     },
+     "rationale": "Prior target zone from the mature drift into resistance near $1,100.",
+     "lastFiredAt": "2026-09-25T13:40:03.840Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t2",
+     "action": "TRIM",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 1150,
+      "watch": "price"
+     },
+     "rationale": "Trim into a push toward and through the upper target zone if price nears $1,150.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t3",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 880,
+      "watch": "price"
+     },
+     "rationale": "A break below $880 would signal deeper technical damage — review whether the thesis is weakening structurally.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t4",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 1005,
+      "watch": "price"
+     },
+     "rationale": "Under the recent flush low zone and beneath the rising 20-day average by roughly 0.7 ATR; if MU loses that area, the mature drift has turned into a deeper unwind.",
+     "lastFiredAt": "2026-10-12T13:30:14.793Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t5",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 4,
+      "watch": "move",
+      "variable": "prev_close"
+     },
+     "rationale": "A sharp 1-day gain could confirm momentum repair — review whether the drift is re-accelerating.",
+     "lastFiredAt": "2026-10-07T17:10:12.520Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t6",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "below",
+      "value": 4,
+      "watch": "move",
+      "variable": "prev_close"
+     },
+     "rationale": "A sharp 1-day drop could be either normal volatility or early thesis damage — review the cause.",
+     "lastFiredAt": "2026-10-12T13:35:03.612Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "t9",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "above",
+      "value": 15,
+      "watch": "move",
+      "variable": "entry"
+     },
+     "rationale": "At +15% from entry, reassess whether trend repair is durable enough to add or tighten risk.",
+     "lastFiredAt": "2026-10-05T13:35:09.585Z",
+     "cooldownDays": 7
+    },
+    {
+     "id": "t10",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "DIRECT",
+     "predicate": {
+      "is": "below",
+      "value": 8,
+      "watch": "move",
+      "variable": "entry"
+     },
+     "rationale": "Exit if the position falls 8% below entry; that is the hard loss cap for this PEAD setup.",
+     "cooldownDays": 0
+    },
+    {
+     "id": "t11",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "TACTICAL",
+     "predicate": {
+      "is": "beat",
+      "value": 5,
+      "watch": "surprise"
+     },
+     "rationale": "If $MU again beats EPS by at least 5%, review whether the earnings-upgrade cycle remains intact and whether targets should rise.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "5d6fb212-0bee-451d-9287-06a3aff1f1f4",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "after",
+      "value": 60,
+      "watch": "from_date",
+      "variable": "buy"
+     },
+     "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
+     "lastFiredAt": "2026-09-23T13:30:08.094Z",
+     "cooldownDays": 60
+    },
+    {
+     "id": "d2f2eb13-a35f-4ae6-ab4b-053526c2245b",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {
+        "is": "beat",
+        "value": 0,
+        "watch": "surprise"
+       },
+       {
+        "is": "below",
+        "value": 3,
+        "watch": "move",
+        "variable": "prev_close"
+       }
+      ]
+     },
+     "rationale": "A beat the market sold — the stock is down 3%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.",
+     "lastFiredAt": "2026-10-01T14:20:09.369Z",
+     "cooldownDays": 7
+    }
+   ]
+  },
+  "position": {
+   "id": "cmrp6cqld000k04l5ysnd1gwm",
+   "quantity": 13,
+   "avgCost": 895.935,
+   "peakPrice": 1091.66,
+   "openedAt": "2026-07-17T16:51:25.540Z"
+  },
+  "orders": [
+   {
+    "id": "cmuld0flx000c04lk3xglknnm",
+    "positionId": "cmrp6cqld000k04l5ysnd1gwm",
+    "environment": "LIVE",
+    "symbol": "MU",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 13,
+    "closeReason": "STOP",
+    "status": "EXPIRED",
+    "createdAt": "2026-09-28T14:45:24.756Z",
+    "expiresAt": "2026-09-29T14:45:24.756Z",
+    "updatedAt": "2026-09-29T15:00:22.443Z",
+    "rejectionMessage": null
+   },
+   {
+    "id": "cmuplxg9j000s04l4cyaxerbc",
+    "positionId": "cmrp6cqld000k04l5ysnd1gwm",
+    "environment": "LIVE",
+    "symbol": "MU",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 13,
+    "closeReason": "STOP",
+    "status": "EXPIRED",
+    "createdAt": "2026-10-01T14:06:06.880Z",
+    "expiresAt": "2026-10-02T14:06:06.880Z",
+    "updatedAt": "2026-10-02T14:30:12.741Z",
+    "rejectionMessage": null
+   },
+   {
+    "id": "cmux32mk9000g04jny23856ql",
+    "positionId": "cmrp6cqld000k04l5ysnd1gwm",
+    "environment": "LIVE",
+    "symbol": "MU",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 13,
+    "closeReason": "STOP",
+    "status": "EXPIRED",
+    "createdAt": "2026-10-06T19:40:25.054Z",
+    "expiresAt": "2026-10-07T19:40:25.054Z",
+    "updatedAt": "2026-10-07T20:00:42.972Z",
+    "rejectionMessage": null
+   },
+   {
+    "id": "cmuzrw9bf000206jvjgju40bz",
+    "positionId": "cmrp6cqld000k04l5ysnd1gwm",
+    "environment": "LIVE",
+    "symbol": "MU",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 13,
+    "closeReason": "STOP",
+    "status": "EXPIRED",
+    "createdAt": "2026-10-08T16:50:50.647Z",
+    "expiresAt": "2026-10-09T16:50:50.647Z",
+    "updatedAt": "2026-10-09T17:00:29.127Z",
+    "rejectionMessage": null
+   },
+   {
+    "id": "cmv5ai923000206jkdvqzvc20",
+    "positionId": "cmrp6cqld000k04l5ysnd1gwm",
+    "environment": "LIVE",
+    "symbol": "MU",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 13,
+    "closeReason": "STOP",
+    "status": "AWAITING_APPROVAL",
+    "createdAt": "2026-10-12T13:30:40.708Z",
+    "expiresAt": "2026-10-13T13:30:40.708Z",
+    "updatedAt": "2026-10-12T13:30:40.708Z",
+    "rejectionMessage": null
+   }
+  ],
+  "decline0916": {
+   "id": "cmu476yai000n04lb1i6s741s",
+   "positionId": "cmrp6cqld000k04l5ysnd1gwm",
+   "environment": "LIVE",
+   "symbol": "MU",
+   "side": "SELL",
+   "intent": "CLOSE",
+   "quantity": 13,
+   "closeReason": "STOP",
+   "status": "REJECTED",
+   "createdAt": "2026-09-16T14:30:26.464Z",
+   "expiresAt": "2026-09-17T14:30:26.890Z",
+   "updatedAt": "2026-09-17T13:57:38.191Z",
+   "rejectionMessage": "(the owner's note on this decline — not kept: the repo is public)"
+  },
+  "readThen": {
+   "heldThroughFloor": {
+    "floorPrice": 1005,
+    "heldThroughCount": 2,
+    "rejectMessage": null,
+    "recentLow": 978.5
+   },
+   "needsAction": {
+    "kind": "SALE_DECLINED",
+    "declineCount": 2,
+    "lastDeclinedAt": "2026-10-09T16:50:50.647Z",
+    "rejectMessage": null,
+    "floorPrice": 1005,
+    "recentLow": 978.5
+   }
+  }
+ },
+ "asml": {
+  "at": "2026-10-09T12:02:30.000Z",
+  "price": 1769.79,
+  "thesis": {
+   "id": "cmqooyvy8000004l5a9njg6n5",
+   "ticker": "ASML",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "COMPOUNDER",
+   "setupId": "COMPOUNDER_ACCUMULATION",
+   "entryPrice": 1716.09,
+   "targetPrice": 2800,
+   "stopLoss": 1568,
+   "conviction": "HIGH",
+   "catalystDate": null,
+   "triggers": [
+    {
+     "id": "8a973603-87ed-435a-b68a-1ece068fb18d",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "value": 30,
+      "watch": "repeat"
+     },
+     "rationale": "Look at this every 30 days, counting from the last real review.",
+     "cooldownDays": 30
+    },
+    {
+     "id": "5ebdea7c-a9db-4b6b-918c-b582b2748c41",
+     "action": "EXIT",
+     "source": "AGENT",
+     "predicate": {
+      "is": "below",
+      "value": 1568,
+      "watch": "price"
+     },
+     "rationale": "Under the September washout low $1572.84 and below the current 32-bar base; that is the chart level that would say this basing structure actually failed.",
+     "lastFiredAt": "2026-10-07T19:55:19.108Z",
+     "cooldownDays": 0
+    },
+    {
+     "id": "db24f4bd-0a14-44c3-9413-71e12674285e",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "below",
+      "value": 1573.6,
+      "watch": "price"
+     },
+     "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "crepair0904-asml-target",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "predicate": {
+      "is": "above",
+      "value": 2800,
+      "watch": "price"
+     },
+     "rationale": "Target $2800 — decide here: take it, trim it, or raise the target. (Restored 2026-09-04 after the fill regenerated the ladder and dropped it — DAV-234.)",
+     "cooldownDays": 1
+    },
+    {
+     "id": "f53e243d-3269-4d22-9193-d0b8e266ed9d",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "predicate": {
+      "is": "after",
+      "value": 60,
+      "watch": "from_date",
+      "variable": "buy"
+     },
+     "rationale": "60 days after the buy — A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.",
+     "cooldownDays": 60
+    }
+   ],
+   "triggerState": {},
+   "researchUpdatedAt": "2026-10-07T12:04:28.983Z",
+   "createdAt": "2026-06-22T04:04:37.568Z"
+  },
+  "position": {
+   "id": "cmtn0hpa6000304juujs868k7",
+   "quantity": 5,
+   "avgCost": 1716.09,
+   "peakPrice": 1871.1,
+   "openedAt": "2026-09-04T14:23:33.865Z"
+  },
+  "orders": [
+   {
+    "id": "cmux0e18w000m04jhodrm7pn3",
+    "positionId": "cmtn0hpa6000304juujs868k7",
+    "environment": "LIVE",
+    "symbol": "ASML",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 5,
+    "closeReason": "STOP",
+    "status": "EXPIRED",
+    "createdAt": "2026-10-06T18:25:18.399Z",
+    "expiresAt": "2026-10-07T18:25:18.399Z",
+    "updatedAt": "2026-10-07T18:30:24.348Z",
+    "rejectionMessage": null
+   },
+   {
+    "id": "cmuyg481u000i04l7atzmlo64",
+    "positionId": "cmtn0hpa6000304juujs868k7",
+    "environment": "LIVE",
+    "symbol": "ASML",
+    "side": "SELL",
+    "intent": "CLOSE",
+    "quantity": 5,
+    "closeReason": "STOP",
+    "status": "REJECTED",
+    "createdAt": "2026-10-07T18:33:20.725Z",
+    "expiresAt": "2026-10-08T18:33:20.725Z",
+    "updatedAt": "2026-10-08T16:59:50.559Z",
+    "rejectionMessage": "(the owner's note on this decline — not kept: the repo is public)"
+   }
+  ]
+ }
+}

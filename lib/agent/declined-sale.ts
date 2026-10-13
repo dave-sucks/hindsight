@@ -50,6 +50,14 @@
  * exit means "let it run" — a different and benign hold), inside the window,
  * excluding systemic tombstones.
  *
+ * REJECTED is a decline; EXPIRED is a lapse, and the two are counted apart
+ * (the owner's ruling, 2026-10-13). A lapse is a soft pass — "not now, ask me
+ * again" — never a decline: he sees every proposal and lets a sale lapse when
+ * he wants to see the next day. On 10-13 the count carried NVDA's two lapses
+ * in the window as declines, and the morning run lowered its floor $236 →
+ * $217 under the after-a-decline exception below; no sale in the window had
+ * been declined.
+ *
  * Fully pure: a type import and nothing else. That matters —
  * `triggers/ops.ts` reads the ratchet policy at the bottom of this file,
  * and ops.ts is imported by trigger tests and client code. An earlier cut
@@ -85,18 +93,21 @@ export function isSystemicRejection(rejectionMessage: string | null): boolean {
  */
 export const DECLINED_SALE_WINDOW_DAYS = 7;
 
-/** Order statuses that mean the principal said no, or said nothing. */
-export const DECLINED_SALE_STATUSES = ["REJECTED", "EXPIRED"] as const;
+/** The order status that means the principal said no. Only this is a decline. */
+export const DECLINED_SALE_STATUSES = ["REJECTED"] as const;
+/** The order status of a sale left to lapse: "not now, ask me again". Never a decline. */
+export const LAPSED_SALE_STATUSES = ["EXPIRED"] as const;
 
 /**
- * The Prisma `where` for a real protective decline on one or more positions.
- * Returned as a plain object so each caller can spread it next to its own
- * scoping (`positionId` vs `positionId: { in: [...] }`).
+ * The Prisma `where` for a protective sale the principal did not take on one
+ * or more positions: declined or left to lapse. `foldDeclines` counts the two
+ * apart. Returned as a plain object so each caller can spread it next to its
+ * own scoping (`positionId` vs `positionId: { in: [...] }`).
  */
 export function declinedSaleWhere(now: Date = new Date(), windowDays = DECLINED_SALE_WINDOW_DAYS) {
   return {
     intent: "CLOSE",
-    status: { in: [...DECLINED_SALE_STATUSES] },
+    status: { in: [...DECLINED_SALE_STATUSES, ...LAPSED_SALE_STATUSES] },
     // expiresAt set = a card was actually staged in front of the principal.
     expiresAt: { not: null },
     // Protective only. A declined TARGET exit is "let it run".
@@ -108,8 +119,9 @@ export function declinedSaleWhere(now: Date = new Date(), windowDays = DECLINED_
 export interface DeclineRow {
   createdAt: Date;
   rejectionMessage: string | null;
+  /** REJECTED (a decline) or EXPIRED (a lapse). Required: a row read without it would count a lapse as a decline. */
+  status: string | null;
   /** With these, a decline dates from when it was answered, not when the sale was proposed. */
-  status?: string | null;
   expiresAt?: Date | null;
   updatedAt?: Date | null;
 }
@@ -124,11 +136,18 @@ const answeredAt = (r: DeclineRow): Date =>
   (r.status === "EXPIRED" ? r.expiresAt : r.status === "REJECTED" ? r.updatedAt : null) ?? r.createdAt;
 
 export interface DeclineSummary {
+  /** Sales the principal declined (REJECTED). */
   declineCount: number;
+  /** Sales left to lapse (EXPIRED): "not now, ask me again", never a decline. */
+  lapseCount: number;
+  /** When the newest of either was answered. The window counts from it. */
   lastDeclinedAt: Date;
   /** The most recent note the principal left, if any. */
   rejectMessage: string | null;
 }
+
+/** A lapse: the proposal expired. Anything else the where admits is a decline. */
+const isLapse = (r: DeclineRow): boolean => (LAPSED_SALE_STATUSES as readonly string[]).includes(r.status ?? "");
 
 /**
  * Fold order rows into the summary, dropping systemic tombstones (dedup and
@@ -140,15 +159,20 @@ export function foldDeclines(rows: DeclineRow[]): DeclineSummary | null {
     .filter((r) => !isSystemicRejection(r.rejectionMessage))
     .sort((a, b) => answeredAt(b).getTime() - answeredAt(a).getTime());
   if (real.length === 0) return null;
+  const lapseCount = real.filter(isLapse).length;
   return {
-    declineCount: real.length,
+    declineCount: real.length - lapseCount,
+    lapseCount,
     lastDeclinedAt: answeredAt(real[0]),
     rejectMessage: real.find((r) => r.rejectionMessage)?.rejectionMessage ?? null,
   };
 }
 
 export interface DeclinedSaleWork {
+  /** Declined (REJECTED). Zero when the sale was only left to lapse. */
   declineCount: number;
+  /** Left to lapse (EXPIRED). Absent on lines saved before 2026-10-13, which counted lapses as declines. */
+  lapseCount?: number;
   lastDeclinedAt: string;
   rejectMessage: string | null;
   /** The line whose sale was declined, when the caller can see one. */
@@ -181,7 +205,7 @@ export function declinedSaleWork(input: {
   const { status, direction, decline, floorPrice, currentPrice, recentLow, now } = input;
   // A declined sale only means anything while we still own the thing.
   if (status !== "HOLDING") return null;
-  if (!decline || decline.declineCount <= 0) return null;
+  if (!decline || decline.declineCount + decline.lapseCount <= 0) return null;
 
   const windowDays = input.windowDays ?? DECLINED_SALE_WINDOW_DAYS;
   const ageMs = now.getTime() - decline.lastDeclinedAt.getTime();
@@ -195,6 +219,7 @@ export function declinedSaleWork(input: {
 
   return {
     declineCount: decline.declineCount,
+    lapseCount: decline.lapseCount,
     lastDeclinedAt: decline.lastDeclinedAt.toISOString(),
     rejectMessage: decline.rejectMessage,
     floorPrice,
@@ -202,22 +227,34 @@ export function declinedSaleWork(input: {
   };
 }
 
-/** The sentence a run, a row and the thesis sheet all show. */
+/**
+ * The sentence a run reads on a sale the principal did not take: what
+ * complete_run says when the stock is unanswered. One sentence per fact — a
+ * decline is "You declined", a lapse is "left to lapse: not a decline" — and
+ * only a decline offers the floor to re-draw: a lapse never lowers one.
+ */
 export function declinedSaleLine(w: DeclinedSaleWork): string {
   const when = w.lastDeclinedAt.slice(0, 10);
-  const asks =
-    w.declineCount === 1 ? "You declined this sale" : `You declined this sale ${w.declineCount}×`;
-  const parts = [
-    `${asks} — most recently ${when} — and the price is still past ${
-      w.floorPrice != null ? `the $${w.floorPrice.toFixed(2)} line` : "the line"
-    }, with no new plan since.`,
-  ];
+  const lapses = w.lapseCount ?? 0;
+  const line = w.floorPrice != null ? `the $${w.floorPrice.toFixed(2)} line` : "the line";
+  const parts: string[] = [];
+  if (w.declineCount > 0) {
+    const asks = w.declineCount === 1 ? "You declined this sale" : `You declined this sale ${w.declineCount}×`;
+    if (lapses === 0) parts.push(`${asks} — most recently ${when} — and the price is still past ${line}, with no new plan since.`);
+    else parts.push(`${asks}.`);
+  }
+  if (lapses > 0) {
+    parts.push(`Proposed ${lapses === 1 ? "once" : `${lapses}×`}${w.declineCount > 0 ? " more" : ""} and left to lapse: not a decline.`);
+    parts.push(`Most recently ${when}, and the price is still past ${line}, with no new plan since.`);
+  }
   if (w.rejectMessage) parts.push(`Your note: "${w.rejectMessage.slice(0, 240)}".`);
   if (w.recentLow != null && w.recentLow > 0) {
     parts.push(`Recent low $${w.recentLow.toFixed(2)}.`);
   }
   parts.push(
-    "Answer it: re-draw the floor to a level you can name and set when to look again, or propose the sale again with today's reasons. A review that changes nothing does not answer it.",
+    w.declineCount > 0
+      ? "Answer it: re-draw the floor to a level you can name and set when to look again, or propose the sale again with today's reasons. A review that changes nothing does not answer it."
+      : "While the price is still past the floor, propose it again with today's reasons. A review that changes nothing does not answer it.",
   );
   return parts.join(" ");
 }
@@ -241,6 +278,10 @@ export function declinedSaleLine(w: DeclinedSaleWork): string {
 //     reporting it, and the write path now asks the same question.
 //   • no more than 15% below the declined line. Past that it isn't
 //     re-drawing a floor, it's removing one, and removing one is his.
+//   • a decline, never a lapse (the owner's ruling, 2026-10-13). A sale
+//     left to expire is "ask me again", not "give it room": a lapse alone
+//     never lowers a floor (update_thesis passes the decline only when
+//     `declineCount` > 0).
 
 /** How far below the declined line a re-drawn floor may sit. */
 export const REPLAN_FLOOR_MAX_DROP_PCT = 15;

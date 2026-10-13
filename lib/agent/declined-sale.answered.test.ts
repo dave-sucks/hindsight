@@ -17,11 +17,12 @@ it("MU: the expiry's time, not the proposal's", () => {
   const folded = foldDeclines(mu)!;
   expect(folded.lastDeclinedAt.toISOString()).toBe("2026-10-07T19:40:25.054Z");
   const work = declinedSaleWork({ status: "HOLDING", direction: "LONG", decline: folded, floorPrice: 1060, currentPrice: 1040, recentLow: null, now: new Date("2026-10-08T14:00:00Z") })!;
-  expect(declinedSaleLine(work)).toContain("most recently 2026-10-07");
+  // Both expired: lapses, so the line says so (2026-10-13), dated by the expiry.
+  expect(declinedSaleLine(work)).toContain("Most recently 2026-10-07");
 });
 
 it("a decline dates from the order's change; a row without the dates keeps the proposal's", () => {
   const rejected = { createdAt: new Date("2026-10-06T15:00:00Z"), status: "REJECTED", expiresAt: new Date("2026-10-07T15:00:00Z"), updatedAt: new Date("2026-10-06T18:12:00Z"), rejectionMessage: "hold" };
   expect(foldDeclines([rejected])!.lastDeclinedAt.toISOString()).toBe("2026-10-06T18:12:00.000Z");
-  expect(foldDeclines([{ createdAt: new Date("2026-10-06T15:00:00Z"), rejectionMessage: null }])!.lastDeclinedAt.toISOString()).toBe("2026-10-06T15:00:00.000Z");
+  expect(foldDeclines([{ createdAt: new Date("2026-10-06T15:00:00Z"), rejectionMessage: null, status: "REJECTED" }])!.lastDeclinedAt.toISOString()).toBe("2026-10-06T15:00:00.000Z");
 });
