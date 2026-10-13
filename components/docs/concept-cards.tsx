@@ -6,7 +6,7 @@
  * the card's left padding and runs off its right and bottom edges.
  *
  *   Row one: theses across two columns (a miniature of the thesis sheet),
- *   then one analyst's desk (its month, book, rules and universe).
+ *   then one analyst talking through its month, as it would in chat.
  *   Row two: triggers as a running check log, a proposal being approved,
  *   and the morning's work list with each stock's situation.
  *
@@ -15,7 +15,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Area, ComposedChart, XAxis, YAxis } from "recharts";
-import { ArrowRight, Check, ChevronRight, Clock, MousePointer2 } from "lucide-react";
+import { ArrowRight, ArrowUp, Check, ChevronRight, Clock, MousePointer2 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
 import type { DocSlug } from "./registry";
 import { PillRow } from "./trigger-bits";
+import { Tk } from "./chat-mock";
 
 // ── The big cells ──────────────────────────────────────────────────────────
 
@@ -165,7 +166,7 @@ function SheetMock() {
         <Mono className="relative block">
           {/* A fixed size, not a measured one: the sheet is a fixed width, and a measured chart inside a zoomed
               miniature comes out a different width in different browsers. */}
-          <ComposedChart width={CHART_W} height={CHART_H} data={TAPE} margin={{ top: 48, right: 0, bottom: 0, left: 0 }}>
+          <ComposedChart id="docs-sheet-chart" width={CHART_W} height={CHART_H} data={TAPE} margin={{ top: 48, right: 0, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="docs-sheet-fill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--positive)" stopOpacity={0.16} />
@@ -204,82 +205,74 @@ function SheetMock() {
 
 // ── The analyst ────────────────────────────────────────────────────────────
 
-/** One analyst's desk: its month, what it holds and watches, its rules and universe, what it did lately. Three analysts take turns. */
-const DESKS = [
+/**
+ * One analyst talking about its month, the way it answers in chat: its
+ * result up top, then what it holds and watches and what its style says it
+ * does next. Three analysts take turns; each message arrives a paragraph at a time.
+ */
+const DESKS: ReadonlyArray<{ initials: string; color: string; name: string; pnl: string; up: boolean; ask: string; message: ReactNode[] }> = [
   {
     initials: "PS",
     color: "bg-blue-500",
     name: "PEAD Specialist",
-    style: "Buys the drift after a beat",
     pnl: "+$2,305",
     up: true,
-    summary:
-      "Holding four and watching nine. CRWD is up 8% since its beat, so its floor moved up to $384 on Tuesday. Sold SHOP at the target on Monday. AMD reports Thursday; the buy waits for the number.",
-    holding: [
-      { s: "CRWD", p: 8.2 },
-      { s: "NET", p: 3.1 },
-      { s: "DDOG", p: -1.4 },
-      { s: "ZS", p: 5.6 },
-    ],
-    watching: ["AMD", "SNOW", "MDB", "PANW", "OKTA"],
-    watchingMore: 4,
-    rules: ["Sells 12% off the high", "$2k–$4k a trade"],
-    universe: ["Software", "Semis", "Over $2B"],
-    recent: [
-      { t: "Tue", l: "Raised CRWD's floor to $384" },
-      { t: "Mon", l: "Sold SHOP at $112, up 11%" },
-      { t: "Fri", l: "Started watching AMD before its report" },
+    ask: "How did this month go?",
+    message: [
+      <>
+        Good, mostly thanks to <Tk s="CRWD" c={8.2} />, which has drifted higher every day since its beat. I raised its floor to $384 on Tuesday, so most of that gain is
+        locked in.
+      </>,
+      <>
+        I only buy after a report, never before one. <Tk s="AMD" /> reports Thursday after the close: if it beats estimates by more than 5% and holds the gap into
+        Friday&apos;s open, I&apos;ll propose a buy.
+      </>,
+      <>
+        Sold <Tk s="SHOP" /> at its target on Monday, up 11%. Next week I&apos;m watching <Tk s="SNOW" /> and <Tk s="MDB" /> into their reports.
+      </>,
     ],
   },
   {
     initials: "SC",
     color: "bg-violet-500",
     name: "Secular Compounder",
-    style: "Holds the long winners",
     pnl: "+$4,118",
     up: true,
-    summary:
-      "Holding six and watching three. AVGO beat and raised; the drop that followed was the sector, not the company, so nothing changed. LLY is 4% from the buy. No sales this month.",
-    holding: [
-      { s: "AVGO", p: 18.4 },
-      { s: "MSFT", p: 6.9 },
-      { s: "LLY", p: 2.2 },
-      { s: "COST", p: -0.8 },
-    ],
-    watching: ["ASML", "V", "ISRG"],
-    watchingMore: 0,
-    rules: ["Sells 25% off the high", "$3k–$6k a trade"],
-    universe: ["Any sector", "Over $50B"],
-    recent: [
-      { t: "Wed", l: "Reviewed AVGO after its report" },
-      { t: "Mon", l: "Added to MSFT on the pullback" },
-      { t: "Sep 30", l: "Set a buy on ISRG at $512" },
+    ask: "Anything to do after AVGO's drop?",
+    message: [
+      <>
+        No. <Tk s="AVGO" c={18.4} /> is still the biggest winner this month. It fell 3% the day after its report, but that was the sector selling, not the
+        company: it beat and raised.
+      </>,
+      <>
+        I hold for years and only sell 25% off the high, so a red day asks nothing of me. <Tk s="LLY" /> is 4% from my buy at $812; if it gets there, I add.
+      </>,
+      <>Six holdings, three on watch, no sales this month.</>,
     ],
   },
   {
     initials: "BR",
     color: "bg-rose-500",
     name: "Biotech Run-up",
-    style: "Trades into FDA dates",
     pnl: "−$612",
     up: false,
-    summary:
-      "Holding two and watching five. SRRK slid after a peer's trial miss and is near its floor. VKTX's date is in 18 days; it sells the day before, whatever the price.",
-    holding: [
-      { s: "VKTX", p: 9.7 },
-      { s: "SRRK", p: -6.3 },
-    ],
-    watching: ["MDGL", "AXSM", "IONS", "SMMT", "ALNY"],
-    watchingMore: 0,
-    rules: ["Sells the day before the date", "$1k–$2k a trade"],
-    universe: ["Biotech", "$1B–$20B"],
-    recent: [
-      { t: "Thu", l: "Sold IONS at the floor, down 7%" },
-      { t: "Tue", l: "Bought VKTX at $61.20" },
-      { t: "Mon", l: "Passed on ARWR: no date in range" },
+    ask: "Why are we down this month?",
+    message: [
+      <>
+        Mostly one stock. <Tk s="IONS" /> hit its floor after a peer&apos;s trial miss, and I sold it for a 7% loss rather than hope.
+      </>,
+      <>
+        I own a stock into its FDA date and sell the day before, never through it. <Tk s="VKTX" c={9.7} /> has its date in 18 days, so it sells on the 29th,
+        whatever the price.
+      </>,
+      <>
+        <Tk s="SRRK" c={-6.3} /> is 2% above its floor. A close under $27 and it&apos;s out.
+      </>,
     ],
   },
-] as const;
+];
+
+const FADE_OUT = { maskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)", WebkitMaskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)" };
 
 function useCycle(length: number, ms: number) {
   const [i, setI] = useState(0);
@@ -291,85 +284,50 @@ function useCycle(length: number, ms: number) {
   return i;
 }
 
-function Label({ children }: { children: ReactNode }) {
-  return <span className="text-xs text-muted-foreground">{children}</span>;
+function AnalystDesk() {
+  const d = DESKS[useCycle(DESKS.length, 10000)];
+  return <AnalystMessage key={d.name} desk={d} />;
 }
 
-function AnalystDesk() {
-  const d = DESKS[useCycle(DESKS.length, 6000)];
+/** The message, revealed a paragraph at a time. Every paragraph is laid out from the start, so nothing below it jumps. */
+function AnalystMessage({ desk: d }: { desk: (typeof DESKS)[number] }) {
+  const [shown, setShown] = useState(1);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return setShown(d.message.length);
+    const id = window.setInterval(() => setShown((n) => Math.min(n + 1, d.message.length)), 1100);
+    return () => window.clearInterval(id);
+  }, [d]);
   return (
-    <div key={d.name} className="flex w-[calc(100%+2.5rem)] flex-col gap-4 rounded-2xl border bg-background p-5 pr-[3.75rem] shadow-sm animate-in fade-in-0 duration-700">
-      <div className="flex items-start gap-3">
-        <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg text-xs font-medium text-white", d.color)}>{d.initials}</span>
-        <span className="flex min-w-0 flex-col">
-          <span className="text-sm font-medium text-foreground">{d.name}</span>
-          <span className="text-xs text-muted-foreground">{d.style}</span>
-        </span>
-        <span className="ml-auto flex flex-col items-end">
-          <span className={cn("text-sm font-medium tabular-nums", d.up ? "text-positive" : "text-negative")}>{d.pnl}</span>
-          <span className="text-xs text-muted-foreground">this month</span>
+    <div className="flex h-full w-[calc(100%+2.5rem)] flex-col gap-4 rounded-2xl border bg-background p-5 pb-10 pr-[3.75rem] shadow-sm animate-in fade-in-0 duration-500">
+      <div className="flex items-center gap-3">
+        <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg text-xs font-medium text-white", d.color)}>{d.initials}</span>
+        <span className="text-sm font-medium text-foreground">{d.name}</span>
+        <span className="ml-auto text-sm tabular-nums">
+          <span className={cn("font-medium", d.up ? "text-positive" : "text-negative")}>{d.pnl}</span>
+          <span className="text-muted-foreground"> this month</span>
         </span>
       </div>
-      <p className="text-sm leading-6 text-foreground">{d.summary}</p>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label>Holding</Label>
-          <div className="flex flex-col gap-1.5">
-            {d.holding.map((h) => (
-              <span key={h.s} className="flex items-center gap-2 text-xs">
-                <StockLogo ticker={h.s} size="xs" />
-                <span className="text-foreground">{h.s}</span>
-                <span className={cn("ml-auto pr-2 tabular-nums", h.p >= 0 ? "text-positive" : "text-negative")}>
-                  {h.p >= 0 ? "+" : "−"}
-                  {Math.abs(h.p).toFixed(1)}%
-                </span>
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Watching</Label>
-          <span className="flex items-center">
-            {d.watching.map((s) => (
-              <span key={s} className="-ml-1 rounded-md ring-2 ring-background first:ml-0">
-                <StockLogo ticker={s} size="sm" />
-              </span>
-            ))}
-            {d.watchingMore ? <span className="ml-2 text-xs text-muted-foreground">+{d.watchingMore}</span> : null}
-          </span>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label>Rules</Label>
-          <span className="flex flex-wrap gap-1">
-            {d.rules.map((r) => (
-              <Badge key={r} variant="muted">
-                {r}
-              </Badge>
-            ))}
-          </span>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Universe</Label>
-          <span className="flex flex-wrap gap-1">
-            {d.universe.map((u) => (
-              <Badge key={u} variant="outline">
-                {u}
-              </Badge>
-            ))}
-          </span>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2 border-t pt-4">
-        <Label>Lately</Label>
-        {d.recent.map((r) => (
-          <span key={r.l} className="flex items-center gap-3 text-xs">
-            <span className="w-12 shrink-0 text-muted-foreground">{r.t}</span>
-            <span className="text-foreground">{r.l}</span>
-          </span>
+      {/* A longer answer runs under the composer, the way a chat scrolls. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden text-sm leading-6 text-foreground" style={FADE_OUT}>
+        <span className="self-end rounded-2xl bg-muted px-3.5 py-2">{d.ask}</span>
+        {d.message.map((p, k) => (
+          <p key={k} className={cn("transition-opacity duration-700", k < shown ? "opacity-100" : "opacity-0")}>
+            {p}
+          </p>
         ))}
       </div>
+      <span className="flex flex-col gap-2 rounded-xl border p-2.5">
+        <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+          <span className={cn("size-1.5 rounded-full", d.color)} />
+          {d.name}
+        </span>
+        <span className="flex items-center justify-between pl-1">
+          <span className="text-sm font-light text-muted-foreground/60">Ask about {d.name}…</span>
+          <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <ArrowUp className="size-4" />
+          </span>
+        </span>
+      </span>
     </div>
   );
 }
@@ -500,7 +458,7 @@ function WorkList() {
   );
 }
 
-const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; big?: boolean; fit: "bleed" | "center" }> = [
+const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; big?: boolean; fit: "bleed" | "fill" | "center" }> = [
   {
     slug: "theses",
     title: "Theses",
@@ -515,7 +473,7 @@ const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: Re
     big: true,
     fit: "bleed",
   },
-  { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <AnalystDesk />, big: true, fit: "bleed" },
+  { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <AnalystDesk />, big: true, fit: "fill" },
   { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerLog />, fit: "bleed" },
   { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <ApprovalCard />, fit: "center" },
   { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <WorkList />, fit: "bleed" },
@@ -543,7 +501,14 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           </div>
           {/* The picture: a big one sits at the left padding and runs off the right and bottom edges; a small one sits in the space left. */}
           <div className="pointer-events-none relative min-h-0 flex-1" aria-hidden>
-            {c.fit === "bleed" ? <div className="absolute left-5 right-0 top-1">{c.art}</div> : <div className="flex h-full items-center px-5 pb-5">{c.art}</div>}
+            {c.fit === "bleed" ? (
+              <div className="absolute left-5 right-0 top-1">{c.art}</div>
+            ) : c.fit === "fill" ? (
+              // Runs a little past the bottom edge, so the card's own bottom never shows.
+              <div className="absolute -bottom-6 left-5 right-0 top-1">{c.art}</div>
+            ) : (
+              <div className="flex h-full items-center px-5 pb-5">{c.art}</div>
+            )}
           </div>
         </div>
       ))}
