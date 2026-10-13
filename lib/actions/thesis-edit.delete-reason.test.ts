@@ -62,12 +62,9 @@ describe("applyTriggerDelete — the line says why when it is not a click", () =
     expect(row.rationale).toContain("Don't add it back unless the thesis changes.");
   });
 
-  it("what the next run reads from each: the cleanup's line nothing, the click its removal and what it asks", async () => {
+  it("what the next run reads from each: the cleanup's line nothing, the click its removal", async () => {
     const read = async (why?: string) => principalDecision({ ...(await remove(why)).row, timestamp: new Date(0) } as unknown as ActivityRow);
     expect(await read("the analyst's rule governs from here")).toBeNull();
-    expect(await read()).toMatchObject({
-      wantsAnswer: true,
-      line: "Set by hand: Removed: Sell if below 25% from the high since we bought. Don't add it back unless the thesis changes.",
-    });
+    expect(await read()).toMatchObject({ wantsAnswer: true, line: "Set by hand: Removed: Sell if below 25% from the high since we bought" });
   });
 });

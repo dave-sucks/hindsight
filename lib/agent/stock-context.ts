@@ -20,9 +20,9 @@
  *
  * The principal's newest notes (notes.ts) come first. A note is information:
  * never an answer, never a plan change, and nothing closes it. Under them,
- * the triggers the principal removed by hand, at any age, each with what it
- * asks: an answer does not close a removal either (ABT 10-07: a run never
- * read the removal and set the buy again).
+ * the triggers the principal removed by hand, at any age, under one header
+ * that says what they ask: an answer does not close a removal either
+ * (ABT 10-07: a run never read the removal and set the buy again).
  *
  * Pure: needs-action.ts imports it; trigger labels come from the caller.
  */
@@ -117,6 +117,9 @@ export function newestNotes(rows: ActivityRow[]): ActivityRow[] {
 /** What a removal by hand asks of the analysts; the app writes it on the row (thesis-edit.ts). */
 export const KEEP_IT_REMOVED = "Don't add it back unless the thesis changes.";
 
+/** The same ask, said once over the removals block. */
+const REMOVALS_HEADER = "Removed by the principal (don't add these back unless the thesis changes):";
+
 /**
  * How a removal in the cleanup of copied rules (scripts/sweep-frozen-copies.ts)
  * begins its summary; thesis-edit.ts writes it from here. Those removals took
@@ -204,21 +207,6 @@ function thenNow(then: number | null, now: number | null): string {
 const INTENT: Record<string, string> = { CLOSE: "the sale", PARTIAL_CLOSE: "the partial sale", OPEN: "the buy", ADD: "the add" };
 
 /**
- * A hand edit's ops in a line: each item, the price after the last, and the
- * keep sentence right after each removed item.
- *   "Removed: X at $97.50, now $98.50 (+1.0%). Don't add it back unless the thesis changes."
- *   "Removed: X. Don't add it back unless the thesis changes. Added: Y at $97.50, …"
- */
-function handEditLine(items: Array<{ text: string; removed: boolean }>, at: string): string {
-  return items
-    .map((o, i) => {
-      const join = i === 0 ? "" : items[i - 1].removed ? " " : "; ";
-      return `${join}${o.text}${i === items.length - 1 ? at : ""}${o.removed ? `. ${KEEP_IT_REMOVED}` : ""}`;
-    })
-    .join("");
-}
-
-/**
  * The principal's decision on one line, or null when there is nothing to
  * decide: a plain approval (the position shows it), an expiry, the cleanup
  * of copied rules.
@@ -247,20 +235,12 @@ export function principalDecision(r: ActivityRow, priceThen: number | null = nul
   }
   if (r.type.startsWith("PROPOSAL_")) return null;
 
-  // A hand edit: only the change. The rationale on these lines is the app's
-  // sentence, not the principal's words. A removal is part of the change and
-  // says it stays removed: ABT 10-07, a run read the principal's added buy
-  // and never its removal, and set the buy again.
+  // A hand edit: only the change, a removal included (ABT 10-07: a run read
+  // the principal's added buy and never its removal, and set the buy again).
+  // The rationale on these lines is the app's sentence, not the principal's words.
   if (isCopiedRuleCleanup(r)) return null;
-  const items = (changesOf(r).triggerOps?.to ?? [])
-    .map((o) => {
-      const removed = o?.op === "remove";
-      const text = oneLine(o?.text ?? "");
-      return { text: removed ? text.replace(/\.$/, "") : text, removed };
-    })
-    .filter((o) => o.text);
-  if (items.length > 0) return { at: r.timestamp, line: `Set by hand: ${handEditLine(items, at)}`, wantsAnswer: true };
-  const change = oneLine(r.summary ?? "");
+  const ops = changesOf(r).triggerOps?.to ?? [];
+  const change = ops.map((o) => o?.text).filter(Boolean).join("; ") || oneLine(r.summary ?? "");
   return change ? { at: r.timestamp, line: `Set by hand: ${change}${at}`, wantsAnswer: true } : null;
 }
 
@@ -329,8 +309,8 @@ export function buildStockContext(args: {
     lines.push(`  ${etStamp(n.timestamp)}${then}: "${oneLine(n.rationale ?? "")}"`);
   }
   // Counted against the cap with the notes, and like them never cut.
-  if (removed.length) lines.push("Removed by the principal:");
-  for (const x of removed) lines.push(`  ${etStamp(x.at).slice(0, 5)}: ${x.sentence}. ${KEEP_IT_REMOVED}`);
+  if (removed.length) lines.push(REMOVALS_HEADER);
+  for (const x of removed) lines.push(`  ${etStamp(x.at)}: ${x.sentence}`);
   const said = last?.rationale?.trim() ? ` — "${sentences(last.rationale.split(/\n\s*\n\s*\[/)[0])}"` : "";
   lines.push(last ? `Last look: ${(last.runMode && RUN_WORDS[last.runMode]) ?? "a run"}, ${etStamp(last.timestamp)}${said}` : "Last look: none on record.");
   const tail = `Full history: get_theses(tickers: ["${T}"], include_history: true)`;
