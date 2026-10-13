@@ -4,11 +4,13 @@
 
 You build one by describing it, and it works its book every weekday morning.
 
-<!-- asset: analyst-styles -->
+<!-- asset: card analysts -->
 
 ## What an analyst is
 
 Each analyst is one way of trading, run by the agents. It has its own book of [theses](theses.md), its own watchlist and its own money rules, and every agent that works on one of its stocks reads it first. You can run several side by side: one buying post-earnings drift, one owning long-term compounders, one trading dated events.
+
+<!-- asset: analyst-styles -->
 
 ## What makes one
 
@@ -18,6 +20,18 @@ Each analyst is one way of trading, run by the agents. It has its own book of [t
 - **Sizing:** the smallest trade, the largest, and the most it will hold in one stock.
 - **Sell rules:** its own [triggers](triggers.md), inherited by every stock it holds, like a trail 12% off the high.
 - **Run days:** which mornings it reviews its book. Every weekday by default.
+
+## How it shapes every step
+
+An analyst isn't one agent; it's the style every agent works in when it touches one of its stocks.
+
+- **Finding stocks:** [Discovery](discovery.md) searches only inside its universe, scores each stock against its setups, and skips anything it already covers.
+- **Writing the thesis:** [the Writer](writer.md) researches in its strategy and prices the plan from its setups' rules.
+- **Guarding holdings:** its sell rules watch every stock it holds without being copied onto them, so changing its style changes every holding at once.
+- **Reviewing the book:** a [morning run](morning-runs.md) on each of its run days, for its book only, reading its strategy first.
+- **Acting on a fire:** a [trigger run](trigger-runs.md) decides in its style, and a buy that fires while it's full waits for you to choose what it replaces.
+- **Sizing trades:** every buy and add is sized by its band. Its [proposals](approvals.md) name it, so you always know whose call it is.
+- **Talking to you:** open [chat](chat.md) on it, and every edit and trade lands on its book.
 
 ## What every agent reads about it
 

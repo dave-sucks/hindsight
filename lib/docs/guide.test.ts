@@ -42,6 +42,7 @@ describe("the guide (docs/guide)", () => {
           used.add(b.name);
           expect([slug, b.name, (GUIDE_ASSETS as readonly string[]).includes(b.name)]).toEqual([slug, b.name, true]);
           if (b.name === "tools") expect([slug, DOCS_AGENTS.some((a) => a.id === b.arg)]).toEqual([slug, true]);
+          if (b.name === "card") expect([slug, b.arg]).toEqual([slug, slug]);
         }
       }
     }

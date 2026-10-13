@@ -18,7 +18,7 @@ tools: Closing $SHOP position
 
 ## What it does
 
-A trigger run is the analyst's short, focused look at one stock, started by one of its [triggers](triggers.md). It reads only that stock, checks whether the fire still holds, and makes one decision. It has fifteen steps at most; deep research goes to [the Writer](writer.md) instead.
+A trigger run is the analyst's short, focused look at one stock, started by one of the [thesis](theses.md)'s [triggers](triggers.md). The plan the Writer wrote said "buy here", "sell there"; the trigger run is where that plan meets the live price. It reads only that stock, checks whether the fire still holds, and makes one decision. It has fifteen steps at most; deep research goes to [the Writer](writer.md) instead.
 
 ## What wakes it
 
@@ -36,11 +36,11 @@ A give-back is measured from the highest price since the buy, kept over the whol
 
 ## What it can do
 
-- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. It reaches your queue, your email and your phone at once.
-- **Redraw the line:** move the trigger to a level the chart supports. After you've declined a sale, a floor may come down at most 15%, and nothing else may be loosened.
-- **Hold, with a reason:** "Not acting yet" and why. A sale it doesn't make asks again every day the price stays past the line.
+- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. It's a [proposal](approvals.md), and it reaches your queue, your email and your phone at once.
+- **Tighten the line:** move the trigger to a level the chart supports. It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the line is wrong, it says so in its note and names the level for you.
+- **Hold, with a reason:** "Not acting yet" and why. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let expire.
 
-Whatever it decides, it then brings the stock's other triggers up to date: after an add the floor goes up, and after a level is blown through it's reset off the new chart, not a round number.
+Whatever it decides, it then brings the stock's other triggers up to date: after an add the floor goes up, and after a level is blown through it's reset off the new chart, not a round number. When a buy it proposed fills, the stock becomes a holding and its sell side takes over; when a sale fills, the thesis is retired as sold and gets one look back on a later [morning run](morning-runs.md).
 
 ## How it ends
 

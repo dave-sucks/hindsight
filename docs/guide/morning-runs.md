@@ -20,7 +20,9 @@ tools: Recording the run summary
 
 ## What it does
 
-Each analyst runs on its own, for its own book. It reads every stock it holds or watches, takes one action on each stock that needs an answer, and leaves the rest alone. It never trades: buys, sales, adds and trims go to your queue as [proposals](approvals.md), and every change to a thesis lands in Activity the moment it's made.
+The morning run is how an analyst keeps its whole book honest. Once a day it reads every stock it holds or watches, takes one action on each stock that's in a [situation](situations.md), and leaves the quiet ones alone.
+
+It's the run that picks up everything the day before left behind: [reviews](triggers.md) that fired and waited for the morning, review clocks that came due, research that got old, plans the price moved past, gains with no floor under them, and anything you said that no run has answered. It never trades: buys, sales, adds and trims go to your queue as [proposals](approvals.md), and every change to a [thesis](theses.md) lands in Activity the moment it's made.
 
 ## When it runs
 
@@ -42,10 +44,12 @@ It also reads its analyst's brief: the strategy you wrote, word for word, its ru
 
 It works the list one stock at a time, saying which one it's picking up and why, and takes exactly one action on each. A single `update_thesis` answers all of a stock's situations at once. Before a buy, a sale, an add or a trim it calls `get_stock_data` for the news and a fresh quote.
 
-- **Sell or trim:** `close_position` or `manage_position`, as a proposal with its reason.
+- **Sell or trim:** `close_position` or `manage_position`, as a proposal with its reason. A sale you declined or let expire, with the price still past the line, is proposed again with today's reasons.
 - **Buy or add:** `place_trade` or `manage_position`. The size is worked out by risk inside the analyst's band; the run never picks it.
-- **Redraw the plan or raise a floor:** `update_thesis`, one trigger at a time.
-- **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md).
+- **Redraw the plan or raise a floor:** `update_thesis`, one trigger at a time. It can tighten a floor; it can never lower one on a stock we hold.
+- **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md): a stock you added that's due its first research, research past the analyst's limit, a watch whose wake fired.
+- **Answer you:** your notes and decisions come first, quoted, with what it decided on each.
+- **Look back once:** a stock sold in the last two weeks is either watched again with a re-entry level or let go.
 - **Nothing to change:** one sentence on what it checked and what would change its mind.
 
 ## The market and cash

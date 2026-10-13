@@ -9,9 +9,9 @@ import type { ChatRow, ChatStep } from "@/components/docs/chat-mock";
 
 /** Every picture a doc can place with `<!-- asset: name -->`; components/docs/doc-assets.tsx draws each. */
 export const GUIDE_ASSETS = [
+  "card",
   "tools",
   "read-demo",
-  "trigger-log",
   "trigger-kinds",
   "thesis-anatomy",
   "thesis-lifecycle",

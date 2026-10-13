@@ -6,12 +6,15 @@ This folder is the guide: one doc per agent and per concept. The /docs page in t
 
 ## The loop, on one stock
 
-1. **[Discovery](discovery.md)** finds a stock that fits an analyst: CRWD beat, raised its year and held the gap.
-2. **[The Writer](writer.md)** researches it and writes its [thesis](theses.md): the belief, what would prove it wrong, and a plan made of [triggers](triggers.md). The stock goes on the watchlist.
-3. **[Morning runs](morning-runs.md)** read the analyst's whole book every weekday at 8 AM and answer each stock in a [situation](situations.md).
-4. **[Trigger runs](trigger-runs.md)** start within minutes when a trigger comes true during the day, and decide on that one stock.
-5. Every buy, sale, add and trim becomes a **[proposal](approvals.md)** that waits for your approval.
-6. **[Chat](chat.md)** is where you ask about any of it, change a plan, or start research yourself.
+1. **[Discovery](discovery.md)** finds a stock that fits an [analyst](analysts.md): CRWD beat, raised its year and held the gap. Or you ask for research in [chat](chat.md), or add the stock to the watchlist yourself.
+2. **[The Writer](writer.md)** researches it and writes its [thesis](theses.md): the belief, what would prove it wrong, and a plan made of [triggers](triggers.md). The stock goes on the watchlist as Watching.
+3. **The trigger check** watches the plan every five minutes. When the buy fires, a **[trigger run](trigger-runs.md)** looks at that one stock and proposes the buy.
+4. **You approve** the **[proposal](approvals.md)**. The buy fills, the thesis turns to Holding, and its floor, trail and target guard it.
+5. **[Morning runs](morning-runs.md)** read the analyst's whole book every run day and answer each stock in a **[situation](situations.md)**: a review that came due, a floor to raise, earnings, stale research, your notes.
+6. **A sale fires**, or a run decides to sell: another proposal. Declined or left to expire, it's proposed again each day the price stays past the line, and only you can lower the floor.
+7. **The sale fills** and the thesis is retired as sold. Within two weeks it gets one look back: watch it again, or let it go.
+
+[Chat](chat.md) is where you ask about any of it, change a plan, or start research yourself, at any step.
 
 ## The whole system
 

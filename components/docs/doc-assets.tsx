@@ -14,16 +14,18 @@ import { AnalystStyles, Playbook } from "./assets/analysts";
 import { ProposalExample } from "./assets/approvals";
 import { SituationExplorer, SituationSizes } from "./assets/situations";
 import { ThesisAnatomy, ThesisLifecycle } from "./assets/theses";
-import { TriggerKinds, TriggerLogCard } from "./assets/triggers";
+import { TriggerKinds } from "./assets/triggers";
 import { SystemLayers } from "./assets/architecture";
+import { ConceptHero } from "./concept-cards";
 import { ReadDemo } from "./framework/read-demo";
 import { AgentTools } from "./tool-catalog";
 
 export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
+  /** A concept's card from the docs home, as its doc's opening picture. `card theses` */
+  card: ({ arg }) => <ConceptHero slug={arg ?? ""} />,
   /** The tools one agent can call, read from lib/agent/modes.ts. `tools morning` */
   tools: ({ arg }) => <AgentTools agent={arg as DocsAgentId} />,
   "read-demo": () => <ReadDemo />,
-  "trigger-log": TriggerLogCard,
   "trigger-kinds": TriggerKinds,
   "thesis-anatomy": ThesisAnatomy,
   "thesis-lifecycle": ThesisLifecycle,

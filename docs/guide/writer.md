@@ -18,7 +18,9 @@ tools: Writing the thesis on $CRWD
 
 ## What it does
 
-The Writer is the only agent that writes a whole thesis. It researches one stock in depth for one analyst, in that analyst's strategy, and saves the result as a new watch or a rewrite of an existing thesis. It runs on Claude Sonnet with Claude's own web search, because in a side-by-side test it wrote the most grounded notes and got fiscal years right where other models quoted a year-old quarter as current.
+The Writer is the only agent that writes a whole [thesis](theses.md). It researches one stock in depth for one [analyst](analysts.md), in that analyst's strategy, and saves the result: a new thesis on the watchlist, a pass, or a rewrite of a thesis that already exists. It runs on Claude Sonnet with Claude's own web search, because in a side-by-side test it wrote the most grounded notes and got fiscal years right where other models quoted a year-old quarter as current.
+
+The Writer never trades and never sizes anything. It writes the claim and the plan; the other agents act on them.
 
 ## Who sends it a stock
 
@@ -26,7 +28,7 @@ Any agent can, with `dispatch_thesis_research`. Each request runs as its own run
 
 - **[Discovery](discovery.md)** sends every new stock it wants to watch.
 - **[Chat](chat.md)** sends one when you ask to research a stock, or type `/research`.
-- **[A morning run](morning-runs.md)** sends a stock whose research has gone stale, or needs re-planning.
+- **[A morning run](morning-runs.md)** sends a stock when its [situation](situations.md) calls for research: a stock you added that's due its first research, research older than the analyst allows, or a watch whose wake fired and needs a fresh look.
 
 ## How it researches
 
@@ -55,6 +57,13 @@ It never sizes the trade. The buy is sized later by the risk to its floor, so an
 ## Checked before it's saved
 
 The decision goes through the same checks as every other save: the prices in the right order, the 2-to-1 reward, triggers that fit a stock we only watch. A problem goes back to the Writer to fix in the same run; the thesis is saved only when it passes.
+
+## What happens next
+
+- **A new stock** lands on the watchlist as Watching, with its buy, floor, target and review clock. The [trigger](triggers.md) check starts watching its buy the same day.
+- **A pass** is saved as Passed, with what would change the verdict, so the stock isn't pitched again without a reason.
+- **A refresh** rewrites the research and the claim on a thesis that exists. The agent that asked re-reads the stock and changes its levels if the new work changed the view.
+- From there, [morning runs](morning-runs.md) review it, a [trigger run](trigger-runs.md) acts when its buy fires, and the buy becomes a [proposal](approvals.md) you approve. The research stays the Writer's: other agents change the plan around it, and the belief changes only with a new write-up or when you change it through chat.
 
 ## Tools
 

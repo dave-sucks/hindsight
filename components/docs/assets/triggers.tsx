@@ -5,7 +5,6 @@ import { TRIGGER_TYPES, actionLabel } from "@/lib/agent/triggers/condition";
 import { TRIGGER_TYPE_DOCS } from "@/lib/docs/trigger-examples";
 import { P } from "../doc-text";
 import { DocFact } from "../primitives";
-import { TriggerLog } from "../concept-cards";
 import { ExamplePill } from "../trigger-bits";
 
 
@@ -38,14 +37,5 @@ export function TriggerKinds() {
         </TabsContent>
       ))}
     </Tabs>
-  );
-}
-
-/** The live trigger log, in the same soft card as the Triggers card on the docs home. */
-export function TriggerLogCard() {
-  return (
-    <div className="h-72 rounded-lg bg-muted/50 p-5" aria-hidden>
-      <TriggerLog />
-    </div>
   );
 }

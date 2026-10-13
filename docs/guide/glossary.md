@@ -22,6 +22,8 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Score:** a score out of 10 for the stock against the setup.
 - **Conviction:** how strongly the analyst holds the belief. It scales the size of the buy.
 - **Plan:** a thesis's triggers. The buy, the floor and the target are triggers too.
+- **Seed:** a stock put on the watchlist with no view yet, by you or the analyst builder. It's due its first research on its review clock.
+- **Wake:** a review trigger on a watch with no plan, like a price or a date, that brings the stock back for a fresh look.
 - **Watching:** on the watchlist, waiting for its buy.
 - **Holding:** bought. The buy filling turns a watch into a holding.
 - **Passed:** researched and declined, kept so the stock isn't pitched again without a reason.
@@ -66,6 +68,9 @@ When the code, a prompt or a doc uses one of these words, it means this.
 ## Trades
 
 - **Proposal:** a buy, sale, add or trim waiting for your approval, with its reason. It expires after 24 hours. See [Approvals](approvals.md).
+- **Decline:** your no on a proposal. Recorded and read by every run after it.
+- **Lapse:** a proposal left to expire. It means "not now, ask me again", never a decline.
+- **Fill:** the broker carrying out an approved order. A buy's fill turns a watch into a holding.
 - **Sized by risk:** how every buy is sized: the dollars at risk divided by the distance to the floor, scaled by conviction, kept inside the analyst's band. No agent picks a size.
 - **Band:** an analyst's smallest trade, largest trade, and most in one stock.
 - **Run summary:** the list a run ends with: every stock it touched, with a one-word action.

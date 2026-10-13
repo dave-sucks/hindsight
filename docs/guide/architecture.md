@@ -13,7 +13,7 @@ Five agents work on one shared record, and each part of the system is defined in
 3. **The clocks.** The chart numbers at 6:30, [morning runs](morning-runs.md) at 8, the [trigger](triggers.md) check every five minutes. They decide when an agent wakes.
 4. **The read.** What an agent sees of its book. Each stock is a row at the size today needs, with its [situations](situations.md) and their instructions attached.
 5. **The agents.** [Morning runs](morning-runs.md), [trigger runs](trigger-runs.md), [chat](chat.md), [Discovery](discovery.md) and [the Writer](writer.md). Each is a job and a list of tools on top of the parts every agent shares.
-6. **The save.** Every change to a thesis goes through the same tool and the same checks, whoever makes it: an agent, the Writer, or you on the thesis sheet.
+6. **The save.** Every change to a thesis goes through the same tool and the same checks, whoever makes it: an agent, the Writer, or you on the thesis sheet. Each agent may send only the fields its job needs, and no agent can lower a floor on a stock we hold.
 7. **The gate.** Every buy, sale, add and trim becomes a [proposal](approvals.md). Nothing reaches the broker until you approve it.
 
 ## One place for each thing
@@ -29,7 +29,8 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **The rules every agent shares:** `HOUSE_RULES` in `lib/agent/house-rules.ts`, with the writing rules in `lib/agent/voice.ts`.
 - **A trigger edit:** `applyTriggerOps` in `lib/agent/triggers/ops.ts`, for agents and the trigger editor alike. Its words: `lib/agent/triggers/condition/describe.ts`. When it fires: `shouldFire` in `lib/agent/triggers/evaluate.ts`.
 - **The size of a trade:** `sizeByRisk` in `lib/agent/position-sizing.ts`, shared by the trade tools and the Settings screen.
-- **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`.
+- **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`. What an approval does to the thesis: `lib/proposals/thesis-flips.ts`.
+- **The floor rule:** `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`.
 - **Which tools each agent has:** `lib/agent/modes.ts`.
 
 ## Everything runs on a clock

@@ -19,9 +19,9 @@ tools: Dispatching $CRWD thesis-writer (+1 more)
 
 ## What it does
 
-Discovery only looks at stocks the analyst doesn't already cover; its tools hide everything on the book. You can ask it to find names off this week's earnings, run one of the analyst's setup screens, look for dated catalysts, or check tickers you paste in.
+Discovery is where a stock's life starts. It looks for stocks one [analyst](analysts.md) doesn't cover yet: names off this week's earnings, one of the analyst's setup screens, dated catalysts, or tickers you paste in. Its tools hide everything already on the book, so it never brings back the same names.
 
-It doesn't manage the book (that's [the morning run](morning-runs.md)) and it never buys. New stocks land on the watchlist, and a buy happens only when a stock's buy trigger fires and you approve it.
+It doesn't write theses and it never buys. The stocks worth a closer look go to [the Writer](writer.md), which writes each one's [thesis](theses.md), plan and all. From there the stock is on the watchlist: its buy [trigger](triggers.md) is checked all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and you [approve](approvals.md) it.
 
 ## Starting it
 
@@ -48,9 +48,9 @@ It works for one analyst and reads its strategy, rules, universe and record by s
 
 ## What happens to each stock
 
-- **Sent to the Writer:** `dispatch_thesis_research` starts [the Writer](writer.md), which writes the thesis with its buy trigger, floor and target. Up to five per run.
-- **Kept on watch:** strong but not ready, saved with `record_thesis` and an optional wake-up, like a price or a date.
-- **Passed:** recorded with what would change the verdict, so the next look starts from it.
+- **Sent to the Writer:** `dispatch_thesis_research` starts [the Writer](writer.md), which writes the thesis with its buy trigger, floor and target, and puts the stock on the watchlist. Up to five per run.
+- **Kept on watch:** strong but not ready to price, saved with `record_thesis` as a watch with an optional wake-up, like a price or a date. When a wake fires, the stock is in the "watch woke up" [situation](situations.md) and the next morning run decides whether to bring it back.
+- **Passed:** recorded as Passed, with what would change the verdict, so the next look starts from it and the stock isn't pitched again without a reason.
 - **Skipped:** dropped before research, a line in the summary.
 
 The run ends with `record_run_summary`. Writers it started keep going and land as their own runs; in chat, `wait_for_thesis_refresh` waits for them.

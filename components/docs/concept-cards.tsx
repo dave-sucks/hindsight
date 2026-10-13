@@ -462,21 +462,42 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
             </button>
             <span className="text-sm leading-6 text-muted-foreground">{c.line}</span>
           </div>
-          {/* The picture: a big one sits at the left padding and runs off the right and bottom edges; a small one sits in the space left. */}
-          <div className="pointer-events-none relative min-h-0 flex-1" aria-hidden>
-            {c.fit === "bleed" ? (
-              <div className="absolute left-5 right-0 top-1">{c.art}</div>
-            ) : c.fit === "inset" ? (
-              <div className="absolute bottom-5 left-5 right-5 top-1">{c.art}</div>
-            ) : c.fit === "fill" ? (
-              // Runs a little past the bottom edge, so the card's own bottom never shows.
-              <div className="absolute -bottom-6 left-5 right-0 top-1">{c.art}</div>
-            ) : (
-              <div className="flex h-full items-center px-5 pb-5">{c.art}</div>
-            )}
-          </div>
+          <ArtFrame cell={c} />
         </div>
       ))}
+    </div>
+  );
+}
+
+type Cell = (typeof CELLS)[number];
+
+/** The picture: a big one sits at the left padding and runs off the right and bottom edges; a small one sits in the space left. */
+function ArtFrame({ cell: c, top = "top-1" }: { cell: Cell; top?: string }) {
+  return (
+    <div className="pointer-events-none relative min-h-0 flex-1" aria-hidden>
+      {c.fit === "bleed" ? (
+        <div className={cn("absolute left-5 right-0", top)}>{c.art}</div>
+      ) : c.fit === "inset" ? (
+        <div className={cn("absolute bottom-5 left-5 right-5", top)}>{c.art}</div>
+      ) : c.fit === "fill" ? (
+        // Runs a little past the bottom edge, so the card's own bottom never shows.
+        <div className={cn("absolute -bottom-6 left-5 right-0", top)}>{c.art}</div>
+      ) : (
+        <div className="mx-auto flex h-full w-full max-w-md items-center px-5 pb-5">{c.art}</div>
+      )}
+    </div>
+  );
+}
+
+/** A concept's card picture without its words, as the opening picture of its doc. */
+export function ConceptHero({ slug }: { slug: string }) {
+  const c = CELLS.find((x) => x.slug === slug);
+  if (!c) return null;
+  // A doc is wider than the home page's card, so the sheet is drawn larger to still run off the edge.
+  const cell = slug === "theses" ? { ...c, art: <div style={{ zoom: 0.75 }}><SheetMock /></div> } : c;
+  return (
+    <div className={cn("relative flex flex-col overflow-hidden rounded-lg bg-muted/50", c.big ? "h-[30rem]" : "h-80")}>
+      <ArtFrame cell={cell} top="top-5" />
     </div>
   );
 }
