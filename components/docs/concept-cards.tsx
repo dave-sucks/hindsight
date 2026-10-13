@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Area, ComposedChart, XAxis, YAxis } from "recharts";
-import { ArrowRight, Check, ChevronRight, Clock, MousePointer2 } from "lucide-react";
+import { ArrowRight, ChevronRight, Clock, MousePointer2 } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { QuillWrite01Icon } from "@hugeicons/core-free-icons";
 import { StockLogo } from "@/components/StockLogo";
@@ -120,14 +120,14 @@ function SheetMock() {
   const [step, setStep] = useState(0);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => setStep((s) => (s + 1) % MOMENTS.length), 5000);
+    const id = window.setInterval(() => setStep((s) => (s + 1) % MOMENTS.length), 9000);
     return () => window.clearInterval(id);
   }, []);
   const m = MOMENTS[step];
   const left = `${(m.at / (TAPE.length - 1)) * 100}%`;
 
   return (
-    <div className="flex w-[84rem] flex-col gap-6 rounded-3xl border bg-background p-10 shadow-sm">
+    <div className="flex w-[84rem] flex-col gap-6 rounded-2xl border bg-background p-10 shadow-sm">
       {/* The sheet's own badges, drawn at their size again inside the miniature. */}
       <div className="flex items-center gap-1.5" style={{ zoom: 1.8 }}>
         <Badge variant="secondary">
@@ -154,7 +154,7 @@ function SheetMock() {
         {m.summary}
       </p>
       <p className="text-xl text-muted-foreground">Catalyst Event PM · written {m.written}</p>
-      <div className="flex flex-col gap-4 rounded-3xl border p-6">
+      <div className="flex flex-col gap-4 rounded-2xl border p-6">
         <div className="flex items-center justify-between">
           <span className="inline-flex rounded-2xl border p-1 text-xl">
             {["1D", "1W", "1M", "3M", "1Y"].map((r) => (
@@ -248,7 +248,7 @@ function ThesisEdits() {
         <HugeiconsIcon icon={QuillWrite01Icon} className="size-3.5 shrink-0" />
         Edited 2 theses
       </span>
-      <span className="flex flex-col gap-1 rounded-xl border bg-card p-1">
+      <span className="flex flex-col gap-1 rounded-lg border bg-card p-1">
         {rows.map((r) => {
           const st = THESIS_STATUS_DISPLAY[r.status];
           return (
@@ -272,16 +272,6 @@ function ThesisEdits() {
 
 const FADE_OUT = { maskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)", WebkitMaskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)" };
 
-function useCycle(length: number, ms: number) {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => setI((x) => (x + 1) % length), ms);
-    return () => window.clearInterval(id);
-  }, [length, ms]);
-  return i;
-}
-
 function AnalystDesk() {
   const d = DESK;
   const ref = useRef<HTMLDivElement>(null);
@@ -296,7 +286,7 @@ function AnalystDesk() {
       ([e]) => {
         if (!e.isIntersecting) return;
         io.disconnect();
-        timer = window.setInterval(() => setShown((n) => (n >= d.message.length ? (window.clearInterval(timer), n) : n + 1)), 700);
+        timer = window.setInterval(() => setShown((n) => (n >= d.message.length ? (window.clearInterval(timer), n) : n + 1)), 1200);
       },
       { threshold: 0.4 },
     );
@@ -307,7 +297,7 @@ function AnalystDesk() {
     };
   }, [d]);
   return (
-    <div ref={ref} className="flex h-full w-[calc(100%+2.5rem)] flex-col gap-4 rounded-2xl border bg-background p-5 pb-8 pr-[3.75rem] shadow-sm">
+    <div ref={ref} className="flex h-full w-[calc(100%+2.5rem)] flex-col gap-4 rounded-xl border bg-background p-5 pb-8 pr-[3.75rem] shadow-sm">
       <div className="flex items-center gap-3">
         <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg text-xs font-medium text-white", d.color)}>{d.initials}</span>
         <span className="text-sm font-medium text-foreground">{d.name}</span>
@@ -349,7 +339,7 @@ function TriggerLog() {
   const [n, setN] = useState(0);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => setN((x) => x + 1), 5000);
+    const id = window.setInterval(() => setN((x) => x + 1), 11000);
     return () => window.clearInterval(id);
   }, []);
   const rows = Array.from({ length: 5 }, (_, k) => CHECKS[(n + CHECKS.length * 4 - k) % CHECKS.length]);
@@ -376,12 +366,10 @@ function TriggerLog() {
   );
 }
 
-/** Approvals: a proposal waiting, a cursor that approves it, and the fill. */
+/** Approvals: a proposal waiting, the cursor resting on Approve. Still, on purpose: not every card moves. */
 function ApprovalCard() {
-  const phase = useCycle(4, 1600);
-  const done = phase === 3;
   return (
-    <div className="relative w-full rounded-2xl border bg-background p-4 shadow-sm">
+    <div className="relative w-full rounded-xl border bg-background p-4 shadow-sm">
       <div className="flex items-center gap-2.5">
         <StockLogo ticker="CRWD" size="sm" />
         <span className="text-sm font-medium text-foreground">Sell 14 CRWD</span>
@@ -391,26 +379,11 @@ function ApprovalCard() {
         </span>
       </div>
       <p className="mt-2 text-xs leading-5 text-muted-foreground">Closed under the $384 floor. The drift after the beat is over, so the PEAD Specialist wants out.</p>
-      <div className="mt-3 flex h-7 items-center gap-2">
-        {done ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-positive animate-in fade-in-0 duration-300">
-            <Check className="size-3.5" />
-            Approved · sold at $383.20
-          </span>
-        ) : (
-          <>
-            <span className={cn(buttonVariants({ variant: "outline", size: "sm" }), "flex-1")}>Decline</span>
-            <span className={cn(buttonVariants({ size: "sm" }), "flex-1 transition-transform", phase === 2 && "scale-95")}>Approve</span>
-          </>
-        )}
+      <div className="mt-3 flex items-center gap-2">
+        <span className={cn(buttonVariants({ variant: "outline", size: "sm" }), "flex-1")}>Decline</span>
+        <span className={cn(buttonVariants({ size: "sm" }), "flex-1")}>Approve</span>
       </div>
-      <MousePointer2
-        className={cn(
-          "absolute size-4 fill-foreground text-background transition-all duration-700 ease-out",
-          phase === 0 ? "-bottom-6 right-2 opacity-0" : "bottom-3 right-16 opacity-100",
-          done && "opacity-0",
-        )}
-      />
+      <MousePointer2 className="absolute bottom-3 right-16 size-4 fill-foreground text-background" />
     </div>
   );
 }
@@ -427,7 +400,7 @@ const WORK = [
 
 function WorkList() {
   return (
-    <div className="flex w-[calc(100%+2.5rem)] flex-col gap-3 rounded-2xl border bg-background p-4 pr-[3.5rem] shadow-sm">
+    <div className="flex w-[calc(100%+2.5rem)] flex-col gap-3 rounded-xl border bg-background p-4 pr-[3.5rem] shadow-sm">
       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
         Morning run · 8:02 AM
         <ChevronRight className="size-3" />
@@ -476,7 +449,7 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       {CELLS.map((c) => (
-        <div key={c.slug} className={cn("relative flex flex-col overflow-hidden rounded-xl border border-transparent bg-muted/50", c.big ? "h-[38rem]" : "h-96", c.span)}>
+        <div key={c.slug} className={cn("relative flex flex-col overflow-hidden rounded-lg border border-transparent bg-muted/50", c.big ? "h-[38rem]" : "h-96", c.span)}>
           <div className="flex flex-col items-start gap-1 p-5">
             {/* Only the title opens the doc. */}
             <button
