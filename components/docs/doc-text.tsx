@@ -30,12 +30,12 @@ export function H2({ id, children }: { id?: string; children: ReactNode }) {
 }
 
 export function P({ children }: { children: ReactNode }) {
-  return <p className="max-w-[65ch] text-sm leading-6 text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">{children}</p>;
+  return <p className="text-sm leading-6 text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">{children}</p>;
 }
 
 export function Ul({ children }: { children: ReactNode }) {
   return (
-    <ul className="flex max-w-[65ch] list-disc flex-col gap-1 pl-5 text-sm leading-6 text-muted-foreground marker:text-muted-foreground/50 [&_strong]:font-medium [&_strong]:text-foreground">
+    <ul className="flex list-disc flex-col gap-1 pl-5 text-sm leading-6 text-muted-foreground marker:text-muted-foreground/50 [&_strong]:font-medium [&_strong]:text-foreground">
       {children}
     </ul>
   );
@@ -44,7 +44,7 @@ export function Ul({ children }: { children: ReactNode }) {
 /** "Try asking": prompts the reader can copy into chat. */
 export function Prompts({ items }: { items: readonly string[] }) {
   return (
-    <div className="flex max-w-[65ch] flex-col gap-2 border-l-2 pl-4">
+    <div className="flex flex-col gap-2 border-l-2 pl-4">
       {items.map((p) => (
         <p key={p} className="text-sm leading-6 text-foreground">
           {p}
@@ -117,12 +117,10 @@ export function ChatExample({ steps, caption }: { steps: readonly ChatStep[]; ca
   return (
     <figure className="flex flex-col gap-2">
       <div
-        className="rounded-2xl border bg-muted/40 px-4 py-6 sm:px-10"
+        className="rounded-2xl border bg-muted/40 px-4 py-6 sm:px-6"
         style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
       >
-        <div className="mx-auto max-w-2xl">
-          <ChatMock title={caption ?? "Example"} steps={steps} bare />
-        </div>
+        <ChatMock title={caption ?? "Example"} steps={steps} bare />
       </div>
       {caption ? <figcaption className="text-xs text-muted-foreground">{caption}</figcaption> : null}
     </figure>

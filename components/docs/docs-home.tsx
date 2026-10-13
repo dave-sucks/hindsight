@@ -92,7 +92,7 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
           {open ? (
             <div className="flex flex-col">
               {/* One row: where the page sits, then expand and close, the way Notion's peek does it. */}
-              <div className="flex items-center gap-2 py-3 pl-6 pr-3 sm:pl-10">
+              <div className="flex items-center gap-2 py-3 pl-6 pr-3">
                 <DocCrumbs group={open.group} title={open.title} />
                 <span className="ml-auto flex items-center gap-0.5">
                   <Link href={`/docs/${open.slug}`} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Open as page" title="Open as page">
@@ -104,7 +104,7 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
                   </SheetClose>
                 </span>
               </div>
-              <div className="flex flex-col px-6 pb-16 pt-6 sm:px-10">
+              <div className="flex flex-col px-6 pb-16 pt-6">
                 <open.Content />
               </div>
             </div>

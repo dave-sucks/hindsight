@@ -147,7 +147,7 @@ export function Section({
 }
 
 export function Prose({ children }: { children: ReactNode }) {
-  return <p className="max-w-[62ch] text-sm leading-relaxed text-muted-foreground">{children}</p>;
+  return <p className="text-sm leading-relaxed text-muted-foreground">{children}</p>;
 }
 
 /**
@@ -222,7 +222,7 @@ export function DocHeader({ lead, rest, children }: { lead: ReactNode; rest?: Re
   return (
     <header className="flex flex-col gap-4">
       <TwoTone lead={lead} rest={rest} size="intro" as="h2" />
-      {children ? <p className="max-w-[65ch] text-base leading-relaxed text-muted-foreground">{children}</p> : null}
+      {children ? <p className="text-base leading-relaxed text-muted-foreground">{children}</p> : null}
     </header>
   );
 }

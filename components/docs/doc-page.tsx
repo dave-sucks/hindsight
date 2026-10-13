@@ -12,7 +12,7 @@ export function DocPage({ slug, tools, setups }: { slug: string; tools: readonly
   if (!doc) return null;
   return (
     <DocsDataProvider tools={tools} setups={setups}>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 pb-32 pt-10 sm:px-6 lg:pt-14">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-4 pb-32 pt-10 sm:px-6 lg:pt-14">
         <DocCrumbs group={doc.group} title={doc.title} groupHref="/docs" />
         <doc.Content />
       </div>
