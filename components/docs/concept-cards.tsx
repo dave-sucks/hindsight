@@ -334,14 +334,14 @@ function AnalystDesk() {
  * Triggers: the five-minute check as a slow log. Each line is a trigger that
  * just came true; some only get noted, some wake the analyst or start a sale.
  */
-const CHECKS: ReadonlyArray<{ s: string; l: string; act?: { text: string; tone: string } }> = [
-  { s: "CRWD", l: "Closed below the $384 floor", act: { text: "Selling position", tone: "text-negative" } },
-  { s: "NVDA", l: "Fell 5% in a day", act: { text: "Agent reviewing", tone: "text-blue-500" } },
+const CHECKS: ReadonlyArray<{ s: string; l: string; act?: string }> = [
+  { s: "CRWD", l: "Closed below the $384 floor", act: "Selling position" },
+  { s: "NVDA", l: "Fell 5% in a day", act: "Agent reviewing" },
   { s: "SHOP", l: "Crossed above its 50-day average" },
-  { s: "AVGO", l: "Up 30% from our entry", act: { text: "Trimming position", tone: "text-negative" } },
-  { s: "MU", l: "Volume three times its average", act: { text: "Agent reviewing", tone: "text-blue-500" } },
+  { s: "AVGO", l: "Up 30% from our entry", act: "Trimming position" },
+  { s: "MU", l: "Volume three times its average", act: "Agent reviewing" },
   { s: "LLY", l: "RSI under 30" },
-  { s: "ANET", l: "Pulled back to its 20-day average", act: { text: "Proposing a buy", tone: "text-positive" } },
+  { s: "ANET", l: "Pulled back to its 20-day average", act: "Proposing a buy" },
   { s: "CEG", l: "Gapped up 6% at the open" },
 ];
 
@@ -352,23 +352,24 @@ function TriggerLog() {
     const id = window.setInterval(() => setN((x) => x + 1), 5000);
     return () => window.clearInterval(id);
   }, []);
-  const rows = Array.from({ length: 4 }, (_, k) => CHECKS[(n + CHECKS.length * 4 - k) % CHECKS.length]);
+  const rows = Array.from({ length: 5 }, (_, k) => CHECKS[(n + CHECKS.length * 4 - k) % CHECKS.length]);
   return (
-    <ol className="ml-1 flex w-full flex-col border-l">
+    // Fills its card, the rows spread from top to bottom.
+    <ol className="ml-1 flex h-full w-full flex-col justify-between border-l">
       <li className="relative flex items-center py-1.5 pl-4 text-xs text-muted-foreground">
-        <span className="absolute -left-[4.5px] size-2 animate-pulse rounded-full bg-blue-500" />
+        <span className="absolute -left-[4.5px] size-2 animate-pulse rounded-full bg-foreground" />
         Listening for triggers
       </li>
       {rows.map((r, k) => (
         <li
           key={`${n}-${k}`}
           className={cn("relative flex items-center gap-2.5 py-1.5 pl-4 text-xs", k === 0 && "animate-in fade-in-0 slide-in-from-top-2 duration-700")}
-          style={k > 1 ? { filter: `blur(${(k - 1) * 0.8}px)`, opacity: 1 - (k - 1) * 0.3 } : undefined}
+          style={k > 2 ? { filter: `blur(${(k - 2) * 0.8}px)`, opacity: 1 - (k - 2) * 0.3 } : undefined}
         >
           <span className={cn("absolute -left-[3.5px] size-1.5 rounded-full", r.act ? "bg-foreground" : "bg-muted-foreground/40")} />
           <StockLogo ticker={r.s} size="xs" />
           <span className={cn("truncate", r.act ? "text-foreground" : "text-muted-foreground")}>{r.l}</span>
-          {r.act ? <span className={cn("ml-auto shrink-0", r.act.tone)}>{r.act.text}</span> : null}
+          {r.act ? <span className="ml-auto shrink-0 text-muted-foreground">{r.act}</span> : null}
         </li>
       ))}
     </ol>
@@ -493,7 +494,7 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
             {c.fit === "bleed" ? (
               <div className="absolute left-5 right-0 top-1">{c.art}</div>
             ) : c.fit === "inset" ? (
-              <div className="absolute left-5 right-5 top-1">{c.art}</div>
+              <div className="absolute bottom-5 left-5 right-5 top-1">{c.art}</div>
             ) : c.fit === "fill" ? (
               // Runs a little past the bottom edge, so the card's own bottom never shows.
               <div className="absolute -bottom-6 left-5 right-0 top-1">{c.art}</div>
