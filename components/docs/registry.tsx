@@ -5,6 +5,7 @@
  */
 
 import {
+  BookOpen,
   CheckCircle2,
   FileText,
   Flag,
@@ -29,12 +30,13 @@ export type DocSlug =
   | "triggers"
   | "situations"
   | "approvals"
-  | "under-the-hood";
+  | "architecture"
+  | "glossary";
 
 export interface DocMeta {
   slug: DocSlug;
   title: string;
-  group: "Agents" | "Concepts";
+  group: "Overview" | "Agents" | "Concepts";
   blurb: string;
   icon: LucideIcon;
 }
@@ -50,7 +52,8 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "analysts", title: "Analysts", group: "Concepts", icon: UserRound, blurb: "A trading style with its own universe, sizing and sell rules." },
   { slug: "situations", title: "Situations", group: "Concepts", icon: Flag, blurb: "The sixteen reasons a stock needs an answer today." },
   { slug: "approvals", title: "Approvals", group: "Concepts", icon: CheckCircle2, blurb: "Analysts propose. You approve. Proposals expire after a day." },
-  { slug: "under-the-hood", title: "Under the hood", group: "Concepts", icon: Layers, blurb: "Data sources, schedules, models and the prompts themselves." },
+  { slug: "architecture", title: "Architecture", group: "Overview", icon: Layers, blurb: "How the pieces fit: data, the record, the clocks, the read, the agents and the gate." },
+  { slug: "glossary", title: "Glossary", group: "Overview", icon: BookOpen, blurb: "Every term the app, the docs and the agents use, a sentence each." },
 ];
 
 export function docBySlug(slug: string): DocMeta | undefined {

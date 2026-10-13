@@ -13,6 +13,11 @@ This folder is the guide: one doc per agent and per concept. The /docs page in t
 5. Every buy, sale, add and trim becomes a **[proposal](approvals.md)** that waits for your approval.
 6. **[Chat](chat.md)** is where you ask about any of it, change a plan, or start research yourself.
 
+## The whole system
+
+- **[Architecture](architecture.md):** how the pieces fit: the data, the record, the clocks, the read, the agents, the save and the gate, and the one place each thing is defined.
+- **[Glossary](glossary.md):** every term the app, the docs and the agents use, a sentence each.
+
 ## The agents
 
 - **[Discovery](discovery.md):** screens earnings, movers and the web for stocks that fit an analyst, and sends the best to the Writer.
@@ -28,11 +33,10 @@ This folder is the guide: one doc per agent and per concept. The /docs page in t
 - **[Analysts](analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
 - **[Situations](situations.md):** the sixteen reasons a stock needs an answer today, each with its own instructions.
 - **[Approvals](approvals.md):** analysts propose, you approve, and a proposal expires after a day.
-- **[Under the hood](under-the-hood.md):** data sources, schedules, models, and what each agent is told.
 
 ## Reading these docs
 
-- Every doc ends with **Technical details**: the files, functions and tables behind it. The code is the source of truth; when a doc and the code disagree, the code wins and the doc is the bug.
+- Every agent and concept doc ends with **Technical details**: the files, functions and tables behind it. The code is the source of truth; when a doc and the code disagree, the code wins and the doc is the bug.
 - Some lists aren't copied here because they're read from the code: each agent's tools (`lib/agent/modes.ts`), the playbook's setups (`lib/agent/knowledge/setups.ts`), the situation texts (`SITUATIONS` in `lib/agent/situations.ts`) and the trigger examples (`lib/docs/trigger-examples.ts`). The docs say where.
 - A line like `<!-- asset: trigger-log -->` is where the page draws a picture. A ` ```chat ` block is an example conversation: `user:` is you, `tools:` is a tool call with its rows, `text:` is the agent's answer.
 - For working on the code, `CLAUDE.md` at the repo root has the rules and the known traps. The deeper references are `docs/THESIS_ARCHITECTURE.md`, `docs/TRIGGERS.md` and `docs/plans/`.

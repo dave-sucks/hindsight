@@ -1,10 +1,36 @@
-# Under the hood
+# Architecture
 
-**Under the hood.** Where the data comes from, when everything runs, and which model does what.
+**How the pieces fit.** Data comes in, one record holds it, clocks wake the agents, and every trade waits for you.
 
-The parts underneath the agents, for when you want to know how something actually works.
+Five agents work on one shared record, and each part of the system is defined in one place, so no two parts can disagree about a stock.
 
 <!-- asset: system-layers -->
+
+## The parts
+
+1. **The data.** Live prices and bars from Alpaca, company numbers and news from Finnhub, filings from the SEC, the web and X. Read live, and named as missing when a source has nothing.
+2. **The record.** The database: analysts, theses with their triggers, positions, orders, your notes, and Activity, one line for every change.
+3. **The clocks.** The chart numbers at 6:30, [morning runs](morning-runs.md) at 8, the [trigger](triggers.md) check every five minutes. They decide when an agent wakes.
+4. **The read.** What an agent sees of its book. Each stock is a row at the size today needs, with its [situations](situations.md) and their instructions attached.
+5. **The agents.** [Morning runs](morning-runs.md), [trigger runs](trigger-runs.md), [chat](chat.md), [Discovery](discovery.md) and [the Writer](writer.md). Each is a job and a list of tools on top of the parts every agent shares.
+6. **The save.** Every change to a thesis goes through the same tool and the same checks, whoever makes it: an agent, the Writer, or you on the thesis sheet.
+7. **The gate.** Every buy, sale, add and trim becomes a [proposal](approvals.md). Nothing reaches the broker until you approve it.
+
+## One place for each thing
+
+Each of these is defined once, and everything that needs it reads it from there. A second copy anywhere else is a bug.
+
+- **The live price:** `lib/market-data/live-quote.ts`, Alpaca first and Finnhub behind it. How old a price is: `lib/market-data/quote-age.ts`.
+- **The facts about a stock:** `loadStockFacts` in `lib/agent/stock-facts.ts`, fed by `loadWorkInputs` in `lib/agent/work-inputs.ts`. The read, the thesis sheet, the quote route and a run's close-out all use them.
+- **What a stock needs today:** `computeNeedsAction` in `lib/agent/needs-action.ts`, turned into situations by `situationsFor` in `lib/agent/situations.ts`.
+- **What an agent is told in a situation:** `SITUATIONS` in `lib/agent/situations.ts`. Never a prompt.
+- **A stock's row in the read:** `lib/agent/row-for-model.ts`, at one of three sizes.
+- **The analyst's brief:** `analystBrief` in `lib/agent/analyst-brief.ts`.
+- **The rules every agent shares:** `HOUSE_RULES` in `lib/agent/house-rules.ts`, with the writing rules in `lib/agent/voice.ts`.
+- **A trigger edit:** `applyTriggerOps` in `lib/agent/triggers/ops.ts`, for agents and the trigger editor alike. Its words: `lib/agent/triggers/condition/describe.ts`. When it fires: `shouldFire` in `lib/agent/triggers/evaluate.ts`.
+- **The size of a trade:** `sizeByRisk` in `lib/agent/position-sizing.ts`, shared by the trade tools and the Settings screen.
+- **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`.
+- **Which tools each agent has:** `lib/agent/modes.ts`.
 
 ## Everything runs on a clock
 

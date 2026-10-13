@@ -15,7 +15,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CheckCircle2, FileText, Flag, Layers, MessageCircle, PenLine, Search, Sun, UserRound, Zap, type LucideIcon } from "lucide-react";
+import { BookOpen, CheckCircle2, FileText, Flag, Layers, MessageCircle, PenLine, Search, Sun, UserRound, Zap, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatMock, type ChatStep } from "./chat-mock";
 import { Mono } from "./primitives";
@@ -93,7 +93,8 @@ const REFS: Record<string, { title: string; icon: LucideIcon }> = {
   analysts: { title: "analysts", icon: UserRound },
   situations: { title: "situations", icon: Flag },
   approvals: { title: "approvals", icon: CheckCircle2 },
-  "under-the-hood": { title: "under the hood", icon: Layers },
+  architecture: { title: "the architecture", icon: Layers },
+  glossary: { title: "the glossary", icon: BookOpen },
 };
 
 /** Another page named in a sentence, an agent or a concept. Opens it. */

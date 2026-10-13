@@ -12,7 +12,7 @@ describe("the guide (docs/guide)", () => {
 
   it("has the README and every doc the page lists", () => {
     expect(Object.keys(guide)).toContain("README");
-    for (const slug of ["discovery", "writer", "morning-runs", "trigger-runs", "chat", "theses", "triggers", "analysts", "situations", "approvals", "under-the-hood"]) {
+    for (const slug of ["discovery", "writer", "morning-runs", "trigger-runs", "chat", "theses", "triggers", "analysts", "situations", "approvals", "architecture", "glossary"]) {
       expect(Object.keys(guide)).toContain(slug);
     }
   });

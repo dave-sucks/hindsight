@@ -15,7 +15,7 @@ import { ProposalExample } from "./assets/approvals";
 import { SituationExplorer, SituationSizes } from "./assets/situations";
 import { ThesisAnatomy, ThesisLifecycle } from "./assets/theses";
 import { TriggerKinds, TriggerLogCard } from "./assets/triggers";
-import { SystemLayers } from "./assets/under-the-hood";
+import { SystemLayers } from "./assets/architecture";
 import { ReadDemo } from "./framework/read-demo";
 import { AgentTools } from "./tool-catalog";
 

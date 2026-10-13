@@ -40,7 +40,7 @@ A decline is recorded and read by every run after it. Asking again takes new rea
 `Order` with status `AWAITING_APPROVAL` and an `expiresAt` 24 hours out; `proposal-expiry.ts` closes the stale ones.
 
 #### Alerts
-An email (`lib/emails/proposal-pending`) and a phone push through ntfy (`lib/notify/proposal-push.ts`).
+An email (`lib/emails/proposal-pending.ts`) and a phone push through ntfy (`lib/notify/proposal-push.ts`).
 
 #### Settings
 `requireApprovalBuysLive` and `requireApprovalSellsLive` default on; the paper pair defaults off.
