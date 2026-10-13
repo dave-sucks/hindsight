@@ -16,10 +16,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Area, ComposedChart, XAxis, YAxis } from "recharts";
 import { ArrowRight, Check, ChevronRight, Clock, MousePointer2 } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { QuillWrite01Icon } from "@hugeicons/core-free-icons";
 import { StockLogo } from "@/components/StockLogo";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { FlameIcon } from "@/components/ui/flame-icon";
+import { THESIS_STATUS_DISPLAY } from "@/lib/thesis-status";
 import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
 import type { DocSlug } from "./registry";
@@ -218,21 +221,54 @@ const DESK = {
   up: true,
   message: [
     <>
-      A good month, mostly thanks to <Tk s="CRWD" c={8.2} />, which has drifted higher every day since its beat. I raised its floor to $384 on Tuesday, so most of that gain is
-      locked in.
+      A good month, mostly thanks to <Tk s="CRWD" c={8.2} logo />, which has drifted higher every day since its beat. This morning I added to it, and raised{" "}
+      <Tk s="ANET" logo />
+      &apos;s target ahead of its investor day.
+    </>,
+    <ThesisEdits key="edits" />,
+    <>
+      I only buy after a report, never before one. <Tk s="AMD" logo /> reports Thursday after the close: if it beats estimates by more than 5% and holds the gap
+      into Friday&apos;s open, I&apos;ll propose a buy.
     </>,
     <>
-      I only buy after a report, never before one. <Tk s="AMD" /> reports Thursday after the close: if it beats estimates by more than 5% and holds the gap into
-      Friday&apos;s open, I&apos;ll propose a buy.
-    </>,
-    <>
-      Sold <Tk s="SHOP" /> at its target on Monday, up 11%. Next week I&apos;m watching <Tk s="SNOW" /> and <Tk s="MDB" /> into their reports.
-    </>,
-    <>
-      Four holdings and nine watches. The one in the red is <Tk s="DDOG" c={-1.4} />, still well above its floor.
+      Sold <Tk s="SHOP" logo /> at its target on Monday, up 11%. Next week I&apos;m watching <Tk s="SNOW" logo /> and <Tk s="MDB" logo /> into their reports.
     </>,
   ],
 };
+
+/** The run's own "edited theses" table, two rows of it: status, then what changed and why. */
+function ThesisEdits() {
+  const rows = [
+    { s: "CRWD", status: "HOLDING" as const, did: "Added 46 shares.", why: "Bought at $401; the drift held the gap for a third day." },
+    { s: "ANET", status: "WATCHING" as const, did: "Target to $152.", why: "The investor day should lift the AI networking numbers." },
+  ];
+  return (
+    <span className="flex flex-col gap-1">
+      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+        <HugeiconsIcon icon={QuillWrite01Icon} className="size-3.5 shrink-0" />
+        Edited 2 theses
+      </span>
+      <span className="flex flex-col gap-1 rounded-xl border bg-card p-1">
+        {rows.map((r) => {
+          const st = THESIS_STATUS_DISPLAY[r.status];
+          return (
+            <span key={r.s} className="flex items-center gap-1.5 p-2">
+              <StockLogo ticker={r.s} size="sm" />
+              <span className="mr-1 shrink-0 font-brand text-sm font-semibold">{r.s}</span>
+              <Badge variant="secondary">
+                <span className={cn("size-1.5 shrink-0 rounded-full", st.dotClass)} />
+                {st.label}
+              </Badge>
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{r.did}</span> {r.why}
+              </span>
+            </span>
+          );
+        })}
+      </span>
+    </span>
+  );
+}
 
 const FADE_OUT = { maskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)", WebkitMaskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)" };
 
@@ -283,9 +319,9 @@ function AnalystDesk() {
       {/* A longer summary fades out at the card's bottom edge. */}
       <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden text-sm leading-relaxed text-foreground" style={FADE_OUT}>
         {d.message.map((p, k) => (
-          <p key={k} className={cn("transition-opacity duration-700", k < shown ? "opacity-100" : "opacity-0")}>
+          <div key={k} className={cn("transition-opacity duration-700", k < shown ? "opacity-100" : "opacity-0")}>
             {p}
-          </p>
+          </div>
         ))}
       </div>
     </div>
@@ -294,52 +330,48 @@ function AnalystDesk() {
 
 // ── The small cells ────────────────────────────────────────────────────────
 
-/** Triggers: the five-minute check as a running log. Most sentences stay false; one comes true and goes to the analyst. */
-const CHECKS = [
-  { s: "CRWD", l: "Sell if below $384" },
-  { s: "NVDA", l: "Trim if up 30% from our entry" },
-  { s: "AMD", l: "Review 3 days before earnings", fired: true },
-  { s: "SHOP", l: "Buy if near the 20-day average" },
-  { s: "CEG", l: "Sell if 12% off the high" },
-  { s: "MSFT", l: "Review every 30 days" },
-  { s: "ANET", l: "Buy if above $134", fired: true },
-  { s: "LLY", l: "Sell if below the 50-day" },
+/**
+ * Triggers: the five-minute check as a slow log. Each line is a trigger that
+ * just came true; some only get noted, some wake the analyst or start a sale.
+ */
+const CHECKS: ReadonlyArray<{ s: string; l: string; act?: { text: string; tone: string } }> = [
+  { s: "CRWD", l: "Closed below the $384 floor", act: { text: "Selling position", tone: "text-negative" } },
+  { s: "NVDA", l: "Fell 5% in a day", act: { text: "Agent reviewing", tone: "text-blue-500" } },
+  { s: "SHOP", l: "Crossed above its 50-day average" },
+  { s: "AVGO", l: "Up 30% from our entry", act: { text: "Trimming position", tone: "text-negative" } },
+  { s: "MU", l: "Volume three times its average", act: { text: "Agent reviewing", tone: "text-blue-500" } },
+  { s: "LLY", l: "RSI under 30" },
+  { s: "ANET", l: "Pulled back to its 20-day average", act: { text: "Proposing a buy", tone: "text-positive" } },
+  { s: "CEG", l: "Gapped up 6% at the open" },
 ];
-
-const clock = (step: number) => {
-  const m = 10 * 60 + 30 + Math.floor(step / 2) * 5;
-  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
-};
 
 function TriggerLog() {
   const [n, setN] = useState(0);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => setN((x) => x + 1), 2400);
+    const id = window.setInterval(() => setN((x) => x + 1), 5000);
     return () => window.clearInterval(id);
   }, []);
-  const rows = Array.from({ length: 6 }, (_, k) => ({ ...CHECKS[(n + CHECKS.length * 4 - k) % CHECKS.length], at: clock(n + CHECKS.length * 4 - k) }));
+  const rows = Array.from({ length: 4 }, (_, k) => CHECKS[(n + CHECKS.length * 4 - k) % CHECKS.length]);
   return (
-    <div className="flex w-[22rem] flex-col">
-      <span className="inline-flex w-fit items-center gap-2 rounded-full border bg-background py-1 pl-2.5 pr-3 text-xs text-foreground shadow-sm">
-        <span className="size-2 animate-pulse rounded-full bg-blue-500" />
-        Checking 214 triggers
-      </span>
-      <ol className="ml-[0.9rem] flex flex-col border-l pt-2">
-        {rows.map((r, k) => (
-          <li
-            key={`${n}-${k}`}
-            className={cn("relative flex items-center gap-2.5 py-1.5 pl-4 text-xs", k === 0 && "animate-in fade-in-0 slide-in-from-top-2 duration-500")}
-            style={k > 2 ? { filter: `blur(${(k - 2) * 0.8}px)`, opacity: 1 - (k - 2) * 0.22 } : undefined}
-          >
-            <span className={cn("absolute -left-[3.5px] size-1.5 rounded-full", r.fired ? "bg-blue-500" : "bg-muted-foreground/40")} />
-            <StockLogo ticker={r.s} size="xs" />
-            <span className={cn("truncate", r.fired ? "font-medium text-foreground" : "text-muted-foreground")}>{r.l}</span>
-            <span className={cn("ml-auto shrink-0 tabular-nums", r.fired ? "text-blue-500" : "text-muted-foreground/70")}>{r.fired ? "Came true" : r.at}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
+    <ol className="ml-1 flex w-full flex-col border-l">
+      <li className="relative flex items-center py-1.5 pl-4 text-xs text-muted-foreground">
+        <span className="absolute -left-[4.5px] size-2 animate-pulse rounded-full bg-blue-500" />
+        Listening for triggers
+      </li>
+      {rows.map((r, k) => (
+        <li
+          key={`${n}-${k}`}
+          className={cn("relative flex items-center gap-2.5 py-1.5 pl-4 text-xs", k === 0 && "animate-in fade-in-0 slide-in-from-top-2 duration-700")}
+          style={k > 1 ? { filter: `blur(${(k - 1) * 0.8}px)`, opacity: 1 - (k - 1) * 0.3 } : undefined}
+        >
+          <span className={cn("absolute -left-[3.5px] size-1.5 rounded-full", r.act ? "bg-foreground" : "bg-muted-foreground/40")} />
+          <StockLogo ticker={r.s} size="xs" />
+          <span className={cn("truncate", r.act ? "text-foreground" : "text-muted-foreground")}>{r.l}</span>
+          {r.act ? <span className={cn("ml-auto shrink-0", r.act.tone)}>{r.act.text}</span> : null}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -348,7 +380,7 @@ function ApprovalCard() {
   const phase = useCycle(4, 1600);
   const done = phase === 3;
   return (
-    <div className="relative w-[21rem] rounded-2xl border bg-background p-4 shadow-sm">
+    <div className="relative w-full rounded-2xl border bg-background p-4 shadow-sm">
       <div className="flex items-center gap-2.5">
         <StockLogo ticker="CRWD" size="sm" />
         <span className="text-sm font-medium text-foreground">Sell 14 CRWD</span>
@@ -418,7 +450,7 @@ function WorkList() {
   );
 }
 
-const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; big?: boolean; fit: "bleed" | "fill" | "center" }> = [
+const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: ReactNode; span?: string; big?: boolean; fit: "bleed" | "fill" | "inset" | "center" }> = [
   {
     slug: "theses",
     title: "Theses",
@@ -434,7 +466,7 @@ const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: Re
     fit: "bleed",
   },
   { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <AnalystDesk />, big: true, fit: "fill" },
-  { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerLog />, fit: "bleed" },
+  { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerLog />, fit: "inset" },
   { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <ApprovalCard />, fit: "center" },
   { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <WorkList />, fit: "bleed" },
 ];
@@ -443,26 +475,25 @@ export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       {CELLS.map((c) => (
-        <div
-          key={c.slug}
-          className={cn(
-            "group relative flex flex-col overflow-hidden rounded-xl border border-transparent bg-muted/50 transition-colors hover:bg-muted/70 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring",
-            c.big ? "h-[38rem]" : "h-96",
-            c.span,
-          )}
-        >
-          <button type="button" onClick={() => onOpen(c.slug)} className="absolute inset-0 z-10 focus-visible:outline-none" aria-label={`Open ${c.title}`} />
-          <div className="flex flex-col gap-1 p-5">
-            <span className="inline-flex items-center gap-1.5 text-base font-medium text-foreground">
+        <div key={c.slug} className={cn("relative flex flex-col overflow-hidden rounded-xl border border-transparent bg-muted/50", c.big ? "h-[38rem]" : "h-96", c.span)}>
+          <div className="flex flex-col items-start gap-1 p-5">
+            {/* Only the title opens the doc. */}
+            <button
+              type="button"
+              onClick={() => onOpen(c.slug)}
+              className="group inline-flex items-center gap-1.5 rounded-sm text-base font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {c.title}
-              <ArrowRight className="size-4 -translate-x-1 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
-            </span>
+              <ArrowRight className="size-4 -translate-x-1 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100" />
+            </button>
             <span className="text-sm leading-6 text-muted-foreground">{c.line}</span>
           </div>
           {/* The picture: a big one sits at the left padding and runs off the right and bottom edges; a small one sits in the space left. */}
           <div className="pointer-events-none relative min-h-0 flex-1" aria-hidden>
             {c.fit === "bleed" ? (
               <div className="absolute left-5 right-0 top-1">{c.art}</div>
+            ) : c.fit === "inset" ? (
+              <div className="absolute left-5 right-5 top-1">{c.art}</div>
             ) : c.fit === "fill" ? (
               // Runs a little past the bottom edge, so the card's own bottom never shows.
               <div className="absolute -bottom-6 left-5 right-0 top-1">{c.art}</div>

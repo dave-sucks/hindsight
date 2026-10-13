@@ -25,6 +25,7 @@ import {
 } from "@/components/ai-elements/tool-progress";
 import { SourceChips } from "@/components/assistant-ui/tool-uis/tool-ui-shared";
 import type { ToolSource } from "@/lib/agent/tool-result";
+import { StockLogo } from "@/components/StockLogo";
 import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
 
@@ -36,10 +37,11 @@ export type ChatStep =
   | { kind: "reasoning"; text: string }
   | { kind: "tools"; label: string; rows: readonly ChatRow[]; sources?: ToolSource[] };
 
-/** A ticker the way the chat writes one inline: $SYM, and the day's move when given. */
-export function Tk({ s, c }: { s: string; c?: number }) {
+/** A ticker the way the chat writes one inline: $SYM, and the day's move when given; `logo` puts the stock's avatar in front. */
+export function Tk({ s, c, logo = false }: { s: string; c?: number; logo?: boolean }) {
   return (
     <span className="mx-0.5 inline-flex items-center gap-1 align-baseline">
+      {logo ? <StockLogo ticker={s} size="xs" className="self-center" /> : null}
       <Mono className="font-medium text-foreground">${s}</Mono>
       {c != null ? (
         <span
