@@ -35,8 +35,8 @@
  *    cleared the thesis and the run completed clean.
  *
  * This module is (3): the same decline, promoted from background colour to a
- * work item. The ratchet exemption is in `triggers/ops.ts`; the field fix is
- * in `needs-action.ts`.
+ * work item; the field fix is in `needs-action.ts`. (2) stands: only the
+ * principal lowers a floor (2026-10-13).
  *
  * ── One source for "a real, protective, recent decline" ──────────────────
  *
@@ -55,20 +55,14 @@
  * again" — never a decline: he sees every proposal and lets a sale lapse when
  * he wants to see the next day. On 10-13 the count carried NVDA's two lapses
  * in the window as declines, and the morning run lowered its floor $236 →
- * $217 under the after-a-decline exception below; no sale in the window had
- * been declined.
+ * $217 under an after-a-decline exception, since deleted; no sale in the
+ * window had been declined.
  *
- * Fully pure: a type import and nothing else. That matters —
- * `triggers/ops.ts` reads the ratchet policy at the bottom of this file,
- * and ops.ts is imported by trigger tests and client code. An earlier cut
- * pulled `isSystemicRejection` from `proposals/maybe-await-approval`, which
- * imports prisma, the mailer and the push client, and five jest suites
- * stopped loading. No database, no clock of its own — callers pass `now`.
+ * Fully pure: no imports. An earlier cut pulled `isSystemicRejection` from
+ * `proposals/maybe-await-approval`, which imports prisma, the mailer and the
+ * push client, and five jest suites stopped loading. No database, no clock
+ * of its own — callers pass `now`.
  */
-
-
-import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
-import type { When } from "@/lib/agent/triggers/condition";
 
 /**
  * Rejection messages the SYSTEM wrote (the retired duplicate-close fold, the
@@ -177,7 +171,7 @@ export interface DeclinedSaleWork {
   rejectMessage: string | null;
   /** The line whose sale was declined, when the caller can see one. */
   floorPrice: number | null;
-  /** Lowest low since the plan was last touched — a real level to re-draw to. */
+  /** Lowest low since the plan was last touched — a real level to name for the line. */
   recentLow: number | null;
 }
 
@@ -230,8 +224,7 @@ export function declinedSaleWork(input: {
 /**
  * The sentence a run reads on a sale the principal did not take: what
  * complete_run says when the stock is unanswered. One sentence per fact — a
- * decline is "You declined", a lapse is "left to lapse: not a decline" — and
- * only a decline offers the floor to re-draw: a lapse never lowers one.
+ * decline is "You declined", a lapse is "left to lapse: not a decline".
  */
 export function declinedSaleLine(w: DeclinedSaleWork): string {
   const when = w.lastDeclinedAt.slice(0, 10);
@@ -253,70 +246,9 @@ export function declinedSaleLine(w: DeclinedSaleWork): string {
   }
   parts.push(
     w.declineCount > 0
-      ? "Answer it: re-draw the floor to a level you can name and set when to look again, or propose the sale again with today's reasons. A review that changes nothing does not answer it."
+      ? "Answer it: propose it again with today's reasons; if you think the line is wrong, name the level in your note: only the principal lowers it. A review that changes nothing does not answer it."
       : "While the price is still past the floor, propose it again with today's reasons. A review that changes nothing does not answer it.",
   );
   return parts.join(" ");
 }
 
-
-// ── What a decline actually unlocks (QB ruling, 2026-09-27) ──────────────
-//
-// The first cut of this filtered out every LOWERED violation while a
-// decline was live, which is far too much rope. Three hostile edits landed
-// on the review branch: IOT's floor dropped from $41.40 to $5, an 8% trail
-// widened to 30%, and a floor was lowered after the price had already
-// recovered above it.
-//
-// The decline is the principal saying "not at this price, give it room" —
-// it is not a week-long licence to loosen anything on the stock. So:
-//
-//   • the FLOOR only. A trail's give-back percentage is not the line he
-//     declined, and widening it is a different decision.
-//   • while the price is still past that line. Once it recovers, the floor
-//     held and the decline is spent — `declinedSaleWork` already stops
-//     reporting it, and the write path now asks the same question.
-//   • no more than 15% below the declined line. Past that it isn't
-//     re-drawing a floor, it's removing one, and removing one is his.
-//   • a decline, never a lapse (the owner's ruling, 2026-10-13). A sale
-//     left to expire is "ask me again", not "give it room": a lapse alone
-//     never lowers a floor (update_thesis passes the decline only when
-//     `declineCount` > 0).
-
-/** How far below the declined line a re-drawn floor may sit. */
-export const REPLAN_FLOOR_MAX_DROP_PCT = 15;
-
-/** The lowest level a re-drawn floor may take, given the line that was declined. */
-export function replanFloorBound(declinedFloor: number, direction: string | null): number {
-  const isLong = direction !== "SHORT";
-  const f = REPLAN_FLOOR_MAX_DROP_PCT / 100;
-  return isLong ? declinedFloor * (1 - f) : declinedFloor * (1 + f);
-}
-
-/**
- * May the ratchet let this one violation through, because a sale on this
- * stock was declined? Everything not explicitly allowed stays refused.
- */
-export function declineReplanAllows(input: {
-  /** RatchetViolation.reason */
-  reason: string;
-  /** The predicate the edit would leave in place. */
-  afterPredicate: When | null | undefined;
-  /** The line whose sale was declined; null = we cannot bound it, so no. */
-  declinedFloor: number | null;
-  direction: string | null;
-}): boolean {
-  // REMOVED and FIREMODE_DEMOTED are not re-planning.
-  if (input.reason !== "LOWERED") return false;
-  if (input.declinedFloor == null || !(input.declinedFloor > 0)) return false;
-  const p = input.afterPredicate;
-  if (!p) return false;
-  const isLong = input.direction !== "SHORT";
-  // An absolute floor, on the side this direction is protected from.
-  const w = shapeOf(p);
-  const floor = w == null ? null : levelOf(w);
-  if (floor == null || floor.above === isLong || !(floor.value > 0)) return false;
-  const level = floor.value;
-  const bound = replanFloorBound(input.declinedFloor, input.direction);
-  return isLong ? level >= bound : level <= bound;
-}

@@ -629,8 +629,8 @@ async function runCompleteRunPreflight(
 
     // A declined or lapsed sale takes the strong bar (DAV-315): the ticket's
     // words are "a note-only REVIEWED row does not clear it." Answering means
-    // re-drawing the floor (after a decline only) or proposing the sale
-    // again — both write a non-REVIEWED row. IOT's 09-21 run wrote exactly
+    // proposing the sale again or tightening the line — both write a
+    // non-REVIEWED row. IOT's 09-21 run wrote exactly
     // the weak kind. A lapse is "ask me again" (2026-10-13), so it keeps it.
     const needsSubstantiveAnswer = needsAction.kind === "SALE_DECLINED";
     const resolved = needsSubstantiveAnswer

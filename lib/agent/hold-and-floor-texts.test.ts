@@ -5,10 +5,8 @@
  * - The trigger run was told to retire a dead thesis with change_status
  *   INVALIDATED. On a stock we hold the save refuses it ("Call close_position
  *   first"); CEG and MU hit that 6 and 4 times on 2026-10-08.
- * - update_thesis said only the principal moves a safety line down. After the
- *   principal declines a sale, while the price is still past the line, the
- *   save lets the floor come down at most REPLAN_FLOOR_MAX_DROP_PCT, and the
- *   PROTECTIVE_SALE text says so.
+ * - update_thesis says only the principal moves a safety line down, with no
+ *   exception: the save refuses every agent's lowering on a stock we hold.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
@@ -16,7 +14,6 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 import { zodSchema } from "ai";
 import type { z } from "zod";
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
-import { REPLAN_FLOOR_MAX_DROP_PCT } from "@/lib/agent/declined-sale";
 import { SITUATIONS } from "@/lib/agent/situations";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
 
@@ -36,13 +33,13 @@ it("the trigger run retires nothing: it takes a watched stock's plan down by id,
   expect(statusText("MORNING_PLAN")).toContain("WATCHING = put a stock you sold back on watch");
 });
 
-it("update_thesis names the declined-sale exception, at the save's own number", () => {
+it("update_thesis says only the principal moves a safety line down, with no exception", () => {
   for (const runMode of ["MORNING_PLAN", "INTRADAY_TACTICAL", "PRINCIPAL_CHAT", "THESIS_WRITER"]) {
     expect(tool(runMode).description).toContain(
-      `only the principal moves a safety line down, except that after the principal declines its sale, while the price is still past it, it may come down at most ${REPLAN_FLOOR_MAX_DROP_PCT}%.`,
+      "On a stock we hold, only the principal moves a safety line down. If you think one is wrong, keep it and give the number you'd suggest in the rationale.",
     );
   }
-  expect(REPLAN_FLOOR_MAX_DROP_PCT).toBe(15);
+  expect(SITUATIONS.PROTECTIVE_SALE.guidance).not.toMatch(/come down|re-draw/);
 });
 
 it("REVIEW_DUE, which reaches stocks we hold in both runs, retires only a stock we watch", () => {

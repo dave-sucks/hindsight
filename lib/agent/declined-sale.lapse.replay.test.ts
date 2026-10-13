@@ -162,16 +162,19 @@ describe("NVDA 10-13 08:01 ET: a lapse never lowers a floor", () => {
     expect((save.db.store.thesisUpdate ?? []).map((u) => u.type)).toEqual(["UPDATED"]);
   });
 
-  it("variant, with one real decline in the window (NVDA's own 09-16 decline moved 21 days on): the 15% re-plan is still allowed", async () => {
+  it("variant, with one real decline in the window (NVDA's own 09-16 decline moved 21 days on): the loosening is still refused, and the rest of the call lands", async () => {
     const decline = fx.nvda.orders.find((o) => o.status === "REJECTED" && o.createdAt.startsWith("2026-09-16"))!;
     const shift = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() + 21 * 86_400_000).toISOString() : null);
     const moved: Order = { ...decline, id: "nvda_decline_moved", createdAt: shift(decline.createdAt)!, expiresAt: shift(decline.expiresAt), updatedAt: shift(decline.updatedAt)! };
     const { save } = await nvdaSave([...fx.nvda.orders, moved]);
 
     expect(save.crashed).toBe(false);
-    expect(floorOp(save)?.ok).toBe(true);
-    expect(save.db.store.thesis[0].stopLoss).toBe(217);
-    expect(floorValue(save)).toBe(217);
+    expect(floorOp(save)?.ok).toBe(false);
+    expect(floorOp(save)?.reason ?? "").toMatch(/"Sell if below \$236" → "Sell if below \$217" — that weakens the protection on a stock we own/);
+    expect(save.db.store.thesis[0].stopLoss).toBe(236);
+    expect(floorValue(save)).toBe(236);
+    expect(save.db.store.thesis[0].convictionRationale).toBe(fx.nvda.call.conviction_rationale);
+    expect((save.db.store.thesisUpdate ?? []).map((u) => u.type)).toEqual(["UPDATED"]);
   });
 });
 
@@ -246,7 +249,7 @@ describe("a real decline still reads as one", () => {
     expect(row.heldThroughFloor).toMatchObject({ floorPrice: 1835, declined: 1, lapsed: 1 });
     const line = lineOf(row);
     expect(line).toMatch(/^You declined this sale\. Proposed once more and left to lapse: not a decline\. Most recently 2026-10-08, and the price is still past the \$1835\.00 line/);
-    expect(line).toContain("Answer it: re-draw the floor");
+    expect(line).toMatch(/Answer it: propose it again with today's reasons; if you think the line is wrong, name the level in your note: only the principal lowers it\. A review that changes nothing does not answer it\.$/);
     expect(needsActionFlag(row.needsAction!)).toEqual({ name: "Sale declined", detail: "1 declined, 1 lapsed, last 2026-10-08" });
   });
 });
