@@ -13,9 +13,9 @@
  * Every ticker and number is an example.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Area, ComposedChart, XAxis, YAxis } from "recharts";
-import { ArrowRight, ArrowUp, Check, ChevronRight, Clock, MousePointer2 } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, Clock, MousePointer2 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -206,71 +206,33 @@ function SheetMock() {
 // ── The analyst ────────────────────────────────────────────────────────────
 
 /**
- * One analyst talking about its month, the way it answers in chat: its
- * result up top, then what it holds and watches and what its style says it
- * does next. Three analysts take turns; each message arrives a paragraph at a time.
+ * One analyst summing up its month in its own words: its result up top,
+ * then what it holds and watches and what its style says it does next. The
+ * summary writes itself in once, when the card first comes on screen.
  */
-const DESKS: ReadonlyArray<{ initials: string; color: string; name: string; pnl: string; up: boolean; ask: string; message: ReactNode[] }> = [
-  {
-    initials: "PS",
-    color: "bg-blue-500",
-    name: "PEAD Specialist",
-    pnl: "+$2,305",
-    up: true,
-    ask: "How did this month go?",
-    message: [
-      <>
-        Good, mostly thanks to <Tk s="CRWD" c={8.2} />, which has drifted higher every day since its beat. I raised its floor to $384 on Tuesday, so most of that gain is
-        locked in.
-      </>,
-      <>
-        I only buy after a report, never before one. <Tk s="AMD" /> reports Thursday after the close: if it beats estimates by more than 5% and holds the gap into
-        Friday&apos;s open, I&apos;ll propose a buy.
-      </>,
-      <>
-        Sold <Tk s="SHOP" /> at its target on Monday, up 11%. Next week I&apos;m watching <Tk s="SNOW" /> and <Tk s="MDB" /> into their reports.
-      </>,
-    ],
-  },
-  {
-    initials: "SC",
-    color: "bg-violet-500",
-    name: "Secular Compounder",
-    pnl: "+$4,118",
-    up: true,
-    ask: "Anything to do after AVGO's drop?",
-    message: [
-      <>
-        No. <Tk s="AVGO" c={18.4} /> is still the biggest winner this month. It fell 3% the day after its report, but that was the sector selling, not the
-        company: it beat and raised.
-      </>,
-      <>
-        I hold for years and only sell 25% off the high, so a red day asks nothing of me. <Tk s="LLY" /> is 4% from my buy at $812; if it gets there, I add.
-      </>,
-      <>Six holdings, three on watch, no sales this month.</>,
-    ],
-  },
-  {
-    initials: "BR",
-    color: "bg-rose-500",
-    name: "Biotech Run-up",
-    pnl: "−$612",
-    up: false,
-    ask: "Why are we down this month?",
-    message: [
-      <>
-        Mostly one stock. <Tk s="IONS" /> hit its floor after a peer&apos;s trial miss, and I sold it for a 7% loss rather than hope.
-      </>,
-      <>
-        I own a stock into its FDA date and sell the day before, never through it. <Tk s="VKTX" c={9.7} /> has its date in 18 days, so it sells on the 29th,
-        whatever the price.
-      </>,
-      <>
-        <Tk s="SRRK" c={-6.3} /> is 2% above its floor. A close under $27 and it&apos;s out.
-      </>,
-    ],
-  },
-];
+const DESK = {
+  initials: "PS",
+  color: "bg-blue-500",
+  name: "PEAD Specialist",
+  pnl: "+$2,305",
+  up: true,
+  message: [
+    <>
+      A good month, mostly thanks to <Tk s="CRWD" c={8.2} />, which has drifted higher every day since its beat. I raised its floor to $384 on Tuesday, so most of that gain is
+      locked in.
+    </>,
+    <>
+      I only buy after a report, never before one. <Tk s="AMD" /> reports Thursday after the close: if it beats estimates by more than 5% and holds the gap into
+      Friday&apos;s open, I&apos;ll propose a buy.
+    </>,
+    <>
+      Sold <Tk s="SHOP" /> at its target on Monday, up 11%. Next week I&apos;m watching <Tk s="SNOW" /> and <Tk s="MDB" /> into their reports.
+    </>,
+    <>
+      Four holdings and nine watches. The one in the red is <Tk s="DDOG" c={-1.4} />, still well above its floor.
+    </>,
+  ],
+};
 
 const FADE_OUT = { maskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)", WebkitMaskImage: "linear-gradient(to bottom, black calc(100% - 3rem), transparent)" };
 
@@ -285,20 +247,31 @@ function useCycle(length: number, ms: number) {
 }
 
 function AnalystDesk() {
-  const d = DESKS[useCycle(DESKS.length, 10000)];
-  return <AnalystMessage key={d.name} desk={d} />;
-}
-
-/** The message, revealed a paragraph at a time. Every paragraph is laid out from the start, so nothing below it jumps. */
-function AnalystMessage({ desk: d }: { desk: (typeof DESKS)[number] }) {
-  const [shown, setShown] = useState(1);
+  const d = DESK;
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(0);
+  // The answer writes itself in once, the first time the card is on screen, then stays.
   useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return setShown(d.message.length);
-    const id = window.setInterval(() => setShown((n) => Math.min(n + 1, d.message.length)), 1100);
-    return () => window.clearInterval(id);
+    let timer = 0;
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (!e.isIntersecting) return;
+        io.disconnect();
+        timer = window.setInterval(() => setShown((n) => (n >= d.message.length ? (window.clearInterval(timer), n) : n + 1)), 700);
+      },
+      { threshold: 0.4 },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      window.clearInterval(timer);
+    };
   }, [d]);
   return (
-    <div className="flex h-full w-[calc(100%+2.5rem)] flex-col gap-4 rounded-2xl border bg-background p-5 pb-10 pr-[3.75rem] shadow-sm animate-in fade-in-0 duration-500">
+    <div ref={ref} className="flex h-full w-[calc(100%+2.5rem)] flex-col gap-4 rounded-2xl border bg-background p-5 pb-8 pr-[3.75rem] shadow-sm">
       <div className="flex items-center gap-3">
         <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg text-xs font-medium text-white", d.color)}>{d.initials}</span>
         <span className="text-sm font-medium text-foreground">{d.name}</span>
@@ -307,27 +280,14 @@ function AnalystMessage({ desk: d }: { desk: (typeof DESKS)[number] }) {
           <span className="text-muted-foreground"> this month</span>
         </span>
       </div>
-      {/* A longer answer runs under the composer, the way a chat scrolls. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden text-sm leading-6 text-foreground" style={FADE_OUT}>
-        <span className="self-end rounded-2xl bg-muted px-3.5 py-2">{d.ask}</span>
+      {/* A longer summary fades out at the card's bottom edge. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden text-sm leading-relaxed text-foreground" style={FADE_OUT}>
         {d.message.map((p, k) => (
           <p key={k} className={cn("transition-opacity duration-700", k < shown ? "opacity-100" : "opacity-0")}>
             {p}
           </p>
         ))}
       </div>
-      <span className="flex flex-col gap-2 rounded-xl border p-2.5">
-        <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-          <span className={cn("size-1.5 rounded-full", d.color)} />
-          {d.name}
-        </span>
-        <span className="flex items-center justify-between pl-1">
-          <span className="text-sm font-light text-muted-foreground/60">Ask about {d.name}…</span>
-          <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
-            <ArrowUp className="size-4" />
-          </span>
-        </span>
-      </span>
     </div>
   );
 }
