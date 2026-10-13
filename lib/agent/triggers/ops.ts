@@ -67,7 +67,6 @@ import {
   describeRatchetViolation,
   protectiveRatchetViolations,
 } from "./ratchet";
-import { declineReplanAllows } from "@/lib/agent/declined-sale";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import type { When } from "@/lib/agent/triggers/condition";
 
@@ -133,24 +132,6 @@ export interface ApplyTriggerOpsInput {
    * trigger keeps its DEFAULT stamp.
    */
   actor: "AGENT" | "PRINCIPAL" | "SYSTEM";
-  /**
-   * The principal declined a protective sale on this stock in the last
-   * week, and the price is still past the line (DAV-315). A sale left to
-   * lapse is not a decline and never sets this (2026-10-13).
-   *
-   * This is the ONE case where an agent may move a protective floor DOWN.
-   * The 2026-08-16 ruling — only humans lower a safety line — stands
-   * everywhere else, and it stands here too in substance: the decline IS
-   * the human act. The principal saw the sale, said no, and on IOT even
-   * named the level he wanted ("raise the stop to around $40.50"). Without
-   * this, the only legal answer to that instruction was to do nothing,
-   * which is what happened for nine days.
-   *
-   * Scope is deliberately narrow: LOWERED only. Deleting the floor outright
-   * (REMOVED) or turning off its automatic fire (FIREMODE_DEMOTED) is not
-   * re-planning, and stays refused.
-   */
-  saleDeclined?: { floorPrice: number | null } | null;
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
   /** Stamped on buy triggers this call writes (./written-price). Defaults to `currentPrice`. */
@@ -258,23 +239,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   /** The one gate an agent's edit runs on a stock we own. */
   const ratchetReason = (next: Trigger[]): string | null => {
     if (actor !== "AGENT" || !held) return null;
-    let v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });
-    // DAV-315: a declined sale unlocks re-drawing THAT floor, bounded.
-    // `declineReplanAllows` is the whole policy — floor only, absolute level
-    // only, no more than 15% below the line he declined. Everything it does
-    // not explicitly allow stays refused.
-    if (input.saleDeclined) {
-      const declinedFloor = input.saleDeclined.floorPrice;
-      v = v.filter(
-        (x) =>
-          !declineReplanAllows({
-            reason: x.reason,
-            afterPredicate: x.after?.predicate,
-            declinedFloor,
-            direction,
-          }),
-      );
-    }
+    const v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });
     return v.length ? v.map(describeRatchetViolation).join(" ") : null;
   };
 

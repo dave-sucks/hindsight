@@ -139,8 +139,8 @@ describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)
   // The P1-28 cross-day cooldown was REMOVED 2026-08-10: it went silent on
   // positions the agent wanted out of (MU + CYTK, both LIVE), which the principal
   // ruled unacceptable — an unwanted repeat is fine, silence never is. Every
-  // exit the agent decides on now surfaces; repeat-fatigue is cured later by the
-  // morning run re-drawing the floor, not by suppression. The #379 same-tick
+  // exit the agent decides on now surfaces; repeat-fatigue is never cured by
+  // suppression. The #379 same-tick
   // dedup (separate describe above) is untouched.
 
   it("re-stages a discretionary CLOSE even after a recent REJECTION (never goes silent)", async () => {

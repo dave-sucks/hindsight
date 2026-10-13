@@ -54,13 +54,6 @@ import {
   type TriggerOp,
   type TriggerOpResult,
 } from "@/lib/agent/triggers/ops";
-import {
-  declinedSaleWhere,
-  declinedSaleWork,
-  foldDeclines,
-  REPLAN_FLOOR_MAX_DROP_PCT,
-} from "@/lib/agent/declined-sale";
-import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
 import { canonicalLevels, isPlanLevelOnList, levelSlotOf, type LevelSlot } from "@/lib/agent/triggers/price-levels";
 import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 import {
@@ -477,8 +470,8 @@ export const updateThesis = defineTool({
     "Change a thesis you already have. Pass thesis_id, the fields that change and a rationale; every call writes one line to the stock's Activity. " +
     "entry_price, target_price and stop_loss are the levels of the buy, target and floor triggers, and null removes one. " +
     "Each trigger edit comes back in `trigger_ops`, accepted or refused with the reason; a refused one leaves the rest of the call in place. " +
-    `On a stock we hold, only the principal moves a safety line down, except that after the principal declines its sale, while the price is still past it, it may come down at most ${REPLAN_FLOOR_MAX_DROP_PCT}%. ` +
-    "If you think one is wrong otherwise, keep it and give the number you'd suggest in the rationale.",
+    "On a stock we hold, only the principal moves a safety line down. " +
+    "If you think one is wrong, keep it and give the number you'd suggest in the rationale.",
   schema: updateSchema,
   schemaFor: (ctx) =>
     ctx.runMode === "THESIS_WRITER"
@@ -1230,60 +1223,6 @@ export const updateThesis = defineTool({
         const levelDirection = ("direction" in patch ? patch.direction : existing.direction) as string | null;
         const levelStatus = (patch.status ?? existing.status) as string | null;
         const existingTriggers = parseTriggersResilient(existing.triggers).triggers as Trigger[];
-        // DAV-315: did the principal decline a protective sale on this stock
-        // in the last week? If so the ratchet lets this edit move the floor
-        // DOWN — the decline is the human act the one-way rule reserves that
-        // to. A sale left to lapse is not one (2026-10-13: NVDA's floor came
-        // down $236 → $217 on lapses alone). Nothing else about the ratchet
-        // changes; see `saleDeclined` on ApplyTriggerOpsInput. A lookup
-        // failure falls back to false, which is the strict behaviour.
-        let saleDeclined: { floorPrice: number | null } | null = null;
-        // No live price, no exemption. The work list errs loud when the
-        // price is unknown (a missing quote is not evidence the decline was
-        // answered); lowering a safety line errs strict — without a quote
-        // nobody can say the price is still past the line (QB review).
-        if (levelStatus === "HOLDING" && ctx.analystId && resolvedPriceAtTime != null) {
-          try {
-            const pos = await prisma.position.findFirst({
-              where: {
-                analystId: ctx.analystId,
-                symbol: existing.ticker,
-                status: "OPEN",
-              },
-              select: { id: true, avgCost: true },
-              orderBy: { openedAt: "desc" },
-            });
-            if (pos) {
-              const rows = await prisma.order.findMany({
-                where: { positionId: pos.id, ...declinedSaleWhere(new Date()) },
-                select: { createdAt: true, rejectionMessage: true, status: true, expiresAt: true, updatedAt: true },
-              });
-              // The SAME question the work list asks, including "is the
-              // price still past the line". Without the breach test the
-              // exemption outlived the decline by a week and a floor could
-              // be lowered after the price had already recovered.
-              const work = declinedSaleWork({
-                status: "HOLDING",
-                direction: levelDirection,
-                decline: foldDeclines(rows),
-                floorPrice: thesisFloorStop({
-                  triggers: existingTriggers,
-                  direction: levelDirection,
-                  avgCost: Number(pos.avgCost) || null,
-                }),
-                currentPrice: resolvedPriceAtTime ?? null,
-                recentLow: null,
-                now: new Date(),
-              });
-              if (work && work.declineCount > 0) saleDeclined = { floorPrice: work.floorPrice };
-            }
-          } catch (err) {
-            console.warn(
-              `[update_thesis] declined-sale lookup failed for ${existing.ticker}; ratchet stays strict:`,
-              err instanceof Error ? err.message : err,
-            );
-          }
-        }
         // The stamp takes only a fresh server quote — never price_at_time.
         // A check-only call throws the stamp away, so it doesn't spend a
         // quote on it: the shared key is the trigger check's first.
@@ -1299,7 +1238,6 @@ export const updateThesis = defineTool({
           direction: levelDirection,
           status: levelStatus,
           actor: "AGENT",
-          saleDeclined,
           // The tape decides which side a re-levelled buy trigger compares on.
           // Without it every re-level was a breakout: the CRM shape, where the
           // analyst wrote "buy the pullback to $203" and the row stored
