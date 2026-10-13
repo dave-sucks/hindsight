@@ -79,6 +79,8 @@ The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 ## Where to put what (doc navigation)
 | You want to... | File |
 |---|---|
+| **Learn what Hindsight is and how its parts fit (start here)** | **`docs/guide/README.md`**, one doc per agent and concept |
+| Change what the /docs page says | `docs/guide/<slug>.md`; the page draws those files (pictures are `<!-- asset: name -->` lines) |
 | **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
 | **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
 | Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |

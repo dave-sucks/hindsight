@@ -30,14 +30,21 @@ import { Mono } from "./primitives";
 interface DocsDataValue {
   tools: readonly CatalogTool[];
   setups: readonly DocsSetup[];
+  /** The guide's markdown by slug, read from docs/guide/ on the server. */
+  guide: Readonly<Record<string, string>>;
 }
 
-const DocsData = createContext<DocsDataValue>({ tools: [], setups: [] });
+const DocsData = createContext<DocsDataValue>({ tools: [], setups: [], guide: {} });
 
-/** What the docs read from the code, built on the server and handed down once. */
-export function DocsDataProvider({ tools, setups, children }: DocsDataValue & { children: ReactNode }) {
-  const value = useMemo(() => ({ tools, setups }), [tools, setups]);
+/** What the docs read from the code and the guide, built on the server and handed down once. */
+export function DocsDataProvider({ tools, setups, guide, children }: DocsDataValue & { children: ReactNode }) {
+  const value = useMemo(() => ({ tools, setups, guide }), [tools, setups, guide]);
   return <DocsData.Provider value={value}>{children}</DocsData.Provider>;
+}
+
+/** One guide doc's markdown, or an empty string when there is none. */
+export function useGuideDoc(slug: string): string {
+  return useContext(DocsData).guide[slug] ?? "";
 }
 
 export function useDocsSetups(): readonly DocsSetup[] {

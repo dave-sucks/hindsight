@@ -20,9 +20,10 @@ import { DocCrumbs } from "./doc-crumbs";
 import { DocsNav } from "./docs-nav";
 import { docBySlug, type DocSlug } from "./registry";
 import { StockStory } from "./stock-story";
+import { GuideDoc } from "./markdown-doc";
 import { DocsDataProvider, ToolCatalog } from "./tool-catalog";
 
-export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; setups: readonly DocsSetup[] }) {
+export function DocsHome({ tools, setups, guide }: { tools: readonly CatalogTool[]; setups: readonly DocsSetup[]; guide: Readonly<Record<string, string>> }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -35,7 +36,7 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
 
 
   return (
-    <DocsDataProvider tools={tools} setups={setups}>
+    <DocsDataProvider tools={tools} setups={setups} guide={guide}>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-24 px-4 pb-32 pt-6 sm:px-6 lg:pt-10">
         <section className="flex flex-col gap-10">
           <div className="flex flex-col gap-5">
@@ -105,7 +106,7 @@ export function DocsHome({ tools, setups }: { tools: readonly CatalogTool[]; set
                 </span>
               </div>
               <div className="flex flex-col px-6 pb-16 pt-6">
-                <open.Content />
+                <GuideDoc slug={open.slug} />
               </div>
             </div>
           ) : null}

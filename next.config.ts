@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // The guide's markdown is read from disk by the /docs pages (lib/docs/guide.ts).
+  outputFileTracingIncludes: {
+    "/docs": ["./docs/guide/**/*.md"],
+    "/docs/[slug]": ["./docs/guide/**/*.md"],
+  },
   images: {
     remotePatterns: [
       { hostname: "www.google.com" },          // Google Favicons S2

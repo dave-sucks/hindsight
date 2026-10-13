@@ -3,8 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { TickerBadge } from "@/components/ui/ticker-badge";
 import { cn } from "@/lib/utils";
-import { DocRef, DocSection, P, ToolRef, Ul } from "../doc-text";
-import { Code, DocBody, DocHeader, Stage, TechDetails } from "../primitives";
+import { Stage } from "../primitives";
 import { PillRow, type PillSpec } from "../trigger-bits";
 
 type Part = "belief" | "wrong" | "plan";
@@ -34,7 +33,8 @@ function Mark({ part, on, children }: { part: Part; on: Part | null; children: R
   return <mark className={cn("rounded px-0.5 text-inherit transition-colors", !on || on === part ? MARK[part] : "bg-transparent")}>{children}</mark>;
 }
 
-function Anatomized() {
+/** A thesis with its three parts marked: hover a part to light it up. */
+export function ThesisAnatomy() {
   const [on, setOn] = useState<Part | null>(null);
   return (
     <Stage label="Example">
@@ -106,7 +106,8 @@ function Anatomized() {
   );
 }
 
-function Lifecycle() {
+/** Where a thesis can be: watching, holding, sold, passed, retired. */
+export function ThesisLifecycle() {
   const box = "fill-background stroke-border";
   return (
     <Stage>
@@ -147,114 +148,5 @@ function Lifecycle() {
       </div>
       <p className="mt-4 text-sm text-muted-foreground">A passed stock is remembered, so the same idea isn&apos;t pitched twice. A sold stock gets one look back before it rests.</p>
     </Stage>
-  );
-}
-
-export function ThesesDoc() {
-  return (
-    <DocBody>
-      <DocHeader lead="Every position starts with a thesis." rest="What we believe, why, what would prove us wrong, and the triggers that act on it.">
-        A thesis is written once by the Writer and kept current by every run after it.
-      </DocHeader>
-      <Anatomized />
-
-      <DocSection title="What a thesis is">
-        <P>
-          A thesis is one analyst&apos;s view of one stock. Every stock on the book has one, whether the analyst holds it or only watches it, and every agent
-          reads the same one. It&apos;s short on purpose: everything a decision needs, nothing it doesn&apos;t.
-        </P>
-      </DocSection>
-
-      <DocSection title="What's in it">
-        <Ul>
-          <li>
-            <strong>The belief:</strong> one sentence we can be wrong about, with an outcome, a timeframe and the reason. Every other agent reads it as the claim
-            of record.
-          </li>
-          <li>
-            <strong>What it rests on:</strong> the two or three assumptions that have to hold.
-          </li>
-          <li>
-            <strong>What would prove it wrong:</strong> written before the buy, so a bad day isn&apos;t mistaken for a broken story. A trigger run checks these
-            before it acts on a fire.
-          </li>
-          <li>
-            <strong>The case for and against:</strong> the strongest points on both sides, each with its source, and the research note behind them.
-          </li>
-          <li>
-            <strong>The setup:</strong> the kind of trade, with how it fails, how it&apos;s managed and how long it&apos;s held.
-          </li>
-          <li>
-            <strong>Score and conviction:</strong> a score out of 10, and a conviction that scales the size of the buy.
-          </li>
-          <li>
-            <strong>The plan:</strong> its <DocRef slug="triggers">triggers</DocRef>, saying when to buy, add, trim, sell and look again.
-          </li>
-          <li>
-            <strong>What&apos;s been said:</strong> your notes and the analyst&apos;s last answer, carried into every review.
-          </li>
-        </Ul>
-      </DocSection>
-
-      <DocSection title="The plan is triggers">
-        <P>
-          The buy, the floor and the target aren&apos;t separate fields. They&apos;re triggers like any other: the buy is &ldquo;buy if near $401&rdquo;, the
-          floor is &ldquo;sell if below $384&rdquo;. So a thesis has one plan, it can&apos;t disagree with itself, and the system checks every line of it all
-          day. Changing the floor is an edit on the floor trigger, and it lands in Activity as one line.
-        </P>
-      </DocSection>
-
-      <DocSection title="How a thesis changes">
-        <P>
-          Agents change a thesis with <ToolRef name="update_thesis" />, one trigger at a time: add one, edit one by its id, or remove one. A save is a patch, so
-          a value that didn&apos;t change does nothing, and a field that can&apos;t be saved comes back by name while the rest lands. You can edit a trigger
-          by hand on the thesis sheet, or leave a note through <DocRef slug="chat" />.
-        </P>
-      </DocSection>
-
-      <DocSection title="A thesis has a life">
-        <P>From the watchlist to a position and back, nothing is lost.</P>
-        <Lifecycle />
-        <Ul>
-          <li>
-            <strong>Watching:</strong> on the watchlist, waiting for its buy.
-          </li>
-          <li>
-            <strong>Holding:</strong> bought. The buy filling turns a watch into a holding.
-          </li>
-          <li>
-            <strong>Passed:</strong> researched and declined, kept so the stock isn&apos;t pitched again without a reason.
-          </li>
-          <li>
-            <strong>Retired:</strong> sold, dropped from the watchlist, proven wrong, or replaced by a newer thesis. The history stays.
-          </li>
-        </Ul>
-      </DocSection>
-
-      <DocSection title="Kept honest">
-        <Ul>
-          <li>
-            <strong>Research has a date.</strong> Older than the analyst&apos;s limit, and the next run sends the stock back to the Writer.
-          </li>
-          <li>
-            <strong>The plan is checked against the price.</strong> A buy the price has left behind, a target already passed, a floor inside the stock&apos;s
-            daily swing: each puts the stock in a <DocRef slug="situations">situation</DocRef> until it&apos;s fixed.
-          </li>
-          <li>
-            <strong>Your word comes first.</strong> A note or a decision you leave is answered on the next run before anything else.
-          </li>
-        </Ul>
-      </DocSection>
-
-      <TechDetails
-        rows={[
-          { label: "Stored as", value: <><Code>Thesis</Code>: <Code>status</Code> WATCHING · HOLDING · PASSED · RETIRED (with <Code>retiredReason</Code> DROPPED · SOLD · INVALIDATED · REPLACED) · PROMOTED; <Code>direction</Code> LONG · SHORT. Sold is RETIRED with SOLD.</> },
-          { label: "The parts", value: <><Code>coreBelief</Code>, <Code>keyAssumptions</Code>, <Code>invalidationConds</Code>, <Code>bullCase</Code>, <Code>bearCase</Code>, <Code>snapshot</Code>, <Code>scoring</Code>, <Code>conviction</Code>, <Code>setupId</Code>, <Code>triggers</Code></> },
-          { label: "Written by", value: <>The Writer (<Code>submit_thesis</Code>, saved through <Code>record_thesis</Code> / <Code>update_thesis</Code>). Edited with <Code>update_thesis</Code>: <Code>add_triggers</Code>, <Code>edit_triggers</Code> by id, <Code>remove_trigger_ids</Code>. A save is a patch: unchanged values do nothing.</> },
-          { label: "Plan prices", value: <><Code>entry_price</Code>, <Code>target_price</Code> and <Code>stop_loss</Code> are edits on the buy, target and floor triggers; the columns are a cache of them.</> },
-          { label: "Reference", value: <><Code>docs/THESIS_ARCHITECTURE.md</Code> · <Code>lib/agent/triggers/ops.ts</Code></> },
-        ]}
-      />
-    </DocBody>
   );
 }
