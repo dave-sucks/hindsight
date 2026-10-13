@@ -10,7 +10,7 @@
  */
 
 import type { ReactNode } from "react";
-import { ChevronDown, Code2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
@@ -168,29 +168,48 @@ export function Code({ children }: { children: ReactNode }) {
   );
 }
 
-/** The part written for agents and builders: collapsed by default. */
-export function TechDetails({ rows }: { rows: ReadonlyArray<{ label: string; value: ReactNode }> }) {
+/** A run of accordions, a line between each and above and below them all. */
+export function DocAccordions({ children }: { children: ReactNode }) {
+  return <div className="flex flex-col divide-y border-y">{children}</div>;
+}
+
+/** One plain accordion: a chevron that turns, the title, and ordinary doc content when open. Sits inside DocAccordions. */
+export function DocAccordion({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <Collapsible>
-      <div className="rounded-xl border bg-card">
-        <CollapsibleTrigger className="group/tech flex w-full items-center gap-2.5 px-4 py-3.5 text-left text-sm font-medium focus-visible:outline-none">
-          <Code2 className="size-4 text-muted-foreground" />
-          Technical details
-          <span className="ml-auto text-xs font-normal text-muted-foreground">for agents and builders</span>
-          <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[panel-open]/tech:rotate-180" />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <dl className="px-4 pb-3">
-            {rows.map((r) => (
-              <div key={r.label} className="grid gap-1 border-t py-3 text-sm sm:grid-cols-[9.5rem_minmax(0,1fr)] sm:gap-4">
-                <dt className="text-muted-foreground">{r.label}</dt>
-                <dd className="min-w-0 text-foreground [overflow-wrap:anywhere]">{r.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </CollapsibleContent>
-      </div>
+      <CollapsibleTrigger className="group/acc flex w-full items-center gap-2.5 py-3.5 text-left text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/acc:rotate-90" />
+        {title}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="flex flex-col gap-4 pb-5 pl-[1.625rem]">{children}</div>
+      </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+/** A small labelled fact: the label in medium foreground, the text muted below it. */
+export function DocFact({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5 text-sm">
+      <span className="font-medium text-foreground">{label}</span>
+      <div className="leading-6 text-muted-foreground [overflow-wrap:anywhere]">{children}</div>
+    </div>
+  );
+}
+
+/** Where a doc's code lives, for whoever works on it: one plain accordion at the foot of the page. */
+export function TechDetails({ rows }: { rows: ReadonlyArray<{ label: string; value: ReactNode }> }) {
+  return (
+    <DocAccordions>
+      <DocAccordion title="Technical details">
+        {rows.map((r) => (
+          <DocFact key={r.label} label={r.label}>
+            {r.value}
+          </DocFact>
+        ))}
+      </DocAccordion>
+    </DocAccordions>
   );
 }
 

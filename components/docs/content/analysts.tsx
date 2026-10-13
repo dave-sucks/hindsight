@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { CalendarClock, Rocket, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatExample, DocRef, DocSection, P, Ul } from "../doc-text";
-import { Code, DocBody, DocHeader, Stage, TechDetails } from "../primitives";
+import { Code, DocAccordion, DocAccordions, DocBody, DocFact, DocHeader, Stage, TechDetails } from "../primitives";
 import { useDocsSetups } from "../tool-catalog";
 import { PillRow } from "../trigger-bits";
 
@@ -35,66 +34,36 @@ const ANALYSTS = [
   },
 ] as const;
 
+/** The playbook's entry setups, one accordion each: what it is, what it needs, how it fails, and its four levels. */
 function Playbook() {
   const setups = useDocsSetups().filter((s) => s.role === "ENTRY");
-  const [id, setId] = useState(setups[0]?.id ?? "");
-  const s = setups.find((x) => x.id === id) ?? setups[0];
-  if (!s) return null;
+  if (setups.length === 0) return null;
   return (
-    <div className="grid overflow-hidden rounded-2xl border bg-background md:grid-cols-[14rem_minmax(0,1fr)]">
-      <div className="flex gap-1 overflow-x-auto border-b p-2 md:flex-col md:overflow-visible md:border-b-0 md:border-r">
-        {setups.map((x) => (
-          <button
-            key={x.id}
-            type="button"
-            onClick={() => setId(x.id)}
-            className={cn(
-              "shrink-0 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors",
-              x.id === s.id ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {x.name}
-          </button>
-        ))}
-      </div>
-      <div className="flex min-w-0 flex-col gap-4 p-5">
-        <div className="flex flex-col gap-1">
-          <p className="text-base font-medium text-foreground">{s.name}</p>
-          <p className="text-sm text-muted-foreground">{s.summary}</p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What it needs</p>
-            <ul className="flex list-disc flex-col gap-1 pl-4 text-sm text-foreground">
+    <DocAccordions>
+      {setups.map((s) => (
+        <DocAccordion key={s.id} title={s.name}>
+          <P>{s.summary}</P>
+          <DocFact label="What it needs">
+            <Ul>
               {s.preconditions.map((p) => (
                 <li key={p}>{p}</li>
               ))}
-            </ul>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">How it fails</p>
-            <ul className="flex list-disc flex-col gap-1 pl-4 text-sm text-foreground">
+            </Ul>
+          </DocFact>
+          <DocFact label="How it fails">
+            <Ul>
               {s.failureSigns.map((p) => (
                 <li key={p}>{p}</li>
               ))}
-            </ul>
-          </div>
-        </div>
-        <dl className="grid gap-x-4 gap-y-2 border-t pt-4 text-sm sm:grid-cols-[6rem_minmax(0,1fr)]">
-          {[
-            ["Entry", s.entry],
-            ["Stop", s.stop],
-            ["Target", s.target],
-            ["Time", s.time],
-          ].map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-muted-foreground">{k}</dt>
-              <dd className="text-foreground">{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </div>
+            </Ul>
+          </DocFact>
+          <DocFact label="Entry">{s.entry}</DocFact>
+          <DocFact label="Stop">{s.stop}</DocFact>
+          <DocFact label="Target">{s.target}</DocFact>
+          <DocFact label="Time">{s.time}</DocFact>
+        </DocAccordion>
+      ))}
+    </DocAccordions>
   );
 }
 
@@ -188,7 +157,7 @@ export function AnalystsDoc() {
       <DocSection title="The playbook">
         <P>
           Every analyst trades from the same playbook of setups, each with its checklist for the buy, the floor, the target and the time limit. An analyst picks
-          the ones that fit its style. Pick one to read it.
+          the ones that fit its style.
         </P>
         <Playbook />
       </DocSection>
