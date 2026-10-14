@@ -24,6 +24,7 @@ import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
@@ -266,8 +267,8 @@ export async function POST(
 
     } else if (agentMode === "principal") {
       // Principal chat — the operator co-pilot. Two scopes:
-      //   • UNSCOPED (no analystId on body): portfolio-wide reads. No
-      //     ResearchRun row; writes that FK into runId will fail.
+      //   • UNSCOPED (no analystId on body): the Master Chat. Its own run row;
+      //     each write acts for the stock's own analyst (analyst-scope.ts).
       //   • SCOPED (body.analystId present): chat is pinned to one
       //     analyst. Route creates a ResearchRun(mode=PRINCIPAL_CHAT,
       //     agentConfigId=<id>) so every write tool's runId FK works the
@@ -306,15 +307,13 @@ export async function POST(
         // fallback (e.g. #380's) can't fire — the only correct place to fix
         // this is here, where the scoped analyst is known. Seed from the
         // analyst and re-resolve creds before the tools are built.
-        runEnvironment = (ac.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
-        alpacaCreds =
-          (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
-        const principalWatchlistSymbols = await getWatchlistSymbols(ac.id);
-        // The tools' fence and limits (place_trade etc.), the same mapping as the Run button's.
-        agentConfig = analystToolSettings(ac, principalWatchlistSymbols);
+        // The tools' fence, limits, book and keys: the same helper the Master Chat's writes use.
+        const scope = await analystScope(ac, user.id);
+        ({ runEnvironment, alpacaCreds } = scope);
+        agentConfig = scope;
         scopedAnalyst = {
           ...ac,
-          watchlist: principalWatchlistSymbols,
+          watchlist: scope.watchlist ?? [],
           setupOverrides: await loadSetupOverrides(ac.accountId),
         };
 
@@ -730,29 +729,13 @@ export async function POST(
         )
       : allTools;
 
-    // Unscoped principal chat can't write. The prompt states this ("Writes
-    // that require an analyst FK ... will FAIL in this scope") but nothing
-    // enforced it — it held only by accident, because ctx.runId was the
-    // sentinel string "principal" (see `runId || agentMode` above) and
-    // TradeDecision.runId FK-violated, rolling the transaction back before
-    // the Alpaca call.
-    //
-    // Persisting unscoped chats gives them a REAL runId, which silently
-    // removed that accident. place_trade is the live exposure: unlike the
-    // other write tools it falls back to `args.analyst_id` when ctx.analystId
-    // is unset (place-trade.ts:104), so the model could have opened a
-    // position from a portfolio-level chat. Make the boundary explicit
-    // instead of inferring it from an FK.
-    //
-    // dispatch_thesis_research is deliberately NOT in this list — it takes an
-    // explicit analyst_id and the prompt documents an unscoped flow for it
-    // ("If unscoped, ASK the user which analyst to scope to").
+    // The Master Chat's writes act for the stock's own analyst (analyst-scope.ts).
+    // What still needs the chat pinned is off its list.
     const UNSCOPED_BLOCKED_WRITES = [
       "place_trade",
       "close_position",
       "manage_position",
       "record_thesis",
-      "update_thesis",
     ] as const;
     if (agentMode === "principal" && !resolvedAnalystId) {
       filteredTools = Object.fromEntries(

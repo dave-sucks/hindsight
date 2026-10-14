@@ -343,9 +343,9 @@ export const dispatchThesisResearch = defineTool({
         // Runs page in Live mode (2026-06-03 PEAD SNOW/PACS/CRDO). The
         // analyst's tradingEnvironment is the authoritative book for any
         // work FK'd to that analyst — a LIVE analyst's dispatch is never
-        // legitimately PAPER.
+        // legitimately PAPER. The chat's own book is the screen's, so it never decides.
         environment:
-          ctx.runEnvironment ??
+          (ctx.runMode === "PRINCIPAL_CHAT" ? null : ctx.runEnvironment) ??
           (analyst.tradingEnvironment as "PAPER" | "LIVE"),
         ...(resolvedParentRunId ? { parentRunId: resolvedParentRunId } : {}),
         parameters: {

@@ -29,6 +29,7 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 import { prisma } from "@/lib/prisma";
+import { analystOf, forTheStock } from "@/lib/agent/analyst-scope";
 import {
   parseTriggersResilient,
   triggersInputArraySchema,
@@ -567,6 +568,8 @@ export const updateThesis = defineTool({
         sources: [],
       };
     }
+    // The Master Chat edits for the thesis's own analyst, under its rules (analyst-scope.ts).
+    ctx = await forTheStock(ctx, analystOf(existing, ctx.analystId));
     // A save is a patch: what equals the stored row is dropped before any
     // rule reads it (dropUnchanged). A field that can't be applied is
     // refused by itself, named in `refused_fields` with the one thing to
