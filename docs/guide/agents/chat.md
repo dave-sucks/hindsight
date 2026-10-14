@@ -4,6 +4,14 @@
 
 Chat reads the same theses, runs the same research, and can change a plan or propose a trade while you watch.
 
+```facts
+Model: claude-sonnet-4-6
+Starts: When you type
+Steps: Up to 45
+Tools: 30
+Saves: 21 fields: also belief, direction
+```
+
 ```chat
 caption: Chat with the Secular Compounder selected.
 user: Why are we still holding AVGO after the report?

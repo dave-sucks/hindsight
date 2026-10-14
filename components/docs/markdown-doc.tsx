@@ -10,6 +10,7 @@
  *   <!-- asset: name arg -->                a picture from ASSETS, on its own line
  *   ```chat … ```                           an example conversation (see parseChat)
  *   <details><summary>…</summary> … </details>   a plain accordion; `#### Label` inside makes a label and its text
+ *   ```facts … ```                          an agent's facts, one `label: value` a line, drawn as a metadata strip
  *
  * In text, `[words](slug.md)` links another doc and `code` that names a tool
  * opens that tool. `$CRWD (+6.8%)` inside a chat block is a ticker with its move.
@@ -54,6 +55,13 @@ function useComponents(chips: boolean): Components {
     ul: ({ children }) => <Ul>{children}</Ul>,
     ol: ({ children }) => <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm leading-6 text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">{children}</ol>,
     h3: ({ children }) => <h4 className="pt-1 text-sm font-medium text-foreground">{children}</h4>,
+    table: ({ children }) => (
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full min-w-[40rem] border-collapse text-sm">{children}</table>
+      </div>
+    ),
+    th: ({ children }) => <th className="border-b bg-muted/40 px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</th>,
+    td: ({ children }) => <td className="border-b px-3 py-2.5 align-top text-muted-foreground [tr:last-child_&]:border-b-0">{children}</td>,
     blockquote: ({ children }) => <div className="flex flex-col gap-2 border-l-2 pl-4 [&_p]:text-foreground">{children}</div>,
     pre: ({ children }) => (
       <Mono as="pre" className="overflow-x-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-xs leading-relaxed text-foreground [overflow-wrap:anywhere]">
@@ -96,9 +104,34 @@ function Markdown({ text, chips = true }: { text: string; chips?: boolean }) {
 
 function BlockView({ block }: { block: Block }) {
   if (block.kind === "md") return <Markdown text={block.text} />;
+  if (block.kind === "facts") return <FactsStrip facts={block.facts} />;
   if (block.kind === "chat") return <ChatExample caption={block.caption} steps={block.steps.map((s) => (s.kind === "text" ? { ...s, text: withTickers(s.text) } : s))} />;
   const Asset = ASSETS[block.name as keyof typeof ASSETS];
   return Asset ? <Asset arg={block.arg} /> : null;
+}
+
+/** An agent's facts as a metadata strip: small mono labels over their values. "Tools" jumps to the tool list. */
+function FactsStrip({ facts }: { facts: ReadonlyArray<[string, string]> }) {
+  return (
+    <dl className="grid grid-cols-2 gap-x-8 gap-y-4 border-y py-4 sm:grid-cols-3 lg:grid-cols-5">
+      {facts.map(([label, value]) => (
+        <div key={label} className="flex min-w-0 flex-col gap-1">
+          <dt>
+            <Mono className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Mono>
+          </dt>
+          <dd className="text-sm text-foreground">
+            {label.toLowerCase() === "tools" ? (
+              <a href="#tools" className="underline-offset-4 hover:underline">
+                {value}
+              </a>
+            ) : (
+              value
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 /** `#### Label` and the text under it, as a label over muted text. */

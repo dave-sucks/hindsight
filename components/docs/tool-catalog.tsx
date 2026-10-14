@@ -22,6 +22,7 @@ import {
   type ToolKind,
   type ToolSource,
 } from "@/lib/docs/tools";
+import type { FrameworkData } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
 import { Mono } from "./primitives";
 
@@ -32,14 +33,21 @@ interface DocsDataValue {
   setups: readonly DocsSetup[];
   /** The guide's markdown by slug, read from docs/guide/ on the server. */
   guide: Readonly<Record<string, string>>;
+  /** Each agent's measured prompt, tools and model, for the request picture. */
+  framework?: FrameworkData;
 }
 
 const DocsData = createContext<DocsDataValue>({ tools: [], setups: [], guide: {} });
 
 /** What the docs read from the code and the guide, built on the server and handed down once. */
-export function DocsDataProvider({ tools, setups, guide, children }: DocsDataValue & { children: ReactNode }) {
-  const value = useMemo(() => ({ tools, setups, guide }), [tools, setups, guide]);
+export function DocsDataProvider({ tools, setups, guide, framework, children }: DocsDataValue & { children: ReactNode }) {
+  const value = useMemo(() => ({ tools, setups, guide, framework }), [tools, setups, guide, framework]);
   return <DocsData.Provider value={value}>{children}</DocsData.Provider>;
+}
+
+/** The measured framework numbers, when the page was given them. */
+export function useFrameworkData(): FrameworkData | undefined {
+  return useContext(DocsData).framework;
 }
 
 /** One guide doc's markdown, or an empty string when there is none. */

@@ -16,7 +16,8 @@ import { TriggerKinds } from "./assets/triggers";
 import { SystemLayers } from "./assets/architecture";
 import { ConceptHero } from "./concept-cards";
 import { ReadDemo } from "./framework/read-demo";
-import { AgentTools } from "./tool-catalog";
+import { RequestGrid } from "./framework/request-grid";
+import { AgentTools, useFrameworkData } from "./tool-catalog";
 
 export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   /** A concept's card from the docs home, as its doc's opening picture. `card theses` */
@@ -29,4 +30,11 @@ export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   "analyst-styles": AnalystStyles,
   playbook: Playbook,
   "system-layers": SystemLayers,
+  /** One request to the model as squares, per agent: the Framework page's picture. */
+  "request-grid": AgentRequests,
 };
+
+function AgentRequests() {
+  const data = useFrameworkData();
+  return data ? <RequestGrid data={data} linkBase="/how-it-works/framework" /> : null;
+}

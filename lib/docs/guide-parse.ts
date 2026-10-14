@@ -17,13 +17,15 @@ export const GUIDE_ASSETS = [
   "analyst-styles",
   "playbook",
   "system-layers",
+  "request-grid",
 ] as const;
 export type GuideAsset = (typeof GUIDE_ASSETS)[number];
 
 export type Block =
   | { kind: "md"; text: string }
   | { kind: "asset"; name: string; arg?: string }
-  | { kind: "chat"; caption?: string; steps: ChatStep[] };
+  | { kind: "chat"; caption?: string; steps: ChatStep[] }
+  | { kind: "facts"; facts: Array<[label: string, value: string]> };
 
 export type Part =
   | { kind: "section"; title: string | null; blocks: Block[] }
@@ -89,6 +91,16 @@ export function parseDoc(source: string): ParsedDoc {
     if (asset) {
       flushText();
       section.blocks.push({ kind: "asset", name: asset[1], arg: asset[2] });
+      continue;
+    }
+    if (t === "```facts") {
+      flushText();
+      const facts: Array<[string, string]> = [];
+      for (i++; i < lines.length && lines[i].trim() !== "```"; i++) {
+        const m = lines[i].trim().match(/^([^:]+):\s*(.*)$/);
+        if (m) facts.push([m[1].trim(), m[2].trim()]);
+      }
+      section.blocks.push({ kind: "facts", facts });
       continue;
     }
     if (t === "```chat") {

@@ -9,6 +9,7 @@
 
 import Link from "next/link";
 import { ArrowUpRight, ChevronDown } from "lucide-react";
+import type { FrameworkData } from "@/lib/docs/framework-content";
 import type { CatalogTool, DocsSetup } from "@/lib/docs/tools";
 import { headingId, parseDoc } from "@/lib/docs/guide-parse";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -35,18 +36,20 @@ export function DocsHub({
   tools,
   setups,
   guide,
+  framework,
 }: {
   slug: string;
   tools: readonly CatalogTool[];
   setups: readonly DocsSetup[];
   guide: Readonly<Record<string, string>>;
+  framework: FrameworkData;
 }) {
   const meta = docBySlug(slug);
   const source = guide[slug] ?? "";
   const sections = parseDoc(source).parts.flatMap((p) => (p.kind === "section" && p.title ? [p.title] : []));
 
   return (
-    <DocsDataProvider tools={tools} setups={setups} guide={guide}>
+    <DocsDataProvider tools={tools} setups={setups} guide={guide} framework={framework}>
       <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 pb-32 pt-6 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-12 lg:pt-10 xl:grid-cols-[14rem_minmax(0,1fr)_12rem]">
         <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto">
           {/* On a phone the list folds away behind one line. */}

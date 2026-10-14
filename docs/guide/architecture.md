@@ -60,9 +60,23 @@ Some data isn't on any plan we hold: analyst price targets, forward revenue and 
 - **Chat:** Claude Sonnet 4.6. With thinking on, for the questions that need a careful answer.
 - **Analyst builder:** GPT-4o. Fast, because you're waiting on it in a conversation.
 
+## The agents side by side
+
+Each agent's own page opens with its model, steps and tools. What sets them apart:
+
+| Agent | Starts | Reads | May change | Trades |
+|---|---|---|---|---|
+| [Discovery](agents/discovery.md) | When you ask | The tickers its analyst already covers, to skip them | A pass or a watch; new stocks go to the Writer | Never |
+| [The Writer](agents/writer.md) | When another agent asks | Its own pull of one stock's data, and the web | The whole thesis | Never |
+| [Morning run](agents/morning-runs.md) | 8:00 AM ET on run days | Its whole book, each stock at the size today needs | The plan, its verdict and a note | Proposes |
+| [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires | The one stock it woke for, with the fire | The plan and a note | Proposes |
+| [Chat](agents/chat.md) | When you type | Stocks by name, when the conversation needs them | Also the belief and the direction | Proposes, at your word |
+
 ## What an agent is told
 
-Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the analyst's brief, and the read of its stocks. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in a prompt. The Framework tab takes one request apart, piece by piece, with every size measured from the code.
+Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the analyst's brief, and the read of its stocks. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in a prompt. Pick an agent to see the same parts at its sizes.
+
+<!-- asset: request-grid -->
 
 [Open the Framework →](/how-it-works/framework)
 

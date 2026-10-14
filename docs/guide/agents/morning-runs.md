@@ -4,6 +4,14 @@
 
 It decides on what changed, leaves the quiet stocks alone, and sends every trade to you as a proposal.
 
+```facts
+Model: gpt-5.4
+Starts: 8:00 AM ET, run days
+Steps: Up to 65
+Tools: 15
+Saves: 18 fields: plan, verdict, note
+```
+
 ```chat
 caption: A morning run for the PEAD Specialist.
 tools: Reading your book (+1 more)

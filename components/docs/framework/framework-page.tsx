@@ -2,7 +2,7 @@
 
 /**
  * /how-it-works/framework — how an agent is put together: one request taken apart
- * (the same parts for every agent), every door opened up, the read zoomed in, and the instructions that travel
+ * (the same parts for every agent), the read zoomed in, and the instructions that travel
  * with a stock. The numbers come measured from the server (lib/docs/framework.ts).
  */
 
@@ -11,7 +11,6 @@ import { BookOpen, FileSearch, Layers, ListChecks, Wrench } from "lucide-react";
 import type { FrameworkData } from "@/lib/docs/framework-content";
 import { DocsNav } from "../docs-nav";
 import { Eyebrow, Mono, TwoTone } from "../primitives";
-import { DoorInspector } from "./door-inspector";
 import { ReadDemo } from "./read-demo";
 import { RequestGrid } from "./request-grid";
 import { SituationsGrid } from "./situations-grid";
@@ -36,14 +35,6 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
 
         <RequestGrid data={data} />
       </section>
-
-      <Block
-        eyebrow="The doors"
-        lead="Every door, opened up."
-        rest="Same agent, different job. Pick a door to see its model, what it carries, and the tools it can reach."
-      >
-        <DoorInspector data={data} />
-      </Block>
 
       <Block
         id="read"

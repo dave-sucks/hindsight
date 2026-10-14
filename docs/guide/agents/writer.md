@@ -4,6 +4,14 @@
 
 It writes the case for and against, the one belief everything else rests on, and a plan made of triggers.
 
+```facts
+Model: claude-sonnet-4-6
+Starts: When another agent asks
+Steps: Up to 8
+Tools: 9
+Saves: 35 fields: the whole thesis
+```
+
 ```chat
 caption: The Writer researching CRWD for the PEAD Specialist.
 tools: Pulling $CRWD's 5-year financials (+6 more)

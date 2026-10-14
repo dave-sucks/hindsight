@@ -4,6 +4,14 @@
 
 It looks where new names show up, like fresh earnings, today's movers and setup screens, checks each one against the analyst's rules, and sends the best to the Writer to research.
 
+```facts
+Model: gpt-5.4
+Starts: When you ask
+Steps: Up to 45
+Tools: 15
+Saves: A pass or a watch
+```
+
 ```chat
 caption: Discovery for the PEAD Specialist, asked in chat.
 user: Find drift names off this week's reports.

@@ -4,6 +4,14 @@
 
 It checks what's true now, then proposes the trade, redraws the line, or holds and says why.
 
+```facts
+Model: gpt-5.4
+Starts: Minutes after a fire
+Steps: Up to 15
+Tools: 14
+Saves: 11 fields: plan, note
+```
+
 ```chat
 caption: A sale trigger fires on SHOP during the day.
 tools: Trigger fired on $SHOP

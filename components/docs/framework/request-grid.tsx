@@ -63,7 +63,8 @@ const READ: Record<(typeof AGENTS)[number]["id"], { chars: number | null; square
 /** An example day: three flags up somewhere on the book. Their texts' real lengths. */
 const EXAMPLE_FLAGS = ["PROTECTION", "REVIEW_DUE", "EARNINGS"];
 
-export function RequestGrid({ data }: { data: FrameworkData }) {
+/** `linkBase` puts the page in front of the in-page links when the picture sits outside the Framework page. */
+export function RequestGrid({ data, linkBase = "" }: { data: FrameworkData; linkBase?: string }) {
   const [agent, setAgent] = useState<(typeof AGENTS)[number]["id"]>("morning");
   const [hover, setHover] = useState<PartId | null>(null);
 
@@ -78,10 +79,10 @@ export function RequestGrid({ data }: { data: FrameworkData }) {
     { id: "house", label: "House rules", body: "The few sentences true for every analyst everywhere: your word first, and how to write.", chars: data.houseRulesChars, squares: squaresOf(data.houseRulesChars), source: "Measured from this deploy" },
     { id: "analyst", label: "Analyst brief", body: "Who it works for: the strategy you wrote, word for word, its rule numbers, how full it is, its setups.", chars: MEASURED_REQUEST.after.analystBrief, squares: squaresOf(MEASURED_REQUEST.after.analystBrief), source: "Measured on the Compounder" },
     { id: "tools", label: "Tool menu", body: `The ${door?.tools.length ?? ""} tools it may call, each described in full on every request, used or not.`, chars: door?.toolChars ?? 0, squares: squaresOf(door?.toolChars ?? 0), source: "Measured from this deploy", href: "/how-it-works#tools", hrefLabel: "Catalog" },
-    { id: "read", label: "The read", body: DOOR_COPY[agent].read, chars: read.chars, squares: read.squares, source: read.source, href: "#read", hrefLabel: "Zoom in" },
+    { id: "read", label: "The read", body: DOOR_COPY[agent].read, chars: read.chars, squares: read.squares, source: read.source, href: `${linkBase}#read`, hrefLabel: "Zoom in" },
   ];
   const whenNeeded: Part[] = [
-    { id: "guidance", label: "Situation guidance", body: `The instructions for each flag that is up, once per read. On this example day: ${flags.map((s) => s.name).join(", ")}.`, chars: guidanceChars, squares: squaresOf(guidanceChars), source: "Measured from this deploy", href: "#situations", hrefLabel: "How" },
+    { id: "guidance", label: "Situation guidance", body: `The instructions for each flag that is up, once per read. On this example day: ${flags.map((s) => s.name).join(", ")}.`, chars: guidanceChars, squares: squaresOf(guidanceChars), source: "Measured from this deploy", href: `${linkBase}#situations`, hrefLabel: "How" },
     { id: "named", label: "A full row, by name", body: "When it asks for one stock by name: the research, the bull and bear cases, the history.", chars: null, squares: 20, source: "About 20,000, varies with the stock" },
   ];
 

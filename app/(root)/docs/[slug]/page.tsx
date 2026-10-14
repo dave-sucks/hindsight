@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { DocsHub } from "@/components/docs/docs-hub";
 import { docBySlug } from "@/components/docs/registry";
+import { buildFrameworkData } from "@/lib/docs/framework";
 import { loadGuide } from "@/lib/docs/guide";
 import { buildSetupList, buildToolCatalog } from "@/lib/docs/tool-catalog";
 
@@ -14,5 +15,5 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function DocSlugPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   if (!docBySlug(slug)) notFound();
-  return <DocsHub slug={slug} tools={buildToolCatalog()} setups={buildSetupList()} guide={loadGuide()} />;
+  return <DocsHub slug={slug} tools={buildToolCatalog()} setups={buildSetupList()} guide={loadGuide()} framework={buildFrameworkData()} />;
 }
