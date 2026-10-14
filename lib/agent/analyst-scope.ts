@@ -31,3 +31,18 @@ export async function forTheStock(ctx: ToolContext, analystId: string | null, bo
   return ac ? { ...ctx, ...(await analystScope(ac, ctx.userId, book)) } : ctx;
 }
 
+// The Master Chat sells for the stock's holder: the one open position's analyst, in
+// that position's book. Two holders: a question naming both.
+export async function forHeldStock(ctx: ToolContext, ticker: string): Promise<{ ctx: ToolContext; question?: string }> {
+  if (ctx.runMode !== "PRINCIPAL_CHAT" || ctx.analystId) return { ctx };
+  const open = await prisma.position.findMany({
+    where: { accountId: ctx.accountId, symbol: ticker, status: "OPEN" },
+    select: { analystId: true, environment: true, analyst: { select: { name: true } } },
+  });
+  const books = [...new Map(open.map((p) => [`${p.analystId}:${p.environment}`, p])).values()];
+  if (books.length > 1) {
+    const who = books.map((p) => `${p.analyst?.name ?? p.analystId} (${p.environment})`).join(" and ");
+    return { ctx, question: `$${ticker} is held by ${who}. Which one? Pin the chat to that analyst and ask again.` };
+  }
+  return { ctx: books[0] ? await forTheStock(ctx, books[0].analystId, books[0].environment as Book) : ctx };
+}

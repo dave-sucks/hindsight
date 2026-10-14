@@ -32,3 +32,37 @@ describe("the Master Chat edits a thesis for its analyst", () => {
     expect((unpinnedRun.db.store.thesis as Array<{ ticker: string; status: string }>).find((t) => t.ticker === "ASML")!.status).toBe("HOLDING");
   });
 });
+
+describe("the Master Chat sells and adds for the stock's holder, in its book", () => {
+  const sell = { ticker: "V", reason: "MANUAL", notes: "Selling V at $391 to raise cash; the payments thesis is intact but it is the smallest gain to give up." };
+  const add = { symbol: "CEG", action: "add_to_position", reason: "Adding to CEG on the hold of the $270 base, per the seat's add rule." };
+  const orders = (db: { store: Record<string, unknown[]> }) => db.store.order as Array<{ status: string; intent: string; quantity: number }>;
+
+  it("a sale on the LIVE book waits for approval, as pinned; nothing is sent to the broker", async () => {
+    const asPinned = await replayTool("close-position", "closePosition", { seed: seed(), ctx: pinned, args: sell, quotes: book.prices });
+    const { result, db } = await replayTool("close-position", "closePosition", { seed: seed(), ctx: unpinned, args: sell, quotes: book.prices });
+    expect(asPinned.result.data?.status).toBe("PROPOSED");
+    expect(result.data).toMatchObject({ status: "PROPOSED", fillStatus: "AWAITING_APPROVAL" });
+    expect(orders(db).map((o) => [o.intent, o.status])).toEqual([["CLOSE", "AWAITING_APPROVAL"]]);
+  });
+
+  it("an add the principal names past the most in one stock is refused at $20,000, as pinned", async () => {
+    const over = { ...add, add_notional: 8000 };
+    const asPinned = await replayTool("manage-position", "managePosition", { seed: seed(), ctx: pinned, args: over, quotes: book.prices });
+    const { result, db } = await replayTool("manage-position", "managePosition", { seed: seed(), ctx: unpinned, args: over, quotes: book.prices });
+    const message = (r: unknown) => (r as { data: { message: string } }).data.message;
+    expect(message(result)).toMatch(/past the most this analyst may hold in one stock \(\$20000/);
+    expect(message(result)).toBe(message(asPinned.result));
+    expect(db.store.order ?? []).toEqual([]);
+  });
+
+  // Constructed: no stock is held by two analysts today.
+  it("a stock two analysts hold gets a question naming both", async () => {
+    const two = seed();
+    two.position.push(positionRow({ id: "pos_v_pead", symbol: "V", analystId: "cmnhxpjio000004jvox6kl6c7", analyst: { name: "PEAD Specialist" }, accountId: REPLAY_ACCOUNT_ID, environment: "LIVE", status: "OPEN" }));
+    two.position.find((p) => p.symbol === "V" && p.analystId === SECULAR)!.analyst = { name: "Secular Compounder" };
+    const { result, db } = await replayTool("close-position", "closePosition", { seed: two, ctx: unpinned, args: sell, quotes: book.prices });
+    expect(result.summary).toBe("$V is held by Secular Compounder (LIVE) and PEAD Specialist (LIVE). Which one? Pin the chat to that analyst and ask again.");
+    expect(db.store.order ?? []).toEqual([]);
+  });
+});

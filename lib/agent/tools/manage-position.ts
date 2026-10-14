@@ -29,6 +29,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
+import { forHeldStock } from "@/lib/agent/analyst-scope";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
@@ -170,6 +171,12 @@ export const managePosition = defineTool({
 
   execute: async (args: z.infer<typeof schema>, ctx: ToolContext): Promise<ManagePositionReturn> => {
     const ticker = args.symbol.toUpperCase().trim();
+    // The Master Chat trims or adds for the stock's holder, in its book (analyst-scope.ts).
+    const held = await forHeldStock(ctx, ticker);
+    if (held.question) {
+      return { summary: held.question, data: { success: false, ticker, action: args.action, status: "FAILED" as const, message: held.question, tickers: [{ ticker, tag: "Which?", summary: held.question, actionIcon: "failed" }] }, sources: [] };
+    }
+    ctx = held.ctx;
 
     // Scope by environment so a LIVE run never operates on a PAPER position
     // (and vice versa) — they live in different Alpaca accounts.

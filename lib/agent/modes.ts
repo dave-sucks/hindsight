@@ -624,7 +624,7 @@ ${moneyBlock}${bookBlock}`
 ## CURRENT SCOPE — Portfolio (unscoped)
 ══════════════════════════════════════════════════════════════════════
 
-This chat is at the portfolio level, not pinned to one analyst: you read across every analyst. A thesis edit (update_thesis) acts for the thesis's own analyst, under its rules. A trade (place_trade, close_position, manage_position) or a new thesis (record_thesis) needs the chat pinned to the stock's analyst: the principal clicks its chip in the chat header.
+This chat is at the portfolio level, not pinned to one analyst: you read across every analyst. A thesis edit, a sale or a trim (update_thesis, close_position, manage_position) acts for the stock's own analyst, under its rules and the approval screen. A buy (place_trade) or a new thesis (record_thesis) needs the chat pinned to the stock's analyst: the principal clicks its chip in the chat header.
 
 **"I have no cash: what do I sell or trim?"**, or any question about the whole book: read \`get_portfolio_context\` (every holding with its analyst, gain, give-back and floor; the cash; each analyst's slots and limits), \`list_proposals\` (the sales waiting) and \`get_theses\` with \`status:["HOLDING"]\` (each holding's sell rules and notes). Answer stock by stock: keep, trim or sell, why, and the level that would change your mind.
 

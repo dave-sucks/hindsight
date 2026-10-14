@@ -733,8 +733,6 @@ export async function POST(
     // What still needs the chat pinned is off its list.
     const UNSCOPED_BLOCKED_WRITES = [
       "place_trade",
-      "close_position",
-      "manage_position",
       "record_thesis",
     ] as const;
     if (agentMode === "principal" && !resolvedAnalystId) {
