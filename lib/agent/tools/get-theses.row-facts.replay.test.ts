@@ -39,11 +39,11 @@ const snapshot = {
   atr14: 2.15,
 };
 
-/** AAA: held, its floor fired this morning and nothing answered it, so it is a full row; BBB: watched and quiet. */
+/** AAA: held, its floor fired with the sale waiting for approval (not work), research stale, so it is a full row; BBB: watched and quiet. */
 const seed = () => ({
   agentConfig: [agentConfigRow({ triggers: [rung("analyst-clock", "REVIEW", { watch: "repeat", value: 7 }, 7)] })],
   thesis: [
-    thesisRow({ id: "t_aaa", ticker: "AAA", status: "HOLDING", lastReviewedAt: ago(1), researchUpdatedAt: ago(1), triggers: [rung("floor-aaa", "EXIT", { watch: "price", is: "below", value: 95 })] }),
+    thesisRow({ id: "t_aaa", ticker: "AAA", status: "HOLDING", lastReviewedAt: ago(1), researchUpdatedAt: ago(60), triggers: [rung("floor-aaa", "EXIT", { watch: "price", is: "below", value: 95 })] }),
     thesisRow({ id: "t_bbb", ticker: "BBB", status: "WATCHING", createdAt: ago(5), lastReviewedAt: ago(1), researchUpdatedAt: ago(1), entryPrice: 36, targetPrice: 48, stopLoss: 32, triggers: [rung("buy-bbb", "ENTER", { watch: "price", is: "above", value: 36 })] }),
   ],
   position: [positionRow({ id: "pos_aaa", symbol: "AAA", avgCost: 100, quantity: 10, openedAt: ago(20), peakPrice: 112 })],

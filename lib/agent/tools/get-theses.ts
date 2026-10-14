@@ -527,6 +527,7 @@ export const getTheses = defineTool({
       // months (2026-08-23 audit). One number per row; the resolver already
       // fetched it, so this costs a fetch of nothing.
       currentPrice: resolvedByThesisId.get(t.id)?.currentPrice ?? null,
+      proposals: load.proposals.get(t.id) ?? [],
       // Derived, not stored (DAV-221): last actual look + the cadence on
       // the resolved ladder. Null = no scheduled review (soft watch).
       reviewDueAt: derivedNextReviewAt({

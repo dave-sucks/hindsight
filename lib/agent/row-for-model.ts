@@ -144,6 +144,8 @@ function line(row: Row): string {
     entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noPlan(row) ? "no plan" : null,
     target != null ? `target ${money(target)}` : null,
     floor != null ? `floor ${money(floor)}` : null,
+    // A trade waiting for the principal is off the work list, so its stock is often quiet: the line says it waits.
+    proposalLine(row) ? `proposal waiting: ${proposalLine(row)}` : null,
     review ? `review ${etDay(review)}` : null,
     score != null ? `score ${score}` : null,
     catalyst ? `catalyst ${isoDay(catalyst)}` : catalystDateMissing(row) ? "catalyst date missing" : null,
