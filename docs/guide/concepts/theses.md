@@ -1,84 +1,74 @@
 # Theses
 
-**Every position starts with a thesis.** What we believe, why, what would prove us wrong, and the triggers that act on it.
+**Every position starts with a thesis.** One analyst's view of one stock: what it believes, and the plan that acts on it.
 
-A thesis is born in research, watched by its triggers, reviewed by every run after that, and kept until the stock is sold or set down. Every stock an analyst covers has exactly one.
+A thesis is the record every agent reads and edits. Its life is a loop: researched, watched, bought, guarded, sold, and looked back on once.
 
 <!-- asset: card theses -->
 
-## What a thesis is
+## A claim and a plan
 
-A thesis is one [analyst](analysts.md)'s view of one stock, and its plan. Every stock on the book has one, whether the analyst holds it or only watches it, and every agent reads the same one: a [morning run](../agents/morning-runs.md), a [trigger run](../agents/trigger-runs.md), [chat](../agents/chat.md) and [the Writer](../agents/writer.md) all see the stock through its thesis. It's short on purpose: everything a decision needs, nothing it doesn't.
+A thesis has two halves, written and kept by different hands.
 
-## What's in it
+- **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (one sentence we can be wrong about, with an outcome, a date and a reason), the two or three assumptions it rests on, what would prove it wrong, the case for and against, the setup it trades as, and a score and conviction. Every agent reads it as the claim of record; only a new write-up, or you through [chat](../agents/chat.md), changes it.
+- **The plan** is its [triggers](triggers.md): one sentence each saying when to buy, add, trim, sell or look again. The buy, the floor and the target are triggers too, so the plan can't disagree with itself. This is the half the agents keep up to date.
 
-- **The belief:** one sentence we can be wrong about, with an outcome, a timeframe and the reason. Every agent reads it as the claim of record.
-- **What it rests on:** the two or three assumptions that have to hold.
-- **What would prove it wrong:** written before the buy, so a bad day isn't mistaken for a broken story. A run checks these before it acts on a fire.
-- **The case for and against:** the strongest points on both sides, each with its source, and the research note behind them.
-- **The setup:** the kind of trade, from the analyst's playbook, with how it fails, how it's managed and how long it's held.
-- **Score and conviction:** a score out of 10, and a conviction that scales the size of the buy.
-- **The plan:** its [triggers](triggers.md), saying when to buy, add, trim, sell and look again.
-- **What's been said:** your notes and decisions, and the analyst's last answer to them, carried into every review.
+Alongside both sits what's been said: your notes and decisions, and the analyst's last answer to them.
 
-## How a thesis is born
+## Where it comes from
 
-Only [the Writer](../agents/writer.md) writes a whole thesis. It reaches the Writer one of three ways:
+Every thesis is researched by the Writer. A stock reaches it when [Discovery](../agents/discovery.md) finds one that fits the [analyst](analysts.md), when you ask in chat or press Send to agent on a stock's page, or when a stock you put on the watchlist comes due its first research.
 
-- **[Discovery](../agents/discovery.md) finds it.** A stock that fits the analyst's universe and setups is sent to the Writer, up to five a run.
-- **You ask for it.** "Research CRWD" or `/research CRWD` in [chat](../agents/chat.md) sends it to the Writer.
-- **You put it on the watchlist yourself.** A stock you add (or the analyst builder suggests) starts as a seed with no view yet. When its review clock comes round, it's in the "first research due" [situation](situations.md), and the next [morning run](../agents/morning-runs.md) sends it to the Writer.
+The Writer reads the numbers, the filings and the web, and comes back with one of three answers:
 
-The Writer researches the stock, writes the claim and prices the plan from the setup's rules and the chart. The result is a direction: long, short, or a pass. A pass is saved too, as **Passed**, so the stock isn't pitched again without a reason. Anything else lands on the watchlist as **Watching**, with its buy, floor and target set.
+- **Watch it, with a plan.** A buy level, a floor, a target and a review clock, priced from the setup's rules and the chart. The thesis is **Watching**, and with a review clock the sheet calls it an **Agent Watch**: the analyst looks at it again on that schedule.
+- **Watch it, without a plan.** Strong but not ready to price. It waits on a wake, like a price or a date, that brings it back for a fresh look.
+- **Pass.** Saved as **Passed**, with what would change the verdict, so the stock isn't pitched again without a reason.
 
-## Watching: waiting for the buy
+## How it gets bought
 
-A watched stock costs nothing while it waits. Its buy trigger is checked every five minutes, and it fires on the cross: the day the price reaches its level.
+While a stock is watched, its buy trigger is checked every five minutes. When the price crosses the level, a [trigger run](../agents/trigger-runs.md) looks at that one stock within minutes, checks the setup's confirmation and the news, and [proposes](approvals.md) the buy. Nothing fills until you approve it.
 
-- **The buy fires.** A [trigger run](../agents/trigger-runs.md) looks at the stock within minutes, checks that the setup's confirmation happened and the price still holds, and proposes the buy. Nothing fills until you [approve](approvals.md) it.
-- **The plan goes stale.** Every [morning run](../agents/morning-runs.md) checks the plan against the price. A buy the price has left behind, a target already passed, a plan under 2-to-1: each puts the stock in the "plan check" [situation](situations.md), and the run re-prices it, explains it, or sets the plan down.
-- **The research gets old.** Past the analyst's limit, the stock goes back to the Writer for a refresh before anything is bought on it.
+When the buy fills, the thesis becomes **Holding**. The floor and target move to where the trade actually went in, and a holding's review clock and earnings reviews are added. From then on the sell side guards it: the floor and the trail, usually inherited from the analyst's sell rules.
 
-## Holding: guarded by its triggers
+## When an agent looks at it
 
-When the buy fills, the thesis turns from **Watching** to **Holding**. The floor and target are set to the levels the trade went in at, and a holding's review clock and its earnings reviews are added. Then its sell side takes over:
+No agent reviews every thesis every day. A thesis gets attention for one of two reasons:
 
-- **The floor and the trail** usually come from the analyst's sell rules, inherited by every stock it holds. The thesis can carry its own, tighter ones.
-- **A sale or trim fires:** a [trigger run](../agents/trigger-runs.md) decides within minutes, or a floor set to sell straight away proposes the sale with no agent. Either way it's a [proposal](approvals.md).
-- **A review fires,** or the review clock comes round: the next [morning run](../agents/morning-runs.md) looks again.
-- **Something changed:** a gain with no floor under it, a report coming, a new filing, the price three quarters of the way to the target. Each is a [situation](situations.md) the morning run answers.
+- **One of its triggers fires.** A buy, add, trim or sale wakes a trigger run within minutes. A review waits for the morning.
+- **It's in a [situation](situations.md).** Every [morning run](../agents/morning-runs.md) reads the analyst's whole book but works only on stocks that need an answer today: a review that came due, a plan the price has moved past, a gain with no floor under it, a report coming, research past its date, a note from you. A quiet thesis is one line in the read and is left alone.
 
-No agent can lower a floor on a stock we hold. It can sell, trim, propose the sale again, or raise the floor; only you move it down.
+And you can ask about any thesis in chat, any time.
 
-## The plan is triggers
+## How it changes
 
-The buy, the floor and the target aren't separate fields. They're triggers like any other: the buy is "buy if near $401", the floor is "sell if below $384". So a thesis has one plan, it can't disagree with itself, and the system checks every line of it all day. Changing the floor is an edit on the floor trigger, and it lands in Activity as one line.
-
-## How a thesis changes
-
-Agents change a thesis with `update_thesis`, one trigger at a time: add one, edit one by its id, or remove one. A save is a patch, so a value that didn't change does nothing, and a field that can't be saved comes back by name while the rest lands. Every change is one line in the stock's Activity.
+As the price and the story move, agents keep the plan current one trigger at a time: re-price a buy the price left behind, raise a floor under a gain, reset the levels after a fire. Each change is one line in the stock's Activity, with who made it and why. When the research gets old, the stock goes back to the Writer for a refresh.
 
 Who may change what:
 
-- **The Writer** writes the whole thesis, including the research and the claim.
-- **Chat** can also change the belief and the direction, when you ask.
-- **A morning run** changes the plan, gives its verdict, and leaves a note.
-- **A trigger run** changes the plan and leaves a note.
-- **You** can edit any trigger on the thesis sheet, approve or decline what's proposed, and leave a note through [chat](../agents/chat.md). Your words come first: the next run answers them before anything else.
+- **The Writer:** the whole thesis, claim included.
+- **Chat:** the plan, and the belief and direction when you ask.
+- **A morning run:** the plan, its verdict and a note.
+- **A trigger run:** the plan and a note.
+- **You:** any trigger on the thesis sheet, a yes or no on every proposal, and notes through chat, which the next run answers first.
+
+One rule holds over all of them: no agent can lower a floor on a stock we hold. Only you move it down.
 
 ## How it ends
 
 <!-- asset: thesis-lifecycle -->
 
-- **Sold.** The sale is approved and the thesis is retired as sold. For the next two weeks it's owed one look back (the "sold, one look" [situation](situations.md)): watch it again with a re-entry level, or let it go.
+- **Sold.** The sale is approved and the thesis is retired as sold. Within two weeks it gets one look back: watch it again with a re-entry level, or let it go.
 - **Proven wrong.** Something on its "wrong if" list happened. A holding is sold; a watch is retired.
-- **Set down.** Dropped from the watchlist, or replaced by a newer thesis. The history stays.
+- **Dropped or replaced.** Taken off the watchlist, or replaced by a newer thesis. The history stays.
 
-## Kept honest
+## Statuses
 
-- **Research has a date.** Older than the analyst's limit, and the next run sends the stock back to the Writer.
-- **The plan is checked against the price.** Every day, by every read.
-- **Your word comes first.** A note or a decision you leave is answered on the next run before anything else.
+- **Watching:** on the watchlist. An **Agent Watch** has its own review clock; a plain watch waits for its triggers.
+- **Holding:** bought, guarded by its sell side.
+- **Passed:** researched and declined.
+- **Retired:** sold, dropped, proven wrong or replaced.
+- **Promoted:** held on paper and just moved to live money; the next run re-enters or goes back to watching.
 
 <details>
 <summary>Technical details</summary>
@@ -90,7 +80,10 @@ Who may change what:
 `coreBelief`, `keyAssumptions`, `invalidationConds`, `bullCase`, `bearCase`, `snapshot`, `scoring`, `conviction`, `setupId`, `triggers`
 
 #### Written by
-The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A seed is minted by the app or the analyst builder, never by an agent.
+The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A seed is minted by the app or the analyst builder, never by an agent. Send to agent on a stock's page is `sendToThesisWriter` in `lib/actions/watchlist.actions.ts`.
+
+#### Agent Watch
+`isAgentWatched` in `lib/agent/triggers/agent-watch.ts`: a watch with a review schedule of its own.
 
 #### Edited by
 `update_thesis`: `add_triggers`, `edit_triggers` by id, `remove_trigger_ids`. The fields each agent may send are pinned by `update-thesis-doors.test.ts`: the Writer 35, chat 21, a morning run 18, a trigger run 11.
