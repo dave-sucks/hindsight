@@ -95,13 +95,14 @@ const REFS: Record<string, { title: string; icon: LucideIcon }> = {
   approvals: { title: "approvals", icon: CheckCircle2 },
   architecture: { title: "the architecture", icon: Layers },
   glossary: { title: "the glossary", icon: BookOpen },
+  "situations-library": { title: "the situations library", icon: Flag },
 };
 
 /** Another page named in a sentence, an agent or a concept. Opens it. */
 export function DocRef({ slug, children }: { slug: keyof typeof REFS; children?: ReactNode }) {
   const pathname = usePathname();
   const a = REFS[slug];
-  const href = pathname === "/docs" ? `/docs?doc=${slug}` : `/docs/${slug}`;
+  const href = pathname === "/docs/how-it-works" ? `/docs/how-it-works?doc=${slug}` : `/docs/${slug}`;
   return (
     <Link href={href} scroll={false} className={cn(pill, "font-medium hover:bg-muted")}>
       <a.icon className="size-3 text-muted-foreground" />

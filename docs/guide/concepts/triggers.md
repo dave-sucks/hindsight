@@ -20,11 +20,11 @@ There are five actions:
 
 ## Where triggers come from
 
-- **[The Writer](writer.md) writes the first plan** when it writes the thesis: the buy at a level from the setup's rules and the chart, the floor under real structure, the target, and a review clock. Never a round number, and the reward at least twice the risk.
+- **[The Writer](../agents/writer.md) writes the first plan** when it writes the thesis: the buy at a level from the setup's rules and the chart, the floor under real structure, the target, and a review clock. Never a round number, and the reward at least twice the risk.
 - **The buy filling arms the holding.** The floor and target are set to the levels the trade went in at, and a holding's review clock and earnings reviews are added.
 - **The analyst's sell rules guard every holding** without being copied onto it: the trail, the time limit, the style's own rules. See "Rules come from three places" below.
-- **Runs keep the plan current,** one trigger at a time: a [morning run](morning-runs.md) re-prices a buy the price left behind or raises a floor under a gain; a [trigger run](trigger-runs.md) resets the rest of the plan after it acts.
-- **You** can add, edit or delete any trigger on the thesis sheet, or ask for one in [chat](chat.md). "Sell under $62" in a note becomes a trigger, not just words.
+- **Runs keep the plan current,** one trigger at a time: a [morning run](../agents/morning-runs.md) re-prices a buy the price left behind or raises a floor under a gain; a [trigger run](../agents/trigger-runs.md) resets the rest of the plan after it acts.
+- **You** can add, edit or delete any trigger on the thesis sheet, or ask for one in [chat](../agents/chat.md). "Sell under $62" in a note becomes a trigger, not just words.
 
 Every change is one line in the stock's Activity, saying who made it and why.
 
@@ -42,9 +42,9 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels t
 
 The fire is written into the stock's Activity, with the price that fired it. What happens next depends on the action:
 
-- **A buy, add, trim or sale** wakes a [trigger run](trigger-runs.md) within minutes. It reads that one stock, checks the fire still holds, and decides.
+- **A buy, add, trim or sale** wakes a [trigger run](../agents/trigger-runs.md) within minutes. It reads that one stock, checks the fire still holds, and decides.
 - **A floor can be set to sell straight away:** it proposes the sale with no agent at all.
-- **A review** waits for the analyst's next [morning run](morning-runs.md). A review is a question, not an order.
+- **A review** waits for the analyst's next [morning run](../agents/morning-runs.md). A review is a question, not an order.
 
 Every fire also puts the stock in a [situation](situations.md): a sale that fired is a "sale signal", a buy that fired is "buy level reached", a review is "review due". The situation carries the instructions for answering it. And a trigger never trades on its own: anything it leads to is a [proposal](approvals.md) you approve.
 

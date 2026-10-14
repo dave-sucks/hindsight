@@ -1,13 +1,14 @@
 "use client";
 
-/** The two halves of /docs: the Guide (what it does) and the Framework (how an agent is put together). */
+/** The docs' three doors: the docs themselves, the tour of how it works, and the Framework (how an agent is put together). */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { href: "/docs", label: "Guide" },
+  { href: "/docs", label: "Docs" },
+  { href: "/docs/how-it-works", label: "How it works" },
   { href: "/docs/framework", label: "The Framework" },
 ] as const;
 

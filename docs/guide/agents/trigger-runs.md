@@ -18,7 +18,7 @@ tools: Closing $SHOP position
 
 ## What it does
 
-A trigger run is the analyst's short, focused look at one stock, started by one of the [thesis](theses.md)'s [triggers](triggers.md). The plan the Writer wrote said "buy here", "sell there"; the trigger run is where that plan meets the live price. It reads only that stock, checks whether the fire still holds, and makes one decision. It has fifteen steps at most; deep research goes to [the Writer](writer.md) instead.
+A trigger run is the analyst's short, focused look at one stock, started by one of the [thesis](../concepts/theses.md)'s [triggers](../concepts/triggers.md). The plan the Writer wrote said "buy here", "sell there"; the trigger run is where that plan meets the live price. It reads only that stock, checks whether the fire still holds, and makes one decision. It has fifteen steps at most; deep research goes to [the Writer](writer.md) instead.
 
 ## What wakes it
 
@@ -30,13 +30,13 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels t
 
 ## What it reads
 
-The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, and anything you've said. The trigger that fired comes with the words you wrote when you set it, and each [situation](situations.md) the stock is in brings its instructions. Then `get_stock_data` gives the live price and the news.
+The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, and anything you've said. The trigger that fired comes with the words you wrote when you set it, and each [situation](../concepts/situations.md) the stock is in brings its instructions. Then `get_stock_data` gives the live price and the news.
 
 A give-back is measured from the highest price since the buy, kept over the whole holding. The run can't call a fire false by reading a lower high off a short chart; declining a sale takes new evidence about the business.
 
 ## What it can do
 
-- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. It's a [proposal](approvals.md), and it reaches your queue, your email and your phone at once.
+- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. It's a [proposal](../concepts/approvals.md), and it reaches your queue, your email and your phone at once.
 - **Tighten the line:** move the trigger to a level the chart supports. It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the line is wrong, it says so in its note and names the level for you.
 - **Hold, with a reason:** "Not acting yet" and why. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let expire.
 

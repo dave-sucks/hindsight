@@ -25,17 +25,17 @@ Each analyst is one way of trading, run by the agents. It has its own book of [t
 
 An analyst isn't one agent; it's the style every agent works in when it touches one of its stocks.
 
-- **Finding stocks:** [Discovery](discovery.md) searches only inside its universe, scores each stock against its setups, and skips anything it already covers.
-- **Writing the thesis:** [the Writer](writer.md) researches in its strategy and prices the plan from its setups' rules.
+- **Finding stocks:** [Discovery](../agents/discovery.md) searches only inside its universe, scores each stock against its setups, and skips anything it already covers.
+- **Writing the thesis:** [the Writer](../agents/writer.md) researches in its strategy and prices the plan from its setups' rules.
 - **Guarding holdings:** its sell rules watch every stock it holds without being copied onto them, so changing its style changes every holding at once.
-- **Reviewing the book:** a [morning run](morning-runs.md) on each of its run days, for its book only, reading its strategy first.
-- **Acting on a fire:** a [trigger run](trigger-runs.md) decides in its style, and a buy that fires while it's full waits for you to choose what it replaces.
+- **Reviewing the book:** a [morning run](../agents/morning-runs.md) on each of its run days, for its book only, reading its strategy first.
+- **Acting on a fire:** a [trigger run](../agents/trigger-runs.md) decides in its style, and a buy that fires while it's full waits for you to choose what it replaces.
 - **Sizing trades:** every buy and add is sized by its band. Its [proposals](approvals.md) name it, so you always know whose call it is.
-- **Talking to you:** open [chat](chat.md) on it, and every edit and trade lands on its book.
+- **Talking to you:** open [chat](../agents/chat.md) on it, and every edit and trade lands on its book.
 
 ## What every agent reads about it
 
-Whichever agent is working (a [morning run](morning-runs.md), a [trigger run](trigger-runs.md), [chat](chat.md) on this analyst, [Discovery](discovery.md) or [the Writer](writer.md)), it reads the same brief: the analyst's name, its strategy word for word, its rule numbers, how many slots are free, and one line per setup it has chosen. It's written once, so no two agents can describe the same analyst differently.
+Whichever agent is working (a [morning run](../agents/morning-runs.md), a [trigger run](../agents/trigger-runs.md), [chat](../agents/chat.md) on this analyst, [Discovery](../agents/discovery.md) or [the Writer](../agents/writer.md)), it reads the same brief: the analyst's name, its strategy word for word, its rule numbers, how many slots are free, and one line per setup it has chosen. It's written once, so no two agents can describe the same analyst differently.
 
 ## It never picks a size
 

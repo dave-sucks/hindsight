@@ -8,7 +8,7 @@ A thesis is born in research, watched by its triggers, reviewed by every run aft
 
 ## What a thesis is
 
-A thesis is one [analyst](analysts.md)'s view of one stock, and its plan. Every stock on the book has one, whether the analyst holds it or only watches it, and every agent reads the same one: a [morning run](morning-runs.md), a [trigger run](trigger-runs.md), [chat](chat.md) and [the Writer](writer.md) all see the stock through its thesis. It's short on purpose: everything a decision needs, nothing it doesn't.
+A thesis is one [analyst](analysts.md)'s view of one stock, and its plan. Every stock on the book has one, whether the analyst holds it or only watches it, and every agent reads the same one: a [morning run](../agents/morning-runs.md), a [trigger run](../agents/trigger-runs.md), [chat](../agents/chat.md) and [the Writer](../agents/writer.md) all see the stock through its thesis. It's short on purpose: everything a decision needs, nothing it doesn't.
 
 ## What's in it
 
@@ -23,11 +23,11 @@ A thesis is one [analyst](analysts.md)'s view of one stock, and its plan. Every 
 
 ## How a thesis is born
 
-Only [the Writer](writer.md) writes a whole thesis. It reaches the Writer one of three ways:
+Only [the Writer](../agents/writer.md) writes a whole thesis. It reaches the Writer one of three ways:
 
-- **[Discovery](discovery.md) finds it.** A stock that fits the analyst's universe and setups is sent to the Writer, up to five a run.
-- **You ask for it.** "Research CRWD" or `/research CRWD` in [chat](chat.md) sends it to the Writer.
-- **You put it on the watchlist yourself.** A stock you add (or the analyst builder suggests) starts as a seed with no view yet. When its review clock comes round, it's in the "first research due" [situation](situations.md), and the next [morning run](morning-runs.md) sends it to the Writer.
+- **[Discovery](../agents/discovery.md) finds it.** A stock that fits the analyst's universe and setups is sent to the Writer, up to five a run.
+- **You ask for it.** "Research CRWD" or `/research CRWD` in [chat](../agents/chat.md) sends it to the Writer.
+- **You put it on the watchlist yourself.** A stock you add (or the analyst builder suggests) starts as a seed with no view yet. When its review clock comes round, it's in the "first research due" [situation](situations.md), and the next [morning run](../agents/morning-runs.md) sends it to the Writer.
 
 The Writer researches the stock, writes the claim and prices the plan from the setup's rules and the chart. The result is a direction: long, short, or a pass. A pass is saved too, as **Passed**, so the stock isn't pitched again without a reason. Anything else lands on the watchlist as **Watching**, with its buy, floor and target set.
 
@@ -35,8 +35,8 @@ The Writer researches the stock, writes the claim and prices the plan from the s
 
 A watched stock costs nothing while it waits. Its buy trigger is checked every five minutes, and it fires on the cross: the day the price reaches its level.
 
-- **The buy fires.** A [trigger run](trigger-runs.md) looks at the stock within minutes, checks that the setup's confirmation happened and the price still holds, and proposes the buy. Nothing fills until you [approve](approvals.md) it.
-- **The plan goes stale.** Every [morning run](morning-runs.md) checks the plan against the price. A buy the price has left behind, a target already passed, a plan under 2-to-1: each puts the stock in the "plan check" [situation](situations.md), and the run re-prices it, explains it, or sets the plan down.
+- **The buy fires.** A [trigger run](../agents/trigger-runs.md) looks at the stock within minutes, checks that the setup's confirmation happened and the price still holds, and proposes the buy. Nothing fills until you [approve](approvals.md) it.
+- **The plan goes stale.** Every [morning run](../agents/morning-runs.md) checks the plan against the price. A buy the price has left behind, a target already passed, a plan under 2-to-1: each puts the stock in the "plan check" [situation](situations.md), and the run re-prices it, explains it, or sets the plan down.
 - **The research gets old.** Past the analyst's limit, the stock goes back to the Writer for a refresh before anything is bought on it.
 
 ## Holding: guarded by its triggers
@@ -44,8 +44,8 @@ A watched stock costs nothing while it waits. Its buy trigger is checked every f
 When the buy fills, the thesis turns from **Watching** to **Holding**. The floor and target are set to the levels the trade went in at, and a holding's review clock and its earnings reviews are added. Then its sell side takes over:
 
 - **The floor and the trail** usually come from the analyst's sell rules, inherited by every stock it holds. The thesis can carry its own, tighter ones.
-- **A sale or trim fires:** a [trigger run](trigger-runs.md) decides within minutes, or a floor set to sell straight away proposes the sale with no agent. Either way it's a [proposal](approvals.md).
-- **A review fires,** or the review clock comes round: the next [morning run](morning-runs.md) looks again.
+- **A sale or trim fires:** a [trigger run](../agents/trigger-runs.md) decides within minutes, or a floor set to sell straight away proposes the sale with no agent. Either way it's a [proposal](approvals.md).
+- **A review fires,** or the review clock comes round: the next [morning run](../agents/morning-runs.md) looks again.
 - **Something changed:** a gain with no floor under it, a report coming, a new filing, the price three quarters of the way to the target. Each is a [situation](situations.md) the morning run answers.
 
 No agent can lower a floor on a stock we hold. It can sell, trim, propose the sale again, or raise the floor; only you move it down.
@@ -64,7 +64,7 @@ Who may change what:
 - **Chat** can also change the belief and the direction, when you ask.
 - **A morning run** changes the plan, gives its verdict, and leaves a note.
 - **A trigger run** changes the plan and leaves a note.
-- **You** can edit any trigger on the thesis sheet, approve or decline what's proposed, and leave a note through [chat](chat.md). Your words come first: the next run answers them before anything else.
+- **You** can edit any trigger on the thesis sheet, approve or decline what's proposed, and leave a note through [chat](../agents/chat.md). Your words come first: the next run answers them before anything else.
 
 ## How it ends
 

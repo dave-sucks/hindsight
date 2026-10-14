@@ -16,7 +16,6 @@ export const GUIDE_ASSETS = [
   "thesis-lifecycle",
   "analyst-styles",
   "playbook",
-  "situation-explorer",
   "situation-sizes",
   "system-layers",
 ] as const;
@@ -154,4 +153,9 @@ export function parseChat(lines: readonly string[]): Extract<Block, { kind: "cha
     }
   }
   return { kind: "chat", caption, steps };
+}
+
+/** A section heading's anchor: "What's in it" → "whats-in-it". */
+export function headingId(title: string): string {
+  return title.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }

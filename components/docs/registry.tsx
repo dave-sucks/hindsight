@@ -1,7 +1,7 @@
 /**
- * Every page of the docs: its address, its name and where it sits on the
- * home page. What a page says is its markdown, docs/guide/<slug>.md. The
- * home page opens a page in a sheet; /docs/[slug] draws it full width.
+ * Every page of the docs: its address, its name and its group in the docs
+ * sidebar. What a page says is its markdown, docs/guide/<folder>/<slug>.md.
+ * /docs/[slug] draws it in the docs hub; /docs/how-it-works opens it in a sheet.
  */
 
 import {
@@ -31,12 +31,13 @@ export type DocSlug =
   | "situations"
   | "approvals"
   | "architecture"
-  | "glossary";
+  | "glossary"
+  | "situations-library";
 
 export interface DocMeta {
   slug: DocSlug;
   title: string;
-  group: "Overview" | "Agents" | "Concepts";
+  group: "Overview" | "Agents" | "Concepts" | "Reference";
   blurb: string;
   icon: LucideIcon;
 }
@@ -54,6 +55,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "approvals", title: "Approvals", group: "Concepts", icon: CheckCircle2, blurb: "Analysts propose. You approve. Proposals expire after a day." },
   { slug: "architecture", title: "Architecture", group: "Overview", icon: Layers, blurb: "How the pieces fit: data, the record, the clocks, the read, the agents and the gate." },
   { slug: "glossary", title: "Glossary", group: "Overview", icon: BookOpen, blurb: "Every term the app, the docs and the agents use, a sentence each." },
+  { slug: "situations-library", title: "Situations library", group: "Reference", icon: Flag, blurb: "All sixteen situations: each code, what it means and the exact text an agent is sent." },
 ];
 
 export function docBySlug(slug: string): DocMeta | undefined {

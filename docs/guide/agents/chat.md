@@ -48,11 +48,11 @@ With an analyst selected, chat works for that analyst: every edit and trade is m
 
 ## Changes and trades
 
-When your message is clear ("raise the floor to $1,650", "sell NVDA"), chat says what it's doing in one sentence and does it. An edit goes through `update_thesis` and lands in Activity like any other, and a price you name becomes a [trigger](triggers.md) on the [thesis](theses.md). A trade becomes a [proposal](approvals.md) like any analyst's; chat can name a size, which is used as given. Besides the Writer, chat is the only agent that may change a thesis's belief and direction, and only when you ask.
+When your message is clear ("raise the floor to $1,650", "sell NVDA"), chat says what it's doing in one sentence and does it. An edit goes through `update_thesis` and lands in Activity like any other, and a price you name becomes a [trigger](../concepts/triggers.md) on the [thesis](../concepts/theses.md). A trade becomes a [proposal](../concepts/approvals.md) like any analyst's; chat can name a size, which is used as given. Besides the Writer, chat is the only agent that may change a thesis's belief and direction, and only when you ask.
 
 ## Your notes
 
-The analysts never see this chat. What reaches them is a note on the stock's thesis, in your words: why you like or doubt it, what you're waiting for. A note no run has answered puts the stock in the "your word unanswered" [situation](situations.md), so the next [morning run](morning-runs.md) answers it first, quoting you.
+The analysts never see this chat. What reaches them is a note on the stock's thesis, in your words: why you like or doubt it, what you're waiting for. A note no run has answered puts the stock in the "your word unanswered" [situation](../concepts/situations.md), so the next [morning run](morning-runs.md) answers it first, quoting you.
 
 - When research reaches a conclusion, chat asks before saving a note, with the draft on a question card.
 - A note is information, not an order. A run weighs it and says so when it decides against it.

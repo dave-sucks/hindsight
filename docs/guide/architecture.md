@@ -10,11 +10,11 @@ Five agents work on one shared record, and each part of the system is defined in
 
 1. **The data.** Live prices and bars from Alpaca, company numbers and news from Finnhub, filings from the SEC, the web and X. Read live, and named as missing when a source has nothing.
 2. **The record.** The database: analysts, theses with their triggers, positions, orders, your notes, and Activity, one line for every change.
-3. **The clocks.** The chart numbers at 6:30, [morning runs](morning-runs.md) at 8, the [trigger](triggers.md) check every five minutes. They decide when an agent wakes.
-4. **The read.** What an agent sees of its book. Each stock is a row at the size today needs, with its [situations](situations.md) and their instructions attached.
-5. **The agents.** [Morning runs](morning-runs.md), [trigger runs](trigger-runs.md), [chat](chat.md), [Discovery](discovery.md) and [the Writer](writer.md). Each is a job and a list of tools on top of the parts every agent shares.
+3. **The clocks.** The chart numbers at 6:30, [morning runs](agents/morning-runs.md) at 8, the [trigger](concepts/triggers.md) check every five minutes. They decide when an agent wakes.
+4. **The read.** What an agent sees of its book. Each stock is a row at the size today needs, with its [situations](concepts/situations.md) and their instructions attached.
+5. **The agents.** [Morning runs](agents/morning-runs.md), [trigger runs](agents/trigger-runs.md), [chat](agents/chat.md), [Discovery](agents/discovery.md) and [the Writer](agents/writer.md). Each is a job and a list of tools on top of the parts every agent shares.
 6. **The save.** Every change to a thesis goes through the same tool and the same checks, whoever makes it: an agent, the Writer, or you on the thesis sheet. Each agent may send only the fields its job needs, and no agent can lower a floor on a stock we hold.
-7. **The gate.** Every buy, sale, add and trim becomes a [proposal](approvals.md). Nothing reaches the broker until you approve it.
+7. **The gate.** Every buy, sale, add and trim becomes a [proposal](concepts/approvals.md). Nothing reaches the broker until you approve it.
 
 ## One place for each thing
 
@@ -62,7 +62,7 @@ Some data isn't on any plan we hold: analyst price targets, forward revenue and 
 
 ## What an agent is told
 
-Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the analyst's brief, and the read of its stocks. What a stock needs arrives with the stock, through its [situations](situations.md), never in a prompt. The Framework tab takes one request apart, piece by piece, with every size measured from the code.
+Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the analyst's brief, and the read of its stocks. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in a prompt. The Framework tab takes one request apart, piece by piece, with every size measured from the code.
 
 [Open the Framework →](/docs/framework)
 

@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/docs": ["./docs/guide/**/*.md"],
     "/docs/[slug]": ["./docs/guide/**/*.md"],
+    "/docs/how-it-works": ["./docs/guide/**/*.md"],
   },
   images: {
     remotePatterns: [

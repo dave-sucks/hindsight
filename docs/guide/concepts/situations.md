@@ -8,7 +8,7 @@ There are sixteen. They're worked out fresh every time a stock is read, and each
 
 ## What a situation is
 
-A situation is a reason a stock needs a decision: a sale fired, a buy level arrived, earnings are close, the research is stale, you said something the analyst hasn't answered. It's how the agents know where to spend their attention. A [morning run](morning-runs.md) reads its whole book, but it only works on the stocks in a situation; the rest are one quiet line each.
+A situation is a reason a stock needs a decision: a sale fired, a buy level arrived, earnings are close, the research is stale, you said something the analyst hasn't answered. It's how the agents know where to spend their attention. A [morning run](../agents/morning-runs.md) reads its whole book, but it only works on the stocks in a situation; the rest are one quiet line each.
 
 - **Several at once.** A stock can be in more than one. The most urgent leads, and none are hidden behind it.
 - **One answer covers all.** A single save on the stock answers every situation it's in.
@@ -29,9 +29,9 @@ Every read looks at the same facts about each stock and turns them into its list
 
 ## Who sees them
 
-- **[Morning runs](morning-runs.md)** get them in the read: each stock's situations on its row, and the instructions for each situation once, however many stocks share it.
-- **[Trigger runs](trigger-runs.md)** get the situations of the one stock they woke for.
-- **[Chat](chat.md)** sees them on any stock it reads.
+- **[Morning runs](../agents/morning-runs.md)** get them in the read: each stock's situations on its row, and the instructions for each situation once, however many stocks share it.
+- **[Trigger runs](../agents/trigger-runs.md)** get the situations of the one stock they woke for.
+- **[Chat](../agents/chat.md)** sees them on any stock it reads.
 - **You** see them on the thesis sheet, as the line that says why a stock needs attention.
 
 ## Where each one leads
@@ -53,7 +53,7 @@ Every read looks at the same facts about each stock and turns them into its list
 
 **Send it back to the Writer**
 
-- **First research due:** a stock on the watchlist with no view yet. Send it to [the Writer](writer.md).
+- **First research due:** a stock on the watchlist with no view yet. Send it to [the Writer](../agents/writer.md).
 - **Research stale:** the research is older than the analyst allows. Refresh it, or say in one sentence why it still stands.
 - **Watch woke up:** a watch with no plan hit one of its wakes. Bring it back with fresh research, move the wakes, or let it go.
 
@@ -64,9 +64,9 @@ Every read looks at the same facts about each stock and turns them into its list
 - **Your word unanswered:** you left a note or made a decision since the analyst's last answer. It's answered before anything else, quoting you.
 - **Sold, one look:** a stock sold recently gets one look back: watch it again with a re-entry level, or let it go.
 
-<!-- asset: situation-explorer -->
-
 ## The instructions travel with the stock
+
+The [Situations library](../reference/situations-library.md) lists all sixteen with their codes and the exact text an agent is sent for each.
 
 What an analyst should do in each situation lives in one table, not in any agent's prompt. When a stock is in a situation, that situation's instructions arrive with it, once per read. A morning with three stocks in two situations carries two texts, not the whole table.
 

@@ -10,10 +10,10 @@ Nothing reaches the broker until you say yes. Whatever you answer, the next run 
 
 No agent trades on its own. A trade becomes a proposal at the moment an agent decides on it:
 
-- **A [trigger run](trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
-- **A [morning run](morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its target.
+- **A [trigger run](../agents/trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
+- **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its target.
 - **A floor set to sell straight away,** with no agent at all.
-- **[Chat](chat.md)**, when you ask for a trade. Chat can name a size, and it's used as given.
+- **[Chat](../agents/chat.md)**, when you ask for a trade. Chat can name a size, and it's used as given.
 
 The buy or add is sized by risk inside the [analyst](analysts.md)'s band; no agent picks a size.
 

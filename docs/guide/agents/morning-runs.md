@@ -20,9 +20,9 @@ tools: Recording the run summary
 
 ## What it does
 
-The morning run is how an analyst keeps its whole book honest. Once a day it reads every stock it holds or watches, takes one action on each stock that's in a [situation](situations.md), and leaves the quiet ones alone.
+The morning run is how an analyst keeps its whole book honest. Once a day it reads every stock it holds or watches, takes one action on each stock that's in a [situation](../concepts/situations.md), and leaves the quiet ones alone.
 
-It's the run that picks up everything the day before left behind: [reviews](triggers.md) that fired and waited for the morning, review clocks that came due, research that got old, plans the price moved past, gains with no floor under them, and anything you said that no run has answered. It never trades: buys, sales, adds and trims go to your queue as [proposals](approvals.md), and every change to a [thesis](theses.md) lands in Activity the moment it's made.
+It's the run that picks up everything the day before left behind: [reviews](../concepts/triggers.md) that fired and waited for the morning, review clocks that came due, research that got old, plans the price moved past, gains with no floor under them, and anything you said that no run has answered. It never trades: buys, sales, adds and trims go to your queue as [proposals](../concepts/approvals.md), and every change to a [thesis](../concepts/theses.md) lands in Activity the moment it's made.
 
 ## When it runs
 
@@ -33,7 +33,7 @@ At 8 AM Eastern on the analyst's run days, every weekday by default. Market holi
 The run opens with two reads. `get_portfolio_context` gives live positions, cash, the account's open risk and the market's mood. `get_theses` gives the book, with each stock at the size today needs:
 
 - **A quiet stock** is one line: the price, the plan, the next review.
-- **A stock in a [situation](situations.md)** gets a short row (position, plan, triggers, belief) and the instructions for that situation, once.
+- **A stock in a [situation](../concepts/situations.md)** gets a short row (position, plan, triggers, belief) and the instructions for that situation, once.
 - **A stock whose research needs re-planning** gets the full row, research and all.
 
 <!-- asset: read-demo -->

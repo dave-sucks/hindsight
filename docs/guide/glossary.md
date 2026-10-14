@@ -6,7 +6,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## The desk
 
-- **Analyst:** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one. See [Analysts](analysts.md).
+- **Analyst:** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one. See [Analysts](concepts/analysts.md).
 - **Book:** every stock an analyst holds or watches.
 - **Strategy:** the analyst's edge in your words, read word for word by every agent.
 - **Universe:** the markets, sectors, industries, themes and market-cap band an analyst looks in. Its **exclusion list** always wins.
@@ -15,7 +15,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## A thesis
 
-- **Thesis:** one analyst's view of one stock, and its plan. Every stock on the book has one. See [Theses](theses.md).
+- **Thesis:** one analyst's view of one stock, and its plan. Every stock on the book has one. See [Theses](concepts/theses.md).
 - **Belief:** one sentence we can be wrong about, with an outcome, a timeframe and the reason.
 - **Wrong if:** what would prove the belief wrong, written before the buy.
 - **Setup:** the kind of trade, from the shared **playbook** (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has its checklist for the buy, the floor, the target and the time limit.
@@ -34,7 +34,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## Triggers
 
-- **Trigger:** a condition and an action, written as one sentence: "Sell if below $384". See [Triggers](triggers.md).
+- **Trigger:** a condition and an action, written as one sentence: "Sell if below $384". See [Triggers](concepts/triggers.md).
 - **Action:** what a trigger does when it comes true: **buy**, **add**, **trim**, **sell** or **review**. A review wakes the analyst with no order behind it.
 - **Floor:** the sale trigger under the price. The stop.
 - **Trail:** a sale measured as a give-back from the highest price since the buy, like "12% off the high".
@@ -50,24 +50,24 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## The agents
 
-- **Morning run:** each analyst's review of its whole book, every run day at 8 AM. See [Morning runs](morning-runs.md).
-- **Trigger run:** an analyst's short look at one stock, started by a trigger that fired. See [Trigger runs](trigger-runs.md).
-- **Chat:** the agent you talk to, on one analyst or the whole account. See [Chat](chat.md).
-- **Discovery:** the agent that finds new stocks for an analyst. Run when you ask. See [Discovery](discovery.md).
-- **The Writer:** the only agent that writes a whole thesis, from in-depth research. See [the Writer](writer.md).
+- **Morning run:** each analyst's review of its whole book, every run day at 8 AM. See [Morning runs](agents/morning-runs.md).
+- **Trigger run:** an analyst's short look at one stock, started by a trigger that fired. See [Trigger runs](agents/trigger-runs.md).
+- **Chat:** the agent you talk to, on one analyst or the whole account. See [Chat](agents/chat.md).
+- **Discovery:** the agent that finds new stocks for an analyst. Run when you ask. See [Discovery](agents/discovery.md).
+- **The Writer:** the only agent that writes a whole thesis, from in-depth research. See [the Writer](agents/writer.md).
 - **Door:** one way an agent is started: the morning run, the trigger run, chat, Discovery or the Writer. The Framework tab compares them.
 
 ## What an agent reads
 
 - **The read:** an agent's view of its book from `get_theses`. Each stock is a row at the size today needs: a **line** for a quiet stock, a **short row** for a stock in a situation, the **full row** for one that needs re-planning.
-- **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are sixteen. See [Situations](situations.md).
+- **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are sixteen. See [Situations](concepts/situations.md).
 - **Guidance:** a situation's instructions, sent once per read for each situation on the day's list.
 - **Analyst brief:** the analyst's name, strategy, rule numbers, free slots and setups, written once and given to every agent.
 - **House rules:** the sentences every agent gets, whatever its job: your word comes first, a note is information, and how to write.
 
 ## Trades
 
-- **Proposal:** a buy, sale, add or trim waiting for your approval, with its reason. It expires after 24 hours. See [Approvals](approvals.md).
+- **Proposal:** a buy, sale, add or trim waiting for your approval, with its reason. It expires after 24 hours. See [Approvals](concepts/approvals.md).
 - **Decline:** your no on a proposal. Recorded and read by every run after it.
 - **Lapse:** a proposal left to expire. It means "not now, ask me again", never a decline.
 - **Fill:** the broker carrying out an approved order. A buy's fill turns a watch into a holding.

@@ -19,11 +19,11 @@ import Link from "next/link";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ReactNode } from "react";
-import { parseDoc, type Block } from "@/lib/docs/guide-parse";
+import { headingId, parseDoc, type Block } from "@/lib/docs/guide-parse";
 import { Tk } from "./chat-mock";
 import { ChatExample, DocRef, DocSection, P, ToolRef, Ul } from "./doc-text";
 import { ASSETS } from "./doc-assets";
-import { Code, DocAccordion, DocAccordions, DocBody, DocFact, DocHeader } from "./primitives";
+import { Code, DocAccordion, DocAccordions, DocBody, DocFact, DocHeader, Mono } from "./primitives";
 import { DOCS, type DocSlug } from "./registry";
 import { useDocsTools, useGuideDoc } from "./tool-catalog";
 
@@ -55,12 +55,19 @@ function useComponents(chips: boolean): Components {
     ol: ({ children }) => <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm leading-6 text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">{children}</ol>,
     h3: ({ children }) => <h4 className="pt-1 text-sm font-medium text-foreground">{children}</h4>,
     blockquote: ({ children }) => <div className="flex flex-col gap-2 border-l-2 pl-4 [&_p]:text-foreground">{children}</div>,
-    code: ({ children }) => {
+    pre: ({ children }) => (
+      <Mono as="pre" className="overflow-x-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-xs leading-relaxed text-foreground [overflow-wrap:anywhere]">
+        {children}
+      </Mono>
+    ),
+    code: ({ children, className }) => {
+      // A fenced block (it has a language) is drawn by `pre`; inline code is a chip or a name.
+      if (className) return <code>{children}</code>;
       const text = String(children);
       return chips && toolNames.has(text) ? <ToolRef name={text} /> : <Code>{text}</Code>;
     },
     a: ({ href, children }) => {
-      const doc = href?.match(/^([\w-]+)\.md$/)?.[1];
+      const doc = href?.match(/(?:^|\/)([\w-]+)\.md$/)?.[1];
       if (doc && SLUGS.has(doc)) return <DocRef slug={doc as DocSlug}>{children}</DocRef>;
       if (href?.startsWith("/")) {
         return (
@@ -129,7 +136,7 @@ export function MarkdownDoc({ source }: { source: string }) {
         ) : part.title === null ? (
           part.blocks.map((b, j) => <BlockView key={`${k}-${j}`} block={b} />)
         ) : (
-          <DocSection key={k} title={part.title}>
+          <DocSection key={k} title={part.title} id={headingId(part.title)}>
             {part.blocks.map((b, j) => (
               <BlockView key={j} block={b} />
             ))}
