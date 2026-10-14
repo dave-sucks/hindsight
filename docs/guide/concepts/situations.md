@@ -70,8 +70,6 @@ The [Situations library](../reference/situations-library.md) lists all sixteen w
 
 What an analyst should do in each situation lives in one table, not in any agent's prompt. When a stock is in a situation, that situation's instructions arrive with it, once per read. A morning with three stocks in two situations carries two texts, not the whole table.
 
-<!-- asset: situation-sizes -->
-
 Each text says when it applies, what to check in order, what the analyst can do, what counts as an answer, and the mistakes to avoid. Changing how every agent handles, say, a buy that arrives is one edit to one text: `SITUATIONS` in `lib/agent/situations.ts`.
 
 <details>

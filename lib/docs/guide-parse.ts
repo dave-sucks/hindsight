@@ -16,7 +16,6 @@ export const GUIDE_ASSETS = [
   "thesis-lifecycle",
   "analyst-styles",
   "playbook",
-  "situation-sizes",
   "system-layers",
 ] as const;
 export type GuideAsset = (typeof GUIDE_ASSETS)[number];
