@@ -27,10 +27,19 @@ const fx = raw as unknown as {
     agentConfigId: string;
     triggers: unknown[];
   }>;
+  cogtWriterRun: Row & { startedAt: string; completedAt: string };
 };
 
 /** Thursday 2026-10-15, 08:00 ET — the first morning after the read. */
 const MORNING = new Date("2026-10-15T12:00:05Z");
+
+/** COGT's real 2026-09-28 refresh: it completed and left the row with no view. `startedAt` moves it in time. */
+const cogtRun = (startedAt = new Date(fx.cogtWriterRun.startedAt)): Row => ({
+  ...fx.cogtWriterRun,
+  accountId: REPLAY_ACCOUNT_ID,
+  startedAt,
+  completedAt: new Date(startedAt.getTime() + 211_683),
+});
 
 const watchRows = (): Row[] =>
   fx.watches.map((w) =>
@@ -42,6 +51,8 @@ interface Morning {
   db: PrismaDouble;
   sent: Array<{ name: string; data: Record<string, unknown> }>;
   steps: string[];
+  /** What the write-up step returned: the stocks sent and the ones held back, with why. */
+  writeups: { sent: string[]; skipped: string[] } | null;
   result: Record<string, unknown>;
 }
 
@@ -58,6 +69,7 @@ async function morning(seed: { thesis: Row[]; researchRun?: Row[]; analysts?: Ro
   });
   const sent: Morning["sent"] = [];
   const steps: string[] = [];
+  let writeups: Morning["writeups"] = null;
   let result: Record<string, unknown> = {};
 
   // Only the clock is faked; timers and microtasks run for real.
@@ -86,7 +98,9 @@ async function morning(seed: { thesis: Row[]; researchRun?: Row[]; analysts?: Ro
         step: {
           run: async (id: string, fn: () => Promise<unknown>) => {
             steps.push(id);
-            return fn();
+            const out = await fn();
+            if (id === "agent-watch-writeups") writeups = out as Morning["writeups"];
+            return out;
           },
         },
       });
@@ -94,7 +108,7 @@ async function morning(seed: { thesis: Row[]; researchRun?: Row[]; analysts?: Ro
   } finally {
     jest.useRealTimers();
   }
-  return { db, sent, steps, result };
+  return { db, sent, steps, writeups, result };
 }
 
 const writers = (m: Morning) =>
@@ -103,7 +117,8 @@ const sentTickers = (m: Morning) => writers(m).map((r) => (r.parameters as Row).
 
 describe("the live book on 2026-10-14 — the morning sends every Agent Watch to the writer", () => {
   it("sends ABBV, COGT and MA, and not CRWD, FTNT or NDAQ", async () => {
-    const m = await morning({ thesis: watchRows() });
+    // COGT's real 09-28 write-up is in the store, 17 days old: past the week, so COGT goes again.
+    const m = await morning({ thesis: watchRows(), researchRun: [cogtRun()] });
     // On main the morning sent nothing: no writer row, no event.
     // Oldest watch first: COGT (09-25), ABBV, MA (both 09-29).
     expect(sentTickers(m)).toEqual(["COGT", "ABBV", "MA"]);
@@ -172,6 +187,19 @@ describe("a stock is not sent twice", () => {
       researchRun: [failed("ABBV", new Date("2026-10-14T12:00:07Z"))],
     });
     expect(sentTickers(m).sort()).toEqual(["ABBV", "COGT", "MA"]);
+  });
+});
+
+describe("a write-up that completed but left no view is paid for once a week, not every morning", () => {
+  it("COGT's run, completed 2 days ago: COGT waits, and the log says it needs a look", async () => {
+    const m = await morning({ thesis: watchRows(), researchRun: [cogtRun(daysAgo(2, MORNING))] });
+    expect(sentTickers(m)).toEqual(["ABBV", "MA"]);
+    expect(m.writeups?.skipped).toContain("COGT (written up 2026-10-13 but no view — needs a look)");
+  });
+
+  it("COGT's run, completed 8 days ago: COGT is sent again", async () => {
+    const m = await morning({ thesis: watchRows(), researchRun: [cogtRun(daysAgo(8, MORNING))] });
+    expect(sentTickers(m)).toEqual(["COGT", "ABBV", "MA"]);
   });
 });
 

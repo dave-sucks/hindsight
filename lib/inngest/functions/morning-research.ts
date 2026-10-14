@@ -29,6 +29,8 @@ import {
 const AGENT_WATCH_WRITEUPS_PER_MORNING = 3;
 /** A write-up that failed this recently waits; under 24h so yesterday's 8 AM failure is tried again this morning. */
 const FAILED_WRITEUP_WAIT_MS = 23 * 60 * 60 * 1000;
+/** A write-up that completed but left no view waits this long, so a broken one costs one paid retry a week. */
+const NO_VIEW_WRITEUP_WAIT_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * A watched stock with a review clock of its own (an Agent Watch, the stock page's test) and no view yet is
@@ -58,19 +60,26 @@ async function sendAgentWatchWriteups(
       skipped.push(`${row.ticker} (a writer is running)`);
       continue;
     }
-    const failedRecently = await prisma.researchRun.findFirst({
+    const recentRuns = await prisma.researchRun.findMany({
       where: {
         mode: "THESIS_WRITER",
-        status: "FAILED",
-        startedAt: { gte: new Date(Date.now() - FAILED_WRITEUP_WAIT_MS) },
+        status: { in: ["COMPLETE", "FAILED"] },
+        startedAt: { gte: new Date(Date.now() - NO_VIEW_WRITEUP_WAIT_MS) },
         OR: [
           { parameters: { path: ["existingThesisId"], equals: row.id } },
           { parameters: { path: ["thesisId"], equals: row.id } },
         ],
       },
-      select: { id: true },
+      select: { status: true, startedAt: true },
+      orderBy: { startedAt: "desc" },
     });
-    if (failedRecently) {
+    // A write-up that finished and still left no view is broken, not pending: a person looks, and it is paid for again a week on.
+    const completed = recentRuns.find((r) => r.status === "COMPLETE");
+    if (completed) {
+      skipped.push(`${row.ticker} (written up ${completed.startedAt.toISOString().slice(0, 10)} but no view — needs a look)`);
+      continue;
+    }
+    if (recentRuns.some((r) => r.startedAt.getTime() >= Date.now() - FAILED_WRITEUP_WAIT_MS)) {
       skipped.push(`${row.ticker} (write-up failed in the last day)`);
       continue;
     }
