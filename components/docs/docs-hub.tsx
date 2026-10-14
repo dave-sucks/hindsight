@@ -115,8 +115,8 @@ function DocsSidebar({ active }: { active: string }) {
       })}
       <div className="flex flex-col gap-1 border-t pt-4">
         {[
-          { href: "/docs/how-it-works", label: "How it works" },
-          { href: "/docs/framework", label: "The Framework" },
+          { href: "/how-it-works", label: "How it works" },
+          { href: "/how-it-works/framework", label: "The Framework" },
         ].map((l) => (
           <Link key={l.href} href={l.href} className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
             {l.label}

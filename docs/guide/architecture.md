@@ -64,7 +64,7 @@ Some data isn't on any plan we hold: analyst price targets, forward revenue and 
 
 Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the analyst's brief, and the read of its stocks. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in a prompt. The Framework tab takes one request apart, piece by piece, with every size measured from the code.
 
-[Open the Framework →](/docs/framework)
+[Open the Framework →](/how-it-works/framework)
 
 <details>
 <summary>Technical details</summary>

@@ -112,7 +112,7 @@ export function DoorInspector({ data }: { data: FrameworkData }) {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Tools · {door.tools.length}</p>
-            <Link href="/docs#tools" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            <Link href="/how-it-works#tools" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
               Open the catalog
               <ArrowUpRight className="size-3" />
             </Link>

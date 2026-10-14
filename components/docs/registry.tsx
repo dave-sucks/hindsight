@@ -1,7 +1,7 @@
 /**
  * Every page of the docs: its address, its name and its group in the docs
  * sidebar. What a page says is its markdown, docs/guide/<folder>/<slug>.md.
- * /docs/[slug] draws it in the docs hub; /docs/how-it-works opens it in a sheet.
+ * /docs/[slug] draws it in the docs hub; /how-it-works opens it in a sheet.
  */
 
 import {

@@ -1,5 +1,5 @@
 /**
- * The numbers on /docs/framework, measured on the server from the code this
+ * The numbers on /how-it-works/framework, measured on the server from the code this
  * deploy runs. Each door's prompt is built from the same fixed sample input
  * prompt-size.test.ts pins (lib/agent/__fixtures__/sample-prompts.ts), and
  * its tool menu is measured the way that test measures it: every tool on the

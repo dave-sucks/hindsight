@@ -1,5 +1,5 @@
 /**
- * What /docs/framework says that the code can't measure: the doors in plain
+ * What /how-it-works/framework says that the code can't measure: the doors in plain
  * words, the one real request the Roadmap measured, and which parts of a
  * thesis each size of the read carries. Client-safe; the measured numbers
  * come from ./framework.ts on the server.

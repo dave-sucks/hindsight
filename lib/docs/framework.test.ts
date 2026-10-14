@@ -1,5 +1,5 @@
 /**
- * framework.test.ts — /docs/framework measures every door from the code, and
+ * framework.test.ts — /how-it-works/framework measures every door from the code, and
  * a measurement that throws is left out rather than failing the page. This
  * checks that every number is actually taken, so a blank never ships.
  */

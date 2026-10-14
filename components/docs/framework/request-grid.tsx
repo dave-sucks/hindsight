@@ -77,7 +77,7 @@ export function RequestGrid({ data }: { data: FrameworkData }) {
     { id: "job", label: "Job prompt", body: DOOR_COPY[agent].job, chars: job, squares: squaresOf(job), source: "Measured from this deploy" },
     { id: "house", label: "House rules", body: "The few sentences true for every analyst everywhere: your word first, and how to write.", chars: data.houseRulesChars, squares: squaresOf(data.houseRulesChars), source: "Measured from this deploy" },
     { id: "analyst", label: "Analyst brief", body: "Who it works for: the strategy you wrote, word for word, its rule numbers, how full it is, its setups.", chars: MEASURED_REQUEST.after.analystBrief, squares: squaresOf(MEASURED_REQUEST.after.analystBrief), source: "Measured on the Compounder" },
-    { id: "tools", label: "Tool menu", body: `The ${door?.tools.length ?? ""} tools it may call, each described in full on every request, used or not.`, chars: door?.toolChars ?? 0, squares: squaresOf(door?.toolChars ?? 0), source: "Measured from this deploy", href: "/docs#tools", hrefLabel: "Catalog" },
+    { id: "tools", label: "Tool menu", body: `The ${door?.tools.length ?? ""} tools it may call, each described in full on every request, used or not.`, chars: door?.toolChars ?? 0, squares: squaresOf(door?.toolChars ?? 0), source: "Measured from this deploy", href: "/how-it-works#tools", hrefLabel: "Catalog" },
     { id: "read", label: "The read", body: DOOR_COPY[agent].read, chars: read.chars, squares: read.squares, source: read.source, href: "#read", hrefLabel: "Zoom in" },
   ];
   const whenNeeded: Part[] = [

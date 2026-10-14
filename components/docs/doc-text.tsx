@@ -102,7 +102,7 @@ const REFS: Record<string, { title: string; icon: LucideIcon }> = {
 export function DocRef({ slug, children }: { slug: keyof typeof REFS; children?: ReactNode }) {
   const pathname = usePathname();
   const a = REFS[slug];
-  const href = pathname === "/docs/how-it-works" ? `/docs/how-it-works?doc=${slug}` : `/docs/${slug}`;
+  const href = pathname === "/how-it-works" ? `/how-it-works?doc=${slug}` : `/docs/${slug}`;
   return (
     <Link href={href} scroll={false} className={cn(pill, "font-medium hover:bg-muted")}>
       <a.icon className="size-3 text-muted-foreground" />

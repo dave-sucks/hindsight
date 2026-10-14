@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * /docs/framework — how an agent is put together: one request taken apart
+ * /how-it-works/framework — how an agent is put together: one request taken apart
  * (the same parts for every agent), every door opened up, the read zoomed in, and the instructions that travel
  * with a stock. The numbers come measured from the server (lib/docs/framework.ts).
  */
