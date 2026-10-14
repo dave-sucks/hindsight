@@ -12,8 +12,6 @@ A thesis is one [analyst](analysts.md)'s view of one stock, and its plan. Every 
 
 ## What's in it
 
-<!-- asset: thesis-anatomy -->
-
 - **The belief:** one sentence we can be wrong about, with an outcome, a timeframe and the reason. Every agent reads it as the claim of record.
 - **What it rests on:** the two or three assumptions that have to hold.
 - **What would prove it wrong:** written before the buy, so a bad day isn't mistaken for a broken story. A run checks these before it acts on a fire.

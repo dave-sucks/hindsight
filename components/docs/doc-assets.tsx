@@ -11,9 +11,8 @@ import type { ComponentType } from "react";
 import type { GuideAsset } from "@/lib/docs/guide-parse";
 import type { DocsAgentId } from "@/lib/docs/tools";
 import { AnalystStyles, Playbook } from "./assets/analysts";
-import { ProposalExample } from "./assets/approvals";
 import { SituationExplorer, SituationSizes } from "./assets/situations";
-import { ThesisAnatomy, ThesisLifecycle } from "./assets/theses";
+import { ThesisLifecycle } from "./assets/theses";
 import { TriggerKinds } from "./assets/triggers";
 import { SystemLayers } from "./assets/architecture";
 import { ConceptHero } from "./concept-cards";
@@ -27,12 +26,10 @@ export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   tools: ({ arg }) => <AgentTools agent={arg as DocsAgentId} />,
   "read-demo": () => <ReadDemo />,
   "trigger-kinds": TriggerKinds,
-  "thesis-anatomy": ThesisAnatomy,
   "thesis-lifecycle": ThesisLifecycle,
   "analyst-styles": AnalystStyles,
   playbook: Playbook,
   "situation-explorer": SituationExplorer,
   "situation-sizes": SituationSizes,
-  proposal: ProposalExample,
   "system-layers": SystemLayers,
 };

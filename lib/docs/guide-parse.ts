@@ -13,13 +13,11 @@ export const GUIDE_ASSETS = [
   "tools",
   "read-demo",
   "trigger-kinds",
-  "thesis-anatomy",
   "thesis-lifecycle",
   "analyst-styles",
   "playbook",
   "situation-explorer",
   "situation-sizes",
-  "proposal",
   "system-layers",
 ] as const;
 export type GuideAsset = (typeof GUIDE_ASSETS)[number];

@@ -19,8 +19,6 @@ The buy or add is sized by risk inside the [analyst](analysts.md)'s band; no age
 
 ## How a trade reaches you
 
-<!-- asset: proposal -->
-
 It lands in your queue, your inbox and on your phone at the same moment, carrying:
 
 - **The trade:** the stock, buy or sell, the shares and the price it expects.
