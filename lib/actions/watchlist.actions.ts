@@ -12,7 +12,7 @@ import {
   CADENCE_DAYS_BY_HORIZON,
 } from "@/lib/agent/triggers/defaults";
 import { horizonFor } from "@/lib/agent/triggers/load-levels";
-import { inngest } from "@/lib/inngest/client";
+import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -335,49 +335,22 @@ export async function sendToThesisWriter(
   } else {
     reviewCadenceDays = reviewCadence;
   }
-  const reason = `Sent to research by hand from the watchlist (${upper}).`;
-  const childRun = await prisma.researchRun.create({
-    data: {
-      userId,
-      accountId,
-      agentConfigId: analystId,
-      source: "USER",
-      status: "RUNNING",
-      // String column, not an enum — same as dispatch_thesis_research.
-      mode: "THESIS_WRITER",
-      environment: analyst.tradingEnvironment as "PAPER" | "LIVE",
-      parameters: {
-        ticker: upper,
-        mode,
-        existingThesisId,
-        reason,
-        dispatchedAt: new Date().toISOString(),
-        reviewCadenceDays,
-        dispatchedBy: "manual",
-      } as object,
-    },
-    select: { id: true },
-  });
-
-  await inngest.send({
-    name: "app/thesis.write.requested",
-    data: {
-      childRunId: childRun.id,
-      ticker: upper,
-      analystId,
-      mode,
-      existingThesisId,
-      reason,
-      parentRunId: null,
-      // A hand-sent name is coverage to study, never an auto-trade.
-      forceWatchingMint: mode === "mint",
-      promotionContext: null,
-      reviewCadenceDays,
-    },
+  const sent = await startWriterRun({
+    userId,
+    accountId,
+    analystId,
+    environment: analyst.tradingEnvironment as "PAPER" | "LIVE",
+    ticker: upper,
+    mode,
+    existingThesisId,
+    reviewCadenceDays,
+    reason: `Sent to research by hand from the watchlist (${upper}).`,
+    source: "USER",
+    dispatchedBy: "manual",
   });
 
   revalidatePath(`/analysts/${analystId}`);
-  return { childRunId: childRun.id };
+  return sent;
 }
 
 export async function addWatchlistItem(

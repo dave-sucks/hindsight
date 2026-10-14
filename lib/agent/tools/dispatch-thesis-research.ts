@@ -18,6 +18,7 @@ import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
+import { findInFlightWriter } from "@/lib/agent/thesis-writer-dispatch";
 import { DISPATCH_CAP } from "@/lib/agent/system-prompts/discovery";
 
 import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
@@ -251,23 +252,7 @@ export const dispatchThesisResearch = defineTool({
     // this analyst). 30-minute age cap so a stuck writer doesn't block
     // forever; writers normally complete in 3-5 minutes.
     // ────────────────────────────────────────────────────────────────────
-    const STUCK_WRITER_AGE_MIN = 30;
-    const inFlightWriter = await prisma.researchRun.findFirst({
-      where: {
-        accountId: analyst.accountId,
-        mode: "THESIS_WRITER",
-        status: "RUNNING",
-        parameters: { path: ["ticker"], equals: T },
-        startedAt: {
-          gte: new Date(Date.now() - STUCK_WRITER_AGE_MIN * 60 * 1000),
-        },
-      },
-      select: {
-        id: true,
-        agentConfigId: true,
-        startedAt: true,
-      },
-    });
+    const inFlightWriter = await findInFlightWriter(analyst.accountId, T);
     if (inFlightWriter) {
       const ownerAnalyst = inFlightWriter.agentConfigId
         ? await prisma.agentConfig.findUnique({
