@@ -42,6 +42,7 @@ import { triggerSlot } from "./condition/slot";
 import { samePredicate } from "./condition/stored";
 import {
   conditionSentence,
+  conditionsOf,
   isGroup,
   isLevel,
   levelOf,
@@ -166,6 +167,11 @@ function nameOf(t: Trigger, direction: string | null, sells: boolean): string {
 /** The trigger in words, as every surface says it: "Buy if above $183". `sells` is false on a stock we don't own. */
 export function describeTrigger(t: Trigger, sells = true): string {
   return sentenceOf(t, sells);
+}
+
+/** A note for a trigger the owner set without one: the trigger in words. */
+export function addedTriggerRationale(action: TriggerAction, predicate: When): string {
+  return `${sentenceOf({ action, predicate })}. You set this.`;
 }
 
 /** How a condition's number reads and moves in a sentence: a price, a %, or days (the measure's own unit). */
@@ -484,10 +490,10 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       return refuse("edit", id, text, "Nothing to change — the trigger already says this.", true);
     }
     // The history belongs to the condition. Same slot: a new value for the
-    // same rule keeps its id, its fire history, its cooldown and its
-    // sentence (the number moved in it). Another slot: a different rule,
-    // so a new id and a clean history (inherited rules keep theirs per stock
-    // under the id, so a reused id would carry the old cooldown along).
+    // same rule keeps its id, its fire history and its cooldown. Another
+    // slot: a different rule, so a new id and a clean history (inherited
+    // rules keep theirs per stock under the id, so a reused id would carry
+    // the old cooldown along).
     let replaced: Trigger;
     if (sameSlot) {
       const was = numberOf(target.predicate);
@@ -496,12 +502,17 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         was && now && was.field === now.field && was.value !== now.value
           ? moveNumberInText(target.rationale, was.field, was.value, now.value)
           : null;
+      // A new number takes the reason sent with it (MU 10-13: the $1,005 reason stayed on a $1,060 floor).
+      // None sent: the owner's reads as the trigger in words; an agent's keeps the number moved in the old one.
+      const numbers = (p: When) => conditionsOf(p).map((c) => c.value).join();
+      const renumbered = numbers(target.predicate) !== numbers(trigger.predicate);
+      const sent = trigger.rationale?.trim() || (actor === "PRINCIPAL" ? addedTriggerRationale(trigger.action, trigger.predicate) : "");
       replaced = {
         ...target,
         predicate: trigger.predicate,
         action: trigger.action,
         fireMode: trigger.fireMode,
-        rationale: moved ?? target.rationale,
+        rationale: (renumbered && sent) || (moved ?? target.rationale),
         source: stamp(trigger),
       };
     } else {

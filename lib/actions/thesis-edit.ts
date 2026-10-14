@@ -31,6 +31,7 @@ import {
 } from "@/lib/agent/triggers/load-levels";
 import {
   acceptedOps,
+  addedTriggerRationale,
   applyTriggerOps,
   checkLadder,
   type TriggerOp,
@@ -375,11 +376,6 @@ export interface TriggerAddResult {
   trigger: Trigger;
   /** Set when the new trigger is the canonical stop / target and moved it. */
   synced: { stopLoss?: number; targetPrice?: number };
-}
-
-/** A note for a trigger the owner added without one: the trigger in words. */
-function addedTriggerRationale(action: TriggerAction, predicate: When): string {
-  return `${sentenceOf({ action, predicate })}. You set this.`;
 }
 
 /** How a sale you added runs, said only where it means something (a sale). */
