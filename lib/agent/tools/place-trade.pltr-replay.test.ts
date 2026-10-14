@@ -56,9 +56,8 @@ const seed = () => ({
   account: [accountRow({ requireApprovalBuysPaper: true, requireApprovalSellsPaper: true, requireApprovalBuysLive: true, requireApprovalSellsLive: true })],
 });
 
-// analyst_id is the principal-chat fallback; the tactical run is scoped to
-// its analyst, so the fixture's cuid is replaced by the replay analyst.
-const args = { ...fx, thesis_id: PLTR_THESIS, analyst_id: undefined };
+// The call verbatim: the analyst_id the model sent is no field of the tool's and is ignored.
+const args = { ...fx, thesis_id: PLTR_THESIS };
 
 describe("PLTR 2026-09-25 — the fired buy the size refusal killed", () => {
   it("inside a run, the model's $11,222 is ignored and the buy is sized by the rules", async () => {

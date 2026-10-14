@@ -66,3 +66,24 @@ describe("the Master Chat sells and adds for the stock's holder, in its book", (
     expect(db.store.order ?? []).toEqual([]);
   });
 });
+
+describe("the Master Chat buys for the thesis's analyst", () => {
+  // ETN is the Secular Compounder's watch; it holds 8 of 8. analyst_id is what main's chat had to send.
+  const buy = { ticker: "ETN", direction: "LONG", entry_price: book.prices.ETN, thesis_id: thesis("ETN").id, analyst_id: SECULAR };
+  const pinnedToPead = { runMode: "PRINCIPAL_CHAT", runEnvironment: "LIVE", analystId: "cmnhxpjio000004jvox6kl6c7", maxOpenPositions: 6, minConfidence: 60, minPositionSize: 3000, maxPositionSize: 14000, maxPositionTotal: 28000 };
+  const full = /already has 8 open positions, at its 8-slot cap/;
+
+  it("a buy for a full analyst is refused by its slot gate, as pinned", async () => {
+    const asPinned = await replayTool("place-trade", "placeTrade", { seed: seed(), ctx: pinned, args: buy, quotes: book.prices });
+    const { result, db } = await replayTool("place-trade", "placeTrade", { seed: seed(), ctx: unpinned, args: buy, quotes: book.prices });
+    expect(asPinned.result.data?.message).toMatch(full);
+    expect(result.data?.message).toBe(asPinned.result.data?.message);
+    expect(db.store.order ?? []).toEqual([]);
+  });
+
+  it("a chat pinned to another analyst buys for the thesis's analyst, not its own", async () => {
+    const { result, db } = await replayTool("place-trade", "placeTrade", { seed: seed(), ctx: pinnedToPead, args: buy, quotes: book.prices });
+    expect(result.data?.message).toMatch(full);
+    expect(db.store.order ?? []).toEqual([]);
+  });
+});
