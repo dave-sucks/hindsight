@@ -407,6 +407,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
       latestQuote: quote,
       now,
       hasPendingEntryProposal: pending.get(analystOf(t) ?? "")?.has(t.ticker) ?? false,
+      hasPendingSaleProposal: (load.proposals.get(t.id) ?? []).some((p) => p.intent === "CLOSE" || p.intent === "PARTIAL_CLOSE"),
       equity: load.equity,
     };
     // A declined sale, judged against the ladder's floor and the live price.
