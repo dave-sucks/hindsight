@@ -302,6 +302,7 @@ export const placeTrade = defineTool({
       // number. Analyst configs still store `minConfidence` on the legacy
       // 0-100 scale; we convert composite ×10 for comparison so existing
       // configs (e.g. `minConfidence: 70`) keep their semantics.
+      let belowMinimum: string | null = null;
       if (ctx.minConfidence != null) {
         const thesis = await prisma.thesis.findUnique({
           where: { id: args.thesis_id },
@@ -309,9 +310,11 @@ export const placeTrade = defineTool({
         });
         const composite = getThesisComposite(thesis ?? { scoring: null });
         const compositeOn100Scale = composite != null ? composite * 10 : null;
-        if (thesis && (compositeOn100Scale == null || compositeOn100Scale < ctx.minConfidence)) {
-          const compositeLabel =
-            composite != null ? `${composite}/10 (=${compositeOn100Scale}%)` : "unscored";
+        const below = !!thesis && (compositeOn100Scale == null || compositeOn100Scale < ctx.minConfidence);
+        const compositeLabel = composite != null ? `${composite}/10 (=${compositeOn100Scale}%)` : "unscored";
+        // In the chat the minimum is a line on the proposal, not a refusal, as the principal's size is (ruling 2026-10-15).
+        if (below && isPrincipalChat(ctx)) belowMinimum = `Scores ${compositeLabel}, below this analyst's minimum (${ctx.minConfidence}%).`;
+        if (below && !isPrincipalChat(ctx)) {
           const blockedMsg = `Trade blocked: thesis composite ${compositeLabel} is below this analyst's minimum (${ctx.minConfidence}%). Raise the composite via update_thesis with a fresh 4-dim scoring, or skip the trade.`;
           return {
             summary: `Trade blocked: $${ticker} — below min composite`,
@@ -524,7 +527,7 @@ export const placeTrade = defineTool({
 
       let resolvedShares: number | undefined;
       let resolvedNotional: number | undefined;
-      const sizingNotes: string[] = [];
+      const sizingNotes: string[] = belowMinimum ? [belowMinimum] : [];
       // Only the principal's chat may name a size. A size a run's model
       // passed anyway (an older prompt, a direct call) is ignored, not
       // refused — the rules size the buy and the proposal says so.
