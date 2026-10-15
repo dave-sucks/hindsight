@@ -9,8 +9,8 @@
  * System prompts live there too. The route just assembles and streams.
  */
 
-import { streamText, convertToModelMessages, stepCountIs, hasToolCall } from "ai";
-import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
+import { streamText, stepCountIs, hasToolCall, type ToolSet } from "ai";
+import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
@@ -56,29 +56,6 @@ import {
 export const maxDuration = 800;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Strips tool result payloads down to their summary string before the
- * messages are converted and sent to the model. The full data object
- * stays on the client for UI rendering — the model only needs the
- * one-line summary to continue reasoning. Prevents accumulated tool
- * results from blowing up the input token count over a long run.
- */
-function trimToolResults(messages: unknown[]): unknown[] {
-  if (!Array.isArray(messages)) return messages;
-  return messages.map((msg) => {
-    const m = msg as Record<string, unknown>;
-    if (!Array.isArray(m.parts)) return msg;
-    const parts = (m.parts as unknown[]).map((part) => {
-      const p = part as Record<string, unknown>;
-      if (p.type !== "tool-result") return part;
-      const result = p.result as Record<string, unknown> | undefined;
-      if (!result || typeof result.summary !== "string") return part;
-      return { ...p, result: { summary: result.summary } };
-    });
-    return { ...m, parts };
-  });
-}
 
 async function markRunFailed(runId: string | undefined, reason: string) {
   if (!runId) return;
@@ -770,13 +747,8 @@ export async function POST(
     const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
     let lastStepTimeMs = t0;
 
-    // Strip tool results down to summary-only before sending to the model.
-    // Full data stays on the client for UI rendering — the model only needs
-    // the one-line summary to continue reasoning. This prevents accumulated
-    // tool result JSON (stock data, signals, etc.) from blowing the context.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const trimmedMessages = trimToolResults(messages) as any;
-    const modelMessages = await convertToModelMessages(trimmedMessages);
+    // A tool missing from this set (a turn under another scope) passes its result through as is.
+    const modelMessages = await historyForModel(messages, tools as ToolSet);
 
     // Allow client to override model (validated to known model IDs).
     // gpt-5.5 added 2026-05-15 alongside the research-run / tactical model
@@ -826,6 +798,7 @@ export async function POST(
       ...(agentMode === "research-run" && { temperature: 0.2 }),
       system: cachedSystem(effectiveProvider, systemPrompt),
       messages: modelMessages,
+      prepareStep: ({ messages: stepMessages }) => ({ messages: cachedMessages(effectiveProvider, stepMessages) }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: cachedTools(effectiveProvider, tools) as any,
       // Stop the run when:
