@@ -1,79 +1,53 @@
 # Triggers
 
-**Write the plan once. Triggers keep it.** Every trigger is one sentence: when to buy, add, trim, sell or look again.
+**Write the plan once. Triggers keep it.** A trigger is one sentence that says when to act on a stock: "Buy if near $401", "Sell if below $384", "Review 7 days before earnings".
 
-The system checks each one all day, and the moment one comes true, the right agent looks at the stock.
+Triggers are how a thesis's plan runs while nobody is watching. They're checked all day, and when one comes true, the right agent looks at the stock.
 
 <!-- asset: card triggers -->
 
-## What a trigger is
+## A condition and an action
 
-A trigger is a condition and an action, written as one sentence: "Sell if below $40.80", "Review 7 days before earnings". The same sentence appears everywhere: on the pill on the thesis sheet, in Activity, and in what the analyst reads. A [thesis](theses.md)'s whole plan is its triggers, including its buy, its floor and its target.
+Every trigger pairs a condition with one of five actions:
 
-There are five actions:
+- **Buy** a stock we watch.
+- **Add** to a winner we hold.
+- **Trim** part of a position.
+- **Sell**: the floor, the trail or a time limit.
+- **Review**: look again and decide, with no order behind it.
 
-- **Buy** opens a position on a stock we watch.
-- **Add** asks whether to press a winner.
-- **Trim** takes part of a position off.
-- **Sell** is the floor, the trail or the time limit.
-- **Review** wakes the analyst to look and decide, without an order behind it.
+The same sentence shows everywhere: on the thesis sheet, in Activity, and in what the agent reads. A [thesis](theses.md)'s buy, floor and target are triggers too, so its whole plan is in one place.
 
-## Where triggers come from
+## What a trigger can watch
 
-- **[The Writer](../agents/writer.md) writes the first plan** when it writes the thesis: the buy at a level from the setup's rules and the chart, the floor under real structure, the target, and a review clock. Never a round number, and the reward at least twice the risk.
-- **The buy filling arms the holding.** The floor and target are set to the levels the trade went in at, and a holding's review clock and earnings reviews are added.
-- **The analyst's sell rules guard every holding** without being copied onto it: the trail, the time limit, the style's own rules. See "Rules come from three places" below.
-- **Runs keep the plan current,** one trigger at a time: a [morning run](../agents/morning-runs.md) re-prices a buy the price left behind or raises a floor under a gain; a [trigger run](../agents/trigger-runs.md) resets the rest of the plan after it acts.
-- **You** can add, edit or delete any trigger on the thesis sheet, or ask for one in [chat](../agents/chat.md). "Sell under $62" in a note becomes a trigger, not just words.
-
-Every change is one line in the stock's Activity, saying who made it and why.
-
-## Five kinds
-
-What a trigger can watch comes in five kinds: price, the chart's indicators, earnings, filings, and a schedule. Each kind below has real examples and how it's checked; the examples are in `lib/docs/trigger-examples.ts`.
+Five kinds: the price, the chart's indicators, earnings, filings and a schedule. Pick one to see real examples and how each is checked.
 
 <!-- asset: trigger-kinds -->
 
-## When they're checked
+## Where a stock's triggers come from
 
-Every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the day's close. The chart numbers (averages, highs, volume, strength against the market) are worked out at 6:30 every morning, so every check that day reads the same numbers.
+A stock answers to three layers of triggers, and the closest one wins:
 
-## When one fires
+1. **Its thesis.** [The Writer](../agents/writer.md) writes the first plan, priced from the setup's rules and the chart. The buy's fill sets the floor and target to where the trade went in. After that, runs keep it current one trigger at a time, and you can edit any of it on the thesis sheet.
+2. **Its analyst.** The [analyst](analysts.md)'s sell rules guard every stock it holds, like the Secular Compounder's "Sell if 25% off the high".
+3. **The account.** Rules for every holding, set in Settings. By default there's one: consider adding when a holding is up 7% in a day.
 
-The fire is written into the stock's Activity, with the price that fired it. What happens next depends on the action:
+An inherited rule is never copied onto the thesis, so changing an analyst's style changes every holding at once. Every edit, from any layer, is one line in the stock's Activity.
 
-- **A buy, add, trim or sale** wakes a [trigger run](../agents/trigger-runs.md) within minutes. It reads that one stock, checks the fire still holds, and decides.
-- **A floor can be set to sell straight away:** it proposes the sale with no agent at all.
-- **A review** waits for the analyst's next [morning run](../agents/morning-runs.md). A review is a question, not an order.
+## When one comes true
 
-Every fire also puts the stock in a [situation](situations.md): a sale that fired is a "sale signal", a buy that fired is "buy level reached", a review is "review due". The situation carries the instructions for answering it. And a trigger never trades on its own: anything it leads to is a [proposal](approvals.md) you approve.
+Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close. A buy fires once, on the day the price crosses its level. A sale or a review keeps firing every day its condition holds, so it can't be quietly forgotten.
 
-## Protection keeps asking. Buys don't chase.
+What happens next depends on the action:
 
-- **Sales and reviews are standing orders.** They ask every day their condition holds. Decline a sale, or let it expire, and it's proposed again tomorrow while the price stays past the line, so a floor is never quietly forgotten.
-- **A buy fires once, on the cross.** It fires on the day the price reaches its level, not every day it stays there. A level set after the close is measured from the price it was set at.
-- **Only you lower a floor.** On a stock we hold, no agent can lower a floor, widen a trail or delete a protective trigger; the save refuses it. An agent that thinks the line is wrong names the level in its note, and you decide.
+- **A buy, add, trim or sale** wakes a [trigger run](../agents/trigger-runs.md) within minutes to look at that one stock and decide. A floor can also be set to propose its sale straight away, with no agent.
+- **A review** waits for the next [morning run](../agents/morning-runs.md).
 
-## Rules come from three places
+Either way the stock is now in a [situation](situations.md), which tells the agent how to answer it, and anything it leads to is a [proposal](approvals.md) you approve. A trigger never trades on its own.
 
-A stock's triggers are its own, plus the ones it inherits from its [analyst](analysts.md) and from the account. The closest one wins: a trigger on the thesis beats the analyst's, which beats the account's.
+## Floors only go up
 
-1. **Account rules:** checks every holding gets, like a weekly review and a heads-up three days before every report.
-2. **Analyst rules:** the analyst's style. The Secular Compounder's only automatic sale is "Sell if 25% off the high".
-3. **This thesis:** its own triggers, written for this stock, like "Sell if below $384" under the gap-day low. They beat the rules above.
-
-An inherited rule is never copied onto the thesis, so changing an analyst's style changes it on every stock at once. Deleting a thesis's own trigger lets the inherited one show through again.
-
-## Rest periods
-
-Each trigger knows when to stay quiet, so one condition doesn't ask fifty times a day.
-
-- A price level, a day's move, volume or RSI: at most once a day.
-- The move from our entry: once a week, so a milestone isn't asked twice.
-- A beat or a miss, or a heads-up before a report: once per report.
-- A new filing: once per filing. Insider buying: once every 30 days.
-- A review on a state, like being below the 200-day: at most once a week while it holds.
-- The floor and the trail on a holding: every day until it's answered.
+On a stock we hold, no agent can lower a floor, widen a trail or remove a protective trigger; the save refuses it. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>
@@ -98,6 +72,9 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 
 #### Floors
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`; your edits on the sheet are exempt.
+
+#### Rest periods
+Each measure's default cooldown, in its catalog entry: a price level, a day's move, volume or RSI at most once a day; the move from our entry once a week; a beat, a miss or a heads-up once per report; a filing once per filing; insider buying once every 30 days; a review on a state at most once a week while it holds; the floor and the trail on a holding every day until answered.
 
 #### Reference
 `docs/TRIGGERS.md` · `docs/plans/TRIGGER_MODEL.md` · `docs/plans/TRIGGER_TYPES.md`
