@@ -27,7 +27,7 @@ The Writer reads the numbers, the filings and the web, and comes back with one o
 
 ## How it gets bought
 
-While a stock is watched, its buy trigger is checked every five minutes. When the price crosses the level, a [trigger run](../agents/trigger-runs.md) looks at that one stock within minutes, checks the setup's confirmation and the news, and [proposes](approvals.md) the buy. Nothing fills until you approve it.
+While a stock is watched, its buy trigger is checked every five minutes. When the price crosses the level, a [trigger run](../agents/trigger-runs.md) looks at that one stock within minutes, checks the setup's confirmation and the news, and [proposes](approvals.md) the buy. On the live account, nothing fills until you approve it.
 
 When the buy fills, the thesis becomes **Holding**. The floor and target move to where the trade actually went in, and a holding's review clock and earnings reviews are added. From then on the sell side guards it: the floor and the trail, usually inherited from the analyst's sell rules.
 

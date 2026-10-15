@@ -2,47 +2,38 @@
 
 **Analysts propose. You approve.** Every buy, sale, add and trim an analyst wants waits in your queue with its reason.
 
-Nothing reaches the broker until you say yes. Whatever you answer, the next run reads it.
+On the live account nothing reaches the broker until you say yes, and whatever you answer, the next run reads it.
 
 <!-- asset: card approvals -->
 
 ## Where proposals come from
 
-No agent trades on its own. A trade becomes a proposal at the moment an agent decides on it:
+No agent places a trade by itself. A trade becomes a proposal the moment an agent decides on it:
 
 - **A [trigger run](../agents/trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
 - **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its target.
 - **A floor set to sell straight away,** with no agent at all.
-- **[Chat](../agents/chat.md)**, when you ask for a trade. Chat can name a size, and it's used as given.
+- **[Chat](../agents/chat.md)**, when you ask for a trade.
 
-The buy or add is sized by risk inside the [analyst](analysts.md)'s band; no agent picks a size.
+A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no agent picks a size. Only chat may name one, at your word.
 
-## How a trade reaches you
+## What a proposal carries
 
-It lands in your queue, your inbox and on your phone at the same moment, carrying:
-
-- **The trade:** the stock, buy or sell, the shares and the price it expects.
-- **The reason:** in the analyst's words: the call, the stock and the price, then why.
-- **What caused it:** the trigger that fired, or the run that decided it.
-- **The clock:** when it expires if you don't answer.
+It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the reason in the analyst's words, what caused it (the trigger that fired or the run that decided it), and when it expires.
 
 ## What your answer does
 
-- **Approve:** the order goes to the broker. A buy that fills turns the [thesis](theses.md) from Watching to Holding and arms its sell side. A sale that fills retires the thesis as sold, and it gets one look back in the next two weeks.
-- **Approve at a different size:** your size is used, and read by the next run as caution or conviction.
-- **Decline:** recorded on the stock and read by every run after it. A declined buy or add isn't proposed again unless something you named has changed.
+- **Approve:** the order goes to the broker. A buy that fills turns the [thesis](theses.md) from Watching to Holding and arms its sell side; a sale that fills retires it as sold.
+- **Approve at a different size:** your size is used, and the next run reads it as caution or conviction.
+- **Decline:** recorded on the stock and read by every run after it. A declined buy or add isn't proposed again unless something you named has changed. A declined sale is different: while the price stays past the line it's proposed again every day, because [floors only go up](triggers.md).
 - **Let it expire:** after 24 hours a proposal lapses. A lapse means "not now, ask me again", never a decline.
-
-## Sales keep asking
-
-A floor is protection, so a sale doesn't go away because you didn't take it. While the price stays past the line, the sale is proposed again every day, with that day's reasons and the recent low offered as a level for the line. The analyst can also tighten the line or sell part of the position.
-
-What no agent can do is lower the floor. Only you move a floor down on a stock we hold, on the thesis sheet. An agent that thinks the line is wrong says so in its note and names the level.
 
 ## Live and paper
 
-- **Live account:** buys and sales need your approval, on unless you change it.
-- **Paper account:** off by default, so analysts can practise freely. Turn it on to review every paper trade too.
+Approval is a setting on each account, for buys and sales separately:
+
+- **Live account:** on by default. Every trade waits for you.
+- **Paper account:** off by default, so paper trades go straight to the broker and analysts can practise freely. Turn it on to review paper trades too.
 
 Until it's approved, a proposal isn't a holding, and it isn't counted in your positions or your P&L.
 

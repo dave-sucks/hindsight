@@ -14,7 +14,7 @@ Five agents work on one shared record, and each part of the system is defined in
 4. **The read.** What an agent sees of its book. Each stock is a row at the size today needs, with its [situations](concepts/situations.md) and their instructions attached.
 5. **The agents.** [Morning runs](agents/morning-runs.md), [trigger runs](agents/trigger-runs.md), [chat](agents/chat.md), [Discovery](agents/discovery.md) and [the Writer](agents/writer.md). Each is a job and a list of tools on top of the parts every agent shares.
 6. **The save.** Every change to a thesis goes through the same tool and the same checks, whoever makes it: an agent, the Writer, or you on the thesis sheet. Each agent may send only the fields its job needs, and no agent can lower a floor on a stock we hold.
-7. **The gate.** Every buy, sale, add and trim becomes a [proposal](concepts/approvals.md). Nothing reaches the broker until you approve it.
+7. **The gate.** Every buy, sale, add and trim becomes a [proposal](concepts/approvals.md). On the live account nothing reaches the broker until you approve it; paper trades skip approval unless you turn it on.
 
 ## One place for each thing
 

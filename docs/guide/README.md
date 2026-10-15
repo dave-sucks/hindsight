@@ -1,6 +1,6 @@
 # How Hindsight works
 
-**A research desk that never stops watching.** Analysts find the stocks, write the case and guard every position. Nothing trades without you.
+**A research desk that never stops watching.** Analysts find the stocks, write the case and guard every position. On the live account, nothing trades without you.
 
 This folder is the guide, and this page is where to start. The /docs pages in the app draw these same files, so what you read here is what the page says.
 
