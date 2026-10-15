@@ -82,6 +82,7 @@ import { updateThesis } from "@/lib/agent/tools/update-thesis";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { describeTrigger } from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 
 // ── Phase budgets ───────────────────────────────────────────────────────
 // V1's inner synthesis abort was 180s against an observed 187-192s EVERY
@@ -1256,7 +1257,7 @@ export function buildWriterSaveCall(
   pull: WriterPullPhaseOutput["pull"],
   d: ValidatedThesisDecision,
   sectionArgs: SectionArgs,
-  existing: { direction: string | null; status: string | null } | null,
+  existing: { direction: string | null; status: string | null; keep?: Trigger[] } | null,
 ): WriterSaveCall {
   const T = args.ticker.toUpperCase();
   // The event date: the writer's stands; the company's filing on file
@@ -1352,15 +1353,25 @@ export function buildWriterSaveCall(
   // looser stop is refused as its own op inside update_thesis and the rest
   // of the refresh lands (DAV-242).
   const pass = d.direction === "PASS";
+  // A refresh the chat asked for keeps the levels the row has; it may fill an empty one (ruling 2026-10-15).
+  const keptIds = new Map((existing?.keep ?? []).flatMap((t) => { const slot = levelSlotOf(t, existing?.direction ?? null); return slot && t.id ? [[t.id, slot] as const] : []; }));
+  const kept = new Set(keptIds.values());
+  const slotOf = (t: unknown) => levelSlotOf(t as Trigger, existing?.direction ?? null);
+  const keeps = (t: unknown) => { const slot = slotOf(t); return slot != null && kept.has(slot); };
+  const word = { ENTRY: "entry", FLOOR: "stop", TARGET: "target" } as const;
+  const own = [
+    ...([["ENTRY", d.entry_price], ["FLOOR", d.stop_loss], ["TARGET", d.target_price]] as const).filter(([s, v]) => kept.has(s) && v != null).map(([s, v]) => `${word[s]} $${v}`),
+    ...(d.add_triggers ?? []).filter(keeps).map((t) => `${word[slotOf(t)!]} $${(t.predicate as { value?: number }).value}`),
+  ];
   return {
     toolName: "update_thesis",
     toolArgs: {
       thesis_id: args.existingThesisId,
-      rationale: `${rationale}${directionFlag}`,
+      rationale: `${rationale}${directionFlag}${own.length ? `\n\n[The plan's levels stay as the chat set them. This refresh's own: ${own.join(", ")}.]` : ""}`,
       direction: seed ? d.direction : undefined,
-      entry_price: pass || held ? undefined : d.entry_price,
-      target_price: pass ? undefined : d.target_price,
-      stop_loss: pass ? undefined : d.stop_loss,
+      entry_price: pass || held || kept.has("ENTRY") ? undefined : d.entry_price,
+      target_price: pass || kept.has("TARGET") ? undefined : d.target_price,
+      stop_loss: pass || kept.has("FLOOR") ? undefined : d.stop_loss,
       setup_id: pass ? undefined : d.setup_id,
       stop_basis: pass ? undefined : d.stop_basis,
       target_basis: pass ? undefined : d.target_basis,
@@ -1374,9 +1385,9 @@ export function buildWriterSaveCall(
       core_belief: d.core_belief,
       key_assumptions: d.key_assumptions,
       invalidation_conditions: d.invalidation_conditions,
-      add_triggers: d.add_triggers,
-      edit_triggers: d.edit_triggers,
-      remove_trigger_ids: d.remove_trigger_ids,
+      add_triggers: d.add_triggers?.filter((t) => !keeps(t)),
+      edit_triggers: d.edit_triggers?.filter((e) => !keptIds.has(e.id)),
+      remove_trigger_ids: d.remove_trigger_ids?.filter((id) => !keptIds.has(id)),
       price_at_time: pull?.currentPrice ?? undefined,
       research_data: pull?.rawDataBlock,
       ...sections,
@@ -1700,6 +1711,7 @@ export async function writerPersistPhase(
         args.mode === "refresh" && args.existingThesisId
           ? await loadExistingThesis(args.existingThesisId)
           : null;
+      const fromChat = existing != null && args.parentRunId != null && (await prisma.researchRun.findUnique({ where: { id: args.parentRunId }, select: { mode: true } }))?.mode === "PRINCIPAL_CHAT";
 
       const saveOnce = async (decision: ValidatedThesisDecision): Promise<WriterSaveOutcome> => {
         const call = buildWriterSaveCall(
@@ -1707,7 +1719,7 @@ export async function writerPersistPhase(
           pullOutput.pull,
           decision,
           sectionArgs,
-          existing ? { direction: existing.direction, status: existing.status } : null,
+          existing ? { direction: existing.direction, status: existing.status, keep: fromChat ? existing.triggers : undefined } : null,
         );
         const toolInstance = call.toolName === "record_thesis" ? recordThesis(ctx) : updateThesis(ctx);
         const outcome = readWriterSaveResult(call.toolName, await executeThroughSchema(toolInstance, call.toolName, call.toolArgs));

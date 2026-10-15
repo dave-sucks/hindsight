@@ -329,6 +329,18 @@ export const tacticalRun = inngest.createFunction(
       }
     }
 
+    // A buy (or an add) already waiting for approval on this stock: the fire has nothing to add.
+    // MU 2026-10-15: the 11:01 run found the chat's 10:59 buy waiting and still moved its level.
+    if (trigger.action === "ENTER" || trigger.action === "ADD") {
+      const queuedBuy = await step.run("check-queued-buy", async () =>
+        prisma.order.findFirst({
+          where: { status: "AWAITING_APPROVAL", intent: { in: ["OPEN", "ADD"] }, position: { analystId: fired.analystId, symbol: thesis.ticker } },
+          select: { id: true },
+        }),
+      );
+      if (queuedBuy) return { skipped: "buy-already-queued", thesisId: fired.thesisId, orderId: queuedBuy.id };
+    }
+
     // ── Suppress duplicate buy-checks on the same trigger (GAPS P1-37) ──────
     // When a stock crosses its buy price and the analyst examines it and
     // decides NOT to buy, the trigger stays armed — and every subsequent fire

@@ -7,6 +7,7 @@
  */
 
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 
 // ── Model options per mode ────────────────────────────────────────────────────
@@ -594,6 +595,9 @@ export function buildPrincipalSystemPrompt(opts: {
   bookBlock?: string | null;
   /** The analyst the chat is pinned to: its row, its watchlist, and the account's setup numbers. */
   scopedAnalyst?: (BriefAnalyst & UniverseAnalyst & { id: string; name: string; watchlist: string[] }) | null;
+  /** Its slots, counted as place_trade counts them (pinned); every analyst's room line (unpinned). */
+  room?: AnalystCapacity | null;
+  roomLines?: string[];
 }): string {
   const scope = opts.scopedAnalyst;
   // Pre-rendered by the caller via context-bundle's formatters. Passed as
@@ -615,7 +619,7 @@ ${universeLines(scope).map((l) => `  • ${l}`).join("\n")}
   • Watchlist: ${scope.watchlist.join(", ") || "(empty)"}
   • Sizing: omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
 
-${analystBrief(scope)}
+${analystBrief(scope, opts.room)}
 
 Use \`get_theses\` and \`get_portfolio_context\` to pull current state without re-resolving the id. For cross-analyst questions ("how do my OTHER analysts compare"), use \`list_analysts\` etc.
 ${moneyBlock}${bookBlock}`
@@ -624,7 +628,7 @@ ${moneyBlock}${bookBlock}`
 ══════════════════════════════════════════════════════════════════════
 
 This chat is at the portfolio level, not pinned to one analyst: you read across every analyst. Every trade and thesis edit (place_trade, close_position, manage_position, update_thesis) acts for the stock's own analyst, under its rules and the approval screen. Only a new thesis (record_thesis) needs the chat pinned; for new coverage, dispatch the writer for the analyst it is for.
-
+${opts.roomLines?.length ? `\nEach analyst's room (a buy for a FULL analyst is refused):\n${opts.roomLines.map((l) => `  • ${l}`).join("\n")}\n` : ""}
 **"I have no cash: what do I sell or trim?"**, or any question about the whole book: read \`get_portfolio_context\` (every holding with its analyst, gain, give-back and floor; the cash; each analyst's slots and limits), \`list_proposals\` (the sales waiting) and \`get_theses\` with \`status:["HOLDING"]\` (each holding's sell rules and notes). Answer stock by stock: keep, trim or sell, why, and the level that would change your mind.
 
 Start every fresh session with \`list_analysts\` so you know who exists. Then pick the right read tool for the question.\n`;

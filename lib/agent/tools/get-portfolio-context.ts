@@ -20,9 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { getLatestPricesWithMeta, getAccount, type PriceLookup } from "@/lib/alpaca";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { analystToolSettings } from "@/lib/agent/tool-context";
-import { positionBand, positionTotalCap } from "@/lib/agent/position-sizing";
-import { capacityLine } from "@/lib/agent/capacity";
+import { analystRoomLines } from "@/lib/agent/analyst-scope";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -79,19 +77,6 @@ type PortfolioContextData = {
   /** The latest end-of-day portfolio digest for this book; whole-account reads only. */
   digest: { date: string; narrative: string } | null;
 };
-
-/** "Secular Compounder: Positions: 8 of 8 — this analyst is FULL. … Largest trade $10,000; most in one stock $20,000." */
-function analystRoomLine(
-  a: Parameters<typeof analystToolSettings>[0] & { name: string; enabled: boolean },
-  slots: { status: string }[],
-): string {
-  // The numbers the gates use: the row as the tools read it, the band, the cap and the slot count.
-  const s = analystToolSettings(a, []);
-  const room = capacityLine({ open: slots.length, max: s.maxOpenPositions ?? null, held: [], awaitingApproval: slots.filter((p) => p.status === "PENDING_APPROVAL").length });
-  const { ceiling } = positionBand(s);
-  const $ = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
-  return `${a.name}${a.enabled ? "" : " (paused: no new buys)"}: ${room ?? "No position limit."} Largest trade ${ceiling != null ? $(ceiling) : "not set"}; most in one stock ${$(positionTotalCap(s))}.`;
-}
 
 export const getPortfolioContext = defineTool({
   description:
@@ -281,12 +266,7 @@ export const getPortfolioContext = defineTool({
     let analystLines: string[] = [];
     if (ctx.accountId && !analystId) {
       try {
-        const holders = [...new Set(openPositions.map((p) => p.analystId))];
-        const [analysts, slots] = await Promise.all([
-          prisma.agentConfig.findMany({ where: { accountId: ctx.accountId, OR: [{ enabled: true }, { id: { in: holders } }] }, orderBy: { createdAt: "asc" } }),
-          prisma.position.findMany({ where: { accountId: ctx.accountId, status: { in: ["OPEN", "PENDING_APPROVAL"] } }, select: { analystId: true, status: true } }),
-        ]);
-        analystLines = analysts.map((a) => analystRoomLine(a, slots.filter((p) => p.analystId === a.id)));
+        analystLines = await analystRoomLines(ctx.accountId, [...new Set(openPositions.map((p) => p.analystId))]);
       } catch { /* the positions stand without it */ }
     }
 
