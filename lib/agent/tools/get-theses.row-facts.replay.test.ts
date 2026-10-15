@@ -39,7 +39,7 @@ const snapshot = {
   atr14: 2.15,
 };
 
-/** AAA: held, its floor fired with the sale waiting for approval (not work), research stale, so it is a full row; BBB: watched and quiet. */
+/** AAA: held, its floor fired with an add waiting for approval, research stale, so it is a full row (a waiting sale would make it quiet); BBB: watched and quiet. */
 const seed = () => ({
   agentConfig: [agentConfigRow({ triggers: [rung("analyst-clock", "REVIEW", { watch: "repeat", value: 7 }, 7)] })],
   thesis: [
@@ -48,7 +48,7 @@ const seed = () => ({
   ],
   position: [positionRow({ id: "pos_aaa", symbol: "AAA", avgCost: 100, quantity: 10, openedAt: ago(20), peakPrice: 112 })],
   order: [
-    { id: "o_sell", positionId: "pos_aaa", userId: REPLAY_USER_ID, environment: "PAPER", symbol: "AAA", side: "SELL", quantity: 10, status: "AWAITING_APPROVAL", intent: "CLOSE", thesisId: "t_aaa", createdAt: ago(0.1), expiresAt: new Date(Date.now() + 0.9 * DAY) },
+    { id: "o_add", positionId: "pos_aaa", userId: REPLAY_USER_ID, environment: "PAPER", symbol: "AAA", side: "BUY", quantity: 10, status: "AWAITING_APPROVAL", intent: "ADD", thesisId: "t_aaa", createdAt: ago(0.1), expiresAt: new Date(Date.now() + 0.9 * DAY) },
     { id: "o_old", positionId: "pos_aaa", userId: REPLAY_USER_ID, environment: "PAPER", symbol: "AAA", side: "SELL", quantity: 10, status: "EXPIRED", intent: "CLOSE", thesisId: "t_aaa", createdAt: ago(3), expiresAt: ago(2) },
   ],
   tickerIndicators: [{ id: "ind_aaa", ticker: "AAA", asOf: snapshot.asOf, computedAt: ago(0.5), volumeFeed: "sip", snapshot }],
@@ -78,7 +78,7 @@ describe("get_theses — the facts on the saved row", () => {
     expect(screenRow.position).toEqual({ quantity: 10, avgCost: 100, openedAt: expect.any(Date), peakPrice: 112 });
     // Only the order still awaiting approval; the expired one is not a proposal.
     expect(screenRow.proposals).toEqual([
-      { id: "o_sell", side: "SELL", intent: "CLOSE", quantity: 10, createdAt: expect.any(Date), expiresAt: expect.any(Date) },
+      { id: "o_add", side: "BUY", intent: "ADD", quantity: 10, createdAt: expect.any(Date), expiresAt: expect.any(Date) },
     ]);
     expect(screenRow.price).toEqual({ current: 91, dayChangePct: 0, asOf: expect.any(String) });
     const chart = screenRow.chart as Record<string, unknown>;
@@ -102,7 +102,7 @@ describe("get_theses — the facts on the saved row", () => {
     for (const k of ["position", "price", "chart"]) expect(typeof modelRow[k]).toBe("string");
     expect(mod.ROW_FACTS).toContain("inheritedTriggers");
     expect(modelRow.position).toMatch(/^10 sh at \$100\.00 → \$91\.00 \(-9\.0%\), \$910; opened \d\d-\d\d; high since we bought \$112\.00$/);
-    expect(modelRow.proposal_waiting).toMatch(/^sell 10 sh, placed \d\d-\d\d \d\d:\d\d ET, expires \d\d-\d\d \d\d:\d\d ET$/);
+    expect(modelRow.proposal_waiting).toMatch(/^add 10 sh, placed \d\d-\d\d \d\d:\d\d ET, expires \d\d-\d\d \d\d:\d\d ET$/);
     expect(modelRow.price).toMatch(/^\$91\.00, \+0\.0% today \(\d\d-\d\d \d\d:\d\d ET\)$/);
     expect(modelRow.chart).toMatch(/^as of the \d{4}-\d\d-\d\d close: 20d \$85\.25 · 50d \$78\.10 · 200d \$70\.40 · RSI \d+ \(14-day, from the closes and the live price\) · 20d range \$80\.00–\$90\.00 · 52w high \$95\.00 · ATR \$2\.15 · vs the S&P 1M \+3\.2% \/ 3M -1\.1% · 20d avg volume 1\.2M · 5d \+4\.0% · 20d \+13\.8%$/);
     const triggers = modelRow.triggers as string[];

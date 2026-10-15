@@ -8,7 +8,6 @@ import { MODES } from "@/lib/agent/modes";
 
 const prompt = buildDiscoverySystemPrompt({
   config: { name: "PEAD Specialist", sectors: [], minConfidence: 70, maxPositionSize: 14000 },
-  analystId: "cmnhxpjio000004jvox6kl6c7",
   existingTickers: ["MU", "FIVE"],
 });
 

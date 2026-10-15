@@ -454,6 +454,9 @@ export function dropUnchanged(
     const own = triggers.find((t) => levelSlotOf(t, row.direction) === slot);
     // A new sentence for the same number is a wording edit, not an echo.
     if (own && basis && out[basis] !== undefined && !sameValue(out[basis], own.rationale)) return;
+    // Another op in the call numbers the same trigger: the level is kept, so it wins (MU 10-15).
+    const numbered = (args.edit_triggers ?? []).some((e) => e.id === own?.id && editNumber(e).value != null);
+    if (own && (numbered || (args.add_triggers ?? []).some((t) => levelSlotOf(t as Trigger, row.direction) === slot))) return;
     const w = own ? shapeOf(own.predicate) : null;
     if (slot === "ENTRY" && row.status !== "HOLDING" && w && out.entry_on_close !== undefined && out.entry_on_close !== (levelOf(w)?.close ?? false)) return;
     out[arg] = undefined;
@@ -1256,8 +1259,16 @@ export const updateThesis = defineTool({
         // $434 stop refused against the plan). Fall back to the row.
         const held = levelStatus === "HOLDING";
         let avgCost: number | null | undefined;
+        let buyWaiting: string | undefined;
         const checkOf = async (triggers: Trigger[]) => {
           if (avgCost === undefined) {
+            // A buy waiting for approval keeps the plan it was proposed on (IOT 10-15: told to remove it, it did).
+            try {
+              const order = await prisma.order.findFirst({ where: { thesisId: existing.id, status: "AWAITING_APPROVAL", intent: { in: ["OPEN", "ADD"] } }, select: { intent: true, quantity: true } });
+              if (order) buyWaiting = `${order.intent === "ADD" ? "An add" : "A buy"} of ${Number(order.quantity)} shares is waiting for approval`;
+            } catch {
+              /* a lookup that fails knows of no waiting buy: the usual advice */
+            }
             const openPosition =
               held && ctx.analystId
                 ? await prisma.position.findFirst({
@@ -1276,6 +1287,7 @@ export const updateThesis = defineTool({
             actor: "AGENT",
             entryPrice: avgCost ?? (existing.entryPrice != null ? Number(existing.entryPrice) : null),
             avgCost,
+            buyWaiting,
           });
         };
         let liveOps = triggerOps;
@@ -1321,7 +1333,7 @@ export const updateThesis = defineTool({
           // exact ids so the agent doesn't guess (DAV-258 for the half
           // plan, DAV-262 for the 2:1 floor — MSFT 2026-09-14 was told
           // to send the whole list again, an argument that no longer exists).
-          const message = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
+          const message = `${check.message} ${buyWaiting ? "" : setDownInstruction(existingTriggers, levelDirection)}`.trim();
           // A seed's commitment is its plan: without a valid one nothing lands.
           if (isUnresearchedSeed(existing.direction)) {
             return {
@@ -1586,9 +1598,12 @@ export const updateThesis = defineTool({
     const refusedData = refusedFields.length ? { refused_fields: forAgent(refusedFields) } : {};
     // The record tells the truth: what the call asked for and did not get
     // goes on its own audit row, and the Activity feed shows it as a chip.
-    const notAppliedChange: ThesisFieldChanges = refusedFields.length
-      ? { notApplied: { from: null, to: refusedFields.map(({ field, to, why, reason }) => ({ field, ...(to !== undefined ? { to } : {}), why, reason })) } }
-      : {};
+    // A trigger number that did not land is named by the trigger's id (PLTR 10-15: the $191 floor).
+    const notAppliedList = [
+      ...refusedFields.map(({ field, to, why, reason }) => ({ field, ...(to !== undefined ? { to } : {}), why, reason })),
+      ...opResults.filter((r) => !r.ok && r.to !== undefined).map((r) => ({ field: "triggers", id: r.id, to: r.to, why: r.text, reason: r.reason })),
+    ];
+    const notAppliedChange: ThesisFieldChanges = notAppliedList.length ? { notApplied: { from: null, to: notAppliedList } } : {};
     if (changedKeys.length === 0) {
       if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults, refusedFields);
       const reviewedAt = new Date();
@@ -1606,7 +1621,7 @@ export const updateThesis = defineTool({
         type: "REVIEWED",
         summary: `Reviewed ${existing.ticker} thesis — no changes`,
         rationale: args.rationale,
-        ...(refusedFields.length ? { fieldChanges: notAppliedChange } : {}),
+        ...(notAppliedList.length ? { fieldChanges: notAppliedChange } : {}),
         runId: ctx.runId,
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,

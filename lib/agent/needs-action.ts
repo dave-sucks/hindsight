@@ -351,7 +351,7 @@ export interface NeedsActionInput {
    * complete_run. Non-ENTER triggers and REVIEW_DUE still surface.
    */
   hasPendingEntryProposal?: boolean;
-  /** A sale or trim of this holding waits for the principal's approval: theirs is the next step, so the sale is off the list as a waiting buy is. */
+  /** A sale or trim of this holding waits for the principal's approval: the stock is theirs to decide, so it carries no work at all. */
   hasPendingSaleProposal?: boolean;
   /**
    * An unanswered protective sale the principal declined (DAV-315).
@@ -385,10 +385,11 @@ export interface NeedsActionInput {
 export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction[] {
-  const { thesis, latestQuote, now, hasPendingEntryProposal, hasPendingSaleProposal } = input;
-  // A proposal waiting for the principal already makes its move (P1-25 Change 4 for a buy).
-  const waiting = (action: string) =>
-    (hasPendingEntryProposal && action === "ENTER") || (hasPendingSaleProposal && (action === "EXIT" || action === "TRIM"));
+  const { thesis, latestQuote, now, hasPendingEntryProposal } = input;
+  // A sale waiting for the principal takes the whole stock off the list (NVDA, CEG 10-15: worked anyway).
+  if (input.hasPendingSaleProposal) return [];
+  // A buy waiting for the principal already makes its move (P1-25 Change 4).
+  const waiting = (action: string) => hasPendingEntryProposal && action === "ENTER";
 
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
   //    thesis ALWAYS needs resolution this run regardless of trigger
@@ -416,7 +417,7 @@ export function computeNeedsAction(
   //    the race. It did, on IOT, for nine days — the run kept seeing "the
   //    floor is breached" and never "and you already told me not to sell
   //    there." The second sentence is the one that needs answering.
-  const d = hasPendingSaleProposal ? null : input.declinedSale;
+  const d = input.declinedSale;
   const declined: NeedsAction | null = d
     ? {
         kind: "SALE_DECLINED",

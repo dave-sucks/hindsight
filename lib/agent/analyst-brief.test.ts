@@ -79,7 +79,7 @@ const DOORS = {
   trigger: () => tactical(CATALYST),
   chat: () => buildPrincipalSystemPrompt({ scopedAnalyst: CATALYST }),
   writer: () => buildWriterResearchPrompt({ analyst: CATALYST, ticker: "DOCU", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-10-08", setups: setupsForAnalyst(CATALYST.setupIds) }),
-  discovery: () => buildDiscoverySystemPrompt({ config: CATALYST, analystId: CATALYST.id, existingTickers: [] }),
+  discovery: () => buildDiscoverySystemPrompt({ config: CATALYST, existingTickers: [] }),
 };
 
 const count = (text: string, part: string) => text.split(part).length - 1;

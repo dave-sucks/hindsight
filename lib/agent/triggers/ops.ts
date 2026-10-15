@@ -117,6 +117,8 @@ export interface TriggerOpResult {
   reason?: string;
   /** The op asked for what the trigger already says: an agent's save drops it, a person is told. */
   unchanged?: true;
+  /** The number a refused op asked for, so the save's record names what did not land. */
+  to?: number;
 }
 
 export interface ApplyTriggerOpsInput {
@@ -239,8 +241,17 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     input.ops.flatMap((o) => ((o.op === "edit" || o.op === "replace") && deleted.has(o.id) ? [o.id] : [])),
   );
 
-  const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string, unchanged?: true) =>
-    results.push({ op, id, ok: false, text, reason, ...(unchanged ? { unchanged } : {}) });
+  const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string, extra: Pick<TriggerOpResult, "unchanged" | "to"> = {}) =>
+    results.push({ op, id, ok: false, text, reason, ...extra });
+
+  // A plan level beats another number for its trigger in the same call, which comes back by id; that trigger's
+  // reason changes only if its number moves (PLTR 10-15: a $191 edit, stop_loss $196; MU 10-15: $982 added, entry $906).
+  const levelSet = new Map<string, number>();
+  for (const o of input.ops) {
+    if (o.op !== "level" || o.price == null || (o.slot === "ENTRY" && held)) continue;
+    for (const t of input.stored) if (levelSlotOf(t, direction) === o.slot) levelSet.set(t.id, o.price);
+  }
+  const outvoted = new Set<string>();
 
   /** The one gate an agent's edit runs on a stock we own. */
   const ratchetReason = (next: Trigger[]): string | null => {
@@ -294,6 +305,12 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const wanted = op.value !== undefined && subject ? { field: fieldOf(subject), value: op.value } : op.value !== undefined ? { field: "pct" as const, value: op.value } : null;
     const name = slotForText ? SLOT_LABEL[slotForText] : nameOf(target, direction, held);
 
+    const setBy = meta.viaLevel ? undefined : levelSet.get(op.id);
+    if (wanted && setBy !== undefined && wanted.value !== setBy) {
+      outvoted.add(op.id);
+      return refuse("edit", op.id, `${name} ${fmtValue(wanted.field, wanted.value)}`, `The ${name.toLowerCase()} level in the same call sets this trigger to ${fmtValue(wanted.field, setBy)}, and it wins: this number is not applied.`, { to: wanted.value });
+    }
+    const moves = !!(wanted && current && wanted.value !== current.value);
     if (wanted) {
       if (!current || (op.unit && op.unit !== current.field)) {
         const what = op.unit ? `no editable \`${op.unit}\`` : "no number to change";
@@ -308,6 +325,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
           op.id,
           `${name} ${fmtValue(wanted.field, current.value)} → ${fmtValue(wanted.field, wanted.value)}`,
           "A level change needs a rationale — the sentence moves with the number. Resend this edit with `rationale`.",
+          { to: wanted.value },
         );
       }
     }
@@ -354,7 +372,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate = Object.keys(kept).length ? { ...plain, settings: kept } : plain;
     }
     const action = op.action ?? target.action;
-    let rationale = op.rationale?.trim() || target.rationale;
+    let rationale = (!outvoted.has(op.id) || moves ? op.rationale?.trim() : undefined) || target.rationale;
     const slot = levelSlotOf({ ...target, predicate, action }, direction);
     const level = levelOf(predicate);
     if (!op.rationale?.trim() && wanted && current && wanted.value !== current.value) {
@@ -404,13 +422,13 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const notOnClose = `${name}: on the close is for a price level, so its timing is as it was`;
     if (parts.length === 0) {
       if (closeNotApplied) return refuse("edit", op.id, `${name}: timing as it was`, `${notOnClose}.`);
-      return refuse("edit", op.id, `${name}: no change`, "Nothing to change — the trigger already has these values.", true);
+      return refuse("edit", op.id, `${name}: no change`, "Nothing to change — the trigger already has these values.", { unchanged: true });
     }
     if (closeNotApplied) parts.push(notOnClose);
     const text = parts.join("; ");
 
     const blocked = ratchetReason(next);
-    if (blocked) return refuse("edit", op.id, text, blocked);
+    if (blocked) return refuse("edit", op.id, text, blocked, moves ? { to: wanted!.value } : {});
     commit(next, { op: "edit", id: op.id, ok: true, text });
   };
 
@@ -487,7 +505,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       target.action === trigger.action &&
       (target.fireMode ?? "TACTICAL") === (trigger.fireMode ?? "TACTICAL")
     ) {
-      return refuse("edit", id, text, "Nothing to change — the trigger already says this.", true);
+      return refuse("edit", id, text, "Nothing to change — the trigger already says this.", { unchanged: true });
     }
     // The history belongs to the condition. Same slot: a new value for the
     // same rule keeps its id, its fire history and its cooldown. Another
@@ -644,6 +662,8 @@ export function checkLadder(input: {
   /** The fill on a held name (position avgCost, else the stored entry). */
   entryPrice?: number | null;
   avgCost?: number | null;
+  /** A buy waiting for approval, in words (validateThesisShape). */
+  buyWaiting?: string;
 }): LadderCheck {
   const { triggers, inherited = [], direction, status } = input;
   const held = status === "HOLDING";
@@ -665,6 +685,7 @@ export function checkLadder(input: {
       stopLoss: columns.stopLoss,
       minRiskReward: held || input.actor !== "AGENT" ? undefined : MIN_RISK_REWARD,
       held,
+      buyWaiting: input.buyWaiting,
     });
     if (!shape.ok) return { ok: false, error: "invalid_thesis_shape", message: shape.note };
   }

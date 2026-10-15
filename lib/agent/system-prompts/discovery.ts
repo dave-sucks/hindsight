@@ -49,13 +49,6 @@ export const DISPATCH_CAP = 5;
 export interface DiscoveryPromptArgs {
   /** The analyst's row, its watchlist, and the account's setup numbers. */
   config: BriefAnalyst & UniverseAnalyst & { signalTypes?: readonly string[] | null; watchlist?: readonly string[] | null };
-  /**
-   * AgentConfig.id — passed through so the agent can plug it into the
-   * `analyst_id` arg on `dispatch_thesis_research`. The dispatch tool
-   * validates the id against the run's accountId and would fail closed
-   * on a bogus value; surfacing it in the prompt removes the guess.
-   */
-  analystId: string;
   existingTickers: string[]; // every ticker the analyst already covers (active + watching)
   /**
    * System 1 context bundle (THREE_SYSTEMS.md Move 1): live equity + the
@@ -84,7 +77,7 @@ export interface DiscoveryPromptArgs {
 }
 
 export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
-  const { config, analystId, existingTickers } = args;
+  const { config, existingTickers } = args;
   const existingList = existingTickers.length
     ? existingTickers.map((t) => `$${t}`).join(", ")
     : "(empty — fresh book)";
@@ -121,9 +114,6 @@ You operate as a **two-pass funnel**:
 ═══════════════════════════════════════════════════════════════════
 YOUR CONFIG — what bounds your work this run
 ═══════════════════════════════════════════════════════════════════
-
-  Your analyst_id: ${analystId}
-    ↑ pass this verbatim as \`analyst_id\` on every dispatch_thesis_research call.
 
   Plans are the writer's job, not yours: a plan pays at least 2:1 against its stop and its levels sit in order (stop < entry < target); here you record PASS or dispatch.${
     args.money?.equityUSD != null
@@ -367,7 +357,6 @@ For each researched candidate, exactly one of these four actions:
 
   Call \`dispatch_thesis_research\`:
   - \`ticker\`: the symbol
-  - \`analyst_id\`: ${analystId} (your id, verbatim from YOUR CONFIG above)
   - \`mode\`: "mint" (net-new coverage)
   - \`setup_id\` and \`screen_row\`: the screen the name came from and its
     row's numbers, verbatim — the writer checks the setup against the

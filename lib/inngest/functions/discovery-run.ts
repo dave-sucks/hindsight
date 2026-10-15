@@ -248,9 +248,6 @@ export const discoveryRun = inngest.createFunction(
             watchlist: watchlistSymbols,
             setupOverrides: await loadSetupOverrides(config.accountId),
           },
-          // Phase 2 — exposed verbatim in the prompt body so the agent has
-          // a value to plug into dispatch_thesis_research(analyst_id).
-          analystId: config.id,
           existingTickers,
         });
 

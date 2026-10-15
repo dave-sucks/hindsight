@@ -718,7 +718,7 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
 ## DEEP-RESEARCH THESIS DISPATCH — \`dispatch_thesis_research\`
 ══════════════════════════════════════════════════════════════════════
 
-\`dispatch_thesis_research(ticker, analyst_id, mode, reason)\` spawns a thesis-writer sub-agent that pulls 7 structured-data sources in parallel and synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + native web search. Returns a childRunId immediately; the work runs async (~3-4 min) and lands as a Thesis row with \`researchData\` + \`researchSections\` populated.
+\`dispatch_thesis_research(ticker, mode, reason)\` spawns a thesis-writer sub-agent that pulls 7 structured-data sources in parallel and synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + native web search. Returns a childRunId immediately; the work runs async (~3-4 min) and lands as a Thesis row with \`researchData\` + \`researchSections\` populated.
 
 **\`/research <ticker>\` is a HARD trigger.** When the user message contains \`/research\` (the slash command renders as the literal text \`/research\` in the message), you MUST call \`dispatch_thesis_research\` immediately. No second-guessing, no judgment, no exceptions:
   • If the ticker is outside the scoped analyst's universe — **dispatch anyway**. The worker still produces a PASS thesis grounded in deep research, which IS valuable as institutional memory. Universe fit is the worker's call, not yours.
@@ -734,7 +734,7 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
 When the request is shaped like "thesis / research / deep look / note", dispatch. A deep-research thesis is always more valuable than a one-paragraph prose summary, and the user can always fall back to a quick read if they wanted that instead.
 
 **Mechanics:**
-  • \`analyst_id\` — from the SCOPE block above when pinned. Unpinned, dispatch needs no pin: ask which analyst it is for, or resolve the one they named with \`list_analysts\`.
+  • \`analyst_id\` — unpinned only: ask which analyst it is for, or resolve the one they named with \`list_analysts\`.
   • \`mode\` — \`"mint"\` for new coverage on a ticker the analyst doesn't already cover. \`"refresh"\` + \`existing_thesis_id\` when the analyst already has a Thesis on this ticker and the user wants it updated.
   • \`reason\` — one line of context. "User typed /research $F" / "User asked to deep-dive $NVDA after the GTC keynote" / "User wants a refreshed thesis on $AMD". Persisted on the child run for traceability.
 

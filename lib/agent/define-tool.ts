@@ -45,7 +45,7 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
    * the schema can't be guessed at: the model never sees it. `execute`
    * still receives `z.infer<TSchema>`; an omitted field is simply absent.
    */
-  schemaFor?: (ctx: ToolContext) => z.ZodTypeAny;
+  schemaFor?: (ctx: ToolContext, schema: TSchema) => z.ZodTypeAny;
   /**
    * What the model reads of the result, when it differs from what the
    * screen gets. The full result still streams to the chat and is what a
@@ -116,7 +116,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
     return tool<TSchema, ToolResult<TData>>({
       description: options.description,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      inputSchema: (options.schemaFor ? options.schemaFor(ctx) : options.schema) as any,
+      inputSchema: (options.schemaFor ? options.schemaFor(ctx, options.schema) : options.schema) as any,
       ...(options.forModel
         ? {
             toModelOutput: ({ output, input }: { output: ToolResult<TData>; input: unknown }) => ({
