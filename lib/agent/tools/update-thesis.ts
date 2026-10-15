@@ -1259,8 +1259,16 @@ export const updateThesis = defineTool({
         // $434 stop refused against the plan). Fall back to the row.
         const held = levelStatus === "HOLDING";
         let avgCost: number | null | undefined;
+        let buyWaiting: string | undefined;
         const checkOf = async (triggers: Trigger[]) => {
           if (avgCost === undefined) {
+            // A buy waiting for approval keeps the plan it was proposed on (IOT 10-15: told to remove it, it did).
+            try {
+              const order = await prisma.order.findFirst({ where: { thesisId: existing.id, status: "AWAITING_APPROVAL", intent: { in: ["OPEN", "ADD"] } }, select: { intent: true, quantity: true } });
+              if (order) buyWaiting = `${order.intent === "ADD" ? "An add" : "A buy"} of ${Number(order.quantity)} shares is waiting for approval`;
+            } catch {
+              /* a lookup that fails knows of no waiting buy: the usual advice */
+            }
             const openPosition =
               held && ctx.analystId
                 ? await prisma.position.findFirst({
@@ -1279,6 +1287,7 @@ export const updateThesis = defineTool({
             actor: "AGENT",
             entryPrice: avgCost ?? (existing.entryPrice != null ? Number(existing.entryPrice) : null),
             avgCost,
+            buyWaiting,
           });
         };
         let liveOps = triggerOps;
@@ -1324,7 +1333,7 @@ export const updateThesis = defineTool({
           // exact ids so the agent doesn't guess (DAV-258 for the half
           // plan, DAV-262 for the 2:1 floor — MSFT 2026-09-14 was told
           // to send the whole list again, an argument that no longer exists).
-          const message = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
+          const message = `${check.message} ${buyWaiting ? "" : setDownInstruction(existingTriggers, levelDirection)}`.trim();
           // A seed's commitment is its plan: without a valid one nothing lands.
           if (isUnresearchedSeed(existing.direction)) {
             return {
