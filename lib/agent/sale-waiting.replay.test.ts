@@ -111,19 +111,16 @@ async function completeRun(seed: Record<string, Row[]>, when: string, run: Run, 
 }
 
 describe("MU 10-13 08:00 ET: the 10-12 sale is waiting, so it is not the run's work", () => {
-  it("the read: no sale situation, the open review still flags, and the row says the sale waits", async () => {
+  it("the read: MU is a quiet line, its open review too, and the line says the sale waits", async () => {
     // The run's own read: MU flagged for the sale, with its review beside it.
     expect(mu.orders.map((o) => o.status)).toEqual(["EXPIRED", "EXPIRED", "EXPIRED", "EXPIRED", "AWAITING_APPROVAL"]);
     expect((mu.readThen.needsAction as Row).kind).toBe("SALE_DECLINED");
 
-    const { row, modelRow } = await morningRead(muSeed(), fx.mu.run.startedAt, "MU", mu.price);
-    expect(row?.situations).toEqual(["REVIEW_DUE"]);
-    // The lead is the -4% day review that fired 10-12 09:35 ET and no run had answered.
-    expect(row?.needsAction).toMatchObject({ kind: "TRIGGER_FIRED", triggerId: "t6", action: "REVIEW" });
-    expect((row?.needsAction as Row).alsoFired).toBeUndefined();
-    // The facts stay on the row: the waiting sale, and the lapses before it.
-    expect(modelRow?.proposal_waiting).toBe("sell 13 sh, placed 10-12 09:30 ET, expires 10-13 09:30 ET");
-    expect(row?.heldThroughFloor).toMatchObject({ floorPrice: 1005, declined: 0, lapsed: 2 });
+    // A sale waiting takes the whole stock off the list (2026-10-15), the -4% day review of 10-12 with it.
+    const { row, quiet, modelLine } = await morningRead(muSeed(), fx.mu.run.startedAt, "MU", mu.price);
+    expect(row).toBeNull();
+    expect(quiet).not.toBeNull();
+    expect(modelLine).toContain("proposal waiting: sell 13 sh, placed 10-12 09:30 ET, expires 10-13 09:30 ET");
   });
 
   it("complete_run accepts the run at its first call: the note answered the review, and the sale was never its to answer", async () => {
@@ -137,15 +134,13 @@ describe("MU 10-13 08:00 ET: the 10-12 sale is waiting, so it is not the run's w
     expect(fx.mu.runRows.map((r) => r.type)).toEqual(["REVIEWED"]);
   });
 
-  it("with no line on MU at all, complete_run asks only for the open review, not the sale", async () => {
+  it("with no line on MU at all, complete_run asks for nothing on MU", async () => {
     const seed = { ...muSeed(), runEvent: eventRows(fx.mu.run.id, fx.mu.events) };
-    const { result, crashed } = await completeRun(seed, summaryAt(fx.mu.events), fx.mu.run, { MU: mu.price });
+    const { result, db, crashed } = await completeRun(seed, summaryAt(fx.mu.events), fx.mu.run, { MU: mu.price });
 
     expect(crashed).toBe(false);
-    const text = JSON.stringify(result);
-    expect(result.summary).toMatch(/refused/i);
-    expect(text).toContain("MU (cmrp6chyu000h04l5roqq5ha1): trigger fired: REVIEW (Review if below 4% from yesterday's close)");
-    expect(text).not.toMatch(/lapse|Sell if below|declined/i);
+    expect(result.summary).not.toMatch(/refused/i);
+    expect(db.store.researchRun[0].status).toBe("COMPLETE");
   });
 });
 
