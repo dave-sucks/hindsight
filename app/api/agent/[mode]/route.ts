@@ -24,7 +24,7 @@ import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import { analystScope } from "@/lib/agent/analyst-scope";
+import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
@@ -258,6 +258,9 @@ export async function POST(
       // Rendered below only when an analyst is actually pinned.
       let scopedMoneyBlock: string | null = null;
       let scopedBookBlock: string | null = null;
+      // How full the analysts are, before the chat offers a buy (counted as place_trade counts).
+      let room: Awaited<ReturnType<typeof analystRoom>> | null = null;
+      let roomLines: string[] = [];
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
           where: { id: resolvedAnalystId, accountId },
@@ -319,6 +322,7 @@ export async function POST(
           ]);
           scopedMoneyBlock = formatMoneyContextBlock(money) || null;
           scopedBookBlock = formatBookContextBlock(book) || null;
+          room = { ...(await analystRoom(ac)), held: [] }; // the book block already lists the holdings
         } catch {
           /* fail-open — context can never be why a chat dies */
         }
@@ -431,6 +435,7 @@ export async function POST(
         // shows (environment.actions.ts). It used to stay PAPER whatever the
         // screen showed, so on a LIVE account its portfolio read was empty.
         runEnvironment = await getCurrentEnvironment();
+        roomLines = await analystRoomLines(accountId, []).catch(() => []);
         alpacaCreds = (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
         if (!runId && chatSessionId) {
           const bySession = await prisma.researchRun.findFirst({
@@ -465,6 +470,8 @@ export async function POST(
         scopedAnalyst,
         moneyBlock: scopedMoneyBlock,
         bookBlock: scopedBookBlock,
+        room,
+        roomLines,
       });
 
     } else if (agentMode === "podcast-builder") {
