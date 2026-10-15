@@ -17,33 +17,22 @@ Each analyst is one way of trading, run by the agents. It has its own book of [t
 - **Strategy:** its edge in your words: what it buys, what it filters out, what it never does. Every agent reads it word for word.
 - **Universe:** the markets, sectors, industries, themes and market-cap band it looks in. Its exclusion list always wins.
 - **Setups:** the kinds of trade it takes, chosen from the playbook below.
-- **Sizing:** the smallest trade, the largest, and the most it will hold in one stock.
+- **Sizing:** its smallest trade, its largest, and the most it will hold in one stock. No agent picks a size: every buy is sized by the risk to its floor, scaled by conviction, inside this band, and an add risks half the first buy. A tight, honest floor is what earns a bigger position.
 - **Sell rules:** its own [triggers](triggers.md), inherited by every stock it holds, like a trail 12% off the high.
 - **Run days:** which mornings it reviews its book. Every weekday by default.
 
-## How it shapes every step
+## How it shapes the agents
 
-An analyst isn't one agent; it's the style every agent works in when it touches one of its stocks.
+Every agent that touches one of its stocks reads the same brief first: the analyst's name, its strategy word for word, its rule numbers, how many slots are free, and one line per setup it has chosen. It's written once, so no two agents can describe the same analyst differently. Then:
 
-- **Finding stocks:** [Discovery](../agents/discovery.md) searches only inside its universe, scores each stock against its setups, and skips anything it already covers.
-- **Writing the thesis:** [the Writer](../agents/writer.md) researches in its strategy and prices the plan from its setups' rules.
-- **Guarding holdings:** its sell rules watch every stock it holds without being copied onto them, so changing its style changes every holding at once.
-- **Reviewing the book:** a [morning run](../agents/morning-runs.md) on each of its run days, for its book only, reading its strategy first.
-- **Acting on a fire:** a [trigger run](../agents/trigger-runs.md) decides in its style, and a buy that fires while it's full waits for you to choose what it replaces.
-- **Sizing trades:** every buy and add is sized by its band. Its [proposals](approvals.md) name it, so you always know whose call it is.
-- **Talking to you:** open [chat](../agents/chat.md) on it, and every edit and trade lands on its book.
+- **[Discovery](../agents/discovery.md)** searches only inside its universe and scores each stock against its setups.
+- **[The Writer](../agents/writer.md)** researches in its strategy and prices the plan from its setups' rules.
+- **Its sell rules** guard every stock it holds without being copied onto them, so changing its style changes every holding at once.
+- **[Morning runs](../agents/morning-runs.md)** review its book on its run days.
+- **[Trigger runs](../agents/trigger-runs.md)** decide in its style. A buy that fires while it's full waits for you to choose what it replaces.
+- **[Chat](../agents/chat.md)** opened on it makes every edit and trade on its book.
 
-## What every agent reads about it
-
-Whichever agent is working (a [morning run](../agents/morning-runs.md), a [trigger run](../agents/trigger-runs.md), [chat](../agents/chat.md) on this analyst, [Discovery](../agents/discovery.md) or [the Writer](../agents/writer.md)), it reads the same brief: the analyst's name, its strategy word for word, its rule numbers, how many slots are free, and one line per setup it has chosen. It's written once, so no two agents can describe the same analyst differently.
-
-## It never picks a size
-
-Every buy is sized by risk: the dollars at risk divided by the distance to the floor, scaled by conviction, then held inside the analyst's band. An add risks half of the first buy. A tight, honest floor is what earns a bigger position.
-
-- **Smallest trade:** a normal buy. Below this, it isn't worth the slot.
-- **Largest trade:** a high-conviction buy, and the ceiling for one order.
-- **Most in one stock:** where adding to a winner stops.
+Every [proposal](approvals.md) names the analyst behind it, so you always know whose call it is.
 
 ## The playbook
 
