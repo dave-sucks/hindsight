@@ -181,7 +181,7 @@ describe("applyTriggerOps — the ratchet, per op", () => {
       { op: "edit", id: "clock", value: 1, rationale: "Daily into the catalyst." },
     ]);
     expect(out.results).toEqual([
-      { op: "edit", id: "floor", ok: false, text: "Stop $150 → $140 (loosened)", reason: expect.stringMatching(/weakens the protection/) },
+      { op: "edit", id: "floor", ok: false, text: "Stop $150 → $140 (loosened)", reason: expect.stringMatching(/weakens the protection/), to: 140 },
       { op: "edit", id: "clock", ok: true, text: "Review cadence 7 days → 1 days" },
     ]);
     expect(out.triggers.find((t) => t.id === "floor")!.predicate).toEqual({ watch: "price", is: "below", value: 150 });

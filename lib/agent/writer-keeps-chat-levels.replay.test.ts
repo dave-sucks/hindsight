@@ -68,8 +68,8 @@ describe("MU 10:56:57 — the writer's refresh for the chat", () => {
     expect(String(args.rationale)).toMatch(/This refresh's own: entry \$906, stop \$850, target \$1500, entry \$982\.\]$/);
   }, LOAD_MS);
 
-  it("a refresh the chat did not ask for (a morning run's) is unchanged: the $982 buy takes the slot", async () => {
+  it("a refresh the chat did not ask for (a morning run's) sends its levels: entry_price wins, the $982 comes back refused", async () => {
     const { result } = await replay(await save());
-    expect(opsOn(result, BUY).map((o) => o.text)).toContain("Entry $906 → $982");
+    expect(opsOn(result, BUY)).toEqual([expect.objectContaining({ text: "Entry $982", ok: false, to: 982 })]);
   }, LOAD_MS);
 });
