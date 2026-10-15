@@ -300,6 +300,13 @@ export function prismaDouble(seed: StoreSeed = {}): PrismaDouble {
         const hit = rows().find((r) => matchWhere(r, a.where));
         return hit ? project(hit, a.select, a.include) : null;
       },
+      // The sale path reads its position this way (closeTrade.actions.ts).
+      findUniqueOrThrow: async (a: Record<string, unknown> = {}) => {
+        note("findUniqueOrThrow");
+        const hit = rows().find((r) => matchWhere(r, a.where));
+        if (!hit) throw new Error(`[replay] ${name}.findUniqueOrThrow: no row`);
+        return project(hit, a.select, a.include);
+      },
       findFirst: async (a: Record<string, unknown> = {}) => {
         note("findFirst");
         const hit = orderRows(rows().filter((r) => matchWhere(r, a.where)), a.orderBy)[0];

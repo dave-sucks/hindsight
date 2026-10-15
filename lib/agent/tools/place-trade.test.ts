@@ -31,7 +31,7 @@ const mockAgentConfigFindFirst = jest.fn();
 
 jest.mock("@/lib/prisma", () => ({
   prisma: {
-    thesis: { findUnique: mockThesisFindUnique },
+    thesis: { findUnique: mockThesisFindUnique, findFirst: jest.fn(async () => null) },
     position: {
       findFirst: mockPositionFindFirst,
       create: mockPositionCreate,
@@ -404,8 +404,7 @@ describe("place_trade — analyst enabled gate (trading-paused)", () => {
   });
 
   it("does NOT call agentConfig lookup when no effectiveAnalystId is in scope (defensive)", async () => {
-    // Principal-chat outside an analyst scope: ctx.analystId = null AND no
-    // args.analyst_id. The gate should silently skip (nothing to look up).
+    // No analyst in scope (ctx.analystId unset): the gate should silently skip.
     mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 100, target: 120, stop: 90 }) });
     mockPositionFindFirst.mockResolvedValueOnce(null);
 
@@ -625,20 +624,6 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
   });
 });
 
-/**
- * P1-18 — analyst_id ownership guard must not block a ctx-bound run.
- *
- * place_trade takes an OPTIONAL analyst_id arg used only as the principal-chat
- * fallback (the schema says "Within an analyst run, leave undefined"). On
- * 2026-06-05, GPT-5.5 ignored that and passed analyst_id="catalyst-event-pm"
- * (the human slug, not the cuid) on a tactical run already scoped to Catalyst
- * via ctx.analystId. effectiveAnalystId = ctx.analystId ?? args.analyst_id
- * already ignores the arg, so the trade was correctly bound — but the old
- * unconditional check (`args.analyst_id && args.analyst_id !== ctx.analystId`)
- * threw "Analyst catalyst-event-pm not found or not yours" and silently dropped
- * a validated live ARQT entry. The guard must only run when ctx.analystId is
- * unset (the sole case where args.analyst_id is actually used for the trade).
- */
 describe("place_trade — sized by risk when no size is given (DAV-251)", () => {
   it("sizes from the stop distance and puts the sizing, open-risk and regime lines on the proposal", async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -702,119 +687,6 @@ describe("place_trade — sized by risk when no size is given (DAV-251)", () => 
     expect(rationale).toContain("100 shares, $10,000, sized by risk: 1% of the $100,000 account at high conviction = $1,000 at risk, over $10.00 to the stop.");
     expect(rationale).toContain("If every open stop hit after this buy, the account would lose 4.0% (the limit is 6%).");
     expect(rationale).toContain("Market risk-on");
-  });
-});
-
-describe("place_trade — analyst_id ownership guard (P1-18)", () => {
-  function primeProposalPath(): void {
-    mockThesisFindUnique.mockReset();
-    mockPositionFindFirst.mockReset();
-    mockPositionCreate.mockReset();
-    mockOrderCreate.mockReset();
-    mockTransaction.mockReset();
-    mockPlaceMarketOrder.mockReset();
-    mockGetLatestPrice.mockReset();
-    mockGetAccount.mockReset();
-    mockAgentConfigFindUnique.mockReset();
-    mockAgentConfigFindFirst.mockReset();
-    mockMaybeAwaitApproval.mockReset();
-
-    mockAgentConfigFindUnique.mockResolvedValue({
-      enabled: true,
-      name: "Catalyst Event PM",
-    });
-    mockThesisFindUnique
-      .mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 21.95, target: 29, stop: 18.5 }) }) // directionCheck + the plan
-      .mockResolvedValueOnce({
-        snapshot: { text: "watch snapshot", citations: [] },
-      }); // proposal-block snapshot fetch (unused when entry_rationale present)
-    mockPositionFindFirst.mockResolvedValueOnce(null);
-    mockGetLatestPrice.mockResolvedValueOnce(21.96);
-    mockGetAccount.mockResolvedValueOnce({ cash: "10000", buying_power: "10000" });
-    mockPositionCreate.mockResolvedValue({
-      id: "pos_arqt",
-      symbol: "ARQT",
-      direction: "LONG",
-      quantity: 100,
-    });
-    mockOrderCreate.mockResolvedValue({ id: "order_arqt" });
-    mockTransaction.mockImplementation(async (arg: unknown) => {
-      if (typeof arg === "function") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (arg as (tx: any) => Promise<unknown>)({
-          position: { create: mockPositionCreate },
-          order: { create: mockOrderCreate, update: mockOrderUpdate },
-          positionEvent: { create: mockPositionEventCreate },
-          tradeDecision: { create: mockTradeDecisionCreate },
-          runEvent: { create: mockRunEventCreate },
-        });
-      }
-      return arg;
-    });
-    mockMaybeAwaitApproval.mockResolvedValue({
-      state: "awaiting_approval",
-      orderId: "order_arqt",
-      positionId: "pos_arqt",
-      expiresAt: new Date(Date.now() + 86_400_000),
-    });
-  }
-
-  it("ignores a stray slug-shaped analyst_id on a ctx-bound run (ARQT 2026-06-05 shape)", async () => {
-    primeProposalPath();
-
-    const result = await makeTool(
-      makeCtx({ analystId: "analyst_catalyst" }),
-    ).execute({
-      ticker: "ARQT",
-      direction: "LONG",
-      entry_price: 21.95,
-      target_price: 29,
-      stop_loss: 18.5,
-      thesis_id: "thesis_arqt_watching",
-      notional: 4000,
-      entry_rationale:
-        "Trigger validated above $21.95 ahead of the June 29 PDUFA.",
-      analyst_id: "catalyst-event-pm", // the slug the model hallucinated
-    });
-
-    // The trade must ADVANCE to the proposal path, not be blocked.
-    expect(result.ok).not.toBe(false);
-    expect(result.data.status).toBe("PROPOSED");
-    expect(String(result.error ?? "")).not.toMatch(/not found or not yours/i);
-    // The ownership lookup must be skipped entirely when ctx.analystId is set.
-    expect(mockAgentConfigFindFirst).not.toHaveBeenCalled();
-    // And the position was bound to ctx.analystId, never the slug.
-    expect(mockPositionCreate).toHaveBeenCalledTimes(1);
-    expect(mockPositionCreate.mock.calls[0][0].data.analystId).toBe(
-      "analyst_catalyst",
-    );
-  });
-
-  it("still validates analyst_id ownership in principal chat (ctx.analystId unset)", async () => {
-    primeProposalPath();
-    // The bogus id resolves to no analyst owned by the user.
-    mockAgentConfigFindFirst.mockResolvedValueOnce(null);
-
-    const result = await makeTool(makeCtx({ analystId: undefined })).execute({
-      ticker: "ARQT",
-      direction: "LONG",
-      entry_price: 21.95,
-      target_price: 29,
-      stop_loss: 18.5,
-      thesis_id: "thesis_arqt_watching",
-      notional: 4000,
-      analyst_id: "not-a-real-analyst",
-    });
-
-    // The ownership check fired and place_trade's inner catch converted the
-    // throw into a graceful FAILED envelope (the same soft-fail the ARQT run
-    // surfaced in production — run COMPLETE, agent narrates "not recognized").
-    expect(result.data.success).toBe(false);
-    expect(result.data.status).toBe("FAILED");
-    expect(String(result.data.message)).toMatch(/not found or not yours/i);
-    expect(mockAgentConfigFindFirst).toHaveBeenCalledTimes(1);
-    // Never reached proposal submission.
-    expect(mockMaybeAwaitApproval).not.toHaveBeenCalled();
   });
 });
 

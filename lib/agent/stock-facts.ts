@@ -7,6 +7,7 @@
  * way; the price and the work-flag inputs come from work-inputs.ts.
  */
 import { prisma } from "@/lib/prisma";
+import { analystOf } from "@/lib/agent/analyst-scope";
 import { getDailyRangePcts } from "@/lib/alpaca";
 import { computeNeedsAction, type NeedsAction } from "@/lib/agent/needs-action";
 import { loadWorkInputs, type WorkContext, type WorkLoad } from "@/lib/agent/work-inputs";
@@ -156,7 +157,7 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
   // passed sibling on the same analyst, per ticker, so the resolver can flag
   // an older live row a newer sister thesis killed (the two-ZS case).
   // Per analyst: on an account-wide read each stock is matched against its own analyst's rows only.
-  const analystOf = (t: FactsRow): string => ctx.analystId ?? t.researchRun?.agentConfigId ?? "";
+  const analystOfRow = (t: FactsRow): string => analystOf(t, ctx.analystId) ?? "";
   const tickers = Array.from(new Set(theses.map((t) => t.ticker)));
   const terminal =
     tickers.length > 0
@@ -172,7 +173,7 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
         })
       : [];
   const supersessionByAnalyst = new Map<string, ReturnType<typeof buildSupersessionMap>>();
-  for (const id of new Set(theses.map(analystOf))) {
+  for (const id of new Set(theses.map(analystOfRow))) {
     supersessionByAnalyst.set(id, buildSupersessionMap(terminal.filter((r) => !id || (ctx.analystId ?? r.researchRun?.agentConfigId) === id)));
   }
 
@@ -261,7 +262,7 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
         },
         currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
         priceAsOf: load.priceAsOf[t.ticker] ?? null,
-        supersession: supersessionByAnalyst.get(analystOf(t))?.get(t.ticker) ?? null,
+        supersession: supersessionByAnalyst.get(analystOfRow(t))?.get(t.ticker) ?? null,
         now,
       }),
     );

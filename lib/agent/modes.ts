@@ -405,7 +405,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // analyst (via /chat?analyst=<id> → body.analystId), the route creates
   // a ResearchRun(mode="PRINCIPAL_CHAT", agentConfigId=<id>) so every
   // write tool's FK into runId works the same way it does in the daily
-  // run. Unscoped, it's portfolio-wide reads + suggest_config.
+  // run. Unscoped, it is the Master Chat: each write acts for the stock's own analyst.
   //
   // Default model is Claude Sonnet 4.6 with extended thinking on — same
   // model the user uses through Claude Code for deep reviews. GPT-4o is
@@ -448,9 +448,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // intent (web_search for consensus/news, twitter_search for handle
       // attribution / fintwit early calls / multi-archetype convergence).
       "twitter_search",
-      // ── Writes (require analyst scope — route creates a ResearchRun
-      // when body.analystId is supplied, FK satisfies). Unscoped chats
-      // will see these fail cleanly with "scope to an analyst first".
+      // ── Writes. Unscoped, each acts for the stock's own analyst
+      // (analyst-scope.ts); record_thesis alone needs the chat pinned.
       "record_thesis",
       "update_thesis",
       "place_trade",
@@ -608,7 +607,7 @@ export function buildPrincipalSystemPrompt(opts: {
 ## CURRENT SCOPE — pinned to ${scope.name}
 ══════════════════════════════════════════════════════════════════════
 
-This chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst. You don't need to pass analyst_id — the route handles it.
+This chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst; a buy goes to its thesis's analyst.
 
   • Analyst ID: \`${scope.id}\`
 ${universeLines(scope).map((l) => `  • ${l}`).join("\n")}
@@ -624,7 +623,7 @@ ${moneyBlock}${bookBlock}`
 ## CURRENT SCOPE — Portfolio (unscoped)
 ══════════════════════════════════════════════════════════════════════
 
-This chat is at the portfolio level, not pinned to one analyst: you read across every analyst. A trade or a thesis edit (place_trade, close_position, manage_position, update_thesis, record_thesis) needs the chat pinned to the stock's analyst: the principal clicks its chip in the chat header.
+This chat is at the portfolio level, not pinned to one analyst: you read across every analyst. Every trade and thesis edit (place_trade, close_position, manage_position, update_thesis) acts for the stock's own analyst, under its rules and the approval screen. Only a new thesis (record_thesis) needs the chat pinned; for new coverage, dispatch the writer for the analyst it is for.
 
 **"I have no cash: what do I sell or trim?"**, or any question about the whole book: read \`get_portfolio_context\` (every holding with its analyst, gain, give-back and floor; the cash; each analyst's slots and limits), \`list_proposals\` (the sales waiting) and \`get_theses\` with \`status:["HOLDING"]\` (each holding's sell rules and notes). Answer stock by stock: keep, trim or sell, why, and the level that would change your mind.
 
