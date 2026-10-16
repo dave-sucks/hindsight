@@ -58,6 +58,7 @@ import { effectiveTriggerAction, watchedFloorOnClose } from "@/lib/agent/trigger
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { demoteThesisPlan } from "@/lib/agent/triggers/demote";
 import { splitFiresByLevel } from "@/lib/agent/triggers/levels";
+import { heldFloorSells, isFloorSale } from "@/lib/agent/triggers/price-levels";
 import {
   loadLevelSources,
   parseTriggerState,
@@ -487,11 +488,12 @@ export const triggerEvaluator = inngest.createFunction(
           analystId: thesis.researchRun.agentConfigId,
           // A watched stock's floor reads the close (DAV-337): a morning dip
           // through it no longer sets the plan down.
+          // ...and a held stock's floor sells automatically, asked every pass while under it.
           ladder: resolveThesisLadder(
             thesis,
             levelSources.get(thesis.researchRun.agentConfigId ?? ""),
             `thesis=${thesis.id}`,
-          ).map((t) => watchedFloorOnClose(t, thesis)),
+          ).map((t) => heldFloorSells(watchedFloorOnClose(t, thesis), thesis)),
         }))
         // Whether the stock has a buy, read before the close pass narrows the
         // ladder: with none, a review at a price is a wake (DAV-335).
@@ -718,7 +720,8 @@ export const triggerEvaluator = inngest.createFunction(
           ),
           now,
         });
-        for (const t of fires) {
+        // The floor's sale leads, so a trail or a review that fired with it folds into the sale.
+        for (const t of [...fires].sort((a, b) => Number(isFloorSale(b, thesis.direction)) - Number(isFloorSale(a, thesis.direction)))) {
           // What this trigger MEANS for a thesis in this state. A floor or a
           // target firing on something we don't own can't be a sell or a
           // take-profit — it says the priced plan is stale. Resolved here

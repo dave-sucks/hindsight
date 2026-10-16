@@ -21,6 +21,8 @@ export interface AccountApprovalSettings {
   requireApprovalSellsLive: boolean;
   requireApprovalBuysPaper: boolean;
   requireApprovalSellsPaper: boolean;
+  /** A held stock's floor sale goes straight through (the sell toggles above don't hold it). */
+  floorSalesAtOnce: boolean;
 }
 
 export type ApprovalToggleField = keyof AccountApprovalSettings;
@@ -31,7 +33,17 @@ const DEFAULTS: AccountApprovalSettings = {
   requireApprovalSellsLive: true,
   requireApprovalBuysPaper: false,
   requireApprovalSellsPaper: false,
+  floorSalesAtOnce: false,
 };
+
+/** The columns behind the switches, read and returned the same way everywhere. */
+const SELECT = {
+  requireApprovalBuysLive: true,
+  requireApprovalSellsLive: true,
+  requireApprovalBuysPaper: true,
+  requireApprovalSellsPaper: true,
+  floorSalesAtOnce: true,
+} as const;
 
 /**
  * Read the current approval toggles for the caller's account. Returns
@@ -48,25 +60,12 @@ export async function getAccountApprovalSettings(): Promise<AccountApprovalSetti
   const accountId = await getAccountId(user.id);
   if (!accountId) return DEFAULTS;
 
-  const account = await prisma.account.findUnique({
-    where: { id: accountId },
-    select: {
-      requireApprovalBuysLive: true,
-      requireApprovalSellsLive: true,
-      requireApprovalBuysPaper: true,
-      requireApprovalSellsPaper: true,
-    },
-  });
-  return {
-    requireApprovalBuysLive: account?.requireApprovalBuysLive ?? DEFAULTS.requireApprovalBuysLive,
-    requireApprovalSellsLive: account?.requireApprovalSellsLive ?? DEFAULTS.requireApprovalSellsLive,
-    requireApprovalBuysPaper: account?.requireApprovalBuysPaper ?? DEFAULTS.requireApprovalBuysPaper,
-    requireApprovalSellsPaper: account?.requireApprovalSellsPaper ?? DEFAULTS.requireApprovalSellsPaper,
-  };
+  const account = await prisma.account.findUnique({ where: { id: accountId }, select: SELECT });
+  return { ...DEFAULTS, ...account };
 }
 
 /**
- * Server action — update one of the four approval toggles. OWNER-only.
+ * Server action — update one of the approval switches. OWNER-only.
  * Returns the new state so the client can confirm + render. Throws on
  * unauthorized callers (no session, no membership, VIEWER/EDITOR role).
  *
@@ -93,25 +92,17 @@ export async function setAccountApprovalToggle(input: {
     throw new Error("Only the account owner can change approval settings");
   }
 
+  // Only these switches: the field name arrives from the client.
+  if (!(input.field in DEFAULTS) || typeof input.value !== "boolean") throw new Error("Unknown setting");
   const updated = await prisma.account.update({
     where: { id: accountId },
     data: { [input.field]: input.value },
-    select: {
-      requireApprovalBuysLive: true,
-      requireApprovalSellsLive: true,
-      requireApprovalBuysPaper: true,
-      requireApprovalSellsPaper: true,
-    },
+    select: SELECT,
   });
 
   // Server-rendered surfaces that show the toggle state (the settings page
   // itself + any future banner) pick up the new value on next paint.
   revalidatePath("/settings");
 
-  return {
-    requireApprovalBuysLive: updated.requireApprovalBuysLive,
-    requireApprovalSellsLive: updated.requireApprovalSellsLive,
-    requireApprovalBuysPaper: updated.requireApprovalBuysPaper,
-    requireApprovalSellsPaper: updated.requireApprovalSellsPaper,
-  };
+  return updated;
 }

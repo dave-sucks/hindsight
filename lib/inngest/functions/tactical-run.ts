@@ -42,6 +42,7 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
+import { isFloorSale } from "@/lib/agent/triggers/price-levels";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -265,6 +266,8 @@ export const tacticalRun = inngest.createFunction(
       return { skipped: "context-not-loadable", thesisId: fired.thesisId };
     }
     const { thesis, trigger, agentConfig, position, coFired } = ctx;
+    // A held stock's floor sells automatically, whatever mode is stored (the owner's ruling, 2026-10-16).
+    const floorSale = position != null && isFloorSale(trigger as Trigger, thesis.direction);
 
     // ── Suppress redundant close runs while an exit is already queued ────────
     // EXIT/TRIM triggers carry cooldownDays:0 ("fire every tick") because the
@@ -282,12 +285,19 @@ export const tacticalRun = inngest.createFunction(
     // toggles are ON; with auto-execute the position closes on the first fire
     // and never reaches a second tick, so this is a no-op there.
     if ((trigger.action === "EXIT" || trigger.action === "TRIM") && position) {
+      // With the owner's switch on, a floor sale is held back only by a sale already sent:
+      // a proposal still waiting is sent now, not left for its 24 hours.
+      const atOnce =
+        floorSale &&
+        (await step.run("check-floor-sales-at-once", async () =>
+          (await prisma.account.findUnique({ where: { id: agentConfig.accountId }, select: { floorSalesAtOnce: true } }))?.floorSalesAtOnce === true,
+        ));
       const queuedClose = await step.run("check-queued-close", async () =>
         prisma.order.findFirst({
           where: {
             positionId: position.id,
             intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
-            OR: [
+            OR: atOnce ? [{ status: "PENDING" }] : [
               { status: "AWAITING_APPROVAL" },
               // A PENDING close is already submitted to Alpaca and awaiting
               // fill (or reconcile). closeOpenPosition would fold a second
@@ -482,7 +492,7 @@ export const tacticalRun = inngest.createFunction(
     // judgment-bearing exit (earnings, signal) must fall through to the agent,
     // not be auto-closed by directExitReason's STOP fallback.
     if (
-      trigger.fireMode === "DIRECT" &&
+      (trigger.fireMode === "DIRECT" || floorSale) &&
       trigger.action === "EXIT" &&
       isDirectEligiblePredicate(trigger.predicate) &&
       position
@@ -518,6 +528,8 @@ export const tacticalRun = inngest.createFunction(
             "price_monitor", // autonomous → approval-gated; risk-exit carve-out applies
             rationale,
             run.id,
+            undefined,
+            { floorSale },
           );
           return { kind: outcome.kind, reason };
         } catch (err) {

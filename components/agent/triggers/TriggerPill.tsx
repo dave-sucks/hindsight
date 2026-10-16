@@ -29,6 +29,7 @@ import {
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
 import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
 import { watchedFloorOnClose, type TriggerAction } from "@/lib/agent/triggers/types";
+import { isFloorSale } from "@/lib/agent/triggers/price-levels";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { cn } from "@/lib/utils";
 import { TriggerDialog } from "./TriggerDialog";
@@ -45,6 +46,8 @@ export interface TriggerPillProps {
   endpointBase: string;
   analystId?: string | null;
   onChanged?: () => void;
+  /** The stock's direction, which says which price level is its floor. */
+  direction?: string | null;
 }
 
 /** What the pill and the popover show: the parts, the joiner, and which parts are a clock. */
@@ -113,6 +116,7 @@ export function TriggerPill(props: TriggerPillProps) {
           held={held}
           endpointBase={props.endpointBase}
           onChanged={props.onChanged}
+          direction={props.direction}
         />
       ) : null}
     </>
@@ -130,6 +134,7 @@ function TriggerCard({
   onChanged,
   onEdit,
   onDone,
+  direction,
 }: TriggerPillProps & { onEdit?: () => void; onDone: () => void }) {
   const sells = held || level !== "THESIS";
   // An inherited rule is changed where it lives, so one edit can't mean different things on different stocks.
@@ -148,7 +153,12 @@ function TriggerCard({
     trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : null,
     // A schedule's rate limit is its own interval, so saying it again would repeat the number.
     cooldown && !timed ? (cooldown === 1 ? "At most once a day" : `At most once every ${cooldown} days`) : null,
-    w && canProposeDirectly(w, trigger.action as TriggerAction) && sells && trigger.fireMode === "DIRECT" ? "Proposes the sale right away" : null,
+    // The floor on a held stock's chart sells automatically, whatever was stored.
+    held && level === "THESIS" && isFloorSale({ action: trigger.action as TriggerAction, predicate: trigger.predicate as When }, direction ?? null)
+      ? "Sells automatically"
+      : w && canProposeDirectly(w, trigger.action as TriggerAction) && sells && trigger.fireMode === "DIRECT"
+        ? "Proposes the sale right away"
+        : null,
   ].filter(Boolean);
 
   return (

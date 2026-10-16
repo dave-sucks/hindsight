@@ -6,6 +6,7 @@
  * Four switches in two groups: LIVE (real money — review required for
  * disclosure) and PAPER (fake money — auto-executes; flip on only to test
  * the approval flow). Each group has a buys + sells switch. OWNER-only.
+ * A fifth switch lets a held stock's floor sale skip the wait.
  *
  * The gate (lib/proposals/maybe-await-approval.ts) reads the column matching
  * the trade's Position.environment, so PAPER and LIVE behave independently —
@@ -50,6 +51,10 @@ const HUMAN: Record<ApprovalToggleField, { on: string; off: string }> = {
     on: "Paper sells now require approval",
     off: "Paper sells will execute automatically",
   },
+  floorSalesAtOnce: {
+    on: "Floor sales now go through at once",
+    off: "Floor sales now wait for your approval",
+  },
 };
 
 const ROWS: Array<{
@@ -76,6 +81,12 @@ const ROWS: Array<{
     field: "requireApprovalSellsPaper",
     label: "Paper sells",
     description: "Agent-proposed closes on paper positions wait for your decision. Off = auto-execute.",
+  },
+  {
+    field: "floorSalesAtOnce",
+    label: "Floor sales go through at once",
+    description:
+      "The floor on a stock's chart sells it automatically. On, that sale goes through right away instead of waiting for you. Buys, adds, trims, targets, give-back sales and the analysts' own sales still follow the switches above.",
   },
 ];
 

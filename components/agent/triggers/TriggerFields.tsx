@@ -113,22 +113,24 @@ export function useTriggerRequest(onDone: () => void) {
   return { pending, err, setErr, send };
 }
 
-/** How a sale fires. Shown only for a sale nothing needs judging on. */
+/** How a sale fires. Shown only for a sale nothing needs judging on; a held stock's floor has no choice (`fixed`). */
 export function OnFireSelect({
   value,
   onChange,
   disabled,
+  fixed = false,
 }: {
   value: Draft["fireMode"];
   onChange: (v: Draft["fireMode"]) => void;
   disabled: boolean;
+  fixed?: boolean;
 }) {
   return (
     <div className="space-y-1.5">
       <FieldLabel>On fire</FieldLabel>
-      <Select value={value} onValueChange={(v) => (v === "TACTICAL" || v === "DIRECT") && onChange(v)} disabled={disabled}>
+      <Select value={fixed ? "DIRECT" : value} onValueChange={(v) => (v === "TACTICAL" || v === "DIRECT") && onChange(v)} disabled={disabled || fixed}>
         <SelectTrigger width="full" aria-label="On fire">
-          <SelectValue>{value === "DIRECT" ? "Propose the sale right away" : "Ask the analyst first"}</SelectValue>
+          <SelectValue>{fixed ? "Sells automatically" : value === "DIRECT" ? "Propose the sale right away" : "Ask the analyst first"}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="TACTICAL">Ask the analyst first</SelectItem>

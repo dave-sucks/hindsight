@@ -109,7 +109,10 @@ export class ApprovalGateAccountUnresolvedError extends Error {
  * before Alpaca (GAPS P1-19). PAPER keeps the legacy fail-open (false).
  */
 export async function approvalRequired(
-  args: Pick<MaybeAwaitApprovalArgs, "accountId" | "intent" | "environment">,
+  args: Pick<MaybeAwaitApprovalArgs, "accountId" | "intent" | "environment"> & {
+    /** A held stock's floor sale (the trigger run's DIRECT STOP on the FLOOR slot) — nothing else says so. */
+    floorSale?: boolean;
+  },
 ): Promise<boolean> {
   const account = await prisma.account.findUnique({
     where: { id: args.accountId },
@@ -118,6 +121,7 @@ export async function approvalRequired(
       requireApprovalSellsLive: true,
       requireApprovalBuysPaper: true,
       requireApprovalSellsPaper: true,
+      floorSalesAtOnce: true,
     },
   });
 
@@ -142,6 +146,9 @@ export async function approvalRequired(
     }
     return false;
   }
+
+  // The owner's switch: a floor sale goes straight through. Trims, targets, trails, buys and adds never do.
+  if (args.floorSale === true && args.intent === "CLOSE" && account.floorSalesAtOnce === true) return false;
 
   const isRiskIncreasing = args.intent === "OPEN" || args.intent === "ADD";
   const isLive = args.environment === "LIVE";

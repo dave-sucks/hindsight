@@ -57,7 +57,7 @@ export default async function ProfileSettingsPage() {
         title="Trade approvals"
         description={
           isOwner
-            ? "Choose which agent-initiated trades require your explicit approval before they execute. Manual buy/sell buttons and price-monitor trailing stops always execute."
+            ? "Choose which agent-initiated trades require your explicit approval before they execute. Your own buy and sell buttons always execute."
             : "Only the account owner can change these settings."
         }
       >

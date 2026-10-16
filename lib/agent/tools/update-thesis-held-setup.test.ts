@@ -224,8 +224,8 @@ describe("update_thesis — a held stock gets its setup's exits when the review 
     expect(next).toBeDefined();
     expect(next).toHaveLength(ABT_TRIGGERS.length + 1);
     // Every trigger ABT already had is exactly as it was — its own 30-day
-    // review clock included.
-    expect(next!.slice(0, ABT_TRIGGERS.length)).toEqual(ABT_TRIGGERS);
+    // review clock included — but its floor, which a save writes DIRECT: the floor sells automatically.
+    expect(next!.slice(0, ABT_TRIGGERS.length)).toEqual(ABT_TRIGGERS.map((t) => (t.id === "exit84" ? { ...t, fireMode: "DIRECT" } : t)));
     const added = next![next!.length - 1];
     expect(added.action).toBe("REVIEW");
     expect(added.predicate).toEqual({ watch: "from_date", is: "after", value: 60, variable: "buy" });
