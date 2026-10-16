@@ -314,6 +314,20 @@ export function levelSlotOf(t: Trigger, direction: string | null): LevelSlot | n
 }
 
 /**
+ * The floor on a held stock's chart sells automatically: a FLOOR-slot EXIT is
+ * a DIRECT sale whatever mode is stored, asked every pass while the price is
+ * under it. Every other sell trigger (a trail, a target, a review) keeps its own mode.
+ */
+export function isFloorSale(t: Pick<Trigger, "action" | "predicate">, direction: string | null): boolean {
+  return t.action === "EXIT" && levelSlotOf(t as Trigger, direction) === "FLOOR";
+}
+
+/** A held stock's floor as the trigger check reads it: DIRECT, with no cooldown. */
+export function heldFloorSells<T extends Trigger>(t: T, thesis: { status: string; direction: string | null }): T {
+  return thesis.status === "HOLDING" && isFloorSale(t, thesis.direction) ? { ...t, fireMode: "DIRECT", cooldownDays: 0 } : t;
+}
+
+/**
  * Set or clear one slot. Editing an existing trigger in the slot is preferred
  * over adding, so it keeps its id and with it its cooldown history and
  * `source` stamp. A duplicate behind it is dropped — a second trigger in the

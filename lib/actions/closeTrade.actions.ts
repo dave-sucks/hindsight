@@ -168,6 +168,8 @@ export async function closeOpenPosition(
    * promotion force-closes) leaves it undefined → terminal RETIRED, unchanged.
    */
   beliefSurvived?: boolean | null,
+  /** The sale a held stock's floor fired; with the owner's switch on, it skips approval. */
+  opts: { floorSale?: boolean } = {},
 ): Promise<CloseOpenPositionOutcome> {
   const position = await prisma.position.findUniqueOrThrow({
     where: { id: positionId },
@@ -213,6 +215,7 @@ export async function closeOpenPosition(
       accountId: position.accountId,
       intent: "CLOSE",
       environment: positionEnvironment,
+      floorSale: opts.floorSale === true && reason === "STOP",
     }));
   const rationale = auditReason ?? `Automated ${reason} exit — ${position.symbol}`;
   const expiresAt = new Date(placedAt.getTime() + PROPOSAL_TTL_MS);
@@ -264,6 +267,13 @@ export async function closeOpenPosition(
         createdAt: placedAt,
       },
     });
+    // A sale sent now supersedes a proposal still waiting on the position: one sale, never two.
+    if (!needsApproval && sales.waitingClose) {
+      await tx.order.update({
+        where: { id: sales.waitingClose.id },
+        data: { status: "CANCELLED", alpacaConfirmedAt: new Date(), rejectionMessage: "Auto-cancelled — a sale of this position was sent at once." },
+      });
+    }
 
     await tx.positionEvent.create({
       data: {

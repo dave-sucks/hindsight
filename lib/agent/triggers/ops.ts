@@ -58,6 +58,7 @@ import { validateEnterTriggerRequired } from "./enter-guard";
 import {
   canonicalLevels,
   levelSlotOf,
+  isFloorSale,
   moveNumberInText,
   predicateFor,
   rationaleFor,
@@ -631,7 +632,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     triggers: changed
       ? stampWrittenPrice(
           input.stored,
-          applyTriggerCooldownDefaults(stored),
+          // The floor sells automatically: every save writes it DIRECT, whoever saves.
+          applyTriggerCooldownDefaults(stored).map((t) => (isFloorSale(t, direction) && t.fireMode !== "DIRECT" ? { ...t, fireMode: "DIRECT" as const } : t)),
           input.writtenPrice !== undefined ? input.writtenPrice : currentPrice,
           input.now ?? new Date(),
         )

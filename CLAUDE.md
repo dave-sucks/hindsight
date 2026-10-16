@@ -19,7 +19,10 @@ stamps them onto the thesis: a thesis rung beats every rule above it, so a
 stamped copy would freeze the old numbers. See TRIGGERS.md §2a.
 `resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners
 whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
-Everything fires as approval-gated proposals — nothing auto-trades. **Fire
+**The floor on a held stock's chart sells automatically** (DIRECT, asked every pass while
+under it, whatever mode is stored); every other sell trigger keeps its mode. Sales
+fire as approval-gated proposals unless the owner turns on `floorSalesAtOnce`, which
+sends a floor sale (only that) at once — see TRIGGERS.md §4. **Fire
 semantics differ by action (DAV-229):** a protective/review rung is a standing
 order (re-fires every day its condition holds; a decline is "did nothing");
 an ENTER fires on the *crossing* of its level (true now, false at the prior

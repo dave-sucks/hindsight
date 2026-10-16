@@ -44,6 +44,7 @@ const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = ["ENTER", "ADD", "REVIEW", "
 /** The pill rows. A pill opens its trigger in a popover. */
 export function TriggerGroups({
   triggers,
+  direction,
   editable,
   held,
   analystId,
@@ -52,7 +53,7 @@ export function TriggerGroups({
   level = "THESIS",
 }: {
   triggers: Trigger[];
-  /** Kept for callers that pass it; the pills read the stored condition. */
+  /** Says which price level is the stock's floor, the one that sells automatically. */
   direction?: "LONG" | "SHORT" | null;
   editable: boolean;
   held: boolean;
@@ -82,6 +83,7 @@ export function TriggerGroups({
                 endpointBase={endpointBase}
                 analystId={analystId}
                 onChanged={onChanged}
+                direction={direction}
               />
             ))}
           </div>
@@ -193,7 +195,7 @@ export function ThesisTriggersSection({
       )}
       {editable ? (
         <div>
-          <AddTrigger level="THESIS" held={held} endpointBase={endpointBase} onChanged={onChanged} />
+          <AddTrigger level="THESIS" held={held} endpointBase={endpointBase} onChanged={onChanged} direction={direction} />
         </div>
       ) : null}
     </div>

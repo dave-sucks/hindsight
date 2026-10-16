@@ -63,9 +63,9 @@ describe("MU's floor, $1,005 → $1,060 (2026-10-13)", () => {
     expect(audit.fieldChanges).toMatchObject({ triggerOps: { to: [{ id: "t4", op: "edit", text: fx.saved.op }] } });
   });
 
-  it("keeps the id, the fire history and the cooldown", async () => {
+  it("keeps the id, the fire history and the cooldown; the floor is saved DIRECT (it sells automatically)", async () => {
     const { saved } = await ownerSave();
-    expect(saved).toMatchObject({ id: "t4", predicate: fx.dialog.predicate, lastFiredAt: t4Before.lastFiredAt, cooldownDays: 1, fireMode: "TACTICAL", source: "PRINCIPAL" });
+    expect(saved).toMatchObject({ id: "t4", predicate: fx.dialog.predicate, lastFiredAt: t4Before.lastFiredAt, cooldownDays: 1, fireMode: "DIRECT", source: "PRINCIPAL" });
   });
 
   it("an owner change that reaches the op with no reason stores the trigger in words for the new level", () => {

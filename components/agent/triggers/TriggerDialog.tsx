@@ -23,6 +23,7 @@ import {
   type TriggerType,
 } from "@/lib/agent/triggers/condition";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
+import { isFloorSale } from "@/lib/agent/triggers/price-levels";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { ConditionFields, FieldLabel, OnFireSelect, TYPE_ICON, draftOf, useTriggerRequest, whenOf, type Draft, type Level } from "./TriggerFields";
 
@@ -33,6 +34,8 @@ interface AddProps {
   /** `/api/theses/:id/triggers` or `/api/levels/:level/:ownerId/triggers`. */
   endpointBase: string;
   onChanged?: () => void;
+  /** The stock's direction, which says which price level is its floor. */
+  direction?: string | null;
 }
 
 /** The menu of types. One for the first condition, and the same list for a second ("And also…"). */
@@ -106,6 +109,7 @@ export function TriggerDialog({
   held,
   endpointBase,
   onChanged,
+  direction = null,
 }: AddProps & { open: boolean; onOpenChange: (open: boolean) => void; type: TriggerType; trigger?: Trigger }) {
   const standing = level !== "THESIS";
   const ctx = { level, held };
@@ -129,6 +133,8 @@ export function TriggerDialog({
   const actions = allowedActions(w, { held, standing });
   const action = actions.includes(draft.action) ? draft.action : (actions[0] ?? "REVIEW");
   const showOnFire = canProposeDirectly(w, action) && sells;
+  // The floor on a held stock's chart always sells automatically.
+  const floor = held && !standing && isFloorSale({ action, predicate: w }, direction);
   const problem = whenProblem(w, ctx);
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const setCondition = (i: number, c: Draft["conditions"][number]) =>
@@ -136,7 +142,7 @@ export function TriggerDialog({
 
   function save() {
     if (problem) return;
-    const body = { action, predicate: w, fireMode: showOnFire ? draft.fireMode : undefined };
+    const body = { action, predicate: w, fireMode: floor ? "DIRECT" : showOnFire ? draft.fireMode : undefined };
     if (trigger) void send("PATCH", `${endpointBase}/${trigger.id}`, { replace: body });
     else void send("POST", endpointBase, body);
   }
@@ -204,7 +210,7 @@ export function TriggerDialog({
             />
           )}
 
-          {showOnFire ? <OnFireSelect value={draft.fireMode} onChange={(fireMode) => update({ fireMode })} disabled={pending} /> : null}
+          {showOnFire ? <OnFireSelect value={draft.fireMode} onChange={(fireMode) => update({ fireMode })} disabled={pending} fixed={floor} /> : null}
           {err ? <p className="text-xs text-destructive">{err}</p> : null}
         </div>
 

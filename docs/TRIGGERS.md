@@ -301,8 +301,25 @@ name back to the watchlist.
 agent's `close_position`/`place_trade`) call `maybeAwaitApproval` **before** any
 Alpaca submit. With require-approval-sells ON, a DIRECT exit **proposes** the
 close (you approve/reject) — it does **not** auto-sell. DIRECT saves the *agent*
-cost, never the *approval* step. True auto-sell requires approvals OFF (a
-separate account setting).
+cost, never the *approval* step.
+
+**The floor on the chart sells automatically** (the owner's ruling, 2026-10-16).
+A held stock's FLOOR-slot EXIT (`levelSlotOf` FLOOR: the stop the chart and the
+Price Targets card show) is a DIRECT sale whatever `fireMode` is stored, and it
+is asked on every pass while the price is under it, so a sale that lapses is
+put up again on the next pass (`heldFloorSells` / `isFloorSale` in
+`triggers/price-levels.ts`, read by the trigger check and the trigger run). It
+leads a pass's fires, so a trail or a review that fired with it folds into the
+sale. Every save through `ops.ts` writes the floor DIRECT, and the popover shows
+it as "Sells automatically" with no choice. Every other sell trigger — a trail, a
+target, a give-back review — keeps its own mode: the agent decides.
+
+**Floor sales at once** (`Account.floorSalesAtOnce`, Settings → Trade
+approvals, off by default). On, a floor sale skips the wait: `approvalRequired`'s
+`floorSale`, set only by the trigger run's DIRECT STOP on the FLOOR slot. A
+proposal already waiting is sent on the next pass and cancelled in the same
+step, so there is never a second sale. Buys, adds, trims, targets, trails and
+any agent's own sale still follow the sell toggles.
 
 ## 5. From fire to trade (the pipeline)
 

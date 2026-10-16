@@ -48,6 +48,9 @@ model Account {
   requireApprovalSellsLive  Boolean @default(true)
   requireApprovalBuysPaper  Boolean @default(false)
   requireApprovalSellsPaper Boolean @default(false)
+  // A held stock's floor (the stop on its chart) always sells automatically;
+  // on, that sale goes straight to the broker instead of waiting as above.
+  floorSalesAtOnce          Boolean @default(false)
 
   // ── Account-level standing triggers (the ACCOUNT level of the cascade) ──
   // Same `Trigger[]` shape as Thesis.triggers (lib/agent/triggers/types),
