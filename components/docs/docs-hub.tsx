@@ -3,8 +3,9 @@
 /**
  * /docs and /docs/[slug]: a classic docs page. Every doc in the sidebar,
  * grouped the way docs/guide/ is foldered; the doc in the middle; its
- * sections on the right. The Overview is the guide's README, the page an
- * agent starts from.
+ * sections on the right. /docs itself is the front door (DocsIndex); the
+ * Overview, /docs/overview, is the guide's README, the page an agent
+ * starts from.
  */
 
 import Link from "next/link";
@@ -15,12 +16,16 @@ import { headingId, parseDoc } from "@/lib/docs/guide-parse";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { DocCrumbs } from "./doc-crumbs";
+import { DocsIndex } from "./docs-index";
 import { MarkdownDoc } from "./markdown-doc";
 import { DOCS, docBySlug, type DocMeta } from "./registry";
 import { DocsDataProvider } from "./tool-catalog";
 
-/** The README is the Overview; it lives at /docs. */
+/** The README is the Overview; it lives at /docs/overview. */
 export const OVERVIEW = "README";
+
+/** The front door, /docs: no doc of its own, just the cards. */
+export const HOME = "home";
 
 const GROUPS: ReadonlyArray<{ label: string; group: DocMeta["group"] }> = [
   { label: "Start here", group: "Overview" },
@@ -29,7 +34,7 @@ const GROUPS: ReadonlyArray<{ label: string; group: DocMeta["group"] }> = [
   { label: "Reference", group: "Reference" },
 ];
 
-const hrefOf = (slug: string) => (slug === OVERVIEW ? "/docs" : `/docs/${slug}`);
+const hrefOf = (slug: string) => (slug === OVERVIEW ? "/docs/overview" : `/docs/${slug}`);
 
 export function DocsHub({
   slug,
@@ -45,7 +50,8 @@ export function DocsHub({
   framework: FrameworkData;
 }) {
   const meta = docBySlug(slug);
-  const source = guide[slug] ?? "";
+  const home = slug === HOME;
+  const source = home ? "" : guide[slug] ?? "";
   const sections = parseDoc(source).parts.flatMap((p) => (p.kind === "section" && p.title ? [p.title] : []));
 
   return (
@@ -56,7 +62,7 @@ export function DocsHub({
           <div className="lg:hidden">
             <Collapsible>
               <CollapsibleTrigger className="group/nav flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm font-medium text-foreground">
-                {meta?.title ?? "Overview"}
+                {home ? "Docs" : meta?.title ?? "Overview"}
                 <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[panel-open]/nav:rotate-180" />
               </CollapsibleTrigger>
               <CollapsibleContent>
@@ -71,9 +77,15 @@ export function DocsHub({
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-col gap-8">
-          <DocCrumbs group={meta ? GROUPS.find((g) => g.group === meta.group)?.label ?? meta.group : "Start here"} title={meta?.title ?? "Overview"} groupHref="/docs" />
-          <MarkdownDoc source={source} />
+        <main className={cn("flex min-w-0 flex-col gap-8", !sections.length && "xl:col-span-2")}>
+          {home ? (
+            <DocsIndex guide={guide} />
+          ) : (
+            <>
+              <DocCrumbs group={meta ? GROUPS.find((g) => g.group === meta.group)?.label ?? meta.group : "Start here"} title={meta?.title ?? "Overview"} groupHref="/docs" />
+              <MarkdownDoc source={source} />
+            </>
+          )}
         </main>
 
         {sections.length ? (

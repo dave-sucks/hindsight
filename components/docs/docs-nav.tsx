@@ -4,7 +4,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -35,9 +36,9 @@ export function DocsNav() {
           );
         })}
       </nav>
-      <Link href="/docs" className={buttonVariants({ variant: "outline", size: "sm" })}>
+      <Link href="/docs" className={buttonVariants({ variant: "ghost", size: "sm" })}>
         Docs
-        <ArrowRight />
+        <HugeiconsIcon icon={ArrowUpRight01Icon} data-icon="inline-end" />
       </Link>
     </div>
   );
