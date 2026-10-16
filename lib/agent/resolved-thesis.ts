@@ -77,6 +77,8 @@ export interface ResolvedEnvelope {
    * unavailable. See lib/agent/ladder-health.ts.
    */
   ladderHealth: LadderHealth | null;
+  /** The account's Protect gains on a held stock, in the agents' one line; null while it is off. */
+  protectGains: string | null;
 
   /**
    * Plan-sanity flags (System 1 Move 2, DAV-188): the arithmetic that says
@@ -148,6 +150,8 @@ export interface ResolverThesisInput {
    * held / not tracked (falls back to current price).
    */
   peakPrice?: number | null;
+  /** The account's Protect gains on the position, in the agents' words (work-inputs.ts), while it is on. */
+  protectGains?: string | null;
   /**
    * When the trigger ladder was last edited (newest CREATED or
    * ladder-touching UPDATED ThesisUpdate row — see isLadderEditUpdate in
@@ -382,6 +386,7 @@ export function buildResolvedEnvelope(args: {
     unrealizedGainPct: winner.unrealizedGainPct,
     progressToTarget: winner.progressToTarget,
     ladderHealth,
+    protectGains: thesis.status === "HOLDING" ? (thesis.protectGains ?? null) : null,
     planSanity: planSanityFlags.length > 0 ? planSanityFlags : null,
     floorRisk: ladderHealth
       ? floorTooFar({

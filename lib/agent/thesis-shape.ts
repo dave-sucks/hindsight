@@ -61,6 +61,8 @@ export interface ThesisShapeArgs {
   held?: boolean;
   /** A buy waiting for approval, in words: the 2:1 refusal then keeps its plan instead of offering ways out. */
   buyWaiting?: string;
+  /** Protect gains raising a held winner's floor: the floor may pass the target, a review level that stays put. */
+  stopMayPassTarget?: boolean;
 }
 
 export type ThesisShapeResult =
@@ -151,7 +153,7 @@ export function validateThesisShape(
     }
   }
 
-  if (target != null && stop != null) {
+  if (target != null && stop != null && !args.stopMayPassTarget) {
     if (isLong && target <= stop) {
       return {
         ok: false,

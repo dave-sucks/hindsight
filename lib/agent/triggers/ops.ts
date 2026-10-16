@@ -664,6 +664,8 @@ export function checkLadder(input: {
   avgCost?: number | null;
   /** A buy waiting for approval, in words (validateThesisShape). */
   buyWaiting?: string;
+  /** Protect gains raising a held floor: it may pass the target (validateThesisShape). */
+  stopMayPassTarget?: boolean;
 }): LadderCheck {
   const { triggers, inherited = [], direction, status } = input;
   const held = status === "HOLDING";
@@ -686,6 +688,7 @@ export function checkLadder(input: {
       minRiskReward: held || input.actor !== "AGENT" ? undefined : MIN_RISK_REWARD,
       held,
       buyWaiting: input.buyWaiting,
+      stopMayPassTarget: held && input.stopMayPassTarget === true,
     });
     if (!shape.ok) return { ok: false, error: "invalid_thesis_shape", message: shape.note };
   }

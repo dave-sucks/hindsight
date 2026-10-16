@@ -369,6 +369,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("plan", planLine(row));
   put("plan_checks", list<{ text?: string }>(resolved?.planSanity).map((f) => f.text).filter(Boolean));
   put("protection", protectionLine(row, price));
+  if (held) put("protect_gains", str(resolved?.protectGains));
   put("floor_risk", str(obj(resolved?.floorRisk)?.line));
   put("triggers", triggerLines(row));
   put("belief", str(row.coreBelief) ? stripSourceTags(row.coreBelief as string) : null);
