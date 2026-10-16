@@ -6,6 +6,8 @@ import {
   SettingsSection,
 } from "@/components/settings/SettingsSection";
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
+import { ProtectGainsForm } from "@/components/settings/ProtectGainsForm";
+import { getProtectGains } from "@/lib/actions/protect-gains.actions";
 
 /**
  * /settings/triggers — the ACCOUNT level of the trigger cascade, the
@@ -24,6 +26,7 @@ export default async function TriggerSettingsPage() {
 
   const role = await getUserRole(user.id, accountId);
   if (!role) redirect("/settings/profile");
+  const protect = await getProtectGains();
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">
@@ -31,6 +34,15 @@ export default async function TriggerSettingsPage() {
         title="Triggers"
         description="Standing rules for every analyst on this account. A rung set here applies to every thesis unless an analyst or a specific thesis overrides it."
       />
+
+      {protect.settings && (
+        <SettingsSection
+          title="Protect gains"
+          description={protect.canEdit ? "Raises each holding's floor, the one on its chart, as the stock rises. The floor is what sells." : "Only the account owner can change this setting."}
+        >
+          <ProtectGainsForm initial={protect.settings} canEdit={protect.canEdit} />
+        </SettingsSection>
+      )}
 
       <SettingsSection
         title="Account rules"

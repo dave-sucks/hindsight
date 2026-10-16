@@ -75,6 +75,18 @@ model Account {
   // catalog as written. The catalog is the default, never the store.
   setupOverrides Json @default("{}")
 
+  // ── Protect gains (Settings → Triggers; off by default) ────────────────
+  // Raises each holding's own floor: once its high is startPct over the buy
+  // price, the floor is held giveBackPct under that high, up only and never
+  // below the buy price. The floor's own sale does the selling
+  // (lib/agent/triggers/protect-gains.ts). `from`: "NOW" counts the high from
+  // when it was turned on, "BUY" from each stock's buy (its tracked high).
+  protectGainsOn          Boolean   @default(false)
+  protectGainsStartPct    Float     @default(3)
+  protectGainsGiveBackPct Float     @default(5)
+  protectGainsFrom        String    @default("NOW")
+  protectGainsSince       DateTime?
+
   memberships AccountMembership[]
   invites     AccountInvite[]
 }
@@ -968,6 +980,11 @@ model Position {
   troughPrice         Float?
   peakAt              DateTime?
   troughAt            DateTime?
+  // The high Protect gains raises this stock's floor from (low for a short):
+  // started when the setting is turned on, raised by the trigger check on a
+  // fresh quote only. Null until then.
+  protectHigh         Float?
+  protectHighAt       DateTime?
   // Relations
   analyst             AgentConfig                @relation(fields: [analystId], references: [id])
   orders              Order[]

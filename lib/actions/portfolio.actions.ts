@@ -13,6 +13,7 @@ import {
   type FundingEvent,
 } from "@/lib/portfolio/contributions";
 import { resolveAlpacaCredentials, type AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
+import { floorsInForce } from "@/lib/portfolio/floor-in-force";
 import { getAccountId } from "@/lib/auth/account";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { pickProposalOrder } from "@/lib/trade-status";
@@ -712,6 +713,11 @@ export async function getDashboardData(
   // cron (every 5 min) and the sync-heartbeat (every 1 min during RTH). The
   // dashboard reads whatever they've persisted — no inline mutation here.
   const effectiveOpenPositions = dbOpenPositions;
+  // The floor in force on each holding, as the thesis sheet draws it; Position.stopLoss is a copy that goes stale.
+  const floors = await floorsInForce(effectiveOpenPositions.filter((p) => p.status === "OPEN")).catch((err) => {
+    console.warn("[getDashboardData] floors in force unavailable; the table shows none:", err);
+    return new Map<string, number | null>();
+  });
 
   const spyBenchmark: SpyBenchmark = {
     '1W': computeSpyReturn(spyCandles, 7),
@@ -786,7 +792,7 @@ export async function getDashboardData(
       entryPrice: p.avgCost,
       currentPrice,
       targetPrice: p.targetPrice ?? p.avgCost * 1.1,
-      stopPrice: p.stopLoss ?? p.avgCost * 0.9,
+      stopPrice: p.status === "OPEN" ? (floors.get(p.id) ?? null) : (p.stopLoss ?? null),
       confidenceScore: 0, // TODO: join via TradeDecision → Thesis
       status: displayStatus,
       pnl: livePrice !== undefined ? dollars : 0,

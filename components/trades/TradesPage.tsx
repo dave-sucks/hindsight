@@ -451,6 +451,7 @@ export default function TradesPage({
                             { label: 'Current', value: trade.currentPrice, marker: 'border border-current' },
                             { label: 'Target', value: trade.targetPrice, marker: 'bg-positive' },
                           ]
+                            .filter((lvl): lvl is { label: string; value: number; marker: string } => lvl.value != null)
                             .sort((a, b) => a.value - b.value)
                             .map((lvl) => (
                               <div key={lvl.label} className="flex items-center gap-2">
