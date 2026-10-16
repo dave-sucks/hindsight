@@ -61,3 +61,19 @@ export const DOCS: readonly DocMeta[] = [
 export function docBySlug(slug: string): DocMeta | undefined {
   return DOCS.find((d) => d.slug === slug);
 }
+
+/** The README is the Overview; it lives at /docs/overview. */
+export const OVERVIEW = "README";
+
+/** The front door, /docs: no doc of its own, just the cards. */
+export const HOME = "home";
+
+/** The sidebar's groups, in order, as docs/guide/ is foldered. */
+export const GROUPS: ReadonlyArray<{ label: string; group: DocMeta["group"] }> = [
+  { label: "Start here", group: "Overview" },
+  { label: "Agents", group: "Agents" },
+  { label: "Concepts", group: "Concepts" },
+  { label: "Reference", group: "Reference" },
+];
+
+export const docHref = (slug: string) => (slug === OVERVIEW ? "/docs/overview" : `/docs/${slug}`);

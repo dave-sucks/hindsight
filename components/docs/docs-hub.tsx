@@ -1,40 +1,23 @@
 "use client";
 
 /**
- * /docs and /docs/[slug]: a classic docs page. Every doc in the sidebar,
- * grouped the way docs/guide/ is foldered; the doc in the middle; its
- * sections on the right. /docs itself is the front door (DocsIndex); the
- * Overview, /docs/overview, is the guide's README, the page an agent
- * starts from.
+ * /docs and /docs/[slug]: the doc in the middle, its sections on the
+ * right; the list of every doc is the docs' own sidebar (DocsSidebar).
+ * /docs itself is the front door (DocsIndex); the Overview,
+ * /docs/overview, is the guide's README, the page an agent starts from.
  */
 
-import Link from "next/link";
-import { ArrowUpRight, ChevronDown } from "lucide-react";
 import type { FrameworkData } from "@/lib/docs/framework-content";
 import type { CatalogTool, DocsSetup } from "@/lib/docs/tools";
 import { headingId, parseDoc } from "@/lib/docs/guide-parse";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { DocCrumbs } from "./doc-crumbs";
 import { DocsIndex } from "./docs-index";
 import { MarkdownDoc } from "./markdown-doc";
-import { DOCS, docBySlug, type DocMeta } from "./registry";
+import { GROUPS, HOME, docBySlug } from "./registry";
 import { DocsDataProvider } from "./tool-catalog";
 
-/** The README is the Overview; it lives at /docs/overview. */
-export const OVERVIEW = "README";
-
-/** The front door, /docs: no doc of its own, just the cards. */
-export const HOME = "home";
-
-const GROUPS: ReadonlyArray<{ label: string; group: DocMeta["group"] }> = [
-  { label: "Start here", group: "Overview" },
-  { label: "Agents", group: "Agents" },
-  { label: "Concepts", group: "Concepts" },
-  { label: "Reference", group: "Reference" },
-];
-
-const hrefOf = (slug: string) => (slug === OVERVIEW ? "/docs/overview" : `/docs/${slug}`);
+export { HOME, OVERVIEW } from "./registry";
 
 export function DocsHub({
   slug,
@@ -56,28 +39,8 @@ export function DocsHub({
 
   return (
     <DocsDataProvider tools={tools} setups={setups} guide={guide} framework={framework}>
-      <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 pb-32 pt-6 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-12 lg:pt-10 xl:grid-cols-[14rem_minmax(0,1fr)_12rem]">
-        <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto">
-          {/* On a phone the list folds away behind one line. */}
-          <div className="lg:hidden">
-            <Collapsible>
-              <CollapsibleTrigger className="group/nav flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm font-medium text-foreground">
-                {home ? "Docs" : meta?.title ?? "Overview"}
-                <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[panel-open]/nav:rotate-180" />
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="pt-4">
-                  <DocsSidebar active={slug} />
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-          <div className="hidden lg:block">
-            <DocsSidebar active={slug} />
-          </div>
-        </aside>
-
-        <main className={cn("flex min-w-0 flex-col gap-8", !sections.length && "xl:col-span-2")}>
+      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 pb-32 pt-6 sm:px-6 lg:gap-12 xl:grid-cols-[minmax(0,1fr)_12rem]">
+        <article className={cn("flex min-w-0 flex-col gap-8", !sections.length && "xl:col-span-2")}>
           {home ? (
             <DocsIndex guide={guide} />
           ) : (
@@ -86,7 +49,7 @@ export function DocsHub({
               <MarkdownDoc source={source} />
             </>
           )}
-        </main>
+        </article>
 
         {sections.length ? (
           <nav aria-label="On this page" className="hidden xl:sticky xl:top-6 xl:flex xl:max-h-[calc(100vh-3rem)] xl:flex-col xl:gap-2 xl:self-start xl:overflow-y-auto">
@@ -100,45 +63,5 @@ export function DocsHub({
         ) : null}
       </div>
     </DocsDataProvider>
-  );
-}
-
-function DocsSidebar({ active }: { active: string }) {
-  return (
-    <nav aria-label="Docs" className="flex flex-col gap-6">
-      {GROUPS.map((g) => {
-        const docs = DOCS.filter((d) => d.group === g.group);
-        const items = g.group === "Overview" ? [{ slug: OVERVIEW, title: "Overview" }, ...docs] : docs;
-        return (
-          <div key={g.label} className="flex flex-col gap-1">
-            <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{g.label}</p>
-            {items.map((d) => (
-              <Link
-                key={d.slug}
-                href={hrefOf(d.slug)}
-                aria-current={d.slug === active ? "page" : undefined}
-                className={cn(
-                  "rounded-md px-2 py-1.5 text-sm transition-colors",
-                  d.slug === active ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {d.title}
-              </Link>
-            ))}
-          </div>
-        );
-      })}
-      <div className="flex flex-col gap-1 border-t pt-4">
-        {[
-          { href: "/how-it-works", label: "How it works" },
-          { href: "/how-it-works/framework", label: "The Framework" },
-        ].map((l) => (
-          <Link key={l.href} href={l.href} className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
-            {l.label}
-            <ArrowUpRight className="size-3.5" />
-          </Link>
-        ))}
-      </div>
-    </nav>
   );
 }
