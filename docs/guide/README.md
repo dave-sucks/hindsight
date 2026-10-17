@@ -37,6 +37,8 @@ The folders match the sidebar:
 
 ## The agents
 
+Every agent doc has the same five sections, in the same order: **What it does** (the job, and why it works that way), **When it runs**, **What it reads**, **What it decides** and **What happens next** (where the stock goes from there). Read them in that order and you can follow a stock from one agent to the next.
+
 - **[Discovery](agents/discovery.md):** screens earnings, movers and the web for stocks that fit an analyst, and sends the best to the Writer.
 - **[The Writer](agents/writer.md):** researches one stock in depth and writes its thesis, plan and all.
 - **[Morning runs](agents/morning-runs.md):** every weekday morning, each analyst reviews its whole book.

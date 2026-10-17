@@ -1,8 +1,8 @@
 # Discovery
 
-**Find it before it's obvious.** Discovery finds new stocks for an analyst to watch.
+**Find it before it's obvious.** Discovery looks for stocks an analyst doesn't cover yet, and sends the best to the Writer.
 
-It looks where new names show up, like fresh earnings, today's movers and setup screens, checks each one against the analyst's rules, and sends the best to the Writer to research.
+It's where a stock's life starts. It screens wide, scores fast and hands off. It never writes a plan and never buys.
 
 ```facts
 Model: gpt-5.4
@@ -27,13 +27,13 @@ tools: Dispatching $CRWD thesis-writer (+1 more)
 
 ## What it does
 
-Discovery is where a stock's life starts. It looks for stocks one [analyst](../concepts/analysts.md) doesn't cover yet: names off this week's earnings, one of the analyst's setup screens, dated catalysts, or tickers you paste in. Its tools hide everything already on the book, so it never brings back the same names.
+Discovery fills an [analyst](../concepts/analysts.md)'s watchlist. It looks where new names show up (this week's earnings, today's movers, the analyst's setup screens, dated catalysts), checks each one against the analyst's rules, and sends the few worth researching to [the Writer](writer.md).
 
-It doesn't write theses and it never buys. The stocks worth a closer look go to [the Writer](writer.md), which writes each one's [thesis](../concepts/theses.md), plan and all. From there the stock is on the watchlist: its buy [trigger](../concepts/triggers.md) is checked all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and you [approve](../concepts/approvals.md) it.
+Finding a stock and making the case for it are separate jobs. Discovery is wide and quick; the Writer is narrow and deep. Keeping them apart means every [thesis](../concepts/theses.md) on the book was researched the same way, whoever found the stock.
 
-## Starting it
+## When it runs
 
-Discovery runs when you ask. Ask in [chat](chat.md) with an analyst selected, or start a discovery run for one analyst. Try:
+When you ask. There's no schedule. Ask in [chat](chat.md) with an analyst selected, or start a discovery run from the analyst's page. Each run works for one analyst.
 
 > Find drift names off this week's reports.
 >
@@ -41,31 +41,41 @@ Discovery runs when you ask. Ask in [chat](chat.md) with an analyst selected, or
 >
 > Any FDA decisions in the next 60 days that fit?
 
-## Where it looks
+## What it reads
 
-- **Setup screens:** `run_screen` gives a candidate list for one setup, numbers worked out, with every reject and its reason.
-- **Earnings:** `get_earnings_calendar` shows who just reported, biggest beats first, or who reports soon.
-- **Movers:** `get_market_movers` lists today's gainers, losers and most active outside the analyst's coverage.
+First, the analyst's brief: its strategy, universe, rules and record by setup. A stock the analyst used to own, with a fresh catalyst, counts as a lead.
+
+Then the places new names show up:
+
+- **Setup screens:** `run_screen` returns candidates for one setup, with every reject and its reason.
+- **Earnings:** `get_earnings_calendar`, who just reported (biggest beats first) or who reports soon.
+- **Movers:** `get_market_movers`, today's gainers, losers and most active.
 - **Catalysts and the web:** `get_catalyst_calendar` for dated FDA decisions; `web_search` and `twitter_search` to check a story.
 
-## How it decides
+These tools hide every stock already on the book, so a run never brings back names the analyst covers.
 
-It reads the whole pool first and drops what plainly doesn't fit. For the rest, `get_theses` checks that no other analyst already covers the stock, and `get_stock_data` gives the price, chart and news. Each stock is scored on trend, strength against the market, entry and how fresh its catalyst is; 4 out of 10 or better earns a deeper look.
+## What it decides
 
-It works for one analyst and reads its strategy, rules, universe and record by setup first. A stock the analyst used to own, with a fresh catalyst, counts as a lead.
+It works in two passes. The first reads the whole pool and drops what plainly doesn't fit. The second checks the rest: `get_theses` confirms no other analyst already covers the stock, and `get_stock_data` gives the price, chart and news.
 
-## What happens to each stock
+Each stock that survives is scored out of 10: trend (3), strength against the market (3), entry (2) and how fresh its catalyst is (2). A 4 or better earns research. Every stock ends one of four ways:
 
-- **Sent to the Writer:** `dispatch_thesis_research` starts [the Writer](writer.md), which writes the thesis with its buy trigger, floor and target, and puts the stock on the watchlist. Up to five per run.
-- **Kept on watch:** strong but not ready to price, saved with `record_thesis` as a watch with an optional wake-up, like a price or a date. When a wake fires, the stock is in the "watch woke up" [situation](../concepts/situations.md) and the next morning run decides whether to bring it back.
-- **Passed:** recorded as Passed, with what would change the verdict, so the next look starts from it and the stock isn't pitched again without a reason.
-- **Skipped:** dropped before research, a line in the summary.
+- **Research:** `dispatch_thesis_research` sends it to the Writer. Five per run at most, the best scores first.
+- **Watch:** strong but not ready to price, or past the five. Saved with `record_thesis` as a watch with a wake-up (a price or a date), so "no room this week" never means "never."
+- **Pass:** researched and declined. Saved as Passed with what would change the verdict, so it isn't pitched again without a reason.
+- **Skip:** dropped in the first pass. One line in the summary; nothing is saved.
 
-The run ends with `record_run_summary`. Writers it started keep going and land as their own runs; in chat, `wait_for_thesis_refresh` waits for them.
+## What happens next
+
+The Writer researches each stock it was sent and puts it on the watchlist with a buy, a floor and a target. From there the [trigger](../concepts/triggers.md) check watches the buy all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and becomes a [proposal](../concepts/approvals.md).
+
+A watch sleeps until its wake-up comes true. Then the stock is in the "watch woke up" [situation](../concepts/situations.md), and the next morning run decides whether to bring it back.
+
+The run ends with `record_run_summary`. The Writer runs it started land on their own; in chat, `wait_for_thesis_refresh` brings them back into the conversation.
 
 ## Tools
 
-Everything discovery can call, read from `lib/agent/modes.ts`.
+Everything Discovery can call, read from `lib/agent/modes.ts`.
 
 <!-- asset: tools discovery -->
 
@@ -76,20 +86,17 @@ Everything discovery can call, read from `lib/agent/modes.ts`.
 `lib/agent/system-prompts/discovery.ts` (`buildDiscoverySystemPrompt`)
 
 #### Mode
-`discovery` in `lib/agent/modes.ts`: `gpt-5.4`, up to 45 steps. The chat (`principal`) carries the same discovery tools.
+`discovery` in `lib/agent/modes.ts`: `gpt-5.4`, up to 45 steps. Chat (`principal`) carries the same discovery tools.
 
 #### Started by
 Chat, or the `app/discovery.run.manual` event, which can carry an analyst and a focus. `lib/inngest/functions/discovery-run.ts` also lists a Sunday 9 AM cron; in practice discovery is run by hand.
 
-#### Writer cap
-`DISPATCH_CAP` = 5 per run, enforced in `dispatch_thesis_research`.
+#### Score and cap
+The 10-point composite and its bar of 4 are in the prompt. `DISPATCH_CAP` = 5 per run, enforced in `dispatch_thesis_research`.
 
 #### Outcomes
 `record_thesis` with `direction: PASS` is a pass; with `status: WATCHING` as well, a watch without a plan. A new plan is always the Writer's.
 
 #### Screens
-`lib/discovery/screens.ts`; setups in `lib/agent/knowledge/setups.ts`.
-
-#### Playbook
-`docs/DISCOVERY_PLAYBOOK.md` · `docs/prompts/DISCOVERY_SESSION.md`
+`lib/discovery/screens.ts`; setups in `lib/agent/knowledge/setups.ts`. Playbook: `docs/DISCOVERY_PLAYBOOK.md`.
 </details>
