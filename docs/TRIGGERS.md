@@ -200,6 +200,23 @@ Three things the table used to say that the rows do not:
 The table is a snapshot. The Triggers tabs are the source: Settings → Triggers
 for the account, each analyst's Triggers tab for the rest.
 
+**Protect gains** (`Account.protectGains*`, Settings → Triggers, off by
+default) raises each holding's own floor — the one on its chart — rather than
+adding a rule. It counts from when it is turned on: turning it on starts every
+open position's high over (`Position.protectHigh`, which never rises on a stale
+quote), so nothing sells when it is saved. Once that high is `startPct` over the
+buy price, the trigger check (each pass, on a fresh quote) holds the floor at
+max(buy price, high × (1 − `giveBackPct`)), raising it through `ops.ts` and
+never lowering it — in steps of at least 1%, except the raise that first brings
+it up to the buy price. Each raise is one Activity line ("Floor raised to $X to
+protect the gain …"), and the floor is stored DIRECT, so the floor's own sale
+does the selling. A floor may pass the stock's target (the target stays, a
+review level; the line says "past its $X target"). A raise the write path
+refuses for any other reason is said on the stock once a day ("Not protected:
+…") and logged as NOT PROTECTED. A stock's own floor beats any analyst or
+account rule, and an agent can't lower it. Code: `triggers/protect-gains.ts`
+(the line), `triggers/protect-gains-floor.ts` (the raise).
+
 **Target is a REVIEW checkpoint, not an auto-exit — except on the TRADE
 horizon.** For TARGET/COMPOUNDER/CATALYST holds, "above the target" is a
 REVIEW rung ("target hit — close, or trail higher with confidence intact"), so

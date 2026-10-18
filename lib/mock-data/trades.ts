@@ -19,7 +19,8 @@ export interface MockTrade {
   entryPrice: number;
   currentPrice: number;
   targetPrice: number;
-  stopPrice: number;
+  /** The floor in force; null when nothing sells it on the way down. */
+  stopPrice: number | null;
   confidenceScore: number; // 0–100
   status: TradeStatus;
   pnl: number;

@@ -36,6 +36,7 @@ import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
 import type { NeedsActionInput } from "@/lib/agent/needs-action";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { PROTECT_GAINS_SELECT, protectForAgents, protectGainsOf } from "@/lib/agent/triggers/protect-gains";
 
 export interface WorkContext {
   userId?: string;
@@ -54,6 +55,8 @@ export interface OpenPosition {
   avgCost: number;
   quantity: number;
   peakPrice: number | null;
+  /** The account's Protect gains on this stock in the agents' words, while the owner has it on (lib/agent/triggers/protect-gains). */
+  protect?: string | null;
 }
 
 /** An order of this analyst's in the principal's queue: proposed, not yet approved. */
@@ -171,7 +174,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
           ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
           ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
         },
-        select: { id: true, symbol: true, openedAt: true, avgCost: true, quantity: true, peakPrice: true, environment: true, analystId: true },
+        select: { id: true, symbol: true, openedAt: true, avgCost: true, quantity: true, peakPrice: true, environment: true, analystId: true, accountId: true, protectHigh: true },
         orderBy: { openedAt: "desc" },
       });
       // Newest first per stock; on an account-wide read, per stock and analyst (a
@@ -180,12 +183,20 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
       const keyOf = (analyst: string | null, symbol: string) => (ctx.analystId || !analyst ? symbol : `${analyst}|${symbol}`);
       const byKey = new Map<string, (typeof open)[number]>();
       for (const p of open) for (const key of new Set([keyOf(p.analystId, p.symbol), p.symbol])) if (!byKey.has(key)) byKey.set(key, p);
+      const protectOn = new Map(
+        (await prisma.account.findMany({ where: { id: { in: Array.from(new Set(open.map((p) => p.accountId))) }, protectGainsOn: true }, select: { id: true, ...PROTECT_GAINS_SELECT } }))
+          .map((a) => [a.id, protectGainsOf(a)] as const),
+      );
       for (const t of theses) {
         const p = t.status === "HOLDING" ? byKey.get(keyOf(analystOfRow(t), t.ticker)) : undefined;
         if (!p) continue;
         positionEnv ??= p.environment as "PAPER" | "LIVE";
         const peak = p.peakPrice != null && Number.isFinite(Number(p.peakPrice)) ? Number(p.peakPrice) : null;
-        positions.set(t.id, { id: p.id, openedAt: p.openedAt, avgCost: Number(p.avgCost), quantity: Number(p.quantity), peakPrice: peak });
+        // As the trigger check last left it: the high it stored since Protect gains was turned on.
+        const rule = protectOn.get(p.accountId);
+        const held = { avgCost: Number(p.avgCost), isLong: t.direction !== "SHORT" };
+        const protect = rule ? protectForAgents(held, p.protectHigh, rule) : null;
+        positions.set(t.id, { id: p.id, openedAt: p.openedAt, avgCost: Number(p.avgCost), quantity: Number(p.quantity), peakPrice: peak, protect });
       }
       const ids = Array.from(new Set(Array.from(positions.values(), (p) => p.id)));
       if (ids.length > 0) {

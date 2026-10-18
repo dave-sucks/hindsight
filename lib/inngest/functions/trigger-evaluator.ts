@@ -76,6 +76,8 @@ import {
   rememberFired,
 } from "@/lib/market-data/sec-events";
 import type { When } from "@/lib/agent/triggers/condition";
+import { PROTECT_GAINS_SELECT, floorDue, nextProtectHigh, protectGainsOf, protectLine, type ProtectGains } from "@/lib/agent/triggers/protect-gains";
+import { floorOf, raiseFloorForGains, reportNotProtected } from "@/lib/agent/triggers/protect-gains-floor";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -182,6 +184,10 @@ function isClosePassTick(now: Date): boolean {
  * evaluator falls back to createdAt — fail-soft, never throws.
  */
 interface PositionInfo {
+  id: string;
+  accountId: string;
+  /** The high the account's Protect gains measures from. */
+  protectHigh: number | null;
   openedAt: Date;
   /** For move-from-entry — entry economics of the open position. */
   avgCost: number | null;
@@ -221,6 +227,9 @@ async function buildPositionOpenedAtMap(
       status: "OPEN",
     },
     select: {
+      id: true,
+      accountId: true,
+      protectHigh: true,
       analystId: true,
       symbol: true,
       openedAt: true,
@@ -238,6 +247,9 @@ async function buildPositionOpenedAtMap(
     const key = `${p.analystId}::${p.symbol}`;
     if (!byKey.has(key)) {
       byKey.set(key, {
+        id: p.id,
+        accountId: p.accountId,
+        protectHigh: p.protectHigh,
         openedAt: p.openedAt,
         avgCost: p.avgCost,
         peakPrice: p.peakPrice,
@@ -512,6 +524,16 @@ export const triggerEvaluator = inngest.createFunction(
       const openedAtByThesisId = await buildPositionOpenedAtMap(
         candidates.map((c) => c.thesis),
       );
+      // The accounts with Protect gains on, read on the session's passes only.
+      const protectAccounts = new Map<string, ProtectGains>();
+      if (session === "INTRADAY" && openedAtByThesisId.size > 0) {
+        const ids = Array.from(new Set(Array.from(openedAtByThesisId.values(), (p) => p.accountId)));
+        for (const a of await prisma.account.findMany({ where: { id: { in: ids }, protectGainsOn: true }, select: { id: true, ...PROTECT_GAINS_SELECT } })) {
+          const rule = protectGainsOf(a);
+          if (rule) protectAccounts.set(a.id, rule);
+        }
+      }
+      const protectChecked = new Set<string>();
 
       // Cap unique tickers per tick. Theses past the cap defer to the next
       // tick.
@@ -620,7 +642,8 @@ export const triggerEvaluator = inngest.createFunction(
       }
 
       const events: FiringEvent[] = [];
-      for (const { thesis, analystId, ladder: triggers, hasBuy } of candidates) {
+      for (const { thesis, analystId, ladder, hasBuy } of candidates) {
+        let triggers = ladder;
         // Non-null by the filter above; narrowed for the FiringEvent below.
         if (!analystId) continue;
         const quote = quoteByTicker.get(thesis.ticker) ?? undefined;
@@ -686,6 +709,33 @@ export const triggerEvaluator = inngest.createFunction(
           },
           now,
         };
+
+        // Protect gains: on a fresh quote, raise the high, and the stock's own floor up to the line.
+        const protect = posInfo ? protectAccounts.get(posInfo.accountId) : undefined;
+        if (protect && posInfo && quote && thesis.status === "HOLDING") {
+          protectChecked.add(posInfo.id);
+          const isLong = thesis.direction !== "SHORT";
+          const high = nextProtectHigh({ protectHigh: posInfo.protectHigh, isLong }, quote.price, !quote.stale);
+          if (high != null && high !== posInfo.protectHigh) {
+            await prisma.position.updateMany({
+              where: { id: posInfo.id, OR: [{ protectHigh: null }, { protectHigh: isLong ? { lt: high } : { gt: high } }] },
+              data: { protectHigh: high, protectHighAt: now },
+            });
+          }
+          const held = { avgCost: posInfo.avgCost ?? 0, isLong };
+          const line = protectLine(held, high, protect);
+          const floor = floorOf(triggers, thesis.direction);
+          if (!quote.stale && line != null && high != null && floorDue(held, floor?.price ?? null, line)) {
+            const raise = await raiseFloorForGains({ thesisId: thesis.id, positionId: posInfo.id, avgCost: held.avgCost, high, line, price: quote.price, rule: protect });
+            const raised = raise.floor;
+            // This pass reads the raised floor, so a price already under it sells now.
+            if (raised) triggers = [{ ...raised, level: "THESIS" as const, inherited: false }, ...triggers.filter((t) => t.id !== raised.id && t.id !== floor?.trigger.id)];
+            if (raise.refused) {
+              console.error(`[trigger-evaluator] NOT PROTECTED ${thesis.ticker} (thesis ${thesis.id}): the floor could not be raised to $${line} — ${raise.refused}`);
+              await reportNotProtected({ thesisId: thesis.id, line, reason: raise.refused, price: quote.price, now });
+            }
+          }
+        }
 
         const { fires } = evaluateThesisTriggers({
           thesisId: thesis.id,
@@ -838,6 +888,13 @@ export const triggerEvaluator = inngest.createFunction(
             firedContext,
             sentence: sentenceOf(t, thesis.status === "HOLDING"),
           });
+        }
+      }
+      // An open position in a Protect-gains account that no pass reached is said, never skipped in silence.
+      if (protectAccounts.size > 0) {
+        const open = await prisma.position.findMany({ where: { accountId: { in: Array.from(protectAccounts.keys()) }, status: "OPEN" }, select: { id: true, symbol: true } });
+        for (const p of open.filter((x) => !protectChecked.has(x.id))) {
+          console.error(`[trigger-evaluator] NOT PROTECTED ${p.symbol} (position ${p.id}): no held thesis under an enabled analyst, or no price, this pass`);
         }
       }
       // Two protective fires on one thesis in one pass → one run (DAV-254).

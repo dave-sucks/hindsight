@@ -247,6 +247,7 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
           equity: load.equity,
           structure: w?.structure ?? null,
           peakPrice: w?.peakPrice ?? null,
+          protectGains: load.positions.get(t.id)?.protect ?? null,
           lastLadderEditAt: load.lastLadderEditAt.get(t.id) ?? null,
           entryRaisesAway: entryRaises.get(t.id) ?? null,
           spentBuyCrossing: spent.get(t.id) ?? null,
