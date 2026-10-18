@@ -46,7 +46,7 @@ A give-back is measured from the highest price since the buy, over the whole hol
 
 ## What it decides
 
-- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. The [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
+- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. On the live account, the [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
 - **Tighten the line:** move the trigger to a level the chart supports. It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the line is wrong, it says so and names the level, and lowering it is yours to do on the thesis.
 - **Hold, with a reason:** "not acting yet," and why. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse.
 

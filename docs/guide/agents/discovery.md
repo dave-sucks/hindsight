@@ -67,7 +67,7 @@ Each stock that survives is scored out of 10: trend (3), strength against the ma
 
 ## What happens next
 
-The Writer researches each stock it was sent and puts it on the watchlist with a buy, a floor and a target. From there the [trigger](../concepts/triggers.md) check watches the buy all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and becomes a [proposal](../concepts/approvals.md).
+The Writer researches each stock it was sent and puts it on the watchlist with a buy, a floor and a target. From there the [trigger](../concepts/triggers.md) check watches the buy all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and a [trigger run](trigger-runs.md) agrees, with your [approval](../concepts/approvals.md) on the live account.
 
 A watch sleeps until its wake-up comes true. Then the stock is in the "watch woke up" [situation](../concepts/situations.md), and the next morning run decides whether to bring it back.
 

@@ -1,8 +1,8 @@
 # The Writer
 
-**Deep research on one stock, in about four minutes.** The Writer researches one stock for one analyst and writes its thesis: the case, the belief and the plan.
+**Deep research on one stock, in about three minutes.** The Writer researches one stock for one analyst and writes its thesis: the case, the belief and the plan.
 
-Every thesis on the book is written here, whoever found the stock. It never trades and never sizes.
+Every plan on the book is written here, whoever found the stock. It never trades and never sizes.
 
 ```facts
 Model: claude-sonnet-4-6

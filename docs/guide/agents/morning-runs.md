@@ -2,7 +2,7 @@
 
 **Your analysts, at 8 AM.** Every run day, each analyst reads its whole book and answers the stocks that need it.
 
-It acts on what changed and leaves the quiet stocks alone. Every trade it wants becomes a proposal.
+It acts on what changed and leaves the quiet stocks alone. Every trade it wants goes through your approval gate.
 
 ```facts
 Model: gpt-5.4
@@ -32,7 +32,7 @@ The morning run keeps an analyst's book honest. Once a day it reads every stock 
 
 [Triggers](../concepts/triggers.md) watch prices all day, but a price can't tell you that research went stale, a review came due, a gain has no floor under it, or you left a note nobody answered. The morning run catches all of that, once a day, across the whole book.
 
-It never trades on its own. Buys, sales, adds and trims go to your queue as [proposals](../concepts/approvals.md), and every change to a [thesis](../concepts/theses.md) lands in Activity the moment it's made.
+Its buys, sales, adds and trims are [proposals](../concepts/approvals.md). On the live account each one waits in your queue for a yes; on paper, approval is off by default and they go straight to the broker. Every change to a [thesis](../concepts/theses.md) lands in Activity the moment it's made.
 
 ## When it runs
 
@@ -70,7 +70,7 @@ The market's mood sets how hard it leans in. Risk-on is full size. Cautious (the
 
 `record_run_summary` lists every stock the run touched, each with a one-word action. `complete_run` then checks that summary against the orders: a sale it names on a stock we hold needs a sale or a sale proposal from this run, or the run can't finish. A summary that says "sold" when nothing was sold is the one mistake the run isn't allowed to end on.
 
-Its proposals wait in your queue. Its new levels are triggers, and from here [trigger runs](trigger-runs.md) act on them through the day.
+On the live account, its proposals wait in your queue. Its new levels are triggers, and from here [trigger runs](trigger-runs.md) act on them through the day.
 
 ## Tools
 

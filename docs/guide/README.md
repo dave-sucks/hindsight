@@ -23,7 +23,7 @@ The folders match the sidebar:
 1. **[Discovery](agents/discovery.md)** finds a stock that fits an [analyst](concepts/analysts.md): CRWD beat, raised its year and held the gap. Or you ask for research in [chat](agents/chat.md), or add the stock to the watchlist yourself.
 2. **[The Writer](agents/writer.md)** researches it and writes its [thesis](concepts/theses.md): the belief, what would prove it wrong, and a plan made of [triggers](concepts/triggers.md). The stock goes on the watchlist as Watching.
 3. **The trigger check** watches the plan every five minutes. When the buy fires, a **[trigger run](agents/trigger-runs.md)** looks at that one stock and proposes the buy.
-4. **You approve** the **[proposal](concepts/approvals.md)**. The buy fills, the thesis turns to Holding, and its floor, trail and target guard it.
+4. **You approve** the **[proposal](concepts/approvals.md)** (on paper, approval is off by default and the buy goes straight through). The buy fills, the thesis turns to Holding, and its floor, trail and target guard it.
 5. **[Morning runs](agents/morning-runs.md)** read the analyst's whole book every run day and answer each stock in a **[situation](concepts/situations.md)**: a review that came due, a floor to raise, earnings, stale research, your notes.
 6. **A sale fires**, or a run decides to sell: another proposal. Declined or left to expire, it's proposed again each day the price stays past the line, and only you can lower the floor.
 7. **The sale fills** and the thesis is retired as sold. Within two weeks it gets one look back: watch it again, or let it go.
