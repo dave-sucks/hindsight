@@ -90,12 +90,15 @@ export interface CoveragePendingProposal {
 }
 
 export interface CoverageData {
+  /** Open positions. */
   trades: CoverageRow[];
+  /** Recently sold positions, newest first. */
+  sold: CoverageRow[];
   watching: CoverageRow[];
   passed: CoverageRow[];
 }
 
-const EMPTY: CoverageData = { trades: [], watching: [], passed: [] };
+const EMPTY: CoverageData = { trades: [], sold: [], watching: [], passed: [] };
 
 /** A pass only counts as right/wrong once the stock has moved meaningfully —
  *  inside this band since the pass it's just FLAT (no verdict). */
@@ -492,12 +495,12 @@ export async function getCoverageData(
     });
   }
 
-  // Open trades first, then most-recent sales; cap the closed list (rest → /trades).
+  // Open trades on their own tab; most-recent sales on Sold, capped (rest → /trades).
   const openTrades = trades.filter((r) => r.tradeState === "OPEN");
-  const closedTrades = trades
+  const soldTrades = trades
     .filter((r) => r.tradeState === "CLOSED")
     .sort((a, b) => (a.anchorAt < b.anchorAt ? 1 : -1))
     .slice(0, CLOSED_CAP);
 
-  return { trades: [...openTrades, ...closedTrades], watching, passed };
+  return { trades: openTrades, sold: soldTrades, watching, passed };
 }

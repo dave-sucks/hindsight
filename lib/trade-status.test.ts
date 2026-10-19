@@ -1,4 +1,4 @@
-import { pickProposalOrder, proposalSentence } from "@/lib/trade-status";
+import { pickProposalOrder, sharesLine } from "@/lib/trade-status";
 
 // The row a proposal lives on has two states, and the second one used to be
 // invisible: you approve a sell, the order goes to Alpaca, and until the fill
@@ -46,16 +46,20 @@ describe("pickProposalOrder", () => {
   });
 });
 
-describe("proposalSentence", () => {
-  it("reads as a proposal before approval", () => {
-    expect(proposalSentence("CLOSE", 20)).toBe("Proposed: Sell 20 shares");
+describe("sharesLine", () => {
+  it("reads shares and value on a holding", () => {
+    expect(sharesLine({ shares: 11, value: 10025.56 })).toBe("11 shares · $10,025.56");
+  });
+
+  it("leads with the verb on a pending proposal", () => {
+    expect(sharesLine({ shares: 300, value: 11868, intent: "CLOSE" })).toBe("Sell 300 shares · $11,868.00");
   });
 
   it("reads as executing after approval", () => {
-    expect(proposalSentence("CLOSE", 20, true)).toBe("Executing: Sell 20 shares");
+    expect(sharesLine({ shares: 20, value: null, intent: "CLOSE", executing: true })).toBe("Executing: Sell 20 shares");
   });
 
   it("keeps the singular share", () => {
-    expect(proposalSentence("OPEN", 1, true)).toBe("Executing: Buy 1 share");
+    expect(sharesLine({ shares: 1, value: null, intent: "OPEN" })).toBe("Buy 1 share");
   });
 });

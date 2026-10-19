@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import {
   getTradeStatusDisplay,
   shortAlpacaId,
+  sharesLine,
   EXECUTING_LABEL,
   EXECUTING_TOOLTIP,
 } from '@/lib/trade-status';
@@ -294,8 +295,9 @@ export default function TradesPage({
                   className="group relative cursor-pointer"
                   onClick={() => router.push(`/trades/${trade.id}`)}
                 >
-                  {/* Name: logo + ticker with inline status dot + analyst
-                      subhead. No longer wrapped in a Link — navigation
+                  {/* Name: logo + ticker with inline status dot + the same
+                      "11 shares · $10,025.56" line the dashboard table uses
+                      ("Sell 300 shares · …" on a proposal). No longer wrapped in a Link — navigation
                       happens via the hover-revealed action buttons on the
                       right so the Target column's tick bar + tooltips
                       stay interactive (hover on the stop/target ticks
@@ -334,11 +336,21 @@ export default function TradesPage({
                             </TooltipContent>
                           </Tooltip>
                         </div>
-                        {trade.analystName && (
-                          <p className="text-[10px] text-muted-foreground font-mono leading-tight">
-                            {trade.analystName}
-                          </p>
-                        )}
+                        <p
+                          className={cn(
+                            'text-xs text-muted-foreground tabular-nums leading-tight',
+                            executing && 'shimmer-text',
+                          )}
+                        >
+                          {trade.pendingProposal
+                            ? sharesLine({
+                                shares: trade.pendingProposal.quantity,
+                                value: trade.entryPrice * trade.pendingProposal.quantity,
+                                intent: trade.pendingProposal.intent,
+                                executing,
+                              })
+                            : sharesLine({ shares, value: trade.entryPrice * shares })}
+                        </p>
                       </div>
                     </div>
                   </TableCell>
@@ -381,29 +393,32 @@ export default function TradesPage({
                   {/* P&L — unified PriceChange component (same arrow+color
                       language as the dashboard header). Em-dash when we
                       don't have a live price to compute against.
-                      Trade-as-Proposal: when this row is awaiting approval,
-                      replace P&L with the inline [Approve][Reject] action
-                      pair so the user can decide without leaving the table. */}
+                      Trade-as-Proposal: the Review control sits BESIDE the
+                      P&L, never in its place — the same as the dashboard
+                      table. */}
                   <TableCell className="text-right">
-                    {awaitingApproval ? (
-                      <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-                        <ProposalActions
-                          orderId={trade.pendingProposal!.orderId}
-                          expiresAt={trade.pendingProposal!.expiresAt}
+                    <div className="flex items-center justify-end gap-1.5">
+                      {awaitingApproval && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <ProposalActions
+                            orderId={trade.pendingProposal!.orderId}
+                            expiresAt={trade.pendingProposal!.expiresAt}
+                          />
+                        </div>
+                      )}
+                      {executing ? (
+                        <span className="text-sm shimmer-text">{EXECUTING_LABEL}</span>
+                      ) : isStalePrice && isOpen ? (
+                        <span className="text-sm text-muted-foreground/60">—</span>
+                      ) : (
+                        <PriceChange
+                          dollarChange={totalGain}
+                          percentChange={totalGainPct}
+                          size="sm"
+                          className="justify-end"
                         />
-                      </div>
-                    ) : executing ? (
-                      <span className="text-sm shimmer-text">{EXECUTING_LABEL}</span>
-                    ) : isStalePrice && isOpen ? (
-                      <span className="text-sm text-muted-foreground/60">—</span>
-                    ) : (
-                      <PriceChange
-                        dollarChange={totalGain}
-                        percentChange={totalGainPct}
-                        size="sm"
-                        className="justify-end"
-                      />
-                    )}
+                      )}
+                    </div>
                   </TableCell>
 
                   {/* Quantity */}
