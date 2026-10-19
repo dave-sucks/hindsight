@@ -52,6 +52,12 @@ type Step = "form" | "review";
 
 const shareWord = (n: number) => `share${n === 1 ? "" : "s"}`;
 
+/** A level on the review: the one typed, else the thesis's own, else the analyst's to set. */
+function levelLine(typed: string, thesis: number | null): string {
+  if (typed.trim()) return `$${Number(typed).toFixed(2)}`;
+  return thesis != null ? `$${thesis.toFixed(2)} (the thesis's)` : "Left to the analyst";
+}
+
 /** Said only when the price isn't from the open market right now. */
 function priceAsOf(ticket: TradeTicket): string | null {
   if (ticket.priceLive || !ticket.priceAt) return null;
@@ -172,10 +178,9 @@ export function TradeButton({
         stopLoss: stop.trim() === "" ? null : Number(stop),
         targetPrice: target.trim() === "" ? null : Number(target),
       },
-      price,
-      ticket?.priceStale ?? false,
+      { price, stale: ticket?.priceStale ?? false, cash: ticket?.cash ?? null },
     );
-  }, [lane, price, side, qty, shares, stop, target, ticket?.priceStale]);
+  }, [lane, price, side, qty, shares, stop, target, ticket?.priceStale, ticket?.cash]);
 
   const planned = plan?.ok ? plan : null;
   const total = planned && price != null ? planned.shares * price : null;
@@ -318,6 +323,9 @@ export function TradeButton({
                     ) : (
                       <InfoRow label="Analyst" value={lane?.analystName} />
                     )}
+                    {side === "BUY" ? (
+                      <InfoRow label="Cash" mono value={ticket.cash != null ? formatCurrency(ticket.cash) : "—"} />
+                    ) : null}
                     {lane?.position ? (
                       <InfoRow
                         label="You own"
@@ -369,7 +377,9 @@ export function TradeButton({
                       {isOpenBuy ? (
                         <div className="grid grid-cols-2 gap-3">
                           <div className="grid gap-1.5">
-                            <Label htmlFor="trade-stop">Stop (optional)</Label>
+                            <Label htmlFor="trade-stop">
+                              {lane?.buy.kind === "OPEN" && lane.buy.stopLoss != null ? "Stop (optional)" : "Stop"}
+                            </Label>
                             <Input
                               id="trade-stop"
                               type="number"
@@ -426,8 +436,8 @@ export function TradeButton({
                 />
                 {isOpenBuy ? (
                   <>
-                    <InfoRow label="Stop" mono value={stop.trim() ? `$${Number(stop).toFixed(2)}` : "Left to the analyst"} />
-                    <InfoRow label="Target" mono value={target.trim() ? `$${Number(target).toFixed(2)}` : "Left to the analyst"} />
+                    <InfoRow label="Stop" mono value={levelLine(stop, lane?.buy.kind === "OPEN" ? lane.buy.stopLoss : null)} />
+                    <InfoRow label="Target" mono value={levelLine(target, lane?.buy.kind === "OPEN" ? lane.buy.targetPrice : null)} />
                   </>
                 ) : null}
                 {pnl ? (

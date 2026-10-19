@@ -4,10 +4,10 @@
  *
  * The rules are the ones the agent paths already obey, nothing new: a sale
  * sells only what is held and never races a sale already sent; an add stays
- * inside the analyst's "most in one stock"; a new holding's floor, when given,
- * sits below the price and its target above it, because they become its sell
- * triggers. Neither is required: left blank, the thesis keeps its own and the
- * analyst sets the rest.
+ * inside the analyst's "most in one stock". Two are the account's own: a buy
+ * is paid from cash, never margin, and every holding has a floor — a new
+ * holding needs a stop unless its thesis already has one. A stop or target
+ * given sits below / above the price, because each becomes a sell trigger.
  */
 
 /** What a buy on this lane does. */
@@ -52,14 +52,24 @@ export type ManualOrderPlan =
 export const MAX_PRICE_MOVE = 0.02;
 
 const sameShares = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
+/** What the market and the account say right now. */
+export interface MarketNow {
+  price: number;
+  /** The market is open and the quote isn't from the last 15 minutes. */
+  stale: boolean;
+  /** The account's cash (Alpaca `cash`, never `buying_power`); null when it couldn't be read. */
+  cash: number | null;
+}
 
 export function planManualOrder(
   lane: TradeLane,
   input: ManualOrderInput,
-  livePrice: number,
-  /** The market is open and the quote isn't from the last 15 minutes. */
-  priceStale = false,
+  market: MarketNow,
 ): ManualOrderPlan {
+  const livePrice = market.price;
+  const priceStale = market.stale;
   const { side, shares, reviewedPrice } = input;
   if (!Number.isFinite(shares) || shares <= 0) return { ok: false, error: "Enter how many shares." };
   if (!Number.isFinite(livePrice) || livePrice <= 0) return { ok: false, error: "There's no price for this stock right now." };
@@ -89,6 +99,12 @@ export function planManualOrder(
   // can be served as "now", and the stop would be checked against it.
   if (priceStale) return { ok: false, error: "The price isn't live right now — try again in a minute." };
   if (!Number.isInteger(shares)) return { ok: false, error: "Buy whole shares." };
+  // Paid from cash, never margin.
+  if (market.cash == null) return { ok: false, error: "Couldn't read the account's cash — try again." };
+  const cost = shares * livePrice;
+  if (cost > market.cash) {
+    return { ok: false, error: `You have ${usd(market.cash)} in cash; this buy is ${usd(cost)}.` };
+  }
   const buy = lane.buy;
   if (buy.kind === "NONE") return { ok: false, error: buy.reason };
   if (buy.kind === "ADD") {
@@ -104,10 +120,10 @@ export function planManualOrder(
     return { ok: true, intent: "ADD", shares };
   }
 
-  // A new holding: a floor or target given becomes the stock's sell trigger on
-  // the fill, so it must sit on the right side of the price. Either may be
-  // left out — the thesis keeps its own, and the analyst sets what's missing.
+  // A new holding: a stop is required unless its thesis has a floor; a level
+  // given becomes a sell trigger on the fill, so it sits on the right side.
   const { targetPrice, stopLoss } = input;
+  if (stopLoss == null && buy.stopLoss == null) return { ok: false, error: "Set a stop — every holding needs a floor." };
   if (stopLoss != null && (!Number.isFinite(stopLoss) || stopLoss <= 0)) return { ok: false, error: "The stop isn't a price." };
   if (targetPrice != null && (!Number.isFinite(targetPrice) || targetPrice <= 0)) return { ok: false, error: "The target isn't a price." };
   if (stopLoss != null && stopLoss >= livePrice) {

@@ -20,6 +20,7 @@ import { freshQuotePrice, staleForTrading } from "@/lib/market-data/quote-age";
 import { isMarketOpen } from "@/lib/market-hours";
 import { positionTotalCap } from "@/lib/agent/position-sizing";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { getAccount } from "@/lib/alpaca";
 import {
   approveProposal,
   findRelatedThesisId,
@@ -47,6 +48,8 @@ export interface TradeTicket {
   priceLive: boolean;
   /** The market is open and the quote is older than 15 minutes — no buy acts on it. */
   priceStale: boolean;
+  /** The account's cash — what a buy may spend (never margin). Null when it couldn't be read. */
+  cash: number | null;
   marketOpen: boolean;
   lanes: TradeLane[];
 }
@@ -64,6 +67,17 @@ async function livePrice(ticker: string, userId: string, environment: Environmen
     priceLive: isMarketOpen(now) && freshQuotePrice(quote, now) != null,
     priceStale: price != null && staleForTrading(quote, now),
   };
+}
+
+/** Alpaca's `cash` for this book — not `buying_power`, which counts margin. */
+async function accountCash(userId: string, environment: Environment): Promise<number | null> {
+  try {
+    const creds = (await resolveAlpacaCredentials(userId, environment)) ?? undefined;
+    const cash = Number((await getAccount(creds)).cash);
+    return Number.isFinite(cash) ? cash : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -192,9 +206,12 @@ export async function getTradeTicket(opts: {
   environment: Environment;
 }): Promise<TradeTicket> {
   const ticker = opts.ticker.toUpperCase();
-  const quote = await livePrice(ticker, opts.userId, opts.environment);
+  const [quote, cash] = await Promise.all([
+    livePrice(ticker, opts.userId, opts.environment),
+    accountCash(opts.userId, opts.environment),
+  ]);
   const lanes = await loadLanes({ ...opts, ticker, price: quote.price });
-  return { ticker, environment: opts.environment, marketOpen: isMarketOpen(), ...quote, lanes };
+  return { ticker, environment: opts.environment, marketOpen: isMarketOpen(), ...quote, cash, lanes };
 }
 
 export type ManualOrderResult =
@@ -235,7 +252,8 @@ export async function placeManualOrder(opts: {
   const lane = lanes.find((l) => l.analystId === opts.analystId);
   if (!lane) return { ok: false, error: "That analyst isn't on this account." };
 
-  const plan = planManualOrder(lane, opts.order, quote.price, quote.priceStale);
+  const cash = opts.order.side === "BUY" ? await accountCash(opts.userId, environment) : null;
+  const plan = planManualOrder(lane, opts.order, { price: quote.price, stale: quote.priceStale, cash });
   if (!plan.ok) return plan;
 
   const idempotencyKey = randomUUID();
