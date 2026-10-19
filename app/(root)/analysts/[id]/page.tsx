@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { LiveRefresh } from "@/components/LiveRefresh";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAnalystDetail, getAnalystTheses } from "@/lib/actions/analyst.actions";
@@ -83,13 +84,16 @@ export default async function AnalystDetailPage({
       : {};
 
   return (
-    <AnalystDetailClient
-      detail={detail}
-      hasRunning={runningCount > 0}
-      initialWatchlist={watchlistItems}
-      livePrices={livePrices}
-      theses={theses}
-      runCards={runCards}
-    />
+    <>
+      <LiveRefresh />
+      <AnalystDetailClient
+        detail={detail}
+        hasRunning={runningCount > 0}
+        initialWatchlist={watchlistItems}
+        livePrices={livePrices}
+        theses={theses}
+        runCards={runCards}
+      />
+    </>
   );
 }

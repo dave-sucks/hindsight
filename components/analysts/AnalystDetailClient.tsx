@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useTransition, type ReactNode } from "react";
+import { useLivePoll } from "@/hooks/useLivePoll";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
@@ -231,6 +232,8 @@ function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLab
   const [page, setPage] = useState(0);
   const [candlesByTicker, setCandlesByTicker] = useState<Record<string, StockCandle[]>>({});
   const [quotesByTicker, setQuotesByTicker] = useState<QuoteMap>({});
+  const [liveTick, setLiveTick] = useState(0);
+  useLivePoll(() => setLiveTick((n) => n + 1));
 
   // Reset to page 0 when the thesis list changes (e.g. status filter changes).
   useEffect(() => { setPage(0); }, [theses]);
@@ -289,7 +292,7 @@ function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLab
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [quoteKey]);
+  }, [quoteKey, liveTick]);
 
   if (theses.length === 0) {
     return (
