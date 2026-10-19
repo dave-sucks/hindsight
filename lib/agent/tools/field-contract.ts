@@ -149,7 +149,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("entry_price", "JUDGED", { rule: "LEVEL_ORDER", note: "The market order's expected price; it sizes the buy." }),
     f("thesis_id", "IDENTITY"),
     f("entry_rationale", "TEXT"),
-    f("analyst_id", "IDENTITY", { note: "The chat names the analyst; a run is already bound to one." }),
     f("notional", "COMPUTED", { principalOnly: true, note: "Sized by risk inside the analyst's band (DAV-317). The principal's number is honored with a line." }),
     f("shares", "COMPUTED", { principalOnly: true, note: "As notional." }),
   ],

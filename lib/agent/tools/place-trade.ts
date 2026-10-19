@@ -10,6 +10,7 @@ import { isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowledge/setups
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
+import { analystOf, forTheStock } from "@/lib/agent/analyst-scope";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
@@ -101,12 +102,6 @@ const placeTradeSchema = z.object({
       .describe(
         "REQUIRED on every buy proposal, from a trigger run or the daily run: why you're buying now. The buy and the price first, then the reason in a sentence or two, then the target and the stop. Skip only for a one-shot buy in the chat, where the thesis you just wrote is the reason. Shown to the owner on the proposal and in the approval email; write it by How you write.",
       ),
-    analyst_id: z
-      .string()
-      .optional()
-      .describe(
-        "Principal-chat only: which analyst is placing the trade. Required when the run isn't already scoped to one analyst (e.g. /chat). Within an analyst run, leave undefined — the run's analyst is used.",
-      ),
 });
 
 export const placeTrade = defineTool({
@@ -136,10 +131,12 @@ export const placeTrade = defineTool({
     // which bypasses the duplicate check and hits Alpaca with a 422.
     const ticker = args.ticker.toUpperCase().trim();
 
-    // P0-9a: ctx.analystId wins for daily/tactical runs (it's always set from
-    // the ResearchRun). args.analyst_id is the principal-chat fallback for
-    // contexts where no run is scoped to one analyst.
-    const effectiveAnalystId: string | undefined = ctx.analystId ?? args.analyst_id;
+    // The chat buys for the thesis's own analyst, under its rules, pinned or not (analyst-scope.ts).
+    if (isPrincipalChat(ctx)) {
+      const owner = await prisma.thesis.findFirst({ where: { id: args.thesis_id, userId: ctx.userId }, select: { researchRun: { select: { agentConfigId: true } } } });
+      ctx = await forTheStock(ctx, owner ? analystOf(owner) : null);
+    }
+    const effectiveAnalystId: string | undefined = ctx.analystId;
     try {
       // 0a. Universe exclusion check — hard reject
       // exclusionList is the hard block dimension of Universe. The analyst's
@@ -305,6 +302,7 @@ export const placeTrade = defineTool({
       // number. Analyst configs still store `minConfidence` on the legacy
       // 0-100 scale; we convert composite ×10 for comparison so existing
       // configs (e.g. `minConfidence: 70`) keep their semantics.
+      let belowMinimum: string | null = null;
       if (ctx.minConfidence != null) {
         const thesis = await prisma.thesis.findUnique({
           where: { id: args.thesis_id },
@@ -312,9 +310,11 @@ export const placeTrade = defineTool({
         });
         const composite = getThesisComposite(thesis ?? { scoring: null });
         const compositeOn100Scale = composite != null ? composite * 10 : null;
-        if (thesis && (compositeOn100Scale == null || compositeOn100Scale < ctx.minConfidence)) {
-          const compositeLabel =
-            composite != null ? `${composite}/10 (=${compositeOn100Scale}%)` : "unscored";
+        const below = !!thesis && (compositeOn100Scale == null || compositeOn100Scale < ctx.minConfidence);
+        const compositeLabel = composite != null ? `${composite}/10 (=${compositeOn100Scale}%)` : "unscored";
+        // In the chat the minimum is a line on the proposal, not a refusal, as the principal's size is (ruling 2026-10-15).
+        if (below && isPrincipalChat(ctx)) belowMinimum = `Scores ${compositeLabel}, below this analyst's minimum (${ctx.minConfidence}%).`;
+        if (below && !isPrincipalChat(ctx)) {
           const blockedMsg = `Trade blocked: thesis composite ${compositeLabel} is below this analyst's minimum (${ctx.minConfidence}%). Raise the composite via update_thesis with a fresh 4-dim scoring, or skip the trade.`;
           return {
             summary: `Trade blocked: $${ticker} — below min composite`,
@@ -527,7 +527,7 @@ export const placeTrade = defineTool({
 
       let resolvedShares: number | undefined;
       let resolvedNotional: number | undefined;
-      const sizingNotes: string[] = [];
+      const sizingNotes: string[] = belowMinimum ? [belowMinimum] : [];
       // Only the principal's chat may name a size. A size a run's model
       // passed anyway (an older prompt, a direct call) is ignored, not
       // refused — the rules size the buy and the proposal says so.
@@ -582,28 +582,7 @@ export const placeTrade = defineTool({
 
       const analystId = effectiveAnalystId;
       if (!analystId) {
-        throw new Error("Cannot place trade without an analyst ID. Pass analyst_id (principal chat) or ensure the run is linked to an analyst.");
-      }
-      // args.analyst_id is consulted ONLY when the run isn't scoped to an
-      // analyst (principal chat). When ctx.analystId is set (daily / tactical /
-      // morning runs) effectiveAnalystId already ignores args.analyst_id (see
-      // line ~102), so a stray or slug-shaped value the model passes despite the
-      // schema instruction must NOT block the trade — validate ownership only
-      // when we actually fall back to args.analyst_id.
-      //
-      // P1-18 (2026-06-05): GPT-5.5 passed analyst_id="catalyst-event-pm" (the
-      // slug, not the cuid) on a ctx-bound Catalyst tactical run. The old
-      // unconditional check (`args.analyst_id !== ctx.analystId`) threw
-      // "Analyst catalyst-event-pm not found or not yours" and silently dropped
-      // a validated live ARQT entry.
-      if (!ctx.analystId && args.analyst_id) {
-        const owner = await prisma.agentConfig.findFirst({
-          where: { id: args.analyst_id, userId: ctx.userId },
-          select: { id: true },
-        });
-        if (!owner) {
-          throw new Error(`Analyst ${args.analyst_id} not found or not yours.`);
-        }
+        throw new Error(`Cannot place trade: thesis ${args.thesis_id} names no analyst on this account.`);
       }
 
       const finalShares = resolvedShares ?? 1;

@@ -8,6 +8,8 @@
  *
  * The stop and target are the thesis's: the position row's copy can lag a
  * moved floor (MU on 2026-10-05: 969 on the position, 1048 on the plan).
+ * A read of the account adds each analyst's slots and limits, so a question
+ * about the whole book (what to sell to free cash) needs no second read.
  */
 
 import { z } from "zod";
@@ -18,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { getLatestPricesWithMeta, getAccount, type PriceLookup } from "@/lib/alpaca";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { analystRoomLines } from "@/lib/agent/analyst-scope";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -259,10 +262,18 @@ export const getPortfolioContext = defineTool({
       } catch { /* no digest; the rest stands */ }
     }
 
+    // Each analyst holding here or able to buy, its slots counted as place_trade counts them.
+    let analystLines: string[] = [];
+    if (ctx.accountId && !analystId) {
+      try {
+        analystLines = await analystRoomLines(ctx.accountId, [...new Set(openPositions.map((p) => p.analystId))]);
+      } catch { /* the positions stand without it */ }
+    }
+
     const data: PortfolioContextData = {
       positions: positionDetails,
       capitalSummary,
-      summaryLines: [...summaryLines, ...bookLines],
+      summaryLines: [...summaryLines, ...bookLines, ...analystLines],
       tickers,
       book: { openRiskPct: risk?.open ? Math.round(risk.open.riskPct * 10) / 10 : null, market, lines: bookLines },
       digest,

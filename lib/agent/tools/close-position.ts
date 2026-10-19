@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { forHeldStock } from "@/lib/agent/analyst-scope";
 import {
   collapseCloseReason,
   enforceCloseReason,
@@ -90,6 +91,12 @@ export const closePosition = defineTool({
     // below never store anything; they echo the collapsed declaration.
     const declaredStored = collapseCloseReason(args.reason);
     try {
+      // The Master Chat sells for the stock's holder, in its book (analyst-scope.ts).
+      const held = await forHeldStock(ctx, ticker);
+      if (held.question) {
+        return { summary: held.question, data: { success: false, ticker, reason: declaredStored, status: "FAILED" as const, message: held.question, tickers: [{ ticker, tag: "Which?", summary: held.question, actionIcon: "failed" }] }, sources: [] };
+      }
+      ctx = held.ctx;
       // ── PROMOTED guard (P1-21) ─────────────────────────────────────────
       // A PROMOTED thesis was an ACTIVE paper position that the user just
       // graduated PAPER→LIVE. The paper position got force-closed at

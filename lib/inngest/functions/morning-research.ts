@@ -15,11 +15,96 @@ import { buildRunInput } from "@/lib/agent/run-input";
 import { ensureAccountStandingRules } from "@/lib/agent/triggers/seed-account";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
+import { findInFlightWriter, startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
 import {
   isAnalystScheduledToday,
   isTradingDay,
   etWeekdayName,
 } from "@/lib/market-hours";
+
+// ─── Agent Watch write-ups (DAV-349) ─────────────────────────────────────────
+
+/** At most this many write-ups a morning per account, oldest Agent Watch first. */
+const AGENT_WATCH_WRITEUPS_PER_MORNING = 3;
+/** A write-up that failed this recently waits; under 24h so yesterday's 8 AM failure is tried again this morning. */
+const FAILED_WRITEUP_WAIT_MS = 23 * 60 * 60 * 1000;
+/** A write-up that completed but left no view waits this long, so a broken one costs one paid retry a week. */
+const NO_VIEW_WRITEUP_WAIT_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * A watched stock with a review clock of its own (an Agent Watch, the stock page's test) and no view yet is
+ * sent to the writer as a refresh, which commits its view. A plain watch, with no clock, is never sent.
+ */
+async function sendAgentWatchWriteups(
+  configs: Array<{ id: string; name: string; accountId: string; userId: string; tradingEnvironment: string }>,
+): Promise<{ sent: string[]; skipped: string[] }> {
+  const analysts = new Map(configs.map((c) => [c.id, c]));
+  const rows = await prisma.thesis.findMany({
+    where: { status: "WATCHING", direction: null, researchRun: { agentConfigId: { in: [...analysts.keys()] } } },
+    select: { id: true, ticker: true, triggers: true, researchRun: { select: { agentConfigId: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const sentPerAccount = new Map<string, number>();
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  for (const row of rows) {
+    const days = agentWatchDays(row.triggers);
+    const analyst = analysts.get(row.researchRun.agentConfigId ?? "");
+    if (days == null || !analyst) continue;
+    if ((sentPerAccount.get(analyst.accountId) ?? 0) >= AGENT_WATCH_WRITEUPS_PER_MORNING) {
+      skipped.push(`${row.ticker} (over today's ${AGENT_WATCH_WRITEUPS_PER_MORNING})`);
+      continue;
+    }
+    if (await findInFlightWriter(analyst.accountId, row.ticker)) {
+      skipped.push(`${row.ticker} (a writer is running)`);
+      continue;
+    }
+    const recentRuns = await prisma.researchRun.findMany({
+      where: {
+        mode: "THESIS_WRITER",
+        status: { in: ["COMPLETE", "FAILED"] },
+        startedAt: { gte: new Date(Date.now() - NO_VIEW_WRITEUP_WAIT_MS) },
+        OR: [
+          { parameters: { path: ["existingThesisId"], equals: row.id } },
+          { parameters: { path: ["thesisId"], equals: row.id } },
+        ],
+      },
+      select: { status: true, startedAt: true },
+      orderBy: { startedAt: "desc" },
+    });
+    // A write-up that finished and still left no view is broken, not pending: a person looks, and it is paid for again a week on.
+    const completed = recentRuns.find((r) => r.status === "COMPLETE");
+    if (completed) {
+      skipped.push(`${row.ticker} (written up ${completed.startedAt.toISOString().slice(0, 10)} but no view — needs a look)`);
+      continue;
+    }
+    if (recentRuns.some((r) => r.startedAt.getTime() >= Date.now() - FAILED_WRITEUP_WAIT_MS)) {
+      skipped.push(`${row.ticker} (write-up failed in the last day)`);
+      continue;
+    }
+    const { childRunId } = await startWriterRun({
+      userId: analyst.userId,
+      accountId: analyst.accountId,
+      analystId: analyst.id,
+      environment: analyst.tradingEnvironment as "PAPER" | "LIVE",
+      ticker: row.ticker,
+      mode: "refresh",
+      existingThesisId: row.id,
+      reviewCadenceDays: null,
+      reason: `Sent to research by the morning job: ${row.ticker} is on the watchlist with a ${days}-day review and no view yet.`,
+      source: "AGENT",
+      dispatchedBy: "agent-watch-writeup",
+    });
+    sentPerAccount.set(analyst.accountId, (sentPerAccount.get(analyst.accountId) ?? 0) + 1);
+    sent.push(`${row.ticker} (${analyst.name}, run ${childRunId})`);
+  }
+  console.log(
+    `[morning-research] Agent Watch write-ups: sent ${sent.length}${sent.length ? ` — ${sent.join(", ")}` : ""}` +
+      (skipped.length ? `; not sent: ${skipped.join(", ")}` : ""),
+  );
+  return { sent, skipped };
+}
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
@@ -75,6 +160,15 @@ export const morningResearch = inngest.createFunction(
       );
       return { ran: 0, reason: "market-holiday" };
     }
+
+    // Every Agent Watch gets its write-up (DAV-349), before any analyst runs so a run's own dispatch meets the in-flight check.
+    // Fail-soft: a write-up that can't be sent waits a day; a throw here would cost every analyst's run.
+    await step.run("agent-watch-writeups", () =>
+      sendAgentWatchWriteups(configs).catch((err) => {
+        console.error("[morning-research] Agent Watch write-ups failed (non-fatal):", err);
+        return null;
+      }),
+    );
 
     const scheduledConfigs = targetConfigId
       ? configs

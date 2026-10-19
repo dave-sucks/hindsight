@@ -13,6 +13,7 @@
  * and says so; nothing here refuses anything.
  */
 import { prisma } from "@/lib/prisma";
+import { analystOf } from "@/lib/agent/analyst-scope";
 import { getAccount, getBars, type AlpacaCredentials } from "@/lib/alpaca";
 import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -119,8 +120,8 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   // The analyst each stock belongs to: the read's, or on an account-wide read
   // (the chat with no analyst) the stock's own, so every stock inherits its
   // own analyst's rules and counts its own analyst's position.
-  const analystOf = (t: (typeof theses)[number]): string | null => ctx.analystId ?? t.researchRun?.agentConfigId ?? null;
-  const analystIds = Array.from(new Set(theses.map(analystOf).filter((id): id is string => !!id)));
+  const analystOfRow = (t: (typeof theses)[number]) => analystOf(t, ctx.analystId);
+  const analystIds = Array.from(new Set(theses.map(analystOfRow).filter((id): id is string => !!id)));
   const live = theses.filter((t) => LIVE.has(t.status));
   const load: WorkLoad = {
     inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, priceFetchFailed: false,
@@ -154,7 +155,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   // the analyst and the account. A holding protected by an inherited floor
   // must not read as unprotected.
   const levelSources = await loadLevelSources(analystIds);
-  for (const t of theses) load.ladders.set(t.id, resolveThesisLadder(t, levelSources.get(analystOf(t) ?? ""), `thesis=${t.id}`) as Trigger[]);
+  for (const t of theses) load.ladders.set(t.id, resolveThesisLadder(t, levelSources.get(analystOfRow(t) ?? ""), `thesis=${t.id}`) as Trigger[]);
 
   // The open position per held stock (scoped by analyst, and environment when
   // known), and the closes the principal did not approve on it: rejected or
@@ -180,7 +181,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
       const byKey = new Map<string, (typeof open)[number]>();
       for (const p of open) for (const key of new Set([keyOf(p.analystId, p.symbol), p.symbol])) if (!byKey.has(key)) byKey.set(key, p);
       for (const t of theses) {
-        const p = t.status === "HOLDING" ? byKey.get(keyOf(analystOf(t), t.ticker)) : undefined;
+        const p = t.status === "HOLDING" ? byKey.get(keyOf(analystOfRow(t), t.ticker)) : undefined;
         if (!p) continue;
         positionEnv ??= p.environment as "PAPER" | "LIVE";
         const peak = p.peakPrice != null && Number.isFinite(Number(p.peakPrice)) ? Number(p.peakPrice) : null;
@@ -406,7 +407,8 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
       recentUpdates: streak.get(t.id),
       latestQuote: quote,
       now,
-      hasPendingEntryProposal: pending.get(analystOf(t) ?? "")?.has(t.ticker) ?? false,
+      hasPendingEntryProposal: pending.get(analystOfRow(t) ?? "")?.has(t.ticker) ?? false,
+      hasPendingSaleProposal: (load.proposals.get(t.id) ?? []).some((p) => p.intent === "CLOSE" || p.intent === "PARTIAL_CLOSE"),
       equity: load.equity,
     };
     // A declined sale, judged against the ladder's floor and the live price.

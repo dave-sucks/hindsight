@@ -58,15 +58,28 @@ beforeEach(() => {
 });
 
 describe("replace — same slot", () => {
-  it("keeps the id, the fire history and the cooldown, and moves the number in the sentence", () => {
+  it("keeps the id, the fire history and the cooldown, and stores the reason sent with the new number", () => {
     const out = run({ id: "trail", trigger: built({ predicate: { watch: "move", is: "below", value: 20, variable: "peak" }, action: "EXIT" }) });
     expect(out.results).toEqual([expect.objectContaining({ ok: true, id: "trail" })]);
     const t = out.triggers.find((x) => x.id === "trail")!;
     expect(t.predicate).toEqual({ watch: "move", is: "below", value: 20, variable: "peak" });
     expect(t.lastFiredAt).toBe(trail.lastFiredAt);
     expect(t.cooldownDays).toBe(1);
-    expect(t.rationale).toBe("Give back 20% from the high and the run is over.");
+    expect(t.rationale).toBe("A trigger set by hand.");
     expect(t.source).toBe("PRINCIPAL");
+  });
+
+  it("an agent's new number with no reason moves the number in the old sentence, as before", () => {
+    const out = run(
+      { id: "trail", trigger: built({ predicate: { watch: "move", is: "below", value: 20, variable: "peak" }, action: "EXIT", rationale: "" }) },
+      { actor: "AGENT" },
+    );
+    expect(out.triggers.find((x) => x.id === "trail")!.rationale).toBe("Give back 20% from the high and the run is over.");
+  });
+
+  it("a save that keeps the number keeps the old sentence", () => {
+    const out = run({ id: "floor", trigger: built({ predicate: floor.predicate, action: "EXIT", fireMode: "DIRECT" }) });
+    expect(out.triggers.find((x) => x.id === "floor")!.rationale).toBe(floor.rationale);
   });
 
   it("refuses a save that changes nothing", () => {

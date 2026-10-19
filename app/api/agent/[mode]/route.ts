@@ -9,8 +9,8 @@
  * System prompts live there too. The route just assembles and streams.
  */
 
-import { streamText, convertToModelMessages, stepCountIs, hasToolCall } from "ai";
-import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
+import { streamText, stepCountIs, hasToolCall, type ToolSet } from "ai";
+import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
@@ -24,6 +24,7 @@ import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
@@ -55,29 +56,6 @@ import {
 export const maxDuration = 800;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Strips tool result payloads down to their summary string before the
- * messages are converted and sent to the model. The full data object
- * stays on the client for UI rendering — the model only needs the
- * one-line summary to continue reasoning. Prevents accumulated tool
- * results from blowing up the input token count over a long run.
- */
-function trimToolResults(messages: unknown[]): unknown[] {
-  if (!Array.isArray(messages)) return messages;
-  return messages.map((msg) => {
-    const m = msg as Record<string, unknown>;
-    if (!Array.isArray(m.parts)) return msg;
-    const parts = (m.parts as unknown[]).map((part) => {
-      const p = part as Record<string, unknown>;
-      if (p.type !== "tool-result") return part;
-      const result = p.result as Record<string, unknown> | undefined;
-      if (!result || typeof result.summary !== "string") return part;
-      return { ...p, result: { summary: result.summary } };
-    });
-    return { ...m, parts };
-  });
-}
 
 async function markRunFailed(runId: string | undefined, reason: string) {
   if (!runId) return;
@@ -266,8 +244,8 @@ export async function POST(
 
     } else if (agentMode === "principal") {
       // Principal chat — the operator co-pilot. Two scopes:
-      //   • UNSCOPED (no analystId on body): portfolio-wide reads. No
-      //     ResearchRun row; writes that FK into runId will fail.
+      //   • UNSCOPED (no analystId on body): the Master Chat. Its own run row;
+      //     each write acts for the stock's own analyst (analyst-scope.ts).
       //   • SCOPED (body.analystId present): chat is pinned to one
       //     analyst. Route creates a ResearchRun(mode=PRINCIPAL_CHAT,
       //     agentConfigId=<id>) so every write tool's runId FK works the
@@ -280,6 +258,9 @@ export async function POST(
       // Rendered below only when an analyst is actually pinned.
       let scopedMoneyBlock: string | null = null;
       let scopedBookBlock: string | null = null;
+      // How full the analysts are, before the chat offers a buy (counted as place_trade counts).
+      let room: Awaited<ReturnType<typeof analystRoom>> | null = null;
+      let roomLines: string[] = [];
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
           where: { id: resolvedAnalystId, accountId },
@@ -306,15 +287,13 @@ export async function POST(
         // fallback (e.g. #380's) can't fire — the only correct place to fix
         // this is here, where the scoped analyst is known. Seed from the
         // analyst and re-resolve creds before the tools are built.
-        runEnvironment = (ac.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
-        alpacaCreds =
-          (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
-        const principalWatchlistSymbols = await getWatchlistSymbols(ac.id);
-        // The tools' fence and limits (place_trade etc.), the same mapping as the Run button's.
-        agentConfig = analystToolSettings(ac, principalWatchlistSymbols);
+        // The tools' fence, limits, book and keys: the same helper the Master Chat's writes use.
+        const scope = await analystScope(ac, user.id);
+        ({ runEnvironment, alpacaCreds } = scope);
+        agentConfig = scope;
         scopedAnalyst = {
           ...ac,
-          watchlist: principalWatchlistSymbols,
+          watchlist: scope.watchlist ?? [],
           setupOverrides: await loadSetupOverrides(ac.accountId),
         };
 
@@ -343,6 +322,7 @@ export async function POST(
           ]);
           scopedMoneyBlock = formatMoneyContextBlock(money) || null;
           scopedBookBlock = formatBookContextBlock(book) || null;
+          room = { ...(await analystRoom(ac)), held: [] }; // the book block already lists the holdings
         } catch {
           /* fail-open — context can never be why a chat dies */
         }
@@ -455,6 +435,7 @@ export async function POST(
         // shows (environment.actions.ts). It used to stay PAPER whatever the
         // screen showed, so on a LIVE account its portfolio read was empty.
         runEnvironment = await getCurrentEnvironment();
+        roomLines = await analystRoomLines(accountId, []).catch(() => []);
         alpacaCreds = (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
         if (!runId && chatSessionId) {
           const bySession = await prisma.researchRun.findFirst({
@@ -489,6 +470,8 @@ export async function POST(
         scopedAnalyst,
         moneyBlock: scopedMoneyBlock,
         bookBlock: scopedBookBlock,
+        room,
+        roomLines,
       });
 
     } else if (agentMode === "podcast-builder") {
@@ -730,30 +713,9 @@ export async function POST(
         )
       : allTools;
 
-    // Unscoped principal chat can't write. The prompt states this ("Writes
-    // that require an analyst FK ... will FAIL in this scope") but nothing
-    // enforced it — it held only by accident, because ctx.runId was the
-    // sentinel string "principal" (see `runId || agentMode` above) and
-    // TradeDecision.runId FK-violated, rolling the transaction back before
-    // the Alpaca call.
-    //
-    // Persisting unscoped chats gives them a REAL runId, which silently
-    // removed that accident. place_trade is the live exposure: unlike the
-    // other write tools it falls back to `args.analyst_id` when ctx.analystId
-    // is unset (place-trade.ts:104), so the model could have opened a
-    // position from a portfolio-level chat. Make the boundary explicit
-    // instead of inferring it from an FK.
-    //
-    // dispatch_thesis_research is deliberately NOT in this list — it takes an
-    // explicit analyst_id and the prompt documents an unscoped flow for it
-    // ("If unscoped, ASK the user which analyst to scope to").
-    const UNSCOPED_BLOCKED_WRITES = [
-      "place_trade",
-      "close_position",
-      "manage_position",
-      "record_thesis",
-      "update_thesis",
-    ] as const;
+    // The Master Chat's writes act for the stock's own analyst (analyst-scope.ts).
+    // A new thesis belongs to its run's analyst, and this run has none: it stays pinned-only.
+    const UNSCOPED_BLOCKED_WRITES = ["record_thesis"] as const;
     if (agentMode === "principal" && !resolvedAnalystId) {
       filteredTools = Object.fromEntries(
         Object.entries(filteredTools).filter(
@@ -792,13 +754,8 @@ export async function POST(
     const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
     let lastStepTimeMs = t0;
 
-    // Strip tool results down to summary-only before sending to the model.
-    // Full data stays on the client for UI rendering — the model only needs
-    // the one-line summary to continue reasoning. This prevents accumulated
-    // tool result JSON (stock data, signals, etc.) from blowing the context.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const trimmedMessages = trimToolResults(messages) as any;
-    const modelMessages = await convertToModelMessages(trimmedMessages);
+    // A tool missing from this set (a turn under another scope) passes its result through as is.
+    const modelMessages = await historyForModel(messages, tools as ToolSet);
 
     // Allow client to override model (validated to known model IDs).
     // gpt-5.5 added 2026-05-15 alongside the research-run / tactical model
@@ -848,6 +805,7 @@ export async function POST(
       ...(agentMode === "research-run" && { temperature: 0.2 }),
       system: cachedSystem(effectiveProvider, systemPrompt),
       messages: modelMessages,
+      prepareStep: ({ messages: stepMessages }) => ({ messages: cachedMessages(effectiveProvider, stepMessages) }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: cachedTools(effectiveProvider, tools) as any,
       // Stop the run when:

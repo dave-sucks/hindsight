@@ -351,6 +351,8 @@ export interface NeedsActionInput {
    * complete_run. Non-ENTER triggers and REVIEW_DUE still surface.
    */
   hasPendingEntryProposal?: boolean;
+  /** A sale or trim of this holding waits for the principal's approval: the stock is theirs to decide, so it carries no work at all. */
+  hasPendingSaleProposal?: boolean;
   /**
    * An unanswered protective sale the principal declined (DAV-315).
    * Computed by the caller with `declinedSaleWork` — the caller is the only
@@ -384,6 +386,10 @@ export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction[] {
   const { thesis, latestQuote, now, hasPendingEntryProposal } = input;
+  // A sale waiting for the principal takes the whole stock off the list (NVDA, CEG 10-15: worked anyway).
+  if (input.hasPendingSaleProposal) return [];
+  // A buy waiting for the principal already makes its move (P1-25 Change 4).
+  const waiting = (action: string) => hasPendingEntryProposal && action === "ENTER";
 
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
   //    thesis ALWAYS needs resolution this run regardless of trigger
@@ -488,10 +494,7 @@ export function computeNeedsAction(
           summary: t ? sentenceOf(t, thesis.status == null || thesis.status === "HOLDING") : "(predicate removed)",
         };
       })
-      // P1-25 Change 4: a pending buy proposal already expresses the ENTER —
-      // don't re-flag it (the agent would re-attempt place_trade and hit the
-      // PENDING_APPROVAL dedup guard). Non-ENTER work still surfaces.
-      .filter((x) => !(hasPendingEntryProposal && x.action === "ENTER"));
+      .filter((x) => !waiting(x.action));
     // The fire that moves money leads; among equals, the newest.
     const lead = fired.find((x) => x.action !== "REVIEW") ?? fired[0];
     if (lead) {
@@ -555,8 +558,7 @@ export function computeNeedsAction(
     });
     if (result.fires) {
       const action = (trigger.action as NeedsActionVerb) ?? "REVIEW";
-      // P1-25 Change 4: suppress ENTER while a buy proposal is pending.
-      if (hasPendingEntryProposal && action === "ENTER") continue;
+      if (waiting(action)) continue;
       matches.push({
         kind: "TRIGGER_MATCHING_NOW",
         triggerId: trigger.id,

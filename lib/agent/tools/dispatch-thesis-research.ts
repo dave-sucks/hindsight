@@ -16,8 +16,10 @@
 import { z } from "zod";
 import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import { defineTool } from "@/lib/agent/define-tool";
+import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
+import { findInFlightWriter } from "@/lib/agent/thesis-writer-dispatch";
 import { DISPATCH_CAP } from "@/lib/agent/system-prompts/discovery";
 
 import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
@@ -33,6 +35,8 @@ export function trimScreenRow(row: string): string {
   const lastSpace = cut.lastIndexOf(" ");
   return `${(lastSpace > SCREEN_ROW_MAX / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
+
+const namesAnalyst = (ctx: ToolContext) => ctx.runMode === "PRINCIPAL_CHAT" && !ctx.analystId;
 
 export const dispatchThesisResearch = defineTool({
   description:
@@ -81,6 +85,8 @@ export const dispatchThesisResearch = defineTool({
       .optional()
       .describe("The numbers that put this name in front of you, one line (\"reported 09-10, EPS +22% vs est, revenue +6%, gapped 9% on 3.1× volume, holding above the gap-day low $41.20\")."),
   }),
+  // Only the chat with no analyst pinned names one; any other run writes for its own (ETN 10-15: a made-up slug).
+  schemaFor: (ctx, schema) => (namesAnalyst(ctx) ? schema : schema.omit({ analyst_id: true })),
   ui: "thesis-card" as const,
   groupId: "thesis-dispatch",
 
@@ -95,8 +101,9 @@ export const dispatchThesisResearch = defineTool({
     // Verify the analyst exists + belongs to this account before inserting
     // the child run row. The FK on ResearchRun.agentConfigId is SetNull, so
     // a bogus id wouldn't fail at insert — it'd just orphan the run.
+    const analystId = namesAnalyst(ctx) ? args.analyst_id : ctx.analystId;
     const analyst = await prisma.agentConfig.findFirst({
-      where: { id: args.analyst_id, accountId: ctx.accountId },
+      where: { id: analystId ?? "", accountId: ctx.accountId },
       select: {
         id: true,
         name: true,
@@ -107,12 +114,12 @@ export const dispatchThesisResearch = defineTool({
     });
     if (!analyst) {
       return {
-        summary: `Dispatch failed: analyst ${args.analyst_id} not found on this account.`,
+        summary: `Dispatch failed: analyst ${analystId} not found on this account.`,
         data: {
           childRunId: null,
           status: "FAILED" as const,
           note:
-            `No analyst with id ${args.analyst_id} exists on this account. Use list_analysts ` +
+            `No analyst with id ${analystId} exists on this account. Use list_analysts ` +
             `to find the right analyst_id before calling dispatch_thesis_research.`,
         },
         sources: [],
@@ -251,23 +258,7 @@ export const dispatchThesisResearch = defineTool({
     // this analyst). 30-minute age cap so a stuck writer doesn't block
     // forever; writers normally complete in 3-5 minutes.
     // ────────────────────────────────────────────────────────────────────
-    const STUCK_WRITER_AGE_MIN = 30;
-    const inFlightWriter = await prisma.researchRun.findFirst({
-      where: {
-        accountId: analyst.accountId,
-        mode: "THESIS_WRITER",
-        status: "RUNNING",
-        parameters: { path: ["ticker"], equals: T },
-        startedAt: {
-          gte: new Date(Date.now() - STUCK_WRITER_AGE_MIN * 60 * 1000),
-        },
-      },
-      select: {
-        id: true,
-        agentConfigId: true,
-        startedAt: true,
-      },
-    });
+    const inFlightWriter = await findInFlightWriter(analyst.accountId, T);
     if (inFlightWriter) {
       const ownerAnalyst = inFlightWriter.agentConfigId
         ? await prisma.agentConfig.findUnique({
@@ -358,9 +349,9 @@ export const dispatchThesisResearch = defineTool({
         // Runs page in Live mode (2026-06-03 PEAD SNOW/PACS/CRDO). The
         // analyst's tradingEnvironment is the authoritative book for any
         // work FK'd to that analyst — a LIVE analyst's dispatch is never
-        // legitimately PAPER.
+        // legitimately PAPER. The chat's own book is the screen's, so it never decides.
         environment:
-          ctx.runEnvironment ??
+          (ctx.runMode === "PRINCIPAL_CHAT" ? null : ctx.runEnvironment) ??
           (analyst.tradingEnvironment as "PAPER" | "LIVE"),
         ...(resolvedParentRunId ? { parentRunId: resolvedParentRunId } : {}),
         parameters: {

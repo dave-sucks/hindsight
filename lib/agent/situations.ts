@@ -31,6 +31,8 @@ export interface SituationSources {
   nameTheSetup: boolean;
   unansweredDecision: boolean;
   soldReview?: boolean;
+  /** A sale waits for the principal's approval: the stock is theirs to decide, quiet with no situations. */
+  saleWaiting?: boolean;
 }
 
 /** The measures a condition watches, groups walked. */
@@ -95,6 +97,7 @@ function flagCodes(s: SituationSources, f: NeedsAction): SituationCode[] {
 
 /** The situations a stock is in, in the list's order, then the row's other sources; each code once. */
 export function situationsFor(s: SituationSources): SituationCode[] {
+  if (s.saleWaiting) return [];
   const codes = s.needs.flatMap((f) => flagCodes(s, f));
   if (s.actionability === "PROMOTED_DECIDE_TODAY") codes.push("PROMOTED_AWAITING");
   if (s.buyBlockedByFull) codes.push("BUY_BLOCKED_FULL");
@@ -501,10 +504,11 @@ const LABELS_THAT_LIST = new Set(["ENTER_NOW", "STALE_PAST_CATALYST", "PROMOTED_
  * it before: any work flag (a floor too far is one, even under a fired sale),
  * a plan check that lists, a buy into a full analyst, a setup to name, the
  * principal's word unanswered, a reached buy level or past catalyst, or a
- * promoted stock. The read adds book mode and failed prices itself.
+ * promoted stock; never one with a sale waiting. The read adds book mode and
+ * failed prices itself.
  */
 export function listsTheStock(s: SituationSources): boolean {
-  return (
+  return !s.saleWaiting && (
     s.needs.length > 0 ||
     (s.planSanity ?? []).some((f) => !CHECKS_THAT_DO_NOT_LIST.has(f.kind)) ||
     s.buyBlockedByFull ||

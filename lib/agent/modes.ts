@@ -7,6 +7,7 @@
  */
 
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 
 // ── Model options per mode ────────────────────────────────────────────────────
@@ -405,7 +406,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // analyst (via /chat?analyst=<id> → body.analystId), the route creates
   // a ResearchRun(mode="PRINCIPAL_CHAT", agentConfigId=<id>) so every
   // write tool's FK into runId works the same way it does in the daily
-  // run. Unscoped, it's portfolio-wide reads + suggest_config.
+  // run. Unscoped, it is the Master Chat: each write acts for the stock's own analyst.
   //
   // Default model is Claude Sonnet 4.6 with extended thinking on — same
   // model the user uses through Claude Code for deep reviews. GPT-4o is
@@ -448,9 +449,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // intent (web_search for consensus/news, twitter_search for handle
       // attribution / fintwit early calls / multi-archetype convergence).
       "twitter_search",
-      // ── Writes (require analyst scope — route creates a ResearchRun
-      // when body.analystId is supplied, FK satisfies). Unscoped chats
-      // will see these fail cleanly with "scope to an analyst first".
+      // ── Writes. Unscoped, each acts for the stock's own analyst
+      // (analyst-scope.ts); record_thesis alone needs the chat pinned.
       "record_thesis",
       "update_thesis",
       "place_trade",
@@ -595,6 +595,9 @@ export function buildPrincipalSystemPrompt(opts: {
   bookBlock?: string | null;
   /** The analyst the chat is pinned to: its row, its watchlist, and the account's setup numbers. */
   scopedAnalyst?: (BriefAnalyst & UniverseAnalyst & { id: string; name: string; watchlist: string[] }) | null;
+  /** Its slots, counted as place_trade counts them (pinned); every analyst's room line (unpinned). */
+  room?: AnalystCapacity | null;
+  roomLines?: string[];
 }): string {
   const scope = opts.scopedAnalyst;
   // Pre-rendered by the caller via context-bundle's formatters. Passed as
@@ -608,7 +611,7 @@ export function buildPrincipalSystemPrompt(opts: {
 ## CURRENT SCOPE — pinned to ${scope.name}
 ══════════════════════════════════════════════════════════════════════
 
-This chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst. You don't need to pass analyst_id — the route handles it.
+This chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst; a buy goes to its thesis's analyst.
 
   • Analyst ID: \`${scope.id}\`
 ${universeLines(scope).map((l) => `  • ${l}`).join("\n")}
@@ -616,7 +619,7 @@ ${universeLines(scope).map((l) => `  • ${l}`).join("\n")}
   • Watchlist: ${scope.watchlist.join(", ") || "(empty)"}
   • Sizing: omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
 
-${analystBrief(scope)}
+${analystBrief(scope, opts.room)}
 
 Use \`get_theses\` and \`get_portfolio_context\` to pull current state without re-resolving the id. For cross-analyst questions ("how do my OTHER analysts compare"), use \`list_analysts\` etc.
 ${moneyBlock}${bookBlock}`
@@ -624,7 +627,9 @@ ${moneyBlock}${bookBlock}`
 ## CURRENT SCOPE — Portfolio (unscoped)
 ══════════════════════════════════════════════════════════════════════
 
-This chat is at the portfolio level — not pinned to any single analyst. You can read across every analyst the user owns. Writes that require an analyst FK (place_trade, record_thesis, update_thesis, etc.) will FAIL in this scope — tell the user to scope the chat first via the URL \`/chat?analyst=<id>\` or by clicking an analyst chip in the chat header.
+This chat is at the portfolio level, not pinned to one analyst: you read across every analyst. Every trade and thesis edit (place_trade, close_position, manage_position, update_thesis) acts for the stock's own analyst, under its rules and the approval screen. Only a new thesis (record_thesis) needs the chat pinned; for new coverage, dispatch the writer for the analyst it is for.
+${opts.roomLines?.length ? `\nEach analyst's room (a buy for a FULL analyst is refused):\n${opts.roomLines.map((l) => `  • ${l}`).join("\n")}\n` : ""}
+**"I have no cash: what do I sell or trim?"**, or any question about the whole book: read \`get_portfolio_context\` (every holding with its analyst, gain, give-back and floor; the cash; each analyst's slots and limits), \`list_proposals\` (the sales waiting) and \`get_theses\` with \`status:["HOLDING"]\` (each holding's sell rules and notes). Answer stock by stock: keep, trim or sell, why, and the level that would change your mind.
 
 Start every fresh session with \`list_analysts\` so you know who exists. Then pick the right read tool for the question.\n`;
 
@@ -679,7 +684,7 @@ Nothing auto-trades. When the account's approval toggle is on for a side, every 
   • "What's pending?" / "my open proposals" / "what's the agent asking me to do?" / "what sells are staged?" → \`list_proposals\`. Do NOT reach for \`read_database\` on \`order\` for this.
   • "Why did it want to sell $X?" → the \`rationale\` on the proposal is the answer; pair it with the thesis and \`get_stock_data\` if they're asking you to second-guess it.
   • "Should I approve this?" → this is the highest-value question you get. Pull the proposal, re-read the thesis (\`get_theses\`), pull fresh data on the name (\`get_stock_data\`, \`get_earnings_data\`, \`get_sec_filings\`, \`web_search\`), and give a real recommendation with the levels that would change your mind. Judging a staged exit on a loser means asking whether the invalidation actually fired or the name is just down — say which, plainly. Read the principal's notes on the thesis first.
-  • \`status:"REJECTED"\` / \`"EXPIRED"\` is the record of what the principal declined or ignored. A declined or expired sale means "not today", not "stop asking": the trigger asks again every day its condition holds.
+  • \`status:"REJECTED"\` is a sale the principal declined; \`"EXPIRED"\` is one that lapsed: "ask me again", never a decline. Neither stops the trigger asking every day its condition holds.
 
 **You cannot approve or reject.** There is deliberately no write tool for it — the gate exists so a human decides. If the principal says "approve it," tell them to hit Approve on the card (or, if they want you to act directly, that means executing the trade yourself via \`close_position\` / \`place_trade\` under the same gate — say so before you do it).
 
@@ -713,7 +718,7 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
 ## DEEP-RESEARCH THESIS DISPATCH — \`dispatch_thesis_research\`
 ══════════════════════════════════════════════════════════════════════
 
-\`dispatch_thesis_research(ticker, analyst_id, mode, reason)\` spawns a thesis-writer sub-agent that pulls 7 structured-data sources in parallel and synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + native web search. Returns a childRunId immediately; the work runs async (~3-4 min) and lands as a Thesis row with \`researchData\` + \`researchSections\` populated.
+\`dispatch_thesis_research(ticker, mode, reason)\` spawns a thesis-writer sub-agent that pulls 7 structured-data sources in parallel and synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + native web search. Returns a childRunId immediately; the work runs async (~3-4 min) and lands as a Thesis row with \`researchData\` + \`researchSections\` populated.
 
 **\`/research <ticker>\` is a HARD trigger.** When the user message contains \`/research\` (the slash command renders as the literal text \`/research\` in the message), you MUST call \`dispatch_thesis_research\` immediately. No second-guessing, no judgment, no exceptions:
   • If the ticker is outside the scoped analyst's universe — **dispatch anyway**. The worker still produces a PASS thesis grounded in deep research, which IS valuable as institutional memory. Universe fit is the worker's call, not yours.
@@ -729,7 +734,7 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
 When the request is shaped like "thesis / research / deep look / note", dispatch. A deep-research thesis is always more valuable than a one-paragraph prose summary, and the user can always fall back to a quick read if they wanted that instead.
 
 **Mechanics:**
-  • \`analyst_id\` — pull from the SCOPE block above when scoped. If unscoped, ASK the user which analyst to scope to before dispatching (or call \`list_analysts\` if they named one — "for Tech Momentum Trader" → resolve via \`list_analysts\` first). Do NOT skip dispatch on the "unscoped" objection.
+  • \`analyst_id\` — unpinned only: ask which analyst it is for, or resolve the one they named with \`list_analysts\`.
   • \`mode\` — \`"mint"\` for new coverage on a ticker the analyst doesn't already cover. \`"refresh"\` + \`existing_thesis_id\` when the analyst already has a Thesis on this ticker and the user wants it updated.
   • \`reason\` — one line of context. "User typed /research $F" / "User asked to deep-dive $NVDA after the GTC keynote" / "User wants a refreshed thesis on $AMD". Persisted on the child run for traceability.
 

@@ -177,9 +177,8 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
           maxPositionSize: fx.analyst.maxPositionSize,
           maxOpenPositions: fx.analyst.maxOpenPositions,
         },
-        // The call the run made, verbatim; the analyst id is the chat's
-        // fallback — the run is scoped to its analyst.
-        args: { ...fx.placeTrade, analyst_id: undefined },
+        // The call the run made, verbatim.
+        args: fx.placeTrade,
         quotes: { CORT: 113.71 },
         // The industry line reads Finnhub through research-helpers, which
         // the harness doesn't double; keep the test off the network.
