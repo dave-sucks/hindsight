@@ -1,4 +1,5 @@
 import TradesPage from "@/components/trades/TradesPage";
+import { LiveRefresh } from "@/components/LiveRefresh";
 import { getDashboardData } from "@/lib/actions/portfolio.actions";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { getStockCandles } from "@/lib/actions/finnhub.actions";
@@ -47,10 +48,13 @@ export default async function Trades() {
   );
 
   return (
-    <TradesPage
-      initialOpenTrades={initialOpenTrades}
-      initialClosedTrades={closedTrades}
-      moves={moves}
-    />
+    <>
+      <LiveRefresh />
+      <TradesPage
+        initialOpenTrades={initialOpenTrades}
+        initialClosedTrades={closedTrades}
+        moves={moves}
+      />
+    </>
   );
 }

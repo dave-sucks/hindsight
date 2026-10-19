@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useState, type ReactNode } from "react";
+import { useLivePoll } from "@/hooks/useLivePoll";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -1226,6 +1227,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   // Bumped after a trigger edit so the dossier re-fetches and the open sheet
   // reflects the new value without a manual reopen (live layers don't move).
   const [refreshKey, setRefreshKey] = useState(0);
+  // The header price re-pulls on the live cadence while the sheet is open.
+  const [liveTick, setLiveTick] = useState(0);
+  useLivePoll(() => setLiveTick((n) => n + 1));
 
   // Re-gate (show the skeletons) only when a DIFFERENT thesis opens — NOT on a
   // refreshKey bump from a trigger edit, which swaps the dossier in place. Clear
@@ -1325,7 +1329,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     return () => {
       cancelled = true;
     };
-  }, [thesis_id, refreshKey]);
+  }, [thesis_id, refreshKey, liveTick]);
 
   useEffect(() => {
     if (!thesis_id) return;

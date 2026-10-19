@@ -2,8 +2,8 @@
  * Chat actions — server-only data fetchers for Principal Chat history.
  *
  * Powers the Recent Chats sidebar on /chat. Returns the user's past
- * PRINCIPAL_CHAT ResearchRuns grouped by analyst, most recent activity
- * first, with enough metadata to render rows + reopen on click.
+ * PRINCIPAL_CHAT ResearchRuns, most recent activity first, with enough
+ * metadata to render rows + reopen on click.
  *
  * PRINCIPAL_CHAT rows are intentionally excluded from /runs (see
  * app/(root)/runs/page.tsx) because they're chat-session containers,
@@ -13,45 +13,18 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 
-/** Group of past chats with one analyst — sorted most-recent-first. */
-export interface ChatHistoryGroup {
-  analyst: {
-    id: string;
-    name: string;
-  };
-  chats: ChatHistoryItem[];
-  /** Most-recent activity across this group's chats (epoch ms). Drives group ordering. */
-  lastActivityMs: number;
-}
-
-/**
- * Group key for portfolio-level chats that were never scoped to an analyst.
- * Deliberately not a cuid so it can never collide with a real AgentConfig id.
- */
-export const UNSCOPED_GROUP_ID = "__unscoped__";
-
 export interface ChatHistoryItem {
   runId: string;
-  analystId: string;
-  analystName: string;
+  /** The analyst the chat was scoped to; null for a portfolio-level chat. */
+  analystName: string | null;
   startedAt: Date;
   /** When the chat last had message activity. Null falls back to startedAt. */
   lastActivityAt: Date;
-  /** ResearchRun.status — RUNNING for active sessions, FAILED for swept stale, COMPLETE rare. */
-  status: string;
-  /**
-   * Rough turn count — number of RunMessage rows on this run. We persist
-   * full threads as a single `role: "thread"` row per run (same shape as
-   * /runs/[id] replay), so this is usually 0 or 1. A future enhancement
-   * could parse the thread JSON to count actual turns, but 1 row = "has
-   * a thread" is enough signal for the sidebar.
-   */
+  /** Whether a persisted thread row exists (one `role: "thread"` row per run). */
   hasThread: boolean;
   /**
    * First user message in the thread, truncated for sidebar display.
-   * Lets the sidebar show "What's your read on TSM?" instead of bare
-   * timestamps. Null when the thread is empty / unparseable / has no user
-   * message yet (RUNNING chat that crashed before any user input).
+   * Null when the thread is empty / unparseable / has no user message yet.
    */
   preview: string | null;
 }
@@ -65,43 +38,25 @@ interface ListRecentChatsArgs {
 }
 
 /**
- * Fetch the user's recent Principal Chat sessions, grouped by analyst.
- * Within each group, chats are most-recent-first. Groups themselves
- * are ordered by most-recent activity across all their chats.
- *
- * Excludes unscoped chats (agentConfigId IS NULL) for now — they don't
- * group meaningfully and the chat UI doesn't currently support resuming
- * an unscoped session via URL params. Add a synthetic "Unscoped" group
- * later if needed.
+ * Fetch the user's recent Principal Chat sessions, most recent activity
+ * first, scoped and unscoped alike.
  */
 export async function listRecentChats(
   args: ListRecentChatsArgs,
-): Promise<ChatHistoryGroup[]> {
-  const limit = args.limit ?? 30;
-
+): Promise<ChatHistoryItem[]> {
   const rows = await prisma.researchRun.findMany({
     where: {
       userId: args.userId,
       accountId: args.accountId,
       mode: "PRINCIPAL_CHAT",
-      // Unscoped chats are INCLUDED. They used to be filtered out here as
-      // "can't be resumed" — but loadChatThread has always handled a null
-      // analystId, and they're now persisted (see the unscoped branch in
-      // app/api/agent/[mode]/route.ts). They group under Portfolio below.
     },
     select: {
       id: true,
-      agentConfigId: true,
       startedAt: true,
       updatedAt: true,
-      status: true,
-      agentConfig: {
-        select: { id: true, name: true },
-      },
+      agentConfig: { select: { name: true } },
       messages: {
-        // Pull just the thread row's content for first-message extraction.
-        // There's at most one per run; skip the role filter from breaking the
-        // limit by selecting + taking explicitly.
+        // At most one thread row per run; pull its content for the preview.
         where: { role: "thread" },
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -109,49 +64,20 @@ export async function listRecentChats(
       },
     },
     orderBy: { updatedAt: "desc" },
-    take: limit,
+    take: args.limit ?? 30,
   });
 
-  // Group by analystId. Map preserves insertion order, so the first time
-  // we see each analyst (which is from the most-recent chat) sets the
-  // group ordering — already in the right order from the orderBy above.
-  const groups = new Map<string, ChatHistoryGroup>();
-
-  for (const row of rows) {
-    // No agentConfig = a portfolio-level chat that was never scoped to an
-    // analyst. Real and resumable; it just has no analyst to group under, so
-    // it gets its own synthetic group. The sentinel id is not a real
-    // AgentConfig id — resume goes by runId, so nothing dereferences it.
-    const analystId = row.agentConfig?.id ?? UNSCOPED_GROUP_ID;
-    const analystName = row.agentConfig?.name ?? "Portfolio";
-    const lastActivityAt = row.updatedAt ?? row.startedAt;
-
+  return rows.map((row) => {
     const threadContent = row.messages[0]?.content ?? null;
-    const item: ChatHistoryItem = {
+    return {
       runId: row.id,
-      analystId,
-      analystName,
+      analystName: row.agentConfig?.name ?? null,
       startedAt: row.startedAt,
-      lastActivityAt,
-      status: row.status,
+      lastActivityAt: row.updatedAt ?? row.startedAt,
       hasThread: threadContent != null,
       preview: threadContent ? extractFirstUserMessage(threadContent) : null,
     };
-
-    const existing = groups.get(analystId);
-    if (existing) {
-      existing.chats.push(item);
-      // Already-newer activity wins (this iteration is older).
-    } else {
-      groups.set(analystId, {
-        analyst: { id: analystId, name: analystName },
-        chats: [item],
-        lastActivityMs: lastActivityAt.getTime(),
-      });
-    }
-  }
-
-  return Array.from(groups.values());
+  });
 }
 
 /**

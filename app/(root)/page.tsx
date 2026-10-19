@@ -1,4 +1,5 @@
 import DashboardClient from "@/components/dashboard/DashboardClient";
+import { LiveRefresh } from "@/components/LiveRefresh";
 import { getDashboardData } from "@/lib/actions/portfolio.actions";
 import type { DashboardData } from "@/lib/actions/portfolio.actions";
 import { getCoverageData } from "@/lib/actions/coverage.actions";
@@ -55,12 +56,15 @@ export default async function Home() {
   } = await supabase.auth.getUser();
 
   return (
-    <DashboardClient
-      data={data}
-      userId={user?.id}
-      digest={digest}
-      coverage={coverage}
-      pinned={pinned}
-    />
+    <>
+      <LiveRefresh />
+      <DashboardClient
+        data={data}
+        userId={user?.id}
+        digest={digest}
+        coverage={coverage}
+        pinned={pinned}
+      />
+    </>
   );
 }

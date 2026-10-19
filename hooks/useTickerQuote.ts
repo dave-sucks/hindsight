@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { startLivePoll } from "@/hooks/useLivePoll";
 
 /**
  * Shared client-side quote source. ONE cache + ONE fetch path behind every
  * place that shows a live price / day change — ticker chips, thesis cards, the
  * watchlist rows. All of it hits `/api/quotes` (Finnhub `c/d/dp/pc`). Do not
  * add a second quote fetcher; extend this.
+ *
+ * While the market is open and the tab is visible, every symbol on screen is
+ * re-pulled together on the live cadence (`hooks/useLivePoll.ts`) — one
+ * request per 20 symbols, not one per row.
  */
 
 export interface QuoteData {
@@ -77,17 +82,59 @@ export function usePrefetchTickers(symbols: string[]) {
   }, [symbols.join(",")]);
 }
 
+// ── Live re-poll: one poller for every symbol on screen ─────────────────────
+
+const listeners = new Map<string, Set<(q: QuoteData) => void>>();
+let stopPoller: (() => void) | null = null;
+
+async function refreshOnScreen() {
+  const symbols = [...listeners.keys()];
+  for (let i = 0; i < symbols.length; i += 20) {
+    try {
+      const res = await fetch(`/api/quotes?symbols=${symbols.slice(i, i + 20).join(",")}`);
+      if (!res.ok) continue;
+      const json = await res.json();
+      for (const q of (json.quotes ?? []) as QuoteData[]) {
+        if (!(q.price > 0)) continue;
+        quoteCache.set(q.symbol, { data: q, fetchedAt: Date.now() });
+        listeners.get(q.symbol)?.forEach((notify) => notify(q));
+      }
+    } catch {
+      // keep showing the last price
+    }
+  }
+}
+
+function subscribe(symbol: string, notify: (q: QuoteData) => void): () => void {
+  let set = listeners.get(symbol);
+  if (!set) listeners.set(symbol, (set = new Set()));
+  set.add(notify);
+  stopPoller ??= startLivePoll(refreshOnScreen);
+  return () => {
+    set.delete(notify);
+    if (set.size === 0) listeners.delete(symbol);
+    if (listeners.size === 0 && stopPoller) {
+      stopPoller();
+      stopPoller = null;
+    }
+  };
+}
+
 /** Reactive single-symbol quote from the shared cache/fetch path. */
 export function useTickerQuote(symbol: string | undefined): QuoteData | null {
   const [quote, setQuote] = useState<QuoteData | null>(null);
   useEffect(() => {
     if (!symbol) return;
+    const key = symbol.toUpperCase();
     let active = true;
-    fetchQuote(symbol.toUpperCase()).then((q) => {
-      if (active && q) setQuote(q);
-    });
+    const notify = (q: QuoteData) => {
+      if (active) setQuote(q);
+    };
+    fetchQuote(key).then((q) => q && notify(q));
+    const unsubscribe = subscribe(key, notify);
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [symbol]);
   return quote;
