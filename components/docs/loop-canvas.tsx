@@ -18,9 +18,9 @@ import type { DocSlug } from "./registry";
 type NodeId = "discovery" | "writer" | "thesis" | "morning" | "trigger" | "chat" | "decisions";
 
 const AGENTS: readonly { id: NodeId; title: string; sub: string; icon: LucideIcon; doc: DocSlug; row: string; wire: string }[] = [
-  { id: "morning", title: "Morning run", sub: "Every run day at 8 AM", icon: Sun, doc: "morning-runs", row: "lg:row-start-2", wire: "in a situation" },
-  { id: "trigger", title: "Trigger run", sub: "Minutes after a fire", icon: Zap, doc: "trigger-runs", row: "lg:row-start-3", wire: "on a fire" },
-  { id: "chat", title: "Chat", sub: "Whenever you ask", icon: MessageCircle, doc: "chat", row: "lg:row-start-4", wire: "when you ask" },
+  { id: "morning", title: "Morning run", sub: "At 8 AM, each analyst reviews every stock that needs an answer.", icon: Sun, doc: "morning-runs", row: "lg:row-start-2", wire: "every morning" },
+  { id: "trigger", title: "Trigger run", sub: "When a trigger fires, its analyst reviews that stock within minutes.", icon: Zap, doc: "trigger-runs", row: "lg:row-start-3", wire: "on a trigger" },
+  { id: "chat", title: "Chat", sub: "Ask about any stock, change its plan or start research yourself.", icon: MessageCircle, doc: "chat", row: "lg:row-start-4", wire: "when you ask" },
 ];
 
 const PLAN = ["Buy if near $401", "Sell if below $384", "Review every 30 days"] as const;
@@ -89,7 +89,7 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
   return (
     <div
       ref={box}
-      className="relative overflow-hidden rounded-2xl border bg-muted/40 px-4 pb-8 pt-8 sm:px-9"
+      className="relative overflow-hidden rounded-2xl border bg-muted/40 px-4 py-8 sm:px-9"
       style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
     >
       <svg className="pointer-events-none absolute inset-0 size-full overflow-visible" aria-hidden>
@@ -110,8 +110,8 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
       </svg>
 
       <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] lg:grid-rows-[auto_auto_auto_auto] lg:items-center lg:gap-x-28 lg:gap-y-6">
-        <Node ref={at("discovery")} className="lg:col-start-1 lg:row-start-1 lg:mb-6" icon={Search} title="Discovery" sub="Screens earnings, movers and the web" onOpen={() => onOpen("discovery")} />
-        <Node ref={at("writer")} className="lg:col-start-2 lg:row-start-1 lg:mb-6" icon={PenLine} title="The Writer" sub="Researches one stock in depth" onOpen={() => onOpen("writer")} />
+        <Node ref={at("discovery")} className="lg:col-start-1 lg:row-start-1 lg:mb-6" icon={Search} title="Discovery" sub="Screens earnings, movers and the web for stocks that fit an analyst." onOpen={() => onOpen("discovery")} />
+        <Node ref={at("writer")} className="lg:col-start-2 lg:row-start-1 lg:mb-6" icon={PenLine} title="The Writer" sub="Researches each one in depth and writes its thesis and plan." onOpen={() => onOpen("writer")} />
 
         {AGENTS.map((a) => (
           <Node key={a.id} ref={at(a.id)} className={cn("lg:col-start-1", a.row)} icon={a.icon} title={a.title} sub={a.sub} onOpen={() => onOpen(a.doc)} />
@@ -164,12 +164,6 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
         </button>
       </div>
 
-      <div className="relative mt-8 flex flex-wrap justify-between gap-x-5 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          <b className="font-medium text-foreground">Discovery and the Writer fill the book.</b> Three agents read it: on a schedule, on a fire, or when you ask.
-        </span>
-        <span>Open any step to read how it works.</span>
-      </div>
     </div>
   );
 }

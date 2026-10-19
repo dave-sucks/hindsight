@@ -52,20 +52,20 @@ export function DocsHome({ tools, setups, guide }: { tools: readonly CatalogTool
           <StockStory onOpen={setDoc} />
         </section>
 
-        <section className="flex flex-col gap-8" aria-labelledby="flow-h">
-          <div className="flex flex-col gap-2.5">
-            <Eyebrow>The workflow</Eyebrow>
-            <TwoTone id="flow-h" lead="How the pieces connect." rest="Discovery and the Writer fill the book with theses. Three agents read them, and what they decide comes out as buys, sales and holds." />
-          </div>
-          <LoopCanvas onOpen={setDoc} />
-        </section>
-
         <section className="flex flex-col gap-8" aria-labelledby="concepts-h">
           <div className="flex flex-col gap-2.5">
             <Eyebrow>Concepts</Eyebrow>
             <TwoTone id="concepts-h" lead="The few ideas everything is built on." rest="Learn these and every screen makes sense." />
           </div>
           <ConceptCards onOpen={setDoc} />
+        </section>
+
+        <section className="flex flex-col gap-8" aria-labelledby="flow-h">
+          <div className="flex flex-col gap-2.5">
+            <Eyebrow>The workflow</Eyebrow>
+            <TwoTone id="flow-h" lead="How the pieces connect." rest="Discovery and the Writer fill the book with theses. Three agents read them, and what they decide comes out as buys, sales and holds." />
+          </div>
+          <LoopCanvas onOpen={setDoc} />
         </section>
 
         <section id="tools" className="flex scroll-mt-20 flex-col gap-8" aria-labelledby="tools-h">
