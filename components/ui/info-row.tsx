@@ -39,7 +39,7 @@ export function InfoRow({
   valueClassName,
   tooltip,
 }: {
-  label: string;
+  label: React.ReactNode;
   value?: React.ReactNode;
   description?: React.ReactNode;
   children?: React.ReactNode;

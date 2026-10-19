@@ -20,9 +20,11 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRightLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { MoneySendFlow02Icon } from "@hugeicons/core-free-icons";
+import { EnvDot } from "@/components/settings/EnvironmentSwitcher";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InfoRow } from "@/components/ui/info-row";
@@ -31,10 +33,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -257,19 +256,11 @@ export function TradeButton({
           void start("BUY");
         }}
       >
-        <ArrowRightLeft />
+        <HugeiconsIcon icon={MoneySendFlow02Icon} />
       </Button>
 
       <Dialog open={open} onOpenChange={sending ? undefined : setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{step === "review" ? "Review order" : `Trade ${ticker}`}</DialogTitle>
-            <DialogDescription>
-              {step === "review"
-                ? "Check it over. Nothing is sent until you place it."
-                : "A market order, sent to Alpaca when you place it."}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent aria-label={step === "review" ? `Review the ${ticker} order` : `Trade ${ticker}`}>
 
           {loading || !ticket ? (
             <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
@@ -284,19 +275,14 @@ export function TradeButton({
             </div>
           ) : step === "form" ? (
             <div className="grid gap-4">
-              <div className="flex items-center justify-between gap-2">
-                <Tabs value={side} onValueChange={(v) => switchSide(v as Side)}>
-                  <TabsList>
-                    <TabsTrigger value="BUY">Buy</TabsTrigger>
-                    <TabsTrigger value="SELL" disabled={!canSell}>
-                      Sell
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-                <Badge variant={isLive ? "default" : "secondary"}>
-                  {isLive ? "Live account — real money" : "Paper account"}
-                </Badge>
-              </div>
+              <Tabs value={side} onValueChange={(v) => switchSide(v as Side)}>
+                <TabsList>
+                  <TabsTrigger value="BUY">Buy</TabsTrigger>
+                  <TabsTrigger value="SELL" disabled={!canSell}>
+                    Sell
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
 
               {lanes.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -307,8 +293,18 @@ export function TradeButton({
               ) : (
                 <>
                   <div>
+                    <InfoRow
+                      label={
+                        <span className="inline-flex items-center gap-2">
+                          <EnvDot env={ticket.environment} />
+                          {isLive ? "Live account cash" : "Paper account cash"}
+                        </span>
+                      }
+                      mono
+                      value={ticket.cash != null ? formatCurrency(ticket.cash) : "—"}
+                    />
                     {lanes.length > 1 ? (
-                      <InfoRow label="Analyst">
+                      <InfoRow label="Analyst" description={openNote}>
                         <Select value={laneId} onValueChange={(v) => v && resetFor(lanes.find((l) => l.analystId === v) ?? null)}>
                           <SelectTrigger size="sm">
                             <SelectValue>{lane?.analystName}</SelectValue>
@@ -323,11 +319,8 @@ export function TradeButton({
                         </Select>
                       </InfoRow>
                     ) : (
-                      <InfoRow label="Analyst" value={lane?.analystName} />
+                      <InfoRow label="Analyst" value={lane?.analystName} description={openNote} />
                     )}
-                    {side === "BUY" ? (
-                      <InfoRow label="Cash" mono value={ticket.cash != null ? formatCurrency(ticket.cash) : "—"} />
-                    ) : null}
                     {lane?.position ? (
                       <InfoRow
                         label="You own"
@@ -341,7 +334,6 @@ export function TradeButton({
                     <p className="text-sm text-muted-foreground">{lane.buy.reason}</p>
                   ) : (
                     <>
-                    {openNote ? <p className="text-sm text-muted-foreground">{openNote}</p> : null}
                     <div className="grid gap-3">
                       <div className="grid gap-1.5">
                         <Label htmlFor="trade-shares">Shares</Label>
@@ -422,7 +414,7 @@ export function TradeButton({
           ) : (
             <div className="grid gap-4">
               <p className="text-lg font-medium">{sentence}</p>
-              {openNote ? <p className="text-sm text-muted-foreground">{openNote}</p> : null}
+              {openNote ? <p className="text-xs text-muted-foreground">{openNote}</p> : null}
               <div>
                 <InfoRow label="Account" value={isLive ? "Live — real money" : "Paper"} />
                 <InfoRow label="Analyst" value={lane?.analystName} />
