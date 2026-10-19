@@ -4,10 +4,9 @@
  *
  * The rules are the ones the agent paths already obey, nothing new: a sale
  * sells only what is held and never races a sale already sent; an add stays
- * inside the analyst's "most in one stock". Two are the account's own: a buy
- * is paid from cash, never margin, and every holding has a floor — a new
- * holding needs a stop unless its thesis already has one. A stop or target
- * given sits below / above the price, because each becomes a sell trigger.
+ * inside the analyst's "most in one stock". One is the account's own: a buy is
+ * paid from cash, never margin. A stop or target is optional (the analyst sets
+ * what's missing); one given sits below / above the price, as a sell trigger.
  */
 
 /** What a buy on this lane does. */
@@ -120,10 +119,9 @@ export function planManualOrder(
     return { ok: true, intent: "ADD", shares };
   }
 
-  // A new holding: a stop is required unless its thesis has a floor; a level
-  // given becomes a sell trigger on the fill, so it sits on the right side.
+  // A new holding: a level given becomes a sell trigger on the fill, so it
+  // sits on the right side of the price; one left out is the analyst's to set.
   const { targetPrice, stopLoss } = input;
-  if (stopLoss == null && buy.stopLoss == null) return { ok: false, error: "Set a stop — every holding needs a floor." };
   if (stopLoss != null && (!Number.isFinite(stopLoss) || stopLoss <= 0)) return { ok: false, error: "The stop isn't a price." };
   if (targetPrice != null && (!Number.isFinite(targetPrice) || targetPrice <= 0)) return { ok: false, error: "The target isn't a price." };
   if (stopLoss != null && stopLoss >= livePrice) {

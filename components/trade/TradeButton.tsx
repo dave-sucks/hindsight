@@ -55,7 +55,7 @@ const shareWord = (n: number) => `share${n === 1 ? "" : "s"}`;
 /** A level on the review: the one typed, else the thesis's own, else the analyst's to set. */
 function levelLine(typed: string, thesis: number | null): string {
   if (typed.trim()) return `$${Number(typed).toFixed(2)}`;
-  return thesis != null ? `$${thesis.toFixed(2)} (the thesis's)` : "Left to the analyst";
+  return thesis != null ? `$${thesis.toFixed(2)} (the thesis's)` : "Set by the analyst";
 }
 
 /** Said only when the price isn't from the open market right now. */
@@ -193,6 +193,8 @@ export function TradeButton({
       : null;
 
   const isLive = ticket?.environment === "LIVE";
+  // A new holding with no stop typed and none on its thesis: unprotected until the writer lands.
+  const noFloorYet = isOpenBuy && lane?.buy.kind === "OPEN" && !stop.trim() && lane.buy.stopLoss == null;
   const sellsAll = planned?.intent === "CLOSE";
   const sentence = planned
     ? `${side === "BUY" ? "Buy" : "Sell"} ${sellsAll ? "all " : ""}${planned.shares} ${shareWord(planned.shares)} of ${ticker}`
@@ -227,7 +229,7 @@ export function TradeButton({
         return;
       }
       const done = `${side === "BUY" ? "Buy" : "Sell"} ${result.shares} ${shareWord(result.shares)} of ${ticker} sent to Alpaca`;
-      const research = result.researchStarted ? ` ${lane.analystName}'s writer is researching it now.` : "";
+      const research = result.researchStarted ? ` ${lane.analystName} is writing its plan now.` : "";
       if (result.unconfirmed) {
         toast.warning(`${done}, but Alpaca hasn't confirmed it yet — it'll show up within about 5 minutes.${research}`);
       } else {
@@ -377,9 +379,7 @@ export function TradeButton({
                       {isOpenBuy ? (
                         <div className="grid grid-cols-2 gap-3">
                           <div className="grid gap-1.5">
-                            <Label htmlFor="trade-stop">
-                              {lane?.buy.kind === "OPEN" && lane.buy.stopLoss != null ? "Stop (optional)" : "Stop"}
-                            </Label>
+                            <Label htmlFor="trade-stop">Stop (optional)</Label>
                             <Input
                               id="trade-stop"
                               type="number"
@@ -446,6 +446,9 @@ export function TradeButton({
                   </InfoRow>
                 ) : null}
               </div>
+              {noFloorYet ? (
+                <p className="text-sm text-muted-foreground">No floor yet — the analyst sets it right after the buy.</p>
+              ) : null}
               <p className="text-xs text-muted-foreground">
                 A market order fills at the next available price, which can differ from this estimate.
                 {!ticket.marketOpen ? " The market is closed, so it fills when it opens." : ""}

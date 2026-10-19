@@ -69,17 +69,10 @@ describe("planManualOrder — buys", () => {
     expect(planManualOrder(held, { side: "BUY", shares: 6, reviewedPrice: 878.84 }, m(878.84))).toMatchObject({ ok: false });
   });
 
-  it("opens without a stop when the thesis has a floor", () => {
-    expect(planManualOrder(watched, { side: "BUY", shares: 3, reviewedPrice: 900 }, m(900))).toEqual({ ok: true, intent: "OPEN", shares: 3 });
-  });
-
-  it("needs a stop when the thesis has no floor", () => {
+  it("opens with no stop or target, even when the thesis has no floor", () => {
     const bare: TradeLane = { ...watched, buy: { kind: "OPEN", thesisId: null, needsResearch: true, targetPrice: null, stopLoss: null } };
-    expect(planManualOrder(bare, { side: "BUY", shares: 3, reviewedPrice: 900 }, m(900))).toEqual({
-      ok: false,
-      error: "Set a stop — every holding needs a floor.",
-    });
-    expect(planManualOrder(bare, { side: "BUY", shares: 3, reviewedPrice: 900, stopLoss: 850 }, m(900))).toMatchObject({ ok: true });
+    expect(planManualOrder(watched, { side: "BUY", shares: 3, reviewedPrice: 900 }, m(900))).toEqual({ ok: true, intent: "OPEN", shares: 3 });
+    expect(planManualOrder(bare, { side: "BUY", shares: 3, reviewedPrice: 900 }, m(900))).toEqual({ ok: true, intent: "OPEN", shares: 3 });
   });
 
   it("opens with a stop below and a target above the price", () => {

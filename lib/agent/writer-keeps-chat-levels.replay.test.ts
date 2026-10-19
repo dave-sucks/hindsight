@@ -68,6 +68,19 @@ describe("MU 10:56:57 — the writer's refresh for the chat", () => {
     expect(String(args.rationale)).toMatch(/This refresh's own: entry \$906, stop \$850, target \$1500, entry \$982\.\]$/);
   }, LOAD_MS);
 
+  it("a refresh after a buy placed by hand keeps the levels as the chat's does; a morning run's does not", async () => {
+    let keeps: (a: { keepLevels?: boolean }, m: string | null) => boolean = () => false;
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
+      keeps = (await import("@/lib/agent/run-thesis-writer")).keepsExistingLevels;
+    });
+    jest.dontMock("@/lib/prisma");
+    expect(keeps({ keepLevels: true }, null)).toBe(true);
+    expect(keeps({}, "PRINCIPAL_CHAT")).toBe(true);
+    expect(keeps({}, "RESEARCH_RUN")).toBe(false);
+    expect(keeps({}, null)).toBe(false);
+  }, LOAD_MS);
+
   it("a refresh the chat did not ask for (a morning run's) sends its levels: entry_price wins, the $982 comes back refused", async () => {
     const { result } = await replay(await save());
     expect(opsOn(result, BUY)).toEqual([expect.objectContaining({ text: "Entry $982", ok: false, to: 982 })]);

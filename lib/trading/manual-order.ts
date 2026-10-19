@@ -28,7 +28,7 @@ import {
 } from "@/lib/proposals/execute";
 import { PROPOSAL_TTL_MS } from "@/lib/proposals/maybe-await-approval";
 import { addWatchlistItem } from "@/lib/actions/watchlist.actions";
-import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
+import { sendWriterAfterBuy } from "@/lib/trading/after-buy";
 import {
   addRoom,
   planManualOrder,
@@ -264,6 +264,8 @@ export async function placeManualOrder(opts: {
   let orderId: string;
   /** The seed this buy turned LONG — put back if the buy doesn't go. */
   let madeLong: string | null = null;
+  /** The thesis a new holding lands on. */
+  let openedThesisId: string | null = null;
   const undoLong = async () => {
     if (!madeLong) return;
     await prisma.thesis
@@ -345,6 +347,7 @@ export async function placeManualOrder(opts: {
       });
       return ord.id;
     });
+    openedThesisId = thesisId;
     if (!staged) {
       await undoLong();
       return { ok: false, error: `${lane.analystName} already holds ${ticker} or has a buy of it in flight. Reload and try again.` };
@@ -383,32 +386,20 @@ export async function placeManualOrder(opts: {
       .findUnique({ where: { id: orderId }, select: { quantity: true } })
       .catch(() => null))?.quantity ?? plan.shares;
 
-  // A stock bought with no view gets its research now — the writer the
-  // sheet's send-to-agent button starts — rather than waiting for a run to
-  // notice it. A failed dispatch never fails the trade: the held stock's
-  // missing research flags it on the next run (STALE_RESEARCH).
-  const startResearch = async (): Promise<boolean> => {
-    if (!madeLong) return false;
-    try {
-      await startWriterRun({
-        userId: opts.userId,
-        accountId: opts.accountId,
-        analystId: lane.analystId,
-        environment,
-        ticker,
-        mode: "refresh",
-        existingThesisId: madeLong,
-        reviewCadenceDays: null,
-        reason: `Bought by hand with no research yet (${ticker}); write its view and plan.`,
-        source: "USER",
-        dispatchedBy: "manual",
-      });
-      return true;
-    } catch (err) {
-      console.error(`[placeManualOrder] writer dispatch failed for ${ticker}:`, err instanceof Error ? err.message : err);
-      return false;
-    }
-  };
+  // After a new holding lands, the writer fills a missing view, floor or
+  // target (lib/trading/after-buy.ts). A failed dispatch never fails the trade.
+  const startResearch = async (): Promise<boolean> =>
+    plan.intent === "OPEN" && openedThesisId
+      ? sendWriterAfterBuy({
+          userId: opts.userId,
+          accountId: opts.accountId,
+          analystId: lane.analystId,
+          environment,
+          ticker,
+          thesisId: openedThesisId,
+          noView: madeLong != null,
+        }).catch(() => false)
+      : false;
 
   // ── Send it: the approval path every proposal takes ────────────────────────
   try {
