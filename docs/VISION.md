@@ -4,7 +4,7 @@
 >
 > Today (2026-05-07) the answer is **partially yes, mostly no**. This document describes the answer we're working toward.
 
-This is the source of truth for **what Hindsight is supposed to be**. For what it actually does today, read [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) (the interactive page, driven by [`lib/agent/workflow-registry.ts`](../lib/agent/workflow-registry.ts)). For open work, read Linear (team Davesucks).
+This is the source of truth for **what Hindsight is supposed to be**. For what it actually does today, read [the guide](guide/README.md) (drawn at `/docs`). For open work, read Linear (team Davesucks).
 
 ---
 

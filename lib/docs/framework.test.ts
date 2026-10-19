@@ -7,6 +7,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
 import { DISPATCH_CAP } from "@/lib/agent/system-prompts/discovery";
+import { MODES } from "@/lib/agent/modes";
 import { buildFrameworkData } from "./framework";
 import { loadGuide } from "./guide";
 import { parseDoc } from "./guide-parse";
@@ -54,6 +55,15 @@ describe("each agent doc's facts strip", () => {
     const f = Object.fromEntries(facts && facts.kind === "facts" ? facts.facts : []);
     const d = doors[door];
     expect({ model: f.Model, steps: f.Steps, tools: f.Tools }).toEqual({ model: d.model, steps: `Up to ${d.maxSteps}`, tools: String(d.tools.length) });
+  });
+
+  it("the analyst builder states the builder's model and steps, and the builder and editor's tools together", () => {
+    const facts = parseDoc(guide["analyst-builder"])
+      .parts.flatMap((p) => (p.kind === "section" ? p.blocks : []))
+      .find((b) => b.kind === "facts");
+    const f = Object.fromEntries(facts && facts.kind === "facts" ? facts.facts : []);
+    const tools = new Set([...(MODES.builder.toolAllowlist ?? []), ...(MODES.editor.toolAllowlist ?? []), "suggest_config"]);
+    expect({ model: f.Model, steps: f.Steps, tools: f.Tools }).toEqual({ model: MODES.builder.model, steps: `Up to ${MODES.builder.maxSteps}`, tools: String(tools.size) });
   });
 });
 

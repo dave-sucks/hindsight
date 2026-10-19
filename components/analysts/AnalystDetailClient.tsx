@@ -24,9 +24,6 @@ import {
 } from "@/lib/actions/watchlist.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
-import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
-import { TeamSheetContent } from "@/components/domain/team-card";
-import { getTeam } from "@/lib/agent/workflow-registry";
 import { TradeRow, WatchlistRow, AddStockRow } from "@/components/ui/trade-row";
 import { closeTrade } from "@/lib/actions/closeTrade.actions";
 import { ChipTabs } from "@/components/ui/chip-tabs";
@@ -41,7 +38,6 @@ import {
   Settings2,
   FileText,
   Eye,
-  X,
   Pencil,
   Trash2,
   Loader2,
@@ -362,7 +358,6 @@ export default function AnalystDetailClient({
 
   const router = useRouter();
   const [configOpen, setConfigOpen] = useState(false);
-  const [overviewOpen, setOverviewOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
   // Theses tab status filter (mirrors the Findings filter pattern — a chip row
   // under the tab). Snapshot shows active (HOLDING+WATCHING) with no filter.
@@ -646,9 +641,9 @@ export default function AnalystDetailClient({
                     <ShowcaseIcon className="h-3.5 w-3.5" />
                     How Runs Work
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setOverviewOpen(true)}>
+                  <DropdownMenuItem onClick={() => router.push("/docs/analysts")}>
                     <ScanSearch className="h-3.5 w-3.5" />
-                    Run Workflow
+                    How analysts work
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -985,21 +980,6 @@ export default function AnalystDetailClient({
         config={config}
         livePrices={livePrices}
       />
-
-      {/* Agent overview sheet */}
-      <Sheet open={overviewOpen} onOpenChange={setOverviewOpen}>
-        <SheetContent side="right" showCloseButton={false} className="w-full sm:max-w-md overflow-y-auto">
-          <div className="flex items-center justify-between px-4 pt-4 pb-2">
-            <SheetTitle>Research Agent</SheetTitle>
-            <SheetClose render={<Button variant="ghost" size="icon-sm" />}>
-              <X className="h-4 w-4" />
-            </SheetClose>
-          </div>
-          <div className="px-4 pb-6">
-            <TeamSheetContent team={getTeam("agent")} />
-          </div>
-        </SheetContent>
-      </Sheet>
 
       <PromoteAnalystDialog
         analystId={config.id}

@@ -382,7 +382,7 @@ Apply per morning run (and cross-reference the day's tactical runs):
      price with trim/target rungs still set for the old entry is a half-done
      re-ladder.
    Cross-reference: the tactical run must pass `triggerId` on its close-out
-   (Section E / [`tactical.md`](../../app/(root)/agent-workflow/content/tactical.md)),
+   (see [Trigger runs](../guide/agents/trigger-runs.md)),
    so the `ThesisUpdate` links back to the firing rung — confirm the link exists
    before trusting the fire's audit trail.
 

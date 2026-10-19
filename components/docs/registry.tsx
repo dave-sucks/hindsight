@@ -25,6 +25,7 @@ export type DocSlug =
   | "morning-runs"
   | "trigger-runs"
   | "chat"
+  | "analyst-builder"
   | "analysts"
   | "theses"
   | "triggers"
@@ -54,6 +55,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, blurb: "Every weekday morning, each analyst reviews its whole book." },
   { slug: "trigger-runs", title: "Trigger runs", group: "Agents", icon: Zap, blurb: "A trigger fires and the analyst looks at that one stock within minutes." },
   { slug: "chat", title: "Chat", group: "Agents", icon: MessageCircle, blurb: "Talk to one analyst, or to the whole account." },
+  { slug: "analyst-builder", title: "Analyst builder", group: "Agents", icon: UserRound, blurb: "Interviews you and proposes a whole analyst, checked against today's market." },
   { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, blurb: "A belief we can be wrong about, and the plan that acts on it." },
   { slug: "triggers", title: "Triggers", group: "Concepts", icon: Zap, blurb: "One sentence each: sell below, add above, review every 30 days." },
   { slug: "analysts", title: "Analysts", group: "Concepts", icon: UserRound, blurb: "A trading style with its own universe, sizing and sell rules." },
@@ -90,3 +92,19 @@ export const GROUPS: ReadonlyArray<{ label: string; group: DocMeta["group"] }> =
 ];
 
 export const docHref = (slug: string) => (slug === OVERVIEW ? "/docs/overview" : `/docs/${slug}`);
+
+/** The doc that explains a run, by the run's mode: the run page's "how it works" button opens it. */
+export function docForRunMode(mode: string | null | undefined): DocSlug {
+  switch (mode) {
+    case "INTRADAY_TACTICAL":
+      return "trigger-runs";
+    case "DISCOVERY":
+      return "discovery";
+    case "THESIS_WRITER":
+      return "writer";
+    case "PRINCIPAL_CHAT":
+      return "chat";
+    default:
+      return "morning-runs";
+  }
+}

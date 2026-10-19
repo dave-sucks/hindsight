@@ -2,7 +2,7 @@
 
 **How the pieces fit.** Data comes in, one record holds it, clocks wake the agents, and every trade waits for you.
 
-Five agents work on one shared record, and the analyst builder sets up the analysts they work for. Each part of the system is defined in one place, so no two parts can disagree about a stock.
+Five agents work on one shared record, and [the analyst builder](agents/analyst-builder.md) sets up the analysts they work for. Each part of the system is defined in one place, so no two parts can disagree about a stock.
 
 <!-- asset: system-layers -->
 
@@ -75,6 +75,7 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 | [Morning run](agents/morning-runs.md) | 8:00 AM ET on run days | Its whole book, each stock at the size today needs | The plan, its verdict and a note | Proposes |
 | [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires | The one stock it woke for, with the fire | The plan and a note | Proposes |
 | [Chat](agents/chat.md) | When you type | Stocks by name, when the conversation needs them | Also the belief and the direction | Proposes, at your word |
+| [Analyst builder](agents/analyst-builder.md) | When you build or edit one | Your answers, the playbook, today's market | A whole analyst, on your yes | Never |
 
 ## What an agent is told
 

@@ -301,7 +301,7 @@ plus `get_stock_data`.
 - /intelligence — read-only view of the kept signal history (Findings +
   Health). No pipeline trigger, no monitor editing — the jobs are deleted.
   /intelligence/ingest is the paste-a-thesis path.
-- /agent-workflow — visual "How Hindsight Works" guide
+- /docs — the guide (docs/guide/ markdown), its own shell; /how-it-works — the tour and The Framework; /agent-workflow redirects
 - /settings — app settings
 
 ## API Routes

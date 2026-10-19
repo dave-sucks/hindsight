@@ -88,6 +88,7 @@ const REFS: Record<string, { title: string; icon: LucideIcon }> = {
   "morning-runs": { title: "the morning run", icon: Sun },
   "trigger-runs": { title: "the trigger run", icon: Zap },
   chat: { title: "chat", icon: MessageCircle },
+  "analyst-builder": { title: "the analyst builder", icon: UserRound },
   theses: { title: "theses", icon: FileText },
   triggers: { title: "triggers", icon: Zap },
   analysts: { title: "analysts", icon: UserRound },

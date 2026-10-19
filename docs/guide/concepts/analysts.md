@@ -47,7 +47,7 @@ Every setup's rules in full: [Setups](../reference/setups.md).
 
 ## Built by conversation
 
-Describe the style and the builder interviews you with question cards, checks the idea against today's market, and proposes the whole analyst side by side for you to accept. The editor on an analyst's page changes one the same way.
+Describe the style and the builder interviews you with question cards, checks the idea against today's market, and proposes the whole analyst side by side for you to accept. The editor on an analyst's page changes one the same way. How it works: [the analyst builder](../agents/analyst-builder.md).
 
 ```chat
 caption: Building a new analyst.
