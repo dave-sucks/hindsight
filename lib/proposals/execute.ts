@@ -460,8 +460,10 @@ export async function approveProposal(
       // reconcile-orders; targets/stops were already set from the
       // proposal args.
       entryPrice: order.position.avgCost,
-      targetPrice: effectiveTarget ?? order.position.avgCost,
-      stopLoss: effectiveStop ?? order.position.avgCost,
+      // A buy placed by hand may name neither: the thesis keeps its own
+      // levels. Never the entry, which would arm a sale at the buy price.
+      targetPrice: effectiveTarget ?? null,
+      stopLoss: effectiveStop ?? null,
     });
   } else if (intent === "CLOSE") {
     await closeThesisOnApproval({

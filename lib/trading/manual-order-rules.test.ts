@@ -66,12 +66,17 @@ describe("planManualOrder — buys", () => {
     expect(planManualOrder(held, { side: "BUY", shares: 6, reviewedPrice: 878.84 }, 878.84)).toMatchObject({ ok: false });
   });
 
+  it("opens with neither a stop nor a target", () => {
+    expect(planManualOrder(watched, { side: "BUY", shares: 3, reviewedPrice: 900 }, 900)).toEqual({ ok: true, intent: "OPEN", shares: 3 });
+  });
+
   it("opens with a stop below and a target above the price", () => {
     const ok = { side: "BUY" as const, shares: 3, reviewedPrice: 900, stopLoss: 800, targetPrice: 1100 };
     expect(planManualOrder(watched, ok, 900)).toEqual({ ok: true, intent: "OPEN", shares: 3 });
     expect(planManualOrder(watched, { ...ok, stopLoss: 950 }, 900)).toMatchObject({ ok: false });
     expect(planManualOrder(watched, { ...ok, targetPrice: 890 }, 900)).toMatchObject({ ok: false });
-    expect(planManualOrder(watched, { ...ok, stopLoss: null }, 900)).toMatchObject({ ok: false });
+    expect(planManualOrder(watched, { ...ok, stopLoss: null }, 900)).toMatchObject({ ok: true });
+    expect(planManualOrder(watched, { ...ok, stopLoss: -5 }, 900)).toMatchObject({ ok: false });
   });
 
   it("buys whole shares only", () => {

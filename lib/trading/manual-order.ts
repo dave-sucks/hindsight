@@ -271,8 +271,8 @@ export async function placeManualOrder(opts: {
       });
       madeLong = made.count > 0 ? thesisId : null;
     }
-    const stop = opts.order.stopLoss!;
-    const target = opts.order.targetPrice!;
+    const stop = opts.order.stopLoss ?? null;
+    const target = opts.order.targetPrice ?? null;
     const staged = await prisma.$transaction(async (tx) => {
       // One new holding per analyst and stock. Two requests at once (two tabs,
       // a retry racing a slow first try) queue on this lock, and the second

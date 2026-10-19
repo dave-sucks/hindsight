@@ -4,8 +4,10 @@
  *
  * The rules are the ones the agent paths already obey, nothing new: a sale
  * sells only what is held and never races a sale already sent; an add stays
- * inside the analyst's "most in one stock"; a new holding needs a floor below
- * the price and a target above it, because those become its sell triggers.
+ * inside the analyst's "most in one stock"; a new holding's floor, when given,
+ * sits below the price and its target above it, because they become its sell
+ * triggers. Neither is required: left blank, the thesis keeps its own and the
+ * analyst sets the rest.
  */
 
 /** What a buy on this lane does. */
@@ -102,15 +104,16 @@ export function planManualOrder(
     return { ok: true, intent: "ADD", shares };
   }
 
-  // A new holding: its floor and target become the stock's sell triggers on
-  // the fill, so both are required and must sit on the right side of the price.
+  // A new holding: a floor or target given becomes the stock's sell trigger on
+  // the fill, so it must sit on the right side of the price. Either may be
+  // left out — the thesis keeps its own, and the analyst sets what's missing.
   const { targetPrice, stopLoss } = input;
-  if (stopLoss == null || !Number.isFinite(stopLoss) || stopLoss <= 0) return { ok: false, error: "Set a stop." };
-  if (targetPrice == null || !Number.isFinite(targetPrice) || targetPrice <= 0) return { ok: false, error: "Set a target." };
-  if (stopLoss >= livePrice) {
+  if (stopLoss != null && (!Number.isFinite(stopLoss) || stopLoss <= 0)) return { ok: false, error: "The stop isn't a price." };
+  if (targetPrice != null && (!Number.isFinite(targetPrice) || targetPrice <= 0)) return { ok: false, error: "The target isn't a price." };
+  if (stopLoss != null && stopLoss >= livePrice) {
     return { ok: false, error: `The stop ($${stopLoss.toFixed(2)}) has to be below the price ($${livePrice.toFixed(2)}).` };
   }
-  if (targetPrice <= livePrice) {
+  if (targetPrice != null && targetPrice <= livePrice) {
     return { ok: false, error: `The target ($${targetPrice.toFixed(2)}) has to be above the price ($${livePrice.toFixed(2)}).` };
   }
   return { ok: true, intent: "OPEN", shares };

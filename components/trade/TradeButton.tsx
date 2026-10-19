@@ -52,11 +52,11 @@ type Step = "form" | "review";
 
 const shareWord = (n: number) => `share${n === 1 ? "" : "s"}`;
 
-function priceAsOf(ticket: TradeTicket): string {
-  if (ticket.priceLive) return "Live";
-  if (!ticket.priceAt) return "Last price";
+/** Said only when the price isn't from the open market right now. */
+function priceAsOf(ticket: TradeTicket): string | null {
+  if (ticket.priceLive || !ticket.priceAt) return null;
   const d = new Date(ticket.priceAt);
-  return `Last price, ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  return `last price ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 }
 
 export function TradeButton({
@@ -208,7 +208,12 @@ export function TradeButton({
           shares: planned.shares,
           reviewedPrice: price,
           environment: ticket.environment,
-          ...(isOpenBuy ? { stopLoss: Number(stop), targetPrice: Number(target) } : {}),
+          ...(isOpenBuy
+            ? {
+                stopLoss: stop.trim() ? Number(stop) : null,
+                targetPrice: target.trim() ? Number(target) : null,
+              }
+            : {}),
         }),
       });
       const result = (await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }))) as ManualOrderResult;
@@ -313,12 +318,6 @@ export function TradeButton({
                     ) : (
                       <InfoRow label="Analyst" value={lane?.analystName} />
                     )}
-                    <InfoRow
-                      label="Market price"
-                      mono
-                      value={price != null ? `$${price.toFixed(2)}` : "—"}
-                      description={priceAsOf(ticket)}
-                    />
                     {lane?.position ? (
                       <InfoRow
                         label="You own"
@@ -353,6 +352,13 @@ export function TradeButton({
                             </Button>
                           ) : null}
                         </div>
+                        {price != null ? (
+                          <p className="text-xs text-muted-foreground tabular-nums">
+                            {formatCurrency(price)} per share
+                            {priceAsOf(ticket) ? ` (${priceAsOf(ticket)})` : ""}
+                            {qty > 0 && Number.isFinite(qty) ? ` · ${formatCurrency(qty * price)} total` : ""}
+                          </p>
+                        ) : null}
                         {side === "BUY" && lane?.buy.kind === "ADD" ? (
                           <p className="text-xs text-muted-foreground">
                             Up to {lane.buy.maxShares} more {shareWord(lane.buy.maxShares)} fit {lane.analystName}&apos;s
@@ -363,7 +369,7 @@ export function TradeButton({
                       {isOpenBuy ? (
                         <div className="grid grid-cols-2 gap-3">
                           <div className="grid gap-1.5">
-                            <Label htmlFor="trade-stop">Stop</Label>
+                            <Label htmlFor="trade-stop">Stop (optional)</Label>
                             <Input
                               id="trade-stop"
                               type="number"
@@ -373,7 +379,7 @@ export function TradeButton({
                             />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="trade-target">Target</Label>
+                            <Label htmlFor="trade-target">Target (optional)</Label>
                             <Input
                               id="trade-target"
                               type="number"
@@ -388,19 +394,10 @@ export function TradeButton({
                     </>
                   )}
 
-                  {planned && total != null ? (
-                    <div>
-                      <InfoRow
-                        label={side === "BUY" ? "Estimated cost" : "Estimated proceeds"}
-                        mono
-                        value={formatCurrency(total)}
-                      />
-                      {pnl ? (
-                        <InfoRow label="Gain on these shares">
-                          <PriceChange dollarChange={pnl.dollar} percentChange={pnl.pct} size="sm" />
-                        </InfoRow>
-                      ) : null}
-                    </div>
+                  {pnl ? (
+                    <InfoRow label="Gain on these shares">
+                      <PriceChange dollarChange={pnl.dollar} percentChange={pnl.pct} size="sm" />
+                    </InfoRow>
                   ) : null}
 
                   {plan && !plan.ok ? <p className="text-xs text-destructive">{plan.error}</p> : null}
@@ -429,8 +426,8 @@ export function TradeButton({
                 />
                 {isOpenBuy ? (
                   <>
-                    <InfoRow label="Stop" mono value={`$${Number(stop).toFixed(2)}`} />
-                    <InfoRow label="Target" mono value={`$${Number(target).toFixed(2)}`} />
+                    <InfoRow label="Stop" mono value={stop.trim() ? `$${Number(stop).toFixed(2)}` : "Left to the analyst"} />
+                    <InfoRow label="Target" mono value={target.trim() ? `$${Number(target).toFixed(2)}` : "Left to the analyst"} />
                   </>
                 ) : null}
                 {pnl ? (
