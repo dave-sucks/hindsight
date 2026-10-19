@@ -46,7 +46,7 @@ export function DocsHome({ tools, setups, guide }: { tools: readonly CatalogTool
               as="h1"
               size="hero"
               lead="A research desk that never stops watching."
-              rest="Analysts find the stocks, write the case and guard every position. Nothing trades without you."
+              rest="Analysts find the stocks, write the case and guard every position. On the live account, nothing trades without you."
             />
           </div>
           <StockStory onOpen={setDoc} />
@@ -55,7 +55,7 @@ export function DocsHome({ tools, setups, guide }: { tools: readonly CatalogTool
         <section className="flex flex-col gap-8" aria-labelledby="flow-h">
           <div className="flex flex-col gap-2.5">
             <Eyebrow>The workflow</Eyebrow>
-            <TwoTone id="flow-h" lead="How the pieces connect." rest="Three ways to wake an analyst, one decision, and nothing trades without you. Open any step to read how it works." />
+            <TwoTone id="flow-h" lead="How the pieces connect." rest="Three ways to wake an analyst, one decision, and on the live account nothing trades without you. Open any step to read how it works." />
           </div>
           <LoopCanvas onOpen={setDoc} />
         </section>

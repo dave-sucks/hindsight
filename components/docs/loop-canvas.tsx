@@ -52,7 +52,7 @@ const NODES: readonly NodeDef[] = [
   { id: "decide", title: "The analyst decides", sub: "Sell, add, trim, hold, or redraw the plan.", icon: Sparkles, doc: "situations", wide: "lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:row-span-2", narrow: "col-span-2 row-start-5" },
   { id: "proposal", title: "Proposal", sub: "Every trade, with its reason.", icon: Send, tone: "warning", doc: "approvals", wide: "lg:col-span-1 lg:col-start-3 lg:row-start-2", narrow: "col-start-1 row-start-6" },
   { id: "update", title: "Thesis updated", sub: "Plans and floors change in place.", icon: RefreshCw, doc: "theses", wide: "lg:col-span-1 lg:col-start-3 lg:row-start-3", narrow: "col-start-2 row-start-6" },
-  { id: "approve", title: "You approve", sub: "Nothing fills without your yes.", icon: CheckCircle2, tone: "positive", doc: "approvals", wide: "lg:col-span-1 lg:col-start-4 lg:row-start-2", narrow: "col-span-2 row-start-7" },
+  { id: "approve", title: "You approve", sub: "On live, nothing fills without your yes.", icon: CheckCircle2, tone: "positive", doc: "approvals", wide: "lg:col-span-1 lg:col-start-4 lg:row-start-2", narrow: "col-span-2 row-start-7" },
   { id: "position", title: "Position", sub: "Its triggers keep watching it.", icon: Briefcase, doc: "triggers", wide: "lg:col-span-1 lg:col-start-4 lg:row-start-3", narrow: "col-span-2 row-start-8" },
 ];
 
