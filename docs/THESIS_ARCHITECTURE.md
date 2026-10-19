@@ -697,4 +697,4 @@ The principle: **the system was fundamentally sound, not fundamentally broken.**
 - [`PRINCIPLES.md`](./PRINCIPLES.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
 - [`plans/MORNING_RUN_V2_DESIGN.md`](git history) — the V2 prompt rewrite that applied the three-layer principle to the daily run
 - [`legacy/WATCHLIST_COLLAPSE_PLAN.md`](git history) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
-- [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) — the live operational view, driven by [`workflow-registry.ts`](../lib/agent/workflow-registry.ts)
+- [`docs/guide/`](guide/README.md) — the guide, drawn at `/docs`: one doc per agent and concept

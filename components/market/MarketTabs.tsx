@@ -17,14 +17,13 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, ScanSearch } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { EarningsCalendar } from "@/components/earnings/EarningsCalendar";
 import { MoversTable } from "@/components/movers/MoversTable";
 import { SignalFeed } from "@/components/intelligence/signal-feed";
-import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import type { Signal } from "@/components/intelligence/types";
 import type { MoverKind } from "@/lib/market-data/movers";
 import { MARKET_TABS, type MarketTab } from "@/lib/market/tabs";
@@ -88,9 +87,6 @@ export function MarketTabs({
             </TabsList>
             {tab === "signals" ? (
               <div className="flex items-center gap-1.5">
-                <HowItWorksSheet flow="intelligence">
-                  <ScanSearch className="h-4 w-4" />
-                </HowItWorksSheet>
                 <Button variant="outline" size="sm" onClick={loadSignals} disabled={signalsLoading}>
                   {signalsLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
