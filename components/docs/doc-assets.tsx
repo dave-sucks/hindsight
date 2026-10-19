@@ -7,6 +7,7 @@
  * or a name no doc uses, fails lib/docs/guide.test.ts.
  */
 
+import { SituationFlow } from "./assets/situations";
 import type { ComponentType } from "react";
 import type { GuideAsset } from "@/lib/docs/guide-parse";
 import type { DocsAgentId } from "@/lib/docs/tools";
@@ -32,6 +33,8 @@ export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   "system-layers": SystemLayers,
   /** One request to the model as squares, per agent: the Framework page's picture. */
   "request-grid": AgentRequests,
+  /** A stock's facts into one function, out as its situations: what puts it on the work list. */
+  "situation-flow": SituationFlow,
 };
 
 function AgentRequests() {

@@ -16,6 +16,8 @@ Each time a stock is read, its facts are turned into its list of situations. The
 - **Your words:** a note, a decline or a resized approval no run has answered yet.
 - **A recent sale:** a stock sold in the last two weeks is owed one look back.
 
+<!-- asset: situation-flow -->
+
 A stock can be in several at once. The most urgent leads, and none are hidden behind it.
 
 ## How they're answered
