@@ -34,6 +34,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { PinButton } from "@/components/stocks/PinButton";
+import { TradeButton } from "@/components/trade/TradeButton";
 import { formatCurrency } from "@/lib/format";
 import { TickBar, type Tick } from "@/components/ui/gauge";
 import {
@@ -1497,6 +1498,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
                   onSent={() => setRefreshKey((k) => k + 1)}
                 />
               ) : null}
+              <TradeButton ticker={ticker} analystId={state.analystId} />
               <PinButton ticker={ticker} />
             </>
           }
