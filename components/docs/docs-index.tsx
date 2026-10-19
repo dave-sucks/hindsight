@@ -29,7 +29,7 @@ function startsOf(guide: Readonly<Record<string, string>>, slug: string): string
 export function DocsIndex({ guide }: { guide: Readonly<Record<string, string>> }) {
   const agents = DOCS.filter((d) => d.group === "Agents");
   const concepts = DOCS.filter((d) => d.group === "Concepts");
-  const reference = DOCS.filter((d) => d.group === "Reference");
+  const groups = (["Deep dives", "Reference"] as const).map((g) => ({ title: g, docs: DOCS.filter((d) => d.group === g) }));
 
   return (
     <div className="flex flex-col gap-12">
@@ -69,17 +69,19 @@ export function DocsIndex({ guide }: { guide: Readonly<Record<string, string>> }
         </div>
       </section>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">Reference</h2>
-        <div className="flex flex-col border-t">
-          {reference.map((d) => (
-            <Link key={d.slug} href={`/docs/${d.slug}`} className="flex flex-col gap-1 border-b py-3 transition-colors hover:text-foreground sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
-              <span className="text-sm font-medium text-foreground">{d.title}</span>
-              <span className="text-sm text-muted-foreground">{d.blurb}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
+      {groups.map((g) => (
+        <section key={g.title} className="flex flex-col gap-4">
+          <h2 className="text-lg font-medium">{g.title}</h2>
+          <div className="flex flex-col border-t">
+            {g.docs.map((d) => (
+              <Link key={d.slug} href={`/docs/${d.slug}`} className="flex flex-col gap-1 border-b py-3 transition-colors hover:text-foreground sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+                <span className="shrink-0 text-sm font-medium text-foreground">{d.title}</span>
+                <span className="text-sm text-muted-foreground sm:text-right">{d.blurb}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

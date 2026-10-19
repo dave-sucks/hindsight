@@ -28,7 +28,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Wake:** a review trigger on a watch with no plan, like a price or a date, that brings the stock back for a fresh look.
 - **Watching:** on the watchlist, waiting for its buy.
 - **Agent Watch:** a watch with its own review clock, so its analyst looks at it on a schedule. A plain watch waits for its triggers.
-- **Holding:** bought. The buy filling turns a watch into a holding.
+- **Holding:** bought. A watch turns into a holding when the broker takes the buy.
 - **Passed:** researched and declined, kept so the stock isn't pitched again without a reason.
 - **Retired:** sold, dropped, proven wrong, or replaced by a newer thesis. The history stays.
 - **Promoted:** held in paper and just moved to live money; the next run re-enters or goes back to watching.
@@ -76,7 +76,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Proposal:** a buy, sale, add or trim waiting for your approval, with its reason (on paper, only when approval is turned on). It expires after 24 hours. See [Approvals](concepts/approvals.md).
 - **Decline:** your no on a proposal. Recorded and read by every run after it.
 - **Lapse:** a proposal left to expire. It means "not now, ask me again", never a decline.
-- **Fill:** the broker carrying out an approved order. A buy's fill turns a watch into a holding.
+- **Fill:** the broker carrying out an order. Its price becomes the position's cost and the thesis's entry.
 - **Sized by risk:** how every buy is sized: the dollars at risk divided by the distance to the floor, scaled by conviction, kept inside the analyst's band. No agent picks a size.
 - **Band:** an analyst's smallest trade, largest trade, and most in one stock.
 - **Slots:** how many stocks an analyst may hold at once, 5 by default. A buy for a full analyst is refused.

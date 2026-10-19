@@ -65,7 +65,7 @@ It works the list one stock at a time and takes exactly one action on each. One 
 - **Look back once:** a stock sold in the last two weeks is either watched again with a re-entry level or let go.
 - **Change nothing:** one sentence on what it checked and what would change its mind.
 
-The market's mood sets how hard it leans in. Risk-on is full size. Cautious (the S&P more than 1% under its 50-day) halves buys and holds off on breakouts. Risk-off (more than 1% under its 200-day) allows only event-driven and mean-reversion buys. And idle cash is a decision: over a quarter of the account in cash, a watched stock at its buy and a risk-on market means the run acts or says why not.
+The market's mood sets how hard it leans in. Risk-on is full size. Cautious (the S&P more than 1% under its 50-day) halves buys and holds off on breakouts. Risk-off (more than 1% under its 200-day) tells it to take only event-driven and mean-reversion buys. And idle cash is a decision: over a quarter of the account in cash, a watched stock at its buy and a risk-on market means the run acts or says why not.
 
 ## What happens next
 

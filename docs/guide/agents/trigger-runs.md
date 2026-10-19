@@ -56,8 +56,8 @@ Whatever it decides, it brings the stock's other triggers up to date: after an a
 
 The run ends with at most one trade, exactly one `update_thesis` that says what it did and why, linked to the trigger that fired, and `complete_run`. If you declined this same trade before, the note answers you.
 
-- **A buy fills:** the stock becomes a holding. Its floor and target are set from the fill, and its sell side takes over.
-- **A sale fills:** the thesis is retired as sold, and a later [morning run](morning-runs.md) gives it one look back.
+- **A buy goes through:** the stock becomes a holding. Its floor and target are set to the levels the trade went in with, and its sell side takes over.
+- **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a sale at the target), and a later [morning run](morning-runs.md) gives it one look back.
 
 ## Tools
 

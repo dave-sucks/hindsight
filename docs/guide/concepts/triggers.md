@@ -24,11 +24,13 @@ Five kinds: the price, the chart's indicators, earnings, filings and a schedule.
 
 <!-- asset: trigger-kinds -->
 
+Every measure, with its numbers, variables, settings and the shape it's saved in: [Trigger measures](../reference/trigger-measures.md).
+
 ## Where a stock's triggers come from
 
 A stock answers to three layers of triggers, and the closest one wins:
 
-1. **Its thesis.** [The Writer](../agents/writer.md) writes the first plan, priced from the setup's rules and the chart. The buy's fill sets the floor and target to where the trade went in. After that, runs keep it current one trigger at a time, and you can edit any of it on the thesis sheet.
+1. **Its thesis.** [The Writer](../agents/writer.md) writes the first plan, priced from the setup's rules and the chart. When the buy goes through, the floor and target are set to the levels the trade went in with. After that, runs keep it current one trigger at a time, and you can edit any of it on the thesis sheet.
 2. **Its analyst.** The [analyst](analysts.md)'s sell rules guard every stock it holds, like the Secular Compounder's "Sell if 25% off the high".
 3. **The account.** Rules for every holding, set in Settings. By default there's one: consider adding when a holding is up 7% in a day.
 
@@ -45,6 +47,8 @@ What happens next depends on the action:
 - **On a stock we only watch,** a close below the floor, or the price reaching the target before we bought, takes the plan down on the spot. No agent wakes and nothing is proposed; the stock stays on watch.
 
 Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it, and anything it leads to is a [proposal](approvals.md) you approve. A trigger never trades on its own.
+
+The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
 
 ## Floors only go up
 
@@ -69,7 +73,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `TACTICAL` (the default) wakes a trigger run; `DIRECT` proposes a sale without the agent. Both go through approval.
 
 #### Write path
-`applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared by `update_thesis`, the trigger editor and the buy's fill (`armHeldLadderOnFill`).
+`applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared by `update_thesis`, the trigger editor and the buy going through (`armHeldLadderOnFill`).
 
 #### Floors
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`; your edits on the sheet are exempt.

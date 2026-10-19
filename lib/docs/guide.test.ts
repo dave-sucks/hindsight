@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { GUIDE_DIR, guideFiles, loadGuide } from "./guide";
 import { GUIDE_ASSETS, parseDoc } from "./guide-parse";
+import { setupsMarkdown, triggerMeasuresMarkdown } from "./reference-docs";
 import { situationsLibraryMarkdown } from "./situations-library";
 import { DOCS_AGENTS } from "./tools";
 
@@ -64,6 +65,16 @@ describe("the guide (docs/guide)", () => {
   it("keeps the Situations Library in step with SITUATIONS (UPDATE_GUIDE=1 rewrites it)", () => {
     const file = path.join(GUIDE_DIR, "reference", "situations-library.md");
     const want = situationsLibraryMarkdown();
+    if (process.env.UPDATE_GUIDE) writeFileSync(file, want);
+    expect(readFileSync(file, "utf8")).toBe(want);
+  });
+
+  it.each([
+    ["trigger-measures", triggerMeasuresMarkdown],
+    ["setups", setupsMarkdown],
+  ])("keeps reference/%s.md in step with the code (UPDATE_GUIDE=1 rewrites it)", (name, build) => {
+    const file = path.join(GUIDE_DIR, "reference", `${name}.md`);
+    const want = build();
     if (process.env.UPDATE_GUIDE) writeFileSync(file, want);
     expect(readFileSync(file, "utf8")).toBe(want);
   });

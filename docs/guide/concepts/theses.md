@@ -29,7 +29,7 @@ The Writer reads the numbers, the filings and the web, and comes back with one o
 
 While a stock is watched, its buy trigger is checked every five minutes. When the price crosses the level, a [trigger run](../agents/trigger-runs.md) looks at that one stock within minutes, checks the setup's confirmation and the news, and [proposes](approvals.md) the buy. On the live account, nothing fills until you approve it.
 
-When the buy fills, the thesis becomes **Holding**. The floor and target move to where the trade actually went in, and a holding's review clock and earnings reviews are added. From then on the sell side guards it: the floor and the trail, usually inherited from the analyst's sell rules.
+When the broker takes the buy, the thesis becomes **Holding**. The floor and target are set to the levels the trade went in with, and a holding's review clock and earnings reviews are added. From then on the sell side guards it: the floor and the trail, usually inherited from the analyst's sell rules.
 
 ## When an agent looks at it
 
@@ -53,6 +53,8 @@ Who may change what:
 - **You:** any trigger on the thesis sheet, a yes or no on every proposal, and notes through chat, which the next run answers first.
 
 One rule holds over all of them: no agent can lower a floor on a stock we hold. Only you move it down.
+
+How a save lands or is refused, field by field: [Saving a thesis](../deep-dives/saving-a-thesis.md).
 
 ## How it ends
 
@@ -89,7 +91,7 @@ The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A
 `update_thesis`: `add_triggers`, `edit_triggers` by id, `remove_trigger_ids`. The fields each agent may send are pinned by `update-thesis-doors.test.ts`: the Writer 35, chat 21, a morning run 18, a trigger run 11.
 
 #### Status changes
-The buy's fill turns WATCHING into HOLDING: `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` sets the floor and target from the trade, adds the held review clock and earnings reviews, and leaves the sell rules inherited. A filled sale retires it as SOLD, unless it was a profit-take at the target or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
+The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` sets the floor and target from the trade, stamps the entry with the fill price, adds the held review clock and earnings reviews, and leaves the sell rules inherited. A sale retires it as SOLD, unless it was a profit-take at the target or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
 
 #### Floors
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers or loosens a protective level on a stock we hold.

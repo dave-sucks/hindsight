@@ -93,6 +93,16 @@ function useComponents(chips: boolean): Components {
   };
 }
 
+/** One paragraph's words, links and code, without its own <p>: the header's description sits in one already. */
+function InlineMarkdown({ text }: { text: string }) {
+  const components = useComponents(true);
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ ...components, p: ({ children }) => <>{children}</> }}>
+      {text}
+    </ReactMarkdown>
+  );
+}
+
 function Markdown({ text, chips = true }: { text: string; chips?: boolean }) {
   const components = useComponents(chips);
   return (
@@ -157,7 +167,7 @@ export function MarkdownDoc({ source }: { source: string }) {
   return (
     <DocBody>
       <DocHeader lead={doc.lead} rest={doc.rest}>
-        {doc.description}
+        {doc.description ? <InlineMarkdown text={doc.description} /> : null}
       </DocHeader>
       {doc.parts.map((part, k) =>
         part.kind === "details" ? (

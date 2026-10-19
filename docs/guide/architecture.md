@@ -49,6 +49,8 @@ Eastern time, on trading days unless it says otherwise.
 - **Sundays 10:00 AM:** Weekly scorecards: win rate, and how well conviction matched outcomes, once an analyst has three closed trades.
 - **Discovery** has a Sunday 9:00 AM slot in the code, but in practice it runs when you ask.
 
+The two workflows these clocks drive, end to end: [From fire to run](deep-dives/trigger-fire-to-run.md) and [From proposal to fill](deep-dives/proposal-to-fill.md).
+
 ## Where the data comes from
 
 Live prices and every bar come from Alpaca, off the consolidated tape, with Finnhub behind it if a price can't be had. A live price is never cached, and every quote carries the time it printed, so a stale one is said out loud instead of passed off as now. Earnings, company numbers, news and insider trades come from Finnhub; filings straight from the SEC; the web from Perplexity and Claude's own search; X from Grok.

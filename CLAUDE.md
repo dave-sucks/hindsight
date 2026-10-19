@@ -79,7 +79,7 @@ The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 | You want to... | File |
 |---|---|
 | **Learn what Hindsight is and how its parts fit (start here)** | **`docs/guide/README.md`**, one doc per agent and concept |
-| Change what the /docs pages say | `docs/guide/` (`agents/`, `concepts/`, `reference/`); the pages draw those files (pictures are `<!-- asset: name -->` lines). The Situations library is generated: `UPDATE_GUIDE=1 npx jest lib/docs/guide` |
+| Change what the /docs pages say | `docs/guide/` (`agents/`, `concepts/`, `deep-dives/`, `reference/`); the pages draw those files (pictures are `<!-- asset: name -->` lines). The reference docs (Situations library, Trigger measures, Setups) are generated: `UPDATE_GUIDE=1 npx jest lib/docs/guide` |
 | **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
 | **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
 | Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |

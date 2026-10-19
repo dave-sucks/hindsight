@@ -96,6 +96,12 @@ const REFS: Record<string, { title: string; icon: LucideIcon }> = {
   architecture: { title: "the architecture", icon: Layers },
   glossary: { title: "the glossary", icon: BookOpen },
   "situations-library": { title: "the situations library", icon: Flag },
+  "trigger-measures": { title: "the trigger measures", icon: Zap },
+  setups: { title: "the setups", icon: BookOpen },
+  "saving-a-thesis": { title: "saving a thesis", icon: PenLine },
+  "sizing-and-limits": { title: "sizing and limits", icon: Layers },
+  "proposal-to-fill": { title: "from proposal to fill", icon: CheckCircle2 },
+  "trigger-fire-to-run": { title: "from fire to run", icon: Zap },
 };
 
 /** Another page named in a sentence, an agent or a concept. Opens it. */

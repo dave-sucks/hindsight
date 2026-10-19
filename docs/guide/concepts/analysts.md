@@ -22,6 +22,8 @@ Each analyst is one way of trading, run by the agents. It has its own book of [t
 - **Sell rules:** its own [triggers](triggers.md), inherited by every stock it holds, like a trail 12% off the high.
 - **Run days:** which mornings it reviews its book. Every weekday by default.
 
+The sizing math, the market's effect and the account-wide limits: [Sizing and limits](../deep-dives/sizing-and-limits.md).
+
 ## How it shapes the agents
 
 Every agent that touches one of its stocks reads the same brief first: the analyst's name, its strategy word for word, its rule numbers, how many slots are free, and one line per setup it has chosen. It's written once, so no two agents can describe the same analyst differently. Then:
@@ -40,6 +42,8 @@ Every [proposal](approvals.md) names the analyst behind it, so you always know w
 Every analyst trades from the same playbook of setups, each with its checklist for the buy, the floor, the target and the time limit. An analyst picks the ones that fit its style. The setups are defined in `lib/agent/knowledge/setups.ts`.
 
 <!-- asset: playbook -->
+
+Every setup's rules in full: [Setups](../reference/setups.md).
 
 ## Built by conversation
 

@@ -32,12 +32,18 @@ export type DocSlug =
   | "approvals"
   | "architecture"
   | "glossary"
-  | "situations-library";
+  | "situations-library"
+  | "trigger-measures"
+  | "setups"
+  | "saving-a-thesis"
+  | "sizing-and-limits"
+  | "proposal-to-fill"
+  | "trigger-fire-to-run";
 
 export interface DocMeta {
   slug: DocSlug;
   title: string;
-  group: "Overview" | "Agents" | "Concepts" | "Reference";
+  group: "Overview" | "Agents" | "Concepts" | "Deep dives" | "Reference";
   blurb: string;
   icon: LucideIcon;
 }
@@ -55,7 +61,13 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "approvals", title: "Approvals", group: "Concepts", icon: CheckCircle2, blurb: "Analysts propose. You approve. Proposals expire after a day." },
   { slug: "architecture", title: "Architecture", group: "Overview", icon: Layers, blurb: "How the pieces fit: data, the record, the clocks, the read, the agents and the gate." },
   { slug: "glossary", title: "Glossary", group: "Overview", icon: BookOpen, blurb: "Every term the app, the docs and the agents use, a sentence each." },
+  { slug: "saving-a-thesis", title: "Saving a thesis", group: "Deep dives", icon: PenLine, blurb: "How every agent edit lands or is refused: a save is a patch, one trigger at a time, floors only go up." },
+  { slug: "sizing-and-limits", title: "Sizing and limits", group: "Deep dives", icon: Layers, blurb: "How big a trade is: risk to the floor, conviction, the market, the analyst's band and slots." },
+  { slug: "proposal-to-fill", title: "From proposal to fill", group: "Deep dives", icon: CheckCircle2, blurb: "A trade's life from the agent's call through approval, the broker and the fill." },
+  { slug: "trigger-fire-to-run", title: "From fire to run", group: "Deep dives", icon: Zap, blurb: "The five-minute check, what fires, and where each fire goes." },
   { slug: "situations-library", title: "Situations library", group: "Reference", icon: Flag, blurb: "All sixteen situations: each code, what it means and the exact text an agent is sent." },
+  { slug: "trigger-measures", title: "Trigger measures", group: "Reference", icon: Zap, blurb: "Every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in." },
+  { slug: "setups", title: "Setups", group: "Reference", icon: BookOpen, blurb: "Every setup in the playbook: what must be true, where the buy, floor and target go, and when it has failed." },
 ];
 
 export function docBySlug(slug: string): DocMeta | undefined {
@@ -73,6 +85,7 @@ export const GROUPS: ReadonlyArray<{ label: string; group: DocMeta["group"] }> =
   { label: "Start here", group: "Overview" },
   { label: "Agents", group: "Agents" },
   { label: "Concepts", group: "Concepts" },
+  { label: "Deep dives", group: "Deep dives" },
   { label: "Reference", group: "Reference" },
 ];
 
