@@ -16,7 +16,7 @@
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
-import { freshQuotePrice } from "@/lib/market-data/quote-age";
+import { freshQuotePrice, staleForTrading } from "@/lib/market-data/quote-age";
 import { isMarketOpen } from "@/lib/market-hours";
 import { positionTotalCap } from "@/lib/agent/position-sizing";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -43,6 +43,8 @@ export interface TradeTicket {
   priceAt: string | null;
   /** A quote from the last 15 minutes while the market is open. */
   priceLive: boolean;
+  /** The market is open and the quote is older than 15 minutes — no buy acts on it. */
+  priceStale: boolean;
   marketOpen: boolean;
   lanes: TradeLane[];
 }
@@ -58,13 +60,16 @@ async function livePrice(ticker: string, userId: string, environment: Environmen
     price,
     priceAt: quote ? new Date(quote.t * 1000).toISOString() : null,
     priceLive: isMarketOpen(now) && freshQuotePrice(quote, now) != null,
+    priceStale: price != null && staleForTrading(quote, now),
   };
 }
 
 /**
  * Every analyst with a side in this stock: the ones holding it, and the ones
- * watching it with a LONG thesis. Long positions only — a short is not
- * something this button sells.
+ * watching it. Long positions only — a short is not something this button
+ * sells. A new holding goes in its analyst's own book (Paper or Live), as
+ * every agent buy does: the trigger check and the duplicate check don't tell
+ * the books apart, so a paper buy for a live analyst would run as its holding.
  */
 async function loadLanes(opts: {
   accountId: string;
@@ -93,14 +98,22 @@ async function loadLanes(opts: {
       where: { accountId, symbol: ticker, environment, status: "PENDING_APPROVAL" },
       select: { analystId: true },
     }),
+    // Every WATCHING thesis, newest first: the fill flips the analyst's newest
+    // one (armHeldLadderOnFill), so that is the one a buy is staged against.
     prisma.thesis.findMany({
-      where: { accountId, ticker, status: "WATCHING", direction: "LONG" },
+      where: { accountId, ticker, status: "WATCHING" },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
+        direction: true,
         targetPrice: true,
         stopLoss: true,
-        researchRun: { select: { agentConfigId: true, agentConfig: { select: { name: true } } } },
+        researchRun: {
+          select: {
+            agentConfigId: true,
+            agentConfig: { select: { name: true, tradingEnvironment: true } },
+          },
+        },
       },
     }),
   ]);
@@ -133,17 +146,24 @@ async function loadLanes(opts: {
   }
 
   const waitingBuy = new Set(staged.map((s) => s.analystId));
+  const bookName = (b: string) => (b === "LIVE" ? "Live" : "Paper");
   for (const t of theses) {
     const analystId = t.researchRun?.agentConfigId;
     if (!analystId || lanes.has(analystId)) continue;
+    const analystName = t.researchRun.agentConfig?.name ?? "Analyst";
+    const book = t.researchRun.agentConfig?.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER";
     lanes.set(analystId, {
       analystId,
-      analystName: t.researchRun.agentConfig?.name ?? "Analyst",
+      analystName,
       position: null,
       sellBlocked: null,
       buy: waitingBuy.has(analystId)
         ? { kind: "NONE", reason: `A buy of ${ticker} is already waiting for your approval — review it instead.` }
-        : { kind: "OPEN", thesisId: t.id, targetPrice: t.targetPrice, stopLoss: t.stopLoss },
+        : book !== environment
+          ? { kind: "NONE", reason: `${analystName} trades on ${bookName(book)}. Switch to ${bookName(book)} to buy ${ticker} for it.` }
+          : t.direction !== "LONG"
+            ? { kind: "NONE", reason: `${analystName}'s thesis on ${ticker} isn't a long one yet.` }
+            : { kind: "OPEN", thesisId: t.id, targetPrice: t.targetPrice, stopLoss: t.stopLoss },
     });
   }
   return [...lanes.values()];
@@ -197,7 +217,7 @@ export async function placeManualOrder(opts: {
   const lane = lanes.find((l) => l.analystId === opts.analystId);
   if (!lane) return { ok: false, error: `That analyst neither holds nor watches ${ticker}.` };
 
-  const plan = planManualOrder(lane, opts.order, quote.price);
+  const plan = planManualOrder(lane, opts.order, quote.price, quote.priceStale);
   if (!plan.ok) return plan;
 
   const idempotencyKey = randomUUID();
@@ -211,7 +231,15 @@ export async function placeManualOrder(opts: {
     const thesisId = lane.buy.thesisId;
     const stop = opts.order.stopLoss!;
     const target = opts.order.targetPrice!;
-    orderId = await prisma.$transaction(async (tx) => {
+    const staged = await prisma.$transaction(async (tx) => {
+      // One new holding per analyst and stock. Two requests at once (two tabs,
+      // a retry racing a slow first try) queue on this lock, and the second
+      // finds the first's position — the same rule place_trade applies.
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`manual-open:${lane.analystId}:${ticker}`}))`;
+      const existing = await tx.position.count({
+        where: { analystId: lane.analystId, symbol: ticker, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
+      });
+      if (existing > 0) return null;
       const pos = await tx.position.create({
         data: {
           analystId: lane.analystId,
@@ -257,6 +285,10 @@ export async function placeManualOrder(opts: {
       });
       return ord.id;
     });
+    if (!staged) {
+      return { ok: false, error: `${lane.analystName} already holds ${ticker} or has a buy of it in flight. Reload and try again.` };
+    }
+    orderId = staged;
   } else {
     const pos = lane.position;
     if (!pos) return { ok: false, error: `${lane.analystName} holds no shares of ${ticker}.` };
@@ -283,24 +315,39 @@ export async function placeManualOrder(opts: {
     orderId = ord.id;
   }
 
+  // The shares the order went out with — approval can shrink an add to the
+  // room left, or a trim to what's still held.
+  const sentShares = async () =>
+    (await prisma.order
+      .findUnique({ where: { id: orderId }, select: { quantity: true } })
+      .catch(() => null))?.quantity ?? plan.shares;
+
   // ── Send it: the approval path every proposal takes ────────────────────────
   try {
     const result = await approveProposal(orderId, opts.userId);
-    const sent = await prisma.order.findUnique({ where: { id: orderId }, select: { quantity: true } });
     return {
       ok: true,
       intent: plan.intent,
-      shares: sent?.quantity ?? plan.shares,
+      shares: await sentShares(),
       orderId,
       alpacaOrderId: result.alpacaOrderId,
       unconfirmed: false,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // Sent, but Alpaca didn't answer cleanly — the order stays PENDING and
-    // reconcile-orders finds it by its idempotency key. Not a failure.
-    if (err instanceof ProposalExecutionError && err.code === "ALPACA_UNCERTAIN") {
-      return { ok: true, intent: plan.intent, shares: plan.shares, orderId, alpacaOrderId: null, unconfirmed: true };
+    // Sent, but something after the submit failed (Alpaca didn't answer
+    // cleanly, or a write after it threw) — the order is PENDING and
+    // reconcile-orders finds it by its idempotency key. Never report a sent
+    // order as failed: you'd place it again.
+    const after = await prisma.order
+      .findUnique({ where: { id: orderId }, select: { status: true } })
+      .catch(() => null);
+    const sent =
+      (err instanceof ProposalExecutionError && err.code === "ALPACA_UNCERTAIN") ||
+      after?.status === "PENDING" ||
+      after?.status === "FILLED";
+    if (sent) {
+      return { ok: true, intent: plan.intent, shares: await sentShares(), orderId, alpacaOrderId: null, unconfirmed: true };
     }
     // Anything else left the staged rows unsent: take them down, so no
     // proposal you never asked for is left in the queue.

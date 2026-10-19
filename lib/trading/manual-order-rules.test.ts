@@ -90,6 +90,11 @@ describe("planManualOrder — the price", () => {
     expect(planManualOrder(held, { side: "SELL", shares: 1, reviewedPrice: 100 }, 101.9)).toMatchObject({ ok: true });
   });
 
+  it("refuses a buy on a stale quote, but not a sale", () => {
+    expect(planManualOrder(held, { side: "BUY", shares: 1, reviewedPrice: 100 }, 100, true)).toMatchObject({ ok: false });
+    expect(planManualOrder(held, { side: "SELL", shares: 1, reviewedPrice: 100 }, 100, true)).toMatchObject({ ok: true });
+  });
+
   it("refuses zero or negative shares", () => {
     expect(planManualOrder(held, { side: "BUY", shares: 0, reviewedPrice: 100 }, 100)).toMatchObject({ ok: false });
   });

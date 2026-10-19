@@ -16,7 +16,7 @@
  * lib/trading/manual-order.ts.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowRightLeft, Loader2 } from "lucide-react";
@@ -78,6 +78,9 @@ export function TradeButton({
   const [ticket, setTicket] = useState<TradeTicket | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Opening the menu and picking Buy/Sell each load the ticket; only the
+  // newest load may land, or a slow older one would swap the price under you.
+  const loadSeq = useRef(0);
 
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("form");
@@ -90,19 +93,21 @@ export function TradeButton({
   const [sendError, setSendError] = useState<string | null>(null);
 
   async function loadTicket(): Promise<TradeTicket | null> {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setLoadError(null);
     try {
       const res = await fetch(`/api/trade?ticker=${encodeURIComponent(ticker)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(await res.text());
       const t = (await res.json()) as TradeTicket;
+      if (seq !== loadSeq.current) return null;
       setTicket(t);
       return t;
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Couldn't load this stock.");
+      if (seq === loadSeq.current) setLoadError(err instanceof Error ? err.message : "Couldn't load this stock.");
       return null;
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }
 
@@ -129,7 +134,7 @@ export function TradeButton({
     setOpen(true);
     // Always a fresh ticket — the price and what's held can't be a minute old.
     const t = await loadTicket();
-    resetFor(pickLane(t, s));
+    if (t) resetFor(pickLane(t, s));
   }
 
   function switchSide(s: Side) {
@@ -156,8 +161,9 @@ export function TradeButton({
         targetPrice: target.trim() === "" ? null : Number(target),
       },
       price,
+      ticket?.priceStale ?? false,
     );
-  }, [lane, price, side, qty, shares, stop, target]);
+  }, [lane, price, side, qty, shares, stop, target, ticket?.priceStale]);
 
   const planned = plan?.ok ? plan : null;
   const total = planned && price != null ? planned.shares * price : null;

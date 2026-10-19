@@ -47,6 +47,8 @@ export function planManualOrder(
   lane: TradeLane,
   input: ManualOrderInput,
   livePrice: number,
+  /** The market is open and the quote isn't from the last 15 minutes. */
+  priceStale = false,
 ): ManualOrderPlan {
   const { side, shares, reviewedPrice } = input;
   if (!Number.isFinite(shares) || shares <= 0) return { ok: false, error: "Enter how many shares." };
@@ -73,6 +75,9 @@ export function planManualOrder(
     return { ok: true, intent: "PARTIAL_CLOSE", shares };
   }
 
+  // A buy never acts on a stale quote (DAV-261): at 09:30 yesterday's close
+  // can be served as "now", and the stop would be checked against it.
+  if (priceStale) return { ok: false, error: "The price isn't live right now — try again in a minute." };
   if (!Number.isInteger(shares)) return { ok: false, error: "Buy whole shares." };
   const buy = lane.buy;
   if (buy.kind === "NONE") return { ok: false, error: buy.reason };
