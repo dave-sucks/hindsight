@@ -4,11 +4,12 @@
  * TradeButton — buy or sell a stock by hand.
  *
  * Sits in the icon strip beside the pin on the thesis sheet, the trade page
- * and the stock page. The icon opens Buy / Sell; either opens one dialog with
- * two steps, the way a broker does it: the order (shares, and for a new
+ * and the stock page. One click opens a dialog with two steps, the way a
+ * broker does it: the order (Buy or Sell, the analyst, shares, and for a new
  * holding its stop and target), then a review that says in one sentence what
  * will be sent, to which account, at about what cost. Nothing is sent until
- * "Place order" on the review.
+ * "Place order" on the review. Any analyst can buy any stock: one that isn't
+ * on its watchlist goes on it, and one with no research gets the writer.
  *
  * The dialog checks the order with the same rules the server checks
  * (`planManualOrder`), so the review never shows an order the server would
@@ -27,12 +28,6 @@ import { Label } from "@/components/ui/label";
 import { InfoRow } from "@/components/ui/info-row";
 import { PriceChange } from "@/components/ui/price-change";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -78,8 +73,8 @@ export function TradeButton({
   const [ticket, setTicket] = useState<TradeTicket | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Opening the menu and picking Buy/Sell each load the ticket; only the
-  // newest load may land, or a slow older one would swap the price under you.
+  // Only the newest load may land, or a slow older one would swap the price
+  // under you.
   const loadSeq = useRef(0);
 
   const [open, setOpen] = useState(false);
@@ -115,9 +110,16 @@ export function TradeButton({
   const lanesFor = (t: TradeTicket | null, s: Side) =>
     (t?.lanes ?? []).filter((l) => (s === "SELL" ? l.position != null : true));
 
+  // This surface's analyst, else one that holds it, else one that can buy it.
   function pickLane(t: TradeTicket | null, s: Side): TradeLane | null {
     const lanes = lanesFor(t, s);
-    return lanes.find((l) => l.analystId === analystId) ?? lanes[0] ?? null;
+    return (
+      lanes.find((l) => l.analystId === analystId) ??
+      lanes.find((l) => l.position) ??
+      lanes.find((l) => l.buy.kind !== "NONE") ??
+      lanes[0] ??
+      null
+    );
   }
 
   function resetFor(lane: TradeLane | null) {
@@ -131,6 +133,7 @@ export function TradeButton({
 
   async function start(s: Side) {
     setSide(s);
+    setTicket(null);
     setOpen(true);
     // Always a fresh ticket — the price and what's held can't be a minute old.
     const t = await loadTicket();
@@ -147,6 +150,15 @@ export function TradeButton({
   const price = ticket?.price ?? null;
   const qty = Number(shares);
   const isOpenBuy = side === "BUY" && lane?.buy.kind === "OPEN";
+  // What a buy for this analyst does besides buying — said before and on review.
+  const openNote =
+    isOpenBuy && lane?.buy.kind === "OPEN"
+      ? lane.buy.thesisId == null
+        ? `${ticker} isn't on ${lane.analystName}'s watchlist. Buying adds it, and the writer researches it right after the buy.`
+        : lane.buy.needsResearch
+          ? `${lane.analystName} hasn't researched ${ticker} yet. The writer researches it right after the buy.`
+          : null
+      : null;
 
   const plan = useMemo(() => {
     if (!lane || price == null) return null;
@@ -205,10 +217,11 @@ export function TradeButton({
         return;
       }
       const done = `${side === "BUY" ? "Buy" : "Sell"} ${result.shares} ${shareWord(result.shares)} of ${ticker} sent to Alpaca`;
+      const research = result.researchStarted ? ` ${lane.analystName}'s writer is researching it now.` : "";
       if (result.unconfirmed) {
-        toast.warning(`${done}, but Alpaca hasn't confirmed it yet — it'll show up within about 5 minutes.`);
+        toast.warning(`${done}, but Alpaca hasn't confirmed it yet — it'll show up within about 5 minutes.${research}`);
       } else {
-        toast.success(ticket.marketOpen ? `${done}.` : `${done}. It fills when the market opens.`);
+        toast.success(`${done}.${ticket.marketOpen ? "" : " It fills when the market opens."}${research}`);
       }
       setOpen(false);
       router.refresh();
@@ -221,23 +234,19 @@ export function TradeButton({
 
   return (
     <>
-      <DropdownMenu
-        onOpenChange={(o) => {
-          if (o) void loadTicket();
+      <Button
+        variant="ghost"
+        size={size}
+        aria-label={`Trade ${ticker}`}
+        title={`Trade ${ticker}`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void start("BUY");
         }}
       >
-        <DropdownMenuTrigger
-          render={<Button variant="ghost" size={size} aria-label={`Trade ${ticker}`} title={`Trade ${ticker}`} />}
-        >
-          <ArrowRightLeft />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => void start("BUY")}>Buy {ticker}</DropdownMenuItem>
-          <DropdownMenuItem disabled={!canSell} onClick={() => void start("SELL")}>
-            Sell {ticker}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        <ArrowRightLeft />
+      </Button>
 
       <Dialog open={open} onOpenChange={sending ? undefined : setOpen}>
         <DialogContent>
@@ -281,7 +290,7 @@ export function TradeButton({
                 <p className="text-sm text-muted-foreground">
                   {side === "SELL"
                     ? `You hold no ${ticker} on this account.`
-                    : `No analyst holds or watches ${ticker} with a long thesis. Add it to an analyst's watchlist, then buy it here.`}
+                    : "There are no analysts on this account yet."}
                 </p>
               ) : (
                 <>
@@ -322,6 +331,8 @@ export function TradeButton({
                   {side === "BUY" && lane?.buy.kind === "NONE" ? (
                     <p className="text-sm text-muted-foreground">{lane.buy.reason}</p>
                   ) : (
+                    <>
+                    {openNote ? <p className="text-sm text-muted-foreground">{openNote}</p> : null}
                     <div className="grid gap-3">
                       <div className="grid gap-1.5">
                         <Label htmlFor="trade-shares">Shares</Label>
@@ -374,6 +385,7 @@ export function TradeButton({
                         </div>
                       ) : null}
                     </div>
+                    </>
                   )}
 
                   {planned && total != null ? (
@@ -403,6 +415,7 @@ export function TradeButton({
           ) : (
             <div className="grid gap-4">
               <p className="text-lg font-medium">{sentence}</p>
+              {openNote ? <p className="text-sm text-muted-foreground">{openNote}</p> : null}
               <div>
                 <InfoRow label="Account" value={isLive ? "Live — real money" : "Paper"} />
                 <InfoRow label="Analyst" value={lane?.analystName} />

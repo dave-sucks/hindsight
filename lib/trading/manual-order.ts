@@ -26,6 +26,8 @@ import {
   ProposalExecutionError,
 } from "@/lib/proposals/execute";
 import { PROPOSAL_TTL_MS } from "@/lib/proposals/maybe-await-approval";
+import { addWatchlistItem } from "@/lib/actions/watchlist.actions";
+import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
 import {
   addRoom,
   planManualOrder,
@@ -65,11 +67,13 @@ async function livePrice(ticker: string, userId: string, environment: Environmen
 }
 
 /**
- * Every analyst with a side in this stock: the ones holding it, and the ones
- * watching it. Long positions only — a short is not something this button
- * sells. A new holding goes in its analyst's own book (Paper or Live), as
- * every agent buy does: the trigger check and the duplicate check don't tell
- * the books apart, so a paper buy for a live analyst would run as its holding.
+ * Every analyst on the account, and what a trade does for each: the ones
+ * holding the stock (a sale, or an add), the ones watching it (a buy on that
+ * thesis), and the rest (a buy that puts it on their watchlist first). Long
+ * positions only — a short is not something this button sells. A new holding
+ * goes in its analyst's own book (Paper or Live), as every agent buy does:
+ * the trigger check and the duplicate check don't tell the books apart, so a
+ * paper buy for a live analyst would run as its holding.
  */
 async function loadLanes(opts: {
   accountId: string;
@@ -78,7 +82,12 @@ async function loadLanes(opts: {
   price: number | null;
 }): Promise<TradeLane[]> {
   const { accountId, ticker, environment, price } = opts;
-  const [positions, staged, theses] = await Promise.all([
+  const [analysts, positions, staged, theses] = await Promise.all([
+    prisma.agentConfig.findMany({
+      where: { accountId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, tradingEnvironment: true },
+    }),
     prisma.position.findMany({
       where: { accountId, symbol: ticker, environment, status: "OPEN", direction: "LONG" },
       orderBy: { openedAt: "asc" },
@@ -108,12 +117,7 @@ async function loadLanes(opts: {
         direction: true,
         targetPrice: true,
         stopLoss: true,
-        researchRun: {
-          select: {
-            agentConfigId: true,
-            agentConfig: { select: { name: true, tradingEnvironment: true } },
-          },
-        },
+        researchRun: { select: { agentConfigId: true } },
       },
     }),
   ]);
@@ -147,23 +151,35 @@ async function loadLanes(opts: {
 
   const waitingBuy = new Set(staged.map((s) => s.analystId));
   const bookName = (b: string) => (b === "LIVE" ? "Live" : "Paper");
+  const watched = new Map<string, (typeof theses)[number]>();
   for (const t of theses) {
-    const analystId = t.researchRun?.agentConfigId;
-    if (!analystId || lanes.has(analystId)) continue;
-    const analystName = t.researchRun.agentConfig?.name ?? "Analyst";
-    const book = t.researchRun.agentConfig?.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER";
-    lanes.set(analystId, {
-      analystId,
-      analystName,
+    const id = t.researchRun?.agentConfigId;
+    if (id && !watched.has(id)) watched.set(id, t); // newest first
+  }
+  // Holders first, then the analysts watching it, then everyone else.
+  const order = [...analysts].sort((a, b) => Number(watched.has(b.id)) - Number(watched.has(a.id)));
+  for (const a of order) {
+    if (lanes.has(a.id)) continue;
+    const t = watched.get(a.id);
+    const book = a.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER";
+    lanes.set(a.id, {
+      analystId: a.id,
+      analystName: a.name,
       position: null,
       sellBlocked: null,
-      buy: waitingBuy.has(analystId)
+      buy: waitingBuy.has(a.id)
         ? { kind: "NONE", reason: `A buy of ${ticker} is already waiting for your approval — review it instead.` }
         : book !== environment
-          ? { kind: "NONE", reason: `${analystName} trades on ${bookName(book)}. Switch to ${bookName(book)} to buy ${ticker} for it.` }
-          : t.direction !== "LONG"
-            ? { kind: "NONE", reason: `${analystName}'s thesis on ${ticker} isn't a long one yet.` }
-            : { kind: "OPEN", thesisId: t.id, targetPrice: t.targetPrice, stopLoss: t.stopLoss },
+          ? { kind: "NONE", reason: `${a.name} trades on ${bookName(book)}. Switch to ${bookName(book)} to buy ${ticker} for it.` }
+          : t?.direction === "SHORT"
+            ? { kind: "NONE", reason: `${a.name}'s view on ${ticker} is short.` }
+            : {
+                kind: "OPEN",
+                thesisId: t?.id ?? null,
+                needsResearch: t?.direction !== "LONG",
+                targetPrice: t?.targetPrice ?? null,
+                stopLoss: t?.stopLoss ?? null,
+              },
     });
   }
   return [...lanes.values()];
@@ -191,6 +207,8 @@ export type ManualOrderResult =
       alpacaOrderId: string | null;
       /** Alpaca didn't answer cleanly; the order is recovered by reconcile within ~5 min. */
       unconfirmed: boolean;
+      /** The writer was sent to research a stock bought with no view yet. */
+      researchStarted: boolean;
     }
   | { ok: false; error: string };
 
@@ -215,7 +233,7 @@ export async function placeManualOrder(opts: {
   if (quote.price == null) return { ok: false, error: `There's no price for ${ticker} right now.` };
   const lanes = await loadLanes({ accountId: opts.accountId, ticker, environment, price: quote.price });
   const lane = lanes.find((l) => l.analystId === opts.analystId);
-  if (!lane) return { ok: false, error: `That analyst neither holds nor watches ${ticker}.` };
+  if (!lane) return { ok: false, error: "That analyst isn't on this account." };
 
   const plan = planManualOrder(lane, opts.order, quote.price, quote.priceStale);
   if (!plan.ok) return plan;
@@ -226,9 +244,33 @@ export async function placeManualOrder(opts: {
 
   // ── Stage the rows, as a proposal would be ─────────────────────────────────
   let orderId: string;
+  /** The seed this buy turned LONG — put back if the buy doesn't go. */
+  let madeLong: string | null = null;
+  const undoLong = async () => {
+    if (!madeLong) return;
+    await prisma.thesis
+      .updateMany({ where: { id: madeLong, status: "WATCHING", direction: "LONG" }, data: { direction: null } })
+      .catch(() => null);
+  };
   if (plan.intent === "OPEN") {
     if (lane.buy.kind !== "OPEN") return { ok: false, error: "This analyst can't open a new holding here." };
-    const thesisId = lane.buy.thesisId;
+    // Not watched yet: it goes on the analyst's watchlist first — the same
+    // seed the watchlist's Add makes — so the buy has a thesis to land on.
+    let thesisId = lane.buy.thesisId;
+    if (thesisId == null) {
+      const seed = await addWatchlistItem(lane.analystId, ticker, "Bought by hand from the Trade button", "USER");
+      thesisId = seed.id;
+    }
+    // No view yet: we bought it long, so that is its direction (the fill arms
+    // a long ladder from it). The belief and the plan are the writer's,
+    // sent once the buy lands.
+    if (lane.buy.needsResearch) {
+      const made = await prisma.thesis.updateMany({
+        where: { id: thesisId, status: "WATCHING", direction: null },
+        data: { direction: "LONG" },
+      });
+      madeLong = made.count > 0 ? thesisId : null;
+    }
     const stop = opts.order.stopLoss!;
     const target = opts.order.targetPrice!;
     const staged = await prisma.$transaction(async (tx) => {
@@ -270,7 +312,7 @@ export async function placeManualOrder(opts: {
           status: "AWAITING_APPROVAL",
           idempotencyKey,
           intent: "OPEN",
-          thesisId,
+          thesisId: thesisId!,
           expiresAt,
           rationale: MANUAL_RATIONALE,
         },
@@ -286,6 +328,7 @@ export async function placeManualOrder(opts: {
       return ord.id;
     });
     if (!staged) {
+      await undoLong();
       return { ok: false, error: `${lane.analystName} already holds ${ticker} or has a buy of it in flight. Reload and try again.` };
     }
     orderId = staged;
@@ -322,6 +365,33 @@ export async function placeManualOrder(opts: {
       .findUnique({ where: { id: orderId }, select: { quantity: true } })
       .catch(() => null))?.quantity ?? plan.shares;
 
+  // A stock bought with no view gets its research now — the writer the
+  // sheet's send-to-agent button starts — rather than waiting for a run to
+  // notice it. A failed dispatch never fails the trade: the held stock's
+  // missing research flags it on the next run (STALE_RESEARCH).
+  const startResearch = async (): Promise<boolean> => {
+    if (!madeLong) return false;
+    try {
+      await startWriterRun({
+        userId: opts.userId,
+        accountId: opts.accountId,
+        analystId: lane.analystId,
+        environment,
+        ticker,
+        mode: "refresh",
+        existingThesisId: madeLong,
+        reviewCadenceDays: null,
+        reason: `Bought by hand with no research yet (${ticker}); write its view and plan.`,
+        source: "USER",
+        dispatchedBy: "manual",
+      });
+      return true;
+    } catch (err) {
+      console.error(`[placeManualOrder] writer dispatch failed for ${ticker}:`, err instanceof Error ? err.message : err);
+      return false;
+    }
+  };
+
   // ── Send it: the approval path every proposal takes ────────────────────────
   try {
     const result = await approveProposal(orderId, opts.userId);
@@ -332,6 +402,7 @@ export async function placeManualOrder(opts: {
       orderId,
       alpacaOrderId: result.alpacaOrderId,
       unconfirmed: false,
+      researchStarted: await startResearch(),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -347,7 +418,15 @@ export async function placeManualOrder(opts: {
       after?.status === "PENDING" ||
       after?.status === "FILLED";
     if (sent) {
-      return { ok: true, intent: plan.intent, shares: await sentShares(), orderId, alpacaOrderId: null, unconfirmed: true };
+      return {
+        ok: true,
+        intent: plan.intent,
+        shares: await sentShares(),
+        orderId,
+        alpacaOrderId: null,
+        unconfirmed: true,
+        researchStarted: await startResearch(),
+      };
     }
     // Anything else left the staged rows unsent: take them down, so no
     // proposal you never asked for is left in the queue.
@@ -366,6 +445,7 @@ export async function placeManualOrder(opts: {
         }
       }
     });
+    await undoLong();
     return { ok: false, error: message };
   }
 }

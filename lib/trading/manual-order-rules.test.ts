@@ -13,7 +13,7 @@ const watched: TradeLane = {
   analystName: "Secular Compounder",
   position: null,
   sellBlocked: null,
-  buy: { kind: "OPEN", thesisId: "t1", targetPrice: 1100, stopLoss: 800 },
+  buy: { kind: "OPEN", thesisId: "t1", needsResearch: false, targetPrice: 1100, stopLoss: 800 },
 };
 
 describe("planManualOrder — sells", () => {

@@ -11,7 +11,15 @@
 /** What a buy on this lane does. */
 export type BuyLane =
   | { kind: "ADD"; maxShares: number; cap: number }
-  | { kind: "OPEN"; thesisId: string; targetPrice: number | null; stopLoss: number | null }
+  | {
+      kind: "OPEN";
+      /** The WATCHING thesis the buy lands on; null when the analyst doesn't watch the stock yet. */
+      thesisId: string | null;
+      /** No view yet (a seed, or not watched): the buy makes it LONG and the writer is sent to research it. */
+      needsResearch: boolean;
+      targetPrice: number | null;
+      stopLoss: number | null;
+    }
   | { kind: "NONE"; reason: string };
 
 /** One analyst's side of a stock: what it holds and what a buy would do. */
