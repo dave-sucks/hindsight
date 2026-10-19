@@ -11,7 +11,7 @@ Situations are how the agents spend their attention. On a given morning a few st
 Each time a stock is read, its facts are turned into its list of situations. The facts come from one place, so the read, the thesis sheet and a run's close-out can't disagree:
 
 - **Its [triggers](triggers.md):** one that fired, or one whose condition is true now.
-- **Its clocks:** the review clock came round, or the research is past the [analyst](analysts.md)'s limit.
+- **Its clocks:** the review clock came round, or the research is older than its horizon allows (sooner on a stock we don't hold yet).
 - **Its plan against the price:** a buy level left behind, a target passed, a floor too tight or too far, a gain with no floor under it.
 - **Your words:** a note, a decline or a resized approval no run has answered yet.
 - **A recent sale:** a stock sold in the last two weeks is owed one look back.

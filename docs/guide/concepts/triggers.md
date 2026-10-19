@@ -40,14 +40,15 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 
 What happens next depends on the action:
 
-- **A buy, add, trim or sale** wakes a [trigger run](../agents/trigger-runs.md) within minutes to look at that one stock and decide. A floor can also be set to propose its sale straight away, with no agent.
-- **A review** waits for the next [morning run](../agents/morning-runs.md).
+- **A buy, add, trim or sale** wakes a [trigger run](../agents/trigger-runs.md) within minutes to look at that one stock and decide. A floor that's a plain price, or a percent off the close, our entry or the high, can be set to propose its sale straight away, with no agent.
+- **A review** waits for the next [morning run](../agents/morning-runs.md), except a worrying new filing on a stock we hold, which wakes a trigger run the same day.
+- **On a stock we only watch,** a close below the floor, or the price reaching the target before we bought, takes the plan down on the spot. No agent wakes and nothing is proposed; the stock stays on watch.
 
-Either way the stock is now in a [situation](situations.md), which tells the agent how to answer it, and anything it leads to is a [proposal](approvals.md) you approve. A trigger never trades on its own.
+Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it, and anything it leads to is a [proposal](approvals.md) you approve. A trigger never trades on its own.
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower a floor, widen a trail or remove a protective trigger; the save refuses it. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
+On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or switch a floor from selling straight away to asking an agent first; the save refuses it. On a stock we only watch, the floor is free to change. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>
@@ -74,7 +75,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`; your edits on the sheet are exempt.
 
 #### Rest periods
-Each measure's default cooldown, in its catalog entry: a price level, a day's move, volume or RSI at most once a day; the move from our entry once a week; a beat, a miss or a heads-up once per report; a filing once per filing; insider buying once every 30 days; a review on a state at most once a week while it holds; the floor and the trail on a holding every day until answered.
+Each measure's default cooldown, in its catalog entry: a price level, a day's move, volume or RSI at most once a day; the move from our entry once a week; a beat or a miss once a week; an earnings window once a month; strength against the S&P once a week; a filing once per filing; insider buying once every 30 days; a review on a state at most once a week while it holds; the floor and the trail on a holding every day until answered.
 
 #### Reference
 `docs/TRIGGERS.md` · `docs/plans/TRIGGER_MODEL.md` · `docs/plans/TRIGGER_TYPES.md`

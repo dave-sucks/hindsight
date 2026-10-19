@@ -23,10 +23,10 @@ It lands in your queue, your inbox and on your phone at the same moment, with th
 
 ## What your answer does
 
-- **Approve:** the order goes to the broker. A buy that fills turns the [thesis](theses.md) from Watching to Holding and arms its sell side; a sale that fills retires it as sold.
-- **Approve at a different size:** your size is used, and the next run reads it as caution or conviction.
+- **Approve:** the order goes to the broker. A buy that fills turns the [thesis](theses.md) from Watching to Holding and arms its sell side; a sale that fills retires it as sold, or sends it back to Watching after a sale at the target.
+- **Approve at a different size:** your size is used, and the next run reads it as caution or conviction. If the position or the analyst's room has shrunk since, the order is cut to what's left.
 - **Decline:** recorded on the stock and read by every run after it. A declined buy or add isn't proposed again unless something you named has changed. A declined sale is different: while the price stays past the line it's proposed again every day, because [floors only go up](triggers.md).
-- **Let it expire:** after 24 hours a proposal lapses. A lapse means "not now, ask me again", never a decline.
+- **Let it expire:** after 24 hours a proposal lapses (one that runs out overnight is marked at the next market-day check). A lapse means "not now, ask me again", never a decline.
 
 ## Live and paper
 
@@ -50,7 +50,7 @@ Until it's approved, a proposal isn't a holding, and it isn't counted in your po
 `lib/agent/declined-sale.ts` counts a decline (REJECTED) and a lapse (EXPIRED) apart; the row's `heldThroughFloor` carries both.
 
 #### On approval
-`lib/proposals/thesis-flips.ts`: a filled buy turns WATCHING into HOLDING and arms the held plan; an approved sale retires the thesis as SOLD.
+`lib/proposals/thesis-flips.ts`: a filled buy turns WATCHING into HOLDING and arms the held plan; a filled sale retires the thesis as SOLD or, after a profit-take, sends it back to WATCHING.
 
 #### Alerts
 An email (`lib/emails/proposal-pending.ts`) and a phone push through ntfy (`lib/notify/proposal-push.ts`).

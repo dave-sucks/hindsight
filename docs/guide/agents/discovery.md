@@ -33,7 +33,7 @@ Finding a stock and making the case for it are separate jobs. Discovery is wide 
 
 ## When it runs
 
-When you ask. There's no schedule. Ask in [chat](chat.md) with an analyst selected, or start a discovery run from the analyst's page. Each run works for one analyst.
+When you ask, and in practice you ask in [chat](chat.md). Chat carries Discovery's tools and the same scoring rules, so "find drift names off this week's reports" in chat is a discovery pass, best with an analyst selected. The standalone Discovery run, the one the facts above describe, is its own run for one analyst, started by an event or a Sunday slot in the code; nothing in the app's pages starts it today.
 
 > Find drift names off this week's reports.
 >
@@ -61,7 +61,7 @@ It works in two passes. The first reads the whole pool and drops what plainly do
 Each stock that survives is scored out of 10: trend (3), strength against the market (3), entry (2) and how fresh its catalyst is (2). A 4 or better earns research. Every stock ends one of four ways:
 
 - **Research:** `dispatch_thesis_research` sends it to the Writer. Five per run at most, the best scores first.
-- **Watch:** strong but not ready to price, or past the five. Saved with `record_thesis` as a watch with a wake-up (a price or a date), so "no room this week" never means "never."
+- **Watch:** strong but not ready to price, or past the five. Saved with `record_thesis` as a watch with a wake-up (a price, a move, an earnings beat or miss, or days before the report), so "no room this week" never means "never." A watch with no wake-up at all is just a name on the list, waiting for you.
 - **Pass:** researched and declined. Saved as Passed with what would change the verdict, so it isn't pitched again without a reason.
 - **Skip:** dropped in the first pass. One line in the summary; nothing is saved.
 
@@ -89,7 +89,7 @@ Everything Discovery can call, read from `lib/agent/modes.ts`.
 `discovery` in `lib/agent/modes.ts`: `gpt-5.4`, up to 45 steps. Chat (`principal`) carries the same discovery tools.
 
 #### Started by
-Chat, or the `app/discovery.run.manual` event, which can carry an analyst and a focus. `lib/inngest/functions/discovery-run.ts` also lists a Sunday 9 AM cron; in practice discovery is run by hand.
+The standalone run: the `app/discovery.run.manual` event, which can carry an analyst and a focus, or the Sunday 9 AM cron in `lib/inngest/functions/discovery-run.ts` (skips day-trading analysts). In practice discovery is done in chat: the `principal` prompt in `lib/agent/modes.ts` carries the same batched-discovery rules, score and cap of five (the cap is the prompt's there; `dispatch_thesis_research` enforces `DISPATCH_CAP` only under a DISCOVERY run).
 
 #### Score and cap
 The 10-point composite and its bar of 4 are in the prompt. `DISPATCH_CAP` = 5 per run, enforced in `dispatch_thesis_research`.

@@ -26,13 +26,13 @@ tools: Updating $AVGO's thesis
 
 ## What it does
 
-Chat answers questions about any stock, run, trade or analyst. It researches, changes a plan, starts [Discovery](discovery.md) or [the Writer](writer.md), and proposes trades. It runs on Claude Sonnet with thinking on.
+Chat answers questions about any stock, run, trade or analyst. It researches, does [Discovery](discovery.md)'s screening itself, sends stocks to [the Writer](writer.md), changes a plan and proposes trades. It runs on Claude Sonnet with thinking on.
 
 The other agents run on a clock and act on what's saved. Chat is how your judgment gets into that record: as [triggers](../concepts/triggers.md), plan edits and notes that every later run reads.
 
 ## When it runs
 
-When you type. With an [analyst](../concepts/analysts.md) selected, chat works for that analyst: it reads the analyst's strategy and rules first, and every edit and trade lands on its book. With none selected, it looks across the whole account and asks which analyst you mean before it writes anything.
+When you type. With an [analyst](../concepts/analysts.md) selected, chat works for that analyst: it reads the analyst's strategy and rules first, and every edit and trade lands on its book. With none selected, it reads every analyst's book, and an edit, sale or buy goes to the stock's own analyst under that analyst's rules. It asks which one only when two analysts hold the same stock. New coverage goes to the Writer with the analyst named; to start a thesis yourself, select the analyst first.
 
 > What's waiting on me?
 >
@@ -57,7 +57,7 @@ When your message is clear ("raise the floor to $1,650", "sell NVDA"), chat says
 
 - **Edit a plan:** `update_thesis`, landing in Activity like any other edit. A price you name becomes a trigger on the [thesis](../concepts/theses.md). Like every agent, chat can raise a floor on a holding but not lower one; lowering a floor is yours, on the thesis.
 - **Change the belief or direction:** only the Writer and chat can, and chat only when you ask.
-- **Trade:** a [proposal](../concepts/approvals.md) like any analyst's. Chat can name a size, and it's used as given.
+- **Trade:** a [proposal](../concepts/approvals.md) like any analyst's. Chat can name a size, and it's used as given. A buy for an analyst with no free slot is refused. While a buy waits on you, its plan stays as proposed.
 - **Research:** "research CRWD" or `/research` starts the Writer with `dispatch_thesis_research`; `wait_for_thesis_refresh` brings the thesis back into the conversation.
 
 It never approves or declines a proposal. That's always your click.

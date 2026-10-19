@@ -10,7 +10,7 @@ A thesis is the record every agent reads and edits. Its life is a loop: research
 
 A thesis has two halves, written and kept by different hands.
 
-- **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (one sentence we can be wrong about, with an outcome, a date and a reason), the two or three assumptions it rests on, what would prove it wrong, the case for and against, the setup it trades as, and a score and conviction. Every agent reads it as the claim of record; only a new write-up, or you through [chat](../agents/chat.md), changes it.
+- **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (one sentence we can be wrong about, with an outcome, a date and a reason), the two or three assumptions it rests on, what would prove it wrong, the case for and against, and a score. Every agent reads it as the claim of record. Only a new write-up, or you through [chat](../agents/chat.md), changes the belief, its assumptions and what would prove it wrong; a morning run can change the setup it trades as and its conviction.
 - **The plan** is its [triggers](triggers.md): one sentence each saying when to buy, add, trim, sell or look again. The buy, the floor and the target are triggers too, so the plan can't disagree with itself. This is the half the agents keep up to date.
 
 Alongside both sits what's been said: your notes and decisions, and the analyst's last answer to them.
@@ -58,7 +58,7 @@ One rule holds over all of them: no agent can lower a floor on a stock we hold. 
 
 <!-- asset: thesis-lifecycle -->
 
-- **Sold.** The sale is approved and the thesis is retired as sold. Within two weeks it gets one look back: watch it again with a re-entry level, or let it go.
+- **Sold.** A sale at the target, or one where the analyst says the belief still holds, sends the thesis back to Watching with a one-day review to set a re-entry level. Any other sale retires it as sold, and within two weeks it gets one look back: watch it again, or let it go.
 - **Proven wrong.** Something on its "wrong if" list happened. A holding is sold; a watch is retired.
 - **Dropped or replaced.** Taken off the watchlist, or replaced by a newer thesis. The history stays.
 
@@ -89,7 +89,7 @@ The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A
 `update_thesis`: `add_triggers`, `edit_triggers` by id, `remove_trigger_ids`. The fields each agent may send are pinned by `update-thesis-doors.test.ts`: the Writer 35, chat 21, a morning run 18, a trigger run 11.
 
 #### Status changes
-The buy's fill turns WATCHING into HOLDING: `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` sets the floor and target from the trade, adds the held review clock and earnings reviews, and leaves the sell rules inherited. An approved sale retires the thesis as SOLD.
+The buy's fill turns WATCHING into HOLDING: `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` sets the floor and target from the trade, adds the held review clock and earnings reviews, and leaves the sell rules inherited. A filled sale retires it as SOLD, unless it was a profit-take at the target or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
 
 #### Floors
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers or loosens a protective level on a stock we hold.

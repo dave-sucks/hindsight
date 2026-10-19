@@ -6,7 +6,7 @@ Every plan on the book is written here, whoever found the stock. It never trades
 
 ```facts
 Model: claude-sonnet-4-6
-Starts: When another agent asks
+Starts: When asked
 Steps: Up to 8
 Tools: 9
 Saves: 35 fields: the whole thesis
@@ -34,11 +34,12 @@ It runs on Claude Sonnet with Claude's web search. In a side-by-side test it wro
 
 ## When it runs
 
-When another agent asks, with `dispatch_thesis_research`. Each request is its own run, five at a time.
+When asked: by another agent with `dispatch_thesis_research`, by you with Send to Agent on a stock, or when an analyst is promoted to live money. Each request is its own run, five at a time.
 
 - **[Discovery](discovery.md)** sends every new stock it wants watched.
 - **[Chat](chat.md)** sends one when you ask for research, or type `/research`.
-- **[A morning run](morning-runs.md)** sends one when the stock's [situation](../concepts/situations.md) calls for it: a stock you added that's due its first research, research older than the analyst allows, or a watch whose wake-up fired.
+- **[A morning run](morning-runs.md)** sends one when the stock's [situation](../concepts/situations.md) calls for it: a stock you added that's due its first research, research older than its horizon allows, or a watch whose wake-up fired.
+- **[A trigger run](trigger-runs.md)** sends one when the research is too old to act on.
 
 ## What it reads
 
@@ -61,9 +62,9 @@ The decision goes through the same checks as every other save: prices in the rig
 
 ## What happens next
 
-- **A new stock** lands as Watching, with its buy, floor, target and review clock. The trigger check starts watching the buy that day.
-- **A pass** is saved as Passed, with what would change the verdict, so the stock isn't pitched again without a reason.
-- **A rewrite** replaces the research and the claim. The agent that asked re-reads the stock and moves its levels if the view changed.
+- **A new stock** lands as Watching, with its buy, floor and target, and a review clock only if the agent that asked set one. The trigger check starts watching the buy that day.
+- **A pass** on a new stock is saved as Passed, with what would change the verdict, so it isn't pitched again without a reason.
+- **A rewrite** replaces the research and the claim. It never changes a stock's direction or status: a different verdict is flagged for the agent that asked, which re-reads the stock and moves its levels if the view changed. A rewrite you asked for in chat keeps the levels you set, fills only an empty one, and notes its own.
 
 From there, [morning runs](morning-runs.md) review the stock and a [trigger run](trigger-runs.md) acts when its buy fires. The research stays the Writer's: other agents adjust the plan around it, and the belief changes only with a new write-up or when you change it in chat.
 

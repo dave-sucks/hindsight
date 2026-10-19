@@ -61,6 +61,7 @@ It works the list one stock at a time and takes exactly one action on each. One 
 - **Redraw the plan:** `update_thesis`, one trigger at a time. It can raise a floor; it can never lower one on a stock we hold.
 - **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md).
 - **Answer you:** your notes come first, quoted, with what it decided on each.
+- **Leave your queue alone:** a stock with a sale waiting for your approval is yours to decide, so it carries no work; its row says the proposal is waiting. A waiting buy isn't proposed twice.
 - **Look back once:** a stock sold in the last two weeks is either watched again with a re-entry level or let go.
 - **Change nothing:** one sentence on what it checked and what would change its mind.
 
@@ -68,7 +69,7 @@ The market's mood sets how hard it leans in. Risk-on is full size. Cautious (the
 
 ## What happens next
 
-`record_run_summary` lists every stock the run touched, each with a one-word action. `complete_run` then checks that summary against the orders: a sale it names on a stock we hold needs a sale or a sale proposal from this run, or the run can't finish. A summary that says "sold" when nothing was sold is the one mistake the run isn't allowed to end on.
+`record_run_summary` lists every stock the run touched, each with a one-word action. `complete_run` then checks that summary against the orders: on a stock we hold, a pick marked exit, reduce or add needs a matching sale, trim or add from this run, or the run can't finish. A summary that says "sold" when nothing was sold is the one mistake the run isn't allowed to end on.
 
 On the live account, its proposals wait in your queue. Its new levels are triggers, and from here [trigger runs](trigger-runs.md) act on them through the day.
 

@@ -2,7 +2,7 @@
 
 **How the pieces fit.** Data comes in, one record holds it, clocks wake the agents, and every trade waits for you.
 
-Five agents work on one shared record, and each part of the system is defined in one place, so no two parts can disagree about a stock.
+Five agents work on one shared record, and the analyst builder sets up the analysts they work for. Each part of the system is defined in one place, so no two parts can disagree about a stock.
 
 <!-- asset: system-layers -->
 
@@ -40,12 +40,14 @@ Eastern time, on trading days unless it says otherwise.
 - **6:25 AM:** Every market-data source is probed; an email goes out if one is empty or erroring.
 - **6:30 AM:** The chart numbers for every stock on the book: averages, highs, RSI, strength, gaps, insider buys.
 - **8:00 AM:** Morning runs, on each analyst's run days.
-- **9:30 AM – 4:00 PM:** The trigger check, every five minutes. Holdings' highs are tracked hourly for the trails.
+- **9:30 AM – 4:00 PM:** The trigger check, every five minutes. Holdings' highs are updated hourly for the trails.
+- **4:00 AM – 8:00 PM:** Orders are matched to the broker's fills every five minutes, and proposals past their 24 hours lapse every thirty.
 - **10:00 AM:** The morning digest: what the runs did, in one email.
 - **4:20 PM:** The close pass: levels that read the closing price.
 - **5:00 PM:** End-of-day snapshots of every position.
 - **8:00 PM:** The portfolio digest the next morning's runs read.
-- **Sundays:** Weekly scorecards: win rate, and how well conviction matched outcomes.
+- **Sundays 10:00 AM:** Weekly scorecards: win rate, and how well conviction matched outcomes, once an analyst has three closed trades.
+- **Discovery** has a Sunday 9:00 AM slot in the code, but in practice it runs when you ask.
 
 ## Where the data comes from
 
@@ -67,7 +69,7 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 | Agent | Starts | Reads | May change | Trades |
 |---|---|---|---|---|
 | [Discovery](agents/discovery.md) | When you ask | The tickers its analyst already covers, to skip them | A pass or a watch; new stocks go to the Writer | Never |
-| [The Writer](agents/writer.md) | When another agent asks | Its own pull of one stock's data, and the web | The whole thesis | Never |
+| [The Writer](agents/writer.md) | When an agent or you ask | Its own pull of one stock's data, and the web | The whole thesis | Never |
 | [Morning run](agents/morning-runs.md) | 8:00 AM ET on run days | Its whole book, each stock at the size today needs | The plan, its verdict and a note | Proposes |
 | [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires | The one stock it woke for, with the fire | The plan and a note | Proposes |
 | [Chat](agents/chat.md) | When you type | Stocks by name, when the conversation needs them | Also the belief and the direction | Proposes, at your word |

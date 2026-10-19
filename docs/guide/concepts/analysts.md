@@ -17,7 +17,8 @@ Each analyst is one way of trading, run by the agents. It has its own book of [t
 - **Strategy:** its edge in your words: what it buys, what it filters out, what it never does. Every agent reads it word for word.
 - **Universe:** the markets, sectors, industries, themes and market-cap band it looks in. Its exclusion list always wins.
 - **Setups:** the kinds of trade it takes, chosen from the playbook below.
-- **Sizing:** its smallest trade, its largest, and the most it will hold in one stock. No agent picks a size: every buy is sized by the risk to its floor, scaled by conviction, inside this band, and an add risks half the first buy. A tight, honest floor is what earns a bigger position.
+- **Sizing:** its smallest trade, its largest, and the most it will hold in one stock. No agent picks a size: a buy risks 1% of the account by default, scaled by conviction (half at low, 1.25× at strong), halved again for an all-or-nothing event or a cautious market, and sized by the distance to its floor inside this band. An add risks half the first buy. A tight, honest floor is what earns a bigger position.
+- **Slots:** how many stocks it may hold at once, 5 by default. When every slot is held or waiting for approval, a new buy is refused until one frees up.
 - **Sell rules:** its own [triggers](triggers.md), inherited by every stock it holds, like a trail 12% off the high.
 - **Run days:** which mornings it reviews its book. Every weekday by default.
 
@@ -56,7 +57,7 @@ text: Enough supply to work with. How close to the decision should it sell: the 
 <summary>Technical details</summary>
 
 #### Stored as
-`AgentConfig`: `analystPrompt`, the universe fields, `exclusionList`, `minPositionSize` / `maxPositionSize` / `maxPositionTotal`, `runDaysOfWeek`, `triggers`.
+`AgentConfig`: `analystPrompt`, the universe fields, `exclusionList`, `minPositionSize` / `maxPositionSize` / `maxPositionTotal`, `riskPct`, `maxOpenPositions`, `setupIds`, `runDaysOfWeek`, `triggers`. Sizing math: `sizeByRisk` in `lib/agent/position-sizing.ts`.
 
 #### The brief
 `analystBrief` in `lib/agent/analyst-brief.ts`, the one text every door puts in its prompt.
