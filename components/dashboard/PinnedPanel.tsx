@@ -37,10 +37,8 @@ function resolvePinnedRows(
 ): PinnedEntry[] {
   const open = new Map<string, CoverageRow>();
   const closed = new Map<string, CoverageRow>();
-  for (const r of coverage?.trades ?? []) {
-    const bucket = r.tradeState === "OPEN" ? open : closed;
-    if (!bucket.has(r.ticker)) bucket.set(r.ticker, r);
-  }
+  for (const r of coverage?.trades ?? []) if (!open.has(r.ticker)) open.set(r.ticker, r);
+  for (const r of coverage?.sold ?? []) if (!closed.has(r.ticker)) closed.set(r.ticker, r);
   const watching = new Map<string, CoverageRow>();
   for (const r of coverage?.watching ?? []) if (!watching.has(r.ticker)) watching.set(r.ticker, r);
   const passed = new Map<string, CoverageRow>();

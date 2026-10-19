@@ -20,6 +20,7 @@
  */
 
 import type { TradeStatus } from "@/lib/mock-data/trades";
+import { formatCurrency } from "@/lib/format";
 
 /**
  * ── Naming a trade awaiting your decision ──────────────────────────────────
@@ -32,7 +33,7 @@ import type { TradeStatus } from "@/lib/mock-data/trades";
  *           six labels for one state, which is what this note exists to stop.
  *
  *   ACTION  what is being proposed. Always a sentence from
- *           `buildTradeSentence()` / `proposalSentence()` below:
+ *           `buildTradeSentence()` / `sharesLine()` below:
  *           "Proposed: Buy 28 shares at $352.79". The verb comes from the
  *           Order's intent, never from the position.
  *
@@ -101,19 +102,27 @@ const PROPOSAL_VERB: Record<string, string> = {
 };
 
 /**
- * Compact proposal sentence for row subheads — same grammar and verbs as
- * `buildTradeSentence`, minus the price (rows show it in their own column).
- * `executing` swaps the lead-in once the order has been approved and sent:
- * "Executing: Sell 20 shares".
+ * The line under a ticker in a table row: "11 shares · $10,025.56". A pending
+ * proposal leads with its verb and the shares it moves — "Sell 300 shares ·
+ * $11,868.00" — and "Executing: Sell 300 shares" once approved and sent.
+ * The amber dot says it is waiting on you; the line itself stays plain.
  */
-export function proposalSentence(
-  intent: string,
-  quantity: number,
+export function sharesLine({
+  shares,
+  value,
+  intent,
   executing = false,
-): string {
-  const verb = PROPOSAL_VERB[intent] ?? "Review";
-  const lead = executing ? EXECUTING_LABEL : "Proposed";
-  return `${lead}: ${verb} ${quantity} share${quantity === 1 ? "" : "s"}`;
+}: {
+  shares: number;
+  value: number | null;
+  intent?: string | null;
+  executing?: boolean;
+}): string {
+  const verb = intent
+    ? `${executing ? `${EXECUTING_LABEL}: ` : ""}${PROPOSAL_VERB[intent] ?? "Review"} `
+    : "";
+  const worth = value != null ? ` · ${formatCurrency(value)}` : "";
+  return `${verb}${shares} share${shares === 1 ? "" : "s"}${worth}`;
 }
 
 export interface TradeStatusDisplay {

@@ -55,8 +55,8 @@ import { toast } from "sonner";
 export interface ProposalActionsProps {
   orderId: string;
   /**
-   * ISO expiry of the proposal. Past-expiry the control renders a muted
-   * "Expired" label instead of a Review button that can only 410 — the
+   * ISO expiry of the proposal. Past-expiry the control renders nothing
+   * instead of a Review button that can only 410 — the
    * expiry cron sweeps every 30 min, so a proposal can be dead in the DB
    * while its row still says AWAITING_APPROVAL. Omitted = unknown, render
    * the button and let the server rule.
@@ -284,9 +284,9 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className }
     setRejectDirection(null);
   }
 
-  // Past-expiry with no action taken yet: same terminal label the server
-  // would force on the first click. Server stays the authority — this only
-  // stops us offering a button whose every outcome is a 410.
+  // Past-expiry with no action taken yet: nothing to offer. Server stays the
+  // authority — this only stops us offering a button whose every outcome is a
+  // 410. No "Expired" word either: it sat where the row's P&L belongs.
   const lapsed =
     resolved == null && expiresAt != null && Date.parse(expiresAt) <= Date.now();
 
@@ -308,10 +308,9 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className }
         </Tooltip>
       );
     }
+    if (resolved !== "rejected") return null;
     return (
-      <span className={cn("text-xs text-muted-foreground", className)}>
-        {resolved === "rejected" ? "Rejected" : "Expired"}
-      </span>
+      <span className={cn("text-xs text-muted-foreground", className)}>Rejected</span>
     );
   }
 

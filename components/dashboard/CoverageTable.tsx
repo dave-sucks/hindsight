@@ -25,8 +25,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatCurrency, formatSignedCurrency } from "@/lib/format";
-import { proposalSentence, proposalTooltip } from "@/lib/trade-status";
+import { formatSignedCurrency } from "@/lib/format";
+import { sharesLine, proposalTooltip } from "@/lib/trade-status";
 import { StatusDot } from "@/components/ui/trade-row";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
@@ -35,7 +35,7 @@ import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 
 // ─── Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ──────────────
 
-type Tab = "trades" | "watching" | "passed";
+type Tab = "trades" | "sold" | "watching" | "passed";
 type MobileView = "lifetime" | "1d";
 /**
  * What the 1D/5D/30D columns say. A column of percents cannot show why a book
@@ -119,18 +119,22 @@ function NameCell({ row }: { row: CoverageRow }) {
   let subhead: string;
   const pp = row.pendingProposal;
   if (pp) {
-    // The proposal replaces the usual subhead — what you're being asked to
-    // approve matters more than the cost basis while it's outstanding, and
-    // once you've approved it, that it's on its way to Alpaca.
-    subhead = proposalSentence(pp.intent, pp.quantity, pp.executing);
+    // A proposal reads like any held row with its verb in front — "Sell 300
+    // shares · $11,868.00". The amber dot is what says it's waiting on you.
+    subhead = sharesLine({
+      shares: pp.quantity,
+      value: row.anchorPrice != null && row.tradeState != null ? row.anchorPrice * pp.quantity : null,
+      intent: pp.intent,
+      executing: pp.executing,
+    });
   } else if (row.tradeState != null && row.shares != null && row.costBasis != null) {
-    subhead = `${row.shares} share${row.shares === 1 ? "" : "s"} · ${formatCurrency(row.costBasis)}`;
+    subhead = sharesLine({ shares: row.shares, value: row.costBasis });
   } else if (row.verdict != null && row.anchorPrice != null) {
     subhead = `Passed at $${row.anchorPrice.toFixed(2)}`;
   } else if (row.anchorPrice != null) {
-    subhead = `Watch at $${row.anchorPrice.toFixed(2)}`;
+    subhead = `Watching from $${row.anchorPrice.toFixed(2)}`;
   } else {
-    subhead = row.analystName ?? "";
+    subhead = "Watching";
   }
 
   return (
@@ -141,18 +145,15 @@ function NameCell({ row }: { row: CoverageRow }) {
           <span className="text-sm font-medium">{row.ticker}</span>
           <StatusDot {...statusDot(row)} />
         </div>
-        {subhead && (
-          <span
-            className={cn(
-              "text-xs tabular-nums truncate",
-              pp ? "text-amber-500" : "text-muted-foreground",
-              // In flight — same shimmer the agent's running rows use.
-              pp?.executing && "shimmer-text",
-            )}
-          >
-            {subhead}
-          </span>
-        )}
+        <span
+          className={cn(
+            "text-xs tabular-nums truncate text-muted-foreground",
+            // In flight — same shimmer the agent's running rows use.
+            pp?.executing && "shimmer-text",
+          )}
+        >
+          {subhead}
+        </span>
       </div>
     </div>
   );
@@ -243,7 +244,7 @@ function CoverageTab({
   return (
     <div className="rounded-lg border overflow-hidden bg-card">
       {/* table-fixed + per-column widths so the momentum/price columns stay a
-          constant size across the Trades/Watching/Passed tabs (the Gain column
+          constant size across the Trades/Sold/Watching/Passed tabs (the Gain column
           content varies by tab); Name + Gain absorb the remaining width. */}
       <Table className="table-fixed">
         <TableHeader>
@@ -266,7 +267,7 @@ function CoverageTab({
                   </TooltipTrigger>
                   <TooltipContent side="top" align="end">
                     <p className="text-xs max-w-[200px]">
-                      Total gain since the position was opened, the watch was started, or the name was passed.
+                      Total gain since the position was opened, the watch was started, or the name was passed. On a sold position, the realized gain.
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -317,7 +318,7 @@ function CoverageTab({
         </TableBody>
       </Table>
 
-      {tab === "trades" && (
+      {(tab === "trades" || tab === "sold") && (
         <div className="border-t p-1.5">
           <Button
             variant="ghost"
@@ -354,6 +355,7 @@ function seedFor(row: CoverageRow): ThesisCardData {
 
 const COVERAGE_TABS: { value: Tab; label: string }[] = [
   { value: "trades", label: "Trades" },
+  { value: "sold", label: "Sold" },
   { value: "watching", label: "Watching" },
   { value: "passed", label: "Passed" },
 ];
@@ -377,7 +379,8 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
   };
 
   const EMPTY_LABELS: Record<Tab, string> = {
-    trades: "No trades yet.",
+    trades: "No open trades.",
+    sold: "Nothing sold yet.",
     watching: "Nothing on the watchlist yet.",
     passed: "No recently passed names.",
   };

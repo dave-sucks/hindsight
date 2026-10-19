@@ -45,7 +45,7 @@ export default async function Home() {
     getLatestDigest(environment).catch(() => null),
     // Coverage Table (Feature B). Read-only, additive — failure degrades to
     // empty groups so the rest of the dashboard is unaffected.
-    getCoverageData(environment).catch(() => ({ trades: [], watching: [], passed: [] })),
+    getCoverageData(environment).catch(() => ({ trades: [], sold: [], watching: [], passed: [] })),
     // Pinned rail. Read-only and additive — a failure just hides the panel.
     getPinnedTickers().catch(() => [] as string[]),
     createClient(),
