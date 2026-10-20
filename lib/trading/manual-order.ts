@@ -224,7 +224,7 @@ export type ManualOrderResult =
       alpacaOrderId: string | null;
       /** Alpaca didn't answer cleanly; the order is recovered by reconcile within ~5 min. */
       unconfirmed: boolean;
-      /** The writer was sent to research a stock bought with no view yet. */
+      /** The writer was sent to fill the new holding's missing view, floor or target. */
       researchStarted: boolean;
     }
   | { ok: false; error: string };
@@ -346,6 +346,10 @@ export async function placeManualOrder(opts: {
         },
       });
       return ord.id;
+    }).catch(async (err: unknown) => {
+      // Nothing was staged: put the seed's direction back before saying so.
+      await undoLong();
+      throw err;
     });
     openedThesisId = thesisId;
     if (!staged) {

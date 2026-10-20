@@ -70,6 +70,7 @@ export async function POST(req: Request) {
       { status: 409 },
     );
   }
+  // placeManualOrder catches everything after the send; a throw is before it.
   const result = await placeManualOrder({
     ...who,
     environment,
@@ -82,6 +83,9 @@ export async function POST(req: Request) {
       targetPrice: num(body.targetPrice),
       stopLoss: num(body.stopLoss),
     },
-  });
+  }).catch((err: unknown) => ({
+    ok: false as const,
+    error: `The order wasn't placed: ${err instanceof Error ? err.message : String(err)}`,
+  }));
   return Response.json(result, { status: result.ok ? 200 : 422 });
 }

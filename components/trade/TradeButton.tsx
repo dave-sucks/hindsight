@@ -364,8 +364,7 @@ export function TradeButton({
                           </InfoRow>
                         ) : null}
                       </div>
-                      <p className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                        <EnvDot env={ticket.environment} />
+                      <p className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                         {isLive ? "Live account" : "Paper account"}
                         {ticket.cash != null ? ` · ${formatCurrency(ticket.cash)} cash` : ""}
                       </p>
@@ -471,6 +470,13 @@ export function TradeButton({
           )}
 
           <DialogFooter>
+            {/* Which account this order goes to, the switcher's dot and word. */}
+            {ticket ? (
+              <span className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+                <EnvDot env={ticket.environment} />
+                {isLive ? "Live" : "Paper"}
+              </span>
+            ) : null}
             {step === "review" ? (
               <>
                 <Button variant="outline" onClick={() => setStep("form")} disabled={sending}>
