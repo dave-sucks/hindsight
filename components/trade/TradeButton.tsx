@@ -374,8 +374,8 @@ export function TradeButton({
                   )}
 
                   {isOpenBuy ? (
-                    <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen} className="rounded-lg border">
-                      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 p-3 text-left text-sm font-medium hover:bg-muted/30 transition-colors">
+                    <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen} className="border-y">
+                      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-3 text-left text-sm font-medium outline-none focus-visible:underline">
                         <span>
                           Price targets
                           {!levelsOpen && (stop.trim() || target.trim()) ? (
@@ -389,7 +389,7 @@ export function TradeButton({
                           className={cn("size-4 shrink-0 text-muted-foreground transition-transform", levelsOpen && "rotate-180")}
                         />
                       </CollapsibleTrigger>
-                      <CollapsibleContent className="px-3 pb-3">
+                      <CollapsibleContent className="pb-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div className="grid gap-1.5">
                             <Label htmlFor="trade-stop">Stop (optional)</Label>
