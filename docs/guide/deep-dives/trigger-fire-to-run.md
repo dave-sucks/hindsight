@@ -25,7 +25,8 @@ The check has first claim on prices. Every other caller is refused a quote once 
 
 - **Buy, add, trim or sale:** an `app/thesis.trigger.fired` event starts a trigger run.
 - **Review:** written to Activity and left for the next [morning run](../agents/morning-runs.md). A red filing on a stock we hold starts a run the same day.
-- **A sale set to go straight through:** no agent wakes. The sale goes to the [approval](../concepts/approvals.md) gate like any other. Only a plain price, or a percent off the close, our entry or the high, qualifies.
+- **A held stock's floor:** no agent wakes, ever. It has no cooldown, so it fires on every check while the price is under it, and it leads the pass: a trail that fires with it folds into its sale. The sale goes to the [approval](../concepts/approvals.md) gate, or straight to the broker when your "Floor sales go through at once" switch is on.
+- **Another sale set to go straight through:** no agent wakes either. Only a plain price, or a percent off the close, our entry or the high, qualifies.
 - **A stock we only watch,** when its floor breaks on a close or its target is reached first: the plan comes down on the spot. The buy, floor and target are removed and a line is left for the next morning run. No run starts and nothing is proposed.
 
 ## One run per question
@@ -33,7 +34,7 @@ The check has first claim on prices. Every other caller is refused a quote once 
 Several rules stop one move from waking the desk twice:
 
 - **Together:** a stop and a trail firing in one pass fold into one run, which sees both. Each still gets its own Activity line. Buys, adds and reviews never fold.
-- **A sale already waiting:** if a sale of the position is waiting for you, already sent, or was declined in the last four hours, the fire starts nothing. A lapsed sale doesn't count, so the next day's fire proposes it again.
+- **A sale already waiting:** if a sale of the position is waiting for you, already sent, or was declined in the last four hours, the fire starts nothing. A lapsed sale doesn't count, so the next fire proposes it again. With "Floor sales go through at once" on, a floor's fire is held back only by a sale already sent.
 - **A buy already waiting,** or checked in the last four hours by a completed run, starts nothing.
 - **A buy that slipped back:** if the run passed because the price had fallen back under the level, without trying to buy, the buy stays armed and can fire again that day, up to three times.
 
@@ -54,7 +55,7 @@ A trail measures the give-back from the highest price since the buy (the lowest,
 `STALE_QUOTE_MS` (15 minutes) and `staleForTrading` in `lib/market-data/quote-age.ts`. `RESERVED_SHARE` in `lib/market-data/quote-budget.ts`: 20% of Alpaca's limit and 75% of Finnhub's are held back from every caller but the trigger check.
 
 #### Routing
-`effectiveTriggerAction` and `watchedFloorOnClose` in `lib/agent/triggers/types.ts`. DEMOTE runs `demoteThesisPlan` in `lib/agent/triggers/demote.ts`. Reviews write a `TRIGGER_FIRED` row; `filingNeedsSameDayLook` in `lib/market-data/sec-events.ts`. The DIRECT path is the `direct-close` step in `lib/inngest/functions/tactical-run.ts`, gated by `isDirectEligiblePredicate`, and calls `closeOpenPosition`.
+`effectiveTriggerAction` and `watchedFloorOnClose` in `lib/agent/triggers/types.ts`. DEMOTE runs `demoteThesisPlan` in `lib/agent/triggers/demote.ts`. Reviews write a `TRIGGER_FIRED` row; `filingNeedsSameDayLook` in `lib/market-data/sec-events.ts`. The DIRECT path is the `direct-close` step in `lib/inngest/functions/tactical-run.ts`, gated by `isDirectEligiblePredicate`, and calls `closeOpenPosition`. A held floor takes it whatever is stored (`heldFloorSells`, `isFloorSale` in `lib/agent/triggers/price-levels.ts`).
 
 #### Folding and snoozes
 `collapseProtectiveFires` in `lib/agent/triggers/co-fire.ts` (EXIT and TRIM only). In `tactical-run.ts`: `check-queued-close` and `EXIT_RECHECK_SNOOZE_MS` (four hours, rejected sales only); `check-queued-buy`; `check-recent-enter-run`.

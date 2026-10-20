@@ -38,7 +38,7 @@ A trigger list is never replaced whole. An agent sends `add_triggers`, `edit_tri
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower or widen a protective level, remove it, or switch a floor from selling straight away to asking an agent first. An agent once lowered a floor it had raised hours earlier, with sale proposals still waiting. Chat is bound too. Only your edits on the thesis sheet skip the rule.
+On a stock we hold, no agent can lower or widen a protective level, remove it, or switch a sale from proposing right away to asking an agent first. The floor itself always sells automatically, and every save writes it that way. An agent once lowered a floor it had raised hours earlier, with sale proposals still waiting. Chat is bound too. Only your edits on the thesis sheet skip the rule.
 
 ## When a save is refused
 

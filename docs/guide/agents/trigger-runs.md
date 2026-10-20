@@ -36,7 +36,7 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels r
 
 - **A buy fires on the crossing:** the moment the price reaches its level, not every day it stays there. A sale keeps asking every day its condition holds.
 - **Reviews wait for the morning.** A review is a question, not an order, so it goes on the stock's list for the next [morning run](morning-runs.md). The one exception: a worrying new filing on a stock we hold gets a look the same day.
-- **Some sales skip the run.** A floor can be set to propose its sale straight away, with no analyst. It goes through the same [approval](../concepts/approvals.md) as any sale.
+- **A floor never starts a run on a stock we hold.** The floor on its chart sells automatically, with no analyst: the sale is proposed through the same [approval](../concepts/approvals.md) as any sale, or sent at once when your "Floor sales go through at once" switch is on. Another sale can be set to skip the run the same way.
 
 ## What it reads
 
@@ -81,8 +81,8 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on its crossing, a protective rule every day it holds.
 
 #### Floors
-`lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens or deletes a protective level. Your edits on the thesis sheet don't go through it.
+A held stock's floor (`isFloorSale`, `heldFloorSells` in `lib/agent/triggers/price-levels.ts`) is a DIRECT sale whatever is stored, and never reaches a run. `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens or deletes a protective level. Your edits on the thesis sheet don't go through it.
 
 #### Direct sales
-`fireMode: DIRECT` on a sale skips the run and goes to `closeOpenPosition`.
+`fireMode: DIRECT` on a sale, or a held floor, skips the run and goes to `closeOpenPosition`; a floor's sale passes `floorSale`, which skips approval when `floorSalesAtOnce` is on.
 </details>

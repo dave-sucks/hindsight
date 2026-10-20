@@ -2,7 +2,7 @@
 
 **Analysts propose. You approve.** Every buy, sale, add and trim an analyst wants waits in your queue with its reason.
 
-On the live account nothing reaches the broker until you say yes, and whatever you answer, the next run reads it.
+On the live account nothing reaches the broker until you say yes (unless you let floor sales through at once, below), and whatever you answer, the next run reads it.
 
 <!-- asset: card approvals -->
 
@@ -12,7 +12,7 @@ No agent places a trade by itself. A trade becomes a proposal the moment an agen
 
 - **A [trigger run](../agents/trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
 - **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its target.
-- **A floor set to sell straight away,** with no agent at all.
+- **A held stock's floor,** with no agent at all: the floor on its chart sells automatically when the price falls through it.
 - **[Chat](../agents/chat.md)**, when you ask for a trade.
 
 A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no agent picks a size. Only chat may name one, at your word.
@@ -34,6 +34,8 @@ Approval is a setting on each account, for buys and sales separately:
 
 - **Live account:** on by default. Every trade waits for you.
 - **Paper account:** off by default, so paper trades go straight to the broker and analysts can practise freely. Turn it on to review paper trades too.
+
+One more switch, off by default: **Floor sales go through at once.** With it on, a held stock's floor sale goes straight to the broker on either account, and a floor sale already waiting for you is sent on the next check and taken out of your queue. It's the only trade that can skip approval: buys, adds, trims, targets, trails and every sale an analyst decides on still wait for you.
 
 Until it's approved, a proposal isn't a holding, and it isn't counted in your positions or your P&L.
 
@@ -58,7 +60,7 @@ A trade's whole path, from the agent's call through the gate, the broker and the
 An email (`lib/emails/proposal-pending.ts`) and a phone push through ntfy (`lib/notify/proposal-push.ts`).
 
 #### Settings
-`requireApprovalBuysLive` and `requireApprovalSellsLive` default on; the paper pair defaults off.
+`requireApprovalBuysLive` and `requireApprovalSellsLive` default on; the paper pair defaults off. `floorSalesAtOnce` defaults off; on, `approvalRequired` passes a `CLOSE` marked `floorSale` (set only by the trigger run's DIRECT STOP on a held floor), and a waiting proposal on that position is cancelled when the sale is sent.
 
 #### Agents
 Approve and reject are never an agent's tools. A run can read the queue (`list_proposals`) but only you can answer it.

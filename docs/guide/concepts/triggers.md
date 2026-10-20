@@ -42,7 +42,8 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 
 What happens next depends on the action:
 
-- **A buy, add, trim or sale** wakes a [trigger run](../agents/trigger-runs.md) within minutes to look at that one stock and decide. A floor that's a plain price, or a percent off the close, our entry or the high, can be set to propose its sale straight away, with no agent.
+- **A held stock's floor** (the one on its chart) sells automatically: no trigger run, a sale proposed on the spot and again on every check while the price stays under it. With your "Floor sales go through at once" switch on, it goes straight to the broker instead of waiting for you.
+- **A buy, add, trim or any other sale** (a trail, a target, a percent off our entry) wakes a [trigger run](../agents/trigger-runs.md) within minutes to look at that one stock and decide, unless it's set to propose its sale right away.
 - **A review** waits for the next [morning run](../agents/morning-runs.md), except a worrying new filing on a stock we hold, which wakes a trigger run the same day.
 - **On a stock we only watch,** a close below the floor, or the price reaching the target before we bought, takes the plan down on the spot. No agent wakes and nothing is proposed; the stock stays on watch.
 
@@ -52,7 +53,7 @@ The whole path from the price check to the run, with every rule that holds a fir
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or switch a floor from selling straight away to asking an agent first; the save refuses it. On a stock we only watch, the floor is free to change. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
+On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or switch a sale from proposing right away to asking an agent first; the save refuses it. On a stock we only watch, the floor is free to change. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>
@@ -70,7 +71,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on the crossing; protective and review triggers fire again while true.
 
 #### Fire modes
-`TACTICAL` (the default) wakes a trigger run; `DIRECT` proposes a sale without the agent. Both go through approval.
+`TACTICAL` (the default) wakes a trigger run; `DIRECT` proposes a sale without the agent. A held stock's floor (the FLOOR slot, `isFloorSale` in `price-levels.ts`) is always DIRECT with no cooldown, whatever is stored, and every save writes it DIRECT. Every sale goes through approval except a floor's, when `floorSalesAtOnce` is on.
 
 #### Write path
 `applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared by `update_thesis`, the trigger editor and the buy going through (`armHeldLadderOnFill`).
