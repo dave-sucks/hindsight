@@ -42,6 +42,8 @@ export async function startWriterRun(args: {
   reason: string;
   source: "USER" | "AGENT";
   dispatchedBy: string;
+  /** Keep every level the thesis has; fill only the empty ones (a buy placed by hand). */
+  keepLevels?: boolean;
 }): Promise<{ childRunId: string }> {
   const childRun = await prisma.researchRun.create({
     data: {
@@ -80,6 +82,7 @@ export async function startWriterRun(args: {
       forceWatchingMint: args.mode === "mint",
       promotionContext: null,
       reviewCadenceDays: args.reviewCadenceDays,
+      keepLevels: args.keepLevels === true,
     },
   });
 

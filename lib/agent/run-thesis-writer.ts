@@ -111,6 +111,8 @@ export interface RunThesisWriterArgs {
   existingThesisId?: string | null;
   reason: string;
   parentRunId?: string | null;
+  /** Keep the thesis's levels and fill only the empty ones, as a chat-started refresh does (a buy placed by hand). */
+  keepLevels?: boolean;
   /**
    * Layer-1 clamp passthrough: forwarded into the persist ctx so
    * record_thesis downgrades any LONG/SHORT/ACTIVE mint to WATCHING.
@@ -1367,7 +1369,7 @@ export function buildWriterSaveCall(
     toolName: "update_thesis",
     toolArgs: {
       thesis_id: args.existingThesisId,
-      rationale: `${rationale}${directionFlag}${own.length ? `\n\n[The plan's levels stay as the chat set them. This refresh's own: ${own.join(", ")}.]` : ""}`,
+      rationale: `${rationale}${directionFlag}${own.length ? `\n\n[The plan's levels stay as they were set. This refresh's own: ${own.join(", ")}.]` : ""}`,
       direction: seed ? d.direction : undefined,
       entry_price: pass || held || kept.has("ENTRY") ? undefined : d.entry_price,
       target_price: pass || kept.has("TARGET") ? undefined : d.target_price,
@@ -1396,6 +1398,11 @@ export function buildWriterSaveCall(
 }
 
 export { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
+
+/** A refresh keeps the row's levels when the chat started it or the dispatcher asked (a buy placed by hand). */
+export function keepsExistingLevels(args: Pick<RunThesisWriterArgs, "keepLevels">, parentMode: string | null): boolean {
+  return args.keepLevels === true || parentMode === "PRINCIPAL_CHAT";
+}
 
 /** How a save (or a check-only save) came back. */
 export interface WriterSaveOutcome {
@@ -1711,7 +1718,8 @@ export async function writerPersistPhase(
         args.mode === "refresh" && args.existingThesisId
           ? await loadExistingThesis(args.existingThesisId)
           : null;
-      const fromChat = existing != null && args.parentRunId != null && (await prisma.researchRun.findUnique({ where: { id: args.parentRunId }, select: { mode: true } }))?.mode === "PRINCIPAL_CHAT";
+      const parentMode = args.keepLevels || !args.parentRunId ? null : ((await prisma.researchRun.findUnique({ where: { id: args.parentRunId }, select: { mode: true } }))?.mode ?? null);
+      const fromChat = existing != null && keepsExistingLevels(args, parentMode);
 
       const saveOnce = async (decision: ValidatedThesisDecision): Promise<WriterSaveOutcome> => {
         const call = buildWriterSaveCall(

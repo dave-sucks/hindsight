@@ -12,6 +12,7 @@ import type { ThesisRowData } from "@/components/ui/thesis-row";
 import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
+import { TradeButton } from "@/components/trade/TradeButton";
 import {
   thesisSheetStateSelect,
 } from "@/lib/agent/thesis-sheet-state";
@@ -292,6 +293,7 @@ export default async function StockDetailPage({ params }: Props) {
           href={null}
           actions={
             <>
+              <TradeButton ticker={upperSymbol} />
               <PinButton ticker={upperSymbol} />
               <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
             </>

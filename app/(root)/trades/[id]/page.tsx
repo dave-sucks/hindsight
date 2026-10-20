@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { StockIdentityHeader } from '@/components/domain/stock-identity-header';
 import { PinButton } from '@/components/stocks/PinButton';
+import { TradeButton } from '@/components/trade/TradeButton';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { buildTradeSentence } from '@/lib/trade-statement';
@@ -348,6 +349,7 @@ export default async function TradeDetailPage({
           }
           actions={
             <>
+              <TradeButton ticker={trade.ticker} analystId={analystIdVal} />
               <PinButton ticker={trade.ticker} />
               <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />
             </>

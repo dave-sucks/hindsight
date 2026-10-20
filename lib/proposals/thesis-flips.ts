@@ -53,8 +53,9 @@ export async function promoteThesisOnApproval(opts: {
   ticker: string;
   positionId: string;
   entryPrice: number;
-  targetPrice: number;
-  stopLoss: number;
+  /** Null: the order named none (a buy placed by hand) — the thesis keeps its own. */
+  targetPrice: number | null;
+  stopLoss: number | null;
   runId?: string | null;
 }): Promise<void> {
   // PROMOTED → ACTIVE — re-entered on first live-run after promotion.
@@ -128,8 +129,9 @@ export async function armHeldLadderOnFill(opts: {
   ticker: string;
   /** The price the buy actually filled at. Becomes Thesis.entryPrice. */
   fillPrice: number;
-  targetPrice: number;
-  stopLoss: number;
+  /** Null leaves the thesis's own target / floor trigger as it is. */
+  targetPrice: number | null;
+  stopLoss: number | null;
   positionId: string;
   runId?: string | null;
   /** Where the fill came from — used only in the audit row's wording. */
@@ -187,8 +189,10 @@ export async function armHeldLadderOnFill(opts: {
       : [];
     const ops: TriggerOp[] = [
       ...stored.filter((t) => t.action === "ENTER").map((t) => ({ op: "remove" as const, id: t.id })),
-      { op: "level", slot: "FLOOR", price: opts.stopLoss },
-      { op: "level", slot: "TARGET", price: opts.targetPrice },
+      // A level the buy didn't name is left as the thesis has it — never
+      // filled in with the entry, which would arm a sale at the buy price.
+      ...(opts.stopLoss != null ? [{ op: "level" as const, slot: "FLOOR" as const, price: opts.stopLoss }] : []),
+      ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
       ...heldTemplate.map((t) => ({ op: "add" as const, trigger: t })),
       ...setupExits.map((t) => ({ op: "add" as const, trigger: t })),
     ];

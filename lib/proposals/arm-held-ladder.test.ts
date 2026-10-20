@@ -62,6 +62,22 @@ describe("armHeldLadderOnFill", () => {
     expect(data.entryPrice).toBe(52.975);
   });
 
+  it("leaves the thesis's own floor and target when the buy names none", async () => {
+    const floor = { id: "f1", action: "EXIT", predicate: { watch: "price", is: "below", value: 44 }, fireMode: "TACTICAL", rationale: "The floor." };
+    thesisFindFirst.mockResolvedValue({
+      id: "t1", direction: "LONG", horizon: null,
+      catalystDate: null, triggers: [floor],
+    });
+
+    await armHeldLadderOnFill({ ...BASE, targetPrice: null, stopLoss: null });
+
+    const data = thesisUpdate.mock.calls[0][0].data;
+    expect(data.status).toBe("HOLDING");
+    const exits = (data.triggers as { action: string; predicate: { value?: number } }[]).filter((t) => t.action === "EXIT");
+    // The floor it had, untouched; nothing armed at the buy price.
+    expect(exits.map((t) => t.predicate.value)).toEqual([44]);
+  });
+
   it("recomputes the level columns from the armed triggers (the DAV-195 L3 fix)", async () => {
     thesisFindFirst.mockResolvedValue({
       id: "t1", direction: "LONG", horizon: "TARGET",

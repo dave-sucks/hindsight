@@ -79,7 +79,8 @@ export function EnvironmentSwitcher({
   );
 }
 
-function EnvDot({ env }: { env: AlpacaEnvironment }) {
+/** The account dot: Live pulses blue, Paper is grey. Shared with the Trade dialog. */
+export function EnvDot({ env }: { env: AlpacaEnvironment }) {
   return (
     <span
       className={cn(
