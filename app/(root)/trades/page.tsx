@@ -1,6 +1,9 @@
 import TradesPage from "@/components/trades/TradesPage";
+import { LiveRefresh } from "@/components/LiveRefresh";
 import { getDashboardData } from "@/lib/actions/portfolio.actions";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
+import { getStockCandles } from "@/lib/actions/finnhub.actions";
+import { NO_MOVES, todayEt, windowMoves, type WindowMoves } from "@/lib/portfolio/window-moves";
 import type { MockTrade } from "@/lib/mock-data/trades";
 
 export default async function Trades() {
@@ -31,5 +34,27 @@ export default async function Trades() {
     (a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime(),
   );
 
-  return <TradesPage initialOpenTrades={initialOpenTrades} initialClosedTrades={closedTrades} />;
+  // The 1D / 5D / 30D moves behind the window tabs — held names only; a sold
+  // position has no shares riding on today's move.
+  const today = todayEt();
+  const held = new Map<string, number>();
+  for (const t of initialOpenTrades) if (!held.has(t.ticker)) held.set(t.ticker, t.currentPrice);
+  const moves: Record<string, WindowMoves> = {};
+  await Promise.all(
+    [...held].map(async ([ticker, current]) => {
+      const candles = await getStockCandles(ticker, 45).catch(() => []);
+      moves[ticker] = current > 0 ? windowMoves(candles, current, today) : NO_MOVES;
+    }),
+  );
+
+  return (
+    <>
+      <LiveRefresh />
+      <TradesPage
+        initialOpenTrades={initialOpenTrades}
+        initialClosedTrades={closedTrades}
+        moves={moves}
+      />
+    </>
+  );
 }

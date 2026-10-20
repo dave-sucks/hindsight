@@ -9,7 +9,7 @@
  * input; clicking the X unscopes.
  *
  * Recent Chats sidebar (added 2026-05-23): a left-side Sheet listing
- * past PRINCIPAL_CHAT runs grouped by analyst. Clicking a chat navigates
+ * past PRINCIPAL_CHAT runs by recency. Clicking a chat navigates
  * to /chat?resume=<runId>, which the server component hydrates with
  * the persisted thread + runId + analystId — all passed in via the
  * `resumed*` props. When those props are set, AgentChat opens with
@@ -24,11 +24,11 @@ import {
   RecentChatsSidebar,
   RecentChatsTrigger,
 } from "@/components/chat/recent-chats-sidebar";
-import type { ChatHistoryGroup } from "@/lib/actions/chat.actions";
+import type { ChatHistoryItem } from "@/lib/actions/chat.actions";
 
 interface Props {
   analysts: Array<{ id: string; name: string; enabled: boolean }>;
-  recentChats: ChatHistoryGroup[];
+  recentChats: ChatHistoryItem[];
   /** Server-loaded message history when ?resume=<runId> is present. */
   resumedMessages?: UIMessage[];
   /** The resumed ResearchRun id — threaded into AgentChat's body so the
@@ -86,10 +86,7 @@ export function ChatPageClient({
           Wrapper carries the same px-4 gutter as the app header above so
           this button lines up with the sidebar toggle. */}
       <div className="absolute left-0 top-4 z-10 px-4">
-        <RecentChatsTrigger
-          onClick={() => setIsHistoryOpen(true)}
-          count={recentChats.reduce((n, g) => n + g.chats.length, 0)}
-        />
+        <RecentChatsTrigger onClick={() => setIsHistoryOpen(true)} />
       </div>
 
       <AgentChat
@@ -113,7 +110,7 @@ export function ChatPageClient({
       <RecentChatsSidebar
         open={isHistoryOpen}
         onOpenChange={setIsHistoryOpen}
-        groups={recentChats}
+        chats={recentChats}
         // Highlight the chat we're currently resuming so the user has
         // a visual anchor when they reopen the sidebar.
         currentRunId={resumedRunId ?? null}

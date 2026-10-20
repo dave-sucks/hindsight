@@ -6,7 +6,7 @@
 >
 > Source of truth for mechanics. The thesis lifecycle that triggers hang off of
 > is in [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md); the user-facing
-> narrative is `/agent-workflow` (`app/(root)/agent-workflow/content/triggers.md`).
+> narrative is the guide's [Triggers](guide/concepts/triggers.md) doc (`/docs/triggers`).
 
 ---
 

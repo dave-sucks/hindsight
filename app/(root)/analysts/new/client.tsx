@@ -6,7 +6,6 @@ import { ArrowLeft, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentChat } from "@/components/agent/AgentChat";
 import { AnalystConfigPanel } from "@/components/analysts/AnalystConfigPanel";
-import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import { AlpacaKeyGate } from "@/components/settings/AlpacaKeyGate";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
@@ -49,9 +48,9 @@ export function NewAnalystClient({
         </Button>
       </div>
       <div className="absolute top-2 right-3 z-20">
-        <HowItWorksSheet flow="builder">
+        <Button variant="ghost" size="icon" aria-label="How the analyst builder works" render={<Link href="/docs/analyst-builder" />}>
           <ScanSearch className="h-4 w-4" />
-        </HowItWorksSheet>
+        </Button>
       </div>
 
       {/* Split layout — chat shrinks, panel grows */}

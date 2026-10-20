@@ -8,7 +8,7 @@
  * scrollable so a long string can't push the chat column sideways (the page
  * body must never scroll horizontally).
  *
- * Styling matches the pre block in components/domain/workflow-markdown.tsx so
+ * Styling matches the docs code blocks so
  * machine data reads the same everywhere it appears.
  */
 

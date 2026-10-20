@@ -17,6 +17,7 @@ import {
   Sun,
   Moon,
   Workflow,
+  BookOpen,
   Sparkles,
   Mic,
   MessageCircle,
@@ -256,9 +257,14 @@ export default function AppSidebar({
                   Settings
                 </DropdownMenuItem>
 
-                <DropdownMenuItem onClick={() => router.push('/agent-workflow')}>
+                <DropdownMenuItem onClick={() => router.push('/how-it-works')}>
                   <Workflow className="h-3.5 w-3.5" />
-                  Agent Workflow
+                  How it works
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => router.push('/docs')}>
+                  <BookOpen className="h-3.5 w-3.5" />
+                  Docs
                 </DropdownMenuItem>
 
                 <DropdownMenuItem onClick={() => onProductTour?.()}>

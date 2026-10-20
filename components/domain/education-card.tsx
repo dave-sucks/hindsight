@@ -1,15 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Info } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { HowItWorksSheet, type FlowType } from "@/components/domain/how-it-works-sheet";
 import {
   CONCEPTS,
   EMPTY_STATES,
@@ -32,8 +29,6 @@ interface EducationEmptyStateProps {
   description?: string;
   /** Override: CTA button */
   action?: { label: string; href: string };
-  /** Override: HowItWorksSheet flow type */
-  learnMoreFlow?: string;
   /** Size variant */
   size?: "default" | "compact" | "inline";
 }
@@ -44,7 +39,6 @@ export function EducationEmptyState({
   title: titleOverride,
   description: descOverride,
   action: actionOverride,
-  learnMoreFlow: flowOverride,
   size = "default",
 }: EducationEmptyStateProps) {
   const config = stateKey ? EMPTY_STATES[stateKey] : undefined;
@@ -55,7 +49,6 @@ export function EducationEmptyState({
   const title = titleOverride ?? config?.title ?? "Nothing here yet";
   const description = descOverride ?? config?.description ?? concept.description;
   const action = actionOverride ?? config?.action;
-  const learnMoreFlow = flowOverride ?? config?.learnMoreFlow;
 
   if (size === "inline") {
     return (
@@ -74,7 +67,7 @@ export function EducationEmptyState({
         <Icon className="h-8 w-8 mb-3 opacity-30" />
         <p className="text-sm font-medium text-foreground">{title}</p>
         <p className="text-xs mt-1 max-w-sm leading-relaxed">{description}</p>
-        {(action || learnMoreFlow) && (
+        {action && (
           <div className="flex items-center gap-2 mt-4">
             {action && (
               <Link
@@ -83,11 +76,6 @@ export function EducationEmptyState({
               >
                 {action.label}
               </Link>
-            )}
-            {learnMoreFlow && (
-              <HowItWorksSheet flow={learnMoreFlow as FlowType}>
-                <Info className="h-4 w-4" />
-              </HowItWorksSheet>
             )}
           </div>
         )}
@@ -101,7 +89,7 @@ export function EducationEmptyState({
       <Icon className="h-10 w-10 mb-4 opacity-30" />
       <p className="text-sm font-medium text-foreground">{title}</p>
       <p className="text-xs mt-1.5 max-w-md leading-relaxed">{description}</p>
-      {(action || learnMoreFlow) && (
+      {action && (
         <div className="flex items-center gap-2 mt-5">
           {action && (
             <Link
@@ -110,11 +98,6 @@ export function EducationEmptyState({
             >
               {action.label}
             </Link>
-          )}
-          {learnMoreFlow && (
-            <HowItWorksSheet flow={learnMoreFlow as FlowType}>
-              <Info className="h-4 w-4" />
-            </HowItWorksSheet>
           )}
         </div>
       )}

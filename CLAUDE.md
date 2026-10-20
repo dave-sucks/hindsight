@@ -78,6 +78,8 @@ The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 ## Where to put what (doc navigation)
 | You want to... | File |
 |---|---|
+| **Learn what Hindsight is and how its parts fit (start here)** | **`docs/guide/README.md`**, one doc per agent and concept |
+| Change what the /docs pages say | `docs/guide/` (`agents/`, `concepts/`, `deep-dives/`, `reference/`); the pages draw those files (pictures are `<!-- asset: name -->` lines). The reference docs (Situations library, Trigger measures, Setups) are generated: `UPDATE_GUIDE=1 npx jest lib/docs/guide` |
 | **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
 | **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
 | Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |
@@ -103,6 +105,8 @@ The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 | **Reference why the analyst lineup looks like it does** | **`docs/plans/ANALYST_LINEUP.md`** |
 | Reference what shipped in a PR | GitHub PRs |
 | Onboard a fresh session to the codebase | `CLAUDE.md` |
+
+**Keep the guide true.** `docs/guide/` is what humans and agents read to learn the system, and `/docs` draws it. When a change alters behaviour a guide doc describes (a schedule, a rule, a default, who may change what, a tool an agent has), update that doc in the same PR, with the code as the source of truth. Each doc's Technical details names the files behind it, so a change to those files is the cue. Agent facts (model, steps, tools) and the reference docs are tested against the code: `npx jest lib/docs` fails when they drift, and `UPDATE_GUIDE=1 npx jest lib/docs/guide` regenerates the references.
 
 **Rule:** open work lives in Linear (team Davesucks), one issue per cause. `docs/GAPS.md` and its history files were deleted 2026-09-15 — they're in git history. Code smells outside current work still go in `docs/TECH_DEBT.md`. Written output (run reviews, audits, discovery prep) goes in the folders above; prune anything older than about a month unless it's marked a reference.
 
@@ -283,7 +287,7 @@ plus `get_stock_data`.
 - / (Dashboard) — MarketPulseStrip (Finnhub WebSocket), portfolio
   summary, Today's Picks, AgentActivityLog
 - /analysts — analyst card grid with enable/disable toggles
-- /analysts/new — AI-driven analyst creation (AnalystBuilderChat)
+- /analysts/new — AI-driven analyst creation (AgentChat in builder mode + AnalystConfigPanel)
 - /analysts/[id] — 2-col: Overview + config | floating editor chat;
   tabs for Runs and Trades
 - /runs — research run feed with status dots, analyst names,
@@ -299,7 +303,7 @@ plus `get_stock_data`.
 - /intelligence — read-only view of the kept signal history (Findings +
   Health). No pipeline trigger, no monitor editing — the jobs are deleted.
   /intelligence/ingest is the paste-a-thesis path.
-- /agent-workflow — visual "How Hindsight Works" guide
+- /docs — the guide (docs/guide/ markdown), its own shell; /how-it-works — the tour and The Framework; /agent-workflow redirects
 - /settings — app settings
 
 ## API Routes
@@ -753,10 +757,8 @@ When you spot something new, file it there — not here.)
   (the only file left in components/research/)
 
 ### Analyst System
-- components/analysts/AnalystBuilderChat.tsx — AI creation chat
-- components/analysts/AnalystEditorChat.tsx — AI editing chat
-- components/analysts/AnalystChatProvider.tsx — routes to /api/agent/builder
-  or /api/agent/editor
+- app/(root)/analysts/new/client.tsx — AI creation chat (AgentChat, builder mode)
+- components/analysts/AnalystEditClient.tsx — AI editing chat (editor mode)
 - components/analysts/AnalystDetailClient.tsx — analyst detail 2-col
 
 ### What's left of the intelligence code
