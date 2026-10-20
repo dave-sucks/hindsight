@@ -325,7 +325,7 @@ export function TradeButton({
                             value={`${lane.position.shares} ${shareWord(lane.position.shares)} · avg $${lane.position.avgCost.toFixed(2)}`}
                           />
                         ) : null}
-                        <InfoRow label={<Label htmlFor="trade-shares">Shares</Label>}>
+                        <InfoRow label={<label htmlFor="trade-shares" className="font-medium">Shares</label>}>
                           <div className="flex items-center gap-2 py-1">
                             {side === "SELL" && lane?.position ? (
                               <Button variant="outline" size="sm" onClick={() => setShares(String(lane.position!.shares))}>
@@ -348,7 +348,12 @@ export function TradeButton({
                           </div>
                         </InfoRow>
                         <InfoRow
-                          label={`${side === "BUY" ? "Cost" : "Proceeds"}${price != null ? ` (${formatCurrency(price)} per share)` : ""}`}
+                          label={
+                            <span className="font-medium">
+                              {side === "BUY" ? "Cost" : "Proceeds"}
+                              {price != null ? ` (${formatCurrency(price)} per share)` : ""}
+                            </span>
+                          }
                           mono
                           value={price != null && qty > 0 && Number.isFinite(qty) ? formatCurrency(qty * price) : "—"}
                           border={pnl != null}
@@ -375,7 +380,7 @@ export function TradeButton({
 
                   {isOpenBuy ? (
                     <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen} className="border-y">
-                      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-3 text-left text-sm font-medium outline-none focus-visible:underline">
+                      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-medium outline-none focus-visible:underline">
                         <span>
                           Price targets
                           {!levelsOpen && (stop.trim() || target.trim()) ? (
