@@ -20,7 +20,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MoneySendFlow02Icon } from "@hugeicons/core-free-icons";
@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { planManualOrder, type TradeLane } from "@/lib/trading/manual-order-rules";
 import type { ManualOrderResult, TradeTicket } from "@/lib/trading/manual-order";
 
@@ -358,11 +359,10 @@ export function TradeButton({
                           </InfoRow>
                         ) : null}
                       </div>
-                      <p className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+                      <p className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                         <EnvDot env={ticket.environment} />
                         {isLive ? "Live account" : "Paper account"}
                         {ticket.cash != null ? ` · ${formatCurrency(ticket.cash)} cash` : ""}
-                        {priceAsOf(ticket) ? ` · ${priceAsOf(ticket)}` : ""}
                       </p>
                       {side === "BUY" && lane?.buy.kind === "ADD" ? (
                         <p className="text-xs text-muted-foreground">
@@ -374,16 +374,23 @@ export function TradeButton({
                   )}
 
                   {isOpenBuy ? (
-                    <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen}>
-                      <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-                        {levelsOpen ? <ChevronDown /> : <ChevronRight />}
-                        Price targets
-                        {!levelsOpen && (stop.trim() || target.trim())
-                          ? ` · ${[stop.trim() && `stop $${stop.trim()}`, target.trim() && `target $${target.trim()}`].filter(Boolean).join(", ")}`
-                          : ""}
+                    <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen} className="rounded-lg border">
+                      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 p-3 text-left text-sm font-medium hover:bg-muted/30 transition-colors">
+                        <span>
+                          Price targets
+                          {!levelsOpen && (stop.trim() || target.trim()) ? (
+                            <span className="font-normal text-muted-foreground tabular-nums">
+                              {" · "}
+                              {[stop.trim() && `stop $${stop.trim()}`, target.trim() && `target $${target.trim()}`].filter(Boolean).join(", ")}
+                            </span>
+                          ) : null}
+                        </span>
+                        <ChevronDown
+                          className={cn("size-4 shrink-0 text-muted-foreground transition-transform", levelsOpen && "rotate-180")}
+                        />
                       </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="grid grid-cols-2 gap-3 pt-2">
+                      <CollapsibleContent className="px-3 pb-3">
+                        <div className="grid grid-cols-2 gap-3">
                           <div className="grid gap-1.5">
                             <Label htmlFor="trade-stop">Stop (optional)</Label>
                             <Input
@@ -412,7 +419,8 @@ export function TradeButton({
                   {plan && !plan.ok ? <p className="text-xs text-destructive">{plan.error}</p> : null}
                   {!ticket.marketOpen ? (
                     <p className="text-xs text-muted-foreground">
-                      The market is closed. The order waits at Alpaca and fills at the next open, at that price.
+                      The market is closed{priceAsOf(ticket) ? ` (${priceAsOf(ticket)})` : ""}. The order waits at
+                      Alpaca and fills at the next open, at that price.
                     </p>
                   ) : null}
                 </>
