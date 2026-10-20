@@ -423,8 +423,8 @@ export async function POST(
         // runId = undefined and nothing was ever written, so every unscoped
         // chat vanished the moment you navigated away (0 unscoped rows in the
         // DB, all time). agentConfigId stays null; loadChatThread already
-        // returns analystId: null, and listRecentChats groups them under
-        // Portfolio.
+        // returns analystId: null, and listRecentChats lists them with the
+        // rest.
         //
         // Giving these chats a real runId DOES remove the accidental write
         // block that used to exist here (the sentinel runId FK-violated on

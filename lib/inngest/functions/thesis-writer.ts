@@ -58,6 +58,8 @@ interface ThesisWriteRequestedPayload {
   } | null;
   /** Review clock to put on the result, in days. Absent/null = no clock. */
   reviewCadenceDays?: number | null;
+  /** Keep the thesis's levels; fill only the empty ones. */
+  keepLevels?: boolean;
 }
 
 export const thesisWriter = inngest.createFunction(
@@ -98,6 +100,7 @@ export const thesisWriter = inngest.createFunction(
       forceWatchingMint: payload.forceWatchingMint === true,
       promotionContext: payload.promotionContext ?? null,
       reviewCadenceDays: payload.reviewCadenceDays ?? null,
+      keepLevels: payload.keepLevels === true,
     };
 
     // Cheap COMPLETE short-circuit for full-function retries (PR #383).

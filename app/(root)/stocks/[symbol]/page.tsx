@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LiveRefresh } from "@/components/LiveRefresh";
 import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import type { ThesisRowData } from "@/components/ui/thesis-row";
 import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
+import { TradeButton } from "@/components/trade/TradeButton";
 import {
   thesisSheetStateSelect,
 } from "@/lib/agent/thesis-sheet-state";
@@ -279,6 +281,7 @@ export default async function StockDetailPage({ params }: Props) {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      <LiveRefresh />
       {/* ── Header — the SAME StockIdentityHeader the trade page + thesis
           sheet render (identical sizes, normalized exchange). href={null}:
           we're already on the stock page. */}
@@ -290,6 +293,7 @@ export default async function StockDetailPage({ params }: Props) {
           href={null}
           actions={
             <>
+              <TradeButton ticker={upperSymbol} />
               <PinButton ticker={upperSymbol} />
               <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
             </>

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import { getLatestPrices } from "@/lib/alpaca";
 import { getStockCandles } from "@/lib/actions/finnhub.actions";
+import { NO_MOVES, todayEt, windowMoves, type WindowMoves } from "@/lib/portfolio/window-moves";
 import {
   resolveAlpacaCredentials,
   type AlpacaEnvironment,
@@ -90,12 +91,15 @@ export interface CoveragePendingProposal {
 }
 
 export interface CoverageData {
+  /** Open positions. */
   trades: CoverageRow[];
+  /** Recently sold positions, newest first. */
+  sold: CoverageRow[];
   watching: CoverageRow[];
   passed: CoverageRow[];
 }
 
-const EMPTY: CoverageData = { trades: [], watching: [], passed: [] };
+const EMPTY: CoverageData = { trades: [], sold: [], watching: [], passed: [] };
 
 /** A pass only counts as right/wrong once the stock has moved meaningfully —
  *  inside this band since the pass it's just FLAT (no verdict). */
@@ -269,10 +273,7 @@ export async function getCoverageData(
   const prices = await getLatestPrices(tickers, alpacaCreds).catch(
     () => ({}) as Record<string, number>,
   );
-  const todayEt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
-  const d30 = new Date(`${todayEt}T00:00:00Z`);
-  d30.setUTCDate(d30.getUTCDate() - 30);
-  const target30 = d30.toISOString().slice(0, 10);
+  const today = todayEt();
 
   // The day each watch opened — the Watching rows are measured from the price
   // on that day (lib/thesis/watch-anchor.ts). The same daily bars the 1D/5D/30D
@@ -327,18 +328,17 @@ export async function getCoverageData(
     ? Math.max(45, Math.ceil((Date.now() - Date.parse(`${oldestWatch}T00:00:00Z`)) / 86_400_000) + 5)
     : 45;
 
-  const moves = new Map<string, { oneDayPct: number | null; fiveDayPct: number | null; thirtyDayPct: number | null }>();
+  const moves = new Map<string, WindowMoves>();
   /** ticker → the close on the day its watch opened. */
   const watchStartClose = new Map<string, number>();
   await Promise.all(
     tickers.map(async (tk) => {
       const current = prices[tk];
       if (current == null) {
-        moves.set(tk, { oneDayPct: null, fiveDayPct: null, thirtyDayPct: null });
+        moves.set(tk, NO_MOVES);
         return;
       }
       const candles = await getStockCandles(tk, candleDays).catch(() => []);
-      const completed = candles.filter((c) => c.date < todayEt); // drop today's partial bar
 
       // The close on the watch's first day — or the last one before it, so a
       // watch opened on a weekend or a holiday still has an anchor.
@@ -351,20 +351,10 @@ export async function getCoverageData(
         }
         if (close != null && Number.isFinite(close) && close > 0) watchStartClose.set(tk, close);
       }
-      const prevClose = completed[completed.length - 1]?.close ?? null;
-      const close5 = completed[completed.length - 5]?.close ?? null;
-      let close30: number | null = null; // last completed close on/before 30 cal. days ago
-      for (const c of completed) {
-        if (c.date <= target30) close30 = c.close;
-        else break;
-      }
-      const pct = (den: number | null) =>
-        den != null && den !== 0 ? ((current - den) / den) * 100 : null;
-      moves.set(tk, { oneDayPct: pct(prevClose), fiveDayPct: pct(close5), thirtyDayPct: pct(close30) });
+      moves.set(tk, windowMoves(candles, current, today));
     }),
   );
-  const mv = (tk: string) =>
-    moves.get(tk) ?? { oneDayPct: null, fiveDayPct: null, thirtyDayPct: null };
+  const mv = (tk: string) => moves.get(tk) ?? NO_MOVES;
 
   // ── Trades (open + recently sold) ──────────────────────────────────────────
   const trades: CoverageRow[] = positions.map((p) => {
@@ -492,12 +482,12 @@ export async function getCoverageData(
     });
   }
 
-  // Open trades first, then most-recent sales; cap the closed list (rest → /trades).
+  // Open trades on their own tab; most-recent sales on Sold, capped (rest → /trades).
   const openTrades = trades.filter((r) => r.tradeState === "OPEN");
-  const closedTrades = trades
+  const soldTrades = trades
     .filter((r) => r.tradeState === "CLOSED")
     .sort((a, b) => (a.anchorAt < b.anchorAt ? 1 : -1))
     .slice(0, CLOSED_CAP);
 
-  return { trades: [...openTrades, ...closedTrades], watching, passed };
+  return { trades: openTrades, sold: soldTrades, watching, passed };
 }

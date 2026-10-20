@@ -1,4 +1,5 @@
 import DashboardClient from "@/components/dashboard/DashboardClient";
+import { LiveRefresh } from "@/components/LiveRefresh";
 import { getDashboardData } from "@/lib/actions/portfolio.actions";
 import type { DashboardData } from "@/lib/actions/portfolio.actions";
 import { getCoverageData } from "@/lib/actions/coverage.actions";
@@ -45,7 +46,7 @@ export default async function Home() {
     getLatestDigest(environment).catch(() => null),
     // Coverage Table (Feature B). Read-only, additive — failure degrades to
     // empty groups so the rest of the dashboard is unaffected.
-    getCoverageData(environment).catch(() => ({ trades: [], watching: [], passed: [] })),
+    getCoverageData(environment).catch(() => ({ trades: [], sold: [], watching: [], passed: [] })),
     // Pinned rail. Read-only and additive — a failure just hides the panel.
     getPinnedTickers().catch(() => [] as string[]),
     createClient(),
@@ -55,12 +56,15 @@ export default async function Home() {
   } = await supabase.auth.getUser();
 
   return (
-    <DashboardClient
-      data={data}
-      userId={user?.id}
-      digest={digest}
-      coverage={coverage}
-      pinned={pinned}
-    />
+    <>
+      <LiveRefresh />
+      <DashboardClient
+        data={data}
+        userId={user?.id}
+        digest={digest}
+        coverage={coverage}
+        pinned={pinned}
+      />
+    </>
   );
 }

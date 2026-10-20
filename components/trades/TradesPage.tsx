@@ -29,12 +29,15 @@ import {
 } from '@/components/ui/table';
 import { StockLogo } from '@/components/StockLogo';
 import { PriceChange } from '@/components/ui/price-change';
+import { PnlBadge } from '@/components/ui/pnl-badge';
+import { ChipTabs } from '@/components/ui/chip-tabs';
 import { PriceGauge } from '@/components/ui/gauge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
   getTradeStatusDisplay,
   shortAlpacaId,
+  sharesLine,
   EXECUTING_LABEL,
   EXECUTING_TOOLTIP,
 } from '@/lib/trade-status';
@@ -44,6 +47,8 @@ import {
   mockClosedTrades,
   type MockTrade,
 } from '@/lib/mock-data/trades';
+import { moveDollar } from '@/lib/portfolio/move-dollar';
+import type { WindowMoves } from '@/lib/portfolio/window-moves';
 import { Loader2, MoreHorizontal, ExternalLink } from 'lucide-react';
 import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { ConceptTooltip } from '@/components/domain/education-card';
@@ -54,11 +59,26 @@ import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 interface TradesPageProps {
   initialOpenTrades?: MockTrade[];
   initialClosedTrades?: MockTrade[];
+  /** ticker → the stock's 1D / 5D / 30D move, for held names. */
+  moves?: Record<string, WindowMoves>;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type FilterTab = 'ALL' | 'OPEN' | 'CLOSED' | 'WON' | 'LOST';
+
+/**
+ * What the P&L column measures. Lifetime is the position's gain since entry
+ * (realized, once sold). The others are the stock's move over that window on
+ * the shares held now — a sold position reads "—" there.
+ */
+type Window = 'LIFETIME' | '1D' | '5D' | '30D';
+
+const WINDOW_KEY: Record<Exclude<Window, 'LIFETIME'>, keyof WindowMoves> = {
+  '1D': 'oneDayPct',
+  '5D': 'fiveDayPct',
+  '30D': 'thirtyDayPct',
+};
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
@@ -129,6 +149,7 @@ function EmptyState({ filtered }: { filtered: boolean }) {
 export default function TradesPage({
   initialOpenTrades,
   initialClosedTrades,
+  moves = {},
 }: TradesPageProps) {
   const router = useRouter();
   const openTrades = initialOpenTrades ?? mockOpenTrades;
@@ -136,6 +157,7 @@ export default function TradesPage({
   const allTrades = useMemo(() => [...openTrades, ...closedTrades], [openTrades, closedTrades]);
 
   const [tab, setTab] = useState<FilterTab>('ALL');
+  const [range, setRange] = useState<Window>('LIFETIME');
   const [closeTarget, setCloseTarget] = useState<string | null>(null);
   const [closeLoading, setCloseLoading] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
@@ -201,35 +223,41 @@ export default function TradesPage({
 
   const isFiltered = tab !== 'ALL';
 
-  const tabs: { key: FilterTab; label: string }[] = [
-    { key: 'ALL', label: 'All' },
-    { key: 'OPEN', label: 'Open' },
-    { key: 'CLOSED', label: 'Closed' },
-    { key: 'WON', label: 'Won' },
-    { key: 'LOST', label: 'Lost' },
+  const tabs: { value: FilterTab; label: string }[] = [
+    { value: 'ALL', label: 'All' },
+    { value: 'OPEN', label: 'Open' },
+    { value: 'CLOSED', label: 'Closed' },
+    { value: 'WON', label: 'Won' },
+    { value: 'LOST', label: 'Lost' },
+  ];
+
+  const windows: { value: Window; label: string; title: string }[] = [
+    { value: 'LIFETIME', label: 'Lifetime', title: 'Gain since entry; realized once sold' },
+    { value: '1D', label: '1D', title: "Today's move on the shares held now" },
+    { value: '5D', label: '5D', title: 'Five-day move on the shares held now' },
+    { value: '30D', label: '30D', title: 'Thirty-day move on the shares held now' },
   ];
 
   return (
     <div className="h-[calc(100dvh-3rem)] flex flex-col">
-      {/* Header + filter tabs — fixed at the top of the page; doesn't scroll */}
+      {/* Which trades on the left, what window their P&L covers on the right —
+          the same split as the dashboard table. The page name is already in
+          the top bar. Fixed at the top; doesn't scroll. */}
       <div className="px-4 sm:px-6 pt-6 pb-4 flex items-center justify-between gap-4 shrink-0">
-        <h1 className="text-2xl font-semibold">Trades</h1>
-        <div className="flex items-center gap-0.5 bg-muted/50 rounded-md border px-1 py-0.5">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={cn(
-                'px-2.5 py-1 text-xs rounded transition-colors',
-                tab === t.key
-                  ? 'bg-background text-foreground font-medium shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <ChipTabs<FilterTab>
+          variant="tray"
+          clearable={false}
+          options={tabs}
+          value={tab}
+          onChange={(v) => v && setTab(v)}
+        />
+        <ChipTabs<Window>
+          variant="tray"
+          clearable={false}
+          options={windows}
+          value={range}
+          onChange={(v) => v && setRange(v)}
+        />
       </div>
 
       {/* Table container — takes remaining vertical space, scrolls both axes.
@@ -250,7 +278,9 @@ export default function TradesPage({
               <TableHead className="pl-6">Name</TableHead>
               <TableHead className="text-right">Entry</TableHead>
               <TableHead className="text-right">Current Price</TableHead>
-              <TableHead className="text-right">P&amp;L</TableHead>
+              <TableHead className="text-right">
+                {range === 'LIFETIME' ? 'P&L' : `${range} P&L`}
+              </TableHead>
               <TableHead className="text-right">Qty</TableHead>
               <TableHead className="text-right">Total Value</TableHead>
               <TableHead className="w-28">Target</TableHead>
@@ -286,7 +316,15 @@ export default function TradesPage({
               const totalValue = trade.currentPrice * shares;
               const totalGain = trade.pnl;
               const totalGainPct = trade.pnlPct;
-              const isUp = totalGain >= 0;
+              // The chosen window's move — held names only. A buy that hasn't
+              // filled holds no shares, so it shows the percent alone.
+              const windowPct =
+                range === 'LIFETIME' || !isOpen
+                  ? null
+                  : (moves[trade.ticker]?.[WINDOW_KEY[range]] ?? null);
+              const windowDollar = isPending
+                ? null
+                : moveDollar({ shares, currentPrice: trade.currentPrice, pct: windowPct });
 
               return (
                 <TableRow
@@ -294,8 +332,9 @@ export default function TradesPage({
                   className="group relative cursor-pointer"
                   onClick={() => router.push(`/trades/${trade.id}`)}
                 >
-                  {/* Name: logo + ticker with inline status dot + analyst
-                      subhead. No longer wrapped in a Link — navigation
+                  {/* Name: logo + ticker with inline status dot + the same
+                      "11 shares · $10,025.56" line the dashboard table uses
+                      ("Sell 300 shares · …" on a proposal). No longer wrapped in a Link — navigation
                       happens via the hover-revealed action buttons on the
                       right so the Target column's tick bar + tooltips
                       stay interactive (hover on the stop/target ticks
@@ -334,11 +373,21 @@ export default function TradesPage({
                             </TooltipContent>
                           </Tooltip>
                         </div>
-                        {trade.analystName && (
-                          <p className="text-[10px] text-muted-foreground font-mono leading-tight">
-                            {trade.analystName}
-                          </p>
-                        )}
+                        <p
+                          className={cn(
+                            'text-xs text-muted-foreground tabular-nums leading-tight',
+                            executing && 'shimmer-text',
+                          )}
+                        >
+                          {trade.pendingProposal
+                            ? sharesLine({
+                                shares: trade.pendingProposal.quantity,
+                                value: trade.entryPrice * trade.pendingProposal.quantity,
+                                intent: trade.pendingProposal.intent,
+                                executing,
+                              })
+                            : sharesLine({ shares, value: trade.entryPrice * shares })}
+                        </p>
                       </div>
                     </div>
                   </TableCell>
@@ -381,29 +430,45 @@ export default function TradesPage({
                   {/* P&L — unified PriceChange component (same arrow+color
                       language as the dashboard header). Em-dash when we
                       don't have a live price to compute against.
-                      Trade-as-Proposal: when this row is awaiting approval,
-                      replace P&L with the inline [Approve][Reject] action
-                      pair so the user can decide without leaving the table. */}
+                      Trade-as-Proposal: the Review control sits BESIDE the
+                      P&L, never in its place — the same as the dashboard
+                      table. */}
                   <TableCell className="text-right">
-                    {awaitingApproval ? (
-                      <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-                        <ProposalActions
-                          orderId={trade.pendingProposal!.orderId}
-                          expiresAt={trade.pendingProposal!.expiresAt}
+                    <div className="flex items-center justify-end gap-1.5">
+                      {awaitingApproval && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <ProposalActions
+                            orderId={trade.pendingProposal!.orderId}
+                            expiresAt={trade.pendingProposal!.expiresAt}
+                          />
+                        </div>
+                      )}
+                      {executing ? (
+                        <span className="text-sm shimmer-text">{EXECUTING_LABEL}</span>
+                      ) : range !== 'LIFETIME' ? (
+                        windowPct == null ? (
+                          <span className="text-sm text-muted-foreground/60">—</span>
+                        ) : windowDollar == null ? (
+                          <PnlBadge value={windowPct} format="percent" className="text-xs" />
+                        ) : (
+                          <PriceChange
+                            dollarChange={windowDollar}
+                            percentChange={windowPct}
+                            size="sm"
+                            className="justify-end"
+                          />
+                        )
+                      ) : isStalePrice && isOpen ? (
+                        <span className="text-sm text-muted-foreground/60">—</span>
+                      ) : (
+                        <PriceChange
+                          dollarChange={totalGain}
+                          percentChange={totalGainPct}
+                          size="sm"
+                          className="justify-end"
                         />
-                      </div>
-                    ) : executing ? (
-                      <span className="text-sm shimmer-text">{EXECUTING_LABEL}</span>
-                    ) : isStalePrice && isOpen ? (
-                      <span className="text-sm text-muted-foreground/60">—</span>
-                    ) : (
-                      <PriceChange
-                        dollarChange={totalGain}
-                        percentChange={totalGainPct}
-                        size="sm"
-                        className="justify-end"
-                      />
-                    )}
+                      )}
+                    </div>
                   </TableCell>
 
                   {/* Quantity */}

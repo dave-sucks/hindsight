@@ -9,8 +9,8 @@
  *      which is the PREVIEW shown on the workflow page. The prompt a run
  *      actually receives is built by `buildDailyRunSystemPromptV2`, and it
  *      still said "update_thesis with the substantive change you decide."
- *      The run was never told. So this test reads the built prompt, and
- *      holds the preview to the same line.
+ *      The run was never told. So this test reads the built prompt. (The
+ *      preview and its template were deleted with the workflow page.)
  *
  *   2. The conditions were always on the row — `get_theses` returns a
  *      work-list row in full — but nothing told the run to walk them. Live
@@ -18,7 +18,6 @@
  *      them 5 times in 5; MU's once in 6; NVDA's never.
  */
 import { buildDailyRunSystemPromptV2 } from "./system-prompt";
-import { SYSTEM_PROMPT_TEMPLATE } from "./system-prompt-template";
 import type { RunInput } from "./run-input";
 import { SITUATIONS } from "./situations";
 import { replayTool, thesisRow, positionRow, thesisUpdateRow } from "@/lib/replay";
@@ -66,10 +65,8 @@ describe("answering a fired review: REVIEW_DUE's guidance, which the read carrie
     expect(review).toContain("A condition that happened is an exit");
   });
 
-  it("the built prompt sends the run to the guidance, and the workflow page's preview says the same", () => {
-    const line = walkLine(built());
-    expect(line).toContain("`guidance`");
-    expect(walkLine(SYSTEM_PROMPT_TEMPLATE).trim()).toBe(line.trim());
+  it("the built prompt sends the run to the guidance", () => {
+    expect(walkLine(built())).toContain("`guidance`");
   });
 });
 
