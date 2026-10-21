@@ -358,11 +358,12 @@ List up to ${maxPosts * 2} posts, genuine ones first. summary is one or two plai
       .map((c) => c.text as string)
       .at(-1) ?? "";
   const jsonText = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-  let raw: unknown = {};
+  let raw: unknown;
   try {
-    raw = jsonText ? JSON.parse(jsonText) : {};
+    raw = JSON.parse(jsonText);
   } catch {
-    console.warn("[xai] searchXSentiment: answer did not parse as JSON:", text.slice(0, 200));
+    // An unreadable answer is a failure with its reason, never "no posts".
+    throw new Error(`xAI's answer was not readable JSON: ${text.slice(0, 120) || "(empty)"}`);
   }
   const answer = SentimentAnswer.parse(raw);
   const cited = new Set(body.citations ?? []);

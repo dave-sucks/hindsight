@@ -622,6 +622,8 @@ export const getTheses = defineTool({
         // way (agents may raise, never lower); moving a line down is the
         // principal's manual act. null when no recent protective declines.
         heldThroughFloor: facts.heldThroughFloor.get(t.id) ?? null,
+        // The newest research brief's dated reason for the move (lib/research/brief.ts).
+        whyItMoved: facts.whyItMoved.get(t.ticker.toUpperCase()) ?? null,
         // The facts the row lacked (step 8): the open position, the orders
         // awaiting approval, the price with the day's change, the chart
         // numbers the trigger check reads, and the rules the stock inherits

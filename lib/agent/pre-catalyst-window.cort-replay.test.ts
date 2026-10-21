@@ -44,7 +44,8 @@ const LINE =
 /** What the evaluator put on the fire: the 50-day numbers behind "within 3%". */
 const FIRED_CONTEXT = "50-day $111.29; price $113.71 (+2.2% from it)";
 
-const seed = () => ({
+const seed = (extra: Record<string, unknown[]> = {}) => ({
+  ...extra,
   thesis: [
     thesisRow({
       ...fx.thesis,
@@ -95,8 +96,8 @@ async function at<T>(iso: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /** The trigger run's handler for CORT's fire; returns what it sent the model first. */
-async function triggerRunKickoff(): Promise<string> {
-  const db = prismaDouble(seed());
+async function triggerRunKickoff(extra: Record<string, unknown[]> = {}): Promise<string> {
+  const db = prismaDouble(seed(extra) as never);
   const prompts: string[] = [];
   await jest.isolateModulesAsync(async () => {
     let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
@@ -162,6 +163,20 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     // The trigger reads as the pill says it now; the rest is production's, word for word.
     const said = head.replace("Within 3% of the 50-day — consider entry.", "Buy if within 3% of the 50-day average.");
     expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tail}`);
+  });
+
+  it("the kickoff carries the stock's research brief when one is on file", async () => {
+    const builtAt = new Date(new Date(fx.run.startedAt).getTime() - 60 * 60_000);
+    const payload = {
+      ticker: "CORT", synthesis: "The stock rose with healthcare; no company news found.", whyItMoved: [],
+      failures: [{ part: "x", message: "no xAI key is configured (XAI_API_KEY)" }],
+    };
+    const kickoff = await at(fx.run.startedAt, () =>
+      triggerRunKickoff({ researchBrief: [{ id: "b1", ticker: "CORT", kind: "PROPOSAL", orderId: "o1", payload, createdAt: builtAt }] }),
+    );
+    expect(kickoff).toContain("Research brief on $CORT");
+    expect(kickoff).toContain("The stock rose with healthcare; no company news found.");
+    expect(kickoff).toContain("(X search failed: no xAI key is configured (XAI_API_KEY).)");
   });
 
   it("the proposal it makes carries the same line, and is still a proposal", async () => {

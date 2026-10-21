@@ -99,7 +99,7 @@ const SONAR_SYSTEM = `You research one US stock for a portfolio manager. Search 
 function sonarQuestion(ticker: string, company: string | null, today: string, move: string): string {
   return [
     `Stock: ${ticker}${company ? ` (${company})` : ""}. Today is ${today}.${move ? ` ${move}` : ""}`,
-    "why_it_moved: why the stock moved over the last five trading days. For each move say whether it came from the company, its sector, or the whole market (rates, a sell-off, a rotation). Include insider sales and analyst calls when they were part of it.",
+    "why_it_moved: why the stock moved over the last five trading days, only as a source states it: list an item only when the source itself ties it to the stock's move. For each, say whether it came from the company, its sector, or the whole market (rates, a sell-off, a rotation). News that no source ties to the move belongs under company_news, not here.",
     "analyst_actions: rating changes, initiations and price-target changes from the last 90 days: firm, action, new rating, new target, prior target, date.",
     "price_targets: the current analyst consensus: average, lowest and highest target with the firm behind each, the number of analysts, and the date of that read.",
     "company_news: notable company news from the last 30 days: results, guidance, products, deals, management changes, filings.",
@@ -287,6 +287,7 @@ async function loadNumbers(kind: BriefKind, order: OrderForBrief, sectorEtf: str
       pnlUsd: pnlUsd != null ? Math.round(pnlUsd) : null,
       pnlPct: pnlUsd != null && pos.avgCost > 0 ? pct(((price! - pos.avgCost) / pos.avgCost) * 100 * dir) : null,
       pctOfAccount: marketValue != null && equity > 0 ? pct((marketValue / equity) * 100) : null,
+      pastStop: !isBuy && price != null && stop != null && (price - stop) * dir < 0 ? Math.round(Math.abs(price - stop) * 100) / 100 : null,
       stop,
       target,
     },
@@ -315,12 +316,18 @@ function socialFrom(x: XSentiment): BriefSocial {
 
 // ── The synthesis ────────────────────────────────────────────────────────────
 
-const JARGON = /\b(PEAD|drift|trend template|R\/R|risk[- ]reward|ATR|pivot|VCP|setup|breakout shelf)\b/i;
+const JARGON = /\b(PEAD|drift|trend template|R\/R|risk[- ]reward|ATR|pivot|VCP|setup|breakout shelf|in the money)\b/i;
 
-const SYNTHESIS_SYSTEM = `You write the note a sharp human analyst hands a portfolio manager who is deciding on this trade right now. Four to six sentences of plain English, one paragraph, no headings or bullets. Cover, in this order: what is going on with the stock and why (say plainly when the move was the whole market or the sector rather than the company); whether the business looks intact; what Wall Street thinks, with firms and targets; and what it means for this position: state its shares, dollars, gain or loss, share of the account, stop and target plainly, without calling it big, small, safe or risky. Give Wall Street's buy, hold and sell counts as numbers. Use only the facts given. When a part has no facts, say so in a few words, for example "no company news found". Never use trading jargon or internal labels: no setup names, "PEAD", "drift", "Trend Template", "R/R", "ATR", "pivot", no chart talk like support or resistance. A stop, floor or trigger is context, never the reason. Do not tell the reader what to do or predict what the stock will do. Give a reason for a move only when a fact states it; otherwise say no reason was reported. Don't read meaning into the stop or target. Keep each sentence under 35 words.`;
+const SYNTHESIS_SYSTEM = `You write the note a sharp human analyst hands a portfolio manager who is deciding on this trade right now. Four to six sentences of plain English, one paragraph, no headings or bullets. Cover, in this order: what is going on with the stock and why (say plainly when the move was the whole market or the sector rather than the company); whether the business looks intact; what Wall Street thinks, with firms and targets; and what it means for this position: state its shares, dollars, gain or loss, share of the account, stop and target plainly, without calling it big, small, safe or risky. Give Wall Street's buy, hold and sell counts as numbers. Use only the facts given. When a part has no facts, say so in a few words, for example "no company news found". Never use trading jargon or internal labels: no setup names, "PEAD", "drift", "Trend Template", "R/R", "ATR", "pivot", no chart talk like support or resistance. A stop, floor or trigger is context, never the reason. Do not tell the reader what to do or predict what the stock will do. Call something the reason for a move only when it is listed under "Why it moved"; company news is news that happened, never the cause. With nothing under "Why it moved", say there is no clear reason in the news. When the facts say the price is already past the stop, the note gets that sentence added for you; do not state the gap yourself. Don't read meaning into the stop or target. Keep each sentence under 35 words.`;
 
-const money = (n: number) => `$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: n >= 1000 ? 0 : 2 })}`;
+const money = (n: number) => {
+  const d = Math.abs(n) >= 1000 ? 0 : 2;
+  return `$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
+};
 const signed = (n: number | null, unit = "%") => (n == null ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}${unit}`);
+
+/** Which side of the stop a losing price sits on: below for a long, above for a short. */
+const dirWord = (n: BriefNumbers) => (n.position && n.price != null && n.position.stop != null && n.price > n.position.stop ? "above" : "below");
 
 /** The facts, as the lines the synthesis model reads. Exported for the tests. */
 export function factsText(p: ResearchBriefPayload): string {
@@ -336,12 +343,13 @@ export function factsText(p: ResearchBriefPayload): string {
     if (pos.marketValue != null) bits.push(`Worth ${money(pos.marketValue)}${pos.pctOfAccount != null ? `, ${pos.pctOfAccount.toFixed(1)}% of the account` : ""}.`);
     if (pos.pnlUsd != null) bits.push(`${pos.pnlUsd >= 0 ? "Up" : "Down"} ${money(pos.pnlUsd)} (${signed(pos.pnlPct)}).`);
     if (pos.stop != null) bits.push(`Stop ${money(pos.stop)}.`);
+    if (pos.pastStop != null && pos.stop != null) bits.push(`The price is already ${money(pos.pastStop)} ${dirWord(n)} the ${money(pos.stop)} stop.`);
     if (pos.target != null) bits.push(`Target ${money(pos.target)}.`);
     out.push(`Position: ${bits.join(" ")}`);
   }
   const section = (title: string, lines: string[], empty: string) =>
     out.push(`${title}:${lines.length ? `\n${lines.map((l) => `- ${l}`).join("\n")}` : ` ${empty}`}`);
-  section("Why it moved", p.whyItMoved.map((c) => `[${c.date}] ${c.text}`), "nothing found");
+  section("Why it moved (reasons a dated source ties to the move)", p.whyItMoved.map((c) => `[${c.date}] ${c.text}`), "no source gives a reason");
   section(
     "Wall Street",
     [
@@ -351,7 +359,7 @@ export function factsText(p: ResearchBriefPayload): string {
     ],
     "nothing found",
   );
-  section("Company news", p.companyNews.map((c) => `[${c.date}] ${c.text}`), "no company news found");
+  section("Company news (things that happened; no source ties them to the move)", p.companyNews.map((c) => `[${c.date}] ${c.text}`), "no company news found");
   section("Fundamentals", p.fundamentals.map((c) => `[${c.date}] ${c.text}`), "nothing found");
   if (p.social) out.push(`On X: ${socialLine(p.social)}`);
   const missing = p.failures.filter((f) => f.part !== "synthesis").map((f) => f.part);
@@ -491,7 +499,6 @@ export async function buildBriefPayload(input: {
       const r = cleanWebResearch(web.value.json, book, now);
       Object.assign(payload, { whyItMoved: r.whyItMoved, analystActions: r.analystActions, targets: r.targets, companyNews: r.companyNews, fundamentals: r.fundamentals });
       payload.company = payload.company ?? r.company;
-      if (web.value.json == null) failures.push({ part: "web", message: "the answer came back empty or unreadable" });
     } else failures.push({ part: "web", message: web.error });
     if (ratings.ok) {
       payload.ratings = ratings.value;
@@ -566,7 +573,10 @@ export async function briefForOrder(orderId: string, kind: BriefKind, now: Date 
 async function writeSynthesis(p: ResearchBriefPayload, costs: { synthesisUsd: number }, failures: BriefFailure[]) {
   try {
     const s = await synthesize(p);
-    p.synthesis = s.text || null;
+    // The gap past the stop is arithmetic, so the app says it, not the model (CEG 10-20 read it as "in the money").
+    const pos = p.numbers.position;
+    const gap = pos?.pastStop != null && pos.stop != null ? `The price is already ${money(pos.pastStop)} ${dirWord(p.numbers)} your ${money(pos.stop)} stop.` : null;
+    p.synthesis = [s.text, gap && pos?.pastStop != null && !s.text.includes(money(pos.pastStop)) ? gap : null].filter(Boolean).join(" ") || null;
     costs.synthesisUsd += s.costUsd;
   } catch (e) {
     p.synthesis = null;

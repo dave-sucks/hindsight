@@ -42,6 +42,8 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
+import { latestBriefs } from "@/lib/research/brief-read";
+import { briefKickoffLine } from "@/lib/research/brief-types";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -676,8 +678,11 @@ export const tacticalRun = inngest.createFunction(
         thesis.id,
         (thesis as { ticker: string }).ticker,
       );
+      // The stock's research brief from the last day, when one is on file (lib/research/brief.ts).
+      const brief = (await latestBriefs([(thesis as { ticker: string }).ticker], 24 * 60 * 60 * 1000)).values().next().value;
+      const briefSuffix = brief ? ` ${briefKickoffLine(brief)}` : "";
       const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock} ` +
+        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock}${briefSuffix} ` +
         `Validate, decide, act if warranted, then close out via update_thesis. ` +
         `You are running unattended — no human will respond. Every turn must call a tool; ` +
         `text-only turns terminate the run as FAILED.`;

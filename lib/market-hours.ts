@@ -274,6 +274,17 @@ export function sessionsToCalendarDays(sessions: number, from: Date = new Date()
   return days;
 }
 
+/** The ET date (YYYY-MM-DD) the last `n` sessions start on, today counted when it is one. */
+export function lastSessionsFrom(n: number, now: Date = new Date()): string {
+  const DAY = 86_400_000;
+  const etDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  for (let back = 0, counted = 0; back < n * 3 + 30; back++) {
+    const d = new Date(now.getTime() - back * DAY);
+    if (isTradingDay(d) && ++counted >= n) return etDay(d);
+  }
+  return etDay(new Date(now.getTime() - n * DAY));
+}
+
 /** 16:00 ET on the trading day before the current (or last) session — the close a quote's `prevClose` is. */
 export function priorSessionCloseAt(now: Date = new Date()): Date {
   const DAY = 86_400_000;
