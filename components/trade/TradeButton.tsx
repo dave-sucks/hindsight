@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { InfoRow } from "@/components/ui/info-row";
 import { PriceChange } from "@/components/ui/price-change";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import {
   Dialog,
   DialogContent,
@@ -89,6 +90,8 @@ export function TradeButton({
   const [side, setSide] = useState<Side>("BUY");
   const [laneId, setLaneId] = useState<string | null>(null);
   const [shares, setShares] = useState("");
+  // Quantity in shares (#) or in dollars ($), turned into whole shares at the price.
+  const [qtyMode, setQtyMode] = useState<"shares" | "dollars">("shares");
   const [stop, setStop] = useState("");
   const [target, setTarget] = useState("");
   const [sending, setSending] = useState(false);
@@ -134,6 +137,7 @@ export function TradeButton({
   function resetFor(lane: TradeLane | null) {
     setLaneId(lane?.analystId ?? null);
     setShares("");
+    setQtyMode("shares");
     setStop(lane?.buy.kind === "OPEN" && lane.buy.stopLoss != null ? lane.buy.stopLoss.toFixed(2) : "");
     setTarget(lane?.buy.kind === "OPEN" && lane.buy.targetPrice != null ? lane.buy.targetPrice.toFixed(2) : "");
     setSendError(null);
@@ -158,7 +162,8 @@ export function TradeButton({
   const lanes = lanesFor(ticket, side);
   const lane = lanes.find((l) => l.analystId === laneId) ?? null;
   const price = ticket?.price ?? null;
-  const qty = Number(shares);
+  const typed = Number(shares);
+  const qty = qtyMode === "shares" ? typed : price != null && price > 0 ? Math.floor(typed / price) : NaN;
   const isOpenBuy = side === "BUY" && lane?.buy.kind === "OPEN";
   // What a buy for this analyst does besides buying — said before and on review.
   const openNote =
@@ -185,6 +190,8 @@ export function TradeButton({
       { price, stale: ticket?.priceStale ?? false, cash: ticket?.cash ?? null },
     );
   }, [lane, price, side, qty, shares, stop, target, ticket?.priceStale, ticket?.cash]);
+  /** The shares the receipt prices: the planned order, else what's typed so far. */
+  const counted = qty > 0 && Number.isFinite(qty) ? qty : null;
 
   const planned = plan?.ok ? plan : null;
 
@@ -196,58 +203,31 @@ export function TradeButton({
     ? `${side === "BUY" ? "Buy" : "Sell"} ${sellsAll ? "all " : ""}${planned.shares} ${shareWord(planned.shares)} of ${ticker}`
     : "";
 
-  // The money as an invoice that adds up: a sale is proceeds less cost
-  // basis = gain; a buy is cost basis plus cost = new cost basis. Every
-  // figure carries the same "N shares × $price" line under its key. The
-  // order and the review draw the same rows.
-  function invoiceRows(count: number | null) {
-    const n = count != null && count > 0 ? count : null;
-    const held = lane?.position ?? null;
-    const at = (shares: number, px: number, avg = false) =>
-      `${shares} ${shareWord(shares)} × ${formatCurrency(px)}${avg ? " avg" : ""}`;
-    const money = (v: number | null, sign = "") => (v == null ? "—" : `${sign}${formatCurrency(v)}`);
-    const total = (label: string) => <span className="font-medium">{label}</span>;
-    if (price == null) return null;
+  const held = lane?.position ?? null;
+  const money = (v: number | null) => (v == null ? "—" : formatCurrency(v));
 
-    if (side === "SELL" && held) {
-      const proceeds = n != null ? n * price : null;
-      const basis = n != null ? n * held.avgCost : null;
-      const gain = proceeds != null && basis != null ? proceeds - basis : null;
-      return (
-        <>
-          <InfoRow label="Proceeds" mono border={false} value={money(proceeds)} description={n != null ? at(n, price) : null} />
-          <InfoRow label="Cost basis" mono value={money(basis, "−")} description={n != null ? at(n, held.avgCost, true) : null} />
-          <InfoRow label={total(gain != null && gain < 0 ? "Loss" : "Gain")} border={false}>
-            {gain != null ? (
-              <PriceChange dollarChange={gain} percentChange={(gain / basis!) * 100} size="sm" />
-            ) : (
-              <span className="font-medium">—</span>
-            )}
-          </InfoRow>
-        </>
-      );
-    }
-
-    const cost = n != null ? n * price : null;
-    if (held) {
-      const basis = held.shares * held.avgCost;
-      const after = n != null ? held.shares + n : null;
-      return (
-        <>
-          <InfoRow label="Cost basis" mono border={false} value={money(basis)} description={at(held.shares, held.avgCost, true)} />
-          <InfoRow label="Cost" mono value={money(cost, "+")} description={n != null ? at(n, price) : null} />
-          <InfoRow
-            label={total("New cost basis")}
-            mono
-            border={false}
-            value={cost != null ? formatCurrency(basis + cost) : "—"}
-            description={after != null && cost != null ? at(after, (basis + cost) / after, true) : null}
-          />
-        </>
-      );
-    }
+  // The receipt: on a sale, what those shares cost you, then what they sell
+  // for and the gain under it; on a buy, what it costs. Order and review share it.
+  function receiptRows(count: number | null) {
+    const value = count != null && price != null ? count * price : null;
+    const entry = side === "SELL" && held && count != null ? count * held.avgCost : null;
     return (
-      <InfoRow label={total("Cost")} mono border={false} value={money(cost)} description={n != null ? at(n, price) : null} />
+      <div>
+        {side === "SELL" && held ? (
+          <InfoRow label="Your entry" mono border={false} valueClassName="font-normal" value={money(entry)} />
+        ) : null}
+        <InfoRow
+          label={<span className="font-medium">{side === "BUY" ? "Estimated cost" : "Estimated value"}</span>}
+          mono
+          border={false}
+          value={money(value)}
+        />
+        {entry != null && value != null && entry > 0 ? (
+          <div className="flex justify-end">
+            <PriceChange dollarChange={value - entry} percentChange={((value - entry) / entry) * 100} size="sm" />
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -327,14 +307,17 @@ export function TradeButton({
             </div>
           ) : step === "form" ? (
             <div className="grid gap-4">
-              <Tabs value={side} onValueChange={(v) => switchSide(v as Side)}>
-                <TabsList>
-                  <TabsTrigger value="BUY">Buy</TabsTrigger>
-                  <TabsTrigger value="SELL" disabled={!canSell}>
-                    Sell
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <div className="flex items-center gap-3">
+                <Tabs value={side} onValueChange={(v) => switchSide(v as Side)}>
+                  <TabsList>
+                    <TabsTrigger value="BUY">Buy</TabsTrigger>
+                    <TabsTrigger value="SELL" disabled={!canSell}>
+                      Sell
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <span className="text-lg font-medium">{ticker}</span>
+              </div>
 
               {lanes.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -344,7 +327,8 @@ export function TradeButton({
                 </p>
               ) : (
                 <>
-                  <div className="grid gap-1.5">
+                  {/* What's fixed: the analyst, the account, what you hold. */}
+                  <div className="grid gap-1.5 border-b pb-2">
                     <Select value={laneId} onValueChange={(v) => v && resetFor(lanes.find((l) => l.analystId === v) ?? null)}>
                       <SelectTrigger width="full" aria-label="Analyst">
                         <SelectValue>{lane?.analystName}</SelectValue>
@@ -358,87 +342,122 @@ export function TradeButton({
                       </SelectContent>
                     </Select>
                     {openNote ? <p className="text-xs text-muted-foreground">{openNote}</p> : null}
+                    <div>
+                      <InfoRow
+                        label={isLive ? "Live account" : "Paper account"}
+                        mono
+                        border={false}
+                        valueClassName="font-normal"
+                        value={ticket.cash != null ? `${formatCurrency(ticket.cash)} cash` : "—"}
+                      />
+                      {held ? (
+                        <InfoRow
+                          label={`Holdings: ${held.shares} ${shareWord(held.shares)}`}
+                          mono
+                          border={false}
+                          valueClassName="font-normal"
+                          value={`${formatCurrency(held.avgCost)} avg entry`}
+                        />
+                      ) : null}
+                    </div>
                   </div>
 
                   {side === "BUY" && lane?.buy.kind === "NONE" ? (
                     <p className="text-sm text-muted-foreground">{lane.buy.reason}</p>
                   ) : (
-                    <div>
-                      <InfoRow label={<label htmlFor="trade-shares">Shares</label>}>
-                        <div className="flex items-center gap-2 py-1">
-                          {side === "SELL" && lane?.position ? (
-                            <Button variant="outline" size="sm" onClick={() => setShares(String(lane.position!.shares))}>
-                              All
-                            </Button>
-                          ) : null}
-                          <div className="w-28">
-                            <Input
-                              id="trade-shares"
-                              type="number"
-                              inputMode="numeric"
-                              min={1}
-                              step={1}
-                              placeholder="0"
-                              value={shares}
-                              onChange={(e) => setShares(e.target.value)}
-                              autoFocus
+                    <>
+                      {/* The order: how much, at what price. */}
+                      <div className="border-b pb-2">
+                        <InfoRow label={<label htmlFor="trade-shares">Quantity</label>} border={false}>
+                          <div className="flex items-center gap-2 py-1">
+                            <ChipTabs<"shares" | "dollars">
+                              variant="tray"
+                              size="sm"
+                              clearable={false}
+                              options={[
+                                { value: "shares", label: "#", title: "Shares" },
+                                { value: "dollars", label: "$", title: "Dollars, in whole shares" },
+                              ]}
+                              value={qtyMode}
+                              onChange={(v) => {
+                                if (v && v !== qtyMode) {
+                                  setQtyMode(v);
+                                  setShares("");
+                                }
+                              }}
                             />
+                            <div className="w-28">
+                              <Input
+                                id="trade-shares"
+                                type="number"
+                                inputMode={qtyMode === "shares" ? "numeric" : "decimal"}
+                                min={0}
+                                step={qtyMode === "shares" ? 1 : 0.01}
+                                placeholder={qtyMode === "shares" ? "0" : "$0"}
+                                value={shares}
+                                onChange={(e) => setShares(e.target.value)}
+                                autoFocus
+                              />
+                            </div>
                           </div>
-                        </div>
-                      </InfoRow>
-                      {invoiceRows(qty > 0 && Number.isFinite(qty) ? qty : null)}
-                    </div>
-                  )}
+                        </InfoRow>
+                        {qtyMode === "dollars" && counted != null ? (
+                          <p className="text-right text-xs text-muted-foreground tabular-nums">
+                            {counted} {shareWord(counted)}
+                          </p>
+                        ) : null}
+                        <InfoRow label="Market price" mono border={false} valueClassName="font-normal" value={money(price)} />
+                        {isOpenBuy ? (
+                          <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen}>
+                            <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-light outline-none focus-visible:underline">
+                              <span>
+                                Price targets
+                                {!levelsOpen && (stop.trim() || target.trim()) ? (
+                                  <span className="text-muted-foreground tabular-nums">
+                                    {" · "}
+                                    {[stop.trim() && `stop $${stop.trim()}`, target.trim() && `target $${target.trim()}`].filter(Boolean).join(", ")}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <ChevronDown
+                                className={cn("size-4 shrink-0 text-muted-foreground transition-transform", levelsOpen && "rotate-180")}
+                              />
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="pb-2">
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="grid gap-1.5">
+                                  <Label htmlFor="trade-stop">Stop (optional)</Label>
+                                  <Input
+                                    id="trade-stop"
+                                    type="number"
+                                    inputMode="decimal"
+                                    value={stop}
+                                    onChange={(e) => setStop(e.target.value)}
+                                  />
+                                </div>
+                                <div className="grid gap-1.5">
+                                  <Label htmlFor="trade-target">Target (optional)</Label>
+                                  <Input
+                                    id="trade-target"
+                                    type="number"
+                                    inputMode="decimal"
+                                    value={target}
+                                    onChange={(e) => setTarget(e.target.value)}
+                                  />
+                                </div>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ) : null}
+                      </div>
 
-                  {isOpenBuy ? (
-                    <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen} className="border-y">
-                      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-light outline-none focus-visible:underline">
-                        <span>
-                          Price targets
-                          {!levelsOpen && (stop.trim() || target.trim()) ? (
-                            <span className="text-muted-foreground tabular-nums">
-                              {" · "}
-                              {[stop.trim() && `stop $${stop.trim()}`, target.trim() && `target $${target.trim()}`].filter(Boolean).join(", ")}
-                            </span>
-                          ) : null}
-                        </span>
-                        <ChevronDown
-                          className={cn("size-4 shrink-0 text-muted-foreground transition-transform", levelsOpen && "rotate-180")}
-                        />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pb-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="grid gap-1.5">
-                            <Label htmlFor="trade-stop">Stop (optional)</Label>
-                            <Input
-                              id="trade-stop"
-                              type="number"
-                              inputMode="decimal"
-                              value={stop}
-                              onChange={(e) => setStop(e.target.value)}
-                            />
-                          </div>
-                          <div className="grid gap-1.5">
-                            <Label htmlFor="trade-target">Target (optional)</Label>
-                            <Input
-                              id="trade-target"
-                              type="number"
-                              inputMode="decimal"
-                              value={target}
-                              onChange={(e) => setTarget(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ) : null}
+                      {/* The receipt. */}
+                      {receiptRows(counted)}
+                    </>
+                  )}
 
                   <div className="grid gap-1 text-xs text-muted-foreground">
                     {plan && !plan.ok ? <p className="text-destructive">{plan.error}</p> : null}
-                    <p className="tabular-nums">
-                      {isLive ? "Live account" : "Paper account"}
-                      {ticket.cash != null ? ` · ${formatCurrency(ticket.cash)} cash` : ""}
-                    </p>
                     {side === "BUY" && lane?.buy.kind === "ADD" ? (
                       <p>
                         Up to {lane.buy.maxShares} more {shareWord(lane.buy.maxShares)} fit {lane.analystName}&apos;s most in
@@ -459,19 +478,25 @@ export function TradeButton({
             <div className="grid gap-4">
               <p className="text-lg font-medium">{sentence}</p>
               {openNote ? <p className="text-xs text-muted-foreground">{openNote}</p> : null}
-              <div>
-                {invoiceRows(planned?.shares ?? null)}
-              </div>
-              <div className="border-t pt-1">
+              <div className="border-b pb-2">
+                <InfoRow label="Analyst" border={false} valueClassName="font-normal" value={lane?.analystName} />
+                <InfoRow label="Order type" border={false} valueClassName="font-normal" value="Market" />
+                <InfoRow
+                  label="Quantity"
+                  mono
+                  border={false}
+                  valueClassName="font-normal"
+                  value={planned ? `${planned.shares} ${shareWord(planned.shares)}` : "—"}
+                />
+                <InfoRow label="Market price" mono border={false} valueClassName="font-normal" value={money(price)} />
                 {isOpenBuy ? (
                   <>
-                    <InfoRow label="Stop" mono value={levelLine(stop, lane?.buy.kind === "OPEN" ? lane.buy.stopLoss : null)} />
-                    <InfoRow label="Target" mono value={levelLine(target, lane?.buy.kind === "OPEN" ? lane.buy.targetPrice : null)} />
+                    <InfoRow label="Stop" mono border={false} valueClassName="font-normal" value={levelLine(stop, lane?.buy.kind === "OPEN" ? lane.buy.stopLoss : null)} />
+                    <InfoRow label="Target" mono border={false} valueClassName="font-normal" value={levelLine(target, lane?.buy.kind === "OPEN" ? lane.buy.targetPrice : null)} />
                   </>
                 ) : null}
-                <InfoRow label="Analyst" value={lane?.analystName} />
-                <InfoRow label="Order type" value="Market" border={false} />
               </div>
+              {receiptRows(planned?.shares ?? null)}
               <div className="grid gap-1 text-xs text-muted-foreground">
                 {sendError ? <p className="text-destructive">{sendError}</p> : null}
                 {noFloorYet ? <p>No floor yet — the analyst sets it right after the buy.</p> : null}
