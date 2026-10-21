@@ -37,6 +37,12 @@ jest.mock("@/lib/emails/proposal-pending", () => ({
   sendProposalPendingEmail: mockSendProposalPendingEmail,
 }));
 
+// The email rides the proposal-pending event (it waits for the research brief).
+const mockInngestSend = jest.fn().mockResolvedValue(undefined);
+jest.mock("@/lib/inngest/client", () => ({ inngest: { send: mockInngestSend } }));
+const told = (orderId: string) =>
+  expect(mockInngestSend).toHaveBeenCalledWith(expect.objectContaining({ name: "app/proposal.pending", data: { orderId } }));
+
 import {
   maybeAwaitApproval,
   ApprovalGateAccountUnresolvedError,
@@ -97,7 +103,7 @@ describe("maybeAwaitApproval — staging", () => {
         data: expect.objectContaining({ status: "AWAITING_APPROVAL" }),
       }),
     );
-    expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
+    told("order-new");
   });
 
   it("stages a PARTIAL_CLOSE — scale-outs can legitimately stack", async () => {
@@ -154,7 +160,7 @@ describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)
 
     expect(awaiting(result).orderId).toBe("order-new");
     expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
+    told("order-new");
   });
 
   it("re-stages after an ignored EXPIRY (the MU/CYTK silence case) — reminds again", async () => {
@@ -184,7 +190,7 @@ describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)
 
     expect(awaiting(result).orderId).toBe("order-new");
     expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
+    told("order-new");
   });
 
   it("still stages a PARTIAL_CLOSE normally", async () => {
@@ -225,6 +231,7 @@ describe("maybeAwaitApproval — unresolved account fails CLOSED on LIVE", () =>
     expect(mockOrderFindFirst).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
+    expect(mockInngestSend).not.toHaveBeenCalled();
   });
 
   it("fails closed on a LIVE OPEN (buy) too, not just closes", async () => {
@@ -253,5 +260,6 @@ describe("maybeAwaitApproval — unresolved account fails CLOSED on LIVE", () =>
     expect(mockOrderFindFirst).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
+    expect(mockInngestSend).not.toHaveBeenCalled();
   });
 });

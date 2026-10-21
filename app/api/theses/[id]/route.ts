@@ -34,6 +34,7 @@ import { pickProposalOrder } from "@/lib/trade-status";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 import { HERO_UPDATE_TYPES } from "@/lib/thesis/latest-note";
+import { briefForOrderView } from "@/lib/research/brief-read";
 
 export async function GET(
   _req: Request,
@@ -251,6 +252,7 @@ export async function GET(
         Math.floor((Date.now() - pos.openedAt.getTime()) / 86_400_000),
       );
       const picked = pickProposalOrder(pos.orders ?? []);
+      const brief = picked ? await briefForOrderView(picked.order.id) : null;
       const cost = Number(pos.avgCost) * Number(pos.quantity);
       position = {
         id: pos.id,
@@ -276,6 +278,7 @@ export async function GET(
               expiresAt: picked.order.expiresAt?.toISOString() ?? null,
               rationale: picked.order.rationale,
               executing: picked.executing,
+              brief,
             }
           : null,
       };

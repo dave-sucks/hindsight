@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
+import { ResearchBrief } from "@/components/domain/research-brief";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { ThesisChart } from "@/components/domain/thesis-chart";
 import {
@@ -556,6 +557,7 @@ function TradeBlock({
       {review ? <div className="flex justify-start">{review}</div> : null}
       <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
       {note ? <TradeNote text={note} /> : null}
+      {pp && !pp.executing ? <ResearchBrief orderId={pp.orderId} initial={pp.brief ?? null} /> : null}
       {/* Meta line doubles as the path to the trade detail page — the old
           standalone "View trade →" under the sheet header is gone (principal
           feedback: the banner already exists exactly when a trade exists). */}

@@ -24,6 +24,7 @@ import {
   lockPositionSales,
 } from "@/lib/proposals/position-lock";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
+import { requestSaleBrief } from "@/lib/research/brief-events";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
@@ -340,6 +341,8 @@ export async function closeOpenPosition(
         alpacaConfirmedAt: new Date(),
       },
     });
+    // A sale sent without asking still gets its research brief on file.
+    if (source !== "user") requestSaleBrief(order.id, position.symbol);
   } catch (submitErr) {
     const outcome = classifyAlpacaError(submitErr);
     const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);

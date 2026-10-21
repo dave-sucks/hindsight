@@ -29,6 +29,8 @@ import { proposalExpiry } from "@/lib/inngest/functions/proposal-expiry";
 // rows yet (agent rewire is a separate reviewed PR). See
 // docs/plans/PORTFOLIO_DIGEST.md (Feature A).
 import { portfolioDigest } from "@/lib/inngest/functions/portfolio-digest";
+// The research brief on every proposal and autonomous sale; the proposal email waits for it.
+import { researchBrief, proposalPendingEmail } from "@/lib/inngest/functions/research-brief";
 
 // Vercel function timeout for ALL Inngest functions served from this route.
 // Set to the Vercel Pro plan's 800s ceiling because the heaviest paths
@@ -115,5 +117,7 @@ export const { GET, POST, PUT } = serve({
     proposalExpiry,
     // Daily Portfolio Digest — EOD account-level brief (Feature A backend).
     portfolioDigest,
+    researchBrief,
+    proposalPendingEmail,
   ],
 });
