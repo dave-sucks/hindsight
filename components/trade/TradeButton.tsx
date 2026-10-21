@@ -60,13 +60,6 @@ function levelLine(typed: string, thesis: number | null): string {
   return thesis != null ? `$${thesis.toFixed(2)} (the thesis's)` : "Set by the analyst";
 }
 
-/** Said only when the price isn't from the open market right now. */
-function priceAsOf(ticket: TradeTicket): string | null {
-  if (ticket.priceLive || !ticket.priceAt) return null;
-  const d = new Date(ticket.priceAt);
-  return `last price ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
-}
-
 export function TradeButton({
   ticker,
   analystId,
@@ -214,7 +207,13 @@ export function TradeButton({
     return (
       <div>
         {side === "SELL" && held ? (
-          <InfoRow label="Your entry" mono border={false} valueClassName="font-normal" value={money(entry)} />
+          <InfoRow
+            label={count != null ? `Your entry · ${count} ${shareWord(count)}` : "Your entry"}
+            mono
+            border={false}
+            valueClassName="font-normal"
+            value={money(entry)}
+          />
         ) : null}
         <InfoRow
           label={<span className="font-medium">{side === "BUY" ? "Estimated cost" : "Estimated value"}</span>}
@@ -327,12 +326,6 @@ export function TradeButton({
                 </p>
               ) : (
                 <>
-                  {held ? (
-                    <p className="text-sm text-muted-foreground tabular-nums">
-                      Bought {held.shares} {shareWord(held.shares)} at {formatCurrency(held.avgCost)}, total cost{" "}
-                      {formatCurrency(held.shares * held.avgCost)}.
-                    </p>
-                  ) : null}
 
                   {/* What's fixed: the analyst and what the account can spend. */}
                   <div className="grid gap-1.5 border-b pb-2">
@@ -463,21 +456,11 @@ export function TradeButton({
                     </>
                   )}
 
-                  <div className="grid gap-1 text-xs text-muted-foreground">
-                    {plan && !plan.ok ? <p className="text-destructive">{plan.error}</p> : null}
-                    {side === "BUY" && lane?.buy.kind === "ADD" ? (
-                      <p>
-                        Up to {lane.buy.maxShares} more {shareWord(lane.buy.maxShares)} fit {lane.analystName}&apos;s most in
-                        one stock ({formatCurrency(lane.buy.cap)}).
-                      </p>
-                    ) : null}
-                    {!ticket.marketOpen ? (
-                      <p>
-                        The market is closed{priceAsOf(ticket) ? ` (${priceAsOf(ticket)})` : ""}. The order waits at
-                        Alpaca and fills at the next open, at that price.
-                      </p>
-                    ) : null}
-                  </div>
+                  {plan && !plan.ok ? (
+                    <p className="text-xs text-destructive">{plan.error}</p>
+                  ) : !ticket.marketOpen ? (
+                    <p className="text-xs text-muted-foreground">Market closed: fills at the next open.</p>
+                  ) : null}
                 </>
               )}
             </div>
@@ -510,15 +493,14 @@ export function TradeButton({
                 ) : null}
               </div>
               {receiptRows(planned?.shares ?? null)}
-              <div className="grid gap-1 text-xs text-muted-foreground">
-                {sendError ? <p className="text-destructive">{sendError}</p> : null}
-                {noFloorYet ? <p>No floor yet — the analyst sets it right after the buy.</p> : null}
-                <p>
-                  A market order fills at the next available price, which can differ from this estimate.
-                  {!ticket.marketOpen ? " The market is closed, so it fills when it opens." : ""}
-                  {" "}If the price moves more than 2% before you place it, you&apos;ll be asked to review again.
+              {sendError ? (
+                <p className="text-xs text-destructive">{sendError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  A market order: fills at the {ticket.marketOpen ? "next available price" : "next open"}.
+                  {noFloorYet ? " No floor yet; the analyst sets it right after the buy." : ""}
                 </p>
-              </div>
+              )}
             </div>
           )}
 
