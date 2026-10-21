@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { zodSchema } from "ai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
+import { SETUP_STANDING_RULES } from "@/lib/agent/knowledge/seat-rules";
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
 import { VOICE_RULES } from "@/lib/agent/voice";
 import { sizeByRisk } from "@/lib/agent/position-sizing";
@@ -191,8 +192,17 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     expect(writer).not.toMatch(/outcome \+ timeframe \+\s+mechanism|which of YOUR\s+SETUPS it is/);
   });
 
+  it("an analyst's standing rules read in plain words (a fired rule's note is an Activity line, and a direct sale's reason)", () => {
+    const notes = Object.values(SETUP_STANDING_RULES).flatMap((rules) => (rules ?? []).map((r) => r.rationale));
+    expect(notes.length).toBeGreaterThan(10);
+    const old = [/\bE\d\b/, /T\+\d/, /tranche/i, /\bseat\b/i, /re-underwrite/i, /catastrophe/i, /structure/i, /\bentry\b/i];
+    expect(notes.flatMap((n) => [...shorthand(n), ...old.filter((re) => re.test(n)).map(String)].map((s) => `${n.slice(0, 40)}: ${s}`))).toEqual([]);
+  });
+
   it("the trigger run and the morning run are not told to narrate their triggers", () => {
     expect(SAMPLE_PROMPTS.tactical()).not.toMatch(/Floor stays \$X|RE-LADDER|Not acting\s+yet: <reason>|validation (HOLDS|FAILS)/);
+    // PLTR's case, 1 of 3 runs, once "Floor stays $X" went: it tried to move a held stock's sale line down.
+    expect(SAMPLE_PROMPTS.tactical()).toContain("On a stock we hold you can raise the stop, never lower it;\n   if you think it is wrong, say so in the note and name the level.");
     expect(SAMPLE_PROMPTS.daily()).not.toContain("what triggered it");
   });
 });

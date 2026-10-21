@@ -30,6 +30,12 @@ describe("one news search per stock, outside the run's budget", () => {
     expect((await search({ query: "software sector news" })).data?.allowed).toBe(false);
   });
 
+  it("asks Sonar for room for its whole reply: at 1,024 tokens IOT's 2026-10-20 reply was cut off and read as no results", async () => {
+    const { searchSignals } = jest.requireMock("@/lib/intelligence/sonar") as { searchSignals: jest.Mock };
+    await run("run-room")({ query: "IOT Samsara stock news this week", ticker: "IOT", recency: "week" });
+    expect(searchSignals).toHaveBeenLastCalledWith("IOT Samsara stock news this week", { recency: "week", model: "sonar", maxTokens: 4096 });
+  });
+
   it("a stock's second search spends the budget like any other", async () => {
     const search = run("run-twice");
     expect((await search({ query: "IOT news", ticker: "IOT" })).data?.budgetUsed).toBe(0);

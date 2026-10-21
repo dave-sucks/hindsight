@@ -16,6 +16,8 @@ import type { SignalItem, WebSearchToolData } from "@/lib/agent/tool-types";
 const liveSearchCounts = new Map<string, number>();
 // The stocks whose one news search this run has spent (voice.ts: look it up before a decision note).
 const stockSearches = new Map<string, Set<string>>();
+/** The reply budget a search asks Sonar for. */
+export const SEARCH_REPLY_TOKENS = 4096;
 
 export const webSearch = defineTool({
   description:
@@ -83,7 +85,9 @@ export const webSearch = defineTool({
     else liveSearchCounts.set(ctx.runId, count + 1);
     const newCount = stockSearch ? count : count + 1;
 
-    const sonarResult = await searchSignals(query, { recency, model: "sonar" });
+    // Room for the whole reply: at Sonar's default 1,024 tokens the JSON was cut off,
+    // failed to parse and came back as no results (IOT, NVDA, SMCI on 2026-10-20).
+    const sonarResult = await searchSignals(query, { recency, model: "sonar", maxTokens: SEARCH_REPLY_TOKENS });
 
     const results: SignalItem[] = sonarResult.signals.map((s) => ({
       headline: s.headline,

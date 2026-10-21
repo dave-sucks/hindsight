@@ -24,7 +24,7 @@ Every agent writes for you in plain English, in one of two styles (`lib/agent/vo
 
 Before writing a decision note, an agent searches the web once for the stock's latest news, so the note can say why it moved. If it still doesn't know, it says so. None of the app's shorthand reaches you: no setup names, no "drift", no "rung".
 
-On the thesis sheet, the belief carries the date and price the Writer wrote it at ("Written Sep 13 at $39.55").
+On the thesis sheet, the belief carries the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38").
 
 ## Where it comes from
 

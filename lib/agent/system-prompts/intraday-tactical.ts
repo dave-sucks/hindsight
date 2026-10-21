@@ -224,7 +224,8 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
    the beat-that-sold review) were written at the fill; the trail is
    your analyst's rule and applies on its own.
    The trigger ids are on the row's triggers lines. If nothing went stale,
-   leave them.
+   leave them. On a stock we hold you can raise the stop, never lower it;
+   if you think it is wrong, say so in the note and name the level.
 
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).

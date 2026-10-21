@@ -236,7 +236,7 @@ export interface ThesisDossier {
   analystConsensus: ResearchTextSection | null;
   insiderTechnical: ResearchTextSection | null;
   researchUpdatedAt: string | null;
-  /** When the research writer last wrote this up, and the price it stamped. Null when no writer run saved it. */
+  /** When the research writer last wrote this up, and the stock's price in its own pull (lib/thesis/written-up.ts). Null when no writer run saved it. */
   writtenUp: { at: string; price: number | null } | null;
   // Provenance: where the thesis came from + the analyst's one-line
   // rationale + the Signal rows that informed it.

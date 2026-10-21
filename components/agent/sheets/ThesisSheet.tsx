@@ -894,7 +894,7 @@ function WrittenByLine({
   );
 }
 
-/** "Written Sep 13 at $39.55": the research writer's own date and price, under the belief it wrote. */
+/** "Written Sep 13 at $38.38": the date the research writer wrote the belief, and the price its own pull read. */
 function WrittenUpLine({ writtenUp }: { writtenUp: ThesisDossier["writtenUp"] }) {
   if (!writtenUp) return null;
   const at = new Date(writtenUp.at);

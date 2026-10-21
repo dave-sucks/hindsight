@@ -7,6 +7,8 @@
  *   … [--written out.jsonl]  also append what each run wrote for the
  *                            owner (narration + shown text fields), for
  *                            scripts/voice-count.ts. Scoring is unchanged.
+ *   … [--live-search]        web_search runs for real (Sonar, today's news,
+ *                            about $0.006 a search); every other call stays a stub.
  *   cases: scripts/hero-cases/*.json  (cut from real runs by hero-case-from-run.ts)
  *
  * Each case is a recorded conversation up to one decision. The system prompt
@@ -306,7 +308,7 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
   return out;
 }
 
-async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
+async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   const mode = MODES[c.mode];
   const system = systemFor(c);
@@ -350,6 +352,10 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       : { openai: { strictJsonSchema: true, promptCacheKey: `hero-${name}` } };
   // A refused call gets the refusal back and one more turn, as it does in production.
   const live = await liveReads(c, inSession);
+  // --live-search: the real web_search, built as the case's run builds it.
+  const search = liveSearch
+    ? (createResearchTools({ runId: `hero-${name}`, userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx } as never) as unknown as Record<string, LiveRead>).web_search
+    : null;
   const maxTurns = c.scoreOn || live ? (c.maxTurns ?? 3) : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
@@ -399,7 +405,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       if (unanswered.length) messages.push({
         role: "tool",
         content: await Promise.all(unanswered.map(async (t) => {
-          const read = live?.[t.toolName];
+          const read = live?.[t.toolName] ?? (t.toolName === "web_search" ? search : null);
           if (read && !refusals.has(t.toolCallId)) {
             const output = await read.execute(t.input, { toolCallId: t.toolCallId, messages });
             reads.push({ toolName: t.toolName, output });
@@ -459,7 +465,7 @@ async function main() {
   }
   const results = [];
   const inSession = args.includes("--live-reads-in-session");
-  for (const name of names) results.push(await runCase(name, runs, writtenPath, inSession));
+  for (const name of names) results.push(await runCase(name, runs, writtenPath, inSession, args.includes("--live-search")));
   console.log("\n| Case | Pass | Looks for |\n|---|---|---|");
   for (const r of results) console.log(`| ${r.name} | ${r.passes}/${r.runs} | ${r.lookFor} |`);
 }
