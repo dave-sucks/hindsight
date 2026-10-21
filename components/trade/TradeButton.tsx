@@ -327,7 +327,14 @@ export function TradeButton({
                 </p>
               ) : (
                 <>
-                  {/* What's fixed: the analyst, the account, what you hold. */}
+                  {held ? (
+                    <p className="text-sm text-muted-foreground tabular-nums">
+                      Bought {held.shares} {shareWord(held.shares)} at {formatCurrency(held.avgCost)}, total cost{" "}
+                      {formatCurrency(held.shares * held.avgCost)}.
+                    </p>
+                  ) : null}
+
+                  {/* What's fixed: the analyst and what the account can spend. */}
                   <div className="grid gap-1.5 border-b pb-2">
                     <Select value={laneId} onValueChange={(v) => v && resetFor(lanes.find((l) => l.analystId === v) ?? null)}>
                       <SelectTrigger width="full" aria-label="Analyst">
@@ -342,24 +349,12 @@ export function TradeButton({
                       </SelectContent>
                     </Select>
                     {openNote ? <p className="text-xs text-muted-foreground">{openNote}</p> : null}
-                    <div>
-                      <InfoRow
-                        label={isLive ? "Live account" : "Paper account"}
-                        mono
-                        border={false}
-                        valueClassName="font-normal"
-                        value={ticket.cash != null ? `${formatCurrency(ticket.cash)} cash` : "—"}
-                      />
-                      {held ? (
-                        <InfoRow
-                          label={`Holdings: ${held.shares} ${shareWord(held.shares)}`}
-                          mono
-                          border={false}
-                          valueClassName="font-normal"
-                          value={`${formatCurrency(held.avgCost)} avg entry`}
-                        />
-                      ) : null}
-                    </div>
+                    <InfoRow label={`Buying power (${isLive ? "Live" : "Paper"})`} border={false}>
+                      <span className="flex items-center gap-2 tabular-nums">
+                        <EnvDot env={ticket.environment} />
+                        {ticket.cash != null ? formatCurrency(ticket.cash) : "—"}
+                      </span>
+                    </InfoRow>
                   </div>
 
                   {side === "BUY" && lane?.buy.kind === "NONE" ? (
@@ -368,37 +363,44 @@ export function TradeButton({
                     <>
                       {/* The order: how much, at what price. */}
                       <div className="border-b pb-2">
-                        <InfoRow label={<label htmlFor="trade-shares">Quantity</label>} border={false}>
-                          <div className="flex items-center gap-2 py-1">
-                            <ChipTabs<"shares" | "dollars">
-                              variant="tray"
-                              size="sm"
-                              clearable={false}
-                              options={[
-                                { value: "shares", label: "#", title: "Shares" },
-                                { value: "dollars", label: "$", title: "Dollars, in whole shares" },
-                              ]}
-                              value={qtyMode}
-                              onChange={(v) => {
-                                if (v && v !== qtyMode) {
-                                  setQtyMode(v);
-                                  setShares("");
-                                }
-                              }}
-                            />
-                            <div className="w-28">
-                              <Input
-                                id="trade-shares"
-                                type="number"
-                                inputMode={qtyMode === "shares" ? "numeric" : "decimal"}
-                                min={0}
-                                step={qtyMode === "shares" ? 1 : 0.01}
-                                placeholder={qtyMode === "shares" ? "0" : "$0"}
-                                value={shares}
-                                onChange={(e) => setShares(e.target.value)}
-                                autoFocus
+                        <InfoRow
+                          label={
+                            <span className="flex items-center gap-2">
+                              <label htmlFor="trade-shares">Quantity</label>
+                              <ChipTabs<"shares" | "dollars">
+                                variant="tray"
+                                size="sm"
+                                clearable={false}
+                                options={[
+                                  { value: "shares", label: "#", title: "Shares" },
+                                  { value: "dollars", label: "$", title: "Dollars, in whole shares" },
+                                ]}
+                                value={qtyMode}
+                                onChange={(v) => {
+                                  if (v && v !== qtyMode) {
+                                    setQtyMode(v);
+                                    setShares("");
+                                  }
+                                }}
                               />
-                            </div>
+                            </span>
+                          }
+                          border={false}
+                        >
+                          {/* Pulled out by the input's own padding, so the typed number lines up with the values below. */}
+                          <div className="w-28 -mr-[11px] py-1">
+                            <Input
+                              id="trade-shares"
+                              type="number"
+                              inputMode={qtyMode === "shares" ? "numeric" : "decimal"}
+                              min={0}
+                              step={qtyMode === "shares" ? 1 : 0.01}
+                              placeholder={qtyMode === "shares" ? "0" : "$0"}
+                              value={shares}
+                              onChange={(e) => setShares(e.target.value)}
+                              className="text-right tabular-nums"
+                              autoFocus
+                            />
                           </div>
                         </InfoRow>
                         {qtyMode === "dollars" && counted != null ? (
@@ -407,6 +409,11 @@ export function TradeButton({
                           </p>
                         ) : null}
                         <InfoRow label="Market price" mono border={false} valueClassName="font-normal" value={money(price)} />
+                        {held ? (
+                          <p className="-mt-1 text-right text-xs text-muted-foreground tabular-nums">
+                            Your avg cost: {formatCurrency(held.avgCost)}
+                          </p>
+                        ) : null}
                         {isOpenBuy ? (
                           <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen}>
                             <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-light outline-none focus-visible:underline">
@@ -480,6 +487,12 @@ export function TradeButton({
               {openNote ? <p className="text-xs text-muted-foreground">{openNote}</p> : null}
               <div className="border-b pb-2">
                 <InfoRow label="Analyst" border={false} valueClassName="font-normal" value={lane?.analystName} />
+                <InfoRow label={`Buying power (${isLive ? "Live" : "Paper"})`} border={false}>
+                  <span className="flex items-center gap-2 tabular-nums">
+                    <EnvDot env={ticket.environment} />
+                    {ticket.cash != null ? formatCurrency(ticket.cash) : "—"}
+                  </span>
+                </InfoRow>
                 <InfoRow label="Order type" border={false} valueClassName="font-normal" value="Market" />
                 <InfoRow
                   label="Quantity"
@@ -510,13 +523,6 @@ export function TradeButton({
           )}
 
           <DialogFooter>
-            {/* Which account this order goes to, the switcher's dot and word. */}
-            {ticket ? (
-              <span className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
-                <EnvDot env={ticket.environment} />
-                {isLive ? "Live" : "Paper"}
-              </span>
-            ) : null}
             {step === "review" ? (
               <>
                 <Button variant="outline" onClick={() => setStep("form")} disabled={sending}>
