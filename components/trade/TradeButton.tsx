@@ -208,7 +208,7 @@ export function TradeButton({
       <div>
         {side === "SELL" && held ? (
           <InfoRow
-            label={count != null ? `Your entry · ${count} ${shareWord(count)}` : "Your entry"}
+            label="Your entry"
             mono
             border={false}
             valueClassName="font-normal"
@@ -403,8 +403,11 @@ export function TradeButton({
                         ) : null}
                         <InfoRow label="Market price" mono border={false} valueClassName="font-normal" value={money(price)} />
                         {held ? (
-                          <p className="-mt-1 text-right text-xs text-muted-foreground tabular-nums">
-                            Your avg cost: {formatCurrency(held.avgCost)}
+                          <p className="-mt-1 flex justify-between gap-2 text-xs text-muted-foreground tabular-nums">
+                            <span>
+                              Your avg cost for {held.shares} {shareWord(held.shares)}:
+                            </span>
+                            <span>{formatCurrency(held.avgCost)}</span>
                           </p>
                         ) : null}
                         {isOpenBuy ? (
