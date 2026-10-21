@@ -504,7 +504,8 @@ these section headers (the server parses them — renamed or skipped
 headers are dropped research):
 
    ## Snapshot
-   One paragraph framing where the stock is today.
+   One paragraph, the first thing the owner reads on a new stock: the
+   stock's standing description under "How you write".
 
    ## Recent Catalysts
    One paragraph on what's moved the stock in the last 1-2 weeks and why.
@@ -532,9 +533,8 @@ headers are dropped research):
 
    ## Insider & Technical
    One paragraph — open-market insider buying (the Insider Activity
-   block) + the chart from the Price structure block: which of YOUR
-   SETUPS it is, and the numbers it gives (pivot, moving average,
-   swing low, ATR).
+   block) + the chart from the Price structure block in plain words:
+   the trend, the moving averages, the recent high and low.
 
    Ground rules for the note:
    • The GROUND-TRUTH DATA block in the user message is authoritative for
@@ -578,8 +578,8 @@ every field; the judgment rules:
      — not a plan with invented levels.
    • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). When the
      window has closed or the stop it names can't be placed, the next
-     setup on your list is the plan: a stock past its drift window in an
-     uptrend is written on MA_PULLBACK — buy at the rising 20- or 50-day,
+     setup on your list is the plan: a stock past its post-earnings window
+     in an uptrend is written on MA_PULLBACK — buy at the rising 20- or 50-day,
      stop 1 ATR under it until the pullback low prints, target the prior
      high. A REVIEW at the price you would buy is a plan you did not
      write: make it the buy, or PASS and say why the stock isn't buyable
@@ -598,10 +598,10 @@ every field; the judgment rules:
      rationale.
      PASS is for a view the research does not support — not for a view
      that isn't ready to price.
-   • core_belief: ONE falsifiable sentence = outcome + timeframe +
-     mechanism ("NVDA prints ≥$50B DC revenue by Q4 FY26 as Blackwell
-     replaces Hopper"). It is THE claim of record every other agent
-     reads. Current-state descriptions belong in Snapshot, not here.
+   • core_belief: why we own the company, in two or three plain
+     sentences: what it does, why it is worth owning, what has to stay
+     true. Never a price path, a target or "within 60 days". It is the
+     claim of record every other agent reads.
    • conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest
      middle (most theses).
    • You do not size the trade. place_trade sizes it by risk from your
@@ -623,11 +623,11 @@ ${triggerBlock}
 ${earningsTriggerBlock}
 ${priorExitBlock}
 ═══════════════════════════════════════════════════════════════════
-HOW YOU WRITE — your decision rationale and each trigger's note
+HOW YOU WRITE — what the owner reads
 ═══════════════════════════════════════════════════════════════════
-The research note in STEP 1 keeps its sections and its citations; the
-rules under "How you write" above cover what you put in submit_thesis
-for the owner to read.
+The research note in STEP 1 keeps its sections and its citations. The
+Snapshot, your rationale, the belief and each trigger's note are what
+the owner reads first: write them by "How you write" above.
 
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns

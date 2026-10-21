@@ -11,6 +11,9 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { zodSchema } from "ai";
+import { createResearchTools } from "@/lib/agent/tools";
+import { makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
 import { VOICE_RULES } from "@/lib/agent/voice";
 import { sizeByRisk } from "@/lib/agent/position-sizing";
@@ -109,4 +112,87 @@ describe("the old wording is gone from every line the app writes for the owner",
       expect(phrases.filter((p) => src.includes(p))).toEqual([]);
     });
   }
+});
+
+/**
+ * The standard (2026-10-20): the company and the stock first, then the
+ * decision in the owner's dollars; a trigger is context, never the reason;
+ * none of our shorthand. IOT's note that day led with its holding style and
+ * its belief was a price path, because the field texts asked for that.
+ */
+describe("the field texts ask for the standard, and carry none of our shorthand", () => {
+  type Prop = { description?: string; anyOf?: Prop[]; items?: { properties?: Record<string, Prop> } } | undefined;
+  const wordsOf = (p: Prop): string => p?.description ?? p?.anyOf?.find((m) => m?.description)?.description ?? "";
+  const SHORTHAND = [/\bPEAD\b/, /drift/i, /time-hold/i, /trend template/i, /\bR\/R\b/, /\bATR\b/, /ladder/i, /\brungs?\b/i, /fire.mode/i, /\bslot\b/i, /\b[A-Z]+_[A-Z_]+\b/];
+  const shorthand = (text: string) => SHORTHAND.filter((re) => re.test(text)).map(String);
+
+  // update_thesis is read through the writer's door (it carries every field); the rest through the chat's.
+  const props = (tool: string): Record<string, Prop> => {
+    const runMode = tool === "update_thesis" ? "THESIS_WRITER" : "PRINCIPAL_CHAT";
+    const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode, runEnvironment: "PAPER" } as never) as Record<string, { inputSchema: unknown }>;
+    return (zodSchema(all[tool].inputSchema as never).jsonSchema as { properties: Record<string, Prop> }).properties;
+  };
+  const submit = (): Record<string, Prop> =>
+    (zodSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, Prop> }).properties;
+
+  const shown = (): Array<[string, string]> => [
+    ["update_thesis.rationale", wordsOf(props("update_thesis").rationale)],
+    ["place_trade.entry_rationale", wordsOf(props("place_trade").entry_rationale)],
+    ["close_position.notes", wordsOf(props("close_position").notes)],
+    ["manage_position.reason", wordsOf(props("manage_position").reason)],
+    ["record_thesis.reasoning_summary", wordsOf(props("record_thesis").reasoning_summary)],
+    ["submit_thesis.rationale", wordsOf(submit().rationale)],
+    ["record_run_summary.decision_rationale", wordsOf(props("record_run_summary").decision_rationale)],
+    ["record_run_summary.ranked_picks.reasoning", wordsOf(props("record_run_summary").ranked_picks?.items?.properties?.reasoning)],
+    ...["core_belief", "conviction_rationale", "variant_view", "snapshot", "stop_basis", "target_basis"].map(
+      (f): [string, string] => [`update_thesis.${f}`, wordsOf(props("update_thesis")[f])],
+    ),
+  ];
+
+  it("the voice rules state the standard and name the shorthand they ban", () => {
+    // A note: what happened and why, whether it touches the reason we own it, this position in dollars, the call.
+    expect(VOICE_RULES).toContain(`answers "what's going on with this stock, and what should I do?": what happened, today or since the last look, and why, with dates`);
+    expect(VOICE_RULES).toContain("whether that touches the reason we own it; what it means for this position (the shares, the dollars, the profit or loss, the stop and the target); then the call.");
+    // The standing description: a company page.
+    expect(VOICE_RULES).toContain("reads like a research site's company page: what the company does; what it has done lately, with dates; the numbers that matter (growth, profits, valuation); what Wall Street thinks; what has to stay true. Sourced, never a trade formula.");
+    expect(VOICE_RULES).toMatch(/never the reason by itself: "the stop at \$41\.42", not "the floor fired"/);
+    // Always look it up, one search per stock, unless the day's research brief is already read.
+    expect(VOICE_RULES).toContain("Before a decision note on a stock, run one web_search for its latest news, unless today's research brief on it is already in what you read. One per stock per run.");
+    for (const term of ["PEAD", "drift", "time-hold", "Trend Template", "setup names", "R/R", "ATR", "ladder", "rung", "fire mode", "slot", "ids"]) expect(VOICE_RULES).toContain(term);
+    expect(VOICE_RULES).not.toMatch(/Open with the call/);
+  });
+
+  it("every field the owner reads is filled in and carries no shorthand", () => {
+    const fields = shown();
+    expect(fields.filter(([, words]) => words === "").map(([name]) => name)).toEqual([]);
+    expect(fields.flatMap(([name, words]) => shorthand(words).map((s) => `${name}: ${s}`))).toEqual([]);
+  });
+
+  it("each note and trade reason leads with the company and points at the rules", () => {
+    const notes = shown().filter(([name]) => /\.(rationale|entry_rationale|notes|reason|reasoning_summary|decision_rationale)$/.test(name));
+    expect(notes).toHaveLength(7);
+    for (const [name, words] of notes) {
+      const company = name.endsWith("decision_rationale") ? /what moved the stocks/ : /company/;
+      expect([name, company.test(words), /How you write/.test(words)]).toEqual([name, true, true]);
+    }
+  });
+
+  it("the belief is why we own the company, never a price path", () => {
+    const words = wordsOf(props("update_thesis").core_belief);
+    expect(words).toMatch(/Why we own the company, in two or three plain sentences: what it does, why it is worth owning, and what has to stay true/);
+    expect(words).toMatch(/never the trade: no price path, no target, no dates/);
+    expect(wordsOf(submit().core_belief)).toBe(words);
+  });
+
+  it("the writer asks for a company-first snapshot and belief", () => {
+    const writer = SAMPLE_PROMPTS.writer();
+    expect(writer).toContain("One paragraph, the first thing the owner reads on a new stock: the\n   stock's standing description");
+    expect(writer).toContain("core_belief: why we own the company");
+    expect(writer).not.toMatch(/outcome \+ timeframe \+\s+mechanism|which of YOUR\s+SETUPS it is/);
+  });
+
+  it("the trigger run and the morning run are not told to narrate their triggers", () => {
+    expect(SAMPLE_PROMPTS.tactical()).not.toMatch(/Floor stays \$X|RE-LADDER|Not acting\s+yet: <reason>|validation (HOLDS|FAILS)/);
+    expect(SAMPLE_PROMPTS.daily()).not.toContain("what triggered it");
+  });
 });

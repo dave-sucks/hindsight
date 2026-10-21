@@ -49,7 +49,7 @@ const recordFields = z.object({
     .string()
     .optional()
     .describe(
-      "The thesis in two or three sentences; on a PASS, what you found and why it doesn't fit.",
+      "The note the owner reads at the top of the new stock's page: what the company does, how it is doing and where the stock is and why, then your call. On a PASS, what you found and why it doesn't fit. Write it by How you write.",
     ),
   thesis_bullets: z
     .array(z.string())
@@ -486,8 +486,8 @@ export const recordThesis = defineTool({
               status: "FAILED" as const,
               note:
                 `Whenever you set conviction, you must also pass conviction_rationale — a sentence or two explaining why this tier. ` +
-                `Example HIGH: "Composite 7/10, post-print PEAD setup, first day of drift, no analyst PT updates yet — R/R 2.6:1." ` +
-                `Example LOW: "Late-stage chase, RSI 73, volume below threshold."`,
+                `Example HIGH: "The quarter beat on sales and profit, guidance went up, and analysts haven't raised their numbers yet; the reward is 2.6 times the risk." ` +
+                `Example LOW: "A good company, but the stock has run 30% in a month on light volume."`,
             },
             sources: [],
           };

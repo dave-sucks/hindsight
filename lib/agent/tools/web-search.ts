@@ -14,6 +14,8 @@ import type { SignalItem, WebSearchToolData } from "@/lib/agent/tool-types";
 
 // Per-run search count — keyed by runId to scope budget to the current run.
 const liveSearchCounts = new Map<string, number>();
+// The stocks whose one news search this run has spent (voice.ts: look it up before a decision note).
+const stockSearches = new Map<string, Set<string>>();
 
 export const webSearch = defineTool({
   description:
@@ -24,6 +26,10 @@ export const webSearch = defineTool({
       .enum(["hour", "day", "week", "month"])
       .optional()
       .describe("How recent results should be (default: day)"),
+    ticker: z
+      .string()
+      .optional()
+      .describe("The stock, when this is its news search before a decision: one per stock per run, outside the run's search budget."),
   }),
   ui: "tool-ui" as const,
 
@@ -33,7 +39,7 @@ export const webSearch = defineTool({
     return `Searching the web for "${truncated}"`;
   },
 
-  execute: async ({ query, recency = "day" }, ctx) => {
+  execute: async ({ query, recency = "day", ticker }, ctx) => {
     const policy = ctx.intelligencePolicy;
 
     if (policy && !policy.allowLiveSearch) {
@@ -53,8 +59,11 @@ export const webSearch = defineTool({
 
     const budget = policy?.liveSearchBudget ?? 5;
     const count = liveSearchCounts.get(ctx.runId) ?? 0;
+    const searched = stockSearches.get(ctx.runId) ?? new Set<string>();
+    const stock = ticker?.trim().toUpperCase().replace(/^\$/, "") || null;
+    const stockSearch = stock != null && !searched.has(stock);
 
-    if (count >= budget) {
+    if (!stockSearch && count >= budget) {
       return {
         summary: `Live search budget exhausted (${budget}/${budget} used).`,
         data: {
@@ -69,8 +78,10 @@ export const webSearch = defineTool({
       };
     }
 
-    liveSearchCounts.set(ctx.runId, count + 1);
-    const newCount = count + 1;
+    // A stock's one news search doesn't spend the run's budget; any other search does.
+    if (stockSearch) stockSearches.set(ctx.runId, searched.add(stock));
+    else liveSearchCounts.set(ctx.runId, count + 1);
+    const newCount = stockSearch ? count : count + 1;
 
     const sonarResult = await searchSignals(query, { recency, model: "sonar" });
 

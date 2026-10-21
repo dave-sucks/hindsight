@@ -194,6 +194,16 @@ export async function GET(
     .then((rows) => rows.find((r) => !isYourEdit(r)) ?? null)
     .catch(() => null);
 
+  // The write-up's own date and price: the newest row a research-writer run
+  // saved (CREATED on a mint, UPDATED on a refresh), never a later run's edit.
+  const writtenUpRow = await prisma.thesisUpdate
+    .findFirst({
+      where: { thesisId: thesis.id, run: { mode: "THESIS_WRITER" } },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true, priceAtTime: true },
+    })
+    .catch(() => null);
+
   const atr14Value: number | null = await loadIndicatorSnapshots([thesis.ticker.toUpperCase()])
     .then((m) => m.get(thesis.ticker.toUpperCase())?.atr14 ?? null)
     .catch(() => null);
@@ -397,6 +407,9 @@ export async function GET(
     insiderTechnical: thesis.insiderTechnical,
     researchUpdatedAt: thesis.researchUpdatedAt
       ? thesis.researchUpdatedAt.toISOString()
+      : null,
+    writtenUp: writtenUpRow
+      ? { at: writtenUpRow.timestamp.toISOString(), price: writtenUpRow.priceAtTime }
       : null,
     sourceKind: thesis.sourceKind,
     sourceRationale: thesis.sourceRationale,

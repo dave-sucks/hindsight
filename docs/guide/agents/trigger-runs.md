@@ -40,7 +40,7 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels r
 
 ## What it reads
 
-The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, and your notes. It comes with the trigger that fired and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news.
+The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, and your notes. It comes with the trigger that fired and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
 
 A give-back is measured from the highest price since the buy, over the whole holding. The run can't call a fire false by reading a lower high off a short chart; declining a sale takes new evidence about the business.
 
@@ -48,7 +48,7 @@ A give-back is measured from the highest price since the buy, over the whole hol
 
 - **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. On the live account, the [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
 - **Tighten the line:** move the trigger to a level the chart supports. It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the line is wrong, it says so and names the level, and lowering it is yours to do on the thesis.
-- **Hold, with a reason:** "not acting yet," and why. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse. While a sale is waiting for your approval, the stock is yours to decide and no run touches it.
+- **Hold, with a reason:** what is going on with the stock and why it isn't acting. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse. While a sale is waiting for your approval, the stock is yours to decide and no run touches it.
 
 Whatever it decides, it brings the stock's other triggers up to date: after an add the floor goes up, and a level the price blew through is reset off the new chart, not a round number.
 
