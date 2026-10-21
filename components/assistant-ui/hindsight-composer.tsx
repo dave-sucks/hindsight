@@ -415,7 +415,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
           // min-h keeps the resting size; max-h caps growth on paste and
           // overflow-y-auto scrolls the editor internally past the cap so
           // the chat above stays readable (Claude/GPT composer behavior).
-          "min-h-[4.5rem] max-h-[27vh] w-full overflow-y-auto px-3 py-2 text-sm leading-relaxed",
+          "min-h-[4.5rem] max-h-[27vh] w-full overflow-y-auto px-3 py-2 text-base md:text-sm leading-relaxed",
           "bg-transparent outline-none focus:outline-none",
           "[&>p]:m-0 [&>p+p]:mt-1",
         ].join(" "),
