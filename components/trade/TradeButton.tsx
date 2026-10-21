@@ -187,13 +187,6 @@ export function TradeButton({
   }, [lane, price, side, qty, shares, stop, target, ticket?.priceStale, ticket?.cash]);
 
   const planned = plan?.ok ? plan : null;
-  const pnl =
-    side === "SELL" && planned && lane?.position && price != null
-      ? {
-          dollar: (price - lane.position.avgCost) * planned.shares,
-          pct: ((price - lane.position.avgCost) / lane.position.avgCost) * 100,
-        }
-      : null;
 
   const isLive = ticket?.environment === "LIVE";
   // A new holding with no stop typed and none on its thesis: unprotected until the writer lands.
@@ -203,24 +196,58 @@ export function TradeButton({
     ? `${side === "BUY" ? "Buy" : "Sell"} ${sellsAll ? "all " : ""}${planned.shares} ${shareWord(planned.shares)} of ${ticker}`
     : "";
 
-  // Price, cost (or proceeds) and the gain on a sale — one figure per row, the
-  // same rows on the order and on the review.
-  function figureRows(count: number | null) {
-    return (
-      <>
-        <InfoRow label="Price" mono value={price != null ? formatCurrency(price) : "—"} />
-        <InfoRow
-          label={side === "BUY" ? "Cost" : "Proceeds"}
-          mono
-          value={price != null && count != null ? formatCurrency(count * price) : "—"}
-          border={pnl != null}
-        />
-        {pnl ? (
-          <InfoRow label="Gain" border={false}>
-            <PriceChange dollarChange={pnl.dollar} percentChange={pnl.pct} size="sm" />
+  // The money as an invoice that adds up: a sale is proceeds less cost
+  // basis = gain; a buy is cost basis plus cost = new cost basis. Every
+  // figure carries the same "N shares × $price" line under its key. The
+  // order and the review draw the same rows.
+  function invoiceRows(count: number | null) {
+    const n = count != null && count > 0 ? count : null;
+    const held = lane?.position ?? null;
+    const at = (shares: number, px: number, avg = false) =>
+      `${shares} ${shareWord(shares)} × ${formatCurrency(px)}${avg ? " avg" : ""}`;
+    const money = (v: number | null, sign = "") => (v == null ? "—" : `${sign}${formatCurrency(v)}`);
+    const total = (label: string) => <span className="font-medium">{label}</span>;
+    if (price == null) return null;
+
+    if (side === "SELL" && held) {
+      const proceeds = n != null ? n * price : null;
+      const basis = n != null ? n * held.avgCost : null;
+      const gain = proceeds != null && basis != null ? proceeds - basis : null;
+      return (
+        <>
+          <InfoRow label="Proceeds" mono border={false} value={money(proceeds)} description={n != null ? at(n, price) : null} />
+          <InfoRow label="Cost basis" mono value={money(basis, "−")} description={n != null ? at(n, held.avgCost, true) : null} />
+          <InfoRow label={total(gain != null && gain < 0 ? "Loss" : "Gain")} border={false}>
+            {gain != null ? (
+              <PriceChange dollarChange={gain} percentChange={(gain / basis!) * 100} size="sm" />
+            ) : (
+              <span className="font-medium">—</span>
+            )}
           </InfoRow>
-        ) : null}
-      </>
+        </>
+      );
+    }
+
+    const cost = n != null ? n * price : null;
+    if (held) {
+      const basis = held.shares * held.avgCost;
+      const after = n != null ? held.shares + n : null;
+      return (
+        <>
+          <InfoRow label="Cost basis" mono border={false} value={money(basis)} description={at(held.shares, held.avgCost, true)} />
+          <InfoRow label="Cost" mono value={money(cost, "+")} description={n != null ? at(n, price) : null} />
+          <InfoRow
+            label={total("New cost basis")}
+            mono
+            border={false}
+            value={cost != null ? formatCurrency(basis + cost) : "—"}
+            description={after != null && cost != null ? at(after, (basis + cost) / after, true) : null}
+          />
+        </>
+      );
+    }
+    return (
+      <InfoRow label={total("Cost")} mono border={false} value={money(cost)} description={n != null ? at(n, price) : null} />
     );
   }
 
@@ -359,13 +386,7 @@ export function TradeButton({
                           </div>
                         </div>
                       </InfoRow>
-                      {lane?.position ? (
-                        <>
-                          <InfoRow label="You own" mono value={`${lane.position.shares} ${shareWord(lane.position.shares)}`} />
-                          <InfoRow label="Avg cost" mono value={formatCurrency(lane.position.avgCost)} />
-                        </>
-                      ) : null}
-                      {figureRows(qty > 0 && Number.isFinite(qty) ? qty : null)}
+                      {invoiceRows(qty > 0 && Number.isFinite(qty) ? qty : null)}
                     </div>
                   )}
 
@@ -439,8 +460,9 @@ export function TradeButton({
               <p className="text-lg font-medium">{sentence}</p>
               {openNote ? <p className="text-xs text-muted-foreground">{openNote}</p> : null}
               <div>
-                <InfoRow label="Shares" mono value={planned?.shares} />
-                {figureRows(planned?.shares ?? null)}
+                {invoiceRows(planned?.shares ?? null)}
+              </div>
+              <div className="border-t pt-1">
                 {isOpenBuy ? (
                   <>
                     <InfoRow label="Stop" mono value={levelLine(stop, lane?.buy.kind === "OPEN" ? lane.buy.stopLoss : null)} />
