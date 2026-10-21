@@ -187,7 +187,6 @@ export function TradeButton({
   }, [lane, price, side, qty, shares, stop, target, ticket?.priceStale, ticket?.cash]);
 
   const planned = plan?.ok ? plan : null;
-  const total = planned && price != null ? planned.shares * price : null;
   const pnl =
     side === "SELL" && planned && lane?.position && price != null
       ? {
@@ -203,6 +202,27 @@ export function TradeButton({
   const sentence = planned
     ? `${side === "BUY" ? "Buy" : "Sell"} ${sellsAll ? "all " : ""}${planned.shares} ${shareWord(planned.shares)} of ${ticker}`
     : "";
+
+  // Price, cost (or proceeds) and the gain on a sale — one figure per row, the
+  // same rows on the order and on the review.
+  function figureRows(count: number | null) {
+    return (
+      <>
+        <InfoRow label="Price" mono value={price != null ? formatCurrency(price) : "—"} />
+        <InfoRow
+          label={side === "BUY" ? "Cost" : "Proceeds"}
+          mono
+          value={price != null && count != null ? formatCurrency(count * price) : "—"}
+          border={pnl != null}
+        />
+        {pnl ? (
+          <InfoRow label="Gain" border={false}>
+            <PriceChange dollarChange={pnl.dollar} percentChange={pnl.pct} size="sm" />
+          </InfoRow>
+        ) : null}
+      </>
+    );
+  }
 
   async function place() {
     if (!planned || !lane || price == null || !ticket) return;
@@ -316,74 +336,46 @@ export function TradeButton({
                   {side === "BUY" && lane?.buy.kind === "NONE" ? (
                     <p className="text-sm text-muted-foreground">{lane.buy.reason}</p>
                   ) : (
-                    <div className="grid gap-1.5">
-                      <div>
-                        {lane?.position ? (
-                          <InfoRow
-                            label="You own"
-                            mono
-                            value={`${lane.position.shares} ${shareWord(lane.position.shares)} · avg $${lane.position.avgCost.toFixed(2)}`}
-                          />
-                        ) : null}
-                        <InfoRow label={<label htmlFor="trade-shares" className="font-medium">Shares</label>}>
-                          <div className="flex items-center gap-2 py-1">
-                            {side === "SELL" && lane?.position ? (
-                              <Button variant="outline" size="sm" onClick={() => setShares(String(lane.position!.shares))}>
-                                All
-                              </Button>
-                            ) : null}
-                            <div className="w-28">
-                              <Input
-                                id="trade-shares"
-                                type="number"
-                                inputMode="numeric"
-                                min={1}
-                                step={1}
-                                placeholder="0"
-                                value={shares}
-                                onChange={(e) => setShares(e.target.value)}
-                                autoFocus
-                              />
-                            </div>
+                    <div>
+                      <InfoRow label={<label htmlFor="trade-shares">Shares</label>}>
+                        <div className="flex items-center gap-2 py-1">
+                          {side === "SELL" && lane?.position ? (
+                            <Button variant="outline" size="sm" onClick={() => setShares(String(lane.position!.shares))}>
+                              All
+                            </Button>
+                          ) : null}
+                          <div className="w-28">
+                            <Input
+                              id="trade-shares"
+                              type="number"
+                              inputMode="numeric"
+                              min={1}
+                              step={1}
+                              placeholder="0"
+                              value={shares}
+                              onChange={(e) => setShares(e.target.value)}
+                              autoFocus
+                            />
                           </div>
-                        </InfoRow>
-                        <InfoRow
-                          label={
-                            <span className="font-medium">
-                              {side === "BUY" ? "Cost" : "Proceeds"}
-                              {price != null ? ` (${formatCurrency(price)} per share)` : ""}
-                            </span>
-                          }
-                          mono
-                          value={price != null && qty > 0 && Number.isFinite(qty) ? formatCurrency(qty * price) : "—"}
-                          border={pnl != null}
-                        />
-                        {pnl ? (
-                          <InfoRow label="Gain on these shares" border={false}>
-                            <PriceChange dollarChange={pnl.dollar} percentChange={pnl.pct} size="sm" />
-                          </InfoRow>
-                        ) : null}
-                      </div>
-                      <p className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                        {isLive ? "Live account" : "Paper account"}
-                        {ticket.cash != null ? ` · ${formatCurrency(ticket.cash)} cash` : ""}
-                      </p>
-                      {side === "BUY" && lane?.buy.kind === "ADD" ? (
-                        <p className="text-xs text-muted-foreground">
-                          Up to {lane.buy.maxShares} more {shareWord(lane.buy.maxShares)} fit {lane.analystName}&apos;s
-                          most in one stock ({formatCurrency(lane.buy.cap)}).
-                        </p>
+                        </div>
+                      </InfoRow>
+                      {lane?.position ? (
+                        <>
+                          <InfoRow label="You own" mono value={`${lane.position.shares} ${shareWord(lane.position.shares)}`} />
+                          <InfoRow label="Avg cost" mono value={formatCurrency(lane.position.avgCost)} />
+                        </>
                       ) : null}
+                      {figureRows(qty > 0 && Number.isFinite(qty) ? qty : null)}
                     </div>
                   )}
 
                   {isOpenBuy ? (
                     <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen} className="border-y">
-                      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-medium outline-none focus-visible:underline">
+                      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-light outline-none focus-visible:underline">
                         <span>
                           Price targets
                           {!levelsOpen && (stop.trim() || target.trim()) ? (
-                            <span className="font-normal text-muted-foreground tabular-nums">
+                            <span className="text-muted-foreground tabular-nums">
                               {" · "}
                               {[stop.trim() && `stop $${stop.trim()}`, target.trim() && `target $${target.trim()}`].filter(Boolean).join(", ")}
                             </span>
@@ -420,13 +412,25 @@ export function TradeButton({
                     </Collapsible>
                   ) : null}
 
-                  {plan && !plan.ok ? <p className="text-xs text-destructive">{plan.error}</p> : null}
-                  {!ticket.marketOpen ? (
-                    <p className="text-xs text-muted-foreground">
-                      The market is closed{priceAsOf(ticket) ? ` (${priceAsOf(ticket)})` : ""}. The order waits at
-                      Alpaca and fills at the next open, at that price.
+                  <div className="grid gap-1 text-xs text-muted-foreground">
+                    {plan && !plan.ok ? <p className="text-destructive">{plan.error}</p> : null}
+                    <p className="tabular-nums">
+                      {isLive ? "Live account" : "Paper account"}
+                      {ticket.cash != null ? ` · ${formatCurrency(ticket.cash)} cash` : ""}
                     </p>
-                  ) : null}
+                    {side === "BUY" && lane?.buy.kind === "ADD" ? (
+                      <p>
+                        Up to {lane.buy.maxShares} more {shareWord(lane.buy.maxShares)} fit {lane.analystName}&apos;s most in
+                        one stock ({formatCurrency(lane.buy.cap)}).
+                      </p>
+                    ) : null}
+                    {!ticket.marketOpen ? (
+                      <p>
+                        The market is closed{priceAsOf(ticket) ? ` (${priceAsOf(ticket)})` : ""}. The order waits at
+                        Alpaca and fills at the next open, at that price.
+                      </p>
+                    ) : null}
+                  </div>
                 </>
               )}
             </div>
@@ -435,37 +439,26 @@ export function TradeButton({
               <p className="text-lg font-medium">{sentence}</p>
               {openNote ? <p className="text-xs text-muted-foreground">{openNote}</p> : null}
               <div>
-                <InfoRow label="Account" value={isLive ? "Live — real money" : "Paper"} />
-                <InfoRow label="Analyst" value={lane?.analystName} />
-                <InfoRow label="Order type" value="Market" />
                 <InfoRow label="Shares" mono value={planned?.shares} />
-                <InfoRow label="Estimated price" mono value={price != null ? `$${price.toFixed(2)}` : "—"} />
-                <InfoRow
-                  label={side === "BUY" ? "Estimated cost" : "Estimated proceeds"}
-                  mono
-                  value={total != null ? formatCurrency(total) : "—"}
-                />
+                {figureRows(planned?.shares ?? null)}
                 {isOpenBuy ? (
                   <>
                     <InfoRow label="Stop" mono value={levelLine(stop, lane?.buy.kind === "OPEN" ? lane.buy.stopLoss : null)} />
                     <InfoRow label="Target" mono value={levelLine(target, lane?.buy.kind === "OPEN" ? lane.buy.targetPrice : null)} />
                   </>
                 ) : null}
-                {pnl ? (
-                  <InfoRow label="Gain on these shares">
-                    <PriceChange dollarChange={pnl.dollar} percentChange={pnl.pct} size="sm" />
-                  </InfoRow>
-                ) : null}
+                <InfoRow label="Analyst" value={lane?.analystName} />
+                <InfoRow label="Order type" value="Market" border={false} />
               </div>
-              {noFloorYet ? (
-                <p className="text-sm text-muted-foreground">No floor yet — the analyst sets it right after the buy.</p>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                A market order fills at the next available price, which can differ from this estimate.
-                {!ticket.marketOpen ? " The market is closed, so it fills when it opens." : ""}
-                {" "}If the price moves more than 2% before you place it, you&apos;ll be asked to review again.
-              </p>
-              {sendError ? <p className="text-xs text-destructive">{sendError}</p> : null}
+              <div className="grid gap-1 text-xs text-muted-foreground">
+                {sendError ? <p className="text-destructive">{sendError}</p> : null}
+                {noFloorYet ? <p>No floor yet — the analyst sets it right after the buy.</p> : null}
+                <p>
+                  A market order fills at the next available price, which can differ from this estimate.
+                  {!ticket.marketOpen ? " The market is closed, so it fills when it opens." : ""}
+                  {" "}If the price moves more than 2% before you place it, you&apos;ll be asked to review again.
+                </p>
+              </div>
             </div>
           )}
 
