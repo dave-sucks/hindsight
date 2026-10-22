@@ -76,7 +76,7 @@ export function autoStopOp(input: { triggers: Trigger[]; direction: string | nul
     id: floor?.id ?? "",
     predicate,
     action: "EXIT",
-    fireMode: "DIRECT",
+    fireMode: "DO_IT",
     rationale: addedTriggerRationale("EXIT", predicate),
     source: "PRINCIPAL",
   };

@@ -276,7 +276,7 @@ One field, `fireMode`, the same for every action, condition and author
 **Unset** (a template, a seat rule, an agent that names none): a sale is
 `DO_IT`, a review `NEXT_MORNING`, a buy, an add or a trim `ASK_NOW`. The write
 paths stamp it (`applyTriggerDefaults`), so every stored trigger names one; the
-migration `20261022120000_on_fire_every_trigger` wrote each existing trigger
+migration `20261022130000_on_fire_every_trigger` wrote each existing trigger
 with the mode it already behaved as.
 
 **Do it is the trade the analyst would have made, minus the analyst.** The

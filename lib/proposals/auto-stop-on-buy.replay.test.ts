@@ -92,7 +92,7 @@ describe("stop when buying — MU, approved at $906.33 with an $850 floor", () =
       expect.objectContaining({
         id: MU_FLOOR.id,
         predicate: { watch: "price", is: "below", value: 861.01 },
-        fireMode: "DIRECT",
+        fireMode: "DO_IT",
         rationale: "Sell if below $861.01. You set this.",
         source: "PRINCIPAL",
       }),
@@ -130,7 +130,7 @@ describe("stop when buying — IOT, approved at $42.21 with no floor on the row"
       expect.objectContaining({
         predicate: { watch: "price", is: "below", value: 38.83 },
         action: "EXIT",
-        fireMode: "DIRECT",
+        fireMode: "DO_IT",
         rationale: "Sell if below $38.83. You set this.",
         source: "PRINCIPAL",
       }),
@@ -142,7 +142,7 @@ describe("stop when buying — IOT, approved at $42.21 with no floor on the row"
 
   it("on at 5%: the ticket's $39.80 is under the $40.10 line, so it is raised in place", async () => {
     await approve("IOT", { account: { on: true, pct: 5 } });
-    expect(floors()).toEqual([expect.objectContaining({ predicate: { watch: "price", is: "below", value: 40.1 }, fireMode: "DIRECT", source: "PRINCIPAL" })]);
+    expect(floors()).toEqual([expect.objectContaining({ predicate: { watch: "price", is: "below", value: 40.1 }, fireMode: "DO_IT", source: "PRINCIPAL" })]);
     expect(activity()).toEqual(["Stop set: $39.80", "Target set: $47", "Target: cooldown 1 days", "Changed: Sell if below $39.80 → Sell if below $40.10"]);
   });
 });
