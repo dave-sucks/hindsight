@@ -198,7 +198,7 @@ export const tacticalRun = inngest.createFunction(
             id: true,
             quantity: true,
             avgCost: true,
-            // The price-monitor-maintained watermark (high for LONG, low for
+            // The five-minute pass's watermark (high for LONG, low for
             // SHORT). Handed to the tactical prompt as the AUTHORITATIVE
             // reference for trail validation — DAV-186: the HPE
             // agent re-derived a "peak" from a short chart window and

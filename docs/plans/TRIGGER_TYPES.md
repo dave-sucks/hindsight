@@ -437,7 +437,7 @@ the gain.
 | Variable | Number | From | Missing when |
 |---|---|---|---|
 | our entry | `Position.avgCost` | the position | not held |
-| the high since we bought | `Position.peakPrice` (trail options applied by `trail.ts`) | the price monitor | not held |
+| the high since we bought | `Position.peakPrice` (trail options applied by `trail.ts`) | the five-minute check (`lib/trading/water-mark.ts`) | not held |
 | yesterday's close | the quote's prior close | the live quote | no quote |
 | the close 5 / 20 days ago | `closes[n − 5]` / `closes[n − 20]` | the 06:30 chart snapshot | no snapshot |
 | an average | `sma[days]` | the snapshot | no snapshot |

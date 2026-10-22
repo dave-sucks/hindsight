@@ -467,7 +467,7 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
 - discovery-run.ts — Sundays 9 AM ET, per-analyst weekly discovery
   scan (mints up to 5 new WATCHING theses)
-- price-monitor.ts — hourly price check, exit evaluation
+- price-monitor.ts — hourly PRICE_CHECK rows only (the high since we bought is kept by trigger-evaluator, lib/trading/water-mark.ts)
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
 - weekly-digest.ts — Sunday 9 AM ET digest email
@@ -774,7 +774,7 @@ When you spot something new, file it there — not here.)
 
 ### Inngest Crons
 - lib/inngest/functions/morning-research.ts — daily agent run
-- lib/inngest/functions/price-monitor.ts — hourly price check
+- lib/inngest/functions/price-monitor.ts — hourly PRICE_CHECK rows (the trade page lists them)
 - lib/inngest/functions/trade-evaluator.ts — post-trade GPT-4o eval
 - lib/inngest/functions/eod-evaluation.ts — end-of-day snapshots
 - lib/inngest/functions/accuracy-scorer.ts — weekly accuracy

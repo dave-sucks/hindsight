@@ -30,6 +30,9 @@
 // intraday dip (watchedFloorOnClose, DAV-337). Cooldown makes the three
 // close ticks fire at most once.
 //
+// Each intraday pass first brings every held position's high since the buy
+// up to date from its quote (lib/trading/water-mark), so the trails read it.
+//
 // - Cooldown lives on the trigger object inside Thesis.triggers JSONB.
 //   No schema change in PR 2. A separate TriggerFiring table is a
 //   follow-up if hot-write contention shows up.
@@ -37,7 +40,7 @@
 import { randomUUID } from "node:crypto";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { getLiveQuotes } from "@/lib/market-data/live-quote";
+import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quote";
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
@@ -66,6 +69,7 @@ import {
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
+import { raiseWaterMarks } from "@/lib/trading/water-mark";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
 import { describeChartFire } from "@/lib/agent/triggers/condition/facts";
 import { fetchBookFilings, type BookFilings } from "@/lib/market-data/sec-filings";
@@ -185,7 +189,7 @@ interface PositionInfo {
   openedAt: Date;
   /** For move-from-entry — entry economics of the open position. */
   avgCost: number | null;
-  /** For trail — price-monitor-maintained water mark. */
+  /** For trail — the high since we bought, brought up to date by this pass. */
   peakPrice: number | null;
   /** When that water mark was set — the big-winner switch needs the clock. */
   peakAt: Date | null;
@@ -198,6 +202,7 @@ async function buildPositionOpenedAtMap(
     status: string;
     researchRun: { agentConfigId: string | null };
   }>,
+  marks: { quotes: Record<string, LiveQuoteResult>; now: Date } | null,
 ): Promise<Map<string, PositionInfo>> {
   const out = new Map<string, PositionInfo>();
   const active = theses.filter(
@@ -214,22 +219,28 @@ async function buildPositionOpenedAtMap(
     new Set(active.map((t) => t.researchRun.agentConfigId as string)),
   );
   const tickers = Array.from(new Set(active.map((t) => t.ticker)));
-  const positions = await prisma.position.findMany({
+  const found = await prisma.position.findMany({
     where: {
       analystId: { in: analystIds },
       symbol: { in: tickers },
       status: "OPEN",
     },
     select: {
+      id: true,
       analystId: true,
       symbol: true,
+      direction: true,
       openedAt: true,
       avgCost: true,
       peakPrice: true,
       peakAt: true,
+      troughPrice: true,
+      troughAt: true,
     },
     orderBy: { openedAt: "desc" },
   });
+  // The high since we bought, raised from this pass's quote before any trail reads it.
+  const positions = marks ? await raiseWaterMarks(found, marks.quotes, marks.now) : found;
 
   // Newest OPEN position per (analystId, symbol) wins — orderBy desc + first
   // write into the map.
@@ -507,12 +518,6 @@ export const triggerEvaluator = inngest.createFunction(
         .filter((c) => c.analystId && c.ladder.length > 0);
       if (candidates.length === 0) return [] as FiringEvent[];
 
-      // Anchor held-row time questions to the paired position's openedAt for
-      // ACTIVE (held) theses. WATCHING rows stay on createdAt.
-      const openedAtByThesisId = await buildPositionOpenedAtMap(
-        candidates.map((c) => c.thesis),
-      );
-
       // Cap unique tickers per tick. Theses past the cap defer to the next
       // tick.
       const uniqueTickers = Array.from(
@@ -521,6 +526,13 @@ export const triggerEvaluator = inngest.createFunction(
       // The whole book in one call, and never the caller that yields when a
       // vendor's minute runs low (lib/market-data/quote-budget).
       const liveQuotes = await getLiveQuotes(uniqueTickers, { caller: "trigger-check", now });
+      // Anchor held-row time questions to the paired position's openedAt for
+      // ACTIVE (held) theses. WATCHING rows stay on createdAt. The intraday
+      // pass raises each position's high from these quotes first.
+      const openedAtByThesisId = await buildPositionOpenedAtMap(
+        candidates.map((c) => c.thesis),
+        session === "INTRADAY" ? { quotes: liveQuotes, now } : null,
+      );
       const quoteResults = uniqueTickers.map((ticker) => {
         const { quote: q, error } = liveQuotes[ticker.toUpperCase()] ?? { quote: null };
         if (!q) {

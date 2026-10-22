@@ -39,7 +39,7 @@ Several rules stop one move from waking the desk twice:
 
 ## The high the trails use
 
-A trail measures the give-back from the highest price since the buy (the lowest, for a short). The hourly price monitor keeps that mark on the position. It only records, so the high is as fresh as the last hourly check.
+A trail measures the give-back from the highest price since the buy (the lowest, for a short). Every five-minute check raises that mark before it reads any trigger: from the live price, and for a stock held since before today's open, from the day's high so far, so a spike between two checks still counts. A price that isn't live moves nothing.
 
 <details>
 <summary>Technical details</summary>
@@ -63,5 +63,5 @@ A trail measures the give-back from the highest price since the buy (the lowest,
 `decideBuyRearm` and `rearmBuyAfterPass` in `lib/agent/triggers/rearm.ts`, `MAX_REARMS_PER_DAY` = 3, stored as `rearmedAt` in `Thesis.triggerState`.
 
 #### Peak
-`lib/inngest/functions/price-monitor.ts`: cron `0 9-17` weekdays ET, market-open only; writes `Position.peakPrice` and `peakAt`.
+`raiseWaterMarks` in `lib/trading/water-mark.ts`, called by the intraday pass before the check: writes `Position.peakPrice` / `peakAt` (and the trough) when a fresh quote moves them. The day's high is the quote's own Alpaca daily bar, regular hours only.
 </details>

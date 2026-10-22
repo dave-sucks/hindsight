@@ -310,8 +310,8 @@ export interface NeedsActionInput {
     avgCost?: number | null;
     targetPrice?: number | null;
     /**
-     * Paired open Position's water mark (high LONG / low SHORT), maintained
-     * hourly by the price monitor. Feeds the trail floor math
+     * Paired open Position's water mark (high LONG / low SHORT), raised
+     * by the five-minute trigger check. Feeds the trail floor math
      * in the UNPROTECTED_GAIN computation. Null when not held / not tracked
      * — ladder-health falls back to the current price.
      */

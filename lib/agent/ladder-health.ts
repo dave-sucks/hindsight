@@ -36,8 +36,8 @@
  *   OR count (any branch fires alone); predicates inside an AND don't (the
  *   level alone doesn't guarantee the exit).
  *
- * Trail floor peak source: Position.peakPrice is maintained hourly by the
- * price monitor, so it can lag the live quote. The trail's enforceable floor
+ * Trail floor peak source: Position.peakPrice is raised by the five-minute
+ * trigger check, so it can lag the live quote. The trail's enforceable floor
  * only ever ratchets toward the live price, so we use the water-mark-corrected
  * value — LONG: max(peakPrice, currentPrice); SHORT: min(peakPrice,
  * currentPrice) — falling back to currentPrice when peakPrice is null.

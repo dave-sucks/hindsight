@@ -112,7 +112,7 @@ export interface EvaluationContext {
    * trail (peakPrice). Supplied by the cron + live paths for
    * HOLDING theses; absent/null (WATCHING, or caller didn't join the
    * position) → those predicates return false (missed trigger, not a
-   * crash). peakPrice is the price-monitor-maintained water mark:
+   * crash). peakPrice is the water mark the five-minute pass keeps:
    * high-water for LONG, low-water for SHORT.
    */
   position?: {
@@ -121,8 +121,8 @@ export interface EvaluationContext {
     /** When the position opened — the anchor for a day count `from: "BUY"`. */
     openedAt?: Date | null;
     /**
-     * When that water mark was set, written alongside peakPrice by the price
-     * monitor. Read by the big-winner switch, which needs to tell a run that
+     * When that water mark was set, written alongside peakPrice by the
+     * five-minute pass. Read by the big-winner switch, which needs to tell a run that
      * took two weeks from one that took six months. Absent → the switch
      * can't prove the run was fast, so the partial stands.
      */
