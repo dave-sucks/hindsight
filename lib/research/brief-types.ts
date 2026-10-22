@@ -79,6 +79,8 @@ export interface BriefPosition {
   pnlUsd: number | null;
   pnlPct: number | null;
   pctOfAccount: number | null;
+  /** Dollars the price already sits past the stop, on the losing side; null when it doesn't. */
+  pastStop: number | null;
   stop: number | null;
   target: number | null;
 }
@@ -188,4 +190,40 @@ export function socialLine(s: BriefSocial): string {
 export function whyItMovedLine(p: ResearchBriefPayload): string | null {
   const c = [...p.whyItMoved].sort((a, b) => b.date.localeCompare(a.date))[0];
   return c ? `${c.text} (${c.date})` : null;
+}
+
+const etStamp = (iso: string) =>
+  new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " ET";
+
+/** The brief as an agent reads it: the read, then each dated fact with its link, then what failed. */
+export function briefForModel(v: ResearchBriefView) {
+  const b = v.payload;
+  const url = (ids: number[]) => b.sources.find((s) => s.id === ids[0])?.url ?? null;
+  const facts = (cs: BriefClaim[]) => cs.map((c) => ({ text: c.text, date: c.date, source: url(c.sourceIds) }));
+  return {
+    builtAt: etStamp(v.createdAt),
+    read: b.synthesis,
+    whyItMoved: facts(b.whyItMoved),
+    wallStreet: {
+      ratings: b.ratings ? `${ratingsLine(b.ratings)} (Finnhub, ${b.ratings.period})` : null,
+      targets: b.targets ? { text: targetsLine(b.targets), date: b.targets.asOf, source: url(b.targets.sourceIds) } : null,
+      actions: b.analystActions.map((a) => ({ text: actionLine(a), date: a.date, source: url(a.sourceIds) })),
+    },
+    companyNews: facts(b.companyNews),
+    fundamentals: facts(b.fundamentals),
+    x: b.social ? socialLine(b.social) : null,
+    failed: failureLines(b),
+  };
+}
+
+/** One paragraph for a run's kickoff: when it was built, the read, what failed. */
+export function briefKickoffLine(v: ResearchBriefView): string {
+  const b = v.payload;
+  const why = whyItMovedLine(b);
+  const failed = failureLines(b);
+  return [
+    `Research brief on $${b.ticker} (${etStamp(v.createdAt)}, every fact sourced and dated):`,
+    b.synthesis ?? (why ? `Why it moved: ${why}.` : "No company news found."),
+    failed.length ? `(${failed.join("; ")}.)` : null,
+  ].filter(Boolean).join(" ");
 }

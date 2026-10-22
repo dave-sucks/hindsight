@@ -228,7 +228,7 @@ export interface SonarSearchResult {
 }
 
 export interface SonarAnswer {
-  /** The model's JSON, parsed; null when it sent none or it did not parse. */
+  /** The model's JSON, parsed. An answer that does not parse throws instead. */
   json: unknown
   /** The pages it searched — the only URLs a claim may cite. */
   searchResults: SonarSearchResult[]
@@ -269,7 +269,7 @@ export async function askSonar(opts: {
         { role: "system", content: opts.system },
         { role: "user", content: opts.user },
       ],
-      max_tokens: opts.maxTokens ?? 2000,
+      max_tokens: opts.maxTokens ?? 4096,
       temperature: 0.1,
       response_format: { type: "json_schema", json_schema: { name: opts.schemaName, schema: opts.schema } },
       ...(opts.afterDate ? { search_after_date_filter: opts.afterDate } : {}),
@@ -281,18 +281,24 @@ export async function askSonar(opts: {
     throw new Error(`Sonar HTTP ${res.status}: ${text.slice(0, 200)}`)
   }
   const body = (await res.json()) as {
-    choices?: { message?: { content?: string } }[]
+    choices?: { message?: { content?: string }; finish_reason?: string }[]
     search_results?: { url?: string; title?: string; date?: string | null }[]
     citations?: string[]
     usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: { total_cost?: number } }
   }
   const content = body.choices?.[0]?.message?.content ?? ""
-  let json: unknown = null
+  // An unreadable answer is a failure with its reason, never an empty result.
+  const cutOff = body.choices?.[0]?.finish_reason === "length"
+  let json: unknown
   try {
     // A reasoning model can lead with a <think> block; the JSON follows it.
-    json = content ? JSON.parse(content.replace(/^[\s\S]*<\/think>/, "").trim()) : null
+    json = JSON.parse(content.replace(/^[\s\S]*<\/think>/, "").trim())
   } catch {
-    console.warn("[sonar] askSonar: answer did not parse as JSON:", content.slice(0, 200))
+    throw new Error(
+      cutOff
+        ? `Sonar's answer was cut off at the ${opts.maxTokens ?? 4096}-token budget`
+        : `Sonar's answer was not readable JSON: ${content.slice(0, 120) || "(empty)"}`,
+    )
   }
   const fromResults = (body.search_results ?? [])
     .filter((r) => typeof r.url === "string" && r.url)

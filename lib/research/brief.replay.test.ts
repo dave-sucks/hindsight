@@ -18,7 +18,7 @@ type Loose = Record<string, any>;
 const SYNTH = "Samsara fell with software on Oct 16, not on company news; Wall Street stays mostly bullish.";
 
 interface Vendors {
-  sonar?: "ok" | "fail";
+  sonar?: "ok" | "fail" | "cutoff";
   xai?: "ok" | "fail" | Promise<void>;
   /** The day the proposal was staged, for the price and the day's move. */
   day?: "oct16" | "oct19";
@@ -61,7 +61,11 @@ async function inScope<T>(db: PrismaDouble, v: Vendors, fn: (m: Loose) => Promis
   global.fetch = jest.fn(async (url: string) => {
     const host = new URL(url).hostname;
     hosts.push(host);
-    if (host === "api.perplexity.ai") return v.sonar === "fail" ? new Response("down", { status: 503 }) : Response.json(fx.sonar);
+    if (host === "api.perplexity.ai") {
+      if (v.sonar === "fail") return new Response("down", { status: 503 });
+      if (v.sonar === "cutoff") return Response.json({ ...fx.sonar, choices: [{ message: { content: '{"why_it_moved":[{"claim":"Soft' }, finish_reason: "length" }] });
+      return Response.json(fx.sonar);
+    }
     if (host === "api.x.ai") {
       if (v.xai === "fail") throw new Error("socket hang up");
       if (v.xai instanceof Promise) await v.xai;
@@ -172,7 +176,8 @@ describe("IOT 2026-10-16 — the floor-sale proposal comes with a research brief
     expect(p.social.posts.map((x: { handle: string }) => x.handle)).toEqual(["user1", "user2", "user3"]);
     expect(p.social.mostlySpam).toBe(true);
     expect(p.numbers.position).toMatchObject({ occasion: "Proposed sale of all 300 shares", shares: 300, stop: 41.42, target: 47 });
-    expect(p.synthesis).toBe(SYNTH);
+    // $41.10 against the $41.42 stop: the app adds the gap to the read itself.
+    expect(p.synthesis).toBe(`${SYNTH} The price is already $0.32 below your $41.42 stop.`);
     expect(brief.costs).toMatchObject({ webUsd: 0.0084, xUsd: 0.13 });
 
     // The synthesis read the facts, never the dropped claim.
@@ -207,6 +212,11 @@ describe("IOT 2026-10-19 — the agent's sale proposal through close_position", 
     const emailed = await inScope(db, { day: "oct19" }, (m) => m.proposalEmailSteps(order.id, fakeStep(m)));
     expect(emailed.out).toEqual({ briefOnTime: true });
     expect((db.store.researchBrief as Row[])[0]).toMatchObject({ orderId: order.id, kind: "PROPOSAL" });
+    // $39.57 against the $41.42 stop: said as a fact, so the read says it plainly.
+    expect(((db.store.researchBrief as Row[])[0].payload as Loose).numbers.position.pastStop).toBe(1.85);
+    expect(emailed.prompts[0]).toContain("The price is already $1.85 below the $41.42 stop.");
+    // Company news is labelled as not tied to the move; only sourced reasons sit under "Why it moved".
+    expect(emailed.prompts[0]).toContain("Company news (things that happened; no source ties them to the move)");
     expect(emailed.sendEmail.mock.calls[0][0].html).toContain(SYNTH);
   });
 });
@@ -228,6 +238,15 @@ describe("a vendor failure never costs the email", () => {
     expect(html).toContain("Web research failed: Sonar HTTP 503");
     expect(html).toContain("X search failed: socket hang up");
     expect(html).toContain("No company news found");
+  });
+
+  it("a Sonar answer cut off at its budget is a named failure, never an empty brief", async () => {
+    const db = linked(prismaDouble(seed()));
+    await inScope(db, {}, (m) => m.closeOpenPosition(position.id, "STOP", undefined, "price_monitor", "Below the floor.", "run_x"));
+    const order = db.store.order.at(-1)!;
+    const emailed = await inScope(db, { sonar: "cutoff" }, (m) => m.proposalEmailSteps(order.id, fakeStep(m)));
+    expect((db.store.researchBrief as Row[])[0].error).toBe("web: Sonar's answer was cut off at the 4096-token budget");
+    expect(emailed.sendEmail.mock.calls[0][0].html).toContain("Web research failed: Sonar&#39;s answer was cut off");
   });
 
   it("the brief not ready in 30s: the email goes without it", async () => {
@@ -272,7 +291,7 @@ describe("X is the slow one", () => {
     const { out: partial, prompts } = await run;
     expect(partial.social.status).toBe("loading");
     expect(partial.whyItMoved).toHaveLength(2);
-    expect(partial.synthesis).toBe(SYNTH);
+    expect(partial.synthesis).toContain(SYNTH);
     const done = (db.store.researchBrief as Row[])[0].payload as Loose;
     expect(db.store.researchBrief).toHaveLength(1);
     expect(done.social.status).toBe("ok");
