@@ -416,7 +416,13 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
 - **A buy fill** removes the buy trigger, sets the floor and target to the
   executed levels, and adds the held-side template triggers that are missing
   (`armHeldLadderOnFill`). Never a rewrite: the analyst's target and reviews
-  survive the fill.
+  survive the fill. The templates' hard stop is not written: the one
+  automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
+  setting on the account (Settings → Triggers) that an analyst may override
+  (its Triggers tab). On, a new long holding's floor is raised to, or added
+  at, the buy price less the setting's % (0.5–50, default 8), unless its own
+  floor is already at or above that: "Sell if below $X", DIRECT, stamped as
+  the owner's. An add to a holding never moves it.
 - **A plan set-down** (DEMOTE) removes the buy, floor and target triggers.
   An automatic one comes from the floor on the close pass (§7).
 

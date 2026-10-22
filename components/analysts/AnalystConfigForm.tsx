@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/tooltip";
 
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
+import { AutoStopSetting } from "@/components/settings/AutoStopSetting";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import { positionBand, positionTotalCap } from "@/lib/agent/position-sizing";
 import { setupIndex } from "@/lib/agent/knowledge/setups";
@@ -181,6 +182,7 @@ export function AnalystConfigForm({
           <TabsContent value="triggers" className="flex-1 min-h-0 mt-0">
             <ScrollArea className="h-full">
               <div className="space-y-3 p-3">
+                <AutoStopSetting level="analyst" ownerId={analystId} />
                 <LevelTriggersSection level="analyst" ownerId={analystId} />
               </div>
             </ScrollArea>

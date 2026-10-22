@@ -6,6 +6,7 @@ import {
   SettingsSection,
 } from "@/components/settings/SettingsSection";
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
+import { AutoStopSetting } from "@/components/settings/AutoStopSetting";
 
 /**
  * /settings/triggers — the ACCOUNT level of the trigger cascade, the
@@ -31,6 +32,13 @@ export default async function TriggerSettingsPage() {
         title="Triggers"
         description="Standing rules for every analyst on this account. A rung set here applies to every thesis unless an analyst or a specific thesis overrides it."
       />
+
+      <SettingsSection
+        title="Stop when buying"
+        description="A new holding gets a floor this far under its buy price, unless it already has a higher one. An analyst can set its own."
+      >
+        <AutoStopSetting level="account" ownerId={accountId} />
+      </SettingsSection>
 
       <SettingsSection
         title="Account rules"
