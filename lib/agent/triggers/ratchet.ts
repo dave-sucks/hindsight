@@ -4,9 +4,10 @@
  *
  * The 2026-08-16 standing ruling (docs/plans/FIX_ROADMAP.md → "Standing
  * ruling"): an analyst may RAISE/tighten a protective level; it may never
- * lower, widen, or delete one, and never downgrade one from firing
- * automatically (DIRECT) to asking an analyst first (TACTICAL). Lowering a
- * line is the principal's manual act — thesis sheet or reject dialog.
+ * lower, widen, or delete one, and never slow one down: a sale set to Do it
+ * may not become one that asks the analyst, and one that asks now may not
+ * wait for the next morning. Lowering a line is the principal's manual act
+ * — thesis sheet or reject dialog.
  *
  * Why this exists as a hard gate and not an instruction: on 2026-08-18 an
  * analyst that had raised MU's sell-if-below floor to $948 at 8:02 AM
@@ -36,6 +37,7 @@
 import { triggerSlot } from "./condition/slot";
 import { loosens, sentenceOf, shapeOf } from "./condition";
 import { protectiveExitCloseReason } from "./types";
+import { FIRE_MODE_SPEED, fireModeLabel, fireModeOf } from "./fire-mode";
 import type { Trigger } from "./types";
 import type { When } from "@/lib/agent/triggers/condition";
 
@@ -130,10 +132,7 @@ export function protectiveRatchetViolations(args: {
       out.push({ bucket, reason: "LOWERED", before: prev, after: next });
       continue;
     }
-    if (
-      (prev.fireMode ?? "TACTICAL") === "DIRECT" &&
-      (next.fireMode ?? "TACTICAL") !== "DIRECT"
-    ) {
+    if (FIRE_MODE_SPEED[fireModeOf(next)] < FIRE_MODE_SPEED[fireModeOf(prev)]) {
       out.push({ bucket, reason: "FIREMODE_DEMOTED", before: prev, after: next });
     }
   }
@@ -156,6 +155,6 @@ export function describeRatchetViolation(v: RatchetViolation): string {
       return `"${rung}" → "${to}" — that weakens the protection on a stock we own.`;
     }
     case "FIREMODE_DEMOTED":
-      return `"${rung}" currently sells automatically when it fires; your edit changes it to ask for judgment first. That is a downgrade in protection.`;
+      return `"${rung}" is set to "${fireModeLabel(fireModeOf(v.before), "EXIT")}"; your edit sets it to "${fireModeLabel(fireModeOf(v.after ?? v.before), "EXIT")}". That slows the protection on a stock we own.`;
   }
 }

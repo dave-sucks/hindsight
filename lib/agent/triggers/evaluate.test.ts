@@ -762,7 +762,7 @@ describe("shouldFire", () => {
 
   // ── Defense-in-depth — non-EXIT cooldownDays=0 (NVDA runaway shape) ───
   //
-  // The write-path fix (applyTriggerCooldownDefaults) stops new bad
+  // The write-path fix (applyTriggerDefaults) stops new bad
   // values from landing on disk. The evaluator-layer defense below
   // catches existing on-disk bad rows: a non-EXIT action with explicit
   // cooldownDays=0 is treated as "needs default" and falls back to the

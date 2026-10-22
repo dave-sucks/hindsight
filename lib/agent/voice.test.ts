@@ -192,7 +192,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     expect(writer).not.toMatch(/outcome \+ timeframe \+\s+mechanism|which of YOUR\s+SETUPS it is/);
   });
 
-  it("an analyst's standing rules read in plain words (a fired rule's note is an Activity line, and a direct sale's reason)", () => {
+  it("an analyst's standing rules read in plain words (a fired rule's note is an Activity line, and the reason on a sale set to Do it)", () => {
     const notes = Object.values(SETUP_STANDING_RULES).flatMap((rules) => (rules ?? []).map((r) => r.rationale));
     expect(notes.length).toBeGreaterThan(10);
     const old = [/\bE\d\b/, /T\+\d/, /tranche/i, /\bseat\b/i, /re-underwrite/i, /catastrophe/i, /structure/i, /\bentry\b/i];

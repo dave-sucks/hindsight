@@ -24,7 +24,7 @@ const fx = raw as unknown as {
   thesis: Record<string, unknown> & { id: string; ticker: string };
   avgCost: number;
   before: Trigger[];
-  dialog: { action: "EXIT"; predicate: Trigger["predicate"]; fireMode: "TACTICAL" };
+  dialog: { action: "EXIT"; predicate: Trigger["predicate"]; fireMode: "ASK_NOW" };
   saved: { op: string; rationale: string };
   agent1008: { stop_loss: number; stop_basis: string };
 };
@@ -65,7 +65,7 @@ describe("MU's floor, $1,005 → $1,060 (2026-10-13)", () => {
 
   it("keeps the id, the fire history and the cooldown", async () => {
     const { saved } = await ownerSave();
-    expect(saved).toMatchObject({ id: "t4", predicate: fx.dialog.predicate, lastFiredAt: t4Before.lastFiredAt, cooldownDays: 1, fireMode: "TACTICAL", source: "PRINCIPAL" });
+    expect(saved).toMatchObject({ id: "t4", predicate: fx.dialog.predicate, lastFiredAt: t4Before.lastFiredAt, cooldownDays: 1, fireMode: "ASK_NOW", source: "PRINCIPAL" });
   });
 
   it("an owner change that reaches the op with no reason stores the trigger in words for the new level", () => {

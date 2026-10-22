@@ -37,6 +37,7 @@ import {
 } from "@/lib/agent/thesis-narrative";
 import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import { cashShortfall } from "@/lib/trading/manual-order-rules";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
 
 /**
@@ -565,6 +566,15 @@ export const placeTrade = defineTool({
         sizingNotes.push(heatLine(accountRisk.open, accountRisk.equity, addedRisk));
         const ind = industryLine(accountRisk.open, await industryOf(ticker), ticker);
         if (ind) sizingNotes.push(ind);
+      }
+      // A buy no analyst placed (a trigger set to Do it) is paid from cash, never margin, as the Trade button's is.
+      const short = ctx.payFromCash !== undefined ? cashShortfall(resolvedNotional ?? (resolvedShares ?? 1) * args.entry_price, ctx.payFromCash) : null;
+      if (short) {
+        return {
+          summary: `Trade blocked: $${ticker} — not enough cash`,
+          data: { success: false, ticker, status: "FAILED" as const, direction: args.direction, message: `Trade blocked: ${short}`, tickers: [{ ticker, tag: "Failed", summary: short, actionIcon: "failed" }] },
+          sources: [],
+        };
       }
       if (accountRisk?.regime) sizingNotes.push(accountRisk.regime.line);
       // Where the event date sits against a pre-catalyst setup's buying

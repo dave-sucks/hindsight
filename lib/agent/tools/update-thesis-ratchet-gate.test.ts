@@ -5,7 +5,7 @@
  * The pure comparison logic is covered in lib/agent/triggers/ratchet.test.ts;
  * these tests prove the tool refuses the OP — by id, with the reason — and
  * writes no trigger change, with the MU 2026-08-18 shapes: floor lowered
- * 948 → 814, DIRECT → TACTICAL demotion, and the stop moved the wrong way.
+ * 948 → 814, a Do-it floor slowed to ask first, and the stop moved the wrong way.
  * Legal raises must still land. (FLIPPED 2026-09-09, DAV-242: a refused op
  * no longer sinks the call; the rest of the update lands.)
  */
@@ -78,7 +78,7 @@ function floorAt(level: number) {
     predicate: { watch: "price", is: "below", value: level },
     action: "EXIT",
     rationale: "Hard floor.",
-    fireMode: "DIRECT",
+    fireMode: "DO_IT",
   };
 }
 
@@ -159,12 +159,12 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
     noTriggerWrite();
   });
 
-  it("refuses demoting the floor from automatic (DIRECT) to judgment-first", async () => {
+  it("refuses slowing the floor from Do it to Ask now", async () => {
     mockThesisFindUnique.mockResolvedValueOnce(makeHeldRow());
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Prefer agent judgment on this exit.",
-      edit_triggers: [{ id: "trig_floor", fire_mode: "TACTICAL" }],
+      edit_triggers: [{ id: "trig_floor", fire_mode: "ASK_NOW" }],
     });
 
     expect(result.data.trigger_ops[0]).toMatchObject({ id: "trig_floor", ok: false });

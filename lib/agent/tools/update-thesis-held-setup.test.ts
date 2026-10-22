@@ -39,11 +39,12 @@ jest.mock("@/lib/agent/triggers/load-levels", () => ({
 import { updateThesis } from "./update-thesis";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
-/** ABT's stored triggers, verbatim from production 2026-09-17. */
+/** ABT's stored triggers, verbatim from production 2026-09-17, with the fire mode the 2026-10-22 migration wrote. */
 const ABT_TRIGGERS = [
   {
     "id": "earnbeat1",
     "action": "REVIEW",
+    "fireMode": "NEXT_MORNING",
     "source": "AGENT",
     "predicate": { watch: "surprise", is: "beat", value: 1 },
     "rationale": "Re-check the thesis if Abbott beats earnings by at least 1%; confirm Libre growth, diagnostics synergy progress, and whether the beat supports a higher-confidence entry.",
@@ -52,6 +53,7 @@ const ABT_TRIGGERS = [
   {
     "id": "earnmiss2",
     "action": "REVIEW",
+    "fireMode": "NEXT_MORNING",
     "source": "AGENT",
     "predicate": { watch: "surprise", is: "miss", value: 2 },
     "rationale": "Re-check the thesis on a meaningful miss; test whether EPS power or segment execution is slipping enough to threaten the compounding case.",
@@ -60,8 +62,8 @@ const ABT_TRIGGERS = [
   {
     "id": "exit84",
     "action": "EXIT",
+    "fireMode": "ASK_NOW",
     "source": "AGENT",
-    "fireMode": "TACTICAL",
     "predicate": { watch: "price", is: "below", value: 96 },
     "rationale": "If already held and $ABT breaks below $96, review immediately for structural damage versus a simple drawdown; this is the protective line tied to the thesis setup.",
     "cooldownDays": 1
@@ -69,6 +71,7 @@ const ABT_TRIGGERS = [
   {
     "id": "rev135",
     "action": "REVIEW",
+    "fireMode": "NEXT_MORNING",
     "source": "AGENT",
     "predicate": { watch: "price", is: "above", value: 135 },
     "rationale": "If $ABT reaches $135, review whether the thesis has largely played out or whether earnings power has improved enough to justify a higher long-term value.",
@@ -77,6 +80,7 @@ const ABT_TRIGGERS = [
   {
     "id": "cadence",
     "action": "REVIEW",
+    "fireMode": "NEXT_MORNING",
     "source": "AGENT",
     "predicate": { watch: "repeat", value: 30 },
     "rationale": "Regular maintenance review to test the thesis against new business evidence, not just the stock price.",
@@ -85,6 +89,7 @@ const ABT_TRIGGERS = [
   {
     "id": "d40232f7-cdfc-49da-a1ab-efeaff435789",
     "action": "REVIEW",
+    "fireMode": "NEXT_MORNING",
     "source": "DEFAULT",
     "predicate": { watch: "price", is: "below", value: 95.09 },
     "rationale": "8% drop from entry \u2014 something material happened. Re-evaluate before deciding to ride it out or trim.",
@@ -93,6 +98,7 @@ const ABT_TRIGGERS = [
   {
     "id": "24c7d002-b633-452b-95c6-39c8497c40a4",
     "action": "ADD",
+    "fireMode": "ASK_NOW",
     "source": "DEFAULT",
     "predicate": { watch: "move", is: "above", value: 7, variable: "prev_close" },
     "rationale": "Up 7% in a day \u2014 strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
@@ -101,6 +107,7 @@ const ABT_TRIGGERS = [
   {
     "id": "6ddd4838-a614-43a6-b505-714fe4f17a75",
     "action": "ADD",
+    "fireMode": "ASK_NOW",
     "source": "DEFAULT",
     "predicate": { watch: "move", is: "below", value: 7, variable: "prev_close" },
     "rationale": "Down 7% in a day \u2014 evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add \u2014 hold, trim, or exit. Approval-gated.",
@@ -109,6 +116,7 @@ const ABT_TRIGGERS = [
   {
     "id": "f96d1cd8-27a5-469d-b203-1f2972689ca8",
     "action": "REVIEW",
+    "fireMode": "NEXT_MORNING",
     "source": "DEFAULT",
     "predicate": { watch: "move", is: "above", value: 10, variable: "entry" },
     "rationale": "Up 10% from entry \u2014 gain milestone checkpoint. Re-underwrite at the new price: raise the floor to lock the gain in, and arm the next milestone.",
@@ -117,6 +125,7 @@ const ABT_TRIGGERS = [
   {
     "id": "d4991e66-7877-44c6-90bd-ab5476d27f4e",
     "action": "REVIEW",
+    "fireMode": "NEXT_MORNING",
     "source": "DEFAULT",
     "predicate": { watch: "move", is: "below", value: 15, variable: "peak" },
     "rationale": "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
@@ -125,6 +134,7 @@ const ABT_TRIGGERS = [
   {
     "id": "934cc6bd-54ef-4814-a8cb-ac4157883c7f",
     "action": "EXIT",
+    "fireMode": "ASK_NOW",
     "source": "DEFAULT",
     "predicate": { watch: "move", is: "below", value: 25, variable: "peak" },
     "rationale": "Gave back 25% from the high \u2014 the catastrophe line for a multi-year hold. The review at 15% should have acted long before this; if we are here, protect the capital.",
@@ -133,6 +143,7 @@ const ABT_TRIGGERS = [
   {
     "id": "6d0fa696-819b-4f8e-aa48-6a98e4faf3a8",
     "action": "REVIEW",
+    "fireMode": "NEXT_MORNING",
     "source": "DEFAULT",
     "predicate": { watch: "move", is: "below", value: 12, variable: "entry" },
     "rationale": "Down 12% from entry \u2014 loser attention. Decide hold-vs-cut deliberately, before the hard stop decides for us.",

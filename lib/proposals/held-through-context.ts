@@ -6,7 +6,7 @@
  * the recent low with a suggested place for the line. But that enrichment
  * only reached proposals written by an AGENT run (the prompt reads
  * `heldThroughFloor` off get_theses). A floor set to fire automatically
- * (DIRECT mode) skips the agent, so its daily card was the trigger's
+ * (a sale set to Do it) skips the agent, so its daily card was the trigger's
  * original rationale verbatim — identical day over day, exactly the nag
  * Lane 1 was built to fix (SNOW's card, 2026-08-18 run review; MU's trail
  * as of 2026-08-19).

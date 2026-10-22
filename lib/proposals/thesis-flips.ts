@@ -321,7 +321,7 @@ export function isProfitTakeReentry(closeReason: string): boolean {
  * Deliberately NOT a blunt "recycle every stop" rule: a genuinely broken
  * thesis should stay dead rather than clog the watchlist. The agent decides
  * (Layer 3 judgment), this function and the flip below provide the mechanism
- * (Layer 2). No attestation — the price-monitor cron, DIRECT-mode fires,
+ * (Layer 2). No attestation — the price-monitor cron, sales set to Do it,
  * manual UI closes, promotion force-closes — degrades to today's terminal
  * behavior, which is the safe default.
  *
@@ -382,7 +382,7 @@ export async function closeThesisForPosition(opts: {
    * GAPS P1-35 — the closing agent's attestation that the thesis BELIEF
    * survived this exit (we sold on price, not because the story broke). true
    * recycles a protective exit back to WATCHING instead of terminal RETIRED.
-   * Undefined/null on every non-agent path (price-monitor cron, DIRECT fires,
+   * Undefined/null on every non-agent path (price-monitor cron, sales set to Do it,
    * manual UI closes) → terminal, i.e. unchanged behavior.
    */
   beliefSurvived?: boolean | null;

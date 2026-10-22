@@ -65,7 +65,7 @@ describe("armHeldLadderOnFill", () => {
   });
 
   it("leaves the thesis's own floor and target when the buy names none", async () => {
-    const floor = { id: "f1", action: "EXIT", predicate: { watch: "price", is: "below", value: 44 }, fireMode: "TACTICAL", rationale: "The floor." };
+    const floor = { id: "f1", action: "EXIT", predicate: { watch: "price", is: "below", value: 44 }, fireMode: "ASK_NOW", rationale: "The floor." };
     thesisFindFirst.mockResolvedValue({
       id: "t1", direction: "LONG", horizon: null,
       catalystDate: null, triggers: [floor],

@@ -589,7 +589,7 @@
             "id": "e10a14d3-8f05-473a-8e37-2bc22f4946fa",
             "action": "EXIT",
             "source": "AGENT",
-            "fireMode": "DIRECT",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 35.9
@@ -1105,7 +1105,7 @@
             "id": "t1",
             "action": "REVIEW",
             "source": "AGENT",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 1100
@@ -1118,7 +1118,7 @@
             "id": "t2",
             "action": "TRIM",
             "source": "AGENT",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 1150
@@ -1130,7 +1130,7 @@
             "id": "t3",
             "action": "REVIEW",
             "source": "AGENT",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 880
@@ -1142,7 +1142,7 @@
             "id": "t4",
             "action": "EXIT",
             "source": "AGENT",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 1041
@@ -1155,7 +1155,7 @@
             "id": "t5",
             "action": "REVIEW",
             "source": "AGENT",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "pct": 4,
              "kind": "PRICE_MOVE_PCT",
@@ -1170,7 +1170,7 @@
             "id": "t6",
             "action": "REVIEW",
             "source": "AGENT",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "pct": 4,
              "kind": "PRICE_MOVE_PCT",
@@ -1185,7 +1185,7 @@
             "id": "t9",
             "action": "REVIEW",
             "source": "AGENT",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "pct": 15,
              "kind": "GAIN_FROM_ENTRY",
@@ -1199,7 +1199,7 @@
             "id": "t10",
             "action": "EXIT",
             "source": "AGENT",
-            "fireMode": "DIRECT",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "pct": 8,
              "kind": "GAIN_FROM_ENTRY",
@@ -1212,7 +1212,7 @@
             "id": "t11",
             "action": "REVIEW",
             "source": "AGENT",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 5

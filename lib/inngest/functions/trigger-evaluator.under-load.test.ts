@@ -129,7 +129,7 @@ function book(): PrismaDouble {
               predicate: { watch: "price", is: "below", value: h.stop },
               rationale: `Hard stop at $${h.stop}. If we hit it the thesis is broken; close and write up the lesson.`,
               cooldownDays: 0,
-              fireMode: "TACTICAL",
+              fireMode: "ASK_NOW",
               source: "AGENT",
             },
             review(`review_${ticker}`),

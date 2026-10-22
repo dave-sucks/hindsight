@@ -16,6 +16,7 @@
  */
 
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
+import { withFireMode, type FireMode } from "@/lib/agent/triggers/fire-mode";
 import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT, TRAIL_ATR_MULTIPLE, isNamedSetup, type SetupId } from "./setups";
 import type { When } from "@/lib/agent/triggers/condition";
 
@@ -23,7 +24,7 @@ export interface SeatRule {
   action: TriggerAction;
   predicate: When;
   rationale: string;
-  fireMode?: "TACTICAL" | "DIRECT";
+  fireMode?: FireMode;
   cooldownDays?: number;
 }
 
@@ -33,7 +34,7 @@ const PEAD_RULES: SeatRule[] = [
     action: "EXIT",
     predicate: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, widenAtr: TRAIL_ATR_MULTIPLE } },
     rationale: `Sell if it gives back 12% from its high once we've been up 10% (more room for a stock that swings more: ${TRAIL_ATR_MULTIPLE}× its average daily range). Keeps most of the gain from the earnings move instead of handing it back.`,
-    fireMode: "DIRECT",
+    fireMode: "DO_IT",
     cooldownDays: 0,
   },
   {
@@ -87,7 +88,7 @@ const COMPOUNDER_RULES: SeatRule[] = [
     action: "EXIT",
     predicate: { watch: "move", is: "below", value: COMPOUNDER_CATASTROPHE_PCT, variable: "peak", settings: { widenAtr: TRAIL_ATR_MULTIPLE } },
     rationale: `Down ${COMPOUNDER_CATASTROPHE_PCT}% from its high (more room for a stock that swings more: ${TRAIL_ATR_MULTIPLE}× its average daily range). For a stock we mean to hold for years, a drop this deep is the one automatic sale.`,
-    fireMode: "DIRECT",
+    fireMode: "DO_IT",
     cooldownDays: 0,
   },
   {
@@ -132,13 +133,15 @@ export function signatureSetup(setupIds: readonly string[] | null | undefined): 
 /** The analyst's rules as triggers with fresh ids, stamped DEFAULT (a template minted them). */
 export function analystStandingTriggers(setupIds: readonly string[] | null | undefined, mintId: () => string): Trigger[] {
   const sig = signatureSetup(setupIds);
-  return ((sig && SETUP_STANDING_RULES[sig]) ?? []).map((r) => ({
-    id: mintId(),
-    action: r.action,
-    predicate: r.predicate,
-    rationale: r.rationale,
-    ...(r.fireMode ? { fireMode: r.fireMode } : {}),
-    ...(r.cooldownDays != null ? { cooldownDays: r.cooldownDays } : {}),
-    source: "DEFAULT" as const,
-  }));
+  return ((sig && SETUP_STANDING_RULES[sig]) ?? []).map((r) =>
+    withFireMode({
+      id: mintId(),
+      action: r.action,
+      predicate: r.predicate,
+      rationale: r.rationale,
+      ...(r.fireMode ? { fireMode: r.fireMode } : {}),
+      ...(r.cooldownDays != null ? { cooldownDays: r.cooldownDays } : {}),
+      source: "DEFAULT" as const,
+    }),
+  );
 }

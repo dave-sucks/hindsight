@@ -31,7 +31,7 @@ const floor = (id: string, level: number) => ({
   action: "EXIT",
   rationale: "The floor: below it the plan is wrong.",
   predicate: { watch: "price", is: "below", value: level },
-  fireMode: "TACTICAL",
+  fireMode: "ASK_NOW",
 });
 
 // 20% off the $125 high is $100: the $90 price is past it.
@@ -40,7 +40,7 @@ const trail = (id: string) => ({
   action: "EXIT",
   rationale: "Give back no more than a fifth from the high.",
   predicate: { watch: "move", is: "below", value: 20, variable: "peak" },
-  fireMode: "TACTICAL",
+  fireMode: "ASK_NOW",
 });
 
 async function pass() {

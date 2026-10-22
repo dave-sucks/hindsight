@@ -37,7 +37,7 @@
 
 import type { ResolvedTrigger } from "./levels";
 import type { Trigger, TriggerAction } from "./types";
-import { isDirectEligiblePredicate } from "./types";
+import { defaultFireMode, fireModeLabel, fireModeOf, fireModeProblem, trimPctOf, type FireMode } from "./fire-mode";
 import { triggerSlot } from "./condition/slot";
 import { samePredicate } from "./condition/stored";
 import {
@@ -52,7 +52,7 @@ import {
   shapeOf,
   type Condition,
 } from "./condition";
-import { applyTriggerCooldownDefaults } from "./defaults";
+import { applyTriggerDefaults } from "./defaults";
 import { stampWrittenPrice } from "./written-price";
 import { validateEnterTriggerRequired } from "./enter-guard";
 import {
@@ -83,7 +83,9 @@ export type TriggerOp =
       /** On a two-condition (AND / OR) trigger: which condition's number, 0-based. */
       part?: number;
       action?: TriggerAction;
-      fireMode?: "TACTICAL" | "DIRECT";
+      fireMode?: FireMode;
+      /** A trim set to Do it: the % it sells. */
+      trimPct?: number;
       rationale?: string;
       cooldownDays?: number;
       /** A price level fires only on the 16:20 close pass; false = intraday. Absent = as it was. */
@@ -329,17 +331,10 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         );
       }
     }
-    if (
-      op.fireMode === "DIRECT" &&
-      ((op.action ?? target.action) !== "EXIT" || !held || !isDirectEligiblePredicate(target.predicate))
-    ) {
-      return refuse(
-        "edit",
-        op.id,
-        `Edit ${name}`,
-        "Direct exit is only available on a price/trailing EXIT trigger of a held position — judgment-bearing exits (earnings, signals, etc.) must wake a tactical run.",
-      );
-    }
+    // A new action with no mode named takes that action's default, as the dialog does.
+    const fireMode = op.fireMode ?? (op.action && op.action !== target.action ? defaultFireMode(op.action) : undefined);
+    const modeProblem = fireModeProblem(op.action ?? target.action, fireMode ?? target.fireMode);
+    if (modeProblem) return refuse("edit", op.id, `Edit ${name}`, modeProblem);
 
     let predicate: When = tw;
     if (subject && wanted) {
@@ -389,7 +384,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate,
       action,
       rationale,
-      ...(op.fireMode !== undefined ? { fireMode: op.fireMode } : {}),
+      ...(fireMode !== undefined ? { fireMode } : {}),
+      ...(op.trimPct !== undefined ? { trimPct: op.trimPct } : {}),
       ...(op.cooldownDays !== undefined ? { cooldownDays: op.cooldownDays } : {}),
       source: stamp(target),
     };
@@ -410,8 +406,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
-    if (op.fireMode && op.fireMode !== (target.fireMode ?? "TACTICAL"))
-      parts.push(`${name}: fires ${op.fireMode === "DIRECT" ? "automatically" : "via a tactical run"}`);
+    if (fireMode && fireMode !== fireModeOf(target))
+      parts.push(`${name}: on fire, ${fireModeLabel(fireMode, action).toLowerCase()}`);
+    if (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)) parts.push(`${name}: trims ${op.trimPct}%`);
     if (op.cooldownDays !== undefined && op.cooldownDays !== target.cooldownDays)
       parts.push(`${name}: cooldown ${op.cooldownDays} days`);
     if (parts.length === 0 && rationale !== target.rationale)
@@ -460,6 +457,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
           action: trigger.action,
           rationale: trigger.rationale,
           ...(trigger.fireMode !== undefined ? { fireMode: trigger.fireMode } : {}),
+          ...(trigger.trimPct !== undefined ? { trimPct: trigger.trimPct } : {}),
           ...(trigger.cooldownDays !== undefined ? { cooldownDays: trigger.cooldownDays } : {}),
           ...(close !== undefined ? { close } : {}),
         },
@@ -468,12 +466,10 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     const id = trigger.id || mintId();
     const text = `Added: ${describeTrigger(trigger, held)}`;
+    const modeProblem = fireModeProblem(trigger.action, trigger.fireMode);
+    if (modeProblem) return refuse("add", id, text, modeProblem);
     const above = inheritedByBucket.get(triggerSlot(trigger));
-    if (
-      above &&
-      samePredicate(above.predicate, trigger.predicate) &&
-      (above.fireMode ?? "TACTICAL") === (trigger.fireMode ?? "TACTICAL")
-    ) {
+    if (above && samePredicate(above.predicate, trigger.predicate) && fireModeOf(above) === fireModeOf(trigger)) {
       return refuse(
         "add",
         id,
@@ -496,6 +492,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const sameSlot = triggerSlot(target) === triggerSlot(trigger);
     const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerSlot(s) === triggerSlot(trigger));
     const text = `Changed: ${describeTrigger(target, held)} → ${describeTrigger(trigger, held)}`;
+    const modeProblem = fireModeProblem(trigger.action, trigger.fireMode);
+    if (modeProblem) return refuse("edit", id, text, modeProblem);
     if (clash) {
       return refuse("edit", id, text, `This stock already has "${describeTrigger(clash, held)}". Edit that one instead.`);
     }
@@ -503,7 +501,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       sameSlot &&
       samePredicate(target.predicate, trigger.predicate) &&
       target.action === trigger.action &&
-      (target.fireMode ?? "TACTICAL") === (trigger.fireMode ?? "TACTICAL")
+      fireModeOf(target) === fireModeOf(trigger) &&
+      trimPctOf(target) === trimPctOf(trigger)
     ) {
       return refuse("edit", id, text, "Nothing to change — the trigger already says this.", { unchanged: true });
     }
@@ -530,6 +529,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         predicate: trigger.predicate,
         action: trigger.action,
         fireMode: trigger.fireMode,
+        trimPct: trigger.trimPct,
         rationale: (renumbered && sent) || (moved ?? target.rationale),
         source: stamp(trigger),
       };
@@ -631,7 +631,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     triggers: changed
       ? stampWrittenPrice(
           input.stored,
-          applyTriggerCooldownDefaults(stored),
+          applyTriggerDefaults(stored),
           input.writtenPrice !== undefined ? input.writtenPrice : currentPrice,
           input.now ?? new Date(),
         )

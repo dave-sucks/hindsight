@@ -42,19 +42,23 @@ An inherited rule is never copied onto the thesis, so changing an analyst's styl
 
 Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close. A buy fires once, on the day the price crosses its level. A sale or a review keeps firing every day its condition holds, so it can't be quietly forgotten.
 
-What happens next depends on the action:
+What happens next is the trigger's **On fire**, the same three choices on every trigger:
 
-- **A buy, add, trim or sale** wakes a [trigger run](../agents/trigger-runs.md) within minutes to look at that one stock and decide. A floor that's a plain price, or a percent off the close, our entry or the high, can be set to propose its sale straight away, with no agent.
-- **A review** waits for the next [morning run](../agents/morning-runs.md), except a worrying new filing on a stock we hold, which wakes a trigger run the same day.
-- **On a stock we only watch,** a close below the floor, or the price reaching the target before we bought, takes the plan down on the spot. No agent wakes and nothing is proposed; the stock stays on watch.
+- **Right away** ("Sell right away", "Buy right away", "Add right away", "Trim right away"): the trade, with no agent. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells the share it names (half, unless you set another). A review can't be done right away; it is asking.
+- **Ask the analyst now:** a [trigger run](../agents/trigger-runs.md) starts within minutes to look at that one stock and decide.
+- **At the next morning run:** the fire goes on the stock's list and the next [morning run](../agents/morning-runs.md) answers it. A worrying new filing on a stock we hold still gets a look the same day.
 
-Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it, and anything it leads to is a [proposal](approvals.md) you approve. A trigger never trades on its own.
+Left unset, a sale goes right away, a review waits for the morning, and a buy, an add or a trim asks the analyst now. When your approval switch for that side is on, a trade made right away still waits for your approval; the dialog says so under On fire.
+
+- **On a stock we only watch,** a close below the floor, or the price reaching the target before we bought, takes the plan down on the spot, whatever On fire says. No agent wakes and nothing is proposed; the stock stays on watch.
+
+Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it. Every trade, the agent's or one set to right away, goes through your [approval](approvals.md) switch: with it on, it is a proposal you approve.
 
 The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or switch a floor from selling straight away to asking an agent first; the save refuses it. On a stock we only watch, the floor is free to change. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
+On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from right away to asking the analyst, or from asking now to the next morning); the save refuses it. On a stock we only watch, the floor is free to change. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>
@@ -71,8 +75,8 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 #### Fire semantics
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on the crossing; protective and review triggers fire again while true.
 
-#### Fire modes
-`TACTICAL` (the default) wakes a trigger run; `DIRECT` proposes a sale without the agent. Both go through approval.
+#### On fire
+`fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT`, `ASK_NOW` or `NEXT_MORNING`, stamped on every write. A `DO_IT` trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same.
 
 #### Write path
 `applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared by `update_thesis`, the trigger editor and the buy going through (`armHeldLadderOnFill`).

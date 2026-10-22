@@ -1,9 +1,8 @@
 /**
  * The trigger rules every measure answers on its catalog entry, combined for
  * a whole condition or group: the default cooldown, the weekly floor on a
- * state review, whether a sale can go straight to a proposal and the label
- * it closes with, the close-only reading of a watched stock's floor, and what
- * the trigger check loads for it.
+ * state review, the label a protective sale closes with, the close-only
+ * reading of a watched stock's floor, and what the trigger check loads for it.
  * docs/plans/TRIGGER_TYPES.md §6.1.
  *
  * Pure and client-safe.
@@ -34,15 +33,9 @@ export function isState(w: When): boolean {
   return measureOf(w).state?.(w) === true;
 }
 
-/** A sale with nothing for an analyst to judge: a typed price, or a % from a close, our entry or the high. */
-export function isDirectEligible(w: When): boolean {
-  return !isGroup(w) && measureOf(w).direct?.(w) === true;
-}
-
-/** The label a protective sale closes with, or null for a judgment sale the agent labels itself. */
+/** The label a protective sale closes with (a typed price, or a % from a close, our entry or the high); null for a judgment sale the agent labels itself. */
 export function protectiveCloseReason(w: When, direction: string | null): "STOP" | "TARGET" | null {
-  if (isGroup(w) || !isDirectEligible(w)) return null;
-  return measureOf(w).closeReason?.(w, direction !== "SHORT") ?? "STOP";
+  return isGroup(w) ? null : (measureOf(w).closeReason?.(w, direction !== "SHORT") ?? null);
 }
 
 /** A typed price level (a floor or a target), not a group. */

@@ -25,6 +25,7 @@ import { prisma } from "@/lib/prisma";
 import { accountStandingRules, reviewCadenceTrigger } from "./defaults";
 import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
+import { withFireMode } from "./fire-mode";
 
 /**
  * Earnings is not opt-in. Anything the account holds or watches gets a look
@@ -111,12 +112,14 @@ export function accountSeedTriggers(): Trigger[] {
     // The add prompts. Sell rules live on each analyst, not the account.
     ...accountStandingRules(),
     ...standingWakeTriggers(),
-  ].map((t) => ({
-    ...t,
-    // Fresh ids: these are real stored rows now, not the synthetic
-    // `default:*` handles the old runtime layer used for fire-state keying.
-    id: globalThis.crypto.randomUUID(),
-  }));
+  ].map((t) =>
+    withFireMode({
+      ...t,
+      // Fresh ids: these are real stored rows now, not the synthetic
+      // `default:*` handles the old runtime layer used for fire-state keying.
+      id: globalThis.crypto.randomUUID(),
+    }),
+  );
 }
 
 /**
@@ -164,7 +167,7 @@ export async function ensureAccountStandingRules(accountId: string): Promise<num
   const have = new Set(current.map(triggerSlot));
   const missing = standingWakeTriggers()
     .filter((t) => !have.has(triggerSlot(t)))
-    .map((t) => ({ ...t, id: globalThis.crypto.randomUUID() }));
+    .map((t) => withFireMode({ ...t, id: globalThis.crypto.randomUUID() }));
 
   await prisma.account.update({
     where: { id: accountId },

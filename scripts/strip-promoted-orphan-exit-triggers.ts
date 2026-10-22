@@ -34,7 +34,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   defaultTriggersForHorizon,
-  applyTriggerCooldownDefaults,
+  applyTriggerDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
@@ -105,7 +105,7 @@ async function main() {
           },
           "PROMOTED",
         );
-        nextTriggers = applyTriggerCooldownDefaults(promotedDefaults);
+        nextTriggers = applyTriggerDefaults(promotedDefaults);
       } else {
         // No horizon → can't pick a template. Conservative fallback:
         // strip orphan-action triggers and keep everything else (REVIEW

@@ -12,7 +12,7 @@ No agent places a trade by itself. A trade becomes a proposal the moment an agen
 
 - **A [trigger run](../agents/trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
 - **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its target.
-- **A floor set to sell straight away,** with no agent at all.
+- **A trigger set to right away** (a sale, a trim, a buy or an add), with no agent at all.
 - **[Chat](../agents/chat.md)**, when you ask for a trade.
 
 A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no agent picks a size. Only chat may name one, at your word.

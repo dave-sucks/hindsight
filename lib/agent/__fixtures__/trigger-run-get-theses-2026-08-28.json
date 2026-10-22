@@ -169,7 +169,7 @@
        "id": "4af78393-9547-4e82-a2bd-64334b43d8a3",
        "action": "REVIEW",
        "source": "AGENT",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "kind": "OR",
         "predicates": [
@@ -194,7 +194,7 @@
        "id": "895342f8-4e91-45fe-b620-94fd41a9d1df",
        "action": "REVIEW",
        "source": "AGENT",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "kind": "SIGNAL_TYPE",
         "sentiment": "BEARISH",
@@ -208,7 +208,7 @@
        "id": "3bc989da-9c43-4e5c-a336-8d1a6e4f5be9",
        "action": "REVIEW",
        "source": "AGENT",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "days": 14,
         "kind": "TIME_ELAPSED"
@@ -221,7 +221,7 @@
        "id": "e08cf4f6-6266-45ff-977c-a00d32e36ab7",
        "action": "REVIEW",
        "source": "DEFAULT",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "days": 1,
         "kind": "REVIEW_CADENCE"

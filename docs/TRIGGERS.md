@@ -15,7 +15,7 @@
 Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
 
 ```ts
-{ id, predicate, action, rationale, cooldownDays?, lastFiredAt?, fireMode? }
+{ id, predicate, action, rationale, cooldownDays?, lastFiredAt?, fireMode, trimPct? }
 ```
 
 - **predicate** — the condition, in one shape (`lib/agent/triggers/condition/types.ts`):
@@ -24,7 +24,9 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
 - **action** — what firing means: `ENTER | EXIT | REVIEW | ADD | TRIM`.
 - **rationale** — prose the agent reads when it acts.
 - **cooldownDays** — don't re-fire within N days (see §6).
-- **fireMode** — `TACTICAL` (default) or `DIRECT` (see §4).
+- **fireMode** — on fire: `DO_IT`, `ASK_NOW` or `NEXT_MORNING` (see §4). Every
+  stored trigger names one.
+- **trimPct** — a trim set to `DO_IT`: the % of the position it sells (50 when unset).
 
 The condition is the form's own fields: `watch` is the measure (the tab),
 `is` the direction (the button group), `value` the number typed, `variable`
@@ -42,7 +44,7 @@ maps the result onto the stored shape. The condition is defined once per tool.
 **One catalog entry per measure, no switches** (`lib/agent/triggers/condition/catalog.ts`
 and `condition/measures/*`). Each entry carries everything about its measure:
 its words, its number, its variables and settings, the actions it allows,
-whether a sale on it may propose directly and with what close reason, its
+the label a protective sale on it closes with, its
 default cooldown, what the check must load for it, whether it is a typed price
 level, and how the check reads it (`condition/read.ts`). Adding a measure is one
 entry; nothing else switches on it.
@@ -260,25 +262,42 @@ the stock and the thesis (`CHECK FAILED on …`), that trigger is skipped this
 pass, and every other trigger on that stock and the rest of the book is still
 checked.
 
-## 4. Fire modes — TACTICAL vs DIRECT
+## 4. On fire — the same three choices on every trigger
 
-Set per-trigger (`fireMode`, default `TACTICAL`):
+One field, `fireMode`, the same for every action, condition and author
+(`lib/agent/triggers/fire-mode.ts`):
 
-- **`TACTICAL`** ("Trigger Tactical Run") — fires `app/thesis.trigger.fired` →
-  a focused GPT-5.5 **tactical run** validates and decides.
-- **`DIRECT`** ("Automatically Exit") — **EXIT action only**, on a deterministic
-  predicate. The tactical-run consumer **short-circuits past the agent** and
-  calls `closeOpenPosition` directly. Saves the GPT cost on mechanical exits.
-  Which conditions may propose directly is on the catalog (`direct` on the
-  measure and its variables; `isDirectEligible` in `condition/rules.ts`): a
-  typed price level, and a move from a recent close, from our entry or from the
-  high since we bought — i.e. the gain-lock and the trail alongside the
-  absolute price and daily-% levels. Everything judgment-bearing (earnings,
-  filings, RSI, time, two conditions) refuses DIRECT and falls back to
-  TACTICAL. A protective EXIT closes with a deterministic STOP/TARGET reason
-  (`closeReason` on the measure; `protectiveCloseReason`) — trail and
-  gain-lock give-backs tag STOP — so the P1-28 unapproved-exit cooldown exempts
-  them and a rejected protective exit re-fires when price re-crosses (#490).
+| `fireMode` | The dialog says | On fire |
+|---|---|---|
+| **`DO_IT`** | Sell / Buy / Add / Trim right away | The trade, with no analyst run. A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
+| **`ASK_NOW`** | Ask the analyst now | `app/thesis.trigger.fired` → a trigger run (the tactical run) starts now and decides. |
+| **`NEXT_MORNING`** | At the next morning run | The `TRIGGER_FIRED` row is written and no run starts; the next morning run answers it. |
+
+**Unset** (a template, a seat rule, an agent that names none): a sale is
+`DO_IT`, a review `NEXT_MORNING`, a buy, an add or a trim `ASK_NOW`. The write
+paths stamp it (`applyTriggerDefaults`), so every stored trigger names one; the
+migration `20261022120000_on_fire_every_trigger` wrote each existing trigger
+with the mode it already behaved as.
+
+**Do it is the trade the analyst would have made, minus the analyst.** The
+trigger run calls the same tool its agent would (`doItCall`,
+`lib/agent/triggers/do-it.ts`), so the trade is sized and gated exactly as an
+agent's: a buy needs a floor and a target on the plan, the analyst's
+minimum score, a free position slot, and is sized by `sizeByRisk` off the
+floor; an add is half a buy's risk inside the analyst's most in one stock. A
+buy or an add is also paid from cash, never margin, as the Trade button's is
+(`cashShortfall`, `lib/trading/manual-order-rules.ts`). A buy never fires on a
+stale price (`shouldFire`), and the fired price is the entry. A refused
+trade writes a `GateRejection` row, which is the one Activity line the
+attempt feed shows ("Buy blocked: You have $1,000.00 in cash…"). With
+nothing to trade (a sale on a stock we don't own, a buy on one we do) the
+analyst is asked instead.
+
+A protective EXIT closes with a deterministic STOP/TARGET reason
+(`closeReason` on the measure; `protectiveCloseReason`) — trail and gain-lock
+give-backs tag STOP — so the P1-28 unapproved-exit cooldown exempts them and a
+rejected protective exit re-fires when price re-crosses (#490). A sale set to
+Do it on any other condition closes as STOP.
 
 **A sale from a protective fire always carries the STOP/TARGET label** (DAV-192).
 The close tool — `close_position`, the only whole-position exit since DAV-220 — runs the
@@ -300,23 +319,33 @@ in the audit note **and** by forcing `belief_survived = false` — keyed off wha
 the agent *declared*, so a corrected label can never route a structurally-broken
 name back to the watchlist.
 
-**Both modes still go through the approval gate.** `closeOpenPosition` (and the
-agent's `close_position`/`place_trade`) call `maybeAwaitApproval` **before** any
-Alpaca submit. With require-approval-sells ON, a DIRECT exit **proposes** the
-close (you approve/reject) — it does **not** auto-sell. DIRECT saves the *agent*
-cost, never the *approval* step. True auto-sell requires approvals OFF (a
-separate account setting).
+**Every mode still goes through the approval gate.** `closeOpenPosition` and
+the trade tools ask the account's approval switch for that side **before** any
+Alpaca submit. With the switch on, Do it **proposes** the trade (you
+approve/reject) — it does **not** auto-trade. Do it saves the *agent* cost,
+never the *approval* step. The dialog says "Waits for your approval." under On
+fire when the switch for that side is on.
+
+**Only the owner slows a protective sale.** On a held stock an agent may not
+move a protective sale down the order Do it → Ask now → Next morning
+(`FIRE_MODE_SPEED`, `ratchet.ts`), the same as it may not lower the line.
+
+**A trade left for the morning asks at most once a day.** A morning run
+answers once a day, so a non-review set to `NEXT_MORNING` has a one-day floor
+on its cooldown (a floor stored at 0 would otherwise write a fire every pass;
+`flooredCooldownDays`).
 
 ## 5. From fire to trade (the pipeline)
 
 ```
 predicate matches
   → stamp lastFiredAt + write ThesisUpdate(TRIGGER_FIRED)
-  → REVIEW (non-BREAKING)? defer to the next daily run (no tactical spawn)
+  → NEXT_MORNING (no red filing on a held stock)? stop: the morning run answers it
   → else emit app/thesis.trigger.fired
       → tactical-run consumer
-          → DIRECT EXIT?  closeOpenPosition  ─┐
-          → else          GPT-5.5 agent ──────┤→ maybeAwaitApproval
+          → DO_IT sale?            closeOpenPosition ──────────────┐
+          → DO_IT trim/buy/add?    manage_position / place_trade ──┤
+          → else                   GPT-5.5 agent ──────────────────┤→ approval switch
                                                └→ approvals on → PROPOSAL
                                                   approvals off → execute
 ```
@@ -345,10 +374,13 @@ run's `TRIGGER_MATCHING_NOW`, the resolver's `ENTER_FIRED`) carry no prior
 close and keep level semantics — "is the condition true now" is the right
 question for a snapshot.
 
-**REVIEW-batching:** a `REVIEW` fire means "re-evaluate," not "act now" — it
-converts to a trade rarely, so (except BREAKING-urgency signals) it writes the
-`TRIGGER_FIRED` audit row and defers to the next daily run instead of spawning a
-tactical run. `ENTER`/`EXIT` always spawn (or DIRECT-close).
+**Reviews wait for the morning by default:** a `REVIEW` fire means
+"re-evaluate," not "act now" — it converts to a trade rarely, so unset it is
+`NEXT_MORNING`: the `TRIGGER_FIRED` audit row, and the next morning run. A
+review set to `ASK_NOW` starts a trigger run, which answers it with the
+review's situation guidance (each one costs a trigger run, about 6–18 cents;
+its cooldown limits repeats). A red filing on a stock we hold is looked at the
+same day whatever is set (`filingNeedsSameDayLook`).
 
 ## 6. Cooldown
 
@@ -361,7 +393,7 @@ forgets to re-arm the next checkpoint; the trail 1, the review clock and a
 date its own day count. **`cooldownDays: 0` is reserved for terminal `EXIT`
 triggers only** — `0` on any other action causes a 5-min evaluator infinite
 loop the instant the condition latches true, so the write path overwrites it
-with the default (`applyTriggerCooldownDefaults`). The
+with the default (`applyTriggerDefaults`). The
 standing trail ratchet is stamped `cooldownDays: 0` at mint (terminal EXIT, same
 as the hard stop).
 
@@ -409,8 +441,8 @@ Once a thesis exists, its triggers change **one at a time**, through one
 function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
 
 - **UI** — `lib/actions/thesis-edit.ts` + `/api/theses/[id]/triggers`:
-  `applyTriggerAdd`, `applyTriggerValueEdit`, `applyTriggerFireModeChange`,
-  `applyTriggerDelete` — each is one op. The reject dialog embeds the same
+  `applyTriggerAdd`, `applyTriggerReplace` (the dialog's Save: condition,
+  action and On fire in one write), `applyTriggerDelete` — each is one op. The reject dialog embeds the same
   editor (`editableOnly`: price/% triggers only).
 - **Agent** — `update_thesis(add_triggers | edit_triggers | remove_trigger_ids)`;
   `entry_price` / `target_price` / `stop_loss` are the same op on the buy /
@@ -464,6 +496,8 @@ on the row's `fieldChanges.triggerOps`.
 - `lib/agent/triggers/evaluate.ts` — `shouldFire`: crossing, stale quote, cooldown, re-arm
 - `lib/agent/triggers/defaults.ts` — horizon templates + `accountStandingRules()` (the account's add prompts) + cooldown defaults
 - `lib/inngest/functions/trigger-evaluator.ts` — the cron and close passes, one catch per trigger
-- `lib/inngest/functions/tactical-run.ts` — consumer (TACTICAL agent / DIRECT close)
+- `lib/agent/triggers/fire-mode.ts` — on fire: the three modes, their defaults, where a fire goes (`waitsForMorning`, `doItTrade`), the words
+- `lib/agent/triggers/do-it.ts` — the trade tool call a trigger set to Do it makes
+- `lib/inngest/functions/tactical-run.ts` — consumer (the agent, or a Do-it trade)
 - `lib/actions/thesis-edit.ts` — add / edit / delete / fire-mode write paths
 - `components/agent/sheets/ThesisTriggersSection.tsx` — the trigger UI

@@ -1,7 +1,7 @@
 /**
  * POST /api/theses/:id/triggers — add a new Price/Trailing trigger.
  *
- * Body: { action, predicate, fireMode?, rationale?, cooldownDays? }. The
+ * Body: { action, predicate, fireMode?, trimPct?, rationale?, cooldownDays? }. The
  * trigger is validated by the same Zod schema the agent write-paths use
  * (invalid triggers are silently dropped at evaluation, so we reject them up
  * front), cooldown-defaulted, and — when it's the canonical stop/target —
@@ -17,6 +17,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
+import { isFireMode } from "@/lib/agent/triggers/fire-mode";
 import {
   applyTriggerAdd,
   statusForEditError,
@@ -45,6 +46,7 @@ export async function POST(
     action?: unknown;
     predicate?: unknown;
     fireMode?: unknown;
+    trimPct?: unknown;
     rationale?: unknown;
     cooldownDays?: unknown;
   };
@@ -60,11 +62,8 @@ export async function POST(
   if (body.predicate == null || typeof body.predicate !== "object") {
     return NextResponse.json({ error: "Body must include a `predicate` object." }, { status: 400 });
   }
-  if (body.fireMode != null && body.fireMode !== "TACTICAL" && body.fireMode !== "DIRECT") {
-    return NextResponse.json(
-      { error: '`fireMode` must be "TACTICAL" or "DIRECT".' },
-      { status: 400 },
-    );
+  if (body.fireMode != null && !isFireMode(body.fireMode)) {
+    return NextResponse.json({ error: '`fireMode` must be "DO_IT", "ASK_NOW" or "NEXT_MORNING".' }, { status: 400 });
   }
 
   // Real validation (predicate kind, value ranges, 20-cap) happens inside
@@ -72,7 +71,8 @@ export async function POST(
   const input = {
     action: body.action,
     predicate: body.predicate,
-    fireMode: body.fireMode,
+    fireMode: body.fireMode ?? undefined,
+    trimPct: typeof body.trimPct === "number" ? body.trimPct : undefined,
     rationale: typeof body.rationale === "string" ? body.rationale : undefined,
     cooldownDays:
       typeof body.cooldownDays === "number" && Number.isFinite(body.cooldownDays)

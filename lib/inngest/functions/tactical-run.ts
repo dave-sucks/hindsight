@@ -32,11 +32,13 @@ import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/to
 import { listOpenRefusalsForAnalyst, listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalLinesFor, refusalNudge } from "@/lib/agent/refusal-carryover";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import {
-  isDirectEligiblePredicate,
-  protectiveExitCloseReason,
-} from "@/lib/agent/triggers/types";
+import { protectiveExitCloseReason } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { doItTrade } from "@/lib/agent/triggers/fire-mode";
+import { doItCall } from "@/lib/agent/triggers/do-it";
+import { recordGateRejection } from "@/lib/agent/gate-rejections";
+import { getLiveQuote } from "@/lib/market-data/live-quote";
+import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -81,20 +83,18 @@ function findTriggerById(ladder: Trigger[], id: string): Trigger | null {
 }
 
 /**
- * Close reason for a DIRECT EXIT fire. Always STOP or TARGET (never
+ * Close reason for a sale set to Do it. Always STOP or TARGET (never
  * MANUAL/TIME) so the close counts as a risk-management exit — those always
  * flow through the approval gate and are exempt from the P1-28
  * unapproved-exit cooldown. Adverse-direction price / daily-% move → STOP;
- * favorable-direction → TARGET.
+ * favorable-direction → TARGET; a sale on any other condition → STOP.
  */
 function directExitReason(
   trigger: Trigger,
   direction: string | null,
 ): "STOP" | "TARGET" {
   // Single source of truth for the protective-exit → STOP/TARGET mapping
-  // (shared with the agent-path threading below and close_position). The
-  // caller has already gated on isDirectEligiblePredicate, so this is always
-  // non-null; the ?? "STOP" is a defensive floor.
+  // (shared with the agent-path threading below and close_position).
   return protectiveExitCloseReason(trigger.predicate, direction) ?? "STOP";
 }
 
@@ -468,27 +468,33 @@ export const tacticalRun = inngest.createFunction(
       });
     });
 
-    // ── DIRECT fire mode: deterministic EXIT, no agent ────────────────
-    // A trigger marked fireMode="DIRECT" on an EXIT has nothing for the agent
-    // to decide — close the position directly via closeOpenPosition. That
-    // path still runs through maybeAwaitApproval, so the approval gate is
-    // unchanged (on require-approval-sells it PROPOSES the close; off, it
-    // executes). DIRECT only skips the expensive GPT-5.5 tactical run — the
-    // principal's cost driver (TRIGGER_FOLLOWUPS #3). Same trigger pipeline
-    // as every other fire (evaluator → event → here); we just don't spawn the
-    // model. Non-EXIT / unheld DIRECT can't happen (the add-path coerces those
-    // to TACTICAL) but we guard anyway and fall through to the agent.
-    // The condition gate is defensive: applyTriggerAdd and the trigger
-    // dialog's replace already refuse DIRECT on a non-deterministic
-    // EXIT, but a stale/agent-written trigger could still carry it. A
-    // judgment-bearing exit (earnings, signal) must fall through to the agent,
-    // not be auto-closed by directExitReason's STOP fallback.
-    if (
-      trigger.fireMode === "DIRECT" &&
-      trigger.action === "EXIT" &&
-      isDirectEligiblePredicate(trigger.predicate) &&
-      position
-    ) {
+    // The analyst's limits and keys, as every tool reads them: the same for the agent's run and a Do-it trade.
+    const toolsFor = async (extra: { protectiveExitReason?: "STOP" | "TARGET"; protectiveExitTriggerLabel?: string; payFromCash?: number | null } = {}) =>
+      createResearchTools({
+        runId: run.id,
+        userId: agentConfig.userId,
+        accountId: agentConfig.accountId,
+        analystId: agentConfig.id,
+        runMode: "INTRADAY_TACTICAL",
+        ...extra,
+        watchlist: await getWatchlistSymbols(agentConfig.id),
+        exclusionList: agentConfig.exclusionList ?? [],
+        sectors: agentConfig.sectors ?? [],
+        minPositionSize: Number(agentConfig.minPositionSize),
+        maxPositionSize: Number(agentConfig.maxPositionSize),
+        maxPositionTotal: Number(agentConfig.maxPositionTotal),
+        maxOpenPositions: agentConfig.maxOpenPositions,
+        minConfidence: agentConfig.minConfidence,
+        alpacaCreds: (await resolveAlpacaCredentials(agentConfig.userId, runEnvironment)) ?? undefined,
+        runEnvironment,
+      });
+
+    // ── On fire "Do it": the trade with no agent ──────────────────────
+    // Still through maybeAwaitApproval: with the account's approval switch on
+    // it PROPOSES the trade; off, it executes. Nothing to sell, or a stock
+    // already held for a buy, falls through to the agent.
+    const doIt = doItTrade(trigger as Trigger, position != null);
+    if (doIt === "SELL" && position) {
       const direct = await step.run("direct-close", async () => {
         const { closeOpenPosition } = await import(
           "@/lib/actions/closeTrade.actions"
@@ -545,8 +551,8 @@ export const tacticalRun = inngest.createFunction(
             data: {
               runId: run.id,
               type: "run_failed",
-              title: "Direct exit failed",
-              message: `Direct close for ${thesis.ticker} failed: ${(direct as { error: string }).error}`,
+              title: "Sale set to Do it failed",
+              message: `The sale of ${thesis.ticker} set to Do it failed: ${(direct as { error: string }).error}`,
               payload: { thesisId: thesis.id, triggerId: trigger.id } as object,
             },
           });
@@ -559,19 +565,61 @@ export const tacticalRun = inngest.createFunction(
         triggerId: trigger.id,
         ticker: thesis.ticker,
         action: trigger.action,
-        fireMode: "DIRECT" as const,
+        fireMode: "DO_IT" as const,
         direct,
       };
+    }
+
+    // A trim of its %, a buy or an add: the tool the analyst would have called, with the trigger's own
+    // arguments. The tool sizes and gates it; a buy is paid from cash, as the Trade button's is.
+    if (doIt === "TRIM" || doIt === "BUY" || doIt === "ADD") {
+      const done = await step.run("do-it", async () => {
+        try {
+          const buys = doIt !== "TRIM";
+          const payFromCash = buys ? await (await import("@/lib/trading/manual-order")).accountCash(agentConfig.userId, runEnvironment) : undefined;
+          const tools = await toolsFor(buys ? { payFromCash } : {});
+          // The buy fired on a live price (a buy never fires on a stale one); without one, read it now.
+          const price =
+            doIt === "BUY"
+              ? (fired.firedPrice ?? freshQuotePrice((await getLiveQuote(thesis.ticker, { caller: "other" })).quote, new Date()))
+              : 0;
+          if (price == null) {
+            const args = { ticker: thesis.ticker, thesis_id: thesis.id };
+            const summary = `Trade blocked: $${thesis.ticker} — no live price`;
+            const detail = `There's no live price for ${thesis.ticker}, so the buy wasn't placed.`;
+            await recordGateRejection({ tool: "place_trade", gateCode: "no_price", summary, detail, args, ctx: { runId: run.id, userId: agentConfig.userId, accountId: agentConfig.accountId, analystId: agentConfig.id, runMode: "INTRADAY_TACTICAL", groupId: (p: string) => p } });
+            return { tool: "place_trade", summary };
+          }
+          const call = doItCall({ trade: doIt, trigger: trigger as Trigger, thesis, price });
+          const tool = tools[call.tool] as unknown as { execute: (a: unknown, o: unknown) => Promise<{ ok: boolean; summary?: string; error?: string }> };
+          const out = await tool.execute(call.args, { toolCallId: `do-it-${trigger.id}`, messages: [] });
+          return out.ok ? { tool: call.tool, summary: out.summary ?? null } : { tool: call.tool, error: out.error ?? "the trade tool failed" };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[tactical-run] do-it ${doIt} failed thesis=${thesis.id} trigger=${trigger.id}: ${msg}`);
+          return { error: msg };
+        }
+      });
+
+      await step.run("finalize-do-it", async () => {
+        const error = "error" in done ? done.error : null;
+        const fresh = error ? await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } }) : null;
+        await prisma.researchRun.update({
+          where: { id: run.id },
+          data: {
+            status: error ? "FAILED" : "COMPLETE",
+            completedAt: new Date(),
+            ...(error ? { parameters: { ...((fresh?.parameters as object) ?? {}), error } as object } : {}),
+          },
+        });
+      });
+
+      return { runId: run.id, thesisId: thesis.id, triggerId: trigger.id, ticker: thesis.ticker, action: trigger.action, fireMode: "DO_IT" as const, doIt, done };
     }
 
     // ── Run the agent ─────────────────────────────────────────────────
     const outcome = await step.run("agent-run", async () => {
       const t0 = Date.now();
-      const alpacaCreds =
-        (await resolveAlpacaCredentials(agentConfig.userId, runEnvironment)) ??
-        undefined;
-
-      const watchlistSymbols = await getWatchlistSymbols(agentConfig.id);
       // ── Protective-exit cooldown exemption (P1-28) ────────────────────
       // This tactical run was woken BY a specific trigger. When that trigger
       // is a protective/price EXIT (trail-from-high, gain-from-entry, stop /
@@ -597,25 +645,7 @@ export const tacticalRun = inngest.createFunction(
       const protectiveExitTriggerLabel = protectiveExitReason
         ? conditionSentence((trigger as Trigger).predicate)
         : undefined;
-      const allTools = createResearchTools({
-        runId: run.id,
-        userId: agentConfig.userId,
-        accountId: agentConfig.accountId,
-        analystId: agentConfig.id,
-        runMode: "INTRADAY_TACTICAL",
-        protectiveExitReason,
-        protectiveExitTriggerLabel,
-        watchlist: watchlistSymbols,
-        exclusionList: agentConfig.exclusionList ?? [],
-        sectors: agentConfig.sectors ?? [],
-        minPositionSize: Number(agentConfig.minPositionSize),
-        maxPositionSize: Number(agentConfig.maxPositionSize),
-        maxPositionTotal: Number(agentConfig.maxPositionTotal),
-        maxOpenPositions: agentConfig.maxOpenPositions,
-        minConfidence: agentConfig.minConfidence,
-        alpacaCreds,
-        runEnvironment,
-      });
+      const allTools = await toolsFor({ protectiveExitReason, protectiveExitTriggerLabel });
 
       const allowlist = MODES["tactical"].toolAllowlist;
       const tools = allowlist

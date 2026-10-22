@@ -48,7 +48,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **On the cross:** how a buy fires: once, on the day the price reaches its level, never every day it stays there.
 - **Standing order:** how a sale or a review fires: every day its condition holds, until it's answered.
 - **Review clock:** a review that repeats, like "Review every 30 days". When it comes round, the stock is due a fresh look.
-- **Direct sale:** a floor set to propose its sale the moment it fires, with no agent run in between.
+- **On fire:** what a trigger does when it comes true: right away (the trade, no agent), ask the analyst now (a trigger run), or at the next morning run.
 - **Rest period:** how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day.
 - **Inherited rule:** a trigger that comes from the analyst or the account, not the thesis. Never copied onto the thesis; the closest rule wins.
 - **Close pass:** the 4:20 PM check for levels that read the day's closing price.

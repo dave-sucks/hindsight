@@ -70,7 +70,7 @@ async function livePrice(ticker: string, userId: string, environment: Environmen
 }
 
 /** Alpaca's `cash` for this book — not `buying_power`, which counts margin. */
-async function accountCash(userId: string, environment: Environment): Promise<number | null> {
+export async function accountCash(userId: string, environment: Environment): Promise<number | null> {
   try {
     const creds = (await resolveAlpacaCredentials(userId, environment)) ?? undefined;
     const cash = Number((await getAccount(creds)).cash);

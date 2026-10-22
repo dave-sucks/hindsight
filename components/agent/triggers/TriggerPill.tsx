@@ -17,7 +17,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SendToAgentIcon } from "@/components/ui/send-to-agent-icon";
 import {
   actionLabel,
-  canProposeDirectly,
   conditionsOf,
   shapeOf,
   isGroup,
@@ -28,7 +27,8 @@ import {
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
 import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
-import { watchedFloorOnClose, type TriggerAction } from "@/lib/agent/triggers/types";
+import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
+import { fireModeWords } from "@/lib/agent/triggers/fire-mode";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { cn } from "@/lib/utils";
 import { TriggerDialog } from "./TriggerDialog";
@@ -148,7 +148,7 @@ function TriggerCard({
     trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : null,
     // A schedule's rate limit is its own interval, so saying it again would repeat the number.
     cooldown && !timed ? (cooldown === 1 ? "At most once a day" : `At most once every ${cooldown} days`) : null,
-    w && canProposeDirectly(w, trigger.action as TriggerAction) && sells && trigger.fireMode === "DIRECT" ? "Proposes the sale right away" : null,
+    fireModeWords(trigger, sells),
   ].filter(Boolean);
 
   return (

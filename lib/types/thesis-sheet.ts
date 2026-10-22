@@ -14,6 +14,7 @@
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { When } from "@/lib/agent/triggers/condition";
 import type { ResearchBriefView } from "@/lib/research/brief-types";
+import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 
 export interface Trigger {
   id: string;
@@ -22,8 +23,10 @@ export interface Trigger {
   rationale: string;
   cooldownDays?: number;
   lastFiredAt?: string;
-  /** "TACTICAL" (wake an agent) | "DIRECT" (close directly, no agent). Absent ⇒ TACTICAL. */
-  fireMode?: "TACTICAL" | "DIRECT";
+  /** On fire (lib/agent/triggers/fire-mode). Absent ⇒ the action's default. */
+  fireMode?: FireMode;
+  /** A trim set to Do it: the % it sells. */
+  trimPct?: number;
   /**
    * Which record this rung is stored on — the cascade level. Set by the
    * server's resolver (lib/agent/triggers/levels), never by the client.

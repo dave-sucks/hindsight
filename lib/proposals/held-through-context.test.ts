@@ -1,6 +1,6 @@
 /**
  * buildHeldThroughNote — the plain-language paragraph appended to a
- * no-agent (DIRECT) sell proposal on a held-through stock (DAV-194). The
+ * no-agent (Do it) sell proposal on a held-through stock (DAV-194). The
  * point of the feature is that the daily card is never verbatim-identical:
  * the note names the decline count, quotes the principal's reject note,
  * and suggests where the line could go.
