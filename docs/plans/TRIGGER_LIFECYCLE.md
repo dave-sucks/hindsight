@@ -86,12 +86,12 @@ or (b) summons judgment. Which one is declared per-rung by `action` +
 
 | Runner | Cadence | Reads | May write | May trade |
 |---|---|---|---|---|
-| Trigger-evaluator cron | 5 min, market hours | quotes + ladders | `lastFiredAt`, `TRIGGER_FIRED` rows, emits fire events | never |
+| Trigger-evaluator cron | 5 min, market hours | quotes + ladders | peak/trough water marks (before the check), `lastFiredAt`, `TRIGGER_FIRED` rows, emits fire events | never |
 | Signal path (same cron file) | on `app/signal.routed` | routed signals | same | never |
 | Tactical run | on non-REVIEW fire | ONE thesis + full ladder + fresh data | surgical `update_thesis` (incl. ladder) | proposals |
 | Daily run | 8 AM Mon–Fri | whole book + flags + ladder-health | ladder patches, reviews, status | proposals |
 | Thesis-writer | dispatched (promotion / staleness) | deep research | full research + authored ladder — never status | never |
-| Price-monitor | hourly | positions | peak/trough water marks, near-target events | never |
+| Price-monitor | hourly | positions | `PRICE_CHECK` rows (the trade page's event list) | never |
 | Principal | anytime | everything | any level, any rung, approve/reject | approvals ARE the trades |
 
 ## 4. Visibility audit — trace a rung end-to-end today?

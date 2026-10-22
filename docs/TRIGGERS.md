@@ -65,7 +65,7 @@ evaluation, so the gate rejects it up front, with the list of measures.
 | Measure (`watch`) | Means | Number · variable · settings |
 |---|---|---|
 | `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought. `settings.close` = the day must **close** past it — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
-| `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the price monitor) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required; entry: `fastWinnerPct` / `fastWinnerDays`; peak: `startOnceUpPct` / `widenAtr` |
+| `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the five-minute check from the live price and, for a position held since before the open, the session's high) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required; entry: `fastWinnerPct` / `fastWinnerDays`; peak: `startOnceUpPct` / `widenAtr` |
 | `volume` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio. | `value` (×) |
 | `rsi` | RSI over the snapshot's closes with the live price as today's. | `value`; `settings.period` 14 or 2 |
 | `strength` | Return over the window minus the S&P's, percentage points, as of the last close. A state (§6). | `value`; `settings.window` 1M / 3M / 6M |
@@ -85,7 +85,7 @@ size alone would switch the partial off for a six-month grind to the same gain,
 which is an ordinary winner and exactly what the partial is for. A fill writes
 both onto the partial sale for a trade or a target position, at 20% and 21
 days. It reads `Position.peakPrice` and `Position.peakAt` — the same water mark
-the trail reads, plus the clock the price monitor writes beside it — so the rule
+the trail reads, plus the clock written beside it — so the rule
 needs no memory of its own. A missing `peakAt` means the run can't be shown to
 be fast, so the partial stands. SMMT ran 30.5% in 13 days and loses its
 partial; MU took 54 days to reach 15.5% and keeps it.
@@ -247,9 +247,12 @@ economics (`avgCost` for the move from entry, `peakPrice` for the trail — both
 maintained per HOLDING) alongside the latest quote; no candles needed. Both are
 **HOLDING-only**: with no open position in context (WATCHING theses, or a
 caller that didn't join the position) they evaluate false rather than throw.
-`peakPrice` is the price-monitor-maintained water mark — the trail floor
-ratchets up with the high automatically, so a give-back fires the EXIT with no
-memory required of any prior review.
+`peakPrice` is the water mark each intraday pass raises before it checks
+anything (`lib/trading/water-mark.ts`): from the live price, and for a position
+held since before today's open from the session's high off the same Alpaca
+snapshot (regular hours only), so a spike between two passes counts. Only a
+fresh quote moves it. The trail floor ratchets up with the high automatically,
+so a give-back fires the EXIT with no memory required of any prior review.
 
 **One trigger the check can't read never stops the pass.** The check runs each
 trigger inside its own catch: an error is logged loudly with the trigger's id,
@@ -384,7 +387,7 @@ but the price path only **evaluates during the regular session**:
   holidays — all of which would evaluate price predicates against thin/erratic
   pre/after-market quotes (a daily-% trigger firing on a pre-market print). So
   the cron path gates on `isMarketOpen()` (regular session 9:30–16:00 ET,
-  holiday-aware — the same guard `price-monitor` uses) and no-ops outside it.
+  holiday-aware) and no-ops outside it.
 - **The close pass:** the ticks from 16:20 to 16:34 ET on a trading day are
   not skipped: they evaluate only rungs with a price level read on the close (`settings.close`),
   with today's consolidated close (Alpaca SIP daily bar) as the price. A name

@@ -69,7 +69,7 @@ New in **PR-A** (both deterministic, cron-evaluable, any action):
 | Predicate | Shape | Semantics |
 |---|---|---|
 | `GAIN_FROM_ENTRY` | `{ pct, direction: UP\|DOWN }` | Cumulative % vs position `avgCost` (LONG: `(price−avg)/avg`; SHORT inverted). UP = gain milestone ("we're up 10%" → checkpoint). DOWN = drawdown-from-entry ("down 12%" → loser attention). Fires once per milestone (long default cooldown; the acting agent replaces it with the next rung). |
-| `TRAILING_FROM_HIGH` | `{ pct }` | Give-back off the position's tracked peak (`Position.peakPrice`, maintained hourly by price-monitor; LONG: `price ≤ peak×(1−pct/100)`; SHORT uses the low-water mark, inverted). The mechanical ratchet — no agent memory needed. Replaces the #458-removed `TRAILING_STOP` *deliberately*: #458 removed peak-trailing because the ask then was daily-%; this brings it back for cumulative protection alongside (not instead of) daily-%. |
+| `TRAILING_FROM_HIGH` | `{ pct }` | Give-back off the position's tracked peak (`Position.peakPrice`, maintained every five minutes by the trigger check; LONG: `price ≤ peak×(1−pct/100)`; SHORT uses the low-water mark, inverted). The mechanical ratchet — no agent memory needed. Replaces the #458-removed `TRAILING_STOP` *deliberately*: #458 removed peak-trailing because the ask then was daily-%; this brings it back for cumulative protection alongside (not instead of) daily-%. |
 
 Notes: `GAIN_FROM_ENTRY` and `TRAILING_FROM_HIGH` are HOLDING-only (no
 position → return false, missed-trigger failure mode). Both are

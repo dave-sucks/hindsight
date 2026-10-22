@@ -32,11 +32,11 @@ interface TacticalPromptArgs {
   trigger: Trigger;
   position: {
     /**
-     * Position.peakPrice — the price-monitor-maintained watermark (high for
+     * Position.peakPrice — the five-minute check's watermark (high for
      * LONG, low for SHORT) covering the position's whole life. DAV-186:
      * surfaced so trail-fire validation checks arithmetic against THIS
      * number instead of re-deriving a "peak" from a short chart window.
-     * Null on legacy callers / rows the monitor hasn't stamped yet.
+     * Null on legacy callers / rows the check hasn't stamped yet.
      */
     peakPrice?: number | null;
   } | null;
@@ -112,7 +112,7 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   ⚠ THE PEAK IS AUTHORITATIVE — DO NOT RE-DERIVE IT.
   This trigger measures give-back from the system's tracked ${isShort ? "low" : "high"}${
     peak != null ? `: $${peak.toFixed(2)}` : ""
-  }, recorded by the hourly price monitor over the position's ENTIRE life.
+  }, recorded every five minutes over the position's ENTIRE life.
   ${
     threshold != null
       ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Checking this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`

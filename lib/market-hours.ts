@@ -301,6 +301,11 @@ export function sessionCloseAt(ymd: string): Date {
   return etWallClock(ymd, sessionCloseHour(ymd), 0);
 }
 
+/** The opening bell of a session date (YYYY-MM-DD, ET): 9:30. */
+export function sessionOpenAt(ymd: string): Date {
+  return etWallClock(ymd, 9, 30);
+}
+
 /** The UTC instant of a wall-clock time in New York on a given date (DST-aware). */
 function etWallClock(ymd: string, hour: number, minute: number): Date {
   for (const offset of [4, 5]) {
