@@ -81,16 +81,19 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
       ),
     entry_on_close: z.boolean().describe("true: the buy fires only on a close past entry_price, not an intraday cross."),
     target_price: z.number().describe("Where you'd take profit: the target trigger's level."),
-    target_basis: z.string().describe("Why the target is there, with the rule and the numbers (\"prior high $236.54\"). It becomes the target trigger's sentence."),
+    target_basis: z.string().describe("Why the target is there, in plain words with the number (\"the July high of $236.54\"). It becomes the target trigger's note."),
     stop_loss: z.number().describe("Where the thesis breaks: the floor trigger's level."),
     stop_basis: z
       .string()
-      .describe("Why the stop is there, with the chart number it sits under (\"under the base low $207.25, 1.6 ATR from entry\"). It becomes the floor trigger's sentence."),
+      .describe("Why the stop is there, in plain words with the number it sits under (\"under the August low of $207.25\"). It becomes the floor trigger's note."),
     catalyst_date: z.string().datetime().describe("When the dated event lands, as the company announced it (ISO timestamp). Required when horizon is CATALYST."),
     catalyst_day: z.string().describe("When the dated event lands, as the company announced it (YYYY-MM-DD). Required when horizon is CATALYST."),
     core_belief: z
       .string()
-      .describe("One sentence: what you believe will happen and why. No dates and no price levels here: the catalyst date and the plan carry those."),
+      .describe(
+        "Why we own the company, in two or three plain sentences: what it does, why it is worth owning, and what has to stay true. " +
+          "About the business, never the trade: no price path, no target, no dates, no shorthand.",
+      ),
     key_assumptions: z.array(z.string()).describe("Specific, checkable premises that must stay true for the core belief: two or more on LONG or SHORT."),
     invalidation_conditions: z
       .array(z.string())
@@ -109,10 +112,10 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
       .describe(
         "Your own view, apart from the score: STRONG a top call to buy in size now, HIGH a clear edge you want in size, MEDIUM probably works, LOW tracking without enthusiasm. Comes with conviction_rationale.",
       ),
-    conviction_rationale: z.string().describe("The judgment behind the conviction in a few plain sentences, not the scores restated."),
+    conviction_rationale: z.string().describe("Why you feel this strongly about the company and the stock, in a few plain sentences: the business and the price, not the scores or the chart restated."),
     variant_view: z
       .string()
-      .describe("Where you differ from consensus: 'consensus expects X, I think Y, because Z'. A STRONG or HIGH call without one is stored as MEDIUM."),
+      .describe("Where you differ from Wall Street about the business, in plain words: 'analysts expect X, I think Y, because Z'. A STRONG or HIGH call without one is stored as MEDIUM."),
     live_price: z
       .number()
       .describe(
@@ -124,7 +127,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
 
     // The writer's research note, saved section by section.
     research_data: z.string().describe("The writer's raw data block, passed through verbatim for the card's data tab."),
-    snapshot: sectionText.describe("Snapshot: the current state in one cited paragraph."),
+    snapshot: sectionText.describe("Snapshot: what the company does, how the business is doing and where the stock is and why, in one cited paragraph."),
     recent_catalysts: sectionText.describe("Recent catalysts: the last one to two weeks in one cited paragraph."),
     fundamentals: sectionText.describe("Fundamentals: one cited paragraph, with the segment breakdown when there is one."),
     latest_earnings: sectionBullets.describe("Latest earnings: five specific, cited bullets."),

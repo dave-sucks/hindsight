@@ -32,20 +32,20 @@ const PEAD_RULES: SeatRule[] = [
   {
     action: "EXIT",
     predicate: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, widenAtr: TRAIL_ATR_MULTIPLE } },
-    rationale: `Gave back 12% from the high — or ${TRAIL_ATR_MULTIPLE}× this stock's average daily range if that is wider — once the position had been up 10%. Bank the drift without being shaken out by a volatile name (E5, TARGET).`,
+    rationale: `Sell if it gives back 12% from its high once we've been up 10% (more room for a stock that swings more: ${TRAIL_ATR_MULTIPLE}× its average daily range). Keeps most of the gain from the earnings move instead of handing it back.`,
     fireMode: "DIRECT",
     cooldownDays: 0,
   },
   {
     action: "REVIEW",
     predicate: { watch: "move", is: "above", value: 10, variable: "entry" },
-    rationale: "Up 10% from entry — re-underwrite: raise the floor under real structure and arm the next milestone.",
+    rationale: "Up 10% from our buy: look again, move the stop up under the gain, and set the next level to watch.",
     cooldownDays: 7,
   },
   {
     action: "REVIEW",
     predicate: { watch: "move", is: "below", value: 12, variable: "entry" },
-    rationale: "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us.",
+    rationale: "Down 12% from our buy: decide on purpose whether to hold or sell, before the stop decides for us.",
     cooldownDays: 7,
   },
 ];
@@ -55,13 +55,13 @@ const CATALYST_RULES: SeatRule[] = [
   {
     action: "REVIEW",
     predicate: { watch: "from_date", is: "before", value: 10, variable: "event" },
-    rationale: "10 days before the event date on the thesis — the run-up version sells 1–2 weeks before the decision; the hold-through version checks its size can survive a −50% gap.",
+    rationale: "10 days before the company's event: if we own it for the run-up, this is when to sell, one to two weeks before the decision; if we're holding through it, check the position could take a 50% drop on bad news.",
     cooldownDays: 10,
   },
   {
     action: "REVIEW",
     predicate: { watch: "from_date", is: "after", value: 30, variable: "event" },
-    rationale: "30 days after the event date on the thesis — the hold-through exit (T+30). If it's still held, say why.",
+    rationale: "30 days after the company's event: if we still own it, sell, or say why we're keeping it.",
     cooldownDays: 30,
   },
   {
@@ -70,7 +70,7 @@ const CATALYST_RULES: SeatRule[] = [
     // treats as routine. A catalyst seat wakes on them; other seats would drown.
     action: "REVIEW",
     predicate: { match: "any", conditions: [{ watch: "filing", variable: "item:8.01" }, { watch: "filing", variable: "item:7.01" }] },
-    rationale: "An 'other events' or press-release filing — where FDA outcomes and trial readouts land. Read it before the market finishes pricing it.",
+    rationale: "The company filed an 'other events' report or a press release, which is where FDA decisions and trial results show up. Read it before the market finishes reacting.",
     cooldownDays: 1,
   },
 ];
@@ -80,38 +80,38 @@ const COMPOUNDER_RULES: SeatRule[] = [
   {
     action: "REVIEW",
     predicate: { watch: "move", is: "below", value: COMPOUNDER_GIVEBACK_REVIEW_PCT, variable: "peak" },
-    rationale: `Gave back ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under structure.`,
+    rationale: `Down ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from its high. A question, not a sale: is the reason we bought still true? If it is, hold, and move the stop up under the gain.`,
     cooldownDays: 7,
   },
   {
     action: "EXIT",
     predicate: { watch: "move", is: "below", value: COMPOUNDER_CATASTROPHE_PCT, variable: "peak", settings: { widenAtr: TRAIL_ATR_MULTIPLE } },
-    rationale: `Gave back ${COMPOUNDER_CATASTROPHE_PCT}% from the high — or ${TRAIL_ATR_MULTIPLE}× this stock's average daily range if that is wider — the catastrophe line for a multi-year hold, and the only automatic sale.`,
+    rationale: `Down ${COMPOUNDER_CATASTROPHE_PCT}% from its high (more room for a stock that swings more: ${TRAIL_ATR_MULTIPLE}× its average daily range). For a stock we mean to hold for years, a drop this deep is the one automatic sale.`,
     fireMode: "DIRECT",
     cooldownDays: 0,
   },
   {
     action: "REVIEW",
     predicate: { watch: "price", is: "below", variable: "sma200" },
-    rationale: "Below the 200-day — the long trend is in question. Review the business, not the chart.",
+    rationale: "Below its 200-day average: the long-term trend is in doubt. Look at the business, not just the chart.",
     cooldownDays: 7,
   },
   {
     action: "REVIEW",
     predicate: { watch: "move", is: "above", value: 15, variable: "entry" },
-    rationale: "Up 15% from entry — the second tranche question: is the thesis playing out, and is the floor under the earned gain?",
+    rationale: "Up 15% from our buy: is the business doing what we bought it for? If so, it may be time to buy the second half, with the stop moved up under the gain.",
     cooldownDays: 7,
   },
   {
     action: "REVIEW",
     predicate: { watch: "move", is: "below", value: 15, variable: "entry" },
-    rationale: "Down 15% from entry — is the reason we bought still true? A price alarm on a compounder opens a review, never a sale.",
+    rationale: "Down 15% from our buy: is the reason we bought still true? For a long-term holding, a drop like this means a closer look, never an automatic sale.",
     cooldownDays: 7,
   },
   {
     action: "ADD",
     predicate: { watch: "move", is: "below", value: 7, variable: "prev_close" },
-    rationale: "Down 7% in a day — the second tranche on a held 50-day pullback in a market-wide dip with the thesis intact. Never into company-specific bad news. This seat's rule, not the account's: trades never average down.",
+    rationale: "Down 7% in a day: if the whole market fell and nothing changed at the company, buy the second half of a position we started at the 50-day average. Never on bad company news. This analyst's rule only; the others never add to a falling stock.",
     cooldownDays: 3,
   },
 ];

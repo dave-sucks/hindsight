@@ -115,8 +115,8 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   }, recorded by the hourly price monitor over the position's ENTIRE life.
   ${
     threshold != null
-      ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Validating this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
-      : `Validating this fire means one arithmetic check against that tracked watermark — if it is missing from this prompt, treat the evaluator's fire as correct rather than reconstructing a peak yourself.`
+      ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Checking this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
+      : `Checking this fire means one arithmetic check against that tracked watermark — if it is missing from this prompt, treat the evaluator's fire as correct rather than reconstructing a peak yourself.`
   }
   Any "recent high" you compute from a chart window has shorter memory than
   the watermark, understates the give-back, and is NOT valid grounds to
@@ -154,7 +154,7 @@ at least one tool call. Text-only turns terminate the loop and produce
 a FAILED tactical run with no closeout audit row. Act, don't summarize.
 
 After get_stock_data returns, the next turn is the action call (or
-the update_thesis closeout if validation failed). NOT a markdown
+the update_thesis closeout if the check failed). NOT a markdown
 "now I'll evaluate this" paragraph. The decision framework below is
 short — read once, then execute.
 
@@ -169,7 +169,7 @@ $${stock.ticker}, its row (get_theses)
 ═══════════════════════════════════════════════════════════════════
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}
 
-**The row's \`belief\` IS your analyst's standing opinion on this name.** It's the one-sentence falsifiable claim the thesis was written around; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action. If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
+**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action. If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
 
 **Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
@@ -186,12 +186,12 @@ ${pathSection}
 DECISION FRAMEWORK
 ═══════════════════════════════════════════════════════════════════
 
-1. Validate the predicate fired correctly.
+1. Check the trigger fired correctly.
    - Pull fresh data with get_stock_data($${stock.ticker}).
    - Confirm the price level / move / reported figure actually holds right
      now, not just at the moment the cron sampled.
 
-2. If validation HOLDS:
+2. If the check HOLDS:
    - Default: execute the declared action (${trigger.action}). REVIEW means
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade once the buy's
@@ -199,13 +199,13 @@ DECISION FRAMEWORK
      manage_position (partial close).
 ${situationsBlock}   - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
-     instead). Say in the note what you did instead of the trigger's action, and why.
+     instead). Say in the note what you did and why.
 
-3. If validation FAILS:
+3. If the check FAILS:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
-     patch) and a rationale that says why in plain words: "Not acting
-     yet: <reason>."
-   - If validation reveals the thesis itself is no longer applicable
+     patch) and a note on what is happening to the stock and why you are
+     not acting.
+   - If the check reveals the thesis itself is no longer applicable
      (ticker fell outside this analyst's edge/universe, the original
      premise has broken structurally, the name is no longer worth
      tracking): say so in the note, and on a stock we watch take its buy,
@@ -213,8 +213,8 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
      it; the morning run decides whether it stays on the book. A stock we
      hold is sold first with close_position, which retires the thesis itself.
 
-4. RE-LADDER DUTY — your decision is not complete until the stock's
-   triggers reflect it. After an add, raise the floor (a bigger position
+4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the
+   stock's triggers reflect it. After an add, raise the floor (a bigger position
    must never round-trip into a loss). After a fired gain checkpoint,
    replace it with the next milestone. After a move that blew through a
    level, re-set it off the NEW structure the chart gives (the swing low,
@@ -224,8 +224,8 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
    the beat-that-sold review) were written at the fill; the trail is
    your analyst's rule and applies on its own.
    The trigger ids are on the row's triggers lines. If nothing went stale,
-   say so in one sentence in the rationale ("Floor stays $X, still under
-   the last swing low.").
+   leave them. On a stock we hold you can raise the stop, never lower it;
+   if you think it is wrong, say so in the note and name the level.
 
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).

@@ -35,6 +35,7 @@ import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 import { HERO_UPDATE_TYPES } from "@/lib/thesis/latest-note";
 import { briefForOrderView } from "@/lib/research/brief-read";
+import { writtenUpPrice } from "@/lib/thesis/written-up";
 
 export async function GET(
   _req: Request,
@@ -193,6 +194,21 @@ export async function GET(
     })
     .then((rows) => rows.find((r) => !isYourEdit(r)) ?? null)
     .catch(() => null);
+
+  // The write-up's own date: the newest row a research-writer run saved, never
+  // a later run's edit. Its price is the writer's own pull ("Data pulled").
+  const writtenUpRow = await prisma.thesisUpdate
+    .findFirst({
+      where: { thesisId: thesis.id, run: { mode: "THESIS_WRITER" } },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true, priceAtTime: true, type: true, runId: true },
+    })
+    .catch(() => null);
+  const writerPull = writtenUpRow?.runId
+    ? await prisma.runEvent
+        .findFirst({ where: { runId: writtenUpRow.runId, type: "writer_phase", title: "Data pulled" }, select: { payload: true } })
+        .catch(() => null)
+    : null;
 
   const atr14Value: number | null = await loadIndicatorSnapshots([thesis.ticker.toUpperCase()])
     .then((m) => m.get(thesis.ticker.toUpperCase())?.atr14 ?? null)
@@ -397,6 +413,9 @@ export async function GET(
     insiderTechnical: thesis.insiderTechnical,
     researchUpdatedAt: thesis.researchUpdatedAt
       ? thesis.researchUpdatedAt.toISOString()
+      : null,
+    writtenUp: writtenUpRow
+      ? { at: writtenUpRow.timestamp.toISOString(), price: writtenUpPrice(writtenUpRow, writerPull?.payload ?? null) }
       : null,
     sourceKind: thesis.sourceKind,
     sourceRationale: thesis.sourceRationale,

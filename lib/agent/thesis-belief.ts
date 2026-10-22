@@ -53,7 +53,7 @@ export type ThesisBeliefResult =
 const GUIDANCE = [
   "Directional theses (LONG/SHORT) require a structured belief, not just a trade rationale.",
   "",
-  "• core_belief — ONE sentence stating WHAT you believe will happen and why (e.g. \"AI capex sustains $200B/quarter through 2026, driving NVDA's gross margin above 75%\"). Distinct from reasoning_summary (which describes the trade and refreshes often); core_belief is the durable claim that, if it stops being true, the thesis is broken.",
+  "• core_belief — why we own the company, in two or three plain sentences: what it does, why it is worth owning, and what has to stay true (e.g. \"Nvidia sells the chips most AI data centers run on, and its sales grow as the big cloud companies spend more. We own it while that spending keeps rising and Nvidia keeps its lead.\"). About the business, not the trade; if it stops being true, the thesis is broken.",
   "• key_assumptions — ≥2 specific premises that MUST remain true for the core_belief to hold (e.g. \"datacenter capex stays above $200B/yr through 2027\", \"no breakup of NVDA's preferred customer relationship\"). Each item must be a single checkable claim — generic prose like \"strong fundamentals\" is insufficient.",
   "• invalidation_conditions — ≥2 specific, concrete things that would PROVE the thesis wrong (e.g. \"guidance cut on next print\", \"gross margin below 70% on next print\", \"CFO departure\"). These drive the tactical agent's \"is this trigger fire actually thesis-breaking?\" judgment. Generic risks like \"market downturn\" are insufficient.",
 ].join("\n");

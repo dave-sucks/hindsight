@@ -119,7 +119,7 @@ const schema = z.object({
     .string()
     .min(20)
     .describe(
-      "Required: what you're doing and why, in 1–3 sentences, with the price, the catalyst and what you expect. Shown to the owner on the Activity line and, for an add or a trim, on the proposal and in the approval email; write it by How you write.",
+      "Required: the reason the owner reads on the Activity line and, for an add or a trim, on the proposal and in the approval email. What is happening to the company and the stock and why, then the add or trim: the price and what it does to the position. Write it by How you write.",
     ),
 
   // partial_close
