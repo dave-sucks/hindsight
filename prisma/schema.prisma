@@ -65,6 +65,10 @@ model Account {
   // deleted every rule" — without it, emptying your account rules would
   // silently resurrect the defaults on the next read.
   triggersSeededAt DateTime?
+  // Stop when buying: a new holding's floor this % under its buy price
+  // (lib/trading/auto-stop.ts). An analyst may override both.
+  autoStopOnBuy Boolean @default(false)
+  autoStopPct   Float   @default(8)
 
   // ── The playbook's numbers, as settings (DAV-273) ─────────────────────
   // Per-setup overrides of the setup catalog's numbers (lib/agent/knowledge/
@@ -618,6 +622,9 @@ model AgentConfig {
   // rung in the same bucket. Empty array = inherit from the account.
   // Resolution lives in lib/agent/triggers/levels.
   triggers               Json                 @default("[]")
+  // Stop when buying (lib/trading/auto-stop.ts). Null = the account's setting.
+  autoStopOnBuy          Boolean?
+  autoStopPct            Float?
   // ── The setups this analyst runs (DAV-280) ─────────────────────────────
   // Catalog ids (lib/agent/knowledge/setups). The writer prices a plan by
   // one of these; the first is the analyst's signature setup, whose rules

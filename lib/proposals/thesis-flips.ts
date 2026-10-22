@@ -38,6 +38,8 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
+import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
+import { autoStopOp, loadAutoStop } from "@/lib/trading/auto-stop";
 
 /**
  * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING,
@@ -111,6 +113,8 @@ export async function promoteThesisOnApproval(opts: {
  *     (GAPS A2 found 35/36 ENTER tactical runs were on already-held tickers)
  *   - sets the floor and target to the EXECUTED levels (an edit of the
  *     trigger that is there, an add if none)
+ *   - with "stop when buying" on, raises the floor to that % under the buy
+ *     price, or adds one (lib/trading/auto-stop.ts); no template floor
  *   - adds each held-side template trigger whose bucket is missing — the
  *     held review cadence and the earnings reviews. Sell rules and
  *     scale-ins are NOT stamped: they are the analyst's and the account's
@@ -193,7 +197,10 @@ export async function armHeldLadderOnFill(opts: {
       // filled in with the entry, which would arm a sale at the buy price.
       ...(opts.stopLoss != null ? [{ op: "level" as const, slot: "FLOOR" as const, price: opts.stopLoss }] : []),
       ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
-      ...heldTemplate.map((t) => ({ op: "add" as const, trigger: t })),
+      // The template's hard stop is not written: "stop when buying" is the one automatic floor.
+      ...heldTemplate
+        .filter((t) => levelSlotOf(t, watchingThesis.direction) !== "FLOOR")
+        .map((t) => ({ op: "add" as const, trigger: t })),
       ...setupExits.map((t) => ({ op: "add" as const, trigger: t })),
     ];
     // A template trigger whose bucket the analyst already filled is left
@@ -208,7 +215,19 @@ export async function armHeldLadderOnFill(opts: {
       actor: "SYSTEM",
       mintId: () => randomUUID(),
     });
-    const nextTriggers = applied.triggers;
+    // Stop when buying: read against the floor the buy just set.
+    const stopOp = autoStopOp({
+      triggers: applied.triggers,
+      direction: watchingThesis.direction,
+      buyPrice: opts.fillPrice,
+      setting: await loadAutoStop(opts.analystId),
+    });
+    const stopped = stopOp
+      ? applyTriggerOps({ stored: applied.triggers, ops: [stopOp], direction: watchingThesis.direction, status: "HOLDING", actor: "SYSTEM", mintId: () => randomUUID() })
+      : null;
+    const nextTriggers = stopped?.triggers ?? applied.triggers;
+    const results = [...applied.results, ...(stopped?.results ?? [])];
+    for (const r of stopped?.results ?? []) if (!r.ok) console.warn(`[armHeldLadderOnFill] ${opts.ticker}: stop when buying not set — ${r.reason}`);
 
     // DAV-195 L3 — the columns are a read model of the ladder. Recompute them
     // here or the sheet shows the price you PLANNED to sell at while a
@@ -234,6 +253,10 @@ export async function armHeldLadderOnFill(opts: {
         stopLoss: heldLevels.columns.stopLoss,
       },
     });
+    // A floor the setting moved is mirrored onto the position, as an owner's edit is.
+    if (stopped?.results.some((r) => r.ok)) {
+      await prisma.position.updateMany({ where: { id: opts.positionId }, data: { stopLoss: heldLevels.columns.stopLoss } });
+    }
     await prisma.thesisUpdate.create({
       data: {
         thesisId: watchingThesis.id,
@@ -245,7 +268,7 @@ export async function armHeldLadderOnFill(opts: {
         rationale: `${opts.via === "approved proposal" ? `Bought on your approval at the proposed $${opts.fillPrice.toFixed(2)}` : `Bought at $${opts.fillPrice.toFixed(2)}`}; it moves from the watchlist to the stocks we hold. The buy trigger is gone; the other triggers stay, and the analyst's own sell rules apply.`,
         fieldChanges: {
           status: { from: "WATCHING", to: "HOLDING" },
-          triggerOps: { from: null, to: acceptedOps(applied.results) },
+          triggerOps: { from: null, to: acceptedOps(results) },
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,

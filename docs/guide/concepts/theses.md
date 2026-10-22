@@ -102,7 +102,7 @@ The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A
 `update_thesis`: `add_triggers`, `edit_triggers` by id, `remove_trigger_ids`. The fields each agent may send are pinned by `update-thesis-doors.test.ts`: the Writer 35, chat 21, a morning run 18, a trigger run 11.
 
 #### Status changes
-The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` sets the floor and target from the trade, stamps the entry with the fill price, adds the held review clock and earnings reviews, and leaves the sell rules inherited. A sale retires it as SOLD, unless it was a profit-take at the target or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
+The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` sets the floor and target from the trade, applies stop when buying (`lib/trading/auto-stop.ts`) when it is on, stamps the entry with the fill price, adds the held review clock and earnings reviews, and leaves the sell rules inherited. A sale retires it as SOLD, unless it was a profit-take at the target or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
 
 #### Floors
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers or loosens a protective level on a stock we hold.

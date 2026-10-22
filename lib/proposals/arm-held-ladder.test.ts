@@ -24,6 +24,8 @@ jest.mock("@/lib/prisma", () => ({
       updateMany: jest.fn(),
     },
     thesisUpdate: { create: (...a: unknown[]) => thesisUpdateCreate(...a) },
+    // No analyst row: "stop when buying" reads as off.
+    agentConfig: { findUnique: async () => null },
   },
 }));
 

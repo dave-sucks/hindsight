@@ -36,6 +36,8 @@ A stock answers to three layers of triggers, and the closest one wins:
 
 An inherited rule is never copied onto the thesis, so changing an analyst's style changes every holding at once. Every edit, from any layer, is one line in the stock's Activity.
 
+**Stop when buying.** Like a broker's stop on buy: with "Automatically set Stop Limits when Buying a Stock" on, a new holding gets a floor that percent under its buy price, unless it already has its own floor at or above that. It's an ordinary "Sell if below" trigger that proposes the sale straight away, set as yours, so only you can lower it. Turn it on for the account in Settings → Triggers; an analyst's Triggers tab shows the account's choice until you give the analyst its own, and "Use account setting" puts it back. Adding to a stock you already hold doesn't move it. With it off, the buy sets no floor of its own beyond the one the trade names.
+
 ## When one comes true
 
 Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close. A buy fires once, on the day the price crosses its level. A sale or a review keeps firing every day its condition holds, so it can't be quietly forgotten.
@@ -77,6 +79,9 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 
 #### Floors
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`; your edits on the sheet are exempt.
+
+#### Stop when buying
+`autoStopOp` and `loadAutoStop` in `lib/trading/auto-stop.ts`, applied by `armHeldLadderOnFill` after the trade's own levels. `Account.autoStopOnBuy` / `autoStopPct` (default off, 8%); `AgentConfig` holds the same two, null meaning the account's. Saved by `saveAutoStop` in `lib/actions/auto-stop.actions.ts` (0.5–50%).
 
 #### Rest periods
 Each measure's default cooldown, in its catalog entry: a price level, a day's move, volume or RSI at most once a day; the move from our entry once a week; a beat or a miss once a week; an earnings window once a month; strength against the S&P once a week; a filing once per filing; insider buying once every 30 days; a review on a state at most once a week while it holds; the floor and the trail on a holding every day until answered.
