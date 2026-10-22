@@ -267,3 +267,118 @@ Return strict JSON matching this TypeScript shape:
 
   return result.data;
 }
+
+// ── Sentiment on one stock, for the research brief ──────────────────────────
+// xAI's Responses API with the x_search tool (the search_parameters path above
+// is the older Live Search API). Model overridable while it is calibrated.
+
+const XAI_SENTIMENT_MODEL = process.env.XAI_BRIEF_MODEL ?? "grok-4-1-fast-reasoning";
+const SPAM_WORDS = /\b(discord|telegram|whatsapp|free signals?|join (my|our)|airdrop|giveaway|dm me|100x|presale)\b/i;
+
+export interface XSentimentPost {
+  handle: string;
+  excerpt: string;
+  sentiment: "BULLISH" | "BEARISH" | "MIXED" | "NEUTRAL";
+  recency: string;
+  url: string;
+}
+
+export interface XSentiment {
+  /** Genuine posts about this company, at most `maxPosts`, each with its link. */
+  posts: XSentimentPost[];
+  /** How many posts the search looked at, and how many of those were spam. */
+  seen: number;
+  spam: number;
+  summary: string | null;
+  costUsd: number;
+}
+
+const SentimentAnswer = z.object({
+  posts_seen: z.number().int().nonnegative().catch(0),
+  spam_seen: z.number().int().nonnegative().catch(0),
+  summary: z.string().nullable().catch(null),
+  posts: z
+    .array(
+      z.object({
+        handle: z.string(),
+        excerpt: z.string(),
+        sentiment: z.enum(["BULLISH", "BEARISH", "MIXED", "NEUTRAL"]).catch("NEUTRAL"),
+        recency: z.string().catch(""),
+        post_url: z.string().nullable().optional(),
+        spam: z.boolean().catch(false),
+        about_company: z.boolean().catch(true),
+      }),
+    )
+    .catch([]),
+});
+
+/** What X says about one stock this week: spam named and dropped, links kept. Throws on failure. */
+export async function searchXSentiment(opts: {
+  ticker: string;
+  company: string | null;
+  /** YYYY-MM-DD — posts on or after. */
+  fromDate: string;
+  maxPosts?: number;
+  timeoutMs?: number;
+}): Promise<XSentiment> {
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) throw new Error("no xAI key is configured (XAI_API_KEY)");
+  const maxPosts = opts.maxPosts ?? 5;
+  const name = opts.company ? `${opts.company} ($${opts.ticker})` : `$${opts.ticker}`;
+  const system = `You read X (Twitter) for a stock trader and report what real investors are saying about one company. Search X for posts since ${opts.fromDate}. For every post you look at, decide two things: is it spam (promotion, bots, paid groups, copy-paste hype, giveaways), and is it about this company (not a different ticker or a crypto token with a similar name). Paraphrase each post in your own words in one sentence; never quote it. Never invent a post or a link. Reply with JSON only:
+{"posts_seen": number, "spam_seen": number, "summary": string, "posts": [{"handle": string, "excerpt": string, "sentiment": "BULLISH"|"BEARISH"|"MIXED"|"NEUTRAL", "recency": string, "post_url": string, "spam": boolean, "about_company": boolean}]}
+List up to ${maxPosts * 2} posts, genuine ones first. summary is one or two plain sentences on the overall tone, saying so when most of what you saw was spam.`;
+  const res = await fetch(`${XAI_BASE_URL}/responses`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: XAI_SENTIMENT_MODEL,
+      input: [
+        { role: "system", content: system },
+        { role: "user", content: `What are investors on X saying about ${name}?` },
+      ],
+      tools: [{ type: "x_search", from_date: opts.fromDate }],
+    }),
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`xAI HTTP ${res.status}: ${errText.slice(0, 200)}`);
+  }
+  const body = (await res.json()) as {
+    output?: { type?: string; content?: { type?: string; text?: string }[] }[];
+    citations?: string[];
+    usage?: { input_tokens?: number; output_tokens?: number; cost_in_usd_ticks?: number; num_server_side_tools_used?: number };
+  };
+  const text =
+    (body.output ?? [])
+      .filter((o) => o.type === "message")
+      .flatMap((o) => o.content ?? [])
+      .filter((c) => c.type === "output_text" && typeof c.text === "string")
+      .map((c) => c.text as string)
+      .at(-1) ?? "";
+  const jsonText = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  let raw: unknown = {};
+  try {
+    raw = jsonText ? JSON.parse(jsonText) : {};
+  } catch {
+    console.warn("[xai] searchXSentiment: answer did not parse as JSON:", text.slice(0, 200));
+  }
+  const answer = SentimentAnswer.parse(raw);
+  const cited = new Set(body.citations ?? []);
+  const isPostUrl = (u: string | null | undefined): u is string =>
+    !!u && /^https:\/\/(x|twitter)\.com\//.test(u) && (cited.size === 0 || cited.has(u));
+  const posts = answer.posts
+    .filter((p) => !p.spam && p.about_company && !SPAM_WORDS.test(p.excerpt) && isPostUrl(p.post_url))
+    .slice(0, maxPosts)
+    .map((p) => ({ handle: p.handle.replace(/^@/, ""), excerpt: p.excerpt, sentiment: p.sentiment, recency: p.recency, url: p.post_url as string }));
+  const u = body.usage ?? {};
+  const estimate = ((u.input_tokens ?? 0) * 0.2 + (u.output_tokens ?? 0) * 0.5) / 1e6 + (u.num_server_side_tools_used ?? 1) * 0.005;
+  return {
+    posts,
+    seen: Math.max(answer.posts_seen, answer.posts.length),
+    spam: Math.max(answer.spam_seen, answer.posts.filter((p) => p.spam || !p.about_company).length),
+    summary: answer.summary,
+    costUsd: u.cost_in_usd_ticks != null ? u.cost_in_usd_ticks / 1e10 : estimate,
+  };
+}

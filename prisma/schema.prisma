@@ -1471,3 +1471,23 @@ model TickerIndicators {
   @@unique([ticker, asOf])
 }
 
+// A research brief: why a stock moved, what Wall Street says, what X says, and
+// our own numbers, built when a trade is proposed or a sale is sent
+// (lib/research/brief.ts). kind is "DAILY" | "PROPOSAL" | "SALE".
+model ResearchBrief {
+  id           String   @id @default(cuid())
+  ticker       String
+  kind         String
+  orderId      String?  @unique
+  accountId    String?
+  payload      Json
+  sources      Json
+  costs        Json
+  error        String?
+  /// Set when the paid research was reused from a brief under two hours old.
+  reusedFromId String?
+  createdAt    DateTime @default(now())
+
+  @@index([ticker, createdAt])
+}
+

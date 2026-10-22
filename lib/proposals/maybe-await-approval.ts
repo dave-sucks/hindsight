@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendProposalPendingEmail } from "@/lib/emails/proposal-pending";
 import { sendProposalPendingPush } from "@/lib/notify/proposal-push";
+import { emitProposalPending } from "@/lib/research/brief-events";
 
 export type ProposalIntent = "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
 
@@ -162,11 +163,12 @@ export const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
  * the transaction that staged the order commits (both helpers read the row).
  */
 export function notifyProposalPending(orderId: string): void {
-  // The helper resolves OWNER email + skips on emailAlerts off.
-  void sendProposalPendingEmail(orderId);
-  // Same event, phone/desktop channel — no-ops unless NTFY_TOPIC is set. Email
+  // Phone/desktop channel, instant — no-ops unless NTFY_TOPIC is set. Email
   // is easy to miss; this is the high-signal nudge that a review is waiting.
   void sendProposalPendingPush(orderId);
+  // The email waits up to 30s for the research brief (inngest research-brief);
+  // if Inngest can't take the event it goes now, without one.
+  emitProposalPending(orderId, () => sendProposalPendingEmail(orderId));
 }
 
 /**

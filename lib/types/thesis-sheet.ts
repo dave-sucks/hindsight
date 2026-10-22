@@ -13,6 +13,7 @@
 
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { When } from "@/lib/agent/triggers/condition";
+import type { ResearchBriefView } from "@/lib/research/brief-types";
 
 export interface Trigger {
   id: string;
@@ -100,6 +101,8 @@ export interface ThesisPendingProposal {
    * was — there is nothing left to decide. Clears itself on the fill.
    */
   executing?: boolean;
+  /** The research brief built for this order; null until it lands. */
+  brief?: ResearchBriefView | null;
 }
 
 export interface ThesisScoringDim {
