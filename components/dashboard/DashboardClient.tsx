@@ -318,7 +318,7 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
   NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
   // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
-  PROPOSED: { label: 'Pending',        dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
+  PROPOSED: { label: 'Proposal',       dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
   REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
   BLOCKED:  { label: 'Blocked',        dotClass: 'bg-negative',               tooltip: 'The analyst tried this and a rule stopped it — read why, and act by hand if you disagree' },
   PASSED:   { label: 'Passed',         dotClass: 'bg-muted-foreground/40',    tooltip: 'A buy, add, sale or trim trigger fired and the analyst chose not to act — often the right call' },
@@ -500,7 +500,13 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
           {isProposed && (
-            <ProposalActions orderId={item.orderId!} expiresAt={item.expiresAt} />
+            // Phones: the amber "Proposal" badge already says it; the row
+            // opens where it's approved, and the button ate the sentence.
+            <ProposalActions
+              orderId={item.orderId!}
+              expiresAt={item.expiresAt}
+              className="hidden sm:inline-flex"
+            />
           )}
         </div>
       </HoverCardTrigger>
@@ -524,10 +530,12 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   );
 }
 
-function HomeBottomSection({ activity, loading, coverage }: {
+function HomeBottomSection({ activity, loading, coverage, mobileDigest }: {
   activity: ActivityFeedItem[];
   loading: boolean;
   coverage?: CoverageData;
+  /** Rendered below lg only, between the holdings table and Activity. */
+  mobileDigest?: ReactNode;
 }) {
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
   const [showAllActivity, setShowAllActivity] = useState(false);
@@ -564,6 +572,8 @@ function HomeBottomSection({ activity, loading, coverage }: {
           </Card>
         )}
       </div>
+
+      {mobileDigest && <div className="lg:hidden">{mobileDigest}</div>}
 
       {/* Activity */}
       <div>
@@ -644,7 +654,7 @@ function ProposalsPanel({
   return (
     <div className="mb-3">
       <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
-        Pending
+        Proposals
       </p>
       {/* Plain bordered container — TradeRowShell supplies its own px-3 py-2.5
           padding + border-b dividers, so rows sit flush (matches the coverage
@@ -1486,19 +1496,17 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
               and reviewable on a phone. Renders nothing when empty. */}
           <div className="lg:hidden">
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
-            <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
-            {/* The after-close digest lives in the desktop rail, which is
-                hidden below lg — so on a phone the end-of-day summary was
-                not on the page at all. Same order as the rail: proposals
-                first (time-sensitive), then pinned, then the digest. */}
-            <DigestPreviewCard digest={digest} />
           </div>
 
-          {/* Portfolio + Activity stacked section */}
+          {/* Portfolio + Activity stacked section. On a phone the after-close
+              digest (which lives in the desktop rail) sits between the
+              holdings table and Activity. Pinned is desktop-only — on a
+              phone it repeated the pending and held rows right above it. */}
           <HomeBottomSection
             activity={data?.activityFeed ?? []}
             loading={loading}
             coverage={coverage}
+            mobileDigest={<DigestPreviewCard digest={digest} />}
           />
           </div>
 
@@ -1533,11 +1541,10 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             {/* Pending proposals sit above the digest — they're the most
                 time-sensitive thing on the page. Renders nothing when empty. */}
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
-            {/* Pinned shortlist — the hand-picked names you want in view
-                regardless of what the agents proposed today. Below proposals
-                (those are time-sensitive), above the digest. */}
-            <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
             <DigestPreviewCard digest={digest} />
+            {/* Pinned shortlist — the hand-picked names you want in view.
+                Last in the rail: proposals and the digest come first. */}
+            <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
           </div>
 
         </div>

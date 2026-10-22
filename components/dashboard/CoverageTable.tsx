@@ -200,6 +200,9 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
             orderId={row.pendingProposal.orderId}
             expiresAt={row.pendingProposal.expiresAt}
             align="end"
+            // Phones: the amber dot marks it and the row opens the thesis
+            // where it's approved; the button cut the shares line to "300 sh…".
+            className="hidden sm:inline-flex"
           />
         )}
         {pct == null ? (
@@ -256,8 +259,10 @@ function CoverageTab({
             <TableHead className="hidden md:table-cell w-24 text-right">1D</TableHead>
             <TableHead className="hidden md:table-cell w-24 text-right">5D</TableHead>
             <TableHead className="hidden md:table-cell w-24 text-right">30D</TableHead>
-            {/* Last column — "Lifetime" label on desktop, toggle on mobile */}
-            <TableHead className="w-64 text-right">
+            {/* Last column — "Lifetime" label on desktop, toggle on mobile.
+                Narrower on phones (no Review button there) so the name
+                column can show the shares line instead of "300 sh…". */}
+            <TableHead className="w-44 sm:w-64 text-right">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger
