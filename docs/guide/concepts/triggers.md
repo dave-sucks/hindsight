@@ -38,8 +38,8 @@ An inherited rule is never copied onto the thesis, so changing an analyst's styl
 
 **Stop when buying.** Like a broker's stop on buy: with "Automatically set Stop Limits when Buying a Stock" on, a new holding gets two lines.
 
-- **The sale floor** is always that percent under the buy price: an ordinary "Sell if below" trigger that sells straight away, set as yours, so only you can lower it.
-- **The review line** is the analyst's own floor, when it was tighter than that: it stays where the analyst put it as "Review if below", with the analyst's note, and asks the analyst when it's crossed. That's where it looks first; the sale floor below it is the hard stop. A stock has one review line; if it already had one, the higher of the two is kept.
+- **The sale floor** is always that percent under the buy price: an ordinary "Sell if below" trigger set to Auto-sell, set as yours, so only you can lower it.
+- **The review line** is the analyst's own floor, when it was tighter than that: it stays where the analyst put it as "Review if below", with the analyst's note, set to Send to Agent. That's where it looks first; the sale floor below it is the hard stop. A stock has one review line; if it already had one, the higher of the two is kept.
 
 A tighter floor you set yourself is left exactly as it is, including a stop you type on the Trade ticket (the ticket starts from the analyst's floor; left as it was, that stays the analyst's). With the setting on, a buy is sized for the wider of the two stops, so a loss at the sale floor stays within the analyst's risk per trade. Turn it on for the account in Settings → Triggers; an analyst's Triggers tab shows the account's choice until you give the analyst its own, and "Use account setting" puts it back. Adding to a stock you already hold doesn't move either line. With it off, the buy sets no floor of its own beyond the one the trade names.
 
