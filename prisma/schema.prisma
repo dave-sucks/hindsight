@@ -964,8 +964,6 @@ model Position {
   outcome             String? // "WIN" | "LOSS" | "BREAKEVEN"
   // Evaluation
   agentEvaluation     String? // post-trade GPT-4o evaluation narrative
-  // Monitoring
-  nearTargetAlertSent Boolean                    @default(false)
   // Audit trail — who closed / modified and why
   closeSource         String? // "agent" | "price_monitor" | "user" — who triggered the close
   initialQty          Float? // qty at open, before any partial closes or adds
