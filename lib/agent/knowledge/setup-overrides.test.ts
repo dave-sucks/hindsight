@@ -16,7 +16,7 @@ describe("applySetupOverride", () => {
   it("an empty map is the catalog as written", () => {
     const pead = getSetup("PEAD")!;
     expect(getSetup("PEAD", {})).toEqual(pead);
-    expect(setupNumbers(pead)).toEqual({ stopMaxPct: 8, minAtr: 1, chaseLimitPct: 10, targetMinR: 2, partialAtR: 2, beatAndFadeReview: true, timeTradingDays: 60, riskMultiplier: 1 });
+    expect(setupNumbers(pead)).toEqual({ stopMaxPct: 8, minAtr: 1, chaseLimitPct: 10, partialAtR: 2, beatAndFadeReview: true, timeTradingDays: 60 });
   });
   it("a changed partial changes what IOT's fill writes: 3R on a 7.76% stop is +23.3%", () => {
     const pead = getSetup("PEAD", { PEAD: { partialAtR: 3, timeTradingDays: 45 } })!;
