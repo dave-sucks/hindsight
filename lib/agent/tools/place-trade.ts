@@ -373,8 +373,8 @@ export const placeTrade = defineTool({
       // both: a row without one is told how to set it. For LONG the target
       // sits ABOVE entry and the floor BELOW it; for SHORT the reverse.
       // Without the ordering check a stale plan (a target set when the price
-      // was lower) closes the position on the first price-monitor tick after
-      // the fill, because `currentPrice >= targetPrice` holds at avgCost.
+      // was lower) fires the target on the first trigger check after the
+      // fill, because `currentPrice >= targetPrice` holds at avgCost.
       const plan = planOfRow(planRow);
       if (plan.target == null || plan.stop == null) {
         const missing = [plan.stop == null ? "floor" : null, plan.target == null ? "target" : null].filter(Boolean).join(" and ");
@@ -435,8 +435,8 @@ export const placeTrade = defineTool({
       // the model may have used a stale entry estimate (e.g. last
       // night's close, or an old thesis's entry level). If the live
       // market price has already crossed target or stop, the
-      // price-monitor will close the position on its next tick —
-      // refuse here instead. Quote failure is non-fatal (the
+      // target or floor fires on the next trigger check — refuse here
+      // instead. Quote failure is non-fatal (the
       // ordering guardrail above is the static fallback).
       try {
         const livePrice = await getLatestPrice(ticker, ctx.alpacaCreds);

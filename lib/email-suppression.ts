@@ -9,8 +9,8 @@
  *
  * Manual "Run" clicks at 2 PM use MORNING_PLAN mode too but fall outside
  * the window → they fire an immediate email. Tactical runs always have a
- * different mode → they fire immediately. Closes from price-monitor /
- * user-UI / EOD-flatten don't carry a runId at all → caller passes
+ * different mode → they fire immediately. Closes from an Auto-sell or the
+ * user UI don't carry a runId at all → caller passes
  * `runMode = null` and gets immediate.
  *
  * The 10 AM digest cron fires at the upper boundary; trades emitted at
