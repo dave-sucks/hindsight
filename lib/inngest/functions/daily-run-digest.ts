@@ -12,7 +12,7 @@
  *   - Watch              — TradeDecision.decision = WATCH
  *
  * Off-cycle activity (tactical runs, discovery runs, manual user runs,
- * price-monitor stop/target closes, EOD flatten) fires immediate emails
+ * automatic trigger sales) fires immediate emails
  * via place-trade / closeOpenPosition with the matching suppression rule
  * — so the digest and the per-trade emails partition the action space
  * cleanly with no double-notify. Hold and Pass decisions are skipped:

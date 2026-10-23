@@ -132,7 +132,7 @@ export function validateEnterTriggerRequired(
         note:
           `A stock we own must carry at least one sell trigger (action EXIT) — that's the ` +
           `automated stop-loss path. Without it nothing sells the position when the ` +
-          `price breaks the stop; the hourly price check is the only thing watching it.` +
+          `price breaks the stop.` +
           `\n\nFix: add one with add_triggers — action "EXIT" with a price below the stop ` +
           `for a LONG position ({ watch: "price", is: "below", value: stop }; above it for ` +
           `a SHORT), or set stop_loss, which is the same edit on the floor trigger.`,

@@ -583,8 +583,7 @@ export async function closeOpenPosition(
   //       responsible for email.
   //   (b) Inline trade-closed email below — fire-and-forget so every
   //       close path (agent close_position, manage_position full close,
-  //       price-monitor stop/target, intraday EOD flatten, user-UI
-  //       close) emails exactly once. Inline (not its own Inngest
+  //       an Auto-sell, user-UI close) emails exactly once. Inline (not its own Inngest
   //       handler) prevents the double-send failure mode that would
   //       come with a duplicate event delivery.
   //

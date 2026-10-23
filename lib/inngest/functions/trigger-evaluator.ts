@@ -441,7 +441,7 @@ export const triggerEvaluator = inngest.createFunction(
     // post-4:00 ticks, and holidays — and pre/after-hours quotes are thin and
     // erratic, so a "down X% on the day" trigger can fire on a pre-market print
     // (observed: a 1% movement trigger fired at 9:00 AM). Gate on isMarketOpen()
-    // (9:30–16:00 ET, holiday-aware) — the same guard price-monitor already
+    // (9:30–16:00 ET, holiday-aware).
     const session = await step.run("check-market-hours", async () =>
       isMarketOpen() ? "INTRADAY" : isClosePassTick(new Date()) ? "CLOSE" : null,
     );
