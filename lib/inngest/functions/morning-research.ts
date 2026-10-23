@@ -587,21 +587,12 @@ export const morningResearch = inngest.createFunction(
               actionableThesisIds.add(t.id);
             }
           }
-          // priorityReviews carry position ids, not thesis ids — map via
-          // ticker against the active book.
-          for (const p of runInput.priorityReviews ?? []) {
-            const match = (runInput.activeTheses ?? []).find(
-              (t) => t.ticker === p.symbol,
-            );
-            if (match) actionableThesisIds.add(match.id);
-          }
           const expectedCoverage = actionableThesisIds.size;
           // ZERO-TOUCH only (review finding #1). The cron-side actionable
           // set is an approximation from runInput streams the agent never
           // sees — it over-counts in ordinary states (fire already answered
           // by a tactical run, fire on a since-RETIRED thesis, ENTER
-          // suppressed by a pending buy proposal, near-stop priorityReviews
-          // with no needsAction, seeds whose review was legitimately
+          // suppressed by a pending buy proposal, seeds whose review was legitimately
           // bumped). A count-vs-count comparison would re-trigger the
           // daily phantom retry this PR removes. So the gate only fires on
           // the shape it exists for: work signal present, agent touched

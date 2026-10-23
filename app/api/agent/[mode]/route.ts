@@ -226,7 +226,6 @@ export async function POST(
           portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
           watchlist: [],
           activeTheses: [],
-          priorityReviews: null,
           triggersFiredSinceLastRun: [],
           triggersMatchingNow: [],
           earnings: { reportingSoon: [], justReported: [] },

@@ -295,7 +295,7 @@ plus `get_stock_data`.
 
 ## Pages
 - / (Dashboard) — MarketPulseStrip (Finnhub WebSocket), portfolio
-  summary, Today's Picks, AgentActivityLog
+  summary, Today's Picks, the activity feed
 - /analysts — analyst card grid with enable/disable toggles
 - /analysts/new — AI-driven analyst creation (AgentChat in builder mode + AnalystConfigPanel)
 - /analysts/[id] — 2-col: Overview + config | floating editor chat;
@@ -327,7 +327,6 @@ plus `get_stock_data`.
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
 - /api/chat/run-followup — post-run discussion with trade tools
-- /api/agent-activity — dashboard activity stream
 - /api/intelligence/* — read-only signal history (signals, batches, routes,
   health) + sync-health + thesis-ingest. email-ingest is a 200-and-drop stub
   so Resend stops retrying. The trigger, monitors and coverage routes are

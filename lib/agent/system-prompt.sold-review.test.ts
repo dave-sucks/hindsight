@@ -22,7 +22,7 @@ const runInput = () =>
       exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 },
     },
     watchlist: [], activeTheses: [],
-    priorityReviews: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [],
+    triggersFiredSinceLastRun: [], triggersMatchingNow: [],
     earnings: { reportingSoon: [], justReported: [] },
     filings: { recent: [] },
   }) as unknown as RunInput;

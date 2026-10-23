@@ -1270,8 +1270,6 @@ export async function getDashboardData(
     else if (action.actionType === "UPDATE_TARGETS") label = "Targets updated";
     else if (action.actionType === "MOVE_STOP_TO_BREAKEVEN") label = "Stop → breakeven";
     else if (action.actionType === "SET_TRAILING_STOP") label = "Trailing stop set";
-    else if (action.actionType === "NEAR_TARGET") label = "Approaching target";
-    else if (action.actionType === "NEAR_STOP") label = "Approaching stop";
 
     activityFeed.push({
       id: `action-${action.id}`,
