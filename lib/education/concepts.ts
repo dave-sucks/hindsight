@@ -5,9 +5,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
-  Brain,
   FileText,
-  LineChart,
   Radar,
   Search,
   ShoppingCart,
@@ -16,9 +14,7 @@ import {
   RotateCcw,
   Newspaper,
   Globe,
-  BarChart3,
   PlayCircle,
-  Sparkles,
   ArrowLeftRight,
 } from "lucide-react";
 
@@ -251,35 +247,3 @@ export interface OnboardingStep {
   visual: "analyst" | "intelligence" | "run" | "trade" | "loop";
 }
 
-export const ONBOARDING_STEPS: OnboardingStep[] = [
-  {
-    title: "Create AI Analysts",
-    description: "Describe your trading style in conversation. The AI builder researches live market data and creates a complete analyst — strategy, rules, watchlist, and intelligence monitors. Each analyst is an autonomous trading persona.",
-    concept: "analyst",
-    visual: "analyst",
-  },
-  {
-    title: "Intelligence Gathers Overnight",
-    description: "Five background jobs run every morning before markets open. They search the web, check tracked sources, and route relevant findings to your analysts. By 8 AM, each analyst has a personalized intelligence brief.",
-    concept: "intelligence",
-    visual: "intelligence",
-  },
-  {
-    title: "Structured Research Sessions",
-    description: "Analysts follow a 6-stage flow — orient (read intelligence), research (live data on holdings + watchlist + 2-4 discoveries), theses (LONG/SHORT/PASS with signal provenance), act (manage positions + place trades), recap, complete. You can watch live or review the conversation after.",
-    concept: "run",
-    visual: "run",
-  },
-  {
-    title: "Real Paper Trades",
-    description: "When an analyst has high confidence in a thesis, it places a real paper trade on Alpaca. Every position is tracked with live P&L, targets, and stop-losses. You can measure actual performance.",
-    concept: "trade",
-    visual: "trade",
-  },
-  {
-    title: "Memory That Compounds",
-    description: "After every session, a separate GPT-4o agent reviews the full conversation and writes a standup brief. It tracks what worked, what didn't, and what to watch tomorrow. Each run builds on the last.",
-    concept: "learning-loop",
-    visual: "loop",
-  },
-];

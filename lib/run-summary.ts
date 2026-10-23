@@ -564,29 +564,9 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
 
 // ── String formatters for the card / aria labels ────────────────────────────
 
-export function formatActionLine(summary: RunSummary): string {
-  return buildActionSegments(summary)
-    .map((s) => s.text)
-    .join(" · ");
-}
-
 function formatPnlSuffix(pnl: number | null | undefined): string {
   if (pnl == null) return "";
   const sign = pnl >= 0 ? "+" : "";
   return ` ${sign}$${Math.abs(Math.round(pnl)).toLocaleString("en-US")}`;
 }
 
-/**
- * Stats row — concise aggregate counts. Always shown when walked > 0.
- *   "9 walked · 1 triggered · 2 trades · +$240"
- */
-export function formatStatsRow(summary: RunSummary): string {
-  const bits: string[] = [];
-  bits.push(`${summary.counts.walked} walked`);
-  if (summary.counts.triggered > 0) bits.push(`${summary.counts.triggered} triggered`);
-  if (summary.counts.traded > 0) {
-    const noun = summary.counts.traded === 1 ? "trade" : "trades";
-    bits.push(`${summary.counts.traded} ${noun}`);
-  }
-  return bits.join(" · ");
-}

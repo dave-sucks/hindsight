@@ -234,13 +234,6 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
   };
 }
 
-export async function getSegmentTranscript(transcriptId: string) {
-  const { accountId } = await requireAccount();
-  return prisma.segmentTranscript.findFirst({
-    where: { id: transcriptId, accountId },
-  });
-}
-
 // ── Create ──────────────────────────────────────────────────────────────────
 
 export async function createPodcastFromBuilder(

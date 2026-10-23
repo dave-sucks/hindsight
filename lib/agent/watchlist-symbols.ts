@@ -28,17 +28,3 @@ export async function getWatchlistSymbols(
   return Array.from(new Set(theses.map((t) => t.ticker)));
 }
 
-/**
- * Count of active WATCHING theses for an analyst — what
- * `_count.watchlistItems` used to return.
- */
-export async function countWatchlistItems(
-  analystId: string,
-): Promise<number> {
-  return prisma.thesis.count({
-    where: {
-      status: "WATCHING",
-      researchRun: { agentConfigId: analystId },
-    },
-  });
-}

@@ -104,9 +104,6 @@ export const INSIDER_STOP_MAX_PCT = 12;
 /** RSI(2) mean reversion: buy below, sell above. */
 export const RSI2_ENTRY_BELOW = 10;
 export const RSI2_EXIT_ABOVE = 65;
-/** A buy level unfilled this many trading days gets re-priced (Part E6). */
-export const UNFILLED_REPRICE_TRADING_DAYS = 20;
-
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export type Horizon = "TRADE" | "TARGET" | "CATALYST" | "COMPOUNDER";

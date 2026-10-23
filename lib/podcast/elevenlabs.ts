@@ -72,17 +72,6 @@ export async function listVoices(apiKey: string): Promise<ElevenLabsVoice[]> {
 
 // ── Key verification ──────────────────────────────────────────────────────────
 
-export async function verifyElevenLabsKey(apiKey: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/user`, {
-      headers: elevenLabsHeaders(apiKey),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 // ── Text chunking ─────────────────────────────────────────────────────────────
 
 export function chunkText(text: string, maxChars = CHUNK_SIZE): string[] {
