@@ -1,6 +1,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { autoStopPctProblem, autoStopPrice, effectiveAutoStop } from "./auto-stop";
+import { autoStopPctProblem, effectiveAutoStop } from "./auto-stop";
+import { autoStopPrice } from "@/lib/agent/position-sizing";
 
 describe("stop when buying — the setting", () => {
   it("saves 0.5% to 50%, nothing else", () => {

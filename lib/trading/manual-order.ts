@@ -407,7 +407,7 @@ export async function placeManualOrder(opts: {
 
   // ── Send it: the approval path every proposal takes ────────────────────────
   try {
-    const result = await approveProposal(orderId, opts.userId);
+    const result = await approveProposal(orderId, opts.userId, undefined, { tradeTicket: true });
     return {
       ok: true,
       intent: plan.intent,

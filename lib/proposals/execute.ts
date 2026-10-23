@@ -114,6 +114,8 @@ export async function approveProposal(
   orderId: string,
   actorUserId: string,
   edits?: ProposalApprovalEdits,
+  /** The Trade button's own buy: the stop on its ticket is the owner's. */
+  via?: { tradeTicket: true },
 ): Promise<ProposalApprovalResult> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -464,6 +466,7 @@ export async function approveProposal(
       // levels. Never the entry, which would arm a sale at the buy price.
       targetPrice: effectiveTarget ?? null,
       stopLoss: effectiveStop ?? null,
+      stopIsOwners: via?.tradeTicket === true,
     });
   } else if (intent === "CLOSE") {
     await closeThesisOnApproval({

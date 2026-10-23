@@ -44,6 +44,8 @@ jest.mock("@/lib/prisma", () => ({
       findUnique: mockAgentConfigFindUnique,
       findFirst: mockAgentConfigFindFirst,
     },
+    // No account row: "stop when buying" reads as off.
+    account: { findUnique: jest.fn(async () => null) },
     $transaction: mockTransaction,
   },
 }));
