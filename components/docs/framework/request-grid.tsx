@@ -46,7 +46,6 @@ const squaresOf = (n: number) => Math.max(1, Math.round(n / 1000));
 
 /** The agents to pick between, in the order a stock meets them. */
 const AGENTS: ReadonlyArray<{ id: Exclude<FrameworkDoorId, "writer">; label: string }> = [
-  { id: "discovery", label: "Discovery" },
   { id: "morning", label: "Morning" },
   { id: "trigger", label: "Trigger" },
   { id: "chat", label: "Chat" },
@@ -57,7 +56,6 @@ const READ: Record<(typeof AGENTS)[number]["id"], { chars: number | null; square
   morning: { chars: MEASURED_REQUEST.after.read, squares: squaresOf(MEASURED_REQUEST.after.read), source: "Measured on a real request" },
   trigger: { chars: null, squares: 7, source: "One stock's row, up to about 7,000" },
   chat: { chars: null, squares: 7, source: "Varies with the conversation" },
-  discovery: { chars: null, squares: 2, source: "A short list of tickers" },
 };
 
 /** An example day: three flags up somewhere on the book. Their texts' real lengths. */

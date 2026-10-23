@@ -5,7 +5,7 @@
  * come from ./framework.ts on the server.
  */
 
-export type FrameworkDoorId = "morning" | "trigger" | "chat" | "discovery" | "writer";
+export type FrameworkDoorId = "morning" | "trigger" | "chat" | "writer";
 
 /** A door as measured on the server. A null number is one the build couldn't take. */
 export interface FrameworkDoor {
@@ -56,14 +56,6 @@ export const DOOR_COPY: Record<FrameworkDoorId, { name: string; woken: string; j
     read: "Asks for stocks by name when the conversation needs them.",
     analyst: "When you open the chat on an analyst.",
     save: "21 fields: also the belief and direction",
-  },
-  discovery: {
-    name: "Discovery",
-    woken: "You start it",
-    job: "Find up to five new stocks worth watching, inside the analyst's universe.",
-    read: "Only the tickers it already covers, so it doesn't bring back the same names.",
-    analyst: "Always. It searches for one analyst.",
-    save: "A pass or a watch with record_thesis; every new plan is the Writer's",
   },
   writer: {
     name: "Writer",

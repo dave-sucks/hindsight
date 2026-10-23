@@ -179,7 +179,7 @@ export interface DigestFacts {
 // the crons (verified 2026-06-17):
 //   • daily      → MORNING_PLAN       (lib/inngest/functions/morning-research.ts)
 //   • tactical   → INTRADAY_TACTICAL  (lib/inngest/functions/tactical-run.ts)
-//   • discovery  → DISCOVERY          (lib/inngest/functions/discovery-run.ts)
+//   • discovery  → DISCOVERY          (the standalone discovery run, since deleted; old rows only)
 // The old `EOD_REFLECTIVE` value is a schema-comment placeholder that nothing
 // actually writes — mapping discovery to it (the prior bug) meant the discovery
 // rollup was always 0.

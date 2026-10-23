@@ -21,7 +21,6 @@ import { createResearchTools } from "@/lib/agent/tools";
 const AGENTS: Array<{ mode: keyof typeof MODES; runMode: string }> = [
   { mode: "research-run", runMode: "MORNING_PLAN" },
   { mode: "tactical", runMode: "INTRADAY_TACTICAL" },
-  { mode: "discovery", runMode: "DISCOVERY" },
   { mode: "principal", runMode: "PRINCIPAL_CHAT" },
 ];
 

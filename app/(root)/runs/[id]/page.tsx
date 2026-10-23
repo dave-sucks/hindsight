@@ -105,23 +105,12 @@ export default async function RunPage({
   // autostart for those runs; the events written by the Inngest consumer
   // still render via the existing event/replay path.
   const isTacticalMode = run.mode === "INTRADAY_TACTICAL";
-  // Discovery runs (mode=DISCOVERY) execute server-side via Inngest's
-  // discovery-run consumer — same shape as tactical. Opening the run
-  // page while it's RUNNING was previously auto-starting a SECOND agent
-  // through /api/agent/research-run (which uses the morning-plan
-  // prompt + allowlist — get_portfolio_context, update_thesis, etc.),
-  // racing against the real discovery agent and frequently winning the
-  // write to RunMessage. Observed in run cmp6dk0w1000004jhoi32cv63
-  // (2026-05-15): mode=DISCOVERY but the transcript was a daily-run
-  // shape with "Portfolio Overview", update_thesis on existing NVDA.
-  // Same guard as tactical fixes it.
-  const isDiscoveryMode = run.mode === "DISCOVERY";
   // Inngest-backed segment runs (source=AGENT) execute server-side — don't
   // auto-start AgentThread or it would launch a second competing agent.
   const isInngestSegmentRun = isPodcastSegmentRun && run.source === "AGENT";
   // Thesis-writer runs (mode=THESIS_WRITER) execute server-side via the
   // Inngest thesis-writer consumer (see lib/inngest/functions/thesis-writer.ts).
-  // Same guard shape as tactical + discovery — without it, opening the
+  // Same guard shape as tactical — without it, opening the
   // child-run page during RUNNING would auto-start AgentChat against
   // /api/agent/research-run, launching a second competing agent on the
   // same runId. The real worker still writes its thread through the
@@ -178,7 +167,7 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode && !isDiscoveryMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode}
+            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode}
             messages={persistedMessages ?? undefined}
             sources={isPodcastSegmentRun ? [] : sources}
             theses={isPodcastSegmentRun ? [] : theses}

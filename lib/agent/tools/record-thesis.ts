@@ -564,41 +564,7 @@ export const recordThesis = defineTool({
       //   LONG/SHORT → WATCHING (place_trade later flips it to HOLDING)
       // args.direction is LONG | SHORT | PASS (the seed sentinel direction=null
       // is unmintable by agents — not in the input enum).
-      //
-      // 2026-05-13 — discovery hard-clamp for LONG/SHORT (additive on top
-      // of the legal-pair mapping). Discovery agents previously landed
-      // status=ACTIVE on high-conviction LONG/SHORT mints — the prompt
-      // instruction was advisory and GPT-4o overrode it (see INTC mint
-      // cmp3i0y01 on 2026-05-13). ACTIVE attaches HELD-template triggers
-      // (EXIT on stop_loss, REVIEW on target_hit) but no place_trade
-      // fires, so the trigger evaluator later fires orphan tactical EXIT
-      // runs that fail silently. Discovery is a WATCHING-mint surface by
-      // design; ACTIVE promotion is the daily run's job (portfolio-fit
-      // comparison + place_trade pairing). PASS is unaffected — it maps
-      // to PASSED in the same step below.
-      const isDiscoveryDirectional =
-        ctx.discoveryOnly === true &&
-        (args.direction === "LONG" || args.direction === "SHORT");
-      // ── Chat-dispatch hard-clamp for LONG/SHORT (Phase 1 mint flow) ───
-      // Same shape as the discovery clamp above, different trigger source:
-      // dispatch_thesis_research sets ctx.forceWatchingMint = true on
-      // chat-dispatched mint events. Chat exploration is EXPLORATORY by
-      // design; auto-ACTIVE coverage from a "write me a thesis on $X"
-      // turn would silently attach HELD-template triggers (EXIT on
-      // stop_loss, REVIEW on target_hit) without a paired place_trade,
-      // and the trigger evaluator would later fire orphan tactical EXIT
-      // runs that fail silently — exact failure mode the discovery clamp
-      // was added to prevent in 2026-05-13. To trade after a chat-
-      // dispatched thesis, the user sends a follow-up "buy this" message
-      // which routes through place_trade and flips status separately.
-      //
-      // Future Phase-3 daily-run refresh dispatches (forceWatchingMint=false,
-      // mode=refresh — refreshes are status-preserving so the clamp
-      // wouldn't apply anyway) and Phase-4 tactical inline calls (bypass
-      // dispatch entirely) are unaffected.
-      const isChatDispatchDirectional =
-        ctx.forceWatchingMint === true &&
-        (args.direction === "LONG" || args.direction === "SHORT");
+
       // P1-24 contract: a record_thesis mint NEVER has an open position, so
       // the only two persistable mint statuses are WATCHING (directional
       // coverage, entry-gated) and PASSED (researched-and-declined). The
@@ -624,49 +590,6 @@ export const recordThesis = defineTool({
             ? "WATCHING"
             : "PASSED"
           : "WATCHING";
-
-      // ── Discovery LONG/SHORT WATCHING cap (Layer-1 enforcement) ────────
-      // The discovery prompt has a soft cap ("mint up to 8 new WATCHING
-      // theses per run") that GPT-4o doesn't honor — 2026-05-17's run
-      // produced 7-8 mints per analyst across 5 analysts (38 new WATCHING
-      // theses in one Sunday, against a documented 8/run target). Given
-      // each thesis gets ~3-4 min of deep research in V2, 5 is closer to
-      // a quality bar than 8. Enforce as a Layer-1 reject so the prompt
-      // can't override it.
-      //
-      // Counts existing LONG/SHORT WATCHING theses minted in THIS run
-      // (researchRunId === ctx.runId). PASS theses don't count (those are
-      // institutional memory, not coverage). Doesn't apply outside
-      // discovery — daily-run still mints freely.
-      const DISCOVERY_WATCHING_CAP = 5;
-      if (
-        isDiscoveryDirectional &&
-        effectiveStatusForTriggers === "WATCHING" &&
-        ctx.runId
-      ) {
-        const existingMints = await prisma.thesis.count({
-          where: {
-            researchRunId: ctx.runId,
-            status: "WATCHING",
-            direction: { in: ["LONG", "SHORT"] },
-          },
-        });
-        if (existingMints >= DISCOVERY_WATCHING_CAP) {
-          return {
-            summary: `Thesis rejected for ${args.ticker}: discovery cap reached (${existingMints}/${DISCOVERY_WATCHING_CAP} LONG/SHORT WATCHING mints in this run).`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note:
-                `Discovery cap: ${DISCOVERY_WATCHING_CAP} new LONG/SHORT WATCHING theses per discovery run. ` +
-                `You've minted ${existingMints} already. Tighten the watchlist — ` +
-                `the agent's next run can re-evaluate. ` +
-                `PASS theses are not capped (those are institutional memory).`,
-            },
-            sources: [],
-          };
-        }
-      }
 
       // TERMINAL PASS theses reject triggers[] at write — no wake-up
       // needed. Future re-encounter mints a fresh thesis chained via

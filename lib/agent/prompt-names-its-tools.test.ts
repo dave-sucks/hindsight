@@ -16,7 +16,7 @@ import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
 import { MODES } from "@/lib/agent/modes";
 import { createResearchTools } from "@/lib/agent/tools";
 
-const MODE_OF: Record<string, string> = { daily: "research-run", tactical: "tactical", discovery: "discovery", chat: "principal" };
+const MODE_OF: Record<string, string> = { daily: "research-run", tactical: "tactical", chat: "principal" };
 
 describe("every tool a text names is on that agent's list", () => {
   beforeAll(() => jest.useFakeTimers({ now: new Date("2026-10-01T12:00:00Z") }));

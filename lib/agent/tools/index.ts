@@ -90,8 +90,6 @@ interface ToolCtx {
   /** Snapshot of ResearchRun.environment — see ToolContext.runEnvironment. */
   runEnvironment?: "PAPER" | "LIVE";
   intelligencePolicy?: IntelligencePolicy;
-  /** Restrict read_signals to discoverySignals bucket only (discovery run). */
-  discoveryOnly?: boolean;
   /** Hide discoverySignals from read_signals (daily-run V2 cron). */
   dailyRunOnly?: boolean;
   /**
@@ -101,13 +99,6 @@ interface ToolCtx {
    * flow; refresh dispatches and tactical inline calls leave it unset.
    */
   forceWatchingMint?: boolean;
-  /**
-   * Full set of tickers this analyst already covers (ACTIVE + WATCHING
-   * theses + watchlist + open positions). Discovery scope ("universe")
-   * excludes this set; "covered" lookups include only this set. Populated
-   * by discovery-run.ts. See ToolContext.coveredTickers.
-   */
-  coveredTickers?: string[];
   /**
    * Deterministic STOP/TARGET close tag for a protective/price EXIT tactical
    * run — see ToolContext.protectiveExitReason. Set by tactical-run.ts when

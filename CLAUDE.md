@@ -322,7 +322,6 @@ plus `get_stock_data`.
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
   - tactical: GPT-5.5, maxSteps 15 (single-thesis, single-decision)
-  - discovery: GPT-5.5, maxSteps 45 (started by hand; no schedule)
   - podcast-builder / podcast-segment-run / podcast-editor
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
@@ -464,8 +463,6 @@ a list here goes stale.
   trigger's trade with no agent
 ### Agent + Trading
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
-- discovery-run.ts — manual only (`app/discovery.run.manual`), per-analyst
-  discovery scan (mints up to 5 new WATCHING theses); no schedule
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
 - weekly-digest.ts — Sunday 9 AM ET digest email
@@ -483,7 +480,7 @@ The agent run page (`/runs/[id]`) renders via:
    hydrate `messages` from the persisted `thread` RunMessage through
    `convertPersistedToUIMessages` (`lib/agent/convert-messages.ts`).
    Not live and no persisted thread → empty state instead. `autoStart` is
-   suppressed for server-side modes (INTRADAY_TACTICAL, DISCOVERY,
+   suppressed for server-side modes (INTRADAY_TACTICAL,
    THESIS_WRITER, PRINCIPAL_CHAT, Inngest podcast segment runs) so the
    page can't launch a second competing agent on the same runId.
 2. **AgentChat** connects to `/api/agent/[mode]` via **ChatRuntime**
@@ -562,12 +559,12 @@ it with a ticker chip as if it were a traded security.
 - Live prices come from `lib/market-data/live-quote.ts` (Alpaca, Finnhub
   behind it) — never a new direct vendor call
 - Model strategy (post-2026-05-15):
-  - **research-run + tactical + discovery**: GPT-5.5 (provider: openai).
-    research-run uses temperature 0.2 + maxSteps 65; tactical maxSteps 15;
-    discovery maxSteps 45. Vercel Pro plan required — the 800s function
+  - **research-run + tactical**: GPT-5.5 (provider: openai).
+    research-run uses temperature 0.2 + maxSteps 65; tactical maxSteps 15.
+    Vercel Pro plan required — the 800s function
     timeout headroom is needed because gpt-5.5 with implicit reasoning
     runs ~13s/tool-call vs gpt-4o's faster cadence. modes.ts maxDuration
-    is 800 for all three; the cron/route AbortSignal derives 770s from
+    is 800 for both; the cron/route AbortSignal derives 770s from
     `(maxDuration - 30) * 1000`.
   - **builder + editor**: GPT-4o still (user-facing latency matters in
     the chat panel; gpt-5.5 would feel slow when interactively

@@ -324,7 +324,7 @@ export const morningResearch = inngest.createFunction(
         // saw every tool — including record_thesis + manage_watchlist
         // — and could mint new coverage that's Discovery's
         // job. Mirrors the same allowlist-filter pattern in
-        // tactical-run.ts and discovery-run.ts.
+        // tactical-run.ts.
         const allTools = createResearchTools({
           runId: run.id,
           userId: config.userId,
