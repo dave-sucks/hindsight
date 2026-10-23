@@ -198,8 +198,9 @@ export interface Checker {
  *      something rewrites them. Background: 2026-06-02 NVDA runaway.
  *
  *   3. `cooldownDays === 0` on an EXIT action — legitimate escape hatch.
- *      EXIT is terminal; the position closes and the cron's `status:ACTIVE`
- *      filter removes the row from evaluation. No runaway risk.
+ *      A sale asks again on every check while its condition holds; while
+ *      one is waiting for approval, the trigger run drops the repeat fires
+ *      (tactical-run's check-queued-close), so there is no runaway.
  */
 export function shouldFire(
   trigger: Trigger,

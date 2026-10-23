@@ -174,17 +174,14 @@ export interface ToolContext {
   signalsByTicker?: Map<string, Set<string>>;
 
   /**
-   * Deterministic close reason for a protective/price EXIT tactical run
-   * (P1-28). Set by lib/inngest/functions/tactical-run.ts when THIS run was
-   * woken by a price-level protective EXIT trigger (trail,
-   * move-from-entry, price levels, move-from-a-close). When present,
-   * close_position tags the close with this STOP/TARGET reason INSTEAD of the
-   * model-chosen `reason` arg — so the close is treated as a material risk
-   * event and stays exempt from the unapproved-exit cooldown (a rejected
-   * gain-lock must re-fire when price re-crosses the level). Undefined for
-   * daily runs and for tactical runs woken by judgment EXIT triggers
-   * (earnings, signals) — those keep the LLM's own tag and a discretionary
-   * MANUAL close correctly stays on cooldown. See
+   * Deterministic close reason for a protective/price EXIT tactical run. Set
+   * by lib/inngest/functions/tactical-run.ts when THIS run was woken by a
+   * price-level protective EXIT trigger (trail, move-from-entry, price
+   * levels, move-from-a-close). When present, close_position tags the close
+   * with this STOP/TARGET reason INSTEAD of the model-chosen `reason` arg:
+   * a declined STOP is a declined sale the next run must answer (lib/agent/declined-sale.ts), and a TARGET sale sends the stock back to watching (lib/proposals/thesis-flips.ts).
+   * Undefined for daily runs and for tactical runs woken by judgment EXIT
+   * triggers (earnings, filings), which keep the LLM's own tag. See
    * lib/agent/triggers/types.ts → protectiveExitCloseReason.
    */
   protectiveExitReason?: "STOP" | "TARGET";

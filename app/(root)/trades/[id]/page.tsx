@@ -558,7 +558,7 @@ export default async function TradeDetailPage({
                 <div className="space-y-0">
                   {activity.map((event: ActivityEvent, i: number) => {
                     const isLast = i === activity.length - 1;
-                    const sourceLabel = event.source === 'price_monitor' ? 'Price monitor' : event.source === 'user' ? 'You' : 'Agent';
+                    const sourceLabel = event.source === 'price_monitor' ? 'Auto-sell' : event.source === 'user' ? 'You' : 'Agent';
                     const SourceIcon = event.source === 'price_monitor' ? Clock : event.source === 'user' ? User : Bot;
                     const ActionIcon =
                       event.kind === 'BUY' || event.kind === 'ADD' ? TrendingUp

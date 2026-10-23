@@ -80,8 +80,8 @@ function baseArgs() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockAccountFindUnique.mockResolvedValue(ALL_TOGGLES_ON);
-  // Default: a discretionary agent close with no prior rejections → the
-  // P1-28 cooldown gate is a no-op and the call stages/folds as before.
+  // Default: a discretionary agent close with no prior rejections; the call
+  // stages/folds as usual.
   mockOrderFindUnique.mockResolvedValue({
     closeReason: "MANUAL",
     closeSource: "agent",
@@ -133,13 +133,9 @@ describe("maybeAwaitApproval — staging", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GAPS P1-28 — unapproved-exit cooldown. The agent re-proposed the same
-// discretionary CLOSE ~daily; prod showed the user mostly IGNORES the card
-// (NVDA 10 expired / 0 rejected, IREN 7/0) rather than explicitly rejecting.
-// The gate refuses to re-stage a discretionary close within the cooldown of a
-// prior unapproved proposal — REJECTED-by-user OR EXPIRED — while ALWAYS
-// letting risk-management exits (STOP/TARGET, price_monitor) through and
-// ignoring systemic tombstones.
+// The unapproved-exit cooldown, and its removal. It refused to re-stage a
+// discretionary close within days of a REJECTED or EXPIRED proposal; it was
+// removed 2026-08-10. These tests pin that nothing suppresses a repeat now.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)", () => {
   // The P1-28 cross-day cooldown was REMOVED 2026-08-10: it went silent on
