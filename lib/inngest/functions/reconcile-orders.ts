@@ -375,7 +375,7 @@ async function applyFillByIntent(
             // originating Order carries the real reason/source — every
             // intent="CLOSE" order is stamped at creation by
             // closeOpenPosition (the agent via close_position/manage_position,
-            // the price-monitor trailing-stop cron, or a manual UI close),
+            // an Auto-sell, or a manual UI close),
             // and that survives the proposal→approve seam. RECONCILED_FILL /
             // "reconcile" is the LAST resort — reserved for a true orphan
             // fill with no decision row behind it (e.g. the AMZN/TSM/NVDA/AMD

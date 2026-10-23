@@ -348,8 +348,8 @@ export const closePosition = defineTool({
 
       // Thesis ACTIVE → CLOSED flip + CLOSED audit row now happens inside
       // closeOpenPosition's FILLED-close branch (lib/proposals/thesis-flips.ts
-      // → closeThesisForPosition), so every close path — agent, the
-      // price-monitor cron, and manual UI — flips identically. The audit row
+      // → closeThesisForPosition), so every close path — agent, an
+      // Auto-sell, and manual UI — flips identically. The audit row
       // (type CLOSED, awaited inside closeOpenPosition before it returns)
       // still satisfies the tactical-run close-out gate, which looks for any
       // non-TRIGGER_FIRED ThesisUpdate row. See P1-18.

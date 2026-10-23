@@ -21,6 +21,8 @@ A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no ag
 
 It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the reason in the analyst's words, what caused it (the trigger that fired or the run that decided it), and when it expires.
 
+A sale made by a trigger set to Auto-sell names that trigger first ("Sell if below $41.42" fired, with no agent run), then the trigger's own reason, and Activity calls it an Auto-sell.
+
 ## What your answer does
 
 - **Approve:** the order goes to the broker. Once the broker takes a buy, the [thesis](theses.md) turns from Watching to Holding and its sell side is armed; once it takes a sale, the thesis is retired as sold, or sent back to Watching after a sale at the target.

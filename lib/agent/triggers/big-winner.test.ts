@@ -18,7 +18,7 @@
  *          and not left to the next one that does.
  *
  * The switch reads Position.peakPrice and Position.peakAt — the water mark
- * the trail reads and the clock the price monitor writes beside it — so it
+ * the trail reads and the clock the five-minute check writes beside it — so it
  * needs no memory of its own and cannot drift from the trail.
  */
 import { evaluateTrigger } from "./evaluate";
@@ -123,7 +123,7 @@ describe("the partial at 2R, and the winner it lets run", () => {
     const plain: When = { watch: "move", is: "above", value: 12, variable: "entry" };
     expect(fires(plain, { ...SMMT, price: 18.0 })).toBe(true);
     expect(fires(PARTIAL, { ...SMMT, peak: null, price: 18.0 })).toBe(true);
-    // A position the price monitor has never stamped: we can't show the run
+    // A position whose high has never been stamped: we can't show the run
     // was fast, so the partial stands rather than silently switching off.
     expect(fires(PARTIAL, { ...SMMT, peakAt: null, price: 18.0 })).toBe(true);
   });

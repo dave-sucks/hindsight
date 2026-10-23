@@ -73,7 +73,7 @@ export { isSystemicRejection } from "@/lib/agent/declined-sale";
  * so an unhandled throw here is provably unreachable-to-Alpaca:
  *   - agent tools (place_trade, manage_position, close_position) run inside
  *     defineTool's try/catch → surfaces as a refused `{ ok: false }` trade.
- *   - the price-monitor trailing-stop cron (`trade-exit.ts` → closeOpenPosition)
+ *   - an Auto-sell (tactical-run's direct-close step → closeOpenPosition)
  *     lets it bubble to the Inngest step → the position simply isn't closed.
  *
  * PAPER is not compliance-bound, so an unresolved PAPER account keeps the

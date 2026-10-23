@@ -250,7 +250,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}. If we hit it the thesis is broken; close and write up the lessons.`,
-      cooldownDays: 0, // explicit opt-out — EXIT is terminal; the position closes and the cron's status:ACTIVE filter takes over.
+      cooldownDays: 0, // explicit opt-out — a sale asks on every check; a waiting proposal drops the repeats.
     });
   }
 

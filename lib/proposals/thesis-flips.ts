@@ -304,7 +304,7 @@ export async function armHeldLadderOnFill(opts: {
  * A take-profit close routes the paired thesis back to WATCHING for re-entry
  * (docs/plans/SCALE_INTO_WINNERS.md PR5) instead of terminal RETIRED. Signal =
  * closeReason "TARGET" — the canonical deliberate profit-take (agent/tactical
- * target-exits carry it; the price-monitor cron closes are STOP/trailing).
+ * target-exits carry it, and so does an Auto-sell on a target trigger).
  * Exported for unit testing.
  *
  * NOTE: this is no longer the ONLY road back to WATCHING — see
@@ -339,7 +339,7 @@ export function isProfitTakeReentry(closeReason: string): boolean {
  * Deliberately NOT a blunt "recycle every stop" rule: a genuinely broken
  * thesis should stay dead rather than clog the watchlist. The agent decides
  * (Layer 3 judgment), this function and the flip below provide the mechanism
- * (Layer 2). No attestation — the price-monitor cron, Auto-sells,
+ * (Layer 2). No attestation — Auto-sells,
  * manual UI closes, promotion force-closes — degrades to today's terminal
  * behavior, which is the safe default.
  *
@@ -365,8 +365,7 @@ export function shouldRecycleToWatching(
  *
  *   • closeOpenPosition's FILLED-close branch (lib/actions/closeTrade.actions.ts)
  *     — every direct close that actually fills now (agent close_position,
- *     the price-monitor trailing-stop cron, and
- *     manual UI closes) routes through there, so they all flip identically.
+ *     an Auto-sell, and manual UI closes) routes through there, so they all flip identically.
  *   • closeThesisOnApproval (below) — the approval path, when an
  *     AWAITING_APPROVAL close proposal is later approved.
  *
@@ -400,7 +399,7 @@ export async function closeThesisForPosition(opts: {
    * GAPS P1-35 — the closing agent's attestation that the thesis BELIEF
    * survived this exit (we sold on price, not because the story broke). true
    * recycles a protective exit back to WATCHING instead of terminal RETIRED.
-   * Undefined/null on every non-agent path (price-monitor cron, Auto-sells,
+   * Undefined/null on every non-agent path (Auto-sells,
    * manual UI closes) → terminal, i.e. unchanged behavior.
    */
   beliefSurvived?: boolean | null;

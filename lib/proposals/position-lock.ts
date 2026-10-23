@@ -71,7 +71,7 @@ export async function lockPositionSales(
 
 /**
  * Cancel the still-AWAITING_APPROVAL proposals on a position that a sale made
- * moot — it closed by another path (the price-monitor cron, a tactical run,
+ * moot — it closed by another path (an Auto-sell, a tactical run,
  * the user; SMTC + MTSI, 2026-06-17), or Alpaca just accepted an approved
  * full close of it.
  *

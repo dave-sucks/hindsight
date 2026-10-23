@@ -84,9 +84,9 @@ function findTriggerById(ladder: Trigger[], id: string): Trigger | null {
 }
 
 /**
- * Close reason for an Auto-sell. Always STOP or TARGET (never MANUAL/TIME) so
- * the close counts as a risk-management exit — those always flow through the
- * approval gate and are exempt from the P1-28 unapproved-exit cooldown.
+ * Close reason for an Auto-sell. Always STOP or TARGET (never MANUAL/TIME):
+ * a declined STOP counts as a declined sale, a TARGET sale sends the stock
+ * back to watching.
  */
 function directExitReason(
   trigger: Trigger,
@@ -520,8 +520,8 @@ export const tacticalRun = inngest.createFunction(
             position.id,
             reason,
             undefined, // creds resolved inside from the position's environment
-            "price_monitor", // autonomous → approval-gated; risk-exit carve-out applies
-            rationale,
+            "price_monitor", // the stored name for an automatic trigger sale; approval-gated
+            `"${sentenceOf(trigger as Trigger)}" fired, with no agent run. ${rationale}`,
             run.id,
           );
           return { kind: outcome.kind, reason };
@@ -627,18 +627,14 @@ export const tacticalRun = inngest.createFunction(
     // ── Run the agent ─────────────────────────────────────────────────
     const outcome = await step.run("agent-run", async () => {
       const t0 = Date.now();
-      // ── Protective-exit cooldown exemption (P1-28) ────────────────────
+      // ── The sale label of a protective exit ───────────────────────────
       // This tactical run was woken BY a specific trigger. When that trigger
       // is a protective/price EXIT (trail-from-high, gain-from-entry, stop /
-      // target price level, daily-% move), the resulting close is a MATERIAL
-      // risk event, not a discretionary re-pitch — it must stay exempt from
-      // the unapproved-exit cooldown so a rejected gain-lock re-fires when
-      // price re-crosses the level. We can't trust the LLM to tag STOP, so we
-      // deterministically precompute the reason from the fired predicate and
-      // thread it into the tool context; close_position uses it in place of
-      // the model-chosen reason. Non-protective EXIT triggers (earnings,
-      // signals, etc.) leave this undefined → the agent's own MANUAL/STOP tag
-      // stands and genuinely discretionary MANUAL closes stay on cooldown.
+      // target price level, daily-% move), the close is labelled STOP or
+      // TARGET from the fired predicate, not by the model: a declined STOP is a declined sale the next run must answer, and a TARGET sale sends the stock back to watching.
+      // close_position uses it in place of the model-chosen reason.
+      // Non-protective EXIT triggers (earnings, filings, etc.) leave this
+      // undefined, so the agent's own label stands.
       const protectiveExitReason =
         (trigger as Trigger).action === "EXIT"
           ? protectiveExitCloseReason(

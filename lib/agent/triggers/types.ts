@@ -154,11 +154,10 @@ export type ThesisTriggers = Trigger[];
  *
  * Why this exists: a price-level protective exit (trail-from-high give-back,
  * gain-from-entry lock, absolute stop/target, daily-% move) is a MATERIAL
- * risk event, not a discretionary re-pitch. The P1-28 unapproved-exit
- * cooldown (lib/proposals/maybe-await-approval.ts) exempts closes tagged
- * STOP/TARGET so a rejected protective exit still re-fires when price
- * re-crosses the level. Both close paths use this mapping so the tag never
- * depends on the LLM remembering to pick STOP:
+ * risk event, not a discretionary re-pitch, and the label decides what
+ * follows: a declined STOP is a declined sale the next run must answer (lib/agent/declined-sale.ts), and a TARGET sale sends the stock back to watching (lib/proposals/thesis-flips.ts).
+ * Both close paths use this mapping so the tag never depends on the LLM
+ * remembering to pick STOP:
  *   • an Auto-sell → directExitReason() (tactical-run.ts) delegates here.
  *   • a sale that asks the analyst → precomputed here and threaded into the
  *     tool context (ToolContext.protectiveExitReason).

@@ -44,8 +44,8 @@ export interface ClosedPositionResult {
 
 /**
  * Trade-as-Proposal — returned when the Account requires approval for
- * sells in this environment AND the close was autonomous (agent OR the
- * price-monitor trailing-stop cron), not a manual UI click. The
+ * sells in this environment AND the close was autonomous (an agent or an
+ * Auto-sell), not a manual UI click. The
  * Position stays OPEN; a pending
  * Order(AWAITING_APPROVAL) carries the close intent until the user approves
  * (then the approve handler submits to Alpaca with the same idempotencyKey)
@@ -74,8 +74,8 @@ export type CloseOpenPositionOutcome =
 /** Who triggered the close — determines audit trail source label.
  *
  * The Trade-as-Proposal gate (see closeOpenPosition body) fires for every
- * AUTONOMOUS source — "agent" AND "price_monitor" (the trailing-stop cron)
- * — routing them through human approval when the Account's sell toggle for
+ * AUTONOMOUS source — "agent" AND "price_monitor" (an Auto-sell: the stored
+ * name is older than On fire; the hourly job sells nothing since #464) — routing them through human approval when the Account's sell toggle for
  * the environment is on. Only "user" (a manual UI click) bypasses the gate:
  * the human is clicking the button, so it is self-approved.
  *
@@ -97,15 +97,15 @@ function buildCloseReason(
 ): string {
   if (source === "price_monitor") {
     if (reason === "TARGET" && targetPrice) {
-      return `Target price of $${targetPrice.toFixed(2)} was reached. ${symbol} closed at $${closePrice.toFixed(2)} by the automated price monitor.`;
+      return `Target price of $${targetPrice.toFixed(2)} was reached. ${symbol} closed at $${closePrice.toFixed(2)} by an Auto-sell.`;
     }
     if (reason === "STOP" && stopLoss) {
-      return `Stop loss at $${stopLoss.toFixed(2)} was hit. ${symbol} closed at $${closePrice.toFixed(2)} by the automated price monitor.`;
+      return `Stop loss at $${stopLoss.toFixed(2)} was hit. ${symbol} closed at $${closePrice.toFixed(2)} by an Auto-sell.`;
     }
     if (reason === "TIME") {
-      return `Hold duration expired. ${symbol} closed at $${closePrice.toFixed(2)} by the automated price monitor.`;
+      return `Hold duration expired. ${symbol} closed at $${closePrice.toFixed(2)} by an Auto-sell.`;
     }
-    return `${symbol} closed at $${closePrice.toFixed(2)} by the automated price monitor (${reason}).`;
+    return `${symbol} closed at $${closePrice.toFixed(2)} by an Auto-sell (${reason}).`;
   }
   if (source === "user") {
     return `${symbol} manually closed at $${closePrice.toFixed(2)} via the UI.`;
@@ -165,7 +165,7 @@ export async function closeOpenPosition(
    * survived this exit (sold on price, not because the story broke). Stamped
    * onto the closing Order so it survives the approval gap on LIVE, and passed
    * straight through on a synchronous fill. Only `close_position` supplies it;
-   * every other caller (price-monitor cron, Auto-sells, manual UI closes,
+   * every other caller (Auto-sells, manual UI closes,
    * promotion force-closes) leaves it undefined → terminal RETIRED, unchanged.
    */
   beliefSurvived?: boolean | null,
@@ -198,8 +198,8 @@ export async function closeOpenPosition(
     : null;
 
   // ── Trade-as-Proposal ──
-  // Every AUTONOMOUS close routes through human approval: "agent" AND the
-  // price-monitor trailing-stop cron ("price_monitor"). Only a manual UI
+  // Every AUTONOMOUS close routes through human approval: "agent" AND an
+  // Auto-sell ("price_monitor"). Only a manual UI
   // click ("user") bypasses — the human is literally clicking the button,
   // so it is self-approved. When the Account's sell toggle for this
   // environment is on, the order is created already AWAITING_APPROVAL and we
@@ -532,8 +532,8 @@ export async function closeOpenPosition(
   //     closeThesisOnApproval when the user approves, so we never double-flip.
   //
   //     Centralizing the flip here means EVERY direct-fill close — agent
-  //     close_position / manage_position, the price-monitor trailing-stop
-  //     cron ("price_monitor"), and manual UI closes ("user") — reflects the
+  //     close_position / manage_position, an Auto-sell ("price_monitor"),
+  //     and manual UI closes ("user") — reflects the
   //     close on the thesis consistently. Before this, a cron trailing-stop
   //     close on an approval-OFF book left the thesis ACTIVE with no position.
   //

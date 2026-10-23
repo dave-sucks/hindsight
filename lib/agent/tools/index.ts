@@ -112,8 +112,8 @@ interface ToolCtx {
    * Deterministic STOP/TARGET close tag for a protective/price EXIT tactical
    * run — see ToolContext.protectiveExitReason. Set by tactical-run.ts when
    * the fired trigger is a price-level protective exit; close_position uses
-   * it in place of the model-chosen reason so the close inherits the P1-28
-   * cooldown exemption.
+   * it in place of the model-chosen reason, so the sale label doesn't depend
+   * on the model.
    */
   protectiveExitReason?: "STOP" | "TARGET";
   /**

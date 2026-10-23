@@ -70,6 +70,8 @@ describe("the trigger run, by fire mode", () => {
     expect(r.modelCalls).toBe(0);
     expect(r.closes).toHaveLength(1);
     expect(r.closes[0].slice(0, 2)).toEqual(["pos_iot", "STOP"]);
+    // The sale says which trigger sold it, then the trigger's own reason.
+    expect(r.closes[0][4]).toBe('"Sell if below $41.42" fired, with no agent run. Under your hand-set floor at $41.42.');
     expect(r.runs[0]).toMatchObject({ status: "COMPLETE" });
   });
 
