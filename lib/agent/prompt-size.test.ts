@@ -25,7 +25,6 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   daily: 6_354,
   tactical: 11_367,
   writer: 12_620,
-  discovery: 21_774,
   chat: 33_099,
 };
 
@@ -38,10 +37,9 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
 const RECORDED_TOOLS: Record<string, number> = {
   "research-run": 31_827,
   tactical: 27_562,
-  discovery: 36_012,
   principal: 64_545,
 };
-const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", discovery: "DISCOVERY", principal: "PRINCIPAL_CHAT" };
+const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 
 function toolDefinitionChars(mode: string): number {
   const all = createResearchTools({ runId: "size", userId: "u", accountId: "a", analystId: "an", runMode: RUN_MODE[mode], runEnvironment: "PAPER" } as never) as Record<string, { description?: string; inputSchema: unknown }>;

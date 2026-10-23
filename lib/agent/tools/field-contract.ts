@@ -38,7 +38,7 @@
 export type FieldKind = "COMPUTED" | "CHOSEN" | "JUDGED" | "IDENTITY" | "TEXT" | "CARRIED";
 
 /** The prompts a rule can be stated in. */
-export type PromptName = "daily" | "tactical" | "discovery" | "chat" | "writer";
+export type PromptName = "daily" | "tactical" | "chat" | "writer";
 
 /** A rule the tools enforce, and the words each prompt uses to state it. */
 export interface Rule {
@@ -61,7 +61,7 @@ const RULE_DEFS = {
     refusal: "invalid_thesis_shape — names the ratio, the three levels, and the fix.",
     // The morning run reads it in PLAN_PROBLEM's guidance when a plan is
     // under it (lib/agent/situations.ts), and in the refusal.
-    markers: { discovery: "2:1", chat: "2:1", writer: "2:1" },
+    markers: { chat: "2:1", writer: "2:1" },
   },
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
@@ -74,14 +74,14 @@ const RULE_DEFS = {
     says: "A buy needs the analyst's minimum confidence (the composite score).",
     refusal: "place_trade / record_thesis — names the composite and the minimum.",
     // Every door reads it in the analyst's brief (lib/agent/analyst-brief.ts).
-    markers: { daily: "Min confidence", discovery: "Min confidence", chat: "Min confidence", writer: "Min confidence" },
+    markers: { daily: "Min confidence", chat: "Min confidence", writer: "Min confidence" },
   },
   LEVEL_ORDER: {
     says: "Entry, target and stop sit in order against each other and the live price (long: stop < entry < target).",
     refusal: "invalid_thesis_shape — names the three levels and which is out of order.",
     // The trigger run reads the reward-to-risk check in ADD_OR_WINNER's
     // guidance (lib/agent/situations.ts), and the order in the refusal.
-    markers: { daily: "target/stop", discovery: "in order", chat: "target/stop", writer: "R/R" },
+    markers: { daily: "target/stop", chat: "target/stop", writer: "R/R" },
   },
   EVENT_DATE: {
     says: "The event date is the company's newest statement. A filing fills a missing date; a disagreement is written on the row, never overwritten.",
@@ -256,6 +256,5 @@ export const WRITE_TOOL_EXPORTS: Record<string, string> = {
 export const MODE_PROMPTS: Array<{ mode: string; runMode: string; prompt: PromptName }> = [
   { mode: "research-run", runMode: "MORNING_PLAN", prompt: "daily" },
   { mode: "tactical", runMode: "INTRADAY_TACTICAL", prompt: "tactical" },
-  { mode: "discovery", runMode: "DISCOVERY", prompt: "discovery" },
   { mode: "principal-chat", runMode: "PRINCIPAL_CHAT", prompt: "chat" },
 ];

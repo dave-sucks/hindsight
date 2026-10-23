@@ -11,7 +11,6 @@ import { dailyRunDigest } from "@/lib/inngest/functions/daily-run-digest";
 import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
 import { triggerEvaluator } from "@/lib/inngest/functions/trigger-evaluator";
 import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
-import { discoveryRun } from "@/lib/inngest/functions/discovery-run";
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
 import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 // THESIS_RESEARCH_V2 Phase 1 — sub-agent dispatched by Principal Chat
@@ -86,11 +85,6 @@ export const { GET, POST, PUT } = serve({
     // tactical agent runs INSIDE the function (mode='INTRADAY_TACTICAL'
     // on ResearchRun). 240s maxDuration covers the agent + bookkeeping.
     tacticalRun,
-    // Discovery run, on the `app/discovery.run.manual` event only (no
-    // schedule). Spawns a focused agent run per analyst that looks for
-    // net-new ticker coverage and mints WATCHING theses. Does NOT
-    // touch existing theses (the daily run handles those).
-    discoveryRun,
     // 2026-06-01: intradayEodFlatten removed — no DAY-horizon analysts in
     // production; the auto-flatten cron had no consumers. Deleted as part
     // of the Trade-as-Proposal rollout (the proposal flow would have made

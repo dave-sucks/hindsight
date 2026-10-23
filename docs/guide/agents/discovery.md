@@ -1,14 +1,12 @@
 # Discovery
 
-**Find it before it's obvious.** Discovery looks for stocks an analyst doesn't cover yet, and sends the best to the Writer.
+**Find it before it's obvious.** Discovery looks for stocks an analyst doesn't cover yet, and sends the best to the Writer. It's a job [chat](chat.md) does when you ask; there is no separate Discovery run.
 
 It's where a stock's life starts. It screens wide, scores fast and hands off. It never writes a plan and never buys.
 
 ```facts
-Model: gpt-5.4
+Runs in: Chat
 Starts: When you ask
-Steps: Up to 45
-Tools: 15
 Saves: A pass or a watch
 ```
 
@@ -33,7 +31,7 @@ Finding a stock and making the case for it are separate jobs. Discovery is wide 
 
 ## When it runs
 
-When you ask, and in practice you ask in [chat](chat.md). Chat carries Discovery's tools and the same scoring rules, so "find drift names off this week's reports" in chat is a discovery pass, best with an analyst selected. The standalone Discovery run, the one the facts above describe, is its own run for one analyst, started by an event; nothing in the app's pages starts it today.
+When you ask in [chat](chat.md). "Find drift names off this week's reports" is a discovery pass, best with an analyst selected so the search stays inside its universe. Nothing runs it on a schedule.
 
 > Find drift names off this week's reports.
 >
@@ -52,7 +50,7 @@ Then the places new names show up:
 - **Movers:** `get_market_movers`, today's gainers, losers and most active.
 - **Catalysts and the web:** `get_catalyst_calendar` for dated FDA decisions; `web_search` and `twitter_search` to check a story.
 
-These tools hide every stock already on the book, so a run never brings back names the analyst covers.
+Asked for the analyst's universe, these tools hide every stock it already watches or holds, so a pass never brings back names it covers.
 
 ## What it decides
 
@@ -60,7 +58,7 @@ It works in two passes. The first reads the whole pool and drops what plainly do
 
 Each stock that survives is scored out of 10: trend (3), strength against the market (3), entry (2) and how fresh its catalyst is (2). A 4 or better earns research. Every stock ends one of four ways:
 
-- **Research:** `dispatch_thesis_research` sends it to the Writer. Five per run at most, the best scores first.
+- **Research:** `dispatch_thesis_research` sends it to the Writer. Five per conversation at most, the best scores first.
 - **Watch:** strong but not ready to price, or past the five. Saved with `record_thesis` as a watch with a wake-up (a price, a move, an earnings beat or miss, or days before the report), so "no room this week" never means "never." A watch with no wake-up at all is just a name on the list, waiting for you.
 - **Pass:** researched and declined. Saved as Passed with what would change the verdict, so it isn't pitched again without a reason.
 - **Skip:** dropped in the first pass. One line in the summary; nothing is saved.
@@ -71,28 +69,27 @@ The Writer researches each stock it was sent and puts it on the watchlist with a
 
 A watch sleeps until its wake-up comes true. Then the stock is in the "watch woke up" [situation](../concepts/situations.md), and the next morning run decides whether to bring it back.
 
-The run ends with `record_run_summary`. The Writer runs it started land on their own; in chat, `wait_for_thesis_refresh` brings them back into the conversation.
+The Writer runs it started land on their own; `wait_for_thesis_refresh` brings them back into the conversation.
 
 ## Tools
 
-Everything Discovery can call, read from `lib/agent/modes.ts`.
+Discovery uses these of chat's tools. [Chat](chat.md) lists all of them.
 
-<!-- asset: tools discovery -->
+- **Find candidates:** `run_screen`, `get_earnings_calendar`, `get_market_movers`, `get_catalyst_calendar`, `get_sec_filings`.
+- **Check them:** `get_theses`, `get_stock_data`, `web_search`, `twitter_search`.
+- **Hand off or record:** `dispatch_thesis_research` sends a stock to the Writer; `record_thesis` saves a pass or a watch; `wait_for_thesis_refresh` brings the Writer's results back into the conversation.
 
 <details>
 <summary>Technical details</summary>
 
 #### Prompt
-`lib/agent/system-prompts/discovery.ts` (`buildDiscoverySystemPrompt`)
+The batched-discovery section ("Triage flow") of the chat prompt, `buildPrincipalSystemPrompt` in `lib/agent/modes.ts`.
 
 #### Mode
-`discovery` in `lib/agent/modes.ts`: `gpt-5.4`, up to 45 steps. Chat (`principal`) carries the same discovery tools.
-
-#### Started by
-The standalone run: the `app/discovery.run.manual` event, which can carry an analyst and a focus (`lib/inngest/functions/discovery-run.ts`; without an analyst it skips day-trading analysts). It has no schedule. In practice discovery is done in chat: the `principal` prompt in `lib/agent/modes.ts` carries the same batched-discovery rules, score and cap of five (the cap is the prompt's there; `dispatch_thesis_research` enforces `DISPATCH_CAP` only under a DISCOVERY run).
+`principal` in `lib/agent/modes.ts`. The standalone `discovery` mode, its prompt and its run (`lib/inngest/functions/discovery-run.ts`) were deleted; old DISCOVERY runs still open on the runs page.
 
 #### Score and cap
-The 10-point composite and its bar of 4 are in the prompt. `DISPATCH_CAP` = 5 per run, enforced in `dispatch_thesis_research`.
+The 10-point composite, its bar of 4 and the cap of five dispatches a conversation are rules in the chat prompt.
 
 #### Outcomes
 `record_thesis` with `direction: PASS` is a pass; with `status: WATCHING` as well, a watch without a plan. A new plan is always the Writer's.

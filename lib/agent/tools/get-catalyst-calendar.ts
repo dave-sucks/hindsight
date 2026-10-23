@@ -79,7 +79,6 @@ export const getCatalystCalendar = defineTool({
     const scope = args.scope ?? "universe";
     const covered = new Set(
       [
-        ...((ctx as { coveredTickers?: string[] }).coveredTickers ?? []),
         ...((ctx as { watchlist?: string[] }).watchlist ?? []),
         ...((ctx as { positionTickers?: string[] }).positionTickers ?? []),
       ].map((t) => t.toUpperCase()),

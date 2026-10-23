@@ -47,7 +47,7 @@ Eastern time, on trading days unless it says otherwise.
 - **5:00 PM:** End-of-day snapshots of every position, and the post-trade review of any position closed that day that hasn't had one.
 - **8:00 PM:** The portfolio digest the next morning's runs read.
 - **Sundays 10:00 AM:** Weekly scorecards: win rate, and how well conviction matched outcomes, once an analyst has three closed trades.
-- **Discovery** has no schedule. It runs when you ask.
+- **Discovery** has no schedule. It is done in chat, when you ask.
 
 The two workflows these clocks drive, end to end: [From fire to run](deep-dives/trigger-fire-to-run.md) and [From proposal to fill](deep-dives/proposal-to-fill.md).
 
@@ -59,7 +59,7 @@ Some data isn't on any plan we hold: analyst price targets, forward revenue and 
 
 ## The right model for each job
 
-- **Morning runs, trigger runs, discovery:** GPT-5.4. Up to 65, 15 and 45 steps a run, with the prompt cached between steps.
+- **Morning runs and trigger runs:** GPT-5.4. Up to 65 and 15 steps a run, with the prompt cached between steps.
 - **The Writer:** Claude Sonnet 4.6. Won a side-by-side test on grounded research and getting fiscal years right.
 - **Chat:** Claude Sonnet 4.6. With thinking on, for the questions that need a careful answer.
 - **Analyst builder:** GPT-4o. Fast, because you're waiting on it in a conversation.
@@ -70,7 +70,7 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 
 | Agent | Starts | Reads | May change | Trades |
 |---|---|---|---|---|
-| [Discovery](agents/discovery.md) | When you ask | The tickers its analyst already covers, to skip them | A pass or a watch; new stocks go to the Writer | Never |
+| [Discovery](agents/discovery.md) | When you ask in chat | The tickers its analyst already covers, to skip them | A pass or a watch; new stocks go to the Writer | Never |
 | [The Writer](agents/writer.md) | When an agent or you ask | Its own pull of one stock's data, and the web | The whole thesis | Never |
 | [Morning run](agents/morning-runs.md) | 8:00 AM ET on run days | Its whole book, each stock at the size today needs | The plan, its verdict and a note | Proposes |
 | [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires | The one stock it woke for, with the fire | The plan and a note | Proposes |

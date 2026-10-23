@@ -56,7 +56,7 @@ const empty = (total: number) => ({ hits: { total: { value: total }, hits: [] } 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const run = async (args: Record<string, unknown>, covered: string[] = []): Promise<any> =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (getSecFilings({ runId: "chat", userId: "u", accountId: "a", coveredTickers: covered, groupId: (p: string) => p } as unknown as ToolContext) as any).execute(args);
+  (getSecFilings({ runId: "chat", userId: "u", accountId: "a", watchlist: covered, groupId: (p: string) => p } as unknown as ToolContext) as any).execute(args);
 
 beforeEach(() => {
   __resetCikCache();

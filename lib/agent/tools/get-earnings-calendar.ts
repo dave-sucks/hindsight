@@ -117,23 +117,17 @@ export const getEarningsCalendar = defineTool({
     //
     // FIX: three scopes —
     //   "all"      — full firm calendar.
-    //   "universe" — calendar MINUS coveredTickers (discovery set).
+    //   "universe" — calendar MINUS the book (watchlist ∪ positions).
     //   "coverage" — calendar ∩ (watchlist ∪ positions) (book set — default).
     //
     // Industry / sector fencing requires per-ticker enrichment which is too
     // expensive at tool-call time; deferred.
     const watchlist = (ctx as { watchlist?: string[] })?.watchlist ?? [];
     const positionTickers = (ctx as { positionTickers?: string[] })?.positionTickers ?? [];
-    const ctxCovered = (ctx as { coveredTickers?: string[] })?.coveredTickers ?? [];
     const coverageSet = new Set(
       [...watchlist, ...positionTickers].map((t) => t.toUpperCase()),
     );
-    const coveredSet = new Set(
-      (ctxCovered.length > 0
-        ? ctxCovered
-        : [...watchlist, ...positionTickers]
-      ).map((t) => t.toUpperCase()),
-    );
+    const coveredSet = coverageSet;
     let filtered: EarningsRow[];
     if (scope === "coverage") {
       filtered = coverageSet.size > 0

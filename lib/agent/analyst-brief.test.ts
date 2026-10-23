@@ -5,7 +5,7 @@
  * Before step 10 the analyst was rendered five ways: the morning run's
  * `## Edge` + `## Rules`, the trigger run's "You are X. <strategy>" and room
  * block, the chat's scope bullets and fenced strategy, the writer's "Your
- * strategy" + `YOUR SETUPS`, discovery's "operating manual" and config block.
+ * strategy" + `YOUR SETUPS`, and the standalone discovery run's (since deleted) "operating manual".
  * Each door here is built through its real prompt builder from one analyst.
  *
  * The analyst is the Catalyst Event PM's production row of 2026-10-08: its
@@ -19,7 +19,6 @@ import { analystBrief, setupLines, universeLines, type BriefAnalyst } from "@/li
 import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
-import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
@@ -79,7 +78,6 @@ const DOORS = {
   trigger: () => tactical(CATALYST),
   chat: () => buildPrincipalSystemPrompt({ scopedAnalyst: CATALYST }),
   writer: () => buildWriterResearchPrompt({ analyst: CATALYST, ticker: "DOCU", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-10-08", setups: setupsForAnalyst(CATALYST.setupIds) }),
-  discovery: () => buildDiscoverySystemPrompt({ config: CATALYST, existingTickers: [] }),
 };
 
 const count = (text: string, part: string) => text.split(part).length - 1;
@@ -135,8 +133,8 @@ describe("every door reads the same brief, once", () => {
   const brief = analystBrief(CATALYST);
   const prompts = Object.fromEntries(Object.entries(DOORS).map(([door, build]) => [door, build()])) as Record<keyof typeof DOORS, string>;
 
-  it("the trigger run off a sale, the chat, the writer and discovery: the brief byte for byte", () => {
-    for (const door of ["trigger", "chat", "writer", "discovery"] as const) expect(count(prompts[door], brief)).toBe(1);
+  it("the trigger run off a sale, the chat and the writer: the brief byte for byte", () => {
+    for (const door of ["trigger", "chat", "writer"] as const) expect(count(prompts[door], brief)).toBe(1);
   });
 
   it("the morning run: the same brief with its room line", () => {
@@ -169,7 +167,7 @@ describe("every door reads the same brief, once", () => {
     for (const door of Object.keys(DOORS) as Array<keyof typeof DOORS>) for (const g of gone) expect([door, g, prompts[door].includes(g)]).toEqual([door, g, false]);
   });
 
-  it("the chat and discovery show the fence, from one function", () => {
+  it("the chat shows the fence, from one function", () => {
     const fence = universeLines(CATALYST);
     expect(fence).toEqual([
       "Sectors: Health Care, Information Technology",
@@ -180,7 +178,6 @@ describe("every door reads the same brief, once", () => {
     ]);
     for (const line of fence) {
       expect(count(prompts.chat, line)).toBe(1);
-      expect(count(prompts.discovery, line)).toBe(1);
     }
   });
 });

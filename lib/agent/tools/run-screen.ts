@@ -82,8 +82,7 @@ export const runScreenTool = defineTool({
     const creds = (ctx as { alpacaCreds?: AlpacaCredentials }).alpacaCreds;
     const watchlist = ((ctx as { watchlist?: string[] }).watchlist ?? []).map((t) => t.toUpperCase());
     const positionTickers = ((ctx as { positionTickers?: string[] }).positionTickers ?? []).map((t) => t.toUpperCase());
-    const ctxCovered = ((ctx as { coveredTickers?: string[] }).coveredTickers ?? []).map((t) => t.toUpperCase());
-    const covered = new Set(ctxCovered.length ? ctxCovered : [...watchlist, ...positionTickers]);
+    const covered = new Set([...watchlist, ...positionTickers]);
     const held = new Set(positionTickers);
     const exclusions = new Set(((ctx as { exclusionList?: string[] }).exclusionList ?? []).map((t) => t.toUpperCase()));
     const setupName = getSetup(setup)?.name ?? setup;

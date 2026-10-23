@@ -235,16 +235,9 @@ export const readSignals = defineTool({
   },
 
   execute: async ({ tickers, themes, type, urgency, limit, lookbackDays, triggerId }, ctx) => {
-    // Discovery is a WEEKLY cron — the right window for "what's worth
-    // tracking this week" is the whole prior week of routed signals,
-    // not just today's. Default lookbackDays=0 used to silently return
-    // empty on the Sunday discovery cron (the intelligence-pipeline
-    // crons were Mon-Fri only, so Sunday had zero routes for "today"),
-    // which caused the 2026-05-10 zero-theses outage. Those crons now
-    // run daily, but the 7-day default in discovery mode still makes
-    // sense for the cadence. Daily-run mode keeps 0 (today-only).
+    // Today only unless the caller asks for a window.
     if (lookbackDays === undefined) {
-      lookbackDays = ctx.discoveryOnly ? 7 : 0;
+      lookbackDays = 0;
     }
     // ── Podcast segment branch ───────────────────────────────────────────
     // When the run is a podcast-segment-run, ctx carries podcastSegmentId
@@ -296,11 +289,9 @@ export const readSignals = defineTool({
     // shouldn't be diving into historical trigger fires from the daily
     // walk-the-book path.
     let priorTriggerSignalIds: string[] | null = null;
-    if (triggerId && (ctx.discoveryOnly || ctx.dailyRunOnly)) {
+    if (triggerId && ctx.dailyRunOnly) {
       console.warn(
-        `[read_signals] ignoring triggerId='${triggerId}' in ${
-          ctx.discoveryOnly ? "discoveryOnly" : "dailyRunOnly"
-        } mode — falling through to routed-pool query.`,
+        `[read_signals] ignoring triggerId='${triggerId}' in dailyRunOnly mode — falling through to routed-pool query.`,
       );
     } else if (triggerId) {
       const priorUpdates = await prisma.thesisUpdate.findMany({
@@ -401,59 +392,37 @@ export const readSignals = defineTool({
     }
 
     // Per-ticker cap: SMH × 9 in the top 10 is how TMT missed POET/GSIT/CSCO
-    // on 2026-04-23. Default 2 for daily-run mode so one hot story doesn't
-    // starve unique names. Discovery mode raises to 5 — a weekly scan
-    // *wants* high signal density on net-new names (MU's 9 routes, INTC's
-    // 5 routes) to surface; capping them at 2 kills the very conviction
-    // signal the agent is supposed to find. Macro/aggregate signals with
-    // no ticker are uncapped either way.
-    const MAX_PER_TICKER = ctx.discoveryOnly ? 5 : 2;
+    // on 2026-04-23. Two per ticker so one hot story doesn't starve unique
+    // names. Macro/aggregate signals with no ticker are uncapped.
+    const MAX_PER_TICKER = 2;
     const firstTickerKey = (r: (typeof filtered)[number]): string | null => {
       const t = r.signal.tickers?.[0];
       return t ? t.toUpperCase() : null;
     };
 
-    // 2026-05-13 — discovery-mode picker rewrite.
-    //
-    // PRIOR BUG: in discoveryOnly mode the picker still did per-bucket
-    // fair-share (portfolio + watchlist + discovery, 16 each), then later
-    // filtered out `isAlreadyCovered` signals. Portfolio + watchlist
-    // signals always have covered tickers, so they got stripped — leaving
-    // only multi-ticker aggregate signals where one non-covered ticker
-    // happened to appear. Single-ticker DISCOVERY-code routes on net-new
-    // names (KLAC, TXN, FROG, RNG, $S, CRBR, CHPT) lost every fight
-    // against the per-bucket cap and never reached the agent.
-    //
-    // FIX: in discoveryOnly mode, bypass bucketing entirely. Pre-filter
-    // routes to those whose tickers are NOT all-covered, then take up to
-    // effectiveLimit with the raised per-ticker cap. The agent's whole
-    // job in discovery is finding net-new names — the three-bucket UI is
-    // for the daily run, not for here.
-    const coveredSetEarly = new Set(
-      (ctx.coveredTickers ?? [
-        ...(ctx.watchlist ?? []),
-        ...(ctx.positionTickers ?? []),
-      ]).map((t) => t.toUpperCase()),
-    );
-    const isAllCovered = (
-      r: (typeof filtered)[number],
-    ): boolean => {
-      const tickers: string[] = r.signal.tickers ?? [];
-      if (tickers.length === 0) return false; // macro = never "covered"
-      return tickers.every((t: string) => coveredSetEarly.has(t.toUpperCase()));
-    };
-
-    let picked: typeof filtered = [];
+    const picked: typeof filtered = [];
     const pickedIds = new Set<string>();
 
-    if (ctx.discoveryOnly) {
-      // Discovery: ignore bucketing. Walk the full filtered list in
-      // relevance order, keep anything with at least one non-covered
-      // ticker, cap per-ticker, stop at effectiveLimit.
+    // Three-bucket fair-share so the agent
+    // sees a reasonable slice of portfolio + watchlist + discovery on
+    // every call.
+    const groupedByBucket: {
+      portfolio: typeof filtered;
+      watchlist: typeof filtered;
+      discovery: typeof filtered;
+    } = { portfolio: [], watchlist: [], discovery: [] };
+    for (const r of filtered) {
+      const code = r.routeReasonCode as RouteReasonCode | null;
+      if (code === "POSITION") groupedByBucket.portfolio.push(r);
+      else if (code === "WATCHLIST") groupedByBucket.watchlist.push(r);
+      else groupedByBucket.discovery.push(r);
+    }
+    const perBucketCap = Math.max(10, Math.floor(effectiveLimit / 3));
+    for (const b of ["portfolio", "watchlist", "discovery"] as const) {
       const perTickerCount = new Map<string, number>();
-      for (const r of filtered) {
-        if (picked.length >= effectiveLimit) break;
-        if (isAllCovered(r)) continue;
+      let kept = 0;
+      for (const r of groupedByBucket[b]) {
+        if (kept >= perBucketCap) break;
         const tk = firstTickerKey(r);
         if (tk) {
           const n = perTickerCount.get(tk) ?? 0;
@@ -462,58 +431,27 @@ export const readSignals = defineTool({
         }
         picked.push(r);
         pickedIds.add(r.id);
+        kept++;
       }
-    } else {
-      // Daily-run / ad-hoc: keep the three-bucket fair-share so the agent
-      // sees a reasonable slice of portfolio + watchlist + discovery on
-      // every call.
-      const groupedByBucket: {
-        portfolio: typeof filtered;
-        watchlist: typeof filtered;
-        discovery: typeof filtered;
-      } = { portfolio: [], watchlist: [], discovery: [] };
-      for (const r of filtered) {
-        const code = r.routeReasonCode as RouteReasonCode | null;
-        if (code === "POSITION") groupedByBucket.portfolio.push(r);
-        else if (code === "WATCHLIST") groupedByBucket.watchlist.push(r);
-        else groupedByBucket.discovery.push(r);
+    }
+    // Backfill to effectiveLimit with whatever's left, highest score
+    // first, respecting the per-ticker cap globally.
+    const globalPerTicker = new Map<string, number>();
+    for (const r of picked) {
+      const tk = firstTickerKey(r);
+      if (tk) globalPerTicker.set(tk, (globalPerTicker.get(tk) ?? 0) + 1);
+    }
+    for (const r of filtered) {
+      if (picked.length >= effectiveLimit) break;
+      if (pickedIds.has(r.id)) continue;
+      const tk = firstTickerKey(r);
+      if (tk) {
+        const n = globalPerTicker.get(tk) ?? 0;
+        if (n >= MAX_PER_TICKER) continue;
+        globalPerTicker.set(tk, n + 1);
       }
-      const perBucketCap = Math.max(10, Math.floor(effectiveLimit / 3));
-      for (const b of ["portfolio", "watchlist", "discovery"] as const) {
-        const perTickerCount = new Map<string, number>();
-        let kept = 0;
-        for (const r of groupedByBucket[b]) {
-          if (kept >= perBucketCap) break;
-          const tk = firstTickerKey(r);
-          if (tk) {
-            const n = perTickerCount.get(tk) ?? 0;
-            if (n >= MAX_PER_TICKER) continue;
-            perTickerCount.set(tk, n + 1);
-          }
-          picked.push(r);
-          pickedIds.add(r.id);
-          kept++;
-        }
-      }
-      // Backfill to effectiveLimit with whatever's left, highest score
-      // first, respecting the per-ticker cap globally.
-      const globalPerTicker = new Map<string, number>();
-      for (const r of picked) {
-        const tk = firstTickerKey(r);
-        if (tk) globalPerTicker.set(tk, (globalPerTicker.get(tk) ?? 0) + 1);
-      }
-      for (const r of filtered) {
-        if (picked.length >= effectiveLimit) break;
-        if (pickedIds.has(r.id)) continue;
-        const tk = firstTickerKey(r);
-        if (tk) {
-          const n = globalPerTicker.get(tk) ?? 0;
-          if (n >= MAX_PER_TICKER) continue;
-          globalPerTicker.set(tk, n + 1);
-        }
-        picked.push(r);
-        pickedIds.add(r.id);
-      }
+      picked.push(r);
+      pickedIds.add(r.id);
     }
 
     const finalRoutes = picked.slice(0, effectiveLimit);
@@ -534,27 +472,7 @@ export const readSignals = defineTool({
     // Watchlist names stay because they're the analyst's curated set of
     // explicit interests — surfacing fresh signals on those is correct
     // even when the router didn't reach the analyst this morning.
-    //
-    // In discoveryOnly mode, the fallback is meaningless — every fallback
-    // signal would carry a watchlist ticker which is already covered.
-    // Return empty-shape directly so the agent moves on to movers /
-    // earnings calendar instead of seeing a "Fallback: watchlist match"
-    // summary it can't act on.
-    if (finalRoutes.length === 0 && ctx.discoveryOnly) {
-      return {
-        summary: "No routed discovery candidates today.",
-        data: {
-          count: 0,
-          signals: [],
-          portfolioSignals: [],
-          watchlistSignals: [],
-          discoverySignals: [],
-          discoveryNote:
-            "Router surfaced no net-new candidates this week — fall back to get_market_movers / get_earnings_calendar with scope:\"universe\".",
-        } as SignalsToolData,
-        sources: [],
-      };
-    }
+
     if (finalRoutes.length === 0) {
       const config = await prisma.agentConfig.findUnique({
         where: { id: ctx.analystId },
@@ -691,53 +609,14 @@ export const readSignals = defineTool({
 
     // 2026-05-10 — discovery semantics fix.
     //
-    // PRIOR BUG: the discovery bucket was defined as "routes with code in
-    // {DISCOVERY, SECTOR_MATCH, INDUSTRY_MATCH, THEME_MATCH, CROSS_ANALYST,
-    // FIRM_AGGREGATE_FEED-with-no-portfolio-overlap}". For an analyst with a
-    // busy book, most aggregate routes get classified as AGGREGATE_TICKER_MATCH
-    // and land in the watchlist or portfolio bucket via the matchedUniverse
-    // hints — then discoveryOnly hides those, leaving the agent with an
-    // empty discovery bucket even when 60+ signals routed. (See the weekly
-    // auto-cron on 2026-05-10: Catalyst Event Raider had 68 "discovery
-    // bucket" routes per SQL but read_signals returned 0.)
-    //
-    // FIX: in discoveryOnly mode, "discovery" means signal-tickers NOT in
-    // this analyst's covered set (active + watching theses + watchlist +
-    // open positions). The bucketing system is irrelevant — the right
-    // question is "does the agent already cover this ticker?".
-    //
-    // Outside discoveryOnly mode, keep the bucket-based classification —
-    // the daily-run + ad-hoc paths still want the three-bucket UI.
-    const coveredSet = new Set(
-      (ctx.coveredTickers ?? [
-        ...(ctx.watchlist ?? []),
-        ...(ctx.positionTickers ?? []),
-      ]).map((t) => t.toUpperCase()),
-    );
-    const isAlreadyCovered = (s: SignalItem): boolean =>
-      s.tickers.length === 0
-        ? false // macro / aggregate-with-no-tickers: never "covered"
-        : s.tickers.every((t) => coveredSet.has(t.toUpperCase()));
-    const discoverySignalsAll = ctx.discoveryOnly
-      ? mappedSignals.filter((s) => !isAlreadyCovered(s))
-      : mappedSignals.filter((s) => bucketOf(s) === "discovery");
+    const discoverySignalsAll = mappedSignals.filter((s) => bucketOf(s) === "discovery");
 
-    // Mode-aware bucket filtering:
-    //   discoveryOnly → Discovery run: hide portfolio + watchlist
-    //                   buckets, agent only sees net-new candidates.
-    //   dailyRunOnly  → Daily Run V2 (Fix #6): hide discovery bucket,
-    //                   agent only sees its book + watchlist. Discovery
-    //                   candidates only show up in a Discovery run.
-    // The flags are mutually exclusive in practice (different crons set
-    // them); if both are set discoveryOnly wins.
-    const portfolioSignals = ctx.discoveryOnly ? [] : portfolioSignalsAll;
-    const watchlistSignals = ctx.discoveryOnly ? [] : watchlistSignalsAll;
-    const discoverySignals = ctx.dailyRunOnly && !ctx.discoveryOnly ? [] : discoverySignalsAll;
-    const visibleSignals = ctx.discoveryOnly
-      ? discoverySignalsAll
-      : ctx.dailyRunOnly
-        ? [...portfolioSignalsAll, ...watchlistSignalsAll]
-        : mappedSignals;
+    // dailyRunOnly (Daily Run V2, Fix #6) hides the discovery bucket: the
+    // agent sees its book + watchlist only.
+    const portfolioSignals = portfolioSignalsAll;
+    const watchlistSignals = watchlistSignalsAll;
+    const discoverySignals = ctx.dailyRunOnly ? [] : discoverySignalsAll;
+    const visibleSignals = ctx.dailyRunOnly ? [...portfolioSignalsAll, ...watchlistSignalsAll] : mappedSignals;
 
     const urgent = visibleSignals.filter((s) => s.urgency === "HIGH" || s.urgency === "BREAKING").length;
     const bullish = visibleSignals.filter((s) => s.sentiment === "BULLISH").length;
@@ -746,11 +625,7 @@ export const readSignals = defineTool({
     recordSignalsByTicker(ctx.signalsByTicker, visibleSignals);
 
     return {
-      summary: ctx.discoveryOnly
-        ? `${discoverySignals.length} discovery candidate${discoverySignals.length !== 1 ? "s" : ""} ` +
-          `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish). ` +
-          `Portfolio + watchlist signals hidden — discovery scope only.`
-        : ctx.dailyRunOnly
+      summary: ctx.dailyRunOnly
           ? `${visibleSignals.length} signal${visibleSignals.length !== 1 ? "s" : ""} ` +
             `(${urgent} urgent, ${bullish} bullish, ${bearish} bearish) · ` +
             `${portfolioSignals.length} portfolio / ${watchlistSignals.length} watchlist. ` +

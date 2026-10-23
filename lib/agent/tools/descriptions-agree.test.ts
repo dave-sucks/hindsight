@@ -106,7 +106,7 @@ describe("the thesis fields, defined once", () => {
  * none of them has.
  */
 describe("no tool names a tool its agent doesn't have", () => {
-  const MODES_TO_RUN: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", discovery: "DISCOVERY", principal: "PRINCIPAL_CHAT" };
+  const MODES_TO_RUN: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
   for (const [mode, runMode] of Object.entries(MODES_TO_RUN)) {
     it(`${mode}`, async () => {
       const { MODES } = await import("@/lib/agent/modes");
@@ -129,7 +129,7 @@ describe("no tool names a tool its agent doesn't have", () => {
  * not the zod.
  */
 describe("no oneOf in any tool an agent is sent", () => {
-  const MODES_TO_RUN: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", discovery: "DISCOVERY", principal: "PRINCIPAL_CHAT" };
+  const MODES_TO_RUN: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
   for (const [mode, runMode] of Object.entries(MODES_TO_RUN)) {
     it(`${mode}`, async () => {
       const { MODES } = await import("@/lib/agent/modes");

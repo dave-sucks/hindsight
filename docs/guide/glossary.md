@@ -59,9 +59,9 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Morning run:** each analyst's review of its whole book, every run day at 8 AM. See [Morning runs](agents/morning-runs.md).
 - **Trigger run:** an analyst's short look at one stock, started by a trigger that fired. See [Trigger runs](agents/trigger-runs.md).
 - **Chat:** the agent you talk to, on one analyst or the whole account. See [Chat](agents/chat.md).
-- **Discovery:** finding new stocks for an analyst. In practice it's done in chat, which carries Discovery's tools and rules. See [Discovery](agents/discovery.md).
+- **Discovery:** finding new stocks for an analyst. It's done in chat, which carries the tools and rules for it. See [Discovery](agents/discovery.md).
 - **The Writer:** the only agent that writes a whole thesis, from in-depth research. See [the Writer](agents/writer.md).
-- **Door:** one way an agent is started: the morning run, the trigger run, chat, Discovery or the Writer. The Framework tab compares them.
+- **Door:** one way an agent is started: the morning run, the trigger run, chat or the Writer. The Framework tab compares them.
 
 ## What an agent reads
 

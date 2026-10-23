@@ -39,8 +39,8 @@
  * Every row is now open until the same tool lands on the same stock (or
  * thesis) for the same analyst — `resolveGateRejections`, called from the
  * wrapper on every non-refused result. An open row is (1) put back to the
- * model before its run ends (the refusal retry in morning-research,
- * tactical-run and discovery-run), (2) written into the next daily run's
+ * model before its run ends (the refusal retry in morning-research
+ * and tactical-run), (2) written into the next daily run's
  * prompt as "Blocked last time", and (3) shown on the Activity feed. The
  * deletion-pass use above still stands.
  */

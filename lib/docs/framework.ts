@@ -26,7 +26,6 @@ const DOORS: ReadonlyArray<{ id: FrameworkDoorId; mode: AgentMode; prompt: Promp
   { id: "morning", mode: "research-run", prompt: "daily", runMode: "MORNING_PLAN" },
   { id: "trigger", mode: "tactical", prompt: "tactical", runMode: "INTRADAY_TACTICAL" },
   { id: "chat", mode: "principal", prompt: "chat", runMode: "PRINCIPAL_CHAT" },
-  { id: "discovery", mode: "discovery", prompt: "discovery", runMode: "DISCOVERY" },
   { id: "writer", mode: "thesis-writer", prompt: "writer" },
 ];
 
