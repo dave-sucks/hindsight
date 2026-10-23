@@ -72,8 +72,10 @@ export function buildPrincipalTrigger(input: {
   cooldownDays?: number;
   /** Fallback prose when the caller supplies no rationale. */
   defaultRationale: string;
+  /** An account or analyst rule: Auto only on a sale. */
+  standing?: boolean;
 }): Trigger {
-  const modeProblem = fireModeProblem(input.action, input.fireMode);
+  const modeProblem = fireModeProblem(input.action, input.fireMode, { standing: input.standing });
   if (modeProblem) throw new ThesisEditError("INVALID", modeProblem);
   const parsed = triggerSchema.safeParse({
     predicate: input.predicate,
@@ -350,9 +352,9 @@ const offPosition = (p: When) => conditionsOf(p).some((c) => fromPosition(c));
 export interface TriggerAddInput {
   action: TriggerAction;
   predicate: When;
-  /** Omit ⇒ the action's default: a sale DO_IT, a review NEXT_MORNING, the rest ASK_NOW. */
+  /** Omit ⇒ the action's default: a review NEXT_MORNING, the rest ASK_NOW. */
   fireMode?: FireMode;
-  /** A trim set to Do it: the % it sells. Omit ⇒ 50. */
+  /** An Auto-trim: the % it sells. Omit ⇒ 50. */
   trimPct?: number;
   /** Omit ⇒ a generated default sentence. */
   rationale?: string;
@@ -369,7 +371,7 @@ export interface TriggerAddResult {
   synced: { stopLoss?: number; targetPrice?: number };
 }
 
-/** What it does when it fires, as the pill says it: "Sells right away". */
+/** What it does when it fires, as the pill says it: "Auto-sell". */
 function howItRuns(trigger: Trigger, held: boolean): string {
   return `. ${fireModeWords(trigger, held)}`;
 }

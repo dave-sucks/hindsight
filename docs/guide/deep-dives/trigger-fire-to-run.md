@@ -25,9 +25,9 @@ The check has first claim on prices. Every other caller is refused a quote once 
 
 Where it goes is the trigger's On fire, the same three choices on every trigger:
 
-- **Ask the analyst now** (unset, a buy, an add or a trim): an `app/thesis.trigger.fired` event starts a trigger run.
-- **At the next morning run** (unset, a review): written to Activity and left for the next [morning run](../agents/morning-runs.md). A red filing on a stock we hold starts a run the same day. A sale or buy left for the morning asks at most once a day.
-- **Right away** (unset, a sale): no agent wakes. The trigger run makes the trade the agent would have: a sale closes the position, a trim sells its share, a buy or an add is sized and checked by the buy's own rules and paid from cash. It goes to the [approval](../concepts/approvals.md) gate like any other trade. With nothing to trade (a buy on a stock we hold), the analyst is asked instead.
+- **Send to Agent** (unset, every action but a review): an `app/thesis.trigger.fired` event starts a trigger run.
+- **Flag for Review** (unset, a review): written to Activity and left for the next [morning run](../agents/morning-runs.md). A red filing on a stock we hold starts a run the same day. A sale or buy flagged for the morning asks at most once a day.
+- **Auto** (only ever chosen): no agent wakes. The trigger run makes the trade the agent would have: a sale closes the position, a trim sells its share, a buy or an add is sized and checked by the buy's own rules and paid from cash. It goes to the [approval](../concepts/approvals.md) gate like any other trade. An Auto buy, add or trim then comes off the stock (used once); an Auto-sell stays. With nothing to trade (a buy on a stock we hold), the agent is asked instead.
 - **A stock we only watch,** when its floor breaks on a close or its target is reached first: the plan comes down on the spot. The buy, floor and target are removed and a line is left for the next morning run. No run starts and nothing is proposed.
 
 ## One run per question
@@ -56,7 +56,7 @@ A trail measures the give-back from the highest price since the buy (the lowest,
 `STALE_QUOTE_MS` (15 minutes) and `staleForTrading` in `lib/market-data/quote-age.ts`. `RESERVED_SHARE` in `lib/market-data/quote-budget.ts`: 20% of Alpaca's limit and 75% of Finnhub's are held back from every caller but the trigger check.
 
 #### Routing
-`effectiveTriggerAction` and `watchedFloorOnClose` in `lib/agent/triggers/types.ts`. DEMOTE runs `demoteThesisPlan` in `lib/agent/triggers/demote.ts`. Reviews write a `TRIGGER_FIRED` row; `filingNeedsSameDayLook` in `lib/market-data/sec-events.ts`. Which fires wait for the morning and which trade with no agent is `waitsForMorning` and `doItTrade` in `lib/agent/triggers/fire-mode.ts`. A sale set to Do it is the `direct-close` step in `lib/inngest/functions/tactical-run.ts` and calls `closeOpenPosition`; a trim, buy or add is the `do-it` step, which calls the trade tool with `doItCall`.
+`effectiveTriggerAction` and `watchedFloorOnClose` in `lib/agent/triggers/types.ts`. DEMOTE runs `demoteThesisPlan` in `lib/agent/triggers/demote.ts`. Reviews write a `TRIGGER_FIRED` row; `filingNeedsSameDayLook` in `lib/market-data/sec-events.ts`. Which fires wait for the morning and which trade with no agent is `waitsForMorning` and `doItTrade` in `lib/agent/triggers/fire-mode.ts`. An Auto-sell is the `direct-close` step in `lib/inngest/functions/tactical-run.ts` and calls `closeOpenPosition`; a trim, buy or add is the `do-it` step, which calls the trade tool with `doItCall` and then `useOnce`.
 
 #### Folding and snoozes
 `collapseProtectiveFires` in `lib/agent/triggers/co-fire.ts` (EXIT and TRIM only). In `tactical-run.ts`: `check-queued-close` and `EXIT_RECHECK_SNOOZE_MS` (four hours, rejected sales only); `check-queued-buy`; `check-recent-enter-run`.

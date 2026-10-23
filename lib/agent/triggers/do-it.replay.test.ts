@@ -1,11 +1,11 @@
 /**
- * A trigger set to Do it trades with no analyst: the trigger run's own trade tool, called with the
+ * An Auto trigger trades with no analyst: the trigger run's own trade tool, called with the
  * trigger's arguments (doItCall), through its real entry point. Rows from production, 2026-10-22.
  *
  * TRV (Secular Compounder, watched): "Buy if above $398.70 · only on the close" fired at $398.95 on
- * 2026-10-21; it asked the analyst, who passed. Here it is set to Do it.
+ * 2026-10-21; it asked the analyst, who passed. Here it is an Auto-buy.
  * CORT (Catalyst Event PM, watched): a buy at $126.38 and a target, no floor.
- * IOT (PEAD Specialist, held 300 @ $42.695, LIVE): a trim set to Do it.
+ * IOT (PEAD Specialist, held 300 @ $42.695, LIVE): an Auto-trim.
  */
 import { replayTool, thesisRow, agentConfigRow, accountRow, positionRow, type Replay } from "@/lib/replay";
 import { doItCall } from "./do-it";
@@ -57,7 +57,7 @@ async function buy(stock: typeof TRV, analyst: typeof SECULAR, price: number, ex
 
 const orderOf = (r: Replay) => (r.db.store.order ?? [])[0] as Record<string, unknown> | undefined;
 
-describe("TRV: a buy set to Do it", () => {
+describe("TRV: an Auto-buy", () => {
   it("is sized as the analyst's own buy would be, and waits for approval", async () => {
     const doIt = await buy(TRV, SECULAR, 398.95, { payFromCash: 50_000 });
     expect(doIt.crashed).toBe(false);
@@ -71,7 +71,7 @@ describe("TRV: a buy set to Do it", () => {
     expect(cost).toBeGreaterThanOrEqual(SECULAR.minPositionSize - 398.95);
     expect(cost).toBeLessThanOrEqual(SECULAR.maxPositionSize);
     const rationale = String((doIt.result.data as { rationale?: string }).rationale);
-    expect(rationale).toContain("with no analyst run");
+    expect(rationale).toContain('"Buy if above $398.70 · only on the close" fired (Auto-buy), with no agent run.');
     // sizeByRisk on the $382.40 floor at 1% risk and HIGH conviction ($100,000 replay account), capped at the $10,000 largest trade.
     expect(orderOf(doIt)?.quantity).toBe(25);
     expect(rationale).toContain("25 shares, $9,974, capped at this analyst's largest trade. Risk alone said 60 shares");
@@ -93,7 +93,7 @@ describe("TRV: a buy set to Do it", () => {
   });
 });
 
-describe("CORT: a buy set to Do it on a plan with no floor", () => {
+describe("CORT: an Auto-buy on a plan with no floor", () => {
   it("is refused by the buy's own check, and nothing is written", async () => {
     const r = await buy(CORT as unknown as typeof TRV, CATALYST, 126.5, { payFromCash: 50_000 });
     expect(r.refused).toBe(true);
@@ -102,7 +102,7 @@ describe("CORT: a buy set to Do it on a plan with no floor", () => {
   });
 });
 
-describe("IOT: a trim set to Do it", () => {
+describe("IOT: an Auto-trim", () => {
   const seed = () => ({ thesis: [thesisRow(IOT)], position: [IOT_POSITION], agentConfig: [agentConfigRow({ ...PEAD, tradingEnvironment: "LIVE" })], account: [APPROVALS] });
 
   it("sells its 30% (90 of 300 shares), as a proposal", async () => {
@@ -119,7 +119,7 @@ describe("IOT: a trim set to Do it", () => {
     expect(doItCall({ trade: "TRIM", trigger: noSize, thesis: IOT, price: 0 }).args).toMatchObject({ close_pct: 50 });
   });
 
-  it("an add set to Do it is paid from cash too", async () => {
+  it("an Auto-add is paid from cash too", async () => {
     const call = doItCall({ trade: "ADD", trigger: { ...IOT_TRIM, action: "ADD" }, thesis: IOT, price: 0 });
     const r = await replayTool("manage-position", "managePosition", { seed: seed(), args: call.args, ctx: { ...analystCtx(PEAD), payFromCash: 500 }, quotes: { IOT: 47.6 } });
     expect(r.refused).toBe(true);

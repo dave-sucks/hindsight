@@ -128,7 +128,7 @@ export function TriggerDialog({
   const w = whenOf(draft);
   const actions = allowedActions(w, { held, standing });
   const action = actions.includes(draft.action) ? draft.action : (actions[0] ?? "REVIEW");
-  // A trim set to sell right away needs its size.
+  // An Auto-trim needs its size.
   const trimSize = action === "TRIM" && draft.fireMode === "DO_IT";
   const trimProblem = trimSize && !(Number.isFinite(draft.trimPct) && draft.trimPct >= 1 && draft.trimPct <= 99) ? "A trim sells 1% to 99% of the position." : null;
   const problem = whenProblem(w, ctx) ?? trimProblem;
@@ -208,6 +208,7 @@ export function TriggerDialog({
 
           <OnFireSelect
             action={action}
+            standing={standing}
             value={draft.fireMode}
             trimPct={draft.trimPct}
             onChange={(fireMode) => update({ fireMode })}

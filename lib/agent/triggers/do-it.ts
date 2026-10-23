@@ -1,17 +1,15 @@
 /**
- * A trigger set to Do it, with no analyst: the trade tool call the analyst would have made, from the
- * trigger alone. The tool sizes and gates it, and the approval switch decides whether it waits. Pure.
+ * An Auto trigger, with no agent: the trade tool call the agent would have made, from the trigger
+ * alone. The tool sizes and gates it, and the approval switch decides whether it waits. Pure.
  */
 
 import { sentenceOf } from "./condition/describe";
-import { trimPctOf, type DoIt } from "./fire-mode";
+import { fireModeWords, trimPctOf, type DoIt } from "./fire-mode";
 import type { Trigger } from "./types";
 
 export type DoItCall =
   | { tool: "place_trade"; args: { ticker: string; direction: "LONG" | "SHORT"; entry_price: number; thesis_id: string; entry_rationale: string } }
   | { tool: "manage_position"; args: { symbol: string; action: "add_to_position" | "partial_close"; close_pct?: number; reason: string } };
-
-const DONE: Record<Exclude<DoIt, "SELL">, string> = { BUY: "buys", ADD: "adds", TRIM: "trims" };
 
 export function doItCall(opts: {
   trade: Exclude<DoIt, "SELL">;
@@ -21,7 +19,7 @@ export function doItCall(opts: {
   price: number;
 }): DoItCall {
   const { trade, trigger, thesis } = opts;
-  const why = `"${sentenceOf(trigger)}" fired, and this trigger ${DONE[trade]} right away, with no analyst run. ${trigger.rationale}`.trim();
+  const why = `"${sentenceOf(trigger)}" fired (${fireModeWords({ ...trigger, fireMode: "DO_IT" })}), with no agent run. ${trigger.rationale}`.trim();
   if (trade === "BUY") {
     return {
       tool: "place_trade",

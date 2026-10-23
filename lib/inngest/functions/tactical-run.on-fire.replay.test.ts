@@ -2,7 +2,7 @@
  * The trigger run's real handler, per fire mode, on production rows (2026-10-22); the model is captured,
  * never called, and the trade tools are the edges. IOT's live floor (stored DIRECT, now DO_IT) still
  * proposes the sale with no run; V's (stored TACTICAL, now ASK_NOW) still asks the analyst; a review set
- * to Ask now starts a run; TRV's buy set to Do it calls place_trade with the trigger's arguments.
+ * to Send to Agent starts a run; TRV's Auto-buy calls place_trade with the trigger's arguments.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
 
@@ -79,13 +79,13 @@ describe("the trigger run, by fire mode", () => {
     expect(r.closes).toHaveLength(0);
   });
 
-  it("a review set to Ask now starts a trigger run", async () => {
+  it("a review set to Send to Agent starts a trigger run", async () => {
     const asked = { ...IOT_TARGET, fireMode: "ASK_NOW" };
     const r = await fire({ thesisId: "iot", triggerId: asked.id, analystId: PEAD, ticker: "IOT", action: "REVIEW", firedPrice: 52.4 }, stocks(asked));
     expect(r.modelCalls).toBeGreaterThan(0);
   });
 
-  it("TRV's buy set to Do it calls place_trade with the trigger's arguments, paid from cash, and no model", async () => {
+  it("TRV's Auto-buy calls place_trade with the trigger's arguments, paid from cash, and no model", async () => {
     const r = await fire({ thesisId: "trv", triggerId: TRV_BUY.id, analystId: SECULAR, ticker: "TRV", action: "ENTER", firedPrice: 398.95 });
     expect(r.modelCalls).toBe(0);
     expect(r.toolCalls).toHaveLength(1);

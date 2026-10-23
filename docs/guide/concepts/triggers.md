@@ -44,21 +44,21 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 
 What happens next is the trigger's **On fire**, the same three choices on every trigger:
 
-- **Right away** ("Sell right away", "Buy right away", "Add right away", "Trim right away"): the trade, with no agent. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells the share it names (half, unless you set another). A review can't be done right away; it is asking.
-- **Ask the analyst now:** a [trigger run](../agents/trigger-runs.md) starts within minutes to look at that one stock and decide.
-- **At the next morning run:** the fire goes on the stock's list and the next [morning run](../agents/morning-runs.md) answers it. A worrying new filing on a stock we hold still gets a look the same day.
+- **Auto** (Auto-sell, Auto-buy, Auto-add, Auto-trim): the trade, with no agent. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells the share it names (half, unless you set another). A review can't be Auto; it is asking.
+- **Send to Agent:** a [trigger run](../agents/trigger-runs.md) starts within minutes to look at that one stock and decide.
+- **Flag for Review:** the fire goes on the stock's list and the next [morning run](../agents/morning-runs.md) answers it. A worrying new filing on a stock we hold still gets a look the same day.
 
-Left unset, a sale goes right away, a review waits for the morning, and a buy, an add or a trim asks the analyst now. When your approval switch for that side is on, a trade made right away still waits for your approval; the dialog says so under On fire.
+Left unset, a review is Flag for Review and everything else is Send to Agent. Auto is always chosen: the stop set when buying and a new analyst's trailing sale are Auto-sells. An Auto-buy, Auto-add or Auto-trim is yours alone, set on the stock itself (not as an account or analyst rule), and is a one-time order: once it fires it comes off the stock, with a line in Activity ("Used once: Trim 30% if above $150 (Auto-trim)"). An Auto-sell keeps asking every day, like any sale. When your approval switch for that side is on, an Auto trade still waits for your approval; the dialog says so under On fire.
 
 - **On a stock we only watch,** a close below the floor, or the price reaching the target before we bought, takes the plan down on the spot, whatever On fire says. No agent wakes and nothing is proposed; the stock stays on watch.
 
-Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it. Every trade, the agent's or one set to right away, goes through your [approval](approvals.md) switch: with it on, it is a proposal you approve.
+Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it. Every trade, the agent's or an Auto one, goes through your [approval](approvals.md) switch: with it on, it is a proposal you approve.
 
 The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from right away to asking the analyst, or from asking now to the next morning); the save refuses it. On a stock we only watch, the floor is free to change. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
+On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent, or from Send to Agent to Flag for Review); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch, the floor is free to change. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>
@@ -76,7 +76,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on the crossing; protective and review triggers fire again while true.
 
 #### On fire
-`fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT`, `ASK_NOW` or `NEXT_MORNING`, stamped on every write. A `DO_IT` trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same.
+`fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or `NEXT_MORNING` (Flag for Review), stamped on every write. An Auto trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same; an Auto buy, add or trim comes off the stock once used (`useOnce`).
 
 #### Write path
 `applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared by `update_thesis`, the trigger editor and the buy going through (`armHeldLadderOnFill`).

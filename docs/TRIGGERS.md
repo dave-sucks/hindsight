@@ -24,9 +24,9 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
 - **action** — what firing means: `ENTER | EXIT | REVIEW | ADD | TRIM`.
 - **rationale** — prose the agent reads when it acts.
 - **cooldownDays** — don't re-fire within N days (see §6).
-- **fireMode** — on fire: `DO_IT`, `ASK_NOW` or `NEXT_MORNING` (see §4). Every
-  stored trigger names one.
-- **trimPct** — a trim set to `DO_IT`: the % of the position it sells (50 when unset).
+- **fireMode** — on fire: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or
+  `NEXT_MORNING` (Flag for Review) (see §4). Every stored trigger names one.
+- **trimPct** — an Auto-trim: the % of the position it sells (50 when unset).
 
 The condition is the form's own fields: `watch` is the measure (the tab),
 `is` the direction (the button group), `value` the number typed, `variable`
@@ -265,21 +265,42 @@ checked.
 ## 4. On fire — the same three choices on every trigger
 
 One field, `fireMode`, the same for every action, condition and author
-(`lib/agent/triggers/fire-mode.ts`):
+(`lib/agent/triggers/fire-mode.ts`). The stored values are never shown; the
+names are:
 
-| `fireMode` | The dialog says | On fire |
+| `fireMode` | The name | On fire |
 |---|---|---|
-| **`DO_IT`** | Sell / Buy / Add / Trim right away | The trade, with no analyst run. A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
-| **`ASK_NOW`** | Ask the analyst now | `app/thesis.trigger.fired` → a trigger run (the tactical run) starts now and decides. |
-| **`NEXT_MORNING`** | At the next morning run | The `TRIGGER_FIRED` row is written and no run starts; the next morning run answers it. |
+| **`DO_IT`** | Auto-sell / Auto-buy / Auto-add / Auto-trim | The trade, with no agent run. A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
+| **`ASK_NOW`** | Send to Agent | `app/thesis.trigger.fired` → a trigger run (the tactical run) starts now and decides. |
+| **`NEXT_MORNING`** | Flag for Review | The `TRIGGER_FIRED` row is written and no run starts; the next morning run answers it. |
 
-**Unset** (a template, a seat rule, an agent that names none): a sale is
-`DO_IT`, a review `NEXT_MORNING`, a buy, an add or a trim `ASK_NOW`. The write
-paths stamp it (`applyTriggerDefaults`), so every stored trigger names one; the
-migration `20261022130000_on_fire_every_trigger` wrote each existing trigger
-with the mode it already behaved as.
+**One default.** Unset (a template, an agent that names none), a review is
+Flag for Review and everything else is Send to Agent. Auto is only ever chosen:
+the seat rules' trails for a new analyst and the stop set when buying are Auto
+on purpose. The write paths stamp the mode (`applyTriggerDefaults`), so every
+stored trigger names one; the migration `20261022130000_on_fire_every_trigger`
+wrote each existing trigger with the mode it already behaved as. A value a read
+doesn't know is read as the default (Send to Agent for a sale).
 
-**Do it is the trade the analyst would have made, minus the analyst.** The
+**Who may set Auto** (`fireModeProblem`, run by every write path):
+
+- Never on a review: "A review asks the agent, so it can't be Auto."
+- On a buy, an add or a trim, only the owner: the thesis sheet, or his chat
+  acting on his word. The morning run, the writer and the trigger run are
+  refused by id (`ownersWord` on `applyTriggerOps`; `record_thesis` refuses the
+  mint). An agent may still move the level of the owner's Auto trigger, and may
+  make a sale Auto (it only speeds up protection).
+- On an account or analyst rule, only on a sale: a standing Auto buy, add or
+  trim would fire on every stock under it. None is stored (2026-10-22).
+
+**An Auto buy, add or trim is a one-time order.** Once it fires and its trade is
+tried (proposed, sent or refused), the trigger comes off the stock through
+`applyTriggerOps` (actor SYSTEM) with one Activity line, "Used once: Trim 30% if
+above $150 (Auto-trim)" (`useOnce`, `lib/agent/triggers/use-once.ts`). A tool
+that crashes leaves it in place for its next fire. An Auto-sell stays a standing
+order: a sale you don't take is proposed again each day.
+
+**Auto is the trade the agent would have made, minus the agent.** The
 trigger run calls the same tool its agent would (`doItCall`,
 `lib/agent/triggers/do-it.ts`), so the trade is sized and gated exactly as an
 agent's: a buy needs a floor and a target on the plan, the analyst's
@@ -291,13 +312,16 @@ stale price (`shouldFire`), and the fired price is the entry. A refused
 trade writes a `GateRejection` row, which is the one Activity line the
 attempt feed shows ("Buy blocked: You have $1,000.00 in cash…"). With
 nothing to trade (a sale on a stock we don't own, a buy on one we do) the
-analyst is asked instead.
+agent is asked instead.
 
 A protective EXIT closes with a deterministic STOP/TARGET reason
 (`closeReason` on the measure; `protectiveCloseReason`) — trail and gain-lock
 give-backs tag STOP — so the P1-28 unapproved-exit cooldown exempts them and a
-rejected protective exit re-fires when price re-crosses (#490). A sale set to
-Do it on any other condition closes as STOP.
+rejected protective exit re-fires when price re-crosses (#490). An Auto-sell on
+any other condition (RSI, an average, volume, a gap, days from a date) closes as
+TARGET when the condition is a rise for a long (a fall for a short), else STOP,
+so a profit-take goes back on watch (`autoSellCloseReason`; which way a
+condition goes is `rises` on its measure; volume and a date go neither way).
 
 **A sale from a protective fire always carries the STOP/TARGET label** (DAV-192).
 The close tool — `close_position`, the only whole-position exit since DAV-220 — runs the
@@ -321,14 +345,14 @@ name back to the watchlist.
 
 **Every mode still goes through the approval gate.** `closeOpenPosition` and
 the trade tools ask the account's approval switch for that side **before** any
-Alpaca submit. With the switch on, Do it **proposes** the trade (you
-approve/reject) — it does **not** auto-trade. Do it saves the *agent* cost,
+Alpaca submit. With the switch on, Auto **proposes** the trade (you
+approve/reject) — it does **not** auto-trade. Auto saves the *agent* cost,
 never the *approval* step. The dialog says "Waits for your approval." under On
 fire when the switch for that side is on.
 
 **Only the owner slows a protective sale.** On a held stock an agent may not
-move a protective sale down the order Do it → Ask now → Next morning
-(`FIRE_MODE_SPEED`, `ratchet.ts`), the same as it may not lower the line.
+move a protective sale down the order Auto-sell → Send to Agent → Flag for
+Review (`FIRE_MODE_SPEED`, `ratchet.ts`), the same as it may not lower the line.
 
 **A trade left for the morning asks at most once a day.** A morning run
 answers once a day, so a non-review set to `NEXT_MORNING` has a one-day floor
@@ -377,7 +401,7 @@ question for a snapshot.
 **Reviews wait for the morning by default:** a `REVIEW` fire means
 "re-evaluate," not "act now" — it converts to a trade rarely, so unset it is
 `NEXT_MORNING`: the `TRIGGER_FIRED` audit row, and the next morning run. A
-review set to `ASK_NOW` starts a trigger run, which answers it with the
+review set to Send to Agent starts a trigger run, which answers it with the
 review's situation guidance (each one costs a trigger run, about 6–18 cents;
 its cooldown limits repeats). A red filing on a stock we hold is looked at the
 same day whatever is set (`filingNeedsSameDayLook`).
@@ -497,7 +521,8 @@ on the row's `fieldChanges.triggerOps`.
 - `lib/agent/triggers/defaults.ts` — horizon templates + `accountStandingRules()` (the account's add prompts) + cooldown defaults
 - `lib/inngest/functions/trigger-evaluator.ts` — the cron and close passes, one catch per trigger
 - `lib/agent/triggers/fire-mode.ts` — on fire: the three modes, their defaults, where a fire goes (`waitsForMorning`, `doItTrade`), the words
-- `lib/agent/triggers/do-it.ts` — the trade tool call a trigger set to Do it makes
-- `lib/inngest/functions/tactical-run.ts` — consumer (the agent, or a Do-it trade)
+- `lib/agent/triggers/do-it.ts` — the trade tool call an Auto trigger makes
+- `lib/agent/triggers/use-once.ts` — an Auto buy, add or trim comes off the stock once used
+- `lib/inngest/functions/tactical-run.ts` — consumer (the agent, or an Auto trade)
 - `lib/actions/thesis-edit.ts` — add / edit / delete / fire-mode write paths
 - `components/agent/sheets/ThesisTriggersSection.tsx` — the trigger UI

@@ -151,6 +151,7 @@ export async function addLevelTrigger(
   const created = buildPrincipalTrigger({
     ...input,
     defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
+    standing: true,
   });
 
   const next = [...existing, created];
@@ -191,6 +192,7 @@ export async function replaceLevelTrigger(
   const built = buildPrincipalTrigger({
     ...input,
     defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
+    standing: true,
   });
   const sameSlot = triggerSlot(found) === bucket;
   const updated: Trigger = sameSlot

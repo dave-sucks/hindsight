@@ -814,7 +814,7 @@ export const triggerEvaluator = inngest.createFunction(
             continue;
           }
 
-          // On fire "At the next morning run": write the TRIGGER_FIRED row (with the price that fired it) and
+          // On fire "Flag for Review": write the TRIGGER_FIRED row (with the price that fired it) and
           // start no run; the morning run answers it. A red filing on a stock we own is looked at today (2026-09-15).
           const sameDayFiling =
             firedFilingList != null && filingNeedsSameDayLook(firedFilingList, thesis.status);

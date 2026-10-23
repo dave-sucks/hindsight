@@ -29,7 +29,7 @@
 // ── Signal-side enums (mirrors of Signal table columns the router has) ──
 
 import { shapeOf } from "./condition/valid";
-import { isLevel, onTheClose, protectiveCloseReason } from "./condition/rules";
+import { isLevel, onTheClose, protectiveCloseReason, risesWith } from "./condition/rules";
 import type { Condition, When } from "./condition/types";
 import type { FireMode } from "./fire-mode";
 
@@ -159,7 +159,7 @@ export type ThesisTriggers = Trigger[];
  * STOP/TARGET so a rejected protective exit still re-fires when price
  * re-crosses the level. Both close paths use this mapping so the tag never
  * depends on the LLM remembering to pick STOP:
- *   • a sale set to Do it → directExitReason() (tactical-run.ts) delegates here.
+ *   • an Auto-sell → directExitReason() (tactical-run.ts) delegates here.
  *   • a sale that asks the analyst → precomputed here and threaded into the
  *     tool context (ToolContext.protectiveExitReason).
  *
@@ -172,6 +172,17 @@ export function protectiveExitCloseReason(
 ): "STOP" | "TARGET" | null {
   const w = shapeOf(predicate);
   return w == null ? null : protectiveCloseReason(w, direction);
+}
+
+/**
+ * The label an Auto-sell closes with: its condition's own protective label, else TARGET when the condition is a
+ * rise with the position (a profit-take goes back on watch), else STOP.
+ */
+export function autoSellCloseReason(predicate: unknown, direction: string | null): "STOP" | "TARGET" {
+  const w = shapeOf(predicate);
+  if (w == null) return "STOP";
+  const rise = risesWith(w);
+  return protectiveCloseReason(w, direction) ?? (rise != null && rise === (direction !== "SHORT") ? "TARGET" : "STOP");
 }
 
 /**

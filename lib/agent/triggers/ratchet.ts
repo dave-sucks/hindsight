@@ -4,7 +4,7 @@
  *
  * The 2026-08-16 standing ruling (docs/plans/FIX_ROADMAP.md → "Standing
  * ruling"): an analyst may RAISE/tighten a protective level; it may never
- * lower, widen, or delete one, and never slow one down: a sale set to Do it
+ * lower, widen, or delete one, and never slow one down: an Auto-sell
  * may not become one that asks the analyst, and one that asks now may not
  * wait for the next morning. Lowering a line is the principal's manual act
  * — thesis sheet or reject dialog.

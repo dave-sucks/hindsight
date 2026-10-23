@@ -1,6 +1,6 @@
 /**
  * The five-minute check's own handler, per fire mode: a fire left for the next morning run is written
- * down and starts nothing; Ask now and Do it send the fire to the trigger run. IOT, PEAD Specialist,
+ * down and starts nothing; Send to Agent and Auto send the fire to the trigger run. IOT, PEAD Specialist,
  * held 300 @ $42.695 (production 2026-10-22): its $52 target review (stored REVIEW, now NEXT_MORNING)
  * and its $41.42 floor. Only the edges are doubled.
  */
@@ -56,11 +56,11 @@ describe("where a fire goes", () => {
     expect(await pass({ ...TARGET, fireMode: "NEXT_MORNING" }, 52.4)).toEqual({ events: [], firedRows: [TARGET.id] });
   });
 
-  it("the same review set to Ask now starts a trigger run", async () => {
+  it("the same review set to Send to Agent starts a trigger run", async () => {
     expect(await pass({ ...TARGET, fireMode: "ASK_NOW" }, 52.4)).toEqual({ events: [TARGET.id], firedRows: [] });
   });
 
-  it("the floor set to Do it goes to the trigger run's no-agent sale; left for the morning, it waits", async () => {
+  it("the floor set to Auto-sell goes to the trigger run's no-agent sale; left for the morning, it waits", async () => {
     expect((await pass({ ...FLOOR, fireMode: "DO_IT" }, 41.3)).events).toEqual([FLOOR.id]);
     expect(await pass({ ...FLOOR, fireMode: "NEXT_MORNING" }, 41.3)).toEqual({ events: [], firedRows: [FLOOR.id] });
   });

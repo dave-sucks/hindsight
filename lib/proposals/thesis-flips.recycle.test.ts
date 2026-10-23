@@ -62,8 +62,8 @@ describe("shouldRecycleToWatching — the P1-35 belief-attested road", () => {
   });
 
   it("retires when there is NO attestation — the safe default", () => {
-    // Every non-agent path lands here: the price-monitor cron, a sale set to
-    // Do it, manual UI closes, promotion force-closes. Unchanged
+    // Every non-agent path lands here: the price-monitor cron, an Auto-sell,
+    // manual UI closes, promotion force-closes. Unchanged
     // behavior, so this PR can't alter a close nobody attested.
     expect(shouldRecycleToWatching("STOP")).toBe(false);
     expect(shouldRecycleToWatching("STOP", undefined)).toBe(false);

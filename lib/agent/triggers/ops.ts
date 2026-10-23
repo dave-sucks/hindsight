@@ -37,7 +37,7 @@
 
 import type { ResolvedTrigger } from "./levels";
 import type { Trigger, TriggerAction } from "./types";
-import { defaultFireMode, fireModeLabel, fireModeOf, fireModeProblem, trimPctOf, type FireMode } from "./fire-mode";
+import { defaultFireMode, fireModeOf, fireModeProblem, fireModeWords, trimPctOf, type FireMode } from "./fire-mode";
 import { triggerSlot } from "./condition/slot";
 import { samePredicate } from "./condition/stored";
 import {
@@ -84,7 +84,7 @@ export type TriggerOp =
       part?: number;
       action?: TriggerAction;
       fireMode?: FireMode;
-      /** A trim set to Do it: the % it sells. */
+      /** An Auto-trim: the % it sells. */
       trimPct?: number;
       rationale?: string;
       cooldownDays?: number;
@@ -137,6 +137,8 @@ export interface ApplyTriggerOpsInput {
    * trigger keeps its DEFAULT stamp.
    */
   actor: "AGENT" | "PRINCIPAL" | "SYSTEM";
+  /** An agent acting on the owner's word (the owner's chat): it may set Auto on a buy, add or trim. */
+  ownersWord?: boolean;
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
   /** Stamped on buy triggers this call writes (./written-price). Defaults to `currentPrice`. */
@@ -214,6 +216,8 @@ const MAX_TRIGGERS = 20;
 
 export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOutput {
   const { direction, status, actor, inherited = [], currentPrice, mintId } = input;
+  // Only the mode an op sets is held to the owner's rule: an agent may move the level of an owner's Auto trigger.
+  const setsMode = (action: string, mode: FireMode | undefined) => fireModeProblem(action, mode, { agent: actor === "AGENT" && !input.ownersWord });
   const held = status === "HOLDING";
   const stamp = (t: Trigger): Trigger["source"] =>
     actor === "AGENT" ? "AGENT" : actor === "PRINCIPAL" ? "PRINCIPAL" : (t.source ?? "DEFAULT");
@@ -333,7 +337,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     // A new action with no mode named takes that action's default, as the dialog does.
     const fireMode = op.fireMode ?? (op.action && op.action !== target.action ? defaultFireMode(op.action) : undefined);
-    const modeProblem = fireModeProblem(op.action ?? target.action, fireMode ?? target.fireMode);
+    const modeProblem = fireModeProblem(op.action ?? target.action, fireMode ?? target.fireMode) ?? setsMode(op.action ?? target.action, fireMode);
     if (modeProblem) return refuse("edit", op.id, `Edit ${name}`, modeProblem);
 
     let predicate: When = tw;
@@ -406,9 +410,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
-    if (fireMode && fireMode !== fireModeOf(target))
-      parts.push(`${name}: on fire, ${fireModeLabel(fireMode, action).toLowerCase()}`);
-    if (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)) parts.push(`${name}: trims ${op.trimPct}%`);
+    if ((fireMode && fireMode !== fireModeOf(target)) || (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)))
+      parts.push(`${name}: ${fireModeWords({ action, fireMode: fireMode ?? target.fireMode, trimPct: op.trimPct ?? target.trimPct }, held)}`);
     if (op.cooldownDays !== undefined && op.cooldownDays !== target.cooldownDays)
       parts.push(`${name}: cooldown ${op.cooldownDays} days`);
     if (parts.length === 0 && rationale !== target.rationale)
@@ -466,7 +469,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     const id = trigger.id || mintId();
     const text = `Added: ${describeTrigger(trigger, held)}`;
-    const modeProblem = fireModeProblem(trigger.action, trigger.fireMode);
+    const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("add", id, text, modeProblem);
     const above = inheritedByBucket.get(triggerSlot(trigger));
     if (above && samePredicate(above.predicate, trigger.predicate) && fireModeOf(above) === fireModeOf(trigger)) {
@@ -492,7 +495,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const sameSlot = triggerSlot(target) === triggerSlot(trigger);
     const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerSlot(s) === triggerSlot(trigger));
     const text = `Changed: ${describeTrigger(target, held)} → ${describeTrigger(trigger, held)}`;
-    const modeProblem = fireModeProblem(trigger.action, trigger.fireMode);
+    const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("edit", id, text, modeProblem);
     if (clash) {
       return refuse("edit", id, text, `This stock already has "${describeTrigger(clash, held)}". Edit that one instead.`);

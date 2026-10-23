@@ -567,7 +567,7 @@ export const placeTrade = defineTool({
         const ind = industryLine(accountRisk.open, await industryOf(ticker), ticker);
         if (ind) sizingNotes.push(ind);
       }
-      // A buy no analyst placed (a trigger set to Do it) is paid from cash, never margin, as the Trade button's is.
+      // A buy no analyst placed (an Auto trigger) is paid from cash, never margin, as the Trade button's is.
       const short = ctx.payFromCash !== undefined ? cashShortfall(resolvedNotional ?? (resolvedShares ?? 1) * args.entry_price, ctx.payFromCash) : null;
       if (short) {
         return {

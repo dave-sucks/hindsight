@@ -38,6 +38,12 @@ export function protectiveCloseReason(w: When, direction: string | null): "STOP"
   return isGroup(w) ? null : (measureOf(w).closeReason?.(w, direction !== "SHORT") ?? null);
 }
 
+/** Which way the price went when it holds: true up, false down, null neither. Two conditions count only when they agree. */
+export function risesWith(w: When): boolean | null {
+  const ways = conditionsOf(w).map((c) => measureOf(c).rises?.(c) ?? null).filter((x): x is boolean => x != null);
+  return ways.length > 0 && ways.every((x) => x === ways[0]) ? ways[0] : null;
+}
+
 /** A typed price level (a floor or a target), not a group. */
 export function isLevel(w: When): boolean {
   return !isGroup(w) && measureOf(w).level?.(w) === true;

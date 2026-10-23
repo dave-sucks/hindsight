@@ -25,7 +25,7 @@ export interface Trigger {
   lastFiredAt?: string;
   /** On fire (lib/agent/triggers/fire-mode). Absent ⇒ the action's default. */
   fireMode?: FireMode;
-  /** A trim set to Do it: the % it sells. */
+  /** An Auto-trim: the % it sells. */
   trimPct?: number;
   /**
    * Which record this rung is stored on — the cascade level. Set by the

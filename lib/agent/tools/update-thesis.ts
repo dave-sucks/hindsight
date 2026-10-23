@@ -1244,6 +1244,8 @@ export const updateThesis = defineTool({
           direction: levelDirection,
           status: levelStatus,
           actor: "AGENT",
+          // Only the owner's chat may make a buy, add or trim Auto.
+          ownersWord: ctx.runMode === "PRINCIPAL_CHAT",
           // The tape decides which side a re-levelled buy trigger compares on.
           // Without it every re-level was a breakout: the CRM shape, where the
           // analyst wrote "buy the pullback to $203" and the row stored

@@ -129,7 +129,7 @@ export function planManualOrder(
   return { ok: true, intent: "OPEN", shares };
 }
 
-/** A buy is paid from cash, never margin: why this one can't be, or null. The Trade button and a trigger set to Do it ask this. */
+/** A buy is paid from cash, never margin: why this one can't be, or null. The Trade button and an Auto trigger ask this. */
 export function cashShortfall(cost: number, cash: number | null): string | null {
   if (cash == null) return "Couldn't read the account's cash — try again.";
   return cost > cash ? `You have ${usd(cash)} in cash; this buy is ${usd(cost)}.` : null;

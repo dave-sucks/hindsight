@@ -165,7 +165,7 @@ export async function closeOpenPosition(
    * survived this exit (sold on price, not because the story broke). Stamped
    * onto the closing Order so it survives the approval gap on LIVE, and passed
    * straight through on a synchronous fill. Only `close_position` supplies it;
-   * every other caller (price-monitor cron, sales set to Do it, manual UI closes,
+   * every other caller (price-monitor cron, Auto-sells, manual UI closes,
    * promotion force-closes) leaves it undefined → terminal RETIRED, unchanged.
    */
   beliefSurvived?: boolean | null,

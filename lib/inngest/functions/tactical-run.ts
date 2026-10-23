@@ -32,10 +32,11 @@ import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/to
 import { listOpenRefusalsForAnalyst, listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalLinesFor, refusalNudge } from "@/lib/agent/refusal-carryover";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import { protectiveExitCloseReason } from "@/lib/agent/triggers/types";
+import { autoSellCloseReason, protectiveExitCloseReason } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { doItTrade } from "@/lib/agent/triggers/fire-mode";
 import { doItCall } from "@/lib/agent/triggers/do-it";
+import { useOnce } from "@/lib/agent/triggers/use-once";
 import { recordGateRejection } from "@/lib/agent/gate-rejections";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
@@ -83,19 +84,15 @@ function findTriggerById(ladder: Trigger[], id: string): Trigger | null {
 }
 
 /**
- * Close reason for a sale set to Do it. Always STOP or TARGET (never
- * MANUAL/TIME) so the close counts as a risk-management exit — those always
- * flow through the approval gate and are exempt from the P1-28
- * unapproved-exit cooldown. Adverse-direction price / daily-% move → STOP;
- * favorable-direction → TARGET; a sale on any other condition → STOP.
+ * Close reason for an Auto-sell. Always STOP or TARGET (never MANUAL/TIME) so
+ * the close counts as a risk-management exit — those always flow through the
+ * approval gate and are exempt from the P1-28 unapproved-exit cooldown.
  */
 function directExitReason(
   trigger: Trigger,
   direction: string | null,
 ): "STOP" | "TARGET" {
-  // Single source of truth for the protective-exit → STOP/TARGET mapping
-  // (shared with the agent-path threading below and close_position).
-  return protectiveExitCloseReason(trigger.predicate, direction) ?? "STOP";
+  return autoSellCloseReason(trigger.predicate, direction);
 }
 
 // How long after a REJECTED close proposal to keep suppressing re-fires of
@@ -468,7 +465,7 @@ export const tacticalRun = inngest.createFunction(
       });
     });
 
-    // The analyst's limits and keys, as every tool reads them: the same for the agent's run and a Do-it trade.
+    // The analyst's limits and keys, as every tool reads them: the same for the agent's run and an Auto trade.
     const toolsFor = async (extra: { protectiveExitReason?: "STOP" | "TARGET"; protectiveExitTriggerLabel?: string; payFromCash?: number | null } = {}) =>
       createResearchTools({
         runId: run.id,
@@ -489,7 +486,7 @@ export const tacticalRun = inngest.createFunction(
         runEnvironment,
       });
 
-    // ── On fire "Do it": the trade with no agent ──────────────────────
+    // ── On fire "Auto": the trade with no agent ──────────────────────
     // Still through maybeAwaitApproval: with the account's approval switch on
     // it PROPOSES the trade; off, it executes. Nothing to sell, or a stock
     // already held for a buy, falls through to the agent.
@@ -551,8 +548,8 @@ export const tacticalRun = inngest.createFunction(
             data: {
               runId: run.id,
               type: "run_failed",
-              title: "Sale set to Do it failed",
-              message: `The sale of ${thesis.ticker} set to Do it failed: ${(direct as { error: string }).error}`,
+              title: "Auto-sell failed",
+              message: `The Auto-sell of ${thesis.ticker} failed: ${(direct as { error: string }).error}`,
               payload: { thesisId: thesis.id, triggerId: trigger.id } as object,
             },
           });
@@ -570,8 +567,9 @@ export const tacticalRun = inngest.createFunction(
       };
     }
 
-    // A trim of its %, a buy or an add: the tool the analyst would have called, with the trigger's own
-    // arguments. The tool sizes and gates it; a buy is paid from cash, as the Trade button's is.
+    // An Auto-trim of its %, an Auto-buy or an Auto-add: the tool the agent would have called, with the
+    // trigger's own arguments. The tool sizes and gates it; a buy is paid from cash, as the Trade button's is.
+    // A one-time order: once tried (proposed, sent or refused) the trigger comes off the stock.
     if (doIt === "TRIM" || doIt === "BUY" || doIt === "ADD") {
       const done = await step.run("do-it", async () => {
         try {
@@ -583,17 +581,26 @@ export const tacticalRun = inngest.createFunction(
             doIt === "BUY"
               ? (fired.firedPrice ?? freshQuotePrice((await getLiveQuote(thesis.ticker, { caller: "other" })).quote, new Date()))
               : 0;
+          let tried: { tool: string; summary: string | null };
           if (price == null) {
             const args = { ticker: thesis.ticker, thesis_id: thesis.id };
             const summary = `Trade blocked: $${thesis.ticker} — no live price`;
             const detail = `There's no live price for ${thesis.ticker}, so the buy wasn't placed.`;
             await recordGateRejection({ tool: "place_trade", gateCode: "no_price", summary, detail, args, ctx: { runId: run.id, userId: agentConfig.userId, accountId: agentConfig.accountId, analystId: agentConfig.id, runMode: "INTRADAY_TACTICAL", groupId: (p: string) => p } });
-            return { tool: "place_trade", summary };
+            tried = { tool: "place_trade", summary };
+          } else {
+            const call = doItCall({ trade: doIt, trigger: trigger as Trigger, thesis, price });
+            const tool = tools[call.tool] as unknown as { execute: (a: unknown, o: unknown) => Promise<{ ok: boolean; summary?: string; error?: string }> };
+            const out = await tool.execute(call.args, { toolCallId: `do-it-${trigger.id}`, messages: [] });
+            // The tool crashed: nothing was tried, so the trigger stays for its next fire.
+            if (!out.ok) return { tool: call.tool, error: out.error ?? "the trade tool failed" };
+            tried = { tool: call.tool, summary: out.summary ?? null };
           }
-          const call = doItCall({ trade: doIt, trigger: trigger as Trigger, thesis, price });
-          const tool = tools[call.tool] as unknown as { execute: (a: unknown, o: unknown) => Promise<{ ok: boolean; summary?: string; error?: string }> };
-          const out = await tool.execute(call.args, { toolCallId: `do-it-${trigger.id}`, messages: [] });
-          return out.ok ? { tool: call.tool, summary: out.summary ?? null } : { tool: call.tool, error: out.error ?? "the trade tool failed" };
+          const usedOnce = await useOnce({ thesisId: thesis.id, triggerId: trigger.id, runId: run.id, priceAtTime: fired.firedPrice ?? null }).catch((err) => {
+            console.error(`[tactical-run] could not take used-once trigger ${trigger.id} off ${thesis.ticker}:`, err instanceof Error ? err.message : err);
+            return false;
+          });
+          return { ...tried, usedOnce };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[tactical-run] do-it ${doIt} failed thesis=${thesis.id} trigger=${trigger.id}: ${msg}`);

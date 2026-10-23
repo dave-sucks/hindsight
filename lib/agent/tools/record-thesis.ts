@@ -272,10 +272,11 @@ export const recordThesis = defineTool({
         };
       }
 
-      const modeProblem = (args.triggers ?? []).map((t) => fireModeProblem(t.action, t.fireMode)).find(Boolean);
+      // A review can't be Auto; a buy, add or trim is Auto only on the owner's word (his chat).
+      const modeProblem = (args.triggers ?? []).map((t) => fireModeProblem(t.action, t.fireMode, { agent: ctx.runMode !== "PRINCIPAL_CHAT" })).find(Boolean);
       if (modeProblem) {
         return {
-          summary: `Thesis rejected for ${args.ticker}: a review set to DO_IT.`,
+          summary: `Thesis rejected for ${args.ticker}: a trigger's fireMode.`,
           data: { thesis_id: null, status: "FAILED" as const, note: `${modeProblem} Resend the trigger with fireMode ASK_NOW or NEXT_MORNING, or none.` },
           sources: [],
         };

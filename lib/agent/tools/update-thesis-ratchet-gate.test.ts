@@ -5,7 +5,7 @@
  * The pure comparison logic is covered in lib/agent/triggers/ratchet.test.ts;
  * these tests prove the tool refuses the OP — by id, with the reason — and
  * writes no trigger change, with the MU 2026-08-18 shapes: floor lowered
- * 948 → 814, a Do-it floor slowed to ask first, and the stop moved the wrong way.
+ * 948 → 814, an Auto-sell floor slowed to ask first, and the stop moved the wrong way.
  * Legal raises must still land. (FLIPPED 2026-09-09, DAV-242: a refused op
  * no longer sinks the call; the rest of the update lands.)
  */
@@ -159,7 +159,7 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
     noTriggerWrite();
   });
 
-  it("refuses slowing the floor from Do it to Ask now", async () => {
+  it("refuses slowing the floor from Auto-sell to Send to Agent", async () => {
     mockThesisFindUnique.mockResolvedValueOnce(makeHeldRow());
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",

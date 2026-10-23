@@ -39,7 +39,7 @@ describe("protectiveRatchetViolations — the MU 2026-08-18 shape", () => {
     expect(v[0].reason).toBe("LOWERED");
   });
 
-  it("flags demoting a floor from Do it to Ask now at the same level", () => {
+  it("flags slowing a floor from Auto-sell to Send to Agent at the same level", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
       before: [floor(948, { fireMode: "DO_IT" })],
@@ -50,7 +50,7 @@ describe("protectiveRatchetViolations — the MU 2026-08-18 shape", () => {
     expect(v[0].reason).toBe("FIREMODE_DEMOTED");
   });
 
-  it("flags slowing a floor from Ask now to the next morning run, and says so in words", () => {
+  it("flags slowing a floor from Send to Agent to Flag for Review, and says so in words", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
       before: [floor(948, { fireMode: "ASK_NOW" })],
@@ -59,11 +59,11 @@ describe("protectiveRatchetViolations — the MU 2026-08-18 shape", () => {
     });
     expect(v.map((x) => x.reason)).toEqual(["FIREMODE_DEMOTED"]);
     expect(describeRatchetViolation(v[0])).toBe(
-      '"Sell if below $948" is set to "Ask the analyst now"; your edit sets it to "At the next morning run". That slows the protection on a stock we own.',
+      '"Sell if below $948" is set to "Send to Agent"; your edit sets it to "Flag for Review". That slows the protection on a stock we own.',
     );
   });
 
-  it("allows speeding a floor up (next morning → Ask now → Do it)", () => {
+  it("allows speeding a floor up (Flag for Review → Send to Agent → Auto-sell)", () => {
     const at = (fireMode: Trigger["fireMode"]) => [floor(948, { fireMode })];
     expect(protectiveRatchetViolations({ direction: "LONG", before: at("NEXT_MORNING"), after: at("ASK_NOW"), inherited: [] })).toEqual([]);
     expect(protectiveRatchetViolations({ direction: "LONG", before: at("ASK_NOW"), after: at("DO_IT"), inherited: [] })).toEqual([]);
@@ -137,7 +137,7 @@ describe("protectiveRatchetViolations — delete and cascade shapes", () => {
     expect(v[0].reason).toBe("LOWERED");
   });
 
-  it("flags a thesis override that demotes an inherited Do-it rung", () => {
+  it("flags a thesis override that slows an inherited Auto-sell", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
       before: [],

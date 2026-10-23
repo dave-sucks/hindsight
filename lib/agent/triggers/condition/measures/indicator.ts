@@ -40,6 +40,7 @@ export const rsi: MeasureDef = {
     },
   ],
   cooldownDays: () => 1,
+  rises: (c) => (c.is === "above" ? true : c.is === "below" ? false : null),
   fresh: () => ({ watch: "rsi", is: "below" }),
   fits: (c) => c.value != null && (c.is === "above" || c.is === "below"),
   shape: "RSI is above or below a number.",
@@ -69,6 +70,8 @@ export const strength: MeasureDef = {
   // A daily number that stays true for weeks: once a week.
   cooldownDays: () => 7,
   state: () => true,
+  // Ahead of the S&P is up; "not lagging by more than N" is neither.
+  rises: (c) => ((c.value ?? 0) >= 0 ? true : null),
   fresh: () => ({ watch: "strength", settings: { window: "3M" } }),
   fits: (c) => c.value != null && ["1M", "3M", "6M"].includes(window(c)),
   shape: "Strength vs the S&P takes a number and a window of 1M, 3M or 6M.",
@@ -89,6 +92,7 @@ export const gap: MeasureDef = {
   ],
   // A gap stays "within the last N sessions" for N days: one fire per gap.
   cooldownDays: (c) => Math.max(1, num(c.settings?.withinDays) ?? 1),
+  rises: () => true,
   fresh: () => ({ watch: "gap", settings: { volume: 3, withinDays: 3 } }),
   fits: (c) => c.value != null,
   shape: "A gap takes a number: the % gap up.",

@@ -198,7 +198,7 @@ export interface ToolContext {
    */
   protectiveExitTriggerLabel?: string;
 
-  /** Set only for a trigger set to Do it: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
+  /** Set only for an Auto trigger: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
   payFromCash?: number | null;
 
   /**

@@ -689,7 +689,7 @@ export const managePosition = defineTool({
             };
           }
 
-          // An add no analyst placed (a trigger set to Do it) is paid from cash, never margin, as the Trade button's is.
+          // An add no analyst placed (an Auto trigger) is paid from cash, never margin, as the Trade button's is.
           const short = ctx.payFromCash !== undefined ? cashShortfall(notional, ctx.payFromCash) : null;
           if (short) {
             return {

@@ -100,6 +100,8 @@ export interface MeasureDef {
   level?: (c: Condition) => boolean;
   /** The label a sale on it closes with: STOP for a protective give-back, TARGET for a favourable level; null when the analyst labels it. */
   closeReason?: (c: Condition, isLong: boolean) => "STOP" | "TARGET" | null;
+  /** Which way the price went when it holds: true up, false down; absent or null, neither (volume, a date). Labels an Auto-sell with no close label of its own. */
+  rises?: (c: Condition) => boolean | null;
   /** Where it sits on the chart, when it has one price: a typed level, a % from our position. Absent or null: no line. */
   line?: (c: Condition, ctx: LineContext) => Line | null;
   /** The review clock: counted from the last review. The one schedule a watched stock opts into, and what "review due" reads. */

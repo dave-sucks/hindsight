@@ -20,12 +20,14 @@ stamped copy would freeze the old numbers. See TRIGGERS.md §2a.
 `resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners
 whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
 Every trade a fire leads to goes through the approval switch (on: a proposal). **On fire
-is the same three choices on every trigger (2026-10-22):** `DO_IT` (the trade
-with no analyst run: a sale, a trim of its %, a buy or an add, sized and gated
-by the tool an agent would call; not for a review), `ASK_NOW` (a trigger run
-now) or `NEXT_MORNING` (the morning run answers it). Unset: a sale `DO_IT`, a
-review `NEXT_MORNING`, the rest `ASK_NOW` — every stored trigger names one
-(`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Fire
+is the same three choices on every trigger (2026-10-22):** Auto (`DO_IT`: the
+trade with no agent run, sized and gated by the tool an agent would call;
+Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
+(`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
+run answers it). Unset, a review is Flag for Review and everything else Send to
+Agent; every stored trigger names one. Auto on a buy, add or trim is the
+owner's alone, on a stock (not an account or analyst rule), and is used once;
+an Auto-sell is a standing order (`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Fire
 semantics differ by action (DAV-229):** a protective/review rung is a standing
 order (re-fires every day its condition holds; a decline is "did nothing");
 an ENTER fires on the *crossing* of its level (true now, false at the prior
@@ -204,8 +206,8 @@ plus `get_stock_data`.
 - The **trigger evaluator** is the other clock: every 5 min during regular US
   market hours (gated on `isMarketOpen()`) plus a close pass at 16:20 ET; it
   fires `app/thesis.trigger.fired` when a thesis predicate matches, which
-  wakes a tactical run (or makes a Do-it trade with no agent); a fire set to
-  the next morning run is written down and wakes nothing. See
+  wakes a tactical run (or makes an Auto trade with no agent); a fire set to
+  Flag for Review is written down and wakes nothing. See
   `docs/TRIGGERS.md`. (Its `app/signal.routed`
   path was deleted with the router.)
 - The 6:30–7:30 intelligence jobs (sweep, portfolio monitor, domain monitor,
@@ -470,8 +472,8 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
   at 16:20 ET; fires app/thesis.trigger.fired when a thesis predicate
   matches
 - tactical-run.ts — event-driven, consumes app/thesis.trigger.fired,
-  spawns a focused single-thesis agent (~15 steps), or makes the trade of a
-  trigger set to Do it with no agent
+  spawns a focused single-thesis agent (~15 steps), or makes an Auto
+  trigger's trade with no agent
 ### Agent + Trading
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
 - discovery-run.ts — Sundays 9 AM ET, per-analyst weekly discovery

@@ -33,7 +33,7 @@ REVIEW is simply **the action whose payload is "summon judgment" instead of
 "place an order."** Consequence: **REVIEW is the one action that is always
 Agent-mode** (a deterministic "review" is a contradiction — reviewing IS the
 judgment); its only sub-choice is timing (now vs batched; batched unless
-set to Ask now). ENTER/ADD/TRIM/EXIT can be either mode. The daily run being "a review of the book" is the same verb at
+set to Send to Agent). ENTER/ADD/TRIM/EXIT can be either mode. The daily run being "a review of the book" is the same verb at
 portfolio scope — consistent, not conflated.
 
 ## 3. Three distinct layers (do not blur them)
@@ -107,10 +107,10 @@ over everything.
 | REVIEW_DUE | trigger-in-disguise | nextReviewAt reached / directive | re-underwrite |
 
 Fire-route correction worth repeating (2026-10-22): a new floor/trail EXIT
-defaults to **Do it** (skip the agent; the sale is still approval-gated) and
-can be set to ask the analyst now or wait for the morning run; a sale stored
-before then kept what it did (most ask the analyst). The *arming and firing*
-is mechanical either way (peak tracked, predicate evaluated with no agent).
+defaults to **Send to Agent** and can be made an **Auto-sell** (skip the agent;
+still approval-gated) or **Flag for Review**; the stop set when buying and the
+seat rules' trails are Auto-sells on purpose. The *arming and firing* is
+mechanical either way (peak tracked, predicate evaluated with no agent).
 
 ## 5. Convergence gaps (what "building it correctly" means)
 

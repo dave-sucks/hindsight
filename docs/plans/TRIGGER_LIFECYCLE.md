@@ -39,7 +39,7 @@ last 30 days, word for word — `lib/agent/stock-context.ts`).
 held stock, layer 4 (the agent) may only move protective sell levels toward
 MORE protection. `update_thesis` hard-rejects an edit that lowers a stop,
 widens a trailing give-back, deletes a protective sell rung, or demotes one
-or slows one down (Do it → Ask now → the next morning run) — including the sneaky form where a
+or slows one down (Auto-sell → Send to Agent → Flag for Review) — including the sneaky form where a
 thesis override is deleted so a weaker inherited value shows through. The
 check runs on the effective ladder (`protectiveRatchetViolations`,
 `lib/agent/triggers/ratchet.ts`); the principal's paths (thesis sheet, reject
@@ -71,9 +71,9 @@ declared per-rung by `fireMode`, the same three choices on every action
 
 | Rung shape | On fire | Who decides | Latency |
 |---|---|---|---|
-| `DO_IT` — a sale (the default for one), a trim of its %, a buy, an add | The trade staged directly — no agent; sized and gated by the same tool an agent calls | Nobody (mechanical) → **you approve** (approval switch on) | ~5 min from the move |
-| `ASK_NOW` — the default for a buy, an add, a trim | Tactical run wakes (~15 steps): validates, decides press/hold/take/pass, **re-ladders**, proposes | **Agent, with nuance** → you approve | minutes |
-| `NEXT_MORNING` — the default for a review (incl. the +10% checkpoint) | `TRIGGER_FIRED` row written, **left for the next morning run** (a red filing on a held stock is looked at the same day) | **Agent next morning, with nuance** | next 8 AM |
+| `DO_IT` (Auto-sell, Auto-trim of its %, Auto-buy, Auto-add) — only ever chosen; a buy, add or trim only by the owner, on a stock, and used once | The trade staged directly — no agent; sized and gated by the same tool an agent calls | Nobody (mechanical) → **you approve** (approval switch on) | ~5 min from the move |
+| `ASK_NOW` (Send to Agent) — the default for every action but a review | Tactical run wakes (~15 steps): validates, decides press/hold/take/pass, **re-ladders**, proposes | **Agent, with nuance** → you approve | minutes |
+| `NEXT_MORNING` (Flag for Review) — the default for a review (incl. the +10% checkpoint) | `TRIGGER_FIRED` row written, **left for the next morning run** (a red filing on a held stock is looked at the same day) | **Agent next morning, with nuance** | next 8 AM |
 | `UNPROTECTED_GAIN` / `RUNNING_WINNER` (computed flags, not stored rungs) | Flag on the thesis row every morning until resolved | Agent (must act or explicitly attest) | daily until fixed |
 
 **The worked example (IONS replay, annotated with WHO):**
@@ -89,7 +89,7 @@ declared per-rung by `fireMode`, the same three choices on every action
 |---|---|---|---|---|
 | Trigger-evaluator cron | 5 min, market hours | quotes + ladders | peak/trough water marks (before the check), `lastFiredAt`, `TRIGGER_FIRED` rows, emits fire events | never |
 | Signal path (same cron file) | on `app/signal.routed` | routed signals | same | never |
-| Tactical run | on a fire set to Ask now (or Do it: the trade, no agent) | ONE thesis + full ladder + fresh data | surgical `update_thesis` (incl. ladder) | proposals |
+| Tactical run | on a fire set to Send to Agent (or Auto: the trade, no agent) | ONE thesis + full ladder + fresh data | surgical `update_thesis` (incl. ladder) | proposals |
 | Daily run | 8 AM Mon–Fri | whole book + flags + ladder-health | ladder patches, reviews, status | proposals |
 | Thesis-writer | dispatched (promotion / staleness) | deep research | full research + authored ladder — never status | never |
 | Price-monitor | hourly | positions | `PRICE_CHECK` rows (the trade page's event list) | never |

@@ -120,6 +120,7 @@ export function useTriggerRequest(onDone: () => void) {
 /** On fire: the same three choices on every trigger, one the action can't take disabled; a trim's size beside it. */
 export function OnFireSelect({
   action,
+  standing,
   value,
   trimPct,
   onChange,
@@ -127,6 +128,8 @@ export function OnFireSelect({
   disabled,
 }: {
   action: TriggerAction;
+  /** An account or analyst rule: Auto only on a sale. */
+  standing: boolean;
   value: FireMode;
   trimPct: number;
   onChange: (v: FireMode) => void;
@@ -158,13 +161,13 @@ export function OnFireSelect({
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} align="start">
             {FIRE_MODES.map((m) => (
-              <SelectItem key={m} value={m} disabled={fireModeProblem(action, m) != null}>
+              <SelectItem key={m} value={m} disabled={fireModeProblem(action, m, { standing }) != null}>
                 {fireModeLabel(m, action)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {/* A trim's size: always here, used only by a trim set to sell right away. */}
+        {/* A trim's size: always here, used only by an Auto-trim. */}
         <InputGroup>
           <InputGroupAddon>
             <InputGroupText>Trim</InputGroupText>

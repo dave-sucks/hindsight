@@ -240,7 +240,7 @@ export const triggerSchema = z.object({
     .enum(FIRE_MODES)
     .optional()
     .describe(
-      "On fire. DO_IT: the trade, no analyst (not a review). ASK_NOW: a trigger run now. NEXT_MORNING: the morning run. Omitted: a sale DO_IT, a review NEXT_MORNING, else ASK_NOW.",
+      "NEXT_MORNING (Flag for Review): routine looks; unset on a review. ASK_NOW (Send to Agent): a look today (a sharp drop, a broken level, a milestone); unset otherwise. DO_IT (Auto-sell): the line you sell at regardless. Auto buy/add/trim is the owner's.",
     ),
   trimPct: z.number().min(1).max(99).optional().describe("A trim set to DO_IT: the % of the position it sells. Omitted: 50."),
   // Server-owned provenance. Deliberately NO .default() — this schema is
