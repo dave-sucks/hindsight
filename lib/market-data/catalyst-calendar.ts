@@ -198,19 +198,11 @@ export function daysUntil(iso: string, now: Date): number {
 
 /** SEC asks for ten requests a second at most; this is comfortably inside it. */
 let FETCH_GAP_MS = 220;
-export function __setCatalystFetchGap(ms: number): void {
-  FETCH_GAP_MS = ms;
-}
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A filing's date cannot change once written, so it is read once a day at most. */
 const dateCache = new Map<string, { at: number; found: ReturnType<typeof findEventDate> }>();
 const DAY_MS = 86_400_000;
-export function __resetCatalystCache(): void {
-  dateCache.clear();
-}
-
 /** One polite read off SEC — spaced, retried once, null when it didn't come back. The filing reader shares it. */
 export async function secGet(url: string, accept = "text/html"): Promise<string | null> {
   for (let attempt = 0; attempt < 2; attempt++) {

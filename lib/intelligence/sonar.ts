@@ -119,76 +119,9 @@ If search results are thin, return fewer signals rather than padding with specul
 
 // ── Batch Search ────────────────────────────────────────────────────────────
 
-/**
- * Run multiple search queries in parallel with concurrency control.
- * Used by market sweep (15 queries) and portfolio monitor (1 per ticker).
- *
- * @param queries - Array of {query, options} pairs
- * @param concurrency - Max parallel requests (default 5)
- * @returns Flat array of all signals from all queries
- */
-export async function batchSearchSignals(
-  queries: Array<{ query: string; options?: SonarSearchOptions }>,
-  concurrency = 5
-): Promise<SonarSignalResponse> {
-  const allSignals: SonarSignalResponse["signals"] = []
-  const chunks: Array<Array<{ query: string; options?: SonarSearchOptions }>> = []
-
-  // Split into chunks for concurrency control
-  for (let i = 0; i < queries.length; i += concurrency) {
-    chunks.push(queries.slice(i, i + concurrency))
-  }
-
-  for (const chunk of chunks) {
-    const results = await Promise.allSettled(
-      chunk.map(({ query, options }) => searchSignals(query, options))
-    )
-
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        allSignals.push(...result.value.signals)
-      } else {
-        console.warn("[sonar] Search failed:", result.reason)
-      }
-    }
-  }
-
-  return { signals: allSignals }
-}
-
 // ── Domain-Filtered Search ──────────────────────────────────────────────────
 
-/**
- * Search within specific domains — used by domain monitors.
- * Convenience wrapper around searchSignals with domainFilter.
- */
-export async function searchDomain(
-  query: string,
-  domains: string[],
-  recency: SonarSearchOptions["recency"] = "day"
-): Promise<SonarSignalResponse> {
-  return searchSignals(query, {
-    domainFilter: domains,
-    recency,
-  })
-}
-
 // ── Ticker-Specific Search ──────────────────────────────────────────────────
-
-/**
- * Search for news about a specific ticker — used by portfolio/watchlist monitor.
- * Adds the ticker to the query and uses day recency.
- */
-export async function searchTicker(
-  ticker: string,
-  additionalContext?: string
-): Promise<SonarSignalResponse> {
-  const query = additionalContext
-    ? `${ticker} stock ${additionalContext} today`
-    : `${ticker} stock news developments catalysts today`
-
-  return searchSignals(query, { recency: "day" })
-}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

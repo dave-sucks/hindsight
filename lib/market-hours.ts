@@ -357,13 +357,3 @@ export function isMarketOpen(now: Date = new Date()): boolean {
   return totalMinutes >= marketOpen && totalMinutes < marketClose;
 }
 
-/**
- * Returns minutes until market open (0 if already open).
- */
-export function minutesUntilOpen(now: Date = new Date()): number {
-  if (isMarketOpen(now)) return 0;
-  // Simplified: next 9:30am ET
-  const next = new Date(now);
-  next.setHours(next.getHours() + 1); // rough estimate
-  return 60;
-}

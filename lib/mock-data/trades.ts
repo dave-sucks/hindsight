@@ -266,13 +266,3 @@ export const mockEquityCurve = Array.from({ length: 30 }, (_, i) => {
   };
 });
 
-// Mock watchlist tickers
-export const mockWatchlist = [
-  { ticker: 'SPY', name: 'S&P 500 ETF', price: 584.20, changePct: 0.42 },
-  { ticker: 'QQQ', name: 'Nasdaq-100 ETF', price: 492.80, changePct: 0.68 },
-  { ticker: 'NVDA', name: 'NVIDIA Corp', price: 921.00, changePct: 1.82 },
-  { ticker: 'TSLA', name: 'Tesla Inc', price: 231.00, changePct: -0.74 },
-  { ticker: 'AAPL', name: 'Apple Inc', price: 198.00, changePct: 0.35 },
-  { ticker: 'MSFT', name: 'Microsoft Corp', price: 448.00, changePct: 0.21 },
-  { ticker: 'META', name: 'Meta Platforms', price: 596.40, changePct: 1.14 },
-];

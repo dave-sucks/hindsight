@@ -44,8 +44,3 @@ export function etInstant(ymd: string, minutes: number): Date {
   return new Date(Date.UTC(y, mo - 1, d, Math.floor(minutes / 60) + 5, minutes % 60));
 }
 
-/** Inside the window the chart draws. */
-export function inIntradayWindow(iso: string | Date): boolean {
-  const m = etMinutesOf(iso);
-  return m >= INTRADAY_WINDOW_ET.start && m <= INTRADAY_WINDOW_ET.end;
-}

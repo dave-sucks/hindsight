@@ -210,25 +210,6 @@ export const DEFAULT_INTELLIGENCE_POLICY: IntelligencePolicy = {
   minSourceQuality: 2,
 };
 
-/**
- * Parse an IntelligencePolicy from a Prisma Json field.
- * Returns defaults for any missing fields — safe to call on null/undefined.
- */
-export function parseIntelligencePolicy(raw: unknown): IntelligencePolicy {
-  if (!raw || typeof raw !== "object") return { ...DEFAULT_INTELLIGENCE_POLICY };
-  const obj = raw as Record<string, unknown>;
-  return {
-    maxSignalsPerRun: typeof obj.maxSignalsPerRun === "number" ? obj.maxSignalsPerRun : DEFAULT_INTELLIGENCE_POLICY.maxSignalsPerRun,
-    maxArtifactReads: typeof obj.maxArtifactReads === "number" ? obj.maxArtifactReads : DEFAULT_INTELLIGENCE_POLICY.maxArtifactReads,
-    preferredSourceCategories: Array.isArray(obj.preferredSourceCategories) ? obj.preferredSourceCategories as SourceCategory[] : DEFAULT_INTELLIGENCE_POLICY.preferredSourceCategories,
-    excludedSourceCategories: Array.isArray(obj.excludedSourceCategories) ? obj.excludedSourceCategories as SourceCategory[] : DEFAULT_INTELLIGENCE_POLICY.excludedSourceCategories,
-    allowLiveSearch: typeof obj.allowLiveSearch === "boolean" ? obj.allowLiveSearch : DEFAULT_INTELLIGENCE_POLICY.allowLiveSearch,
-    liveSearchBudget: typeof obj.liveSearchBudget === "number" ? obj.liveSearchBudget : DEFAULT_INTELLIGENCE_POLICY.liveSearchBudget,
-    minUrgency: (["LOW", "MEDIUM", "HIGH", "BREAKING"] as const).includes(obj.minUrgency as SignalUrgency) ? obj.minUrgency as SignalUrgency : DEFAULT_INTELLIGENCE_POLICY.minUrgency,
-    minSourceQuality: typeof obj.minSourceQuality === "number" ? obj.minSourceQuality : DEFAULT_INTELLIGENCE_POLICY.minSourceQuality,
-  };
-}
-
 // ── Dynamic Query Types ─────────────────────────────────────────────────────
 // Output from the briefing agent's dynamic_queries section.
 
