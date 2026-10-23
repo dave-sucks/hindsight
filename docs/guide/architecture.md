@@ -40,11 +40,11 @@ Eastern time, on trading days unless it says otherwise.
 - **6:25 AM:** Every market-data source is probed; an email goes out if one is empty or erroring.
 - **6:30 AM:** The chart numbers for every stock on the book: averages, highs, RSI, strength, gaps, insider buys.
 - **8:00 AM:** Morning runs, on each analyst's run days.
-- **9:30 AM – 4:00 PM:** The trigger check, every five minutes. Each check first brings every holding's high since the buy up to date for the trails.
+- **9:30 AM – 4:00 PM (1 PM on half days):** The trigger check, every five minutes. Each check first brings every holding's high since the buy up to date for the trails. No order waits at the broker, so a floor broken overnight is acted on at the first check after the open. A buy or an add waits for a price from the last 15 minutes; a sale or a review doesn't.
 - **4:00 AM – 8:00 PM:** Orders are matched to the broker's fills every five minutes, and proposals past their 24 hours lapse every thirty.
 - **10:00 AM:** The morning digest: what the runs did, in one email.
-- **4:20 PM:** The close pass: levels that read the closing price.
-- **5:00 PM:** End-of-day snapshots of every position.
+- **4:20 PM:** The close pass: triggers that read "only on the close", checked once on the day's closing price.
+- **5:00 PM:** End-of-day snapshots of every position, and the post-trade review of any position closed that day that hasn't had one.
 - **8:00 PM:** The portfolio digest the next morning's runs read.
 - **Sundays 10:00 AM:** Weekly scorecards: win rate, and how well conviction matched outcomes, once an analyst has three closed trades.
 - **Discovery** has a Sunday 9:00 AM slot in the code, but in practice it runs when you ask.
