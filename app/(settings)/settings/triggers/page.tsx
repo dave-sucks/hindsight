@@ -48,6 +48,19 @@ export default async function TriggerSettingsPage() {
       </SettingsSection>
 
       <SettingsSection
+        title="When triggers are checked"
+        description="Every 5 minutes from 9:30 to the close on trading days (1 PM on half days). Never before the open, after hours, on weekends or on holidays."
+      >
+        <p className="text-xs text-muted-foreground">
+          A trigger that reads &ldquo;only on the close&rdquo; is checked once,
+          at 4:20 PM, on the day&rsquo;s closing price. No order waits at
+          Alpaca: a floor broken overnight is acted on at the first check after
+          the open. A buy or an add waits for a price from the last 15 minutes;
+          a sale or a review doesn&rsquo;t, because missing a sale is worse.
+        </p>
+      </SettingsSection>
+
+      <SettingsSection
         title="How the levels stack"
         description="Most specific wins. An analyst overrides the account; a single thesis overrides them all. Deleting a rung reveals whatever sits beneath it."
       >
