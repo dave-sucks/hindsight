@@ -73,7 +73,11 @@ The Writer runs it started land on their own; `wait_for_thesis_refresh` brings t
 
 ## Tools
 
-Discovery uses chat's tools: see [Chat](chat.md).
+Discovery uses these of chat's tools. [Chat](chat.md) lists all of them.
+
+- **Find candidates:** `run_screen`, `get_earnings_calendar`, `get_market_movers`, `get_catalyst_calendar`, `get_sec_filings`.
+- **Check them:** `get_theses`, `get_stock_data`, `web_search`, `twitter_search`.
+- **Hand off or record:** `dispatch_thesis_research` sends a stock to the Writer; `record_thesis` saves a pass or a watch; `wait_for_thesis_refresh` brings the Writer's results back into the conversation.
 
 <details>
 <summary>Technical details</summary>
