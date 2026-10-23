@@ -485,7 +485,10 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   than that is kept as the **review line** above it: "Review if below $Y",
   ASK_NOW, with the floor's own note; with a review already in that slot the
   higher price is kept, never two. A tighter floor the owner set is left
-  exactly as it is. With the setting on, a buy (and an add) is sized off the
+  exactly as it is, and a stop typed on the Trade ticket is the owner's
+  (`approveProposal(…, { tradeTicket: true })` → `stopIsOwners`; one equal
+  to the row's floor, the ticket's default, stays the analyst's). With the
+  setting on, a buy (and an add) is sized off the
   wider of the plan's floor and the setting's line (`sizingStop`,
   `lib/agent/position-sizing.ts`), so a loss at the sale floor stays inside
   the risk per trade. An add to a holding never moves the lines.

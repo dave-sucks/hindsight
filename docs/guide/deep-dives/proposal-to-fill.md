@@ -42,7 +42,7 @@ Only one click can win. The order goes to the broker with the same key. A defini
 
 The thesis moves when the broker accepts the order, not when the fill prints. With approval off, it moves when the fill is seen.
 
-- **A buy** turns Watching into Holding. The buy trigger is removed, and the floor and target are set to the levels on the trade. With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the buy price, selling straight away; an analyst's tighter floor stays above it as a review line that asks the analyst, and a tighter floor you set stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid.
+- **A buy** turns Watching into Holding. The buy trigger is removed, and the floor and target are set to the levels on the trade. With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the buy price, selling straight away; an analyst's tighter floor stays above it as a review line that asks the analyst, and a tighter floor you set, or typed on the Trade ticket, stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid.
 - **A sale** retires the thesis as sold. The exceptions are a sale at the target, or one where the agent attested the belief survived: those return to Watching with a one-day review.
 
 When a protective trigger woke the run that sold, the sale is labelled stop or target, whatever the agent wrote. A wrong label would hide the sale from the rules that read it.
