@@ -147,8 +147,8 @@ portfolio/watchlist monitor, domain monitor, the signal router, their cleanup
 cron and the newsletter extraction — were deleted 2026-09-15. The tables and
 rows are **kept**: `Signal`, `Monitor`, `AnalystSignalRoute`, `SignalBatch`,
 `Artifact` are readable on `/intelligence` (read-only) and via `read_database`,
-but nothing adds to them. `read_signals` / `read_artifact` stay in the
-codebase and on **no** mode's allowlist. Outside facts reach an agent through a
+but nothing adds to them. The `read_signals` / `read_artifact` tools that read
+them were deleted 2026-10-23. Outside facts reach an agent through a
 measure the five-minute check can evaluate, or a data field the agent
 pulls mid-run — see `docs/plans/LANES.md` §2.
 
@@ -349,9 +349,9 @@ podcast-only tools (`read_past_transcripts`, `suggest_podcast_config`,
 trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 
 ### Intelligence Tools (read pre-gathered data)
-1–2. read_signals / read_artifact — the signal inbox and its article reader.
-   **In the codebase, on no mode's allowlist** since 2026-09-15 (the router
-   that filled the inbox is deleted). Kept so the history stays reachable.
+1–2. read_signals / read_artifact — DELETED 2026-10-23 (on no mode's list
+   since the router that filled the inbox went, 2026-09-15). The signal history
+   is on /intelligence and through `read_database`.
 3. get_theses — read the analyst's durable thesis library (default HOLDING+WATCHING; include_history=true for the activity log)
 4. get_portfolio_context — open positions, exposure, available buying power, recent fills
 5. web_search — live Perplexity Sonar search (budget-limited)
@@ -748,7 +748,6 @@ When you spot something new, file it there — not here.)
 - lib/intelligence/sonar.ts — Perplexity Sonar client (behind `web_search`)
 - lib/intelligence/types.ts — shared types, incl. IntelligencePolicy (the
   router's attention weights were removed from it 2026-09-15)
-- lib/agent/tools/read-signals.ts, read-artifact.ts — kept, unlisted
 - app/(root)/intelligence/page.tsx — read-only signal history
 - (firecrawl.ts, signals.ts, data-payload-extractor.ts, trading-day.ts,
   email-signal-extractor.ts, urgent-trigger.ts and the four pipeline

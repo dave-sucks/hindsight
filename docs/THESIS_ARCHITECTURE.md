@@ -300,7 +300,7 @@ These are the canonical flows. If your code path doesn't fit one of these, it's 
 
 ### Scenario A — Discovery picks up $NVDA, agent likes it.
 
-1. Sunday 9am cron. Discovery agent calls `read_signals`; $NVDA appears.
+1. Discovery in chat: a screen or the movers list surfaces $NVDA.
 2. Research: `get_stock_data`, `get_market_context`, optional `web_search`.
 3. Scores on the 4-dim composite → 6.5. Setup is clean.
 4. `record_thesis({ ticker: 'NVDA', direction: 'LONG', status: 'WATCHING', target_price: 220, stop_loss: 180, entry_price: 195, triggers: [...], core_belief, key_assumptions, invalidation_conditions })`.

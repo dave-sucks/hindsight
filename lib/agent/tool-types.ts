@@ -96,7 +96,7 @@ export interface MatchedUniverse {
   feed?: string;
 }
 
-/** Signal item — shared shape for read_signals and web_search results */
+/** Signal item — the shape of a web_search result (the routing fields are from the deleted signal inbox). */
 export interface SignalItem {
   headline: string;
   summary: string;
@@ -105,14 +105,14 @@ export interface SignalItem {
   sentiment: string; // BULLISH | BEARISH | NEUTRAL | MIXED
   urgency: string; // LOW | MEDIUM | HIGH | BREAKING
   sources: SourceRef[];
-  // Signal-specific (present in read_signals, absent in web_search)
+  // Signal-specific (absent in web_search)
   signalId?: string;
   type?: string;
   freshness?: string;
   relevanceScore?: number;
   routeReason?: string;
   artifactId?: string | null;
-  // Session 3: canonical routing code + universe-match payload (read_signals only).
+  // Session 3: canonical routing code + universe-match payload.
   routeReasonCode?: RouteReasonCode;
   matchedUniverse?: MatchedUniverse | null;
   // Cross-analyst provenance — populated when routeReasonCode === "CROSS_ANALYST".
@@ -164,43 +164,6 @@ export interface SecFilingsData {
   filings: { type: string; date: string; description: string; items: string[]; tier: "RED" | "MATERIAL" | "CONTEXT"; url: string }[];
   count: number;
   error?: string;
-}
-
-/** read_signals → data */
-export interface SignalsToolData {
-  count: number;
-  fallback?: boolean;
-  fallbackReason?: string;
-  policyApplied?: {
-    maxSignals: number;
-    minUrgency: string;
-    minSourceQuality: number;
-    excludedCategories: string[];
-  };
-  // Flat list — kept for legacy renderers and sorting by urgency.
-  signals: SignalItem[];
-  // Session 3: segmented view. Same signals, split by routeReasonCode.
-  // Aggregate routes (FIRM_AGGREGATE_FEED / AGGREGATE_TICKER_MATCH) bucket
-  // by matchedUniverse.inPositions/inWatchlist when set, otherwise discovery.
-  //   portfolioSignals  — POSITION | (aggregate + inPositions)
-  //   watchlistSignals  — WATCHLIST | (aggregate + inWatchlist, no position)
-  //   discoverySignals  — DISCOVERY | SECTOR_MATCH | INDUSTRY_MATCH | THEME_MATCH
-  //                       | DIRECT_TICKER | CROSS_ANALYST | (aggregate with no
-  //                       ticker overlap — the subscribed firehose itself)
-  portfolioSignals: SignalItem[];
-  watchlistSignals: SignalItem[];
-  discoverySignals: SignalItem[];
-  // Guidance text to surface directly to the agent when discovery is empty.
-  discoveryNote?: string;
-}
-
-/** read_artifact → data */
-export interface ArtifactToolData {
-  title: string;
-  url: string;
-  publishedAt: string | null;
-  contentSummary: string | null;
-  contentMarkdown: string | null;
 }
 
 /** web_search → data */

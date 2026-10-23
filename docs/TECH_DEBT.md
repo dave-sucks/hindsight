@@ -24,8 +24,7 @@ whole list would be a separate week of work.
 
 **Files with the highest count:** `app/(root)/runs/page.tsx`,
 `app/(root)/trades/[id]/page.tsx`,
-`app/(root)/analysts/[id]/edit/page.tsx`,
-`lib/agent/tools/read-signals.ts` (in branches we didn't touch).
+`app/(root)/analysts/[id]/edit/page.tsx`.
 
 **Why not urgent:** doesn't break runtime, just degrades TS coverage.
 The pre-commit hook is configured to accept the baseline.

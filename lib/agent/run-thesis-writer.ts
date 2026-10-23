@@ -299,7 +299,6 @@ async function buildWriterToolCtx(
     forceWatchingMint: args.forceWatchingMint === true,
     groupId: (phase: string) => phase,
     calledTickers: new Map([[T, new Set(["get_stock_data"])]]),
-    signalsByTicker: new Map<string, Set<string>>(),
   };
   return ctx as unknown as ToolContext;
 }

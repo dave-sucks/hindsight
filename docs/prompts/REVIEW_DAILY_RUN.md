@@ -164,7 +164,6 @@ Carried over from the pre-2026-05-26 rubric. The newer checks (A–E + G) layer 
 - Narration→execution gap on any `close_position` calls? P0-12 lives at `complete_run` preflight now ([lib/agent/tools/complete-run.ts:362-375](../../lib/agent/tools/complete-run.ts), `checkNarrationExecutionGap`). If the gate fired, the run logs will show a `RunEvent(type='run_failed', title='Narration without tool call ...')`.
 - Premature-exit retry path: did `morning-research.ts` re-fire on a `prematureExitViolation` or `coverageMissing` shape?
 - Overdue-review backlog trend (>7d, any-overdue) vs prior
-- **`read_signals` calls = 0** ([PR #361](https://github.com/dave-sucks/hindsight/pull/361) stripped the tool from the daily-run allowlist). Any `read_signals` call in `parameters.toolStats.byTool` is either an allowlist regression or a stale-prompt regression — both are bugs.
 
 ### G. Resolver actionability adherence ([PR #360](https://github.com/dave-sucks/hindsight/pull/360))
 

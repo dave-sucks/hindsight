@@ -90,16 +90,6 @@ export interface ToolContext {
   intelligencePolicy?: IntelligencePolicy;
 
   /**
-   * Daily Run (Fix #6). When true,
-   * read_signals zeroes out the discoverySignals bucket and returns
-   * portfolio + watchlist signals only. Daily's job is to MANAGE the
-   * existing book; new-coverage candidates are Discovery's
-   * responsibility. Set in lib/inngest/functions/morning-research.ts
-   * when the V2 prompt is enabled.
-   */
-  dailyRunOnly?: boolean;
-
-  /**
    * Chat-dispatched thesis-writer mints clamp to WATCHING. P1-24: a
    * record_thesis mint is always WATCHING regardless of this flag (a mint
    * never has a position; HOLDING is execution-owned). This flag survives as
@@ -132,17 +122,6 @@ export interface ToolContext {
    * createResearchTools().
    */
   calledTickers?: Map<string, Set<string>>;
-
-  /**
-   * In-run signal tracker. Maps TICKER (uppercase) → set of signalIds that
-   * were returned by read_signals for that ticker in this run. Drives the
-   * provenance soft-nudge in record_thesis: when the agent picks
-   * source_kind=WEB_SEARCH for a ticker that had matching routed signals,
-   * we know read_signals informed the thesis and the trade-evaluator's
-   * monitor-credit chain just lost its hook. Skipping the citation kills
-   * the Pillar 5 self-improvement loop. Populated by read_signals.
-   */
-  signalsByTicker?: Map<string, Set<string>>;
 
   /**
    * Deterministic close reason for a protective/price EXIT tactical run. Set

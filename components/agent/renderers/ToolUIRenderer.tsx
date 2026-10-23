@@ -221,8 +221,6 @@ function humanizeToolName(toolName: string): string {
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  read_signals: "Signals",
-  read_artifact: "Reading article",
   web_search: "Web search",
   get_portfolio_context: "Current portfolio",
   complete_run: "Completing run",

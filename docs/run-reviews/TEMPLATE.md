@@ -25,12 +25,9 @@
 | Daily-run `update_thesis` calls | | | |
 | Daily-run `record_thesis` calls | | | |
 | Daily-run `get_stock_data` calls | | | |
-| Daily-run `read_signals` calls * | | | |
 | Cross-analyst dispatch dedup refusals | | | |
 | Overdue-review backlog (>7d, HOLDING+WATCHING+PROMOTED) | | | |
 | Overdue-review backlog (any, HOLDING+WATCHING+PROMOTED) | | | |
-
-\* `read_signals` was stripped from the daily-run allowlist in PR #361. Expected = 0. Anything else is a regression.
 
 ### Conviction tier distribution (PR #360)
 
@@ -92,7 +89,7 @@ Per-analyst walkthrough. For each analyst that ran today:
 - **Section C:** dispatch behavior — list every `dispatch_thesis_research` call with child status + elapsed
 - **Section D:** "moved but wasn't traded" — any thesis whose price action warranted an action the agent didn't take
 - **Section E:** trigger sanity (`nextReviewAt`, ENTER-on-HOLDING / missing-EXIT, etc.)
-- **Section F:** standard checks (tool counts, duration, complete_run, narration→execution, premature-exit retry, **`read_signals` calls = 0**)
+- **Section F:** standard checks (tool counts, duration, complete_run, narration→execution, premature-exit retry)
 - **Section G:** resolver actionability adherence — for each touched thesis, what `resolved.actionability` was at run start vs what the agent did
 - **Section H (toggle-ON analysts only):** proposal-flow integrity — gate fired, audit trail, ungated paths still ungated, no orphans / dupes
 
