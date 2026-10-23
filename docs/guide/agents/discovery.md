@@ -33,7 +33,7 @@ Finding a stock and making the case for it are separate jobs. Discovery is wide 
 
 ## When it runs
 
-When you ask, and in practice you ask in [chat](chat.md). Chat carries Discovery's tools and the same scoring rules, so "find drift names off this week's reports" in chat is a discovery pass, best with an analyst selected. The standalone Discovery run, the one the facts above describe, is its own run for one analyst, started by an event or a Sunday slot in the code; nothing in the app's pages starts it today.
+When you ask, and in practice you ask in [chat](chat.md). Chat carries Discovery's tools and the same scoring rules, so "find drift names off this week's reports" in chat is a discovery pass, best with an analyst selected. The standalone Discovery run, the one the facts above describe, is its own run for one analyst, started by an event; nothing in the app's pages starts it today.
 
 > Find drift names off this week's reports.
 >
@@ -89,7 +89,7 @@ Everything Discovery can call, read from `lib/agent/modes.ts`.
 `discovery` in `lib/agent/modes.ts`: `gpt-5.4`, up to 45 steps. Chat (`principal`) carries the same discovery tools.
 
 #### Started by
-The standalone run: the `app/discovery.run.manual` event, which can carry an analyst and a focus, or the Sunday 9 AM cron in `lib/inngest/functions/discovery-run.ts` (skips day-trading analysts). In practice discovery is done in chat: the `principal` prompt in `lib/agent/modes.ts` carries the same batched-discovery rules, score and cap of five (the cap is the prompt's there; `dispatch_thesis_research` enforces `DISPATCH_CAP` only under a DISCOVERY run).
+The standalone run: the `app/discovery.run.manual` event, which can carry an analyst and a focus (`lib/inngest/functions/discovery-run.ts`; without an analyst it skips day-trading analysts). It has no schedule. In practice discovery is done in chat: the `principal` prompt in `lib/agent/modes.ts` carries the same batched-discovery rules, score and cap of five (the cap is the prompt's there; `dispatch_thesis_research` enforces `DISPATCH_CAP` only under a DISCOVERY run).
 
 #### Score and cap
 The 10-point composite and its bar of 4 are in the prompt. `DISPATCH_CAP` = 5 per run, enforced in `dispatch_thesis_research`.

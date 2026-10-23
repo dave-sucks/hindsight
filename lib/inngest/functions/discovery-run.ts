@@ -1,16 +1,9 @@
 // ── Discovery Run ──────────────────────────────────────────────────────
-// Weekly cron — Sundays 9 AM ET. Per-analyst spawn of a focused
+// Started by hand only: the `app/discovery.run.manual` event, optionally
+// for one analyst and with a focus. Per-analyst spawn of a focused
 // discovery agent that finds net-new ticker coverage worth WATCHING.
-//
-// Why a separate cron from the daily run: the daily run is allowed
-// to skip discovery (slots full, hostile regime, no candidates). The
-// weekly cron is the safety net so we never go weeks without
-// scanning the universe.
-//
-// Why Sunday 9 AM ET: markets are closed (no race against opening
-// price moves), the prior week's signals have all landed, and the
-// new WATCHING theses are ready in time for Monday morning's daily
-// run to pick them up via the per-thesis review loop.
+// Discovery is manual by design (most of it happens in chat), so there is
+// no schedule; the Sunday 9 AM cron was removed.
 
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { inngest } from "@/lib/inngest/client";
@@ -36,16 +29,11 @@ import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 export const discoveryRun = inngest.createFunction(
   {
     id: "discovery-run",
-    name: "Weekly Discovery Run",
+    name: "Discovery Run",
     concurrency: { limit: 1 },
     retries: 1,
   },
-  [
-    // 9 AM ET Sundays. Inngest auto-handles EDT/EST.
-    { cron: "TZ=America/New_York 0 9 * * 0" },
-    // Manual fire — useful for one-off testing.
-    { event: "app/discovery.run.manual" },
-  ],
+  [{ event: "app/discovery.run.manual" }],
   async ({ event, step }) => {
     const payload =
       (event as { data?: { agentConfigId?: string; focus?: string } })?.data ?? {};
@@ -53,8 +41,8 @@ export const discoveryRun = inngest.createFunction(
     // The ask. A manual fire can say what this run is FOR — "discovery off
     // this week's earnings", "names that reported yesterday and gapped up"
     // — and the prompt's earnings-driven section keys off exactly that
-    // framing (get_earnings_calendar window:"reported"). Absent on the
-    // cron: the standard movers + calendar pass.
+    // framing (get_earnings_calendar window:"reported"). Without one: the
+    // standard movers + calendar pass.
     const focus = typeof payload.focus === "string" ? payload.focus.trim().slice(0, 500) : "";
 
     const configs = await step.run("load-agent-configs", async () => {
@@ -64,9 +52,9 @@ export const discoveryRun = inngest.createFunction(
           ...(targetConfigId ? { id: targetConfigId } : {}),
         },
       });
-      // Skip DAY-only analysts. A weekly Sunday WATCHING thesis with
-      // an intraday-level ENTER trigger is architecturally broken —
-      // Monday's premarket gap moves the breakout level. DAY analysts
+      // Skip DAY-only analysts. A WATCHING thesis minted ahead of the
+      // session with an intraday-level ENTER trigger is architecturally broken —
+      // the next open's gap moves the breakout level. DAY analysts
       // discover their candidates from today's tape via their morning
       // daily run, not from week-old routed signals. Targeted manual
       // fires (targetConfigId) still go through — useful for testing.
@@ -136,9 +124,7 @@ export const discoveryRun = inngest.createFunction(
               mode: "DISCOVERY",
               environment: runEnvironment,
               parameters: {
-                triggeredBy: targetConfigId
-                  ? "discovery-manual"
-                  : "discovery-cron",
+                triggeredBy: "discovery-manual",
                 agentMode: true,
                 analystName: config.name,
                 existingTickerCount: existingTickers.length,
@@ -253,7 +239,7 @@ export const discoveryRun = inngest.createFunction(
 
         const userPrompt =
           (focus ? `THE ASK FOR THIS RUN: ${focus}\n\nRead the pool through that ask first — if it names a report window, start from get_earnings_calendar(window:"reported", scope:"universe") as your system prompt describes. Then the standard pass.\n\n` : "") +
-          "Begin your weekly discovery scan (Phase 2 — two-pass funnel). Pass 1: call get_market_movers(scope:\"universe\") for gainers and most-active (and losers if your edge buys dislocations), and get_earnings_calendar(scope:\"universe\"). Triage the resulting pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, honoring the dispatch cap stated in your system prompt. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
+          "Begin your discovery scan (Phase 2 — two-pass funnel). Pass 1: call get_market_movers(scope:\"universe\") for gainers and most-active (and losers if your edge buys dislocations), and get_earnings_calendar(scope:\"universe\"). Triage the resulting pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, honoring the dispatch cap stated in your system prompt. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
 
         // Every request counted and recorded on the run row (token-usage.ts);
         // one cache route per run, as the morning run has.
@@ -388,9 +374,7 @@ export const discoveryRun = inngest.createFunction(
               ...(producedWork && !ranSummary
                 ? {
                     parameters: {
-                      triggeredBy: targetConfigId
-                        ? "discovery-manual"
-                        : "discovery-cron",
+                      triggeredBy: "discovery-manual",
                       agentMode: true,
                       analystName: config.name,
                       existingTickerCount: existingTickers.length,
