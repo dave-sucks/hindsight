@@ -91,8 +91,8 @@ export interface ToolContext {
 
   /**
    * When true, read_signals returns ONLY the discoverySignals bucket and
-   * zeroes out portfolioSignals + watchlistSignals. Used by the weekly
-   * discovery cron to keep the agent focused on net-new candidates only —
+   * zeroes out portfolioSignals + watchlistSignals. Used by the
+   * discovery run to keep the agent focused on net-new candidates only —
    * the prompt was asking the LLM to mentally filter, but the chat
    * rendering of "all three buckets in one flat list" looked like noise
    * about already-covered names and the agent still acted on the wrong
@@ -104,7 +104,7 @@ export interface ToolContext {
    * Mirror of discoveryOnly for the Daily Run (Fix #6). When true,
    * read_signals zeroes out the discoverySignals bucket and returns
    * portfolio + watchlist signals only. Daily's job is to MANAGE the
-   * existing book; new-coverage candidates are the Discovery cron's
+   * existing book; new-coverage candidates are Discovery's
    * responsibility. Set in lib/inngest/functions/morning-research.ts
    * when the V2 prompt is enabled.
    */

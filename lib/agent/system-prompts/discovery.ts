@@ -1,7 +1,7 @@
 /**
- * Weekly Discovery system prompt.
+ * Discovery system prompt.
  *
- * Spawned by the discovery-run Inngest cron (Sundays 9am ET). Job is
+ * Spawned by the discovery-run Inngest function (`app/discovery.run.manual`). Job is
  * narrow: find net-new ticker coverage worth WATCHING. Does NOT manage
  * existing theses, does NOT trade off momentum (the daily run does
  * that).
@@ -14,10 +14,9 @@
  * (see constant below). PASS rows still go through record_thesis
  * directly — cheap, terminal-at-write institutional memory.
  *
- * Why a separate cron when the daily run can also do discovery: the
+ * Why a separate run when the daily run can also do discovery: the
  * daily run is allowed to skip discovery (slots full, hostile regime,
- * no candidates). The weekly cron is the safety net so we never go
- * weeks without scanning the universe.
+ * no candidates). A discovery run is started by hand when a scan is wanted.
  */
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";

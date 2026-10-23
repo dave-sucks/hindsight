@@ -90,7 +90,7 @@ interface ToolCtx {
   /** Snapshot of ResearchRun.environment — see ToolContext.runEnvironment. */
   runEnvironment?: "PAPER" | "LIVE";
   intelligencePolicy?: IntelligencePolicy;
-  /** Restrict read_signals to discoverySignals bucket only (discovery cron). */
+  /** Restrict read_signals to discoverySignals bucket only (discovery run). */
   discoveryOnly?: boolean;
   /** Hide discoverySignals from read_signals (daily-run V2 cron). */
   dailyRunOnly?: boolean;

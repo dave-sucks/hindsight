@@ -322,7 +322,7 @@ export const morningResearch = inngest.createFunction(
         // research-run allowlist (Fix #5). The unified route already
         // does this; the cron previously did not, so the Daily Run
         // saw every tool — including record_thesis + manage_watchlist
-        // — and could mint new coverage that's the Discovery cron's
+        // — and could mint new coverage that's Discovery's
         // job. Mirrors the same allowlist-filter pattern in
         // tactical-run.ts and discovery-run.ts.
         const allTools = createResearchTools({
@@ -343,7 +343,7 @@ export const morningResearch = inngest.createFunction(
           runEnvironment,
           // Fix #6 (V2). Narrows read_signals to portfolio + watchlist
           // buckets only — Daily Run shouldn't act on discovery candidates
-          // (that's the Sunday Discovery cron's job). V1 had a different
+          // (that's Discovery's job). V1 had a different
           // expectation; V1 path is deprecated as of 2026-05-16.
           dailyRunOnly: true,
         });

@@ -723,11 +723,11 @@ export const readSignals = defineTool({
       : mappedSignals.filter((s) => bucketOf(s) === "discovery");
 
     // Mode-aware bucket filtering:
-    //   discoveryOnly → Discovery cron: hide portfolio + watchlist
+    //   discoveryOnly → Discovery run: hide portfolio + watchlist
     //                   buckets, agent only sees net-new candidates.
     //   dailyRunOnly  → Daily Run V2 (Fix #6): hide discovery bucket,
     //                   agent only sees its book + watchlist. Discovery
-    //                   candidates only show up in Sunday's Discovery Run.
+    //                   candidates only show up in a Discovery run.
     // The flags are mutually exclusive in practice (different crons set
     // them); if both are set discoveryOnly wins.
     const portfolioSignals = ctx.discoveryOnly ? [] : portfolioSignalsAll;

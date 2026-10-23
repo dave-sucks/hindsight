@@ -139,7 +139,7 @@ const recordFields = z.object({
   catalyst_date: F.catalyst_date.optional(),
   // next_review_at is gone (DAV-221). Review timing is a review-clock
   // trigger counted from the last actual review; the mint templates stamp it.
-  // Explicit status arg. Daily watchlist-review and weekly discovery both
+  // Explicit status arg. Daily watchlist-review and discovery both
   // need to write WATCHING; trade-eligible coverage stays ACTIVE. When
   // omitted the effective status is derived from source_kind:
   // WATCHLIST_REVIEW → WATCHING, everything else → ACTIVE. Direction is

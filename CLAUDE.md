@@ -312,7 +312,7 @@ plus `get_stock_data`.
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
   - tactical: GPT-5.5, maxSteps 15 (single-thesis, single-decision)
-  - discovery: GPT-5.5, maxSteps 45 (weekly Sunday cron)
+  - discovery: GPT-5.5, maxSteps 45 (started by hand; no schedule)
   - podcast-builder / podcast-segment-run / podcast-editor
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
@@ -465,8 +465,8 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
   spawns a focused single-thesis agent (~15 steps)
 ### Agent + Trading
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
-- discovery-run.ts — Sundays 9 AM ET, per-analyst weekly discovery
-  scan (mints up to 5 new WATCHING theses)
+- discovery-run.ts — manual only (`app/discovery.run.manual`), per-analyst
+  discovery scan (mints up to 5 new WATCHING theses); no schedule
 - price-monitor.ts — hourly PRICE_CHECK rows only (the high since we bought is kept by trigger-evaluator, lib/trading/water-mark.ts)
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots

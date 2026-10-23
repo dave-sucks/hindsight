@@ -38,7 +38,7 @@ export type AgentMode =
   // (signal-side or price-cron). Single ticker, single decision,
   // small step budget. Spawned by lib/inngest/functions/tactical-run.ts.
   | "tactical"
-  // PR 3 — weekly discovery run (Sundays 9am ET). Finds net-new
+  // Discovery run, started by hand (`app/discovery.run.manual`). Finds net-new
   // ticker coverage worth WATCHING. Spawned by
   // lib/inngest/functions/discovery-run.ts. Mints WATCHING theses;
   // does NOT touch existing ones (daily run handles those).
@@ -142,15 +142,14 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // leaves ~10 steps of breathing room.
     maxSteps: 65,
     // Fix #5 (docs/MORNING_RUN_V2_DESIGN.md). The Daily Run manages the
-    // existing book; minting NEW coverage is the Discovery cron's job
-    // (Sundays). record_thesis intentionally excluded.
+    // existing book; minting NEW coverage is Discovery's job (chat, or a
+    // manual discovery run). record_thesis intentionally excluded.
     // Three paths still mint new coverage:
     //   (a) Tactical promotion — ENTER trigger fires on a WATCHING thesis
     //       (already minted by Discovery), tactical-run flips status to
     //       ACTIVE via update_thesis + place_trade.
-    //   (b) Sunday Discovery cron — the weekly mint window.
-    //   (c) `app/discovery.run.manual` event — fire on demand for a hot
-    //       mid-week name.
+    //   (b) Discovery in chat, which carries the same tools and rules.
+    //   (c) `app/discovery.run.manual` event — a discovery run on demand.
     toolAllowlist: [
       // Read
       // NOTE: read_signals intentionally removed 2026-05-31 as part of

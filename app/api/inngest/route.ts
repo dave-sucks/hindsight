@@ -88,8 +88,8 @@ export const { GET, POST, PUT } = serve({
     // tactical agent runs INSIDE the function (mode='INTRADAY_TACTICAL'
     // on ResearchRun). 240s maxDuration covers the agent + bookkeeping.
     tacticalRun,
-    // PR 3 — weekly discovery cron, Sundays 9am ET. Spawns a focused
-    // agent run per analyst that scans the past week of signals for
+    // Discovery run, on the `app/discovery.run.manual` event only (no
+    // schedule). Spawns a focused agent run per analyst that looks for
     // net-new ticker coverage and mints WATCHING theses. Does NOT
     // touch existing theses (the daily run handles those).
     discoveryRun,

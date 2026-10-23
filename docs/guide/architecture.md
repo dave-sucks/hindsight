@@ -47,7 +47,7 @@ Eastern time, on trading days unless it says otherwise.
 - **5:00 PM:** End-of-day snapshots of every position.
 - **8:00 PM:** The portfolio digest the next morning's runs read.
 - **Sundays 10:00 AM:** Weekly scorecards: win rate, and how well conviction matched outcomes, once an analyst has three closed trades.
-- **Discovery** has a Sunday 9:00 AM slot in the code, but in practice it runs when you ask.
+- **Discovery** has no schedule. It runs when you ask.
 
 The two workflows these clocks drive, end to end: [From fire to run](deep-dives/trigger-fire-to-run.md) and [From proposal to fill](deep-dives/proposal-to-fill.md).
 
