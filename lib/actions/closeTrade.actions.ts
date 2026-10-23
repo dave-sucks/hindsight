@@ -169,6 +169,8 @@ export async function closeOpenPosition(
    * promotion force-closes) leaves it undefined → terminal RETIRED, unchanged.
    */
   beliefSurvived?: boolean | null,
+  /** Always a proposal, whatever the approval switch says: a paused analyst's sale that was set to ask for judgment. */
+  opts?: { propose?: boolean },
 ): Promise<CloseOpenPositionOutcome> {
   const position = await prisma.position.findUniqueOrThrow({
     where: { id: positionId },
@@ -210,11 +212,12 @@ export async function closeOpenPosition(
   // requireApprovalSellsLive=true — a compliance/pre-clearance violation.
   const needsApproval =
     source !== "user" &&
-    (await approvalRequired({
-      accountId: position.accountId,
-      intent: "CLOSE",
-      environment: positionEnvironment,
-    }));
+    (opts?.propose === true ||
+      (await approvalRequired({
+        accountId: position.accountId,
+        intent: "CLOSE",
+        environment: positionEnvironment,
+      })));
   const rationale = auditReason ?? `Automated ${reason} exit — ${position.symbol}`;
   const expiresAt = new Date(placedAt.getTime() + PROPOSAL_TTL_MS);
 

@@ -37,6 +37,8 @@ Every agent that touches one of its stocks reads the same brief first: the analy
 
 Every [proposal](approvals.md) names the analyst behind it, so you always know whose call it is.
 
+**Paused.** A paused analyst runs nothing: no morning runs, no trigger runs, no buys or adds. A stock it still holds keeps its sale triggers, its own and the ones it inherits, and each one that fires comes to you as a sale instead of waking the analyst. An Auto-sell goes through your approval switch as usual; any other sale always waits for your approval.
+
 ## The playbook
 
 Every analyst trades from the same playbook of setups, each with its checklist for the buy, the floor, the target and the time limit. An analyst picks the ones that fit its style. The setups are defined in `lib/agent/knowledge/setups.ts`.

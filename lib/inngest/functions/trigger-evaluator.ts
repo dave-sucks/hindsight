@@ -39,6 +39,7 @@
 //   follow-up if hot-write contention shows up.
 
 import { randomUUID } from "node:crypto";
+import { pausedAnalystTriggers } from "@/lib/agent/triggers/paused";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quote";
@@ -457,11 +458,10 @@ export const triggerEvaluator = inngest.createFunction(
       // The 200-ticker cap below still bounds the loop.
       const theses = await prisma.thesis.findMany({
         where: {
-          // enabled:true — kill the zombie: a disabled analyst's HOLDING/
-          // WATCHING thesis must not fire intraday triggers. This was the
-          // EV Catalyst (ON) tactical that kept firing daily post-disable.
-          // See OPENAI_COST_REDUCTION.md.
-          researchRun: { agentConfig: { enabled: true } },
+          // A paused analyst's stocks are skipped (an agent woken daily after
+          // its pause was the EV Catalyst cost leak), except one it still
+          // holds: its sales stay checked (pausedAnalystTriggers).
+          OR: [{ researchRun: { agentConfig: { enabled: true } } }, { status: "HOLDING" }],
           status: { in: ["HOLDING", "WATCHING"] },
           // No `triggers: { not: [] }` filter. A thesis with an
           // empty own-array can still carry analyst /
@@ -480,7 +480,7 @@ export const triggerEvaluator = inngest.createFunction(
           createdAt: true,
           lastReviewedAt: true,
           catalystDate: true,
-          researchRun: { select: { agentConfigId: true } },
+          researchRun: { select: { agentConfigId: true, agentConfig: { select: { enabled: true } } } },
         },
       });
       if (theses.length === 0) return [] as FiringEvent[];
@@ -506,6 +506,12 @@ export const triggerEvaluator = inngest.createFunction(
             `thesis=${thesis.id}`,
           ).map((t) => watchedFloorOnClose(t, thesis)),
         }))
+        // A paused analyst's stock keeps only a held stock's sales.
+        .map((c) =>
+          c.thesis.researchRun.agentConfig?.enabled === false
+            ? { ...c, ladder: pausedAnalystTriggers(c.ladder, c.thesis.status) }
+            : c,
+        )
         // Whether the stock has a buy, read before the close pass narrows the
         // ladder: with none, a review at a price is a wake (DAV-335).
         .map((c) => ({ ...c, hasBuy: c.ladder.some((t) => t.action === "ENTER") }))
@@ -818,7 +824,9 @@ export const triggerEvaluator = inngest.createFunction(
           // start no run; the morning run answers it. A red filing on a stock we own is looked at today (2026-09-15).
           const sameDayFiling =
             firedFilingList != null && filingNeedsSameDayLook(firedFilingList, thesis.status);
-          if (waitsForMorning(t, sameDayFiling)) {
+          // A paused analyst has no morning run: its sale goes to the owner now.
+          const paused = thesis.researchRun.agentConfig?.enabled === false;
+          if (waitsForMorning(t, sameDayFiling || paused)) {
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",

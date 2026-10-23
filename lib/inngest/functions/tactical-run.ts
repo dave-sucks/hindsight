@@ -36,6 +36,7 @@ import { autoSellCloseReason, protectiveExitCloseReason } from "@/lib/agent/trig
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { doItTrade } from "@/lib/agent/triggers/fire-mode";
 import { doItCall } from "@/lib/agent/triggers/do-it";
+import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { useOnce } from "@/lib/agent/triggers/use-once";
 import { recordGateRejection } from "@/lib/agent/gate-rejections";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
@@ -183,6 +184,7 @@ export const tacticalRun = inngest.createFunction(
             exclusionList: true,
             tradingEnvironment: true,
             maxPositionTotal: true,
+            enabled: true,
           },
         }),
         prisma.position.findFirst({
@@ -264,6 +266,14 @@ export const tacticalRun = inngest.createFunction(
       return { skipped: "context-not-loadable", thesisId: fired.thesisId };
     }
     const { thesis, trigger, agentConfig, position, coFired } = ctx;
+
+    // A paused analyst runs nothing. A stock it still holds keeps its sales
+    // (the five-minute check reads nothing else for it); each goes to the
+    // owner below, never to the agent. Anything else is dropped here.
+    const paused = agentConfig.enabled === false;
+    if (paused && !(trigger.action === "EXIT" && position)) {
+      return { skipped: "analyst-paused", thesisId: fired.thesisId, triggerId: trigger.id };
+    }
 
     // ── Suppress redundant close runs while an exit is already queued ────────
     // EXIT/TRIM triggers carry cooldownDays:0 ("fire every tick") because the
@@ -491,7 +501,11 @@ export const tacticalRun = inngest.createFunction(
     // it PROPOSES the trade; off, it executes. Nothing to sell, or a stock
     // already held for a buy, falls through to the agent.
     const doIt = doItTrade(trigger as Trigger, position != null);
-    if (doIt === "SELL" && position) {
+    // A paused analyst's sale takes this path whatever On fire says. Auto goes
+    // through the approval switch as always; a sale that asked for the agent
+    // or the morning run asked for judgment, so it always waits for the owner.
+    const ownerSale = paused && trigger.action === "EXIT";
+    if ((doIt === "SELL" || ownerSale) && position) {
       const direct = await step.run("direct-close", async () => {
         const { closeOpenPosition } = await import(
           "@/lib/actions/closeTrade.actions"
@@ -512,9 +526,9 @@ export const tacticalRun = inngest.createFunction(
           ticker: thesis.ticker,
           direction: thesis.direction,
         });
-        const rationale = heldThroughNote
-          ? `${trigger.rationale} ${heldThroughNote}`
-          : trigger.rationale;
+        const rationale = [trigger.rationale, heldThroughNote, paused ? PAUSED_SALE_NOTE : null]
+          .filter(Boolean)
+          .join(" ");
         try {
           const outcome = await closeOpenPosition(
             position.id,
@@ -523,6 +537,8 @@ export const tacticalRun = inngest.createFunction(
             "price_monitor", // the stored name for an automatic trigger sale; approval-gated
             `"${sentenceOf(trigger as Trigger)}" fired, with no agent run. ${rationale}`,
             run.id,
+            undefined,
+            { propose: ownerSale && doIt !== "SELL" },
           );
           return { kind: outcome.kind, reason };
         } catch (err) {
