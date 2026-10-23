@@ -581,6 +581,10 @@ it with a ticker chip as if it were a traded security.
 - Body text: text-sm text-muted-foreground
 - Labels: text-xs font-medium uppercase tracking-wide
 - Empty/loading/error states on every page and data fetch
+- A section folder with more than one page (`app/(root)/<section>/`) has a
+  `loading.tsx` (`components/PageLoading.tsx` unless it has its own); so do
+  `app/(root)/` and `app/(settings)/settings/`. Without one, a click between
+  two pages there shows nothing until the server finishes.
 
 ## Key Technical Notes
 - AI SDK v6: useChat sends UIMessage[] (parts array), streamText
