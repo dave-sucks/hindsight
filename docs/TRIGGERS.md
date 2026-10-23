@@ -478,10 +478,17 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   survive the fill. The templates' hard stop is not written: the one
   automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
   setting on the account (Settings → Triggers) that an analyst may override
-  (its Triggers tab). On, a new long holding's floor is raised to, or added
-  at, the buy price less the setting's % (0.5–50, default 8), unless its own
-  floor is already at or above that: "Sell if below $X", DIRECT, stamped as
-  the owner's. An add to a holding never moves it.
+  (its Triggers tab). On, a new long holding gets two lines. The **sale
+  floor** is always the buy price less the setting's % (0.5–50, default 8):
+  "Sell if below $X", DO_IT, stamped as the owner's — added, or the floor
+  there moved to it in place. A floor an analyst or a template set tighter
+  than that is kept as the **review line** above it: "Review if below $Y",
+  ASK_NOW, with the floor's own note; with a review already in that slot the
+  higher price is kept, never two. A tighter floor the owner set is left
+  exactly as it is. With the setting on, a buy (and an add) is sized off the
+  wider of the plan's floor and the setting's line (`sizingStop`,
+  `lib/agent/position-sizing.ts`), so a loss at the sale floor stays inside
+  the risk per trade. An add to a holding never moves the lines.
 - **A plan set-down** (DEMOTE) removes the buy, floor and target triggers.
   An automatic one comes from the floor on the close pass (§7).
 

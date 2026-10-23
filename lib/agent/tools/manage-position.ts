@@ -49,7 +49,8 @@ import {
 import { lockPositionSales } from "@/lib/proposals/position-lock";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { positionTotalCap, positionBand, sizeByRisk, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
+import { positionTotalCap, positionBand, sizeByRisk, sizingStop, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
+import { loadAutoStop } from "@/lib/trading/auto-stop";
 import { isBinaryBet } from "@/lib/agent/knowledge/setups";
 import { cashShortfall } from "@/lib/trading/manual-order-rules";
 
@@ -629,20 +630,23 @@ export const managePosition = defineTool({
             addSizingLine = `Sized by you: $${Math.round(notional).toLocaleString()}.`;
           } else {
             const band = positionBand({ minPositionSize: ctx.minPositionSize, maxPositionSize: ctx.maxPositionSize });
-            const [accountRisk, convictionRow] = await Promise.all([
+            const [accountRisk, convictionRow, autoStop] = await Promise.all([
               loadAccountRisk({ accountId: ctx.accountId, environment: position.environment as "PAPER" | "LIVE", creds }).catch(() => null),
               auditThesisId ? prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { conviction: true, horizon: true, setupId: true, catalystDate: true } }).catch(() => null) : Promise.resolve(null),
+              analystId ? loadAutoStop(analystId) : Promise.resolve(null),
             ]);
-            const floor = position.stopLoss != null ? Number(position.stopLoss) : null;
+            const direction = position.direction === "SHORT" ? "SHORT" : "LONG";
+            // Stop when buying on: the wider of the floor in force and the setting's line, as a new buy.
+            const riskStop = position.stopLoss != null ? sizingStop({ entry: sizingPrice, stop: Number(position.stopLoss), direction, autoStop }) : null;
             const sized =
-              accountRisk?.equity != null && floor != null
+              accountRisk?.equity != null && riskStop != null
                 ? sizeByRisk({
                     equity: accountRisk.equity,
                     riskPct: analystRiskPct,
                     conviction: convictionRow?.conviction ?? null,
                     entry: sizingPrice,
-                    stop: floor,
-                    direction: position.direction === "SHORT" ? "SHORT" : "LONG",
+                    stop: riskStop.stop,
+                    direction,
                     // An add into a binary event is a buy into it: the same
                     // halving the entry took, from the same function.
                     binary: convictionRow ? isBinaryBet(convictionRow) : false,
@@ -653,7 +657,7 @@ export const managePosition = defineTool({
             if (sized) {
               const shares = Math.max(1, Math.floor(sized.shares * ADD_RISK_FRACTION));
               notional = shares * sizingPrice;
-              addSizingLine = `Add: ${shares} shares ($${Math.round(notional).toLocaleString()}), half the size of a new buy. A new buy would be ${sized.line}`;
+              addSizingLine = `Add: ${shares} shares ($${Math.round(notional).toLocaleString()}), half the size of a new buy. A new buy would be ${sized.line}${riskStop?.line ? ` ${riskStop.line}` : ""}`;
             } else {
               notional = Math.max(1, entrySizeForConviction({ conviction: convictionRow?.conviction ?? null, band }) * ADD_RISK_FRACTION);
               addSizingLine =

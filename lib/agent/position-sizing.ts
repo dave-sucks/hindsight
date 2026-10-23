@@ -186,6 +186,32 @@ export interface RiskSizing {
 
 const $ = (n: number) => `$${Math.round(n).toLocaleString()}`;
 
+/** The stop-when-buying line: the buy price less the percent, in cents (lib/trading/auto-stop.ts). */
+export function autoStopPrice(buyPrice: number, pct: number): number {
+  return Math.round(buyPrice * (1 - pct / 100) * 100) / 100;
+}
+
+/**
+ * The stop a buy is sized off. With stop when buying on, a long buy uses the
+ * wider of the plan's floor and the setting's line, so a loss at the hard line
+ * stays within the risk per trade. `line` says so when the setting widened it.
+ */
+export function sizingStop(input: {
+  entry: number;
+  stop: number;
+  direction?: "LONG" | "SHORT";
+  autoStop?: { on: boolean; pct: number } | null;
+}): { stop: number; line: string | null } {
+  const { entry, stop, autoStop } = input;
+  if (!autoStop?.on || input.direction === "SHORT" || !(stop > 0 && stop < entry)) return { stop, line: null };
+  const line = autoStopPrice(entry, autoStop.pct);
+  if (!(line < stop)) return { stop, line: null };
+  return {
+    stop: line,
+    line: `Sized off the ${autoStop.pct}% stop-when-buying line at $${line.toFixed(2)}, wider than the $${stop.toFixed(2)} floor.`,
+  };
+}
+
 /**
  * shares = (equity × riskPct × conviction × binary × regime) ÷ |entry − stop|,
  * clamped inside the analyst's smallest / largest trade.

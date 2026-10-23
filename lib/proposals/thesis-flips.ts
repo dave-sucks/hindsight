@@ -39,7 +39,7 @@ import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
-import { autoStopOp, loadAutoStop } from "@/lib/trading/auto-stop";
+import { autoStopOps, loadAutoStop } from "@/lib/trading/auto-stop";
 
 /**
  * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING,
@@ -113,8 +113,8 @@ export async function promoteThesisOnApproval(opts: {
  *     (GAPS A2 found 35/36 ENTER tactical runs were on already-held tickers)
  *   - sets the floor and target to the EXECUTED levels (an edit of the
  *     trigger that is there, an add if none)
- *   - with "stop when buying" on, raises the floor to that % under the buy
- *     price, or adds one (lib/trading/auto-stop.ts); no template floor
+ *   - with "stop when buying" on, puts the sale floor that % under the buy
+ *     price; a tighter analyst floor stays as a review line (lib/trading/auto-stop.ts)
  *   - adds each held-side template trigger whose bucket is missing — the
  *     held review cadence and the earnings reviews. Sell rules and
  *     scale-ins are NOT stamped: they are the analyst's and the account's
@@ -216,14 +216,14 @@ export async function armHeldLadderOnFill(opts: {
       mintId: () => randomUUID(),
     });
     // Stop when buying: read against the floor the buy just set.
-    const stopOp = autoStopOp({
+    const stopOps = autoStopOps({
       triggers: applied.triggers,
       direction: watchingThesis.direction,
       buyPrice: opts.fillPrice,
       setting: await loadAutoStop(opts.analystId),
     });
-    const stopped = stopOp
-      ? applyTriggerOps({ stored: applied.triggers, ops: [stopOp], direction: watchingThesis.direction, status: "HOLDING", actor: "SYSTEM", mintId: () => randomUUID() })
+    const stopped = stopOps.length
+      ? applyTriggerOps({ stored: applied.triggers, ops: stopOps, direction: watchingThesis.direction, status: "HOLDING", actor: "SYSTEM", mintId: () => randomUUID() })
       : null;
     const nextTriggers = stopped?.triggers ?? applied.triggers;
     const results = [...applied.results, ...(stopped?.results ?? [])];

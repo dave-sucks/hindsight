@@ -36,7 +36,12 @@ A stock answers to three layers of triggers, and the closest one wins:
 
 An inherited rule is never copied onto the thesis, so changing an analyst's style changes every holding at once. Every edit, from any layer, is one line in the stock's Activity.
 
-**Stop when buying.** Like a broker's stop on buy: with "Automatically set Stop Limits when Buying a Stock" on, a new holding gets a floor that percent under its buy price, unless it already has its own floor at or above that. It's an ordinary "Sell if below" trigger that proposes the sale straight away, set as yours, so only you can lower it. Turn it on for the account in Settings → Triggers; an analyst's Triggers tab shows the account's choice until you give the analyst its own, and "Use account setting" puts it back. Adding to a stock you already hold doesn't move it. With it off, the buy sets no floor of its own beyond the one the trade names.
+**Stop when buying.** Like a broker's stop on buy: with "Automatically set Stop Limits when Buying a Stock" on, a new holding gets two lines.
+
+- **The sale floor** is always that percent under the buy price: an ordinary "Sell if below" trigger that sells straight away, set as yours, so only you can lower it.
+- **The review line** is the analyst's own floor, when it was tighter than that: it stays where the analyst put it as "Review if below", with the analyst's note, and asks the analyst when it's crossed. That's where it looks first; the sale floor below it is the hard stop. A stock has one review line; if it already had one, the higher of the two is kept.
+
+A tighter floor you set yourself is left exactly as it is. With the setting on, a buy is sized for the wider of the two stops, so a loss at the sale floor stays within the analyst's risk per trade. Turn it on for the account in Settings → Triggers; an analyst's Triggers tab shows the account's choice until you give the analyst its own, and "Use account setting" puts it back. Adding to a stock you already hold doesn't move either line. With it off, the buy sets no floor of its own beyond the one the trade names.
 
 ## When one comes true
 
@@ -85,7 +90,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`; your edits on the sheet are exempt.
 
 #### Stop when buying
-`autoStopOp` and `loadAutoStop` in `lib/trading/auto-stop.ts`, applied by `armHeldLadderOnFill` after the trade's own levels. `Account.autoStopOnBuy` / `autoStopPct` (default off, 8%); `AgentConfig` holds the same two, null meaning the account's. Saved by `saveAutoStop` in `lib/actions/auto-stop.actions.ts` (0.5–50%).
+`autoStopOps` and `loadAutoStop` in `lib/trading/auto-stop.ts`, applied by `armHeldLadderOnFill` after the trade's own levels: the sale floor `DO_IT` and the owner's, the review line `ASK_NOW` in the price-below review slot. Sizing: `sizingStop` in `lib/agent/position-sizing.ts`, called by `place_trade` and `manage_position`'s add. `Account.autoStopOnBuy` / `autoStopPct` (default off, 8%); `AgentConfig` holds the same two, null meaning the account's. Saved by `saveAutoStop` in `lib/actions/auto-stop.actions.ts` (0.5–50%).
 
 #### Rest periods
 Each measure's default cooldown, in its catalog entry: a price level, a day's move, volume or RSI at most once a day; the move from our entry once a week; a beat or a miss once a week; an earnings window once a month; strength against the S&P once a week; a filing once per filing; insider buying once every 30 days; a review on a state at most once a week while it holds; the floor and the trail on a holding every day until answered.
