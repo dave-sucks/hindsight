@@ -47,19 +47,34 @@ A tighter floor you set yourself is left exactly as it is, including a stop you 
 
 Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close. A buy fires once, on the day the price crosses its level. A sale or a review keeps firing every day its condition holds, so it can't be quietly forgotten.
 
-What happens next is the trigger's **On fire**, the same three choices on every trigger:
+What happens next is the trigger's **On fire**, in the next section. The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
 
-- **Auto** (Auto-sell, Auto-buy, Auto-add, Auto-trim): the trade, with no agent. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells the share it names (half, unless you set another). A review can't be Auto; it is asking.
+## On fire
+
+| | Auto | Send to Agent | Flag for Review |
+|---|---|---|---|
+| What happens | The trade, with no agent. With your approval switch on, it comes to you as a proposal right away, with the research brief | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
+| Buy | ✓ one-time; only you set it | ✓ default | ✓ |
+| Add | ✓ one-time; only you set it | ✓ default | ✓ |
+| Trim | ✓ one-time, sells the % you set; only you | ✓ default | ✓ |
+| Sell | ✓ asks again every day until sold; agents may set it | ✓ default | ✓ |
+| Review | — (a review is asking) | ✓ the same day | ✓ default |
+
+What a trigger does when it comes true, the same three choices on every trigger:
+
+- **Auto** (Auto-sell, Auto-buy, Auto-add, Auto-trim): the trade, with no agent. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells the share it names (half, unless you set another). With nothing to trade (a buy on a stock we already hold), the agent is asked instead. A review can't be Auto; it is asking.
 - **Send to Agent:** a [trigger run](../agents/trigger-runs.md) starts within minutes to look at that one stock and decide.
 - **Flag for Review:** the fire goes on the stock's list and the next [morning run](../agents/morning-runs.md) answers it. A worrying new filing on a stock we hold still gets a look the same day.
 
-Left unset, a review is Flag for Review and everything else is Send to Agent. Auto is always chosen: the stop set when buying and a new analyst's trailing sale are Auto-sells. An Auto-buy, Auto-add or Auto-trim is yours alone, set on the stock itself (not as an account or analyst rule), and is a one-time order: once it fires it comes off the stock, with a line in Activity ("Used once: Trim 30% if above $150 (Auto-trim)"). An Auto-sell keeps asking every day, like any sale. When your approval switch for that side is on, an Auto trade still waits for your approval; the dialog says so under On fire.
+Left unset, a review is Flag for Review and everything else is Send to Agent. Auto is always chosen: the stop set when buying and a new analyst's trailing sale are Auto-sells.
+
+An Auto-buy, Auto-add or Auto-trim is yours alone: you set it on the stock itself, or chat sets it at your word, never as an account or analyst rule. It is a one-time order: once it fires and its trade is tried (proposed, sent or refused), it comes off the stock, with a line in Activity ("Used once: Trim 30% if above $150 (Auto-trim)"). An Auto-sell keeps asking every day, like any sale, and an agent may set one.
+
+Every trade, the agent's or an Auto one, goes through your [approval](approvals.md) switch for its side, buys or sales: with it on, it is a proposal you approve, and an Auto trade waits for you like any other. The dialog says so under On fire.
 
 - **On a stock we only watch,** a close below the floor, or the price reaching the target before we bought, takes the plan down on the spot, whatever On fire says. No agent wakes and nothing is proposed; the stock stays on watch.
 
-Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it. Every trade, the agent's or an Auto one, goes through your [approval](approvals.md) switch: with it on, it is a proposal you approve.
-
-The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
+Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it.
 
 ## Floors only go up
 
