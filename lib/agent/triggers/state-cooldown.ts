@@ -7,6 +7,7 @@
 
 import { shapeOf } from "./condition/valid";
 import { isState } from "./condition/rules";
+import { fireModeOf, type FireMode } from "./fire-mode";
 
 
 /**
@@ -35,10 +36,11 @@ export const STATE_PREDICATE_MIN_COOLDOWN_DAYS = 7;
  * sale is a standing order that asks every day its condition holds.
  */
 export function flooredCooldownDays(
-  trigger: { action: string; predicate: unknown },
+  trigger: { action: string; predicate: unknown; fireMode?: FireMode },
   days: number,
 ): number {
-  return trigger.action === "REVIEW" && isStatePredicate(trigger.predicate)
-    ? Math.max(days, STATE_PREDICATE_MIN_COOLDOWN_DAYS)
-    : days;
+  if (trigger.action === "REVIEW" && isStatePredicate(trigger.predicate)) return Math.max(days, STATE_PREDICATE_MIN_COOLDOWN_DAYS);
+  // A trade left for the morning run is answered once a day, so it asks once a day: a floor at 0 would write a fire every pass.
+  if (trigger.action !== "REVIEW" && fireModeOf(trigger) === "NEXT_MORNING") return Math.max(days, 1);
+  return days;
 }

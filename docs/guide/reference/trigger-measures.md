@@ -16,7 +16,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 ### Price
 
-`watch: "price"` · is: `below` / `above` · value: more than $0 · actions: buy, add, trim, sell, review · reads: the live quote · a sale can be direct (no agent)
+`watch: "price"` · is: `below` / `above` · value: more than $0 · actions: buy, add, trim, sell, review · reads: the live quote
 
 **Variables** (stands in for the number):
 
@@ -56,7 +56,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 ### Move
 
-`watch: "move"` · is: `below` / `near` / `above` · value: more than 0% and under 100% · actions: buy, add, trim, sell, review · reads: the live quote · a sale can be direct (no agent)
+`watch: "move"` · is: `below` / `near` / `above` · value: more than 0% and under 100% · actions: buy, add, trim, sell, review · reads: the live quote
 
 **Variables** (the number is measured from it):
 

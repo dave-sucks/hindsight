@@ -192,7 +192,7 @@ export interface Checker {
  *   2. `cooldownDays === 0` on a non-EXIT action — STRUCTURALLY INVALID,
  *      treat as "absent" and fall back to the per-kind default. This is
  *      the read-path mirror of the write-path fix in
- *      `applyTriggerCooldownDefaults`. Required because the write-path
+ *      `applyTriggerDefaults`. Required because the write-path
  *      fix only stops *future* bad values from landing — existing on-disk
  *      rows with the bad shape would otherwise keep tick-firing until
  *      something rewrites them. Background: 2026-06-02 NVDA runaway.

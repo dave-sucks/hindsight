@@ -30,7 +30,7 @@
    {
     "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
     "action": "EXIT",
-    "fireMode": "TACTICAL",
+    "fireMode": "ASK_NOW",
     "predicate": {
      "watch": "price",
      "is": "below",
@@ -42,7 +42,7 @@
    {
     "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
     "action": "REVIEW",
-    "fireMode": "TACTICAL",
+    "fireMode": "NEXT_MORNING",
     "predicate": {
      "watch": "price",
      "is": "below",
@@ -55,7 +55,7 @@
    {
     "id": "03d0e450-76cb-4a47-978a-f9e0cfc786ca",
     "action": "REVIEW",
-    "fireMode": "TACTICAL",
+    "fireMode": "NEXT_MORNING",
     "predicate": {
      "watch": "surprise",
      "is": "beat",
@@ -67,7 +67,7 @@
    {
     "id": "2646f2d6-9432-4496-8056-fa1139af3b81",
     "action": "REVIEW",
-    "fireMode": "TACTICAL",
+    "fireMode": "NEXT_MORNING",
     "predicate": {
      "watch": "surprise",
      "is": "miss",
@@ -92,7 +92,7 @@
     "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
     "action": "REVIEW",
     "source": "DEFAULT",
-    "fireMode": "TACTICAL",
+    "fireMode": "NEXT_MORNING",
     "predicate": {
      "watch": "repeat",
      "value": 30
@@ -226,7 +226,7 @@
       {
        "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
        "action": "EXIT",
-       "fireMode": "TACTICAL",
+       "fireMode": "ASK_NOW",
        "predicate": {
         "watch": "price",
         "is": "below",
@@ -238,7 +238,7 @@
       {
        "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "price",
         "is": "below",
@@ -250,7 +250,7 @@
       {
        "id": "03d0e450-76cb-4a47-978a-f9e0cfc786ca",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "surprise",
         "is": "beat",
@@ -262,7 +262,7 @@
       {
        "id": "2646f2d6-9432-4496-8056-fa1139af3b81",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "surprise",
         "is": "miss",
@@ -274,7 +274,7 @@
       {
        "id": "79f33454-4e1d-4bd3-84f8-06b7d9997c9b",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "kind": "GUIDANCE_CHANGE",
         "direction": "DOWN"
@@ -285,7 +285,7 @@
       {
        "id": "681d1099-d06e-49cf-904b-95e02c828dfa",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "kind": "FILING",
         "formType": "8-K"
@@ -296,7 +296,7 @@
       {
        "id": "d0af547a-78b9-4a2f-aefe-e610166a057d",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "days": 90,
         "kind": "TIME_ELAPSED"
@@ -307,7 +307,7 @@
       {
        "id": "692b4486-30a7-46dc-a3b2-de48e68c8cb6",
        "action": "ADD",
-       "fireMode": "TACTICAL",
+       "fireMode": "ASK_NOW",
        "predicate": {
         "watch": "move",
         "is": "above",
@@ -320,7 +320,7 @@
       {
        "id": "840822fe-2b69-4b71-a846-52c92d03982c",
        "action": "ADD",
-       "fireMode": "TACTICAL",
+       "fireMode": "ASK_NOW",
        "predicate": {
         "watch": "move",
         "is": "below",
@@ -333,7 +333,7 @@
       {
        "id": "1cf58fc3-87eb-42c9-b99c-80dd7ea695a4",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "move",
         "is": "above",
@@ -346,7 +346,7 @@
       {
        "id": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
        "action": "EXIT",
-       "fireMode": "TACTICAL",
+       "fireMode": "ASK_NOW",
        "predicate": {
         "watch": "move",
         "is": "below",
@@ -359,7 +359,7 @@
       {
        "id": "08acf2db-a701-41b0-9d74-6e71b8a37292",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "move",
         "is": "below",
@@ -385,7 +385,7 @@
        "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
        "action": "REVIEW",
        "source": "DEFAULT",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "repeat",
         "value": 30
@@ -398,7 +398,7 @@
       {
        "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
        "action": "EXIT",
-       "fireMode": "TACTICAL",
+       "fireMode": "ASK_NOW",
        "predicate": {
         "watch": "price",
         "is": "below",
@@ -410,7 +410,7 @@
       {
        "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "price",
         "is": "below",
@@ -422,7 +422,7 @@
       {
        "id": "03d0e450-76cb-4a47-978a-f9e0cfc786ca",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "surprise",
         "is": "beat",
@@ -434,7 +434,7 @@
       {
        "id": "2646f2d6-9432-4496-8056-fa1139af3b81",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "surprise",
         "is": "miss",
@@ -446,7 +446,7 @@
       {
        "id": "79f33454-4e1d-4bd3-84f8-06b7d9997c9b",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "kind": "GUIDANCE_CHANGE",
         "direction": "DOWN"
@@ -457,7 +457,7 @@
       {
        "id": "681d1099-d06e-49cf-904b-95e02c828dfa",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "kind": "FILING",
         "formType": "8-K"
@@ -468,7 +468,7 @@
       {
        "id": "d0af547a-78b9-4a2f-aefe-e610166a057d",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "days": 90,
         "kind": "TIME_ELAPSED"
@@ -479,7 +479,7 @@
       {
        "id": "692b4486-30a7-46dc-a3b2-de48e68c8cb6",
        "action": "ADD",
-       "fireMode": "TACTICAL",
+       "fireMode": "ASK_NOW",
        "predicate": {
         "watch": "move",
         "is": "above",
@@ -492,7 +492,7 @@
       {
        "id": "840822fe-2b69-4b71-a846-52c92d03982c",
        "action": "ADD",
-       "fireMode": "TACTICAL",
+       "fireMode": "ASK_NOW",
        "predicate": {
         "watch": "move",
         "is": "below",
@@ -505,7 +505,7 @@
       {
        "id": "1cf58fc3-87eb-42c9-b99c-80dd7ea695a4",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "move",
         "is": "above",
@@ -518,7 +518,7 @@
       {
        "id": "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8",
        "action": "EXIT",
-       "fireMode": "TACTICAL",
+       "fireMode": "ASK_NOW",
        "predicate": {
         "watch": "move",
         "is": "below",
@@ -531,7 +531,7 @@
       {
        "id": "08acf2db-a701-41b0-9d74-6e71b8a37292",
        "action": "REVIEW",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "move",
         "is": "below",
@@ -556,7 +556,7 @@
        "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
        "action": "REVIEW",
        "source": "DEFAULT",
-       "fireMode": "TACTICAL",
+       "fireMode": "NEXT_MORNING",
        "predicate": {
         "watch": "repeat",
         "value": 30

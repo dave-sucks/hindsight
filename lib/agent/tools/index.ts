@@ -122,6 +122,8 @@ interface ToolCtx {
    * auto-correction audit note.
    */
   protectiveExitTriggerLabel?: string;
+  /** An Auto trigger: the account's cash — see ToolContext.payFromCash. */
+  payFromCash?: number | null;
 }
 
 export function createResearchTools(

@@ -29,8 +29,9 @@
 // ── Signal-side enums (mirrors of Signal table columns the router has) ──
 
 import { shapeOf } from "./condition/valid";
-import { isDirectEligible, isLevel, onTheClose, protectiveCloseReason } from "./condition/rules";
+import { isLevel, onTheClose, protectiveCloseReason, risesWith } from "./condition/rules";
 import type { Condition, When } from "./condition/types";
+import type { FireMode } from "./fire-mode";
 
 export type SignalType =
   | "NEWS"
@@ -118,21 +119,10 @@ export type Trigger = {
   /** ENTER only, server-stamped: the live price when written (./written-price). */
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp
-  /**
-   * How a fired trigger is acted on:
-   *   TACTICAL — fan out `app/thesis.trigger.fired` → a GPT-5.5 tactical run
-   *              evaluates and decides. The default; every trigger written
-   *              before this field behaved this way.
-   *   DIRECT   — skip the agent: a deterministic EXIT closes the paired
-   *              position directly via `closeOpenPosition` (no tactical-run
-   *              cost). Still routed through the approval gate
-   *              (`maybeAwaitApproval`) — DIRECT saves the *agent* cost, not
-   *              the approval step. EXIT-only; on any other action it's
-   *              ignored and treated as TACTICAL (a non-EXIT trigger has no
-   *              deterministic action to execute without judgment).
-   * Absent ⇒ TACTICAL.
-   */
-  fireMode?: "TACTICAL" | "DIRECT";
+  /** On fire: DO_IT, ASK_NOW or NEXT_MORNING (./fire-mode). Every stored trigger names one. */
+  fireMode?: FireMode;
+  /** TRIM only: the % of the position a trim set to DO_IT sells (default 50). */
+  trimPct?: number;
   /**
    * Who authored this rung's VALUE. Informational only — it does NOT
    * determine the rung's level (see TriggerLevel in ./levels). Level comes
@@ -157,21 +147,6 @@ export type Trigger = {
 export type ThesisTriggers = Trigger[];
 
 /**
- * A sale deterministic enough to close DIRECT (no agent): a typed price, or a
- * % from a close, our entry or the high. Everything else (earnings, filings,
- * RSI, time, composites) needs judgment, so a DIRECT fire mode is refused on
- * it — it always wakes a tactical run. Each measure says which of its
- * conditions qualify (./condition/measures).
- *
- * Single source for the gate, shared by the trigger dialog's "On fire"
- * control, the write paths, and the tactical-run short-circuit.
- */
-export function isDirectEligiblePredicate(predicate: unknown): boolean {
-  const w = shapeOf(predicate);
-  return w != null && isDirectEligible(w);
-}
-
-/**
  * The STOP/TARGET close reason a protective/price EXIT carries — the single
  * source of truth for "what tag does a price-level protective exit close
  * with." Null for a judgment exit (earnings, filings, RSI, time, composites)
@@ -184,9 +159,9 @@ export function isDirectEligiblePredicate(predicate: unknown): boolean {
  * STOP/TARGET so a rejected protective exit still re-fires when price
  * re-crosses the level. Both close paths use this mapping so the tag never
  * depends on the LLM remembering to pick STOP:
- *   • DIRECT fire  → directExitReason() (tactical-run.ts) delegates here.
- *   • agent (TACTICAL) fire → precomputed here and threaded into the tool
- *     context (ToolContext.protectiveExitReason).
+ *   • an Auto-sell → directExitReason() (tactical-run.ts) delegates here.
+ *   • a sale that asks the analyst → precomputed here and threaded into the
+ *     tool context (ToolContext.protectiveExitReason).
  *
  * STOP vs TARGET: adverse move → STOP; favourable → TARGET; a give-back from
  * our entry or the high → STOP. Each measure says which (./condition/measures).
@@ -197,6 +172,17 @@ export function protectiveExitCloseReason(
 ): "STOP" | "TARGET" | null {
   const w = shapeOf(predicate);
   return w == null ? null : protectiveCloseReason(w, direction);
+}
+
+/**
+ * The label an Auto-sell closes with: its condition's own protective label, else TARGET when the condition is a
+ * rise with the position (a profit-take goes back on watch), else STOP.
+ */
+export function autoSellCloseReason(predicate: unknown, direction: string | null): "STOP" | "TARGET" {
+  const w = shapeOf(predicate);
+  if (w == null) return "STOP";
+  const rise = risesWith(w);
+  return protectiveCloseReason(w, direction) ?? (rise != null && rise === (direction !== "SHORT") ? "TARGET" : "STOP");
 }
 
 /**

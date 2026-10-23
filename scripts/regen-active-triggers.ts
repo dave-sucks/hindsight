@@ -13,7 +13,7 @@
  *   2. Call defaultTriggersForHorizon(horizon, shape, "HELD") to
  *      generate the canonical HELD template (EXIT on stop, REVIEW on
  *      target / earnings / filings, time hygiene per horizon).
- *   3. applyTriggerCooldownDefaults() to backfill cooldownDays.
+ *   3. applyTriggerDefaults() to backfill cooldownDays.
  *   4. UPDATE Thesis.triggers + write a ThesisUpdate audit row of type
  *      "UPDATED" naming the source bug.
  *
@@ -33,7 +33,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   defaultTriggersForHorizon,
-  applyTriggerCooldownDefaults,
+  applyTriggerDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -171,7 +171,7 @@ function buildHeldTriggers(target: Target): Trigger[] | null {
     },
     "HELD",
   );
-  return applyTriggerCooldownDefaults(defaults);
+  return applyTriggerDefaults(defaults);
 }
 
 function fmtTargets(targets: Target[]): string {

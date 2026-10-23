@@ -1993,7 +1993,7 @@
            {
             "id": "4838eee0-df9f-4af5-b8db-04f699da0ee4",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 401.23
@@ -2004,7 +2004,7 @@
            {
             "id": "16b0ef6e-dd69-4aa8-be7d-08d0e6cfcba3",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT"
             },
@@ -2014,7 +2014,7 @@
            {
             "id": "bcb455db-79bd-480a-8c74-ccab58965b11",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS"
             },
@@ -2024,7 +2024,7 @@
            {
             "id": "56a897fc-9c21-4bae-b1a1-2aff08d105a9",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "10-Q"
@@ -2035,7 +2035,7 @@
            {
             "id": "c9a31d8b-e492-4d4c-b747-ff4c1902e1b9",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "SIGNAL_TYPE",
              "sentiment": "BEARISH",
@@ -2048,7 +2048,7 @@
            {
             "id": "03446dd9-c65d-495a-a92f-fcac91fe2836",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 60,
              "kind": "TIME_ELAPSED"
@@ -2310,7 +2310,7 @@
            {
             "id": "8f8c6acf-974d-4946-bd46-658728f23587",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 348.15
@@ -2321,7 +2321,7 @@
            {
             "id": "579ae44a-8542-4a0a-ab8b-72aa20d02793",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 321
@@ -2332,7 +2332,7 @@
            {
             "id": "d9568ff6-0ed1-454f-a9af-e0cbef1ff503",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 2
@@ -2343,7 +2343,7 @@
            {
             "id": "d3359dd0-5f7c-4564-8b60-455a1d32684c",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS",
              "minSurprisePct": 5
@@ -2354,7 +2354,7 @@
            {
             "id": "57ed5519-b077-48f9-8a3a-ac5545627b0f",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "8-K"
@@ -2365,7 +2365,7 @@
            {
             "id": "80399a9f-099a-4473-9418-2b91bc5472fb",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 60,
              "kind": "TIME_ELAPSED"
@@ -2652,7 +2652,7 @@
            {
             "id": "d7f9febf-dc45-4fba-94e4-2119742a877a",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 817
@@ -2663,7 +2663,7 @@
            {
             "id": "4560dec6-0568-4b80-a5ec-797723ac3cdb",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 5
@@ -2674,7 +2674,7 @@
            {
             "id": "7e22c4da-0320-4313-8ea7-062bf757382a",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS",
              "minSurprisePct": 5
@@ -2685,7 +2685,7 @@
            {
             "id": "b89cf7c2-e244-49e6-afe7-8719d395b984",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -2696,7 +2696,7 @@
            {
             "id": "4b1c5792-affb-43ad-b702-6fce13861b5c",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 720
@@ -2707,7 +2707,7 @@
            {
             "id": "354fa2d2-c95d-4fa7-8490-3adfdc74fb4c",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "10-Q"
@@ -2718,7 +2718,7 @@
            {
             "id": "ecc5379f-c34d-4938-9251-673c7cb3f868",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"
@@ -2992,7 +2992,7 @@
            {
             "id": "61d1e033-a916-4991-b224-2961680d6f4d",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 97.5
@@ -3003,7 +3003,7 @@
            {
             "id": "8ca44ce9-7bfe-4fb9-88c3-b15e23dc7cff",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 96
@@ -3014,7 +3014,7 @@
            {
             "id": "b0807664-1518-4d45-bd0b-1c5d511e7a5f",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 1
@@ -3025,7 +3025,7 @@
            {
             "id": "f0aee6b5-f48e-40cc-9fac-7063b508f131",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS",
              "minSurprisePct": -2
@@ -3036,7 +3036,7 @@
            {
             "id": "31f254bb-aeb2-413b-8351-5942c49a1ee7",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -3047,7 +3047,7 @@
            {
             "id": "c735b3aa-923b-4dcd-9b13-b75a14ef6c7d",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "SIGNAL_TYPE",
              "sentiment": "BEARISH",
@@ -3060,7 +3060,7 @@
            {
             "id": "353caea1-c3f1-43fe-b12a-d5cf2da872b3",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"
@@ -3342,7 +3342,7 @@
            {
             "id": "0425e74d-6e1f-492c-bf08-e51830429cf9",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 351.37
@@ -3353,7 +3353,7 @@
            {
             "id": "ef8745f4-1cc2-4dee-a197-3c6363dde53a",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 5
@@ -3364,7 +3364,7 @@
            {
             "id": "cff465e1-c0ec-4fa1-8952-512355489276",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS"
             },
@@ -3374,7 +3374,7 @@
            {
             "id": "125ce46e-f522-4c70-bd2f-d1ffde4f907a",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -3385,7 +3385,7 @@
            {
             "id": "397b0ab6-1e33-4ea1-9c6d-51042f8db156",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 330
@@ -3396,7 +3396,7 @@
            {
             "id": "320540c6-e18d-434e-85c1-62c7950e17ee",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 60,
              "kind": "TIME_ELAPSED"
@@ -3407,7 +3407,7 @@
            {
             "id": "beb63bf8-0087-4a43-94ee-3b403d82b8e9",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "10-Q"
@@ -4315,7 +4315,7 @@
            {
             "id": "1e6f949a-1266-4519-8dc5-909bccc4480f",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 110
@@ -4327,7 +4327,7 @@
            {
             "id": "05ced1c3-3cb4-46c4-a4e7-f229613d3592",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 2
@@ -4338,7 +4338,7 @@
            {
             "id": "80e2cec3-c8fd-417c-a5e3-3e23f5749dc5",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS",
              "minSurprisePct": 3
@@ -4349,7 +4349,7 @@
            {
             "id": "cbc21f0a-6e87-447d-9bf9-8b49f7027387",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -4360,7 +4360,7 @@
            {
             "id": "10edfdf9-d8a0-4251-ba06-c142ea789764",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 78
@@ -4371,7 +4371,7 @@
            {
             "id": "17ffeffc-c689-4b95-8371-e8d12b0b1acf",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "8-K"
@@ -4382,7 +4382,7 @@
            {
             "id": "6e4be755-3b7b-403f-9d91-f0891e1bfa3a",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"
@@ -4649,7 +4649,7 @@
            {
             "id": "786bb1cc-fecc-4260-8945-3d45bac3ff40",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 165
@@ -4661,7 +4661,7 @@
            {
             "id": "d0762d08-e68e-4084-b30d-ccd43b7d2e9f",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT"
             },
@@ -4671,7 +4671,7 @@
            {
             "id": "667e76d4-3ffa-4cbe-89e4-2ee9c10e58f5",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS"
             },
@@ -4681,7 +4681,7 @@
            {
             "id": "3abd1cb6-a806-4169-907e-924366edd3a2",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 145
@@ -4692,7 +4692,7 @@
            {
             "id": "92f8e335-546b-4cc4-b8f9-2cfcb196d257",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -4703,7 +4703,7 @@
            {
             "id": "611ffbc4-5075-470d-b34b-79e0d6cf472d",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "8-K"
@@ -4714,7 +4714,7 @@
            {
             "id": "ab68a216-ec54-4a48-b398-0d1fcd5e97ef",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"
@@ -4974,7 +4974,7 @@
            {
             "id": "6bde552d-13d9-4f6e-825c-98aa0ab9c825",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 197.78
@@ -4986,7 +4986,7 @@
            {
             "id": "bc19c13b-5d9b-4f32-b90a-7e27ff682a41",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 185
@@ -4998,7 +4998,7 @@
            {
             "id": "6fd40b60-5c17-4d21-a9f6-0ce608dbc19c",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 5
@@ -5009,7 +5009,7 @@
            {
             "id": "0b8d5f55-8728-4523-bfb6-3e30c55430ef",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS"
             },
@@ -5019,7 +5019,7 @@
            {
             "id": "cad02203-c494-4dd8-a8b5-be9e6cf917a8",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -5030,7 +5030,7 @@
            {
             "id": "1e821273-0d48-4b30-80ae-1695831bc361",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "10-Q"
@@ -5041,7 +5041,7 @@
            {
             "id": "d891a7bf-89d4-4735-af4f-a3740f4c3210",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"
@@ -5651,7 +5651,7 @@
            {
             "id": "c7cc1f46-611b-43a9-8f75-a1caa89cebd2",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT"
             },
@@ -5661,7 +5661,7 @@
            {
             "id": "3b5ec4b8-294a-4980-9600-e4cb6b95e758",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS"
             },
@@ -5671,7 +5671,7 @@
            {
             "id": "c8ded0a0-882c-4056-8079-0a0ad411e1e2",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -5682,7 +5682,7 @@
            {
             "id": "64bc3672-dbbb-4cef-96a5-025e7213fa58",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 520
@@ -5693,7 +5693,7 @@
            {
             "id": "24765f42-51ce-499b-8bfd-8a1b3b430428",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "10-Q"
@@ -5704,7 +5704,7 @@
            {
             "id": "fe42e6fe-8d2e-4277-be24-803e2a62d564",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"
@@ -5945,7 +5945,7 @@
            {
             "id": "c2692057-3142-4b5f-913a-8104f6eb40ed",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_BELOW",
              "level": 265
@@ -5957,7 +5957,7 @@
            {
             "id": "3e675b7d-153a-4269-8037-06a77bc9c037",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 5
@@ -5968,7 +5968,7 @@
            {
             "id": "4641c384-3dea-4f95-a178-91c671537c3a",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS",
              "minSurprisePct": 3
@@ -5979,7 +5979,7 @@
            {
             "id": "c6848a3d-5df9-46b5-81d3-228abe3a2af0",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -5990,7 +5990,7 @@
            {
             "id": "d55ad548-edd9-41f6-ad6d-c1c56751da17",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"
@@ -6243,7 +6243,7 @@
            {
             "id": "2e606e2e-961f-451a-a085-32a07c72770a",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 262
@@ -6255,7 +6255,7 @@
            {
             "id": "3808cb93-22be-4ba4-8d19-b62ca924175f",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 2
@@ -6266,7 +6266,7 @@
            {
             "id": "fbb77e14-31bd-4400-85f4-1b7a0d1beeda",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS"
             },
@@ -6276,7 +6276,7 @@
            {
             "id": "089f111e-13b2-4a62-b35f-142bb974219f",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -6287,7 +6287,7 @@
            {
             "id": "a714d9e8-9451-41ec-b044-bf27d191a29c",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "10-Q"
@@ -6298,7 +6298,7 @@
            {
             "id": "03b5d150-0757-4ab2-b9a2-c37a99f1855e",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "SIGNAL_TYPE",
              "sentiment": "BEARISH",
@@ -6311,7 +6311,7 @@
            {
             "id": "7eae30e0-0747-4c25-b147-7410effd84c8",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"
@@ -6873,7 +6873,7 @@
            {
             "id": "dcdd785a-deeb-469a-a2cc-aeaebc40025c",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_BEAT",
              "minSurprisePct": 2
@@ -6884,7 +6884,7 @@
            {
             "id": "b077e0be-8a2d-44a0-b01d-17b883937e4b",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "EARNINGS_MISS",
              "minSurprisePct": 3
@@ -6895,7 +6895,7 @@
            {
             "id": "2b901fe0-83f9-4e0b-8829-21528e4d4d75",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "GUIDANCE_CHANGE",
              "direction": "DOWN"
@@ -6906,7 +6906,7 @@
            {
             "id": "5b611b6f-6df1-4f1f-9196-305c16e3fc0d",
             "action": "ENTER",
-            "fireMode": "TACTICAL",
+            "fireMode": "ASK_NOW",
             "predicate": {
              "kind": "PRICE_ABOVE",
              "level": 236
@@ -6917,7 +6917,7 @@
            {
             "id": "b32995a6-922c-45ee-a9eb-1e02555608df",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "VS_SMA",
              "period": 200,
@@ -6929,7 +6929,7 @@
            {
             "id": "d4bf1f16-72e3-4283-b1fe-0d342ad60b69",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "kind": "FILING",
              "formType": "10-Q"
@@ -6940,7 +6940,7 @@
            {
             "id": "7a660824-2d65-4887-9dbd-62a151d52751",
             "action": "REVIEW",
-            "fireMode": "TACTICAL",
+            "fireMode": "NEXT_MORNING",
             "predicate": {
              "days": 90,
              "kind": "TIME_ELAPSED"

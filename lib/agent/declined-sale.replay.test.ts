@@ -48,7 +48,7 @@ const iotThesis = (over: Record<string, unknown> = {}) =>
         action: "EXIT",
         rationale: "Protective floor.",
         cooldownDays: 0,
-        fireMode: "DIRECT",
+        fireMode: "DO_IT",
         source: "PRINCIPAL",
       },
     ],

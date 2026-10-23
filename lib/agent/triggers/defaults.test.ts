@@ -21,7 +21,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import type { Condition, When } from "@/lib/agent/triggers/condition";
 import {
-  applyTriggerCooldownDefaults,
+  applyTriggerDefaults,
   defaultTriggersForHorizon,
   accountStandingRules,
   scaleInOnPullbackTrigger,
@@ -129,7 +129,7 @@ describe("defaultTriggersForHorizon — WATCHING ENTER trigger (P1-3 fix)", () =
  * actions, `cooldownDays: 0` is structurally invalid and the default
  * filler must overwrite it.
  */
-describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
+describe("applyTriggerDefaults — cooldownDays:0 hardening", () => {
   function mkTrigger(
     overrides: Partial<Trigger> & Pick<Trigger, "action" | "predicate">,
   ): Trigger {
@@ -146,7 +146,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
       predicate: { watch: "repeat", value: 14 },
       cooldownDays: 0,
     });
-    const [out] = applyTriggerCooldownDefaults([t]);
+    const [out] = applyTriggerDefaults([t]);
     // A clock's cooldown is its own interval — anything shorter is a
     // faster clock wearing the slow one's number.
     expect(out.cooldownDays).toBe(14);
@@ -158,7 +158,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
       predicate: { watch: "price", is: "below", value: 108 },
       cooldownDays: 0,
     });
-    const [out] = applyTriggerCooldownDefaults([t]);
+    const [out] = applyTriggerDefaults([t]);
     expect(out.cooldownDays).toBe(1);
   });
 
@@ -168,7 +168,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
       predicate: { watch: "surprise", is: "beat", value: 0 },
       cooldownDays: 0,
     });
-    const [out] = applyTriggerCooldownDefaults([t]);
+    const [out] = applyTriggerDefaults([t]);
     expect(out.cooldownDays).toBe(7);
   });
 
@@ -178,7 +178,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
       predicate: { watch: "price", is: "below", value: 213.87 },
       cooldownDays: 0,
     });
-    const [out] = applyTriggerCooldownDefaults([t]);
+    const [out] = applyTriggerDefaults([t]);
     expect(out.cooldownDays).toBe(0);
   });
 
@@ -188,7 +188,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
       predicate: { watch: "price", is: "above", value: 268 },
       cooldownDays: 0,
     });
-    const [out] = applyTriggerCooldownDefaults([t]);
+    const [out] = applyTriggerDefaults([t]);
     expect(out.cooldownDays).toBe(0);
   });
 
@@ -198,7 +198,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
       predicate: { watch: "repeat", value: 14 },
       cooldownDays: 3,
     });
-    const [out] = applyTriggerCooldownDefaults([t]);
+    const [out] = applyTriggerDefaults([t]);
     expect(out.cooldownDays).toBe(3);
   });
 
@@ -208,7 +208,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
       predicate: { watch: "repeat", value: 14 },
       // cooldownDays unset
     });
-    const [out] = applyTriggerCooldownDefaults([t]);
+    const [out] = applyTriggerDefaults([t]);
     expect(out.cooldownDays).toBe(14);
   });
 
@@ -221,7 +221,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
         "Momentum Breakout trades are days-to-weeks holds; re-check the setup by max hold date and exit if momentum has not followed through.",
       cooldownDays: 0,
     });
-    const [out] = applyTriggerCooldownDefaults([t]);
+    const [out] = applyTriggerDefaults([t]);
     expect(out.cooldownDays).toBe(14);
   });
 });

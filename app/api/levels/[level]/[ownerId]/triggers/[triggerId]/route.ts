@@ -9,6 +9,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
+import { isFireMode } from "@/lib/agent/triggers/fire-mode";
 import {
   deleteLevelTrigger,
   replaceLevelTrigger,
@@ -50,19 +51,11 @@ export async function PATCH(
   const auth = await authorize(level);
   if (auth.error) return auth.error;
 
-  let body: {
-    value?: unknown;
-    fireMode?: unknown;
-    part?: unknown;
-    replace?: { action?: unknown; predicate?: unknown; fireMode?: unknown };
-  };
+  let body: { replace?: { action?: unknown; predicate?: unknown; fireMode?: unknown; trimPct?: unknown } };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return new Response("Invalid JSON body", { status: 400 });
-  }
-  if (typeof body.value === "number" && typeof body.fireMode === "string") {
-    return new Response("Send either `value` or `fireMode`, not both.", { status: 400 });
   }
 
   const ctx = { accountId: auth.accountId, actorUserId: auth.user.id };
@@ -72,9 +65,7 @@ export async function PATCH(
       if (typeof r !== "object" || typeof r.action !== "string" || r.predicate == null || typeof r.predicate !== "object") {
         return new Response("`replace` must carry an `action` string and a `predicate` object.", { status: 400 });
       }
-      if (r.fireMode != null && r.fireMode !== "TACTICAL" && r.fireMode !== "DIRECT") {
-        return new Response('`fireMode` must be "TACTICAL" or "DIRECT".', { status: 400 });
-      }
+      if (r.fireMode != null && !isFireMode(r.fireMode)) return new Response('`fireMode` must be "DO_IT", "ASK_NOW" or "NEXT_MORNING".', { status: 400 });
       const trigger = await replaceLevelTrigger(
         auth.level,
         ownerId,
@@ -83,6 +74,7 @@ export async function PATCH(
           action: r.action as LevelTriggerAddInput["action"],
           predicate: r.predicate as LevelTriggerAddInput["predicate"],
           fireMode: (r.fireMode ?? undefined) as LevelTriggerAddInput["fireMode"],
+          trimPct: typeof r.trimPct === "number" ? r.trimPct : undefined,
         },
         ctx,
       );

@@ -51,6 +51,7 @@ import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { positionTotalCap, positionBand, sizeByRisk, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
 import { isBinaryBet } from "@/lib/agent/knowledge/setups";
+import { cashShortfall } from "@/lib/trading/manual-order-rules";
 
 /**
  * Classify an Alpaca submit error — same shape as place_trade / closeOpenPosition.
@@ -684,6 +685,16 @@ export const managePosition = defineTool({
                 message: `Adding $${notional} to the current $${currentValue.toFixed(0)} position would take it past the most this analyst may hold in one stock ($${totalCap.toFixed(0)}, a setting on the analyst). Trim or wait rather than adding beyond it.`,
                 tickers: [{ ticker, tag: "Failed", summary: "Exceeds most-in-one-stock", actionIcon: "failed" }],
               },
+              sources: [],
+            };
+          }
+
+          // An add no analyst placed (an Auto trigger) is paid from cash, never margin, as the Trade button's is.
+          const short = ctx.payFromCash !== undefined ? cashShortfall(notional, ctx.payFromCash) : null;
+          if (short) {
+            return {
+              summary: `Add blocked: $${ticker} — not enough cash`,
+              data: { success: false, ticker, action: args.action, status: "FAILED" as const, message: short, tickers: [{ ticker, tag: "Failed", summary: short, actionIcon: "failed" }] },
               sources: [],
             };
           }

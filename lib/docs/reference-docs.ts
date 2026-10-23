@@ -26,7 +26,6 @@ function measureSection(m: MeasureDef): string[] {
     m.value.none ? "no number" : range ? `value: ${rangeWords(range)}` : `value: ${[m.value.prefix, m.value.suffix].filter(Boolean).join(" … ") || "a number"}`,
     `actions: ${actions.map((a) => ACTION_WORD[a]).join(", ")}`,
     m.reads?.length ? `reads: ${m.reads.join(", ")}` : m.timed ? null : "reads: the live quote",
-    m.direct ? "a sale can be direct (no agent)" : null,
     m.timed ? "a clock, stands alone" : null,
   ].filter((x): x is string => x != null);
 

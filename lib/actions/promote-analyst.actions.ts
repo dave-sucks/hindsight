@@ -10,7 +10,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { inngest } from "@/lib/inngest/client";
 import {
   defaultTriggersForHorizon,
-  applyTriggerCooldownDefaults,
+  applyTriggerDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -469,7 +469,7 @@ async function transitionThesisToPromoted(input: {
       },
       "PROMOTED",
     );
-    promotedTriggers = applyTriggerCooldownDefaults(defaults);
+    promotedTriggers = applyTriggerDefaults(defaults);
   }
 
   await prisma.$transaction([

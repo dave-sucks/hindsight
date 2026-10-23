@@ -1,6 +1,6 @@
 /**
- * The principal's trigger edits — add, edit a value, remove, change the
- * fire mode — from the thesis trigger popover.
+ * The principal's trigger edits — add, change, remove — from the thesis
+ * trigger popover and dialog.
  *
  * Every one of these is ONE trigger op through `applyTriggerOps`
  * (lib/agent/triggers/ops.ts), the same function the agent's
@@ -20,10 +20,8 @@ import { prisma } from "@/lib/prisma";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
-import {
-  applyTriggerCooldownDefaults,
-  defaultFireModeForAction,
-} from "@/lib/agent/triggers/defaults";
+import { applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
+import { fireModeProblem, fireModeWords, type FireMode } from "@/lib/agent/triggers/fire-mode";
 import { addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
@@ -61,38 +59,31 @@ export class ThesisEditError extends Error {
  * Build ONE validated, principal-authored trigger from UI input.
  *
  * Shared by the thesis write path (below) and the account/analyst write
- * path (./level-triggers): both run the same Zod gate, the same DIRECT
- * fire-mode restriction, the same cooldown discipline and the same
- * `source` stamp.
+ * path (./level-triggers): both run the same Zod gate, the same fire-mode
+ * rule, the same cooldown discipline and the same `source` stamp.
  */
 export function buildPrincipalTrigger(input: {
   action: TriggerAction;
   predicate: When;
-  fireMode?: "TACTICAL" | "DIRECT";
+  /** Omit ⇒ the action's default (./fire-mode). */
+  fireMode?: FireMode;
+  trimPct?: number;
   rationale?: string;
   cooldownDays?: number;
   /** Fallback prose when the caller supplies no rationale. */
   defaultRationale: string;
-  /**
-   * Whether a DIRECT fire mode is permissible here at all. The thesis
-   * path also requires an open position; the level path has none to
-   * check, so it passes the predicate gate alone.
-   */
-  allowDirect: boolean;
+  /** An account or analyst rule: Auto only on a sale. */
+  standing?: boolean;
 }): Trigger {
-  let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
-  if (fireMode === "DIRECT" && !input.allowDirect) fireMode = "TACTICAL";
-
+  const modeProblem = fireModeProblem(input.action, input.fireMode, { standing: input.standing });
+  if (modeProblem) throw new ThesisEditError("INVALID", modeProblem);
   const parsed = triggerSchema.safeParse({
     predicate: input.predicate,
     action: input.action,
     rationale: input.rationale?.trim() || input.defaultRationale,
     ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
-    // fireMode only means something on EXIT (DIRECT vs wake-the-agent). On
-    // any other action the field is inert — a REVIEW fire batches into the
-    // next daily run regardless — so don't stamp a label that claims a
-    // tactical wake that never happens (DAV-226). Absent ⇒ TACTICAL.
-    ...(input.action === "EXIT" ? { fireMode } : {}),
+    ...(input.fireMode ? { fireMode: input.fireMode } : {}),
+    ...(input.action === "TRIM" && input.trimPct != null ? { trimPct: input.trimPct } : {}),
   });
   if (!parsed.success) {
     throw new ThesisEditError(
@@ -100,10 +91,10 @@ export function buildPrincipalTrigger(input: {
       `Invalid trigger: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
     );
   }
-  // Cooldown discipline (0-on-non-EXIT → per-kind default), then
-  // source=PRINCIPAL — server-owned, never trusted from the request body.
+  // Cooldown discipline (0-on-non-EXIT → per-kind default), the fire mode
+  // written down, then source=PRINCIPAL — server-owned, never from the body.
   return {
-    ...applyTriggerCooldownDefaults([parsed.data as Trigger])[0],
+    ...applyTriggerDefaults([parsed.data as Trigger])[0],
     source: "PRINCIPAL",
   };
 }
@@ -361,11 +352,13 @@ const offPosition = (p: When) => conditionsOf(p).some((c) => fromPosition(c));
 export interface TriggerAddInput {
   action: TriggerAction;
   predicate: When;
-  /** Omit ⇒ defaultFireModeForAction (EXIT→DIRECT, else TACTICAL). */
-  fireMode?: "TACTICAL" | "DIRECT";
+  /** Omit ⇒ the action's default: a review NEXT_MORNING, the rest ASK_NOW. */
+  fireMode?: FireMode;
+  /** An Auto-trim: the % it sells. Omit ⇒ 50. */
+  trimPct?: number;
   /** Omit ⇒ a generated default sentence. */
   rationale?: string;
-  /** Omit ⇒ per-predicate-kind default via applyTriggerCooldownDefaults. */
+  /** Omit ⇒ per-predicate-kind default via applyTriggerDefaults. */
   cooldownDays?: number;
 }
 
@@ -378,10 +371,9 @@ export interface TriggerAddResult {
   synced: { stopLoss?: number; targetPrice?: number };
 }
 
-/** How a sale you added runs, said only where it means something (a sale). */
-function howItRuns(action: TriggerAction, fireMode: string): string {
-  if (action !== "EXIT") return "";
-  return fireMode === "DIRECT" ? ", proposed as a sale straight away when it fires" : ", and the analyst decides when it fires";
+/** What it does when it fires, as the pill says it: "Auto-sell". */
+function howItRuns(trigger: Trigger, held: boolean): string {
+  return `. ${fireModeWords(trigger, held)}`;
 }
 
 export async function applyTriggerAdd(
@@ -391,7 +383,7 @@ export async function applyTriggerAdd(
 ): Promise<TriggerAddResult> {
   const problem = addProblem(input.predicate, "THESIS");
   if (problem) throw new ThesisEditError("INVALID", problem);
-  let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
+  const built = buildPrincipalTrigger({ ...input, defaultRationale: addedTriggerRationale(input.action, input.predicate) });
   const outcome = await runPrincipalOp(
     thesisId,
     ctx,
@@ -402,29 +394,11 @@ export async function applyTriggerAdd(
           "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be added to a held (HOLDING) thesis.",
         );
       }
-      // DIRECT (close without an agent) is only coherent on an EXIT of a
-      // held position. Anywhere else, fall back to the judgment-bearing
-      // TACTICAL path.
-      if (fireMode === "DIRECT" && (input.action !== "EXIT" || !thesis.position)) {
-        fireMode = "TACTICAL";
-      }
-      return {
-        op: "add",
-        trigger: buildPrincipalTrigger({
-          ...input,
-          fireMode,
-          defaultRationale: addedTriggerRationale(input.action, input.predicate),
-          allowDirect: fireMode === "DIRECT",
-        }),
-      };
+      return { op: "add", trigger: built };
     },
     (thesis) => ({
       summary: `You added a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
-      // Fire mode is only mentioned where it means something (EXIT). A
-      // REVIEW trigger's fire batches into the next daily run — naming a
-      // fire mode on it would claim a tactical wake that never happens
-      // (DAV-226).
-      rationale: `You added this trigger: ${sentenceOf(input, thesis.status === "HOLDING")}${howItRuns(input.action, fireMode)}. It stands until you change it.`,
+      rationale: `You added this trigger: ${sentenceOf(input, thesis.status === "HOLDING")}${howItRuns(built, thesis.status === "HOLDING")}. It stands until you change it.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -445,7 +419,7 @@ export async function applyTriggerReplace(
 ): Promise<TriggerAddResult> {
   const problem = addProblem(input.predicate, "THESIS");
   if (problem) throw new ThesisEditError("INVALID", problem);
-  let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
+  const built = buildPrincipalTrigger({ ...input, defaultRationale: addedTriggerRationale(input.action, input.predicate) });
   const outcome = await runPrincipalOp(
     thesisId,
     ctx,
@@ -456,21 +430,11 @@ export async function applyTriggerReplace(
           "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be set on a held (HOLDING) thesis.",
         );
       }
-      if (fireMode === "DIRECT" && (input.action !== "EXIT" || !thesis.position)) fireMode = "TACTICAL";
-      return {
-        op: "replace",
-        id: triggerId,
-        trigger: buildPrincipalTrigger({
-          ...input,
-          fireMode,
-          defaultRationale: addedTriggerRationale(input.action, input.predicate),
-          allowDirect: fireMode === "DIRECT",
-        }),
-      };
+      return { op: "replace", id: triggerId, trigger: built };
     },
     (thesis) => ({
       summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
-      rationale: `You changed this trigger to: ${sentenceOf(input, thesis.status === "HOLDING")}${howItRuns(input.action, fireMode)}. It stands until you change it.`,
+      rationale: `You changed this trigger to: ${sentenceOf(input, thesis.status === "HOLDING")}${howItRuns(built, thesis.status === "HOLDING")}. It stands until you change it.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;

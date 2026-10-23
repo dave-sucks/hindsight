@@ -18,10 +18,11 @@ import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
 import {
   defaultTriggersForHorizon,
   mergeTriggers,
-  applyTriggerCooldownDefaults,
+  applyTriggerDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
+import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
@@ -267,6 +268,16 @@ export const recordThesis = defineTool({
             status: "FAILED" as const,
             note: "Every record_thesis call MUST declare provenance. Add source_rationale (a one-line explanation like 'Reviewed position after price alert' or 'Surfaced on today's most-actives and it fits the fence') with source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW. Retry with the correct shape.",
           },
+          sources: [],
+        };
+      }
+
+      // A review can't be Auto; a buy, add or trim is Auto only on the owner's word (his chat).
+      const modeProblem = (args.triggers ?? []).map((t) => fireModeProblem(t.action, t.fireMode, { agent: ctx.runMode !== "PRINCIPAL_CHAT" })).find(Boolean);
+      if (modeProblem) {
+        return {
+          summary: `Thesis rejected for ${args.ticker}: a trigger's fireMode.`,
+          data: { thesis_id: null, status: "FAILED" as const, note: `${modeProblem} Resend the trigger with fireMode ASK_NOW or NEXT_MORNING, or none.` },
           sources: [],
         };
       }
@@ -765,10 +776,10 @@ export const recordThesis = defineTool({
         // No committed view, so no horizon template — those are directional
         // plans. Whatever triggers the caller sent, verbatim.
         if (passKeepsWatch) {
-          return applyTriggerCooldownDefaults(supplied);
+          return applyTriggerDefaults(supplied);
         }
         if (!args.horizon) {
-          return applyTriggerCooldownDefaults(supplied);
+          return applyTriggerDefaults(supplied);
         }
         const defaults = defaultTriggersForHorizon(
           args.horizon as Horizon,
@@ -782,7 +793,7 @@ export const recordThesis = defineTool({
           effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
         );
         const merged = mergeTriggers(defaults, supplied);
-        return applyTriggerCooldownDefaults(merged);
+        return applyTriggerDefaults(merged);
       })();
 
       // ── Derive-on-write: levels are triggers (DAV-195 L3) ───────────
@@ -816,7 +827,7 @@ export const recordThesis = defineTool({
       // on a down day isn't judged against yesterday's close (./written-price).
       mergedTriggers = stampWrittenPrice(
         [],
-        applyTriggerCooldownDefaults(levelled.triggers),
+        applyTriggerDefaults(levelled.triggers),
         freshForStamp,
         new Date(),
       );

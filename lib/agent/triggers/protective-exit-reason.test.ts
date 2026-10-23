@@ -9,8 +9,8 @@
  * lib/proposals/maybe-await-approval.ts exempts STOP/TARGET closes so a
  * rejected gain-lock re-fires when price re-crosses the level. Both close
  * paths depend on this mapping being deterministic (never LLM-chosen):
- *   • DIRECT fire → tactical-run.ts directExitReason() delegates here.
- *   • agent (TACTICAL) fire → the reason is precomputed here and threaded into
+ *   • an Auto-sell → tactical-run.ts directExitReason() delegates here.
+ *   • a sale that asks the analyst → the reason is precomputed here and threaded into
  *     ToolContext.protectiveExitReason; close_position uses it.
  *
  * Non-protective predicates (earnings, signals, RSI, time, composites) return

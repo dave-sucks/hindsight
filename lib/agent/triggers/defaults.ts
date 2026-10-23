@@ -28,6 +28,7 @@ import { randomUUID } from "node:crypto";
 import type { Trigger } from "./types";
 import { triggerSlot } from "./condition/slot";
 import { flooredCooldownDays } from "./state-cooldown";
+import { withFireMode } from "./fire-mode";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export { isStatePredicate, STATE_PREDICATE_MIN_COOLDOWN_DAYS } from "./state-cooldown";
@@ -70,9 +71,9 @@ export interface ThesisShape {
  * Reactive strength-press rung (docs/plans/SCALE_INTO_WINNERS.md PR2).
  *
  * A strong single-day up-move on a HELD position spawns a tactical run to
- * evaluate pressing the winner. `ADD` is a held-only action and resolves to
- * fireMode TACTICAL by default (the agent decides + confirms; it never
- * auto-fills), and it is approval-gated, so a fire produces an add *proposal*.
+ * evaluate pressing the winner. `ADD` is a held-only action and asks the
+ * analyst now by default (the agent decides + confirms), and it is
+ * approval-gated, so a fire produces an add *proposal*.
  * a move from yesterday's close is cron-evaluable (reads the daily change), so
  * this fires intraday — the reactive complement to PR3's morning RUNNING_WINNER
  * flag.
@@ -101,7 +102,7 @@ function scaleInOnStrengthTrigger(): Trigger {
  * to evaluate adding at the discount — but the tactical prompt runs the
  * make-or-break "market/sector-wide vs company-specific" check first. A
  * market-wide dip with the thesis intact is a gift; a company-specific drop is
- * thesis damage (don't add — hold/trim/exit). ADD is held-only + TACTICAL +
+ * thesis damage (don't add — hold/trim/exit). ADD is held-only, asks the analyst now,
  * approval-gated, so a fire is a proposal the agent only makes after that check.
  *
  * The Secular Compounder's own rule since the DAV-279 ruling (2026-09-17):
@@ -368,7 +369,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 //     It was duplicating daily-run's needsAction.REVIEW_DUE check —
 //     daily-run computes review due-ness itself every morning and
 //     decides REVIEW_DUE without needing a trigger. Auto-attaching the
-//     trigger meant the 5-min cron also spawned a TACTICAL run on every
+//     trigger meant the 5-min cron also spawned a tactical run on every
 //     overdue WATCHING thesis intra-day, which produced almost zero
 //     state changes (28 of 35 tactical runs on 2026-05-18 were
 //     old review-date, 0 produced state changes). The intra-day
@@ -647,26 +648,6 @@ export function defaultCooldownDaysForPredicate(
  * fired 15 times in 70 min before manual hotfix. See `docs/GAPS.md`.
  */
 /**
- * Default fire mode for a manually-added trigger, keyed off action. A
- * deterministic EXIT (hard stop / trailing stop / take-profit level) has
- * nothing for an agent to decide, so it closes DIRECT — skipping the
- * GPT-5.5 tactical run (the principal's cost driver, TRIGGER_FOLLOWUPS #3).
- * It still flows through the approval gate. Every other action keeps the
- * judgment-bearing TACTICAL path.
- *
- * Scope note: this drives the UI add-path + popover only. The horizon
- * default templates intentionally do NOT call it — they omit fireMode, so
- * agent-minted EXIT stops stay on the historical TACTICAL behavior until
- * the principal opts a specific trigger into DIRECT. Changing the mass-mint
- * default is a separate decision.
- */
-export function defaultFireModeForAction(
-  action: Trigger["action"],
-): "TACTICAL" | "DIRECT" {
-  return action === "EXIT" ? "DIRECT" : "TACTICAL";
-}
-
-/**
  * The cooldown a rung actually fires on — the one number `shouldFire` uses.
  *
  * Three layers:
@@ -702,13 +683,12 @@ export function effectiveCooldownDays(trigger: Trigger): number {
   return flooredCooldownDays(trigger, written);
 }
 
-export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {
+/** Also writes each trigger's fire mode down: the one it names, else its action's default (./fire-mode). */
+export function applyTriggerDefaults(triggers: Trigger[]): Trigger[] {
   return triggers.map((t) => {
     const needsDefault =
       t.cooldownDays == null || (t.cooldownDays === 0 && t.action !== "EXIT");
-    return needsDefault
-      ? { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate, t.action) }
-      : t;
+    return withFireMode(needsDefault ? { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate, t.action) } : t);
   });
 }
 

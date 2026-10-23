@@ -198,6 +198,9 @@ export interface ToolContext {
    */
   protectiveExitTriggerLabel?: string;
 
+  /** Set only for an Auto trigger: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
+  payFromCash?: number | null;
+
   /**
    * Check only: record_thesis / update_thesis run every check they run on a
    * real save — the input schema, the trigger ops, the plan check, the

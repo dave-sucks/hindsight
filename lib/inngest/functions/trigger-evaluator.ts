@@ -10,7 +10,8 @@
 // (A second, signal-driven path consumed `app/signal.routed`; it went with
 // the signal router, 2026-09-15.)
 //
-// A match emits `app/thesis.trigger.fired`. The `lastFiredAt`
+// A match emits `app/thesis.trigger.fired`, unless its fire mode leaves it
+// for the next morning run (triggers/fire-mode.ts). The `lastFiredAt`
 // cooldown stamp prevents same-trigger re-fires within cooldownDays. ENTER
 // rungs additionally fire only on the CROSSING of their level (price past
 // it now, not at the prior close) — see shouldFire, DAV-229.
@@ -59,6 +60,7 @@ import type { EarningsWindow } from "@/lib/agent/triggers/earnings";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { effectiveTriggerAction, watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { waitsForMorning } from "@/lib/agent/triggers/fire-mode";
 import { demoteThesisPlan } from "@/lib/agent/triggers/demote";
 import { splitFiresByLevel } from "@/lib/agent/triggers/levels";
 import {
@@ -812,17 +814,11 @@ export const triggerEvaluator = inngest.createFunction(
             continue;
           }
 
-          // REVIEW-batching (a REVIEW converts to a trade ~4-8% of the time).
-          // REVIEWs carry no urgency here, so every REVIEW defers
-          // to the daily run: write the TRIGGER_FIRED audit row (stamped with
-          // the price that fired it) and skip the tactical spawn. The daily
-          // run picks it up via needsAction=TRIGGER_FIRED. ENTER/EXIT/stop
-          // triggers still spawn a tactical. See OPENAI_COST_REDUCTION.md #2.
-          // The one exception: a red filing on a stock we own wakes a tactical
-          // run today (principal ruling 2026-09-15, SEC_FILINGS.md §4).
+          // On fire "Flag for Review": write the TRIGGER_FIRED row (with the price that fired it) and
+          // start no run; the morning run answers it. A red filing on a stock we own is looked at today (2026-09-15).
           const sameDayFiling =
             firedFilingList != null && filingNeedsSameDayLook(firedFilingList, thesis.status);
-          if (action === "REVIEW" && !sameDayFiling) {
+          if (waitsForMorning(t, sameDayFiling)) {
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",

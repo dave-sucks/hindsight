@@ -41,6 +41,8 @@ import {
   type When,
 } from "@/lib/agent/triggers/condition";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
+import { FIRE_MODES, approvalLine, fireModeLabel, fireModeOf, fireModeProblem, isFireMode, trimPctOf, type FireMode } from "@/lib/agent/triggers/fire-mode";
+import { getAccountApprovalSettings, type AccountApprovalSettings } from "@/lib/actions/account-settings.actions";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 
 export type Level = CheckContext["level"];
@@ -53,12 +55,13 @@ export const TYPE_ICON: Record<TriggerType, typeof DollarSign> = {
   schedule: Repeat,
 };
 
-/** What the form edits: the action, one condition or two, and how a sale fires. */
+/** What the form edits: the action, one condition or two, what it does on fire, and a trim's size. */
 export interface Draft {
   action: TriggerAction;
   conditions: Condition[];
   match: "all" | "any";
-  fireMode: "TACTICAL" | "DIRECT";
+  fireMode: FireMode;
+  trimPct: number;
 }
 
 export function whenOf(d: Draft): When {
@@ -73,7 +76,8 @@ export function draftOf(t: Trigger): Draft | null {
     action: t.action as TriggerAction,
     conditions: conditionsOf(w),
     match: isGroup(w) ? w.match : "all",
-    fireMode: t.fireMode ?? "TACTICAL",
+    fireMode: fireModeOf(t),
+    trimPct: trimPctOf(t),
   };
 }
 
@@ -113,28 +117,79 @@ export function useTriggerRequest(onDone: () => void) {
   return { pending, err, setErr, send };
 }
 
-/** How a sale fires. Shown only for a sale nothing needs judging on. */
+/** On fire: the same three choices on every trigger, one the action can't take disabled; a trim's size beside it. */
 export function OnFireSelect({
+  action,
+  standing,
   value,
+  trimPct,
   onChange,
+  onTrimPct,
   disabled,
 }: {
-  value: Draft["fireMode"];
-  onChange: (v: Draft["fireMode"]) => void;
+  action: TriggerAction;
+  /** An account or analyst rule: Auto only on a sale. */
+  standing: boolean;
+  value: FireMode;
+  trimPct: number;
+  onChange: (v: FireMode) => void;
+  onTrimPct: (n: number) => void;
   disabled: boolean;
 }) {
+  const [approval, setApproval] = useState<AccountApprovalSettings | null>(null);
+  useEffect(() => {
+    let live = true;
+    getAccountApprovalSettings().then((s) => live && setApproval(s), () => null);
+    return () => {
+      live = false;
+    };
+  }, []);
+  const [text, setText] = useState(String(trimPct));
+  // Follow a size set from outside (a reset) without fighting typing.
+  useEffect(() => {
+    if (Number(text) !== trimPct) setText(String(trimPct));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimPct]);
+  const line = approvalLine(action, approval);
   return (
     <div className="space-y-1.5">
       <FieldLabel>On fire</FieldLabel>
-      <Select value={value} onValueChange={(v) => (v === "TACTICAL" || v === "DIRECT") && onChange(v)} disabled={disabled}>
-        <SelectTrigger width="full" aria-label="On fire">
-          <SelectValue>{value === "DIRECT" ? "Propose the sale right away" : "Ask the analyst first"}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="TACTICAL">Ask the analyst first</SelectItem>
-          <SelectItem value="DIRECT">Propose the sale right away</SelectItem>
-        </SelectContent>
-      </Select>
+      <ButtonGroup width="full">
+        <Select value={value} onValueChange={(v) => isFireMode(v) && onChange(v)} disabled={disabled}>
+          <SelectTrigger aria-label="On fire">
+            <SelectValue>{fireModeLabel(value, action)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false} align="start">
+            {FIRE_MODES.map((m) => (
+              <SelectItem key={m} value={m} disabled={fireModeProblem(action, m, { standing }) != null}>
+                {fireModeLabel(m, action)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {/* A trim's size: always here, used only by an Auto-trim. */}
+        <InputGroup>
+          <InputGroupAddon>
+            <InputGroupText>Trim</InputGroupText>
+          </InputGroupAddon>
+          <InputGroupInput
+            type="text"
+            inputMode="numeric"
+            size={3}
+            value={text}
+            aria-label="Trim size"
+            disabled={disabled || action !== "TRIM" || value !== "DO_IT"}
+            onChange={(e) => {
+              setText(e.target.value);
+              onTrimPct(Number(e.target.value));
+            }}
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupText>%</InputGroupText>
+          </InputGroupAddon>
+        </InputGroup>
+      </ButtonGroup>
+      {line ? <p className="text-xs text-muted-foreground">{line}</p> : null}
     </div>
   );
 }

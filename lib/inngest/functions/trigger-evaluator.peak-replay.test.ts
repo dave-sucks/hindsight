@@ -19,7 +19,7 @@ const TRAIL = {
   id: "f552414c-ff2a-455d-b779-d5401ac9ea98",
   action: "EXIT",
   source: "PRINCIPAL",
-  fireMode: "TACTICAL",
+  fireMode: "ASK_NOW",
   predicate: { is: "below", value: 12, watch: "move", settings: { startOnceUpPct: 10 }, variable: "peak" },
   rationale: "Gave back 12% from the high, once the position had been up 10% — bank the run.",
   cooldownDays: 0,

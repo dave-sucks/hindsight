@@ -16,13 +16,13 @@ import {
   TRIGGER_TYPES,
   actionLabel,
   allowedActions,
-  canProposeDirectly,
   measureOf,
   typeDef,
   whenProblem,
   type TriggerType,
 } from "@/lib/agent/triggers/condition";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
+import { DEFAULT_TRIM_PCT, defaultFireMode } from "@/lib/agent/triggers/fire-mode";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { ConditionFields, FieldLabel, OnFireSelect, TYPE_ICON, draftOf, useTriggerRequest, whenOf, type Draft, type Level } from "./TriggerFields";
 
@@ -93,7 +93,7 @@ function freshDraft(type: TriggerType, level: Level, held: boolean): Draft {
   const actions = allowedActions(c, { held, standing: level !== "THESIS" });
   const preferred: TriggerAction = t.trades ? (held || level !== "THESIS" ? "EXIT" : "ENTER") : "REVIEW";
   const action = actions.includes(preferred) ? preferred : actions[0];
-  return { action, conditions: [c], match: "all", fireMode: action === "EXIT" ? "DIRECT" : "TACTICAL" };
+  return { action, conditions: [c], match: "all", fireMode: defaultFireMode(action), trimPct: DEFAULT_TRIM_PCT };
 }
 
 /** The dialog: a new trigger of `type`, or `trigger` to change. */
@@ -128,15 +128,17 @@ export function TriggerDialog({
   const w = whenOf(draft);
   const actions = allowedActions(w, { held, standing });
   const action = actions.includes(draft.action) ? draft.action : (actions[0] ?? "REVIEW");
-  const showOnFire = canProposeDirectly(w, action) && sells;
-  const problem = whenProblem(w, ctx);
+  // An Auto-trim needs its size.
+  const trimSize = action === "TRIM" && draft.fireMode === "DO_IT";
+  const trimProblem = trimSize && !(Number.isFinite(draft.trimPct) && draft.trimPct >= 1 && draft.trimPct <= 99) ? "A trim sells 1% to 99% of the position." : null;
+  const problem = whenProblem(w, ctx) ?? trimProblem;
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const setCondition = (i: number, c: Draft["conditions"][number]) =>
     setDraft((d) => ({ ...d, conditions: d.conditions.map((x, j) => (j === i ? c : x)) }));
 
   function save() {
     if (problem) return;
-    const body = { action, predicate: w, fireMode: showOnFire ? draft.fireMode : undefined };
+    const body = { action, predicate: w, fireMode: draft.fireMode, ...(trimSize ? { trimPct: draft.trimPct } : {}) };
     if (trigger) void send("PATCH", `${endpointBase}/${trigger.id}`, { replace: body });
     else void send("POST", endpointBase, body);
   }
@@ -153,7 +155,7 @@ export function TriggerDialog({
             <FieldLabel>Action</FieldLabel>
             <Select
               value={action}
-              onValueChange={(v) => typeof v === "string" && update({ action: v as TriggerAction, fireMode: v === "EXIT" ? "DIRECT" : "TACTICAL" })}
+              onValueChange={(v) => typeof v === "string" && update({ action: v as TriggerAction, fireMode: defaultFireMode(v) })}
               disabled={pending}
             >
               <SelectTrigger width="full" aria-label="Action">
@@ -204,7 +206,16 @@ export function TriggerDialog({
             />
           )}
 
-          {showOnFire ? <OnFireSelect value={draft.fireMode} onChange={(fireMode) => update({ fireMode })} disabled={pending} /> : null}
+          <OnFireSelect
+            action={action}
+            standing={standing}
+            value={draft.fireMode}
+            trimPct={draft.trimPct}
+            onChange={(fireMode) => update({ fireMode })}
+            onTrimPct={(trimPct) => update({ trimPct })}
+            disabled={pending}
+          />
+          {trimProblem ? <p className="text-xs text-muted-foreground">{trimProblem}</p> : null}
           {err ? <p className="text-xs text-destructive">{err}</p> : null}
         </div>
 

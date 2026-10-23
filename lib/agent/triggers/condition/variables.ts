@@ -28,8 +28,6 @@ export interface VariableDef {
   words: string;
   /** Exists only once we own the stock. */
   position?: boolean;
-  /** A sale measured from it has nothing to judge, so it can be proposed with no analyst. */
-  direct?: boolean;
   /** Its number comes off the daily indicator snapshot, so the check loads it. */
   snapshot?: boolean;
   /** Variables that are one rule at different values share a slot ("any material filing" and "a red flag"). */
@@ -39,9 +37,9 @@ export interface VariableDef {
 }
 
 export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] = [
-  { id: "prev_close", label: "Yesterday's close", group: "Recent closes", chip: "yesterday's close", words: "yesterday's close", direct: true },
-  { id: "close_5d", label: "Close 5 days ago", group: "Recent closes", chip: "5 days ago", words: "the close 5 days ago", direct: true, snapshot: true },
-  { id: "close_20d", label: "Close 20 days ago", group: "Recent closes", chip: "20 days ago", words: "the close 20 days ago", direct: true, snapshot: true },
+  { id: "prev_close", label: "Yesterday's close", group: "Recent closes", chip: "yesterday's close", words: "yesterday's close" },
+  { id: "close_5d", label: "Close 5 days ago", group: "Recent closes", chip: "5 days ago", words: "the close 5 days ago", snapshot: true },
+  { id: "close_20d", label: "Close 20 days ago", group: "Recent closes", chip: "20 days ago", words: "the close 20 days ago", snapshot: true },
   {
     id: "entry",
     label: "Our entry",
@@ -49,7 +47,6 @@ export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] =
     chip: "our entry",
     words: "our entry",
     position: true,
-    direct: true,
     settings: [
       // The big-winner switch: don't take the profit on a stock that ran up fast.
       {
@@ -67,7 +64,6 @@ export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] =
     chip: "the high",
     words: "the high since we bought",
     position: true,
-    direct: true,
     settings: [
       { key: "startOnceUpPct", looser: true, range: { what: "A trail's start (startOnceUpPct)", unit: "%", min: 0, max: 200 }, words: (v) => `, once it has been up ${pct(Number(v))}` },
       { key: "widenAtr", looser: true, snapshot: true, range: { what: "A trail's widening (widenAtr)", unit: "×", over: 0, max: 10 }, words: (v) => ` (or ${v}× its daily range, if wider)` },

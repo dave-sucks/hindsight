@@ -186,7 +186,7 @@
         "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
         "action": "ADD",
         "source": "DEFAULT",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "move",
           "is": "above",
@@ -200,7 +200,7 @@
         "id": "b459cc93-12a4-43f1-8904-d8a8cd846b93",
         "action": "REVIEW",
         "source": "DEFAULT",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "repeat",
           "value": 7
