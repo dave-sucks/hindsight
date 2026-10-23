@@ -124,7 +124,12 @@ The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 - Supabase (Postgres + Auth + Realtime)
 - Prisma ORM (v7 with adapter-pg)
 - Inngest for background jobs and crons
-- Vercel (Next.js only — no Railway). **Migrations auto-apply on
+- Vercel (Next.js only — no Railway). **Functions run in `pdx1`
+  (Portland)** — `vercel.json` `regions`. That is AWS us-west-2, where the
+  database, its pooler and Supabase auth live. In the default `iad1` every
+  query crossed the country (~75 ms a trip, ~650 ms for a new connection,
+  ~280 ms per auth check). Don't move functions away from the database.
+  **Migrations auto-apply on
   production deploys** — `build` starts with `scripts/deploy-migrate.mjs`
   (`prisma migrate deploy`, production only, using `DIRECT_URL`). Merging a
   migration is enough; don't apply it by hand. Preview deploys deliberately
