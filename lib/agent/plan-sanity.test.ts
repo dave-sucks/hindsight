@@ -239,6 +239,9 @@ describe("computePlanSanity — FLOOR_INSIDE_NOISE (the HWM shape)", () => {
     expect(f).toBeDefined();
     expect(f?.text).toContain("$254.00");
     expect(f?.text).toContain("0.3%");
+    // A watched floor reads the close (watchedFloorOnClose), never an intraday tick.
+    expect(f?.text).toContain("on a close below it");
+    expect(f?.text).not.toContain("first tick");
   });
 
   it("stays quiet when the floor has room", () => {

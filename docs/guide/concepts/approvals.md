@@ -37,6 +37,8 @@ Approval is a setting on each account, for buys and sales separately:
 - **Live account:** on by default. Every trade waits for you.
 - **Paper account:** off by default, so paper trades go straight to the broker and analysts can practise freely. Turn it on to review paper trades too.
 
+The switches cover every trade the app makes for you, a trigger's automatic sale included. Only your own buy and sell buttons skip them: the click is the approval.
+
 Until it's approved, a proposal isn't a holding, and it isn't counted in your positions or your P&L.
 
 A trade's whole path, from the agent's call through the gate, the broker and the fill: [From proposal to fill](../deep-dives/proposal-to-fill.md).

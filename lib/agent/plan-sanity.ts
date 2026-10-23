@@ -390,8 +390,8 @@ export function computePlanSanity(args: {
         kind: "FLOOR_INSIDE_NOISE",
         text:
           `The floor ${fmt(stopLoss)} sits ${floorGapPct.toFixed(1)}% ${isLong ? "under" : "over"} the live price ${fmt(currentPrice)}, ` +
-          `but this stock's ordinary daily move is ~${dayRangePct.toFixed(1)}%. A floor on a stock we don't own sets the plan down on the first tick through it, ` +
-          `so an ordinary ${isLong ? "red" : "green"} day erases this plan. Put the floor under real structure with room, or say in one sentence that a break of today's level is meant to end the plan.`,
+          `but this stock's ordinary daily move is ~${dayRangePct.toFixed(1)}%. A floor on a stock we don't own sets the plan down on a close ${isLong ? "below" : "above"} it, ` +
+          `so an ordinary ${isLong ? "red" : "green"} day that closes there erases this plan. Put the floor under real structure with room, or say in one sentence that a break of today's level is meant to end the plan.`,
       });
     }
   }
