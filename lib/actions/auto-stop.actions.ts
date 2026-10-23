@@ -20,6 +20,8 @@ export interface AutoStopView {
 
 type Level = "account" | "analyst";
 
+const AUTO_STOP = { autoStopOnBuy: true, autoStopPct: true } as const;
+
 async function load(level: Level, ownerId: string): Promise<{ view: AutoStopView; accountId: string }> {
   const supabase = await createClient();
   const {
@@ -29,13 +31,13 @@ async function load(level: Level, ownerId: string): Promise<{ view: AutoStopView
   const accountId = await getAccountId(user.id);
   if (!accountId) throw new Error("No account");
   if (level === "account" && ownerId !== accountId) throw new Error("Forbidden");
-  const analyst =
-    level === "analyst"
-      ? await prisma.agentConfig.findFirst({ where: { id: ownerId, accountId }, select: { autoStopOnBuy: true, autoStopPct: true } })
-      : null;
+  // Independent reads: one round trip instead of three.
+  const [analyst, account, role] = await Promise.all([
+    level === "analyst" ? prisma.agentConfig.findFirst({ where: { id: ownerId, accountId }, select: AUTO_STOP }) : null,
+    prisma.account.findUniqueOrThrow({ where: { id: accountId }, select: AUTO_STOP }),
+    getUserRole(user.id, accountId),
+  ]);
   if (level === "analyst" && !analyst) throw new Error("Not found");
-  const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId }, select: { autoStopOnBuy: true, autoStopPct: true } });
-  const role = await getUserRole(user.id, accountId);
   return {
     accountId,
     view: {
@@ -57,17 +59,21 @@ export async function saveAutoStop(
   try {
     const { view, accountId } = await load(input.level, input.ownerId);
     if (!view.canEdit) return { ok: false, error: "You can view this setting but not change it." };
+    // Each write returns the row as saved, so the answer needs no second read.
     if ("reset" in input) {
       if (input.level !== "analyst") return { ok: false, error: "The account setting is the default; there is nothing under it." };
-      await prisma.agentConfig.update({ where: { id: input.ownerId }, data: { autoStopOnBuy: null, autoStopPct: null } });
-    } else {
-      const problem = autoStopPctProblem(input.pct);
-      if (problem) return { ok: false, error: problem };
-      const data = { autoStopOnBuy: input.on, autoStopPct: input.pct };
-      if (input.level === "account") await prisma.account.update({ where: { id: accountId }, data });
-      else await prisma.agentConfig.update({ where: { id: input.ownerId }, data });
+      const a = await prisma.agentConfig.update({ where: { id: input.ownerId }, data: { autoStopOnBuy: null, autoStopPct: null }, select: AUTO_STOP });
+      return { ok: true, view: { ...view, analyst: { on: a.autoStopOnBuy, pct: a.autoStopPct } } };
     }
-    return { ok: true, view: (await load(input.level, input.ownerId)).view };
+    const problem = autoStopPctProblem(input.pct);
+    if (problem) return { ok: false, error: problem };
+    const data = { autoStopOnBuy: input.on, autoStopPct: input.pct };
+    if (input.level === "account") {
+      const a = await prisma.account.update({ where: { id: accountId }, data, select: AUTO_STOP });
+      return { ok: true, view: { ...view, account: { on: a.autoStopOnBuy, pct: a.autoStopPct } } };
+    }
+    const a = await prisma.agentConfig.update({ where: { id: input.ownerId }, data, select: AUTO_STOP });
+    return { ok: true, view: { ...view, analyst: { on: a.autoStopOnBuy, pct: a.autoStopPct } } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Couldn't save the setting." };
   }
