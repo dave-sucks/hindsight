@@ -2,9 +2,8 @@
  * setup-overrides.ts — the playbook's numbers as settings (DAV-273).
  *
  * The setup catalog (setups.ts) ships the playbook's numbers as code:
- * the trade stop cap, the minimum ATR, the chase limit, the target's R
- * floor, the partial at N R, the beat-that-sold review, the time limit,
- * the risk multiplier. Dave's standing requirement is that the app is
+ * the trade stop cap, the minimum ATR, the chase limit, the partial at N R,
+ * the beat-that-sold review, the time limit. Dave's standing requirement is that the app is
  * customizable from a place he can see, so those numbers are also
  * settings: an account carries per-setup overrides, edited on
  * /settings/playbook, and every reader of the catalog applies them
@@ -26,8 +25,6 @@ export const setupOverrideSchema = z
     minAtr: z.number().min(0).max(5).optional(),
     /** Do not buy more than this far past the level, %. Null = no chase rule. */
     chaseLimitPct: z.number().positive().max(25).nullable().optional(),
-    /** The reward-to-risk floor the plan must clear. */
-    targetMinR: z.number().min(1).max(10).optional(),
     /** The fill writes a partial sale at this many R. Null = none. */
     partialAtR: z.number().positive().max(10).nullable().optional(),
     /** The fill writes the beat-the-market-sold review. */
@@ -41,8 +38,6 @@ export const setupOverrideSchema = z
      * its old name so accounts that already set one are not orphaned.
      */
     timeTradingDays: z.number().int().positive().max(365).nullable().optional(),
-    /** Multiplies the risk per trade (0.5 for a binary event). */
-    riskMultiplier: z.number().positive().max(2).optional(),
   })
   .strict();
 
@@ -76,13 +71,11 @@ export function applySetupOverride(setup: Setup, o: SetupOverride | undefined): 
       maxPct: o.stopMaxPct !== undefined ? o.stopMaxPct : setup.stop.maxPct,
       minAtr: o.minAtr ?? setup.stop.minAtr,
     },
-    target: { ...setup.target, minR: o.targetMinR ?? setup.target.minR },
     manage: {
       partialAtR: o.partialAtR !== undefined ? o.partialAtR : setup.manage.partialAtR,
       beatAndFadeReview: o.beatAndFadeReview ?? setup.manage.beatAndFadeReview,
     },
     time: { ...setup.time, count: o.timeTradingDays !== undefined ? o.timeTradingDays : setup.time.count },
-    riskMultiplier: o.riskMultiplier ?? setup.riskMultiplier,
   };
 }
 
@@ -92,10 +85,8 @@ export function setupNumbers(s: Setup): Required<SetupOverride> {
     stopMaxPct: s.stop.maxPct,
     minAtr: s.stop.minAtr,
     chaseLimitPct: s.entry.chaseLimitPct,
-    targetMinR: s.target.minR,
     partialAtR: s.manage.partialAtR,
     beatAndFadeReview: s.manage.beatAndFadeReview,
     timeTradingDays: s.time.count,
-    riskMultiplier: s.riskMultiplier,
   };
 }
