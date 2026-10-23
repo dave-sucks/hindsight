@@ -341,11 +341,6 @@ export const morningResearch = inngest.createFunction(
           minConfidence: config.minConfidence,
           alpacaCreds,
           runEnvironment,
-          // Fix #6 (V2). Narrows read_signals to portfolio + watchlist
-          // buckets only — Daily Run shouldn't act on discovery candidates
-          // (that's Discovery's job). V1 had a different
-          // expectation; V1 path is deprecated as of 2026-05-16.
-          dailyRunOnly: true,
         });
         const allowlist = MODES["research-run"].toolAllowlist;
         const tools = allowlist

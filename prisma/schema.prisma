@@ -786,8 +786,8 @@ model Signal {
   segmentRoutes PodcastSegmentSignalRoute[] @relation("SegmentSignalRoute")
 
   // Phase 1 — today-only filtering. The market trading day this signal
-  // belongs to (ET timezone). All consumers (router, brief, read_signals)
-  // default-filter on this. Backfilled from createdAt for legacy rows.
+  // belongs to (ET timezone). Its readers (the router, the brief and the
+  // inbox tool, all since deleted) default-filtered on this. Backfilled from createdAt for legacy rows.
   tradingDay DateTime? @db.Date
 
   // Phase 1 — how long this signal stays actionable, in hours from createdAt.
@@ -806,8 +806,8 @@ model Signal {
   emailMessageId String?
 
   // Phase 3 — soft-delete tombstone. Set by pipeline-cleanup cron when a
-  // signal ages past 30d. Active queries (router, brief, read_signals,
-  // discovery) filter out non-null. Theses still resolve sourceSignalIds
+  // signal ages past 30d. Active queries (the router, the brief and the
+  // inbox tool, all since deleted) filtered out non-null. Theses still resolve sourceSignalIds
   // against soft-deleted rows for historical attribution.
   deletedAt DateTime?
 
@@ -849,8 +849,8 @@ model AnalystSignalRoute {
   rawRelevanceScore Int? // 0-100, pre-novelty raw score (debugging — see signal-router.ts)
   noveltyScore      Int? // 0-100, per-(analyst,signal) novelty value applied as multiplier
   routeReason       String // legacy free-form: "ticker_match:AMD", "sector_match:TECH", …
-  // Session 3: canonical routing code used by agent/brief/read_signals to
-  // segment inbox. Enum (string, not Postgres enum — easier to evolve):
+  // Session 3: canonical routing code the (deleted) inbox used to
+  // segment. Enum (string, not Postgres enum — easier to evolve):
   //   DISCOVERY | WATCHLIST | POSITION | DIRECT_TICKER |
   //   SECTOR_MATCH | INDUSTRY_MATCH | THEME_MATCH | CROSS_ANALYST
   // Nullable for legacy rows; all new routes populate it.
@@ -862,7 +862,7 @@ model AnalystSignalRoute {
   status            String      @default("PENDING") // "PENDING" | "READ" | "ACTED_ON" | "DISMISSED"
 
   // Phase 1 — denormalized trading day for fast today-only queries. Every
-  // consumer (brief generator, dashboards, read_signals) filters on this.
+  // consumer (brief generator, dashboards) filters on this.
   // Backfilled from routedAt::date (ET) for legacy rows.
   tradingDay DateTime? @db.Date
 
@@ -887,7 +887,6 @@ model AnalystSignalRoute {
 /// Signal routed to a specific PodcastSegment — the segment's intelligence inbox.
 /// Mirror of AnalystSignalRoute. Same shape, same indexes, same uniqueness
 /// constraint. The signal-router builds rows of both types from a single pass.
-/// read_signals branches on ToolContext.podcastSegmentId vs analystId.
 ///
 /// See docs/PODCAST_PLAN.md "Signal pipeline reaches segments" for the design.
 model PodcastSegmentSignalRoute {

@@ -32,8 +32,6 @@ import { dispatchThesisResearch } from "./dispatch-thesis-research";
 // THESIS_LIFECYCLE_FIX Phase 2 — polling wait for a dispatched refresh
 // to land before the parent agent proceeds.
 import { waitForThesisRefresh } from "./wait-for-thesis-refresh";
-import { readSignals } from "./read-signals";
-import { readArtifact } from "./read-artifact";
 import { webSearch } from "./web-search";
 import { twitterSearch } from "./twitter-search";
 import { recordThesis } from "./record-thesis";
@@ -90,8 +88,6 @@ interface ToolCtx {
   /** Snapshot of ResearchRun.environment — see ToolContext.runEnvironment. */
   runEnvironment?: "PAPER" | "LIVE";
   intelligencePolicy?: IntelligencePolicy;
-  /** Hide discoverySignals from read_signals (daily-run V2 cron). */
-  dailyRunOnly?: boolean;
   /**
    * Chat-dispatched thesis-writer marker. P1-24: a record_thesis mint is
    * always WATCHING regardless (HOLDING is execution-owned, set by
@@ -147,18 +143,11 @@ export function createResearchTools(
     existing.add("get_stock_data");
     calledTickers.set(key, existing);
   }
-  // In-run signal tracker — read_signals populates TICKER → {signalId, ...}
-  // for every ticker on every routed signal it returned. record_thesis reads
-  // it to soft-nudge the agent toward ROUTED_SIGNAL provenance when the
-  // chain is available — the Monitor ROI tracer needs sourceSignalIds to
-  // credit the producing monitor (VISION Pillar 5).
-  const signalsByTicker = new Map<string, Set<string>>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const newCtx: any = {
     ...ctx,
     groupId: (phase: string) => phase,
     calledTickers,
-    signalsByTicker,
   };
 
   const toolsBase = {
@@ -180,11 +169,6 @@ export function createResearchTools(
     // THESIS_RESEARCH_V2 — Phase 1.
     dispatch_thesis_research: dispatchThesisResearch(newCtx),
     wait_for_thesis_refresh: waitForThesisRefresh(newCtx),
-    // On no mode's allowlist since 2026-09-15 — the router that filled the
-    // inbox is gone. Kept registered so the signal history stays reachable
-    // if a mode ever lists them again.
-    read_signals: readSignals(newCtx),
-    read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
     twitter_search: twitterSearch(newCtx),
     record_thesis: recordThesis(newCtx),
@@ -245,8 +229,6 @@ export { getPeersWithMetrics } from "./get-peers-with-metrics";
 export { dispatchThesisResearch } from "./dispatch-thesis-research";
 // THESIS_LIFECYCLE_FIX Phase 2.
 export { waitForThesisRefresh } from "./wait-for-thesis-refresh";
-export { readSignals } from "./read-signals";
-export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";
 export { twitterSearch } from "./twitter-search";
 export { recordThesis } from "./record-thesis";

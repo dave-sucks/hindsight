@@ -141,13 +141,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // record_thesis intentionally excluded.
     toolAllowlist: [
       // Read
-      // NOTE: read_signals intentionally removed 2026-05-31 as part of
-      // DISCOVERY_OVERHAUL NOW-3. The 4 noise crons that fed it (firm-market-
-      // sweep, portfolio-watchlist-monitor, domain-monitor, signal-router)
-      // were paused, then deleted 2026-09-15; the agent reads per-thesis
-      // state directly via get_theses and pulls per-name fresh data via
-      // the catalyst tools below. See
-      // docs/plans/DISCOVERY_OVERHAUL.md.
       "get_portfolio_context",
       "get_theses",
       "get_stock_data",
@@ -380,9 +373,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // record_thesis, etc.) are intentionally excluded — segments are
   // research+write, not trade.
   //
-  // Segments research from web_search + get_stock_data. read_signals /
-  // read_artifact came off this list 2026-09-15 with the router that filled
-  // PodcastSegmentSignalRoute; both tools stay in the codebase, unlisted.
+  // Segments research from web_search + get_stock_data.
   "podcast-segment-run": {
     model: "gpt-4o",
     provider: "openai",
