@@ -444,20 +444,9 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
 ```
 
 ## Domain Components (components/domain/)
-- ThesisCard / ThesisArtifactSheet — thesis display + detail sheet
-- TradeCard / TradeConfirmation — trade display + pre-trade summary
-- MarketContextCard — SPY/VIX/sector performance
-- StockCard — quote + company profile
-- ScanResultsCard — candidate ticker chip grid
-- TechnicalCard — RSI/SMA/volume analysis
-- EarningsCard — earnings calendar + EPS beats
-- OptionsFlowCard — options flow summary
-- NewsCard — news headlines + press releases
-- SecFilingsCard — SEC filings list
-- AnalystTargetsCard — analyst consensus targets
-- PeersCard — peer company comparison
-- RunSummaryCard — portfolio synthesis
-- AgentConfigCard — analyst config summary
+Shared domain cards and blocks (agent config card, decision summary, earnings
+card, thesis chart and carousel, onboarding, research brief…). Read the folder;
+a list here goes stale.
 
 ## Inngest Crons (lib/inngest/functions/)
 ### Pre-market (Mon-Fri)
@@ -484,31 +473,10 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
 - weekly-digest.ts — Sunday 9 AM ET digest email
 - accuracy-scorer.ts — Sunday 10 AM, weekly AccuracyReport
 
-## Manifest UI Components (components/manifest-ui/)
-External component library installed via `npx shadcn@latest add @manifest/<name>`.
-All use semantic prop structure: data, actions, appearance, control.
-- **XPost** — read-only social post card (Reddit/Twitter sentiment).
-  Props: data.{author, username, avatar, content, time, likes, retweets, replies}.
-  Avatar renders as letter circle. Stats are read-only spans (not buttons).
-- **PostCard** — blog/news card with variants: default, compact, horizontal, covered.
-  Props: data.post (Post type), appearance.variant, actions.onReadMore.
-- **PostList** — wraps PostCard[] with layout variants: list, grid, carousel, fullwidth.
-  Props: data.posts, appearance.{variant, columns, showAuthor, showCategory}.
-  **Carousel** variant is the default for article lists in agent tool UIs.
-- **ProductList** — product grid with variants: list, grid, carousel, picker.
-- **OrderConfirm** — order confirmation card with product info + confirm button.
-  Used for trade pending state in agent UI.
-- **QuickReply** — pill-shaped quick reply buttons for chat follow-ups.
-- **Types** in components/manifest-ui/types.ts: Post, Product, Option, OrderItem.
-
 ## AI Elements Components (components/ai-elements/)
-Custom chain-of-thought and source display components:
-- **Reasoning** — collapsible reasoning block (ReasoningTrigger + ReasoningContent)
-- **Sources** — collapsible source list (SourcesTrigger + SourcesContent + Source)
-- **ChainOfThought** — multi-step progress display with icons and status
-  (ChainOfThoughtHeader, ChainOfThoughtStep, ChainOfThoughtContent,
-  ChainOfThoughtSearchResults, ChainOfThoughtSearchResult)
-- **Citation** — inline/chip source citation with favicon + domain
+- **tool-progress** — the primitive every tool row renders into (see "Tool UI architecture")
+- **inline-citation** — inline source citation
+- **json-block** — a code block for JSON
 
 ## Agent Run Flow (AgentChat)
 The agent run page (`/runs/[id]`) renders via:
