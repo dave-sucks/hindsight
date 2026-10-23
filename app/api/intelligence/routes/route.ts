@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { createClient } from "@/lib/supabase/server"
+import { getAccountId } from "@/lib/auth/account"
 import { etTradingDayDate } from "@/lib/market-hours"
 
 // GET /api/intelligence/routes — analyst signal route summary
@@ -7,6 +9,12 @@ import { etTradingDayDate } from "@/lib/market-hours"
 // Default scope is today's trading day. Pass ?all=1 for the full-history view
 // (operator/debug only). Pass ?lookbackDays=N for an N-day window.
 export async function GET(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const accountId = await getAccountId(user.id)
+  if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 })
+
   const allTime = req.nextUrl.searchParams.get("all") === "1"
   const lookbackDays = Math.max(
     0,
@@ -27,7 +35,7 @@ export async function GET(req: NextRequest) {
   }
 
   const analysts = await prisma.agentConfig.findMany({
-    where: { enabled: true },
+    where: { enabled: true, accountId },
     select: { id: true, name: true },
   })
 
