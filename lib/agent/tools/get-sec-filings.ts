@@ -135,7 +135,7 @@ export const getSecFilings = defineTool({
     if (args.read) return readResult(await readFilingText({ ref: args.read, part: args.part }));
 
     const scope = resolveScope(args);
-    const covered = coveredTickers(ctx);
+    const covered = bookTickers(ctx);
     const market = scope === "universe" || scope === "all";
     const days = args.days ?? (scope === "company" ? 90 : 30);
 
@@ -219,7 +219,7 @@ function resolveScope(args: { scope?: Scope; symbol?: string; symbols?: string[]
 }
 
 /** The analyst's book — the same coverage the earnings calendar uses. */
-function coveredTickers(ctx: unknown): Set<string> {
+function bookTickers(ctx: unknown): Set<string> {
   const c = ctx as { watchlist?: string[]; positionTickers?: string[] } | undefined;
   return new Set([...(c?.watchlist ?? []), ...(c?.positionTickers ?? [])].map((t) => t.toUpperCase()));
 }
