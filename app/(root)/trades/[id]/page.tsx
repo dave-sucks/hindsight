@@ -71,7 +71,6 @@ import { getTradeStatusDisplay } from '@/lib/trade-status';
 function EventIcon({ type }: { type: string }) {
   switch (type) {
     case 'PLACED':      return <ArrowDownUp className="h-3.5 w-3.5" />;
-    case 'NEAR_TARGET': return <Target className="h-3.5 w-3.5 text-amber-500" />;
     case 'CLOSED':      return <CheckCircle2 className="h-3.5 w-3.5 text-positive" />;
     case 'EVALUATED':   return <Brain className="h-3.5 w-3.5 text-primary" />;
     default:            return <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />;

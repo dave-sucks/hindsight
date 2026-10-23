@@ -58,7 +58,7 @@ const runInput = (held: string[]) =>
       exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 },
     },
     pendingApprovalCount: 1,
-    watchlist: [], activeTheses: [], priorityReviews: [],
+    watchlist: [], activeTheses: [],
     triggersFiredSinceLastRun: [], triggersMatchingNow: [],
     earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, openRefusals: [],
   }) as unknown as RunInput;

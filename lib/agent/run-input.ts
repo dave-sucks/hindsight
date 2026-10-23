@@ -113,15 +113,6 @@ export interface RunInput {
     bearCaseBullets: string[];
     researchAge: ResearchAge;
   }>;
-  // Positions flagged by the price monitor in the last 24h — must be reviewed
-  priorityReviews: Array<{
-    symbol: string;
-    positionId: string;
-    alertType: "NEAR_TARGET" | "NEAR_STOP";
-    triggeredAt: string;
-    targetOrStop: number | null;
-    reason: string;
-  }> | null;
   // PR 3 — triggers that fired since the prior successful run for this
   // analyst (signal-driven via trigger-evaluator + price-cron via the
   // 15-min cron). The agent uses this as the priority queue for Step 2:
@@ -469,55 +460,6 @@ export async function buildRunInput(
       : 999,
   }));
 
-  // 9. Priority reviews — NEAR_TARGET / NEAR_STOP alerts from price monitor (last 24h)
-  let priorityReviews: RunInput["priorityReviews"] = null;
-  if (openPositions.length > 0) {
-    try {
-      const positionIds = openPositions.map((p) => p.id);
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const alerts = await prisma.positionManagementAction.findMany({
-        where: {
-          positionId: { in: positionIds },
-          actionType: { in: ["NEAR_TARGET", "NEAR_STOP"] },
-          source: "price_monitor",
-          createdAt: { gte: cutoff },
-        },
-        orderBy: { createdAt: "desc" },
-        select: {
-          positionId: true,
-          actionType: true,
-          newTargetPrice: true,
-          newStopLoss: true,
-          reason: true,
-          createdAt: true,
-          position: { select: { symbol: true } },
-        },
-      });
-
-      // Deduplicate: one alert per (positionId, alertType) — keep the most recent
-      const seen = new Set<string>();
-      const deduped = alerts.filter((a) => {
-        const key = `${a.positionId}:${a.actionType}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-      if (deduped.length > 0) {
-        priorityReviews = deduped.map((a) => ({
-          symbol: a.position.symbol,
-          positionId: a.positionId,
-          alertType: a.actionType as "NEAR_TARGET" | "NEAR_STOP",
-          triggeredAt: a.createdAt.toISOString(),
-          targetOrStop: a.actionType === "NEAR_TARGET" ? (a.newTargetPrice ?? null) : (a.newStopLoss ?? null),
-          reason: a.reason,
-        }));
-      }
-    } catch (err) {
-      console.error("[buildRunInput] FAILED priorityReviews:", err);
-    }
-  }
-
   // ─────────────────────────────────────────────────────────────────────
   // 10. Triggers fired since prior successful run.
   //
@@ -678,7 +620,7 @@ export async function buildRunInput(
 
   // ── Structured load summary ────────────────────────────────────────
   console.log(
-    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} priorityReviews=${priorityReviews?.length ?? 0} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
+    `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
   );
 
   return {
@@ -751,7 +693,6 @@ export async function buildRunInput(
         ),
       };
     }),
-    priorityReviews,
     triggersFiredSinceLastRun,
     triggersMatchingNow,
     earnings,
