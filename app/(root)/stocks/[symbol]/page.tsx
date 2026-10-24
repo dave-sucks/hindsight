@@ -1,122 +1,91 @@
-import Link from "next/link";
-import { LiveRefresh } from "@/components/LiveRefresh";
 import { Suspense } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { ExternalLink } from "lucide-react";
+import { LiveRefresh } from "@/components/LiveRefresh";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { InfoRow } from "@/components/ui/info-row";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PriceChange } from "@/components/ui/price-change";
+import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import { StockPriceChart } from "@/components/stocks/StockPriceChart";
-import { StockThesesList } from "@/components/stocks/StockThesesList";
-import type { ThesisRowData } from "@/components/ui/thesis-row";
-import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
-import {
-  thesisSheetStateSelect,
-} from "@/lib/agent/thesis-sheet-state";
+import { StockEarningsSection } from "@/components/earnings/StockEarningsSection";
+import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
+import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
+import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
+import { DetailPage } from "@/components/domain/detail-page";
+import { StatGrid } from "@/components/domain/stat-grid";
+import { StockInfoCard } from "@/components/domain/stock-info-card";
+import { StockHistoryCard } from "@/components/domain/stock-history-card";
+import { thesisSheetStateSelect } from "@/lib/agent/thesis-sheet-state";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
   getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
-import {
-  getNews,
-  getStockProfile,
-  getStockQuote,
-  getStockMetrics,
-  getStockCandles,
-} from "@/lib/actions/finnhub.actions";
+import { getNews, getStockProfile, getStockQuote, getStockMetrics, getStockCandles } from "@/lib/actions/finnhub.actions";
 import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { getStockInfo } from "@/lib/actions/stock-info";
-import { StockEarningsSection } from "@/components/earnings/StockEarningsSection";
-import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
-import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
-import { PriceChange } from "@/components/ui/price-change";
+import { getStockHistory } from "@/lib/actions/stock-history";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
+import { getInsiderBuying, getStockVolume } from "@/lib/market-data/stock-activity";
+import { isMarketOpen } from "@/lib/market-hours";
+import { summarizeStockHistory } from "@/lib/stock-history";
+import { getAccountId } from "@/lib/auth/account";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getAccountId } from "@/lib/auth/account";
-import { cn } from "@/lib/utils";
-import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
-import { getInsiderBuying, getStockVolume } from "@/lib/market-data/stock-activity";
-import {
-  ExternalLink,
-} from "lucide-react";
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+/**
+ * /stocks/[symbol] — one stock across every analyst and all time: the live
+ * price and chart, the numbers, what the company told the world, and on the
+ * right what this account has done on it (the history card). A thesis of
+ * its own is /theses/[id]; this page links to each.
+ */
 
-type MarketNewsArticle = {
-  headline: string;
-  source: string;
-  datetime: number;
-  url: string;
-};
+// ─── Pieces ──────────────────────────────────────────────────────────────────
 
-function StatCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5 min-w-0">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium tabular-nums text-foreground truncate">{value}</span>
-    </div>
-  );
-}
+type MarketNewsArticle = { headline: string; source: string; datetime: number; url: string };
 
-async function NewsTab({ symbol }: { symbol: string }) {
+async function NewsList({ symbol }: { symbol: string }) {
   let news: MarketNewsArticle[] = [];
   try {
     news = await getNews([symbol]);
   } catch {
     news = [];
   }
-
   if (news.length === 0) {
-    return (
-      <div className="py-12 text-center text-sm text-muted-foreground">
-        No recent news found for {symbol}.
-      </div>
-    );
+    return <p className="py-8 text-center text-sm text-muted-foreground">No recent news found for {symbol}.</p>;
   }
-
   return (
-    <div className="space-y-0">
+    <div>
       {news.map((article, i) => (
         <div key={i}>
           <a
             href={article.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-start justify-between gap-3 py-3 hover:bg-secondary/20 px-1 rounded transition-colors"
+            className="group flex items-start justify-between gap-3 rounded px-1 py-3 transition-colors hover:bg-secondary/20"
           >
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground leading-snug group-hover:text-primary transition-colors line-clamp-2">
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground transition-colors group-hover:text-primary">
                 {article.headline}
               </p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs text-muted-foreground">{article.source}</span>
-                <span className="text-xs text-muted-foreground">·</span>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(article.datetime * 1000).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
-              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {article.source} · {new Date(article.datetime * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </p>
             </div>
-            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0 mt-0.5" />
+            <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/40" />
           </a>
-          {i < news.length - 1 && <Separator />}
+          {i < news.length - 1 ? <Separator /> : null}
         </div>
       ))}
     </div>
   );
 }
 
-// Volume against its 20-day average and open-market insider buying — the
-// same reads the volume and insider-buying triggers fire on, so this
-// section and the triggers can't disagree. Live; a failed read says so.
 function fmtShares(n: number | null): string {
   if (n == null) return "—";
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
@@ -125,44 +94,45 @@ function fmtShares(n: number | null): string {
   return String(n);
 }
 
+// Volume against its 20-day average and open-market insider buying — the
+// same reads the volume and insider-buying triggers fire on, so this
+// section and the triggers can't disagree. Live; a failed read says so.
 async function ActivitySection({ symbol }: { symbol: string }) {
   const [volume, insiders] = await Promise.all([getStockVolume(symbol), getInsiderBuying(symbol)]);
   const buys = insiders.last90?.buys ?? [];
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Volume</p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Volume</p>
         {volume.error ? (
           <p className="text-sm text-muted-foreground">Volume unavailable — {volume.error}.</p>
         ) : (
-          <div className="grid grid-cols-3 gap-x-4 gap-y-2 py-3 border-y">
-            <StatCell label="Today" value={fmtShares(volume.today)} />
-            <StatCell label="20-day avg" value={fmtShares(volume.avg20)} />
-            <StatCell label="Vs average" value={volume.ratio != null ? `${volume.ratio.toFixed(2)}×` : "—"} />
-          </div>
+          <StatGrid
+            items={[
+              { label: "Today", value: fmtShares(volume.today) },
+              { label: "20-day avg", value: fmtShares(volume.avg20) },
+              { label: "Vs average", value: volume.ratio != null ? `${volume.ratio.toFixed(2)}×` : "—" },
+            ]}
+          />
         )}
       </div>
-
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Insider buying</p>
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Insider buying</p>
         {insiders.error ? (
           <p className="text-sm text-muted-foreground">Insider buying unavailable — {insiders.error}.</p>
         ) : buys.length === 0 ? (
           <p className="text-sm text-muted-foreground">No open-market insider buying in the last 90 days.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <p className="text-sm text-muted-foreground">
               {insiders.last90!.buyers} insider{insiders.last90!.buyers === 1 ? "" : "s"} bought in the last 90 days
               {insiders.last30 ? `, ${insiders.last30.buyers} in the last 30` : ""}
               {(insiders.last30?.buyers ?? 0) >= 3 ? " — a cluster." : "."}
               {insiders.last90!.lowestPrice != null ? ` Lowest price paid $${insiders.last90!.lowestPrice.toFixed(2)}.` : ""}
             </p>
-            <div className="rounded-lg border overflow-hidden bg-card">
+            <div className="overflow-hidden rounded-lg border bg-card">
               {buys.slice(0, 8).map((b, i) => (
-                <div
-                  key={`${b.name}-${b.date}-${i}`}
-                  className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border/40 last:border-0 text-sm"
-                >
+                <div key={`${b.name}-${b.date}-${i}`} className="flex items-center justify-between gap-3 border-b border-border/40 px-3 py-2 text-sm last:border-0">
                   <span className="truncate">{b.name}</span>
                   <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                     {new Date(`${b.date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
@@ -181,76 +151,75 @@ async function ActivitySection({ symbol }: { symbol: string }) {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-interface Props {
-  params: Promise<{ symbol: string }>;
-}
-
-export default async function StockDetailPage({ params }: Props) {
+export default async function StockDetailPage({ params }: { params: Promise<{ symbol: string }> }) {
   const { symbol } = await params;
   const upperSymbol = symbol.toUpperCase();
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const accountId = user ? await getAccountId(user.id) : null;
 
-  // Fetch everything in parallel
-  const [identity, profile, quote, metrics, candles, coverage, tickerTrades, tickerTheses, watchlistStatus] = await Promise.all([
-    // Header identity from the StockInfo cache — same name + normalized
-    // exchange the trade page + thesis sheet show. profile stays for the
-    // Company Info card (industry / IPO / weburl).
+  const [identity, profile, quote, metrics, candles, coverage, history, watchlistStatus] = await Promise.all([
     getStockInfo(upperSymbol),
     getStockProfile(upperSymbol),
     getStockQuote(upperSymbol),
     getStockMetrics(upperSymbol),
     getStockCandles(upperSymbol, 365),
-    // Ratings distribution + price-target range for the shared
-    // AnalystConsensusWidget (same widget the thesis sheet renders).
     getAnalystCoverageData(upperSymbol).catch(() => null),
-    accountId
-      ? prisma.position.findMany({
-          where: { accountId, symbol: upperSymbol },
-          orderBy: { openedAt: "desc" },
-          take: 20,
-          select: {
-            id: true,
-            direction: true,
-            status: true,
-            outcome: true,
-            avgCost: true,
-            closePrice: true,
-            realizedPnl: true,
-            quantity: true,
-            openedAt: true,
-          },
-        })
-      : Promise.resolve([]),
-    accountId
-      ? prisma.thesis.findMany({
-          where: { accountId, ticker: upperSymbol },
-          orderBy: { createdAt: "desc" },
-          take: 50,
-          select: {
-            // P2-19: select every field the sheet renders so it can paint
-            // synchronously on open instead of skeletons-then-fetch.
-            // thesisSheetStateSelect includes the new flat-schema narrative
-            // sections (snapshot / bullCase / bearCase / etc).
-            ...thesisSheetStateSelect,
-            createdAt: true,
-            researchRunId: true,
-            researchRun: { select: { source: true, agentConfigId: true, agentConfig: { select: { name: true } } } },
-          },
-        })
-      : Promise.resolve([]),
+    accountId ? getStockHistory(accountId, upperSymbol) : Promise.resolve({ theses: [], positions: [] }),
     accountId ? getWatchlistStatusForSymbol(upperSymbol) : Promise.resolve([]),
   ]);
 
-  // Format helpers
-  const fmt = (n: number | null | undefined, digits = 2) =>
-    n != null ? n.toFixed(digits) : "—";
+  const price = quote?.c ?? null;
+  const summary = summarizeStockHistory(history, price);
+
+  // The thesis that speaks for the stock today: the one we hold, else the
+  // newest watch, else the newest of all. One row; the rest are on the card.
+  const currentId = summary.holding?.id ?? summary.watching[0]?.id ?? summary.past[0]?.id ?? null;
+  const current = currentId
+    ? await prisma.thesis.findUnique({
+        where: { id: currentId },
+        select: {
+          ...thesisSheetStateSelect,
+          createdAt: true,
+          researchRunId: true,
+          researchRun: { select: { agentConfig: { select: { name: true } } } },
+        },
+      })
+    : null;
+  const currentRow: ThesisRowData | null = current
+    ? (() => {
+        const composite = getThesisComposite(current);
+        const open = summary.open && summary.open.thesisId === current.id ? summary.open : null;
+        return {
+          id: current.id,
+          ticker: upperSymbol,
+          direction: current.direction,
+          status: current.status,
+          confidenceScore: composite != null ? composite * 10 : 0,
+          reasoningSummary: getThesisSnapshotText(current),
+          thesisBullets: getThesisBullCaseBullets(current),
+          riskFlags: getThesisBearCaseBullets(current),
+          entryPrice: current.entryPrice,
+          targetPrice: current.targetPrice,
+          stopLoss: current.stopLoss,
+          horizon: current.horizon,
+          createdAt: current.createdAt.toISOString(),
+          analystName: current.researchRun?.agentConfig?.name ?? null,
+          runId: current.researchRunId,
+          currentPrice: price,
+          position: open
+            ? { id: open.id, status: open.status, avgCost: open.avgCost, quantity: open.quantity, openedAt: open.openedAt }
+            : null,
+        };
+      })()
+    : null;
+
+  const fmt = (n: number | null | undefined, digits = 2) => (n != null ? n.toFixed(digits) : "—");
   const fmtCur = (n: number | null | undefined) =>
-    n != null
-      ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n)
-      : "—";
+    n != null ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n) : "—";
   const fmtBig = (n: number | null | undefined) => {
     if (n == null) return "—";
     if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
@@ -258,329 +227,172 @@ export default async function StockDetailPage({ params }: Props) {
     if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
     return `$${n.toFixed(0)}`;
   };
+  const pct = (n: number | null | undefined, digits = 1) => (n != null ? `${n.toFixed(digits)}%` : "—");
 
-  const price = quote?.c ?? null;
-  const change = quote?.d ?? null;
-  const changePct = quote?.dp ?? null;
-
-  const prevClose = quote?.pc;
-  const open = quote?.o;
-  const high = quote?.h;
-  const low = quote?.l;
   const high52 = metrics?.["52WeekHigh"];
   const low52 = metrics?.["52WeekLow"];
   const peRatio = metrics?.["peBasicExclExtraTTM"];
-  const eps = metrics?.["epsBasicExclExtraAnnual"];
-  const divYield = metrics?.["dividendYieldIndicatedAnnual"];
   const marketCap = profile?.marketCap
     ? profile.marketCap * 1_000_000
     : metrics?.["marketCapitalization"]
-    ? metrics["marketCapitalization"] * 1_000_000
-    : null;
+      ? metrics["marketCapitalization"] * 1_000_000
+      : null;
+  const quotedAt = quote?.t ? new Date(quote.t * 1000) : new Date();
+  const priceNote = `${isMarketOpen() ? "Live" : "At close"} · ${quotedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 
+  const financials: Array<{ label: string; value: string }> = [
+    { label: "P/E ratio", value: fmt(metrics?.["peBasicExclExtraTTM"]) },
+    { label: "Forward P/E", value: fmt(metrics?.["peTTM"]) },
+    { label: "P/B ratio", value: fmt(metrics?.["pbAnnual"]) },
+    { label: "P/S ratio", value: fmt(metrics?.["psTTM"]) },
+    { label: "EPS (TTM)", value: fmtCur(metrics?.["epsBasicExclExtraAnnual"]) },
+    { label: "ROE", value: pct(metrics?.["roeRfy"]) },
+    { label: "ROA", value: pct(metrics?.["roaRfy"]) },
+    { label: "Gross margin", value: pct(metrics?.["grossMarginTTM"]) },
+    { label: "Operating margin", value: pct(metrics?.["operatingMarginTTM"]) },
+    { label: "Net margin", value: pct(metrics?.["netProfitMarginTTM"]) },
+    { label: "Debt to equity", value: fmt(metrics?.["totalDebt/totalEquityAnnual"]) },
+    { label: "Current ratio", value: fmt(metrics?.["currentRatioAnnual"]) },
+    { label: "Dividend yield", value: pct(metrics?.["dividendYieldIndicatedAnnual"], 2) },
+    { label: "Beta", value: fmt(metrics?.["beta"]) },
+    { label: "52-week high", value: fmtCur(high52) },
+    { label: "52-week low", value: fmtCur(low52) },
+  ].filter((s) => s.value !== "—");
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+    <>
       <LiveRefresh />
-      {/* ── Header — the SAME StockIdentityHeader the trade page + thesis
-          sheet render (identical sizes, normalized exchange). href={null}:
-          we're already on the stock page. */}
-      <div className="mb-6">
-        <StockIdentityHeader
-          ticker={upperSymbol}
-          displayName={identity.companyName}
-          exchange={identity.exchange}
-          href={null}
-          actions={
-            <>
-              <TradeButton ticker={upperSymbol} />
-              <PinButton ticker={upperSymbol} />
-              <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
-            </>
-          }
-        />
-      </div>
+      <DetailPage
+        main={
+          <div className="flex flex-col gap-5">
+            <StockIdentityHeader
+              ticker={upperSymbol}
+              displayName={identity.companyName}
+              exchange={identity.exchange}
+              href={null}
+              actions={
+                <>
+                  <TradeButton ticker={upperSymbol} />
+                  <PinButton ticker={upperSymbol} />
+                  <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
+                </>
+              }
+            />
 
-      {/* ── 2-col grid ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-        {/* ════ MAIN column ════ */}
-        <div className="min-w-0">
-          <Tabs defaultValue="overview">
-            <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="financials">Financials</TabsTrigger>
-              <TabsTrigger value="earnings">Earnings</TabsTrigger>
-              <TabsTrigger value="filings">Filings</TabsTrigger>
-              <TabsTrigger value="news">News</TabsTrigger>
-              <TabsTrigger value="theses">Theses</TabsTrigger>
-            </TabsList>
-
-            {/* ── OVERVIEW ─────────────────────────────────────────── */}
-            <TabsContent value="overview" className="mt-4 space-y-4">
-              {/* Price block — same treatment as the trade page + thesis
-                  sheet: text-xl price + shared PriceChange (arrow + color). */}
-              {price != null && (
-                <div className="space-y-0.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                    <span className="text-xl font-semibold tabular-nums">
-                      {fmtCur(price)}
-                    </span>
-                    {change != null && (
-                      <PriceChange
-                        dollarChange={change}
-                        percentChange={changePct ?? null}
-                        size="xl"
-                      />
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    At close · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </p>
+            {price != null ? (
+              <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                  <span className="text-xl font-semibold tabular-nums">{fmtCur(price)}</span>
+                  {quote?.d != null ? <PriceChange dollarChange={quote.d} percentChange={quote.dp ?? null} size="xl" /> : null}
                 </div>
-              )}
-
-              {/* Chart */}
-              <StockPriceChart candles={candles} />
-
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-2 py-3 border-y">
-                <StatCell label="Prev Close" value={fmtCur(prevClose)} />
-                <StatCell label="Open" value={fmtCur(open)} />
-                <StatCell label="Day Range" value={`${fmtCur(low)} – ${fmtCur(high)}`} />
-                <StatCell label="52W Range" value={`${fmtCur(low52)} – ${fmtCur(high52)}`} />
-                <StatCell label="Market Cap" value={fmtBig(marketCap)} />
-                <StatCell label="P/E Ratio" value={peRatio ? fmt(peRatio) : "—"} />
-                <StatCell label="EPS" value={eps ? fmt(eps) : "—"} />
-                <StatCell label="Div Yield" value={divYield ? `${fmt(divYield)}%` : "—"} />
+                <p className="text-xs text-muted-foreground tabular-nums">{priceNote}</p>
               </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No live price for {upperSymbol} right now.</p>
+            )}
 
-              {/* Volume + insider buying — own Suspense so the page paints first. */}
-              <Suspense fallback={<Skeleton className="h-24 w-full" />}>
-                <ActivitySection symbol={upperSymbol} />
-              </Suspense>
+            <Tabs defaultValue="overview">
+              <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="financials">Financials</TabsTrigger>
+                <TabsTrigger value="earnings">Earnings</TabsTrigger>
+                <TabsTrigger value="filings">Filings</TabsTrigger>
+                <TabsTrigger value="news">News</TabsTrigger>
+              </TabsList>
 
-              {/* Latest Thesis */}
-              {(() => {
-                const latest = tickerTheses.find((t: { status: string; direction: string | null }) => (t.status === "HOLDING") && t.direction !== "PASS") ?? tickerTheses[0];
-                if (!latest) return null;
-                const composite = getThesisComposite(latest);
-                const rowData: ThesisRowData = {
-                  id: latest.id,
-                  ticker: upperSymbol,
-                  direction: latest.direction,
-                  status: latest.status,
-                  // PR-9: legacy 0-100 confidenceScore is gone. The row
-                  // renders Lean/Buy/Strong-Buy off this number — convert
-                  // /10 composite to /100 (×10) so the same thresholds
-                  // (≥80=Strong, ≥60=Buy) keep working.
-                  confidenceScore: composite != null ? composite * 10 : 0,
-                  reasoningSummary: getThesisSnapshotText(latest),
-                  thesisBullets: getThesisBullCaseBullets(latest),
-                  riskFlags: getThesisBearCaseBullets(latest),
-                  entryPrice: latest.entryPrice,
-                  targetPrice: latest.targetPrice,
-                  stopLoss: latest.stopLoss,
-                  horizon: latest.horizon,
-                  createdAt: latest.createdAt.toISOString(),
-                  analystName: latest.researchRun?.agentConfig?.name ?? null,
-                  runId: latest.researchRunId,
-                };
-                return <StockThesesList theses={[rowData]} />;
-              })()}
-
-              {/* News */}
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Recent News</p>
-                <Suspense fallback={
-                  <div className="space-y-3">
-                    {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-                  </div>
-                }>
-                  <NewsTab symbol={upperSymbol} />
+              <TabsContent value="overview" className="mt-4 flex flex-col gap-5">
+                <StockPriceChart candles={candles} />
+                <StatGrid
+                  items={[
+                    { label: "Prev close", value: fmtCur(quote?.pc) },
+                    { label: "Open", value: fmtCur(quote?.o) },
+                    { label: "Day range", value: `${fmtCur(quote?.l)} – ${fmtCur(quote?.h)}` },
+                    { label: "52W range", value: `${fmtCur(low52)} – ${fmtCur(high52)}` },
+                    { label: "Market cap", value: fmtBig(marketCap) },
+                    { label: "P/E ratio", value: peRatio ? fmt(peRatio) : "—" },
+                    { label: "EPS", value: metrics?.["epsBasicExclExtraAnnual"] ? fmt(metrics["epsBasicExclExtraAnnual"]) : "—" },
+                    { label: "Div yield", value: pct(metrics?.["dividendYieldIndicatedAnnual"], 2) },
+                  ]}
+                />
+                <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+                  <ActivitySection symbol={upperSymbol} />
                 </Suspense>
-              </div>
-            </TabsContent>
-
-            {/* ── EARNINGS ─────────────────────────────────────────── */}
-            {/* Live from the vendor when the tab renders — quarter chips
-                with the surprise, the latest report vs the estimate, the
-                next date. Same data the trigger evaluator reads. */}
-            <TabsContent value="earnings" className="mt-4">
-              <StockEarningsSection symbol={upperSymbol} />
-            </TabsContent>
-
-            {/* Live off EDGAR when the tab renders — what the company told
-                the SEC, with the 8-K item code named in plain words. */}
-            <TabsContent value="filings" className="mt-4 max-w-3xl">
-              <StockFilingsSection symbol={upperSymbol} />
-            </TabsContent>
-
-            {/* ── FINANCIALS ───────────────────────────────────────── */}
-            <TabsContent value="financials" className="mt-4">
-              {metrics ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {[
-                    { label: "P/E Ratio", value: fmt(metrics["peBasicExclExtraTTM"]) },
-                    { label: "Forward P/E", value: fmt(metrics["peTTM"]) },
-                    { label: "P/B Ratio", value: fmt(metrics["pbAnnual"]) },
-                    { label: "P/S Ratio", value: fmt(metrics["psTTM"]) },
-                    { label: "EPS (TTM)", value: fmtCur(metrics["epsBasicExclExtraAnnual"]) },
-                    { label: "ROE", value: metrics["roeRfy"] != null ? `${metrics["roeRfy"].toFixed(1)}%` : "—" },
-                    { label: "ROA", value: metrics["roaRfy"] != null ? `${metrics["roaRfy"].toFixed(1)}%` : "—" },
-                    { label: "Gross Margin", value: metrics["grossMarginTTM"] != null ? `${metrics["grossMarginTTM"].toFixed(1)}%` : "—" },
-                    { label: "Operating Margin", value: metrics["operatingMarginTTM"] != null ? `${metrics["operatingMarginTTM"].toFixed(1)}%` : "—" },
-                    { label: "Net Margin", value: metrics["netProfitMarginTTM"] != null ? `${metrics["netProfitMarginTTM"].toFixed(1)}%` : "—" },
-                    { label: "Debt/Equity", value: fmt(metrics["totalDebt/totalEquityAnnual"]) },
-                    { label: "Current Ratio", value: fmt(metrics["currentRatioAnnual"]) },
-                    { label: "Dividend Yield", value: metrics["dividendYieldIndicatedAnnual"] != null ? `${metrics["dividendYieldIndicatedAnnual"].toFixed(2)}%` : "—" },
-                    { label: "Beta", value: fmt(metrics["beta"]) },
-                    { label: "52W High", value: fmtCur(metrics["52WeekHigh"]) },
-                    { label: "52W Low", value: fmtCur(metrics["52WeekLow"]) },
-                  ]
-                    .filter((s) => s.value !== "—")
-                    .map((stat) => (
-                      <div key={stat.label} className="bg-muted/30 rounded-lg p-3">
-                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          {stat.label}
-                        </p>
-                        <p className="text-sm font-medium tabular-nums mt-0.5">{stat.value}</p>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  No financial data available for {upperSymbol}.
-                </div>
-              )}
-            </TabsContent>
-
-            {/* ── NEWS ─────────────────────────────────────────────── */}
-            <TabsContent value="news" className="mt-4 max-w-3xl">
-              <Suspense fallback={
-                <div className="space-y-3">
-                  {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
-                </div>
-              }>
-                <NewsTab symbol={upperSymbol} />
-              </Suspense>
-            </TabsContent>
-
-            {/* ── THESES — Perplexity "Notable Price Movement" style ── */}
-            <TabsContent value="theses" className="mt-4 max-w-3xl">
-              <StockThesesList theses={tickerTheses.map((t: typeof tickerTheses[number]) => {
-                const composite = getThesisComposite(t);
-                return {
-                  id: t.id,
-                  ticker: upperSymbol,
-                  direction: t.direction,
-                  status: t.status,
-                  confidenceScore: composite != null ? composite * 10 : 0,
-                  reasoningSummary: getThesisSnapshotText(t),
-                  thesisBullets: getThesisBullCaseBullets(t),
-                  riskFlags: getThesisBearCaseBullets(t),
-                  entryPrice: t.entryPrice,
-                  targetPrice: t.targetPrice,
-                  stopLoss: t.stopLoss,
-                  horizon: t.horizon,
-                  createdAt: t.createdAt.toISOString(),
-                  analystName: t.researchRun?.agentConfig?.name ?? null,
-                  runId: t.researchRunId,
-                };
-              })} />
-            </TabsContent>
-
-          </Tabs>
-        </div>
-
-        {/* ════ SIDEBAR ════ */}
-        <div className="hidden lg:block space-y-4">
-          {/* Company Info */}
-          {profile && (
-            <Card>
-              <CardContent className="p-3 flex flex-col gap-1">
-                <p className="text-sm font-medium mb-0.5">Company Info</p>
-                {[
-                  { label: "Symbol", value: upperSymbol },
-                  { label: "Exchange", value: profile.exchange || "—" },
-                  { label: "Industry", value: profile.finnhubIndustry || "—" },
-                  { label: "IPO Date", value: profile.ipo || "—" },
-                  { label: "Country", value: profile.country || "—" },
-                  { label: "Market Cap", value: fmtBig(marketCap) },
-                  { label: "P/E", value: peRatio ? fmt(peRatio) : "—" },
-                  { label: "52W Range", value: (low52 && high52) ? `${fmtCur(low52)} – ${fmtCur(high52)}` : "—" },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-medium tabular-nums text-right max-w-[60%] truncate">{value}</span>
+                {currentRow ? (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {summary.holding?.id === currentRow.id ? "The thesis we hold" : summary.watching[0]?.id === currentRow.id ? "Watching" : "Latest thesis"}
+                    </p>
+                    <ThesisRow thesis={currentRow} showTicker={false} />
                   </div>
-                ))}
-                {profile.weburl && (
-                  <a
-                    href={profile.weburl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 flex items-center gap-1 text-sm text-primary hover:underline"
+                ) : null}
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent news</p>
+                  <Suspense
+                    fallback={
+                      <div className="flex flex-col gap-3">
+                        {[...Array(4)].map((_, i) => (
+                          <Skeleton key={i} className="h-12 w-full" />
+                        ))}
+                      </div>
+                    }
                   >
-                    {profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
+                    <NewsList symbol={upperSymbol} />
+                  </Suspense>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="financials" className="mt-4">
+                {financials.length > 0 ? (
+                  <div className="grid gap-x-8 sm:grid-cols-2">
+                    {financials.map((s) => (
+                      <InfoRow key={s.label} label={s.label} value={s.value} mono />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="py-8 text-center text-sm text-muted-foreground">No financial data available for {upperSymbol}.</p>
                 )}
-              </CardContent>
-            </Card>
-          )}
+              </TabsContent>
 
-          {/* Analyst Consensus — the SAME shared widget the thesis sheet
-              renders (rating badge + implied upside + proportional
-              distribution bar + bear/bull target range). */}
-          <AnalystConsensusWidget
-            coverage={coverage}
-            currentPrice={quote?.c ?? null}
-            className="p-3 gap-4"
-          />
+              <TabsContent value="earnings" className="mt-4">
+                <StockEarningsSection symbol={upperSymbol} />
+              </TabsContent>
 
-          {/* Hindsight Summary */}
-          {(tickerTrades.length > 0 || tickerTheses.length > 0) && (
-            <Card>
-              <CardContent className="p-3 flex flex-col gap-1">
-                <p className="text-sm font-medium mb-0.5">Hindsight</p>
-                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                  <span className="text-muted-foreground">Analyses</span>
-                  <span className="font-medium tabular-nums">{tickerTheses.length}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                  <span className="text-muted-foreground">Trades</span>
-                  <span className="font-medium tabular-nums">{tickerTrades.length}</span>
-                </div>
-                {(() => {
-                  const activeThesis = tickerTheses.find((t) => (t.status === "HOLDING") && t.direction !== "PASS");
-                  if (!activeThesis) return null;
-                  const activeComposite = getThesisComposite(activeThesis);
-                  return (
-                    <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                      <span className="text-muted-foreground">Current View</span>
-                      <span className={cn("font-medium", activeThesis.direction === "LONG" ? "text-positive" : "text-negative")}>
-                        {activeThesis.direction}{activeComposite != null ? ` · ${activeComposite}/10` : ""}
-                      </span>
+              <TabsContent value="filings" className="mt-4 max-w-3xl">
+                <StockFilingsSection symbol={upperSymbol} />
+              </TabsContent>
+
+              <TabsContent value="news" className="mt-4 max-w-3xl">
+                <Suspense
+                  fallback={
+                    <div className="flex flex-col gap-3">
+                      {[...Array(6)].map((_, i) => (
+                        <Skeleton key={i} className="h-14 w-full" />
+                      ))}
                     </div>
-                  );
-                })()}
-                {(() => {
-                  const openTrade = tickerTrades.find((t) => t.status === "OPEN");
-                  if (!openTrade) return null;
-                  return (
-                    <Link href={`/trades/${openTrade.id}`} className="flex items-center justify-between text-sm pb-1 hover:bg-secondary/20 rounded transition-colors">
-                      <span className="text-muted-foreground">Open Position</span>
-                      <span className="font-medium text-primary">
-                        {openTrade.direction} · {fmtCur(openTrade.avgCost)}
-                      </span>
-                    </Link>
-                  );
-                })()}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-    </div>
+                  }
+                >
+                  <NewsList symbol={upperSymbol} />
+                </Suspense>
+              </TabsContent>
+            </Tabs>
+          </div>
+        }
+        aside={
+          <>
+            <StockHistoryCard summary={summary} livePrice={price} />
+            <StockInfoCard
+              symbol={upperSymbol}
+              profile={profile}
+              extra={[
+                { label: "Market cap", value: fmtBig(marketCap) },
+                { label: "P/E", value: peRatio ? fmt(peRatio) : "—" },
+                { label: "52W range", value: low52 && high52 ? `${fmtCur(low52)} – ${fmtCur(high52)}` : "—" },
+              ]}
+            />
+            <AnalystConsensusWidget coverage={coverage} currentPrice={price} className="p-3 gap-4" />
+          </>
+        }
+      />
+    </>
   );
 }

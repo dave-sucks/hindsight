@@ -312,9 +312,17 @@ plus `get_stock_data`.
   server-side modes); COMPLETE/FAILED → replay hydrated from the
   persisted `thread` RunMessage via convertPersistedToUIMessages
 - /trades — paper trade list with live P&L
+- /theses/[id] — a thesis as a page: the thesis sheet (`ThesisSheetBody`,
+  unchanged) full width, with the trade's own details card beside it when a
+  trade exists (shares, cost basis, fills, exit, post-mortem, Close/Cancel).
+  Reached from the sheet's "Open as page" button and the stock page's
+  History card. `/trades/[id]` redirects here (a trade is its thesis).
 - /performance — accuracy reports, win rate charts
 - /stocks — stock search
-- /stocks/[symbol] — TradingView chart + stock detail
+- /stocks/[symbol] — one stock across every analyst and all time: price,
+  chart, numbers, earnings/filings/news tabs, and the History card (open
+  position, proposals, trades, theses watching now and past). Same
+  `DetailPage` shell and cards as /theses/[id] (`components/domain/`).
 - /intelligence — read-only view of the kept signal history (Findings +
   Health). No pipeline trigger, no monitor editing — the jobs are deleted.
   /intelligence/ingest is the paste-a-thesis path.
@@ -730,6 +738,15 @@ When you spot something new, file it there — not here.)
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
 - lib/actions/thesis-edit.ts — UI add / edit / delete / fire-mode write paths
 - Mechanics: docs/TRIGGERS.md · model: docs/plans/TRIGGER_MODEL.md · lifecycle: docs/plans/TRIGGER_LIFECYCLE.md · why: docs/plans/THESIS_GAME_PLAN.md
+
+### Thesis + Stock Pages
+- app/(root)/theses/[id]/page.tsx — the full-page thesis (sheet body + trade card)
+- app/(root)/trades/[id]/page.tsx — redirect to the position's thesis
+- app/(root)/stocks/[symbol]/page.tsx — the stock page
+- components/domain/detail-page.tsx — the ONE main + aside layout both use
+- components/domain/trade-details-card.tsx, stock-history-card.tsx,
+  stock-info-card.tsx, stat-grid.tsx — the cards; lib/stock-history.ts sorts
+  a stock's theses + positions (pure, tested), lib/actions/stock-history.ts loads them
 
 ### Run Pages
 - app/(root)/runs/[id]/page.tsx — run detail; renders AgentChat for live

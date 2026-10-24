@@ -89,7 +89,8 @@ import {
   getThesisStatusDisplay,
   type ThesisStatus,
 } from "@/lib/thesis-status";
-import { ChevronDown, Info } from "lucide-react";
+import { ChevronDown, Info, Maximize2 } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -1850,6 +1851,17 @@ export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
       <SheetContent side="right" size="xl" floating>
         <SheetHeader className="pb-0">
           <SheetTitle className="sr-only">{data.ticker} Thesis</SheetTitle>
+          {/* The same thesis as a page, left of the close button. */}
+          {data.thesis_id ? (
+            <Link
+              href={`/theses/${data.thesis_id}`}
+              className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "absolute top-3 right-12")}
+              aria-label="Open as page"
+              title="Open as page"
+            >
+              <Maximize2 />
+            </Link>
+          ) : null}
         </SheetHeader>
         <ThesisSheetBody thesis_id={data.thesis_id} ticker={data.ticker} />
       </SheetContent>

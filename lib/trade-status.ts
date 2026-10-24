@@ -218,3 +218,23 @@ export function shortAlpacaId(id: string | null | undefined): string | null {
   if (!id) return null;
   return id.length > 12 ? `${id.slice(0, 8)}…` : id;
 }
+
+/**
+ * A close reason as a sentence. Stored as an enum (TARGET / STOP / MANUAL /
+ * PROMOTED), sometimes with " — {notes}" appended; anything else is already
+ * a sentence and passes through.
+ */
+export function humanizeCloseReason(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const [head, ...rest] = raw.split(" — ");
+  const map: Record<string, string> = {
+    STOP: "Stopped out",
+    TARGET: "Hit target",
+    MANUAL: "Closed manually",
+    TIME: "Time limit",
+    PROMOTED: "Closed on promotion to live",
+  };
+  const mapped = map[head.trim().toUpperCase()];
+  if (mapped) return rest.length ? `${mapped} — ${rest.join(" — ")}` : mapped;
+  return raw;
+}

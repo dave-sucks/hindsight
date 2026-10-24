@@ -24,7 +24,7 @@ Every agent writes for you in plain English, in one of two styles (`lib/agent/vo
 
 Before writing a decision note, an agent searches the web once for the stock's latest news, so the note can say why it moved. If it still doesn't know, it says so. None of the app's shorthand reaches you: no setup names, no "drift", no "rung".
 
-On the thesis sheet, the belief carries the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38").
+On the thesis sheet, the belief carries the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38"). The sheet opens from any row; its "Open as page" button is the same thesis at full width, with the trade's own details (shares, cost, fills, exit) beside it when one exists. A stock's page lists every thesis and trade on that stock, across analysts.
 
 ## Where it comes from
 

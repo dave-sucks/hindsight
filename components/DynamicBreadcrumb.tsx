@@ -16,6 +16,7 @@ const ROUTE_LABELS: Record<string, string> = {
   analysts: "Analysts",
   runs: "Runs",
   trades: "Trades",
+  theses: "Theses",
   performance: "Performance",
   stocks: "Stocks",
   settings: "Settings",
