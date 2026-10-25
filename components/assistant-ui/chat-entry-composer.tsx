@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useAuiState } from "@assistant-ui/react";
 import { HindsightComposer, type HindsightComposerFeatures } from "./hindsight-composer";
 import { ChatRuntime } from "@/components/chat/chat-runtime";
-import { FirstVisitTooltip } from "@/components/ui/first-visit-tooltip";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -16,12 +15,6 @@ interface ChatEntryComposerProps {
   queryParam?: string;
   /** Features to pass to HindsightComposer */
   features?: HindsightComposerFeatures;
-  /** First-visit tooltip config */
-  tooltip?: {
-    title: string;
-    description: string;
-    storageKey: string;
-  };
   className?: string;
 }
 
@@ -66,25 +59,14 @@ export function ChatEntryComposer({
   targetUrl,
   queryParam = "prompt",
   features,
-  tooltip,
   className,
 }: ChatEntryComposerProps) {
   // Lightweight runtime with a no-op transport — we navigate before it fires
-  const composer = (
+  return (
     <div className={className}>
       <ChatRuntime api="/api/noop">
         <EntryComposerInner targetUrl={targetUrl} queryParam={queryParam} features={features} />
       </ChatRuntime>
     </div>
   );
-
-  if (tooltip) {
-    return (
-      <FirstVisitTooltip title={tooltip.title} description={tooltip.description} storageKey={tooltip.storageKey}>
-        {composer}
-      </FirstVisitTooltip>
-    );
-  }
-
-  return composer;
 }
