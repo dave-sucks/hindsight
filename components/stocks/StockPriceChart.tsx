@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useId } from 'react';
+import { useEffect, useState, useMemo, useId } from 'react';
 import {
   ComposedChart,
   Area,
@@ -91,6 +91,15 @@ type Props = {
   /** Fired on every pill click so the parent can start/stop intraday polling. */
   onRangeChange?: (range: Range) => void;
   /**
+   * The selected range's move — the last price against yesterday's close on
+   * 1D and the first visible point on every other range — whenever it
+   * changes. A parent that shows the move in its own price row passes this
+   * and `showChange={false}`, so the number lives in one place.
+   */
+  onChange?: (change: RangeMove | null) => void;
+  /** Draw the move top-right, opposite the pills. Defaults to on. */
+  showChange?: boolean;
+  /**
    * Position lifespan for the "Trade" pill: start = watch/thesis date, end =
    * sold date (null while still held → windows to the latest candle). When set,
    * the "Trade" range becomes available (full variant only).
@@ -105,7 +114,10 @@ const DAILY_RANGES = ['1W', '1M', '3M', '1Y'] as const;
 type DailyRange = (typeof DAILY_RANGES)[number];
 // "Trade" windows the daily candles to a position's own lifespan (watch → sold,
 // or watch → now while held) rather than a fixed trailing day-count.
-type Range = '1D' | 'Trade' | DailyRange;
+export type Range = '1D' | 'Trade' | DailyRange;
+
+/** A range's move: what the chart shows, for a parent that prints it. */
+export type RangeMove = { range: Range; dollars: number; pct: number };
 
 // The plot band: the pills row sits in the top margin, the x-axis (recharts'
 // default 30px) at the bottom. The gradients and the floating price labels
@@ -219,6 +231,8 @@ export function StockPriceChart({
   hourlyCandles,
   weekCandles,
   onRangeChange,
+  onChange,
+  showChange = true,
   tradeSpan,
   children,
 }: Props) {
@@ -323,6 +337,16 @@ export function StockPriceChart({
   }, [verticalMarkers, data, isIntraday]);
 
   const hasBody = data.length >= 2;
+  // What the range shows, in dollars and percent: the last price against the
+  // baseline the line is colored from, so the readout and the colors agree.
+  const change = hasBody ? rangeChange(data.map((d) => d.close), isIntraday ? priorClose : null) : null;
+  const changeDollars = change?.dollars ?? null;
+  const changePct = change?.pct ?? null;
+  useEffect(() => {
+    onChange?.(changeDollars != null && changePct != null ? { range, dollars: changeDollars, pct: changePct } : null);
+    // The callback identity is the parent's business; report on the numbers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, changeDollars, changePct]);
 
   // Legacy empty state — only when the 1D pill isn't in play (cards / stock
   // page). When intraday is enabled we always render the frame + pills so the
@@ -358,9 +382,6 @@ export function StockPriceChart({
   const [yLo, yHi] = yDomain ?? [baseline - 1, baseline + 1];
   const baselineOffset = splitOffset(yLo, yHi, baseline);
   const endColor = lastClose >= baseline ? LINE_GREEN : LINE_RED;
-  // What the range shows, in dollars and percent: the last price against the
-  // baseline the line is colored from, so the readout and the colors agree.
-  const change = hasBody ? rangeChange(data.map((d) => d.close), isIntraday ? priorClose : null) : null;
 
   // Left edge x-value for the reference-line dots (numeric epoch for 1D, the
   // first candle date for daily/Trade). Undefined when there's no data yet —
@@ -427,7 +448,7 @@ export function StockPriceChart({
           against yesterday's close on 1D and the first visible point on
           every other range — so switching Day / Week / Month says how the
           stock did over that stretch, not only today. */}
-      {showControls && change ? (
+      {showControls && showChange && change ? (
         <div className="pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-background/80 px-2 py-1 backdrop-blur-sm">
           <PriceChange dollarChange={change.dollars} percentChange={change.pct} size="sm" />
         </div>

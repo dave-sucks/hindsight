@@ -34,9 +34,8 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
-import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
-import { PinButton } from "@/components/stocks/PinButton";
-import { TradeButton } from "@/components/trade/TradeButton";
+import { ThesisHeader } from "@/components/domain/thesis-header";
+import type { RangeMove } from "@/components/stocks/StockPriceChart";
 import { formatCurrency } from "@/lib/format";
 import { TickBar, type Tick } from "@/components/ui/gauge";
 import {
@@ -48,15 +47,10 @@ import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
-import { FlameIcon } from "@/components/ui/flame-icon";
 import { planSanityLabel } from "@/lib/agent/plan-sanity-label";
 import { latestNoteView } from "@/lib/thesis/latest-note";
 import type { NeedsAction } from "@/lib/agent/needs-action";
-import { SendToAgentButton } from "@/components/stocks/SendToAgentButton";
-import {
-  agentWatchDays,
-  agentWatchTooltip,
-} from "@/lib/agent/triggers/agent-watch";
+import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import {
   ThesisTriggersSection,
   type ThesisDossier,
@@ -85,10 +79,7 @@ import {
   EXECUTING_TOOLTIP,
   getTradeStatusDisplay,
 } from "@/lib/trade-status";
-import {
-  getThesisStatusDisplay,
-  type ThesisStatus,
-} from "@/lib/thesis-status";
+import type { ThesisStatus } from "@/lib/thesis-status";
 import { ChevronDown, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -160,90 +151,8 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-// ── StatusPill ──
-// Single Badge with status dot + label. One render path, no PnL right
-// cell, no per-status branches — same shape that appears on the
-// read-theses table, the carousel cards, the trade detail header.
-
-// A watched name the agent revisits on its own schedule reads as "Agent
-// Watch", with a slow breathing dot and a shimmer on the word. Ambient, not
-// urgent: it should register once and then sit there. A plain watch — one
-// you keep an eye on yourself — stays "Watching" with a still gray dot.
-function StatusPill({
-  status,
-  agentWatchDays: days = null,
-}: {
-  status: ThesisStatus;
-  /** Days between the agent's reviews; null = it isn't reviewing this. */
-  agentWatchDays?: number | null;
-}) {
-  const display = getThesisStatusDisplay(status);
-  const agentWatched = status === "WATCHING" && days != null;
-
-  if (!agentWatched) {
-    return (
-      <Badge variant="secondary" className="gap-1.5 font-normal">
-        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
-        {display.label}
-      </Badge>
-    );
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Badge variant="secondary" className="gap-1.5 font-normal">
-            <span className="agent-watch-dot h-1.5 w-1.5 rounded-full shrink-0 bg-foreground" />
-            <span className="shimmer-text">Agent Watch</span>
-          </Badge>
-        }
-      />
-      <TooltipContent side="bottom">{agentWatchTooltip(days)}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ── ConvictionBadge ──
-// Conviction Expression v4 — the writer's view-strength tier, beside
-// StatusPill in the header. Tooltip carries the writer's one-sentence
-// rationale. See docs/plans/CONVICTION_EXPRESSION.md §8.
-//
-// ONE variant for every tier. Green for STRONG/HIGH meant the header's colour
-// changed per stock for a reason that is not about money — a high-conviction
-// watch read greener than a position that was up. The tier is carried by the
-// word, and the top tiers add a flame in the badge's own text colour.
-//
-// Renders null on unknown tier or pre-v4 legacy rows (conviction null).
-function ConvictionBadge({
-  conviction,
-  rationale,
-}: {
-  conviction: "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
-  rationale: string | null;
-}) {
-  if (!conviction) return null;
-  // Sentence-case: "Strong Conviction" / "High Conviction" / … Per principal
-  // feedback — a bare tier ("HIGH") didn't say what the badge was about.
-  const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} Conviction`;
-  const hot = conviction === "STRONG" || conviction === "HIGH";
-  const badge = (
-    <Badge variant="secondary">
-      {hot ? <FlameIcon className="size-3" /> : null}
-      {label}
-    </Badge>
-  );
-  // Wrap in tooltip when a rationale exists; bare badge otherwise.
-  if (!rationale) return badge;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>
-        {badge}
-      </TooltipTrigger>
-      <TooltipContent>{rationale}</TooltipContent>
-    </Tooltip>
-  );
-}
+// StatusPill and ConvictionBadge live in components/domain/thesis-header.tsx —
+// the ONE header the sheet and the trade page share.
 
 // ── ActionabilityBadge ──
 // Conviction Expression v4 reader-side — the at-a-glance "can I act on
@@ -1171,10 +1080,25 @@ function ResearchSectionContent({
 // One skeleton for the ENTIRE sheet — shown while the atomic load is in flight.
 // Mirrors the real layout (identity header, price line, trade block, thesis
 // paragraph, chart) so there's no layout jump when the real content swaps in.
+/** The body's skeleton: price line, trade block, chart, paragraph. */
+export function ThesisBodySkeleton() {
+  return (
+    <div className="space-y-5">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-20 w-full rounded-lg" />
+      <Skeleton className="h-[300px] w-full rounded-lg" />
+      <div className="space-y-2">
+        <Skeleton className="h-5 w-full" />
+        <Skeleton className="h-5 w-11/12" />
+        <Skeleton className="h-5 w-3/4" />
+      </div>
+    </div>
+  );
+}
+
 function ThesisSheetSkeleton() {
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      {/* Identity header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <Skeleton className="size-11 rounded-lg shrink-0" />
@@ -1183,19 +1107,8 @@ function ThesisSheetSkeleton() {
             <Skeleton className="h-3 w-28" />
           </div>
         </div>
-        {/* Price line */}
-        <Skeleton className="h-6 w-40" />
+        <ThesisBodySkeleton />
       </div>
-      {/* Trade block */}
-      <Skeleton className="h-20 w-full rounded-lg" />
-      {/* Thesis paragraph */}
-      <div className="space-y-2">
-        <Skeleton className="h-5 w-full" />
-        <Skeleton className="h-5 w-11/12" />
-        <Skeleton className="h-5 w-3/4" />
-      </div>
-      {/* Chart */}
-      <Skeleton className="h-[300px] w-full rounded-lg" />
     </div>
   );
 }
@@ -1212,25 +1125,39 @@ export interface ThesisSheetBodyProps {
   ticker: string;
 }
 
-export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
-  // ── Durable-first paint, progressive live hydration ──────────────────────
-  // The sheet fires FOUR requests on open, but only the durable dossier gates
-  // the paint. Everything price/vendor-dependent hydrates its own region after
-  // the body is already readable, so the slowest vendor never blocks the sheet:
-  //   • GET /api/theses/:id                  → dossier (DB only) — GATES paint
-  //   • GET /api/theses/:id/quote            → price + PnL + resolved (Finnhub)
-  //   • GET /api/stocks/candles?symbols=…    → price chart (Alpaca)
-  //   • GET /api/theses/:id/analyst-coverage → consensus (FMP — the slow one)
-  // Each live layer has its own loading flag driving a region-level skeleton.
+/** Everything the sheet loads for one thesis, by id. */
+export interface ThesisSheetData {
+  state: ThesisDossier | null;
+  loaded: boolean;
+  quote: QuoteResponse | null;
+  quoteLoading: boolean;
+  earnings: EarningsResponse | null;
+  filings: FilingsResponse | null;
+  candles: StockCandle[] | null;
+  candlesLoading: boolean;
+  coverage: AnalystCoverageData | null;
+  coverageLoading: boolean;
+  /** Re-fetch the dossier + quote after a trigger edit or a send-to-agent. */
+  refresh: () => void;
+}
+
+/**
+ * The sheet's data, as a hook, so the sheet and the trade page load the same
+ * thesis the same way. Durable-first paint, progressive live hydration:
+ *   • GET /api/theses/:id                  → dossier (DB only) — GATES paint
+ *   • GET /api/theses/:id/quote            → price + PnL + resolved (Finnhub)
+ *   • GET /api/stocks/candles?symbols=…    → price chart (Alpaca)
+ *   • GET /api/theses/:id/analyst-coverage → consensus (FMP — the slow one)
+ * Each live layer has its own loading flag driving a region-level skeleton.
+ */
+export function useThesisSheetData(thesis_id: string | undefined, ticker: string): ThesisSheetData {
   const [state, setState] = useState<ThesisDossier | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
-  // Earnings layer — own region, never gates the paint, no skeleton (the
+  // Earnings + filings: own regions, never gate the paint, no skeleton (the
   // block simply appears when the vendor answers; absence is a valid state).
   const [earnings, setEarnings] = useState<EarningsResponse | null>(null);
-  // Filings layer — same treatment as earnings: its own region, no skeleton,
-  // absent is a valid state.
   const [filings, setFilings] = useState<FilingsResponse | null>(null);
   const [candles, setCandles] = useState<StockCandle[] | null>(null);
   const [candlesLoading, setCandlesLoading] = useState(true);
@@ -1246,9 +1173,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   // Re-gate (show the skeletons) only when a DIFFERENT thesis opens — NOT on a
   // refreshKey bump from a trigger edit, which swaps the dossier in place. Clear
   // the live data too, not just the loading flags: otherwise an in-place
-  // thesis_id switch briefly renders the PREVIOUS thesis's price/chart/coverage
-  // (the coverage gate keys on `!coverage`, so a stale value suppresses its
-  // skeleton).
+  // thesis_id switch briefly renders the PREVIOUS thesis's price/chart/coverage.
   useEffect(() => {
     setLoaded(false);
     setQuote(null);
@@ -1261,8 +1186,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     setCoverageLoading(true);
   }, [thesis_id]);
 
-  // Earnings layer — next report + recent quarters, live from Finnhub.
-  // Fails soft: a vendor miss leaves the block absent.
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
@@ -1279,8 +1202,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     };
   }, [thesis_id]);
 
-  // Filings layer — the serious and material filings of the last month,
-  // live off EDGAR. Fails soft: a vendor miss leaves the block absent.
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
@@ -1317,16 +1238,14 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     };
   }, [thesis_id, refreshKey]);
 
-  // Live layers — each hydrates its own region and none gate the paint. Quote
-  // ALSO re-fetches on refreshKey: it carries the `resolved` envelope, whose
-  // actionability is computed from the thesis's triggers, so a trigger edit
-  // must re-resolve it (candles/coverage don't move on a trigger edit).
+  // Quote ALSO re-fetches on refreshKey: it carries the `resolved` envelope,
+  // whose actionability is computed from the thesis's triggers, so a trigger
+  // edit must re-resolve it (candles/coverage don't move on a trigger edit).
+  // quoteLoading is NOT set here — a refetch updates price + resolved in
+  // place without flashing the header skeleton.
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
-    // Note: quoteLoading is NOT set here — it's true initially + re-asserted by
-    // the thesis-change reset effect. A refreshKey refetch (trigger edit) then
-    // updates price + resolved in place without flashing the header skeleton.
     fetch(`/api/theses/${thesis_id}/quote`)
       .then((r) => (r.ok ? r.json() : null))
       .then((json: QuoteResponse | null) => {
@@ -1390,24 +1309,53 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     };
   }, [thesis_id]);
 
-  // Skeleton until the DURABLE dossier settles, an honest error if it failed.
-  // Past these two gates `state` is non-null, so the body renders from durable
-  // DB data; the live regions fill in as their fetches land. A sheet without a
-  // persisted id (e.g. a failed record_thesis card) has nothing to load —
-  // that's the error state, not an eternal skeleton.
-  if (!loaded && thesis_id) {
-    return <ThesisSheetSkeleton />;
-  }
-  if (!state) {
-    return (
-      <div className="px-4 py-16 text-center space-y-1">
-        <p className="text-sm font-medium">Couldn&apos;t load this thesis</p>
-        <p className="text-xs text-muted-foreground">
-          {ticker} — the thesis data failed to load. Close and reopen the sheet to retry.
-        </p>
-      </div>
-    );
-  }
+  return {
+    state,
+    loaded,
+    quote,
+    quoteLoading,
+    earnings,
+    filings,
+    candles,
+    candlesLoading,
+    coverage,
+    coverageLoading,
+    refresh: () => setRefreshKey((k) => k + 1),
+  };
+}
+
+/** The period a move is over, said after the number in the price row. */
+const MOVE_PERIOD: Record<string, string> = {
+  "1D": "today",
+  "1W": "past week",
+  "1M": "past month",
+  "3M": "past 3 months",
+  "1Y": "past year",
+  Trade: "this trade",
+};
+
+// ─── ThesisBody ──────────────────────────────────────────────────────────────
+// Everything under the header, in this order on both the sheet and the trade
+// page: the price with the chart's selected move · the trade banner · the
+// tabs · the chart · the newest note · the triggers · the rest.
+//   surface "sheet": the trade banner shows for a held or closed position.
+//   surface "page":  the page's right-hand card carries the position, so the
+//                    banner shows only while a proposal waits on you; the
+//                    Price Targets block is the sidebar's too.
+export function ThesisBody({
+  data,
+  thesis_id,
+  ticker,
+  surface,
+}: {
+  data: ThesisSheetData & { state: ThesisDossier };
+  thesis_id?: string;
+  ticker: string;
+  surface: "sheet" | "page";
+}) {
+  const { state, quote, quoteLoading, earnings, filings, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
+  // What the chart's selected range shows; the price row prints it.
+  const [move, setMove] = useState<RangeMove | null>(null);
 
   // ── Derived — durable from `state`, live from the hydration states ────────
   const resolved = quote?.resolved ?? null;
@@ -1436,132 +1384,63 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       floorLevel != null ||
       targetPrice != null ||
       stopLoss != null);
-  // Identity ships in the payload (StockInfo cache via quote); the bare ticker
-  // is the degenerate case when the identity lookup itself failed.
-  const displayName = quote?.companyName ?? ticker;
   // Legacy mint-time consensus: pre-PR-9 rows stored FundamentalsData (with
   // analyst_consensus) in the same Thesis.fundamentals column that now holds
   // the research section. Same column, one read — shape-sniffed for old rows.
   const mintConsensus =
     (state.fundamentals as { analyst_consensus?: { buy: number; hold: number; sell: number } } | null)
       ?.analyst_consensus ?? null;
-
-  // Conviction Expression v4 — writer's tier verdict + rationale + variantView.
-  // Null on pre-v4 (legacy) or PASS/PENDING rows (which skip conviction).
-  const conviction = (state.conviction ?? null) as
-    | "STRONG"
-    | "HIGH"
-    | "MEDIUM"
-    | "LOW"
-    | null;
-  const convictionRationale = state.convictionRationale ?? null;
   const variantView = state.variantView ?? null;
 
+  // The price row's move. On 1D it is the quote's own day change — the live
+  // price against yesterday's close, the same number the ticker tape shows.
+  // On every other range it is what the chart shows for that stretch.
+  const dayMove =
+    quote?.dayChange != null ? { dollars: quote.dayChange, pct: quote.dayChangePct } : null;
+  const shownMove =
+    move == null || move.range === "1D"
+      ? (dayMove ?? (move ? { dollars: move.dollars, pct: move.pct } : null))
+      : { dollars: move.dollars, pct: move.pct };
+  const period = MOVE_PERIOD[move?.range ?? "1D"] ?? "";
+
+  const pendingProposal = position?.pendingProposal ?? null;
+  const showBanner = position != null && (surface === "sheet" || pendingProposal != null);
+
   return (
-    <div className="px-4 pb-6 pt-2 space-y-5">
-
-      {/* ── Terminal-status reason ──────────────────────────── */}
-      {/* When the thesis ended (CLOSED / INVALIDATED / ARCHIVED), surface
-          the reason + date right at the top so the user doesn't have to
-          dig through the activity timeline to find out what happened.
-          Previously these fields were fetched but never rendered. */}
-      {/* Terminal non-trade states only (INVALIDATED / ARCHIVED). CLOSED is
-          NOT shown here — it renders inside TradeBlock below as the single
-          closed-trade state. TerminalStatusAlert returns null for CLOSED /
-          ACTIVE / WATCHING, so rendering it unconditionally is safe: no
-          loading-window race, and structurally impossible to double up with
-          the closed trade block. */}
-      <TerminalStatusAlert
-        status={liveStatus}
-        retiredReason={state.retiredReason ?? null}
-        closedAt={state.closedAt ?? null}
-        closeReason={state.closeReason ?? null}
-        invalidatedAt={state.invalidatedAt ?? null}
-        invalidReason={state.invalidReason ?? null}
-      />
-
-      {/* ── Stock identity + live price ──────────────────────── */}
-      {/* StockIdentityHeader is the SAME component the trade detail page uses,
-          so the two surfaces read identically. Name + logo link to
-          /stocks/[ticker] (the broad view); the path to the trade detail page
-          lives in the trade block's meta line inside the Thesis tab. The
-          Review control for a pending proposal lives inside the trade block. */}
-      <div className="space-y-2">
-        <StockIdentityHeader
-          ticker={ticker}
-          // Identity rides in the payload (StockInfo cache) — one source.
-          displayName={displayName}
-          exchange={quote?.exchange ?? null}
-          badges={
-            <>
-              <StatusPill
-                status={liveStatus}
-                agentWatchDays={agentWatchDays(state.triggers)}
-              />
-              <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
-            </>
-          }
-          actions={
-            <>
-              {/* Hand the name to the agent. Same strip as the pin — one
-                  action on this stock, always in the same place. */}
-              {thesis_id && state.analystId ? (
-                <SendToAgentButton
-                  analystId={state.analystId}
-                  ticker={ticker}
-                  thesisId={thesis_id}
-                  onSent={() => setRefreshKey((k) => k + 1)}
-                />
-              ) : null}
-              <TradeButton ticker={ticker} analystId={state.analystId} />
-              <PinButton ticker={ticker} />
-            </>
-          }
-        />
-        {/* Live current price + day's change. Comes from the separate
-            /quote endpoint (slow — Finnhub call) so this block usually
-            paints after the rest of the sheet body. Skeleton while
-            /quote is still in flight; nothing if it returned null
-            (Finnhub failure). */}
-        {/* Live price hydrates from /quote after the dossier paints: skeleton
-            while in flight, the price line once it lands, nothing if Finnhub
-            failed (currentPrice null). */}
-        {quoteLoading ? (
-          <Skeleton className="h-7 w-32" />
-        ) : quote?.currentPrice != null ? (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-            <span className="text-xl font-semibold tabular-nums">
-              {formatCurrency(quote.currentPrice)}
+    <div className="space-y-5">
+      {/* ── Live price + the selected range's move ───────────── */}
+      {/* Hydrates from /quote after the dossier paints: skeleton while in
+          flight, nothing if the vendor failed (currentPrice null). */}
+      {quoteLoading ? (
+        <Skeleton className="h-7 w-32" />
+      ) : quote?.currentPrice != null ? (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+          <span className="text-xl font-semibold tabular-nums">
+            {formatCurrency(quote.currentPrice)}
+          </span>
+          {shownMove ? (
+            <span className="flex items-baseline gap-1.5">
+              <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" />
+              <span className="text-sm text-muted-foreground">{period}</span>
             </span>
-            {quote.dayChange != null && (
-              <PriceChange
-                dollarChange={quote.dayChange}
-                percentChange={quote.dayChangePct}
-                size="xl"
-              />
-            )}
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* ── The trade, above the tabs ─────────────────────────── */}
       {/* Held or merely proposed, it sits with the identity and the price,
-          over both tabs. Inside the Thesis panel it vanished the moment you
-          opened Activity; under the tab list it made the tab strip look like
-          part of the trade. Above both is where it belongs. */}
-      {position ? (
+          over both tabs. On the page the right-hand card carries the held
+          trade, so only a proposal shows here. */}
+      {showBanner && position ? (
         <TradeBlock
           position={position}
           pnl={quote?.positionPnl ?? null}
-          pendingProposal={state.position?.pendingProposal ?? null}
+          pendingProposal={pendingProposal}
           direction={direction}
         />
       ) : null}
 
       {/* ── Tabs: Thesis (the dossier) | Activity (the audit log) ── */}
-      {/* Only identity, live price and the trade stay fixed above (principal
-          feedback 2026-08-19); everything else splits into the dossier view
-          and the P1-33 activity timeline. Same Tabs idiom as AgentChat. */}
       <Tabs defaultValue={0}>
         <TabsList>
           <TabsTrigger value={0}>Thesis</TabsTrigger>
@@ -1570,25 +1449,10 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
 
         <TabsContent value={0} className="space-y-5">
 
-      {/* ── What just happened, and whether it needs work (DAV-304) ── */}
-      {/* Above the standing belief on purpose: the page should say what just
-          happened, not only what the long-term claim is. */}
-      <LatestNoteBlock
-        status={state.status}
-        latestUpdate={state.latestUpdate}
-        needsAction={quote?.needsAction ?? null}
-        situations={quote?.situations ?? []}
-        quoteLoading={quoteLoading}
-        quoteFailed={!quoteLoading && quote == null}
-        analystName={state.analystName}
-        suppressText={state.position?.pendingProposal?.rationale ?? null}
-      />
-
       {/* ── Price chart (annotated) ───────────────────────────── */}
       {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
-          markers, when candles are loaded. The entry/target/stop GAUGE lives
-          further down with the Price Targets / Consensus / Composite card
-          cluster. See docs/plans/THESIS_VISUALIZATION.md. */}
+          markers. Its selected range's move prints in the price row above,
+          not inside the chart. */}
       {!isPass && candlesLoading ? (
         <Skeleton className="h-[300px] w-full rounded-lg" />
       ) : !isPass && candles && candles.length >= 2 ? (
@@ -1606,10 +1470,25 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           enteredAt={position?.openedAt ?? null}
           soldAt={position?.closedAt ?? null}
           variant="full"
+          onChange={setMove}
+          showChange={false}
         />
       ) : null}
 
-      {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
+      {/* ── What just happened, and whether it needs work (DAV-304) ── */}
+      {/* Under the chart it comments on, above the triggers it leads to. */}
+      <LatestNoteBlock
+        status={state.status}
+        latestUpdate={state.latestUpdate}
+        needsAction={quote?.needsAction ?? null}
+        situations={quote?.situations ?? []}
+        quoteLoading={quoteLoading}
+        quoteFailed={!quoteLoading && quote == null}
+        analystName={state.analystName}
+        suppressText={showBanner ? (pendingProposal?.rationale ?? null) : null}
+      />
+
+      {/* ── Triggers (the standing opinion in action) ── */}
       {thesis_id ? (
         <ThesisTriggersSection
           thesisId={thesis_id}
@@ -1618,18 +1497,14 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           editable={
             !isPass && (liveStatus === "HOLDING" || liveStatus === "WATCHING")
           }
-          onChanged={() => setRefreshKey((k) => k + 1)}
+          onChanged={refresh}
         />
       ) : null}
 
       {/* ── Plan checks ──────────────────────────────────────────── */}
       {/* Arithmetic on the plan above — does it have a buy level, is the stop
-          inside normal daily noise, does the reward clear 2:1. A different
-          question from the work flag at the top of the sheet ("why will a run
-          pick this up today?"), so it sits with the numbers it is about
-          instead of stacking under that flag in the same amber. The label is
-          which check failed; the sentence under it is the agent's own, which
-          is why it is small and grey rather than a warning. */}
+          inside normal daily noise, does the reward clear 2:1. The label is
+          which check failed; the sentence under it is the agent's own. */}
       {resolved?.planSanity && resolved.planSanity.length > 0 ? (
         <div className="space-y-1.5">
           <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
@@ -1645,9 +1520,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       ) : null}
 
       {/* ── Core belief, dated by the write-up that set it ─────── */}
-      {/* Why we own the company, from the research writer. The snapshot
-          paragraph under it is gone: a later run's edit read as today's
-          news. A pass's reason is the note at the top of the sheet. */}
       {state.coreBelief ? (
         <div className="space-y-2">
           <p className="text-xl font-normal leading-relaxed">{state.coreBelief}</p>
@@ -1656,11 +1528,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       ) : null}
 
       {/* ── Card cluster: Price Targets → Analyst Consensus → Composite ── */}
-
-      {/* Price Targets — the entry/target/current/stop gauge (same visual
-          the mini-cards show). Lives here with the other assessment cards,
-          not next to the chart. */}
-      {showLevels && entryPrice != null ? (
+      {/* Price Targets — the entry/target/current/stop gauge. The page's
+          sidebar renders the same block, so it shows here on the sheet only. */}
+      {surface === "sheet" && showLevels && entryPrice != null ? (
         <PriceTargetsBlock
           entry={entryPrice}
           target={targetLevel}
@@ -1672,10 +1542,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         />
       ) : null}
 
-      {/* Analyst Consensus — Buy/Hold/Sell distribution + price-target range
-          vs current. Coverage (FMP — the slow vendor) hydrates on its own
-          boundary so it never blocks the chart; skeleton until it lands.
-          mintConsensus is the legacy pre-PR-9 shape read off the dossier. */}
+      {/* Analyst Consensus — coverage (FMP — the slow vendor) hydrates on its
+          own boundary so it never blocks the chart; skeleton until it lands. */}
       {coverageLoading && !coverage ? (
         <Skeleton className="h-40 w-full rounded-lg" />
       ) : (
@@ -1687,8 +1555,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         />
       )}
 
-      {/* Composite Score — 4-dim scoring breakdown. Composite is the single
-          conviction number after PR-9 (legacy `confidenceScore` int dropped). */}
+      {/* Composite Score — 4-dim scoring breakdown. */}
       {state.scoring ? (
         <Card className="bg-muted/40 p-2 gap-4">
           <div className="flex items-baseline justify-between gap-2">
@@ -1714,24 +1581,14 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       ) : null}
 
       {/* ── Earnings ─────────────────────────────────────────── */}
-      {/* Live from the vendor; next report + last quarters. Sits with the
-          trade-shape mechanics because "reports in 3 days" is a sizing
-          fact, the same class of thing as Next review. */}
       {earnings ? <EarningsCard data={earnings} /> : null}
 
       {filings ? <FilingsBlock data={filings} /> : null}
 
-      {/* ── Variant View (Conviction Expression v4) ─────────── */}
-      {/* The writer's contrarian take — "consensus thinks X, I think Y."
-          Required on STRONG/HIGH conviction theses; renders only when
-          populated. Sits alongside Key Assumptions + Invalidation as
-          a peer "writer's judgment" section per principal feedback. */}
+      {/* ── Variant View ─────────────────────────────────────── */}
       <VariantViewBlock variantView={variantView} />
 
       {/* ── Key Assumptions ───────────────────────────────────── */}
-      {/* ≥2 falsifiable premises that must remain true for the core belief
-          to hold. The daily-run prompt reads these against fresh signals
-          to decide when an assumption has flipped. */}
       {state.keyAssumptions && state.keyAssumptions.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
@@ -1751,11 +1608,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         </div>
       ) : null}
 
-      {/* ── Invalidation Conditions (invalidationConds) ──────── */}
-      {/* ≥2 concrete trip-wires that would END the trade if they happen.
-          The trade evaluator grades exits against these on close; the
-          daily-run prompt uses them to decide when a signal counts as
-          thesis-breaking. */}
+      {/* ── Invalidation Conditions ──────────────────────────── */}
       {state.invalidationConds && state.invalidationConds.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
@@ -1776,41 +1629,22 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       ) : null}
 
       {/* ── Research Synthesis accordions ───────────────────── */}
-      {/* Multi-section synthesis produced by the thesis-writer agent
-          (THESIS_RESEARCH_V2 Phase 1), dated by the writer's own run.
-          Analyst Consensus has its own widget above; this collapsible
-          holds the deep-research sections
-          (Bull/Bear Case, Recent Catalysts, Catalysts & Events,
-          Fundamentals, Latest Earnings, Insider & Technical) — all
-          collapsed by default. */}
-      {state && (
-        <ResearchSectionsAccordion
-          sections={{
-            recentCatalysts: state.recentCatalysts ?? undefined,
-            fundamentals: state.fundamentals ?? undefined,
-            latestEarnings: state.latestEarnings ?? undefined,
-            catalystsAndEvents: state.catalystsAndEvents ?? undefined,
-            bullCase: state.bullCase ?? undefined,
-            bearCase: state.bearCase ?? undefined,
-            insiderTechnicalSetup: state.insiderTechnical ?? undefined,
-          }}
-          updatedAt={state.writtenUp?.at ?? state.researchUpdatedAt}
-        />
-      )}
-
-      {/* The header-level fundamentals chip block (Sector / Market Cap /
-          Beta / Volume / 52W Range / signal-type chips) was removed —
-          that data now lives inside the Fundamentals accordion above.
-          The at-a-glance need is covered by the note at the top + Analyst
-          Consensus widget. */}
+      <ResearchSectionsAccordion
+        sections={{
+          recentCatalysts: state.recentCatalysts ?? undefined,
+          fundamentals: state.fundamentals ?? undefined,
+          latestEarnings: state.latestEarnings ?? undefined,
+          catalystsAndEvents: state.catalystsAndEvents ?? undefined,
+          bullCase: state.bullCase ?? undefined,
+          bearCase: state.bearCase ?? undefined,
+          insiderTechnicalSetup: state.insiderTechnical ?? undefined,
+        }}
+        updatedAt={state.writtenUp?.at ?? state.researchUpdatedAt}
+      />
 
         </TabsContent>
 
         {/* ── Activity tab: timeline + provenance footer ───────── */}
-        {/* The audit log (P1-33 slice 1): trigger fires, which run handled
-            each, exact level moves, and proposal outcomes read from the
-            Order table. Provenance is rendered INSIDE the same container
-            so it joins the timeline as one continuous list. */}
         <TabsContent value={1} className="space-y-5">
           {thesis_id ? (
             <ThesisTimelineSection
@@ -1831,6 +1665,62 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           )}
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ─── ThesisSheetBody ──────────────────────────────────────────────────────────
+// The sheet: the terminal-state alert, then the shared header, then the body.
+export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
+  const data = useThesisSheetData(thesis_id, ticker);
+
+  // Skeleton until the DURABLE dossier settles, an honest error if it failed.
+  // A sheet without a persisted id (e.g. a failed record_thesis card) has
+  // nothing to load — that's the error state, not an eternal skeleton.
+  if (!data.loaded && thesis_id) {
+    return <ThesisSheetSkeleton />;
+  }
+  const state = data.state;
+  if (!state) {
+    return (
+      <div className="px-4 py-16 text-center space-y-1">
+        <p className="text-sm font-medium">Couldn&apos;t load this thesis</p>
+        <p className="text-xs text-muted-foreground">
+          {ticker} — the thesis data failed to load. Close and reopen the sheet to retry.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 pb-6 pt-2 space-y-5">
+      {/* Terminal non-trade states only (INVALIDATED / DROPPED): why the thesis
+          ended + when, so the rest reads as history. Returns null otherwise. */}
+      <TerminalStatusAlert
+        status={state.status as ThesisStatus}
+        retiredReason={state.retiredReason ?? null}
+        closedAt={state.closedAt ?? null}
+        closeReason={state.closeReason ?? null}
+        invalidatedAt={state.invalidatedAt ?? null}
+        invalidReason={state.invalidReason ?? null}
+      />
+      <div className="space-y-2">
+        <ThesisHeader
+          ticker={ticker}
+          // Identity rides in the payload (StockInfo cache via quote) — one
+          // source; the bare ticker is the degenerate case when that failed.
+          displayName={data.quote?.companyName ?? ticker}
+          exchange={data.quote?.exchange ?? null}
+          status={state.status}
+          agentWatchDays={agentWatchDays(state.triggers)}
+          conviction={(state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
+          convictionRationale={state.convictionRationale ?? null}
+          analystId={state.analystId}
+          thesisId={thesis_id}
+          onSent={data.refresh}
+        />
+        <ThesisBody data={{ ...data, state }} thesis_id={thesis_id} ticker={ticker} surface="sheet" />
+      </div>
     </div>
   );
 }
