@@ -74,15 +74,19 @@ export function StockIdentityHeader({
           <span className="shrink-0">{logo}</span>
         )}
         <div className="flex-1 min-w-0">
-          {link ? (
-            <Link href={link} className="group/stocklink min-w-0">
-              <p className="text-xl font-semibold truncate group-hover/stocklink:underline underline-offset-4">
+          {/* The link is the name's own text, nothing wider: an anchor wrapping
+              a block stretched across the whole row, so hovering anywhere in
+              the header underlined the name. The paragraph owns truncation;
+              the anchor is inline inside it. */}
+          <p className="text-xl font-semibold truncate">
+            {link ? (
+              <Link href={link} className="hover:underline underline-offset-4">
                 {displayName}
-              </p>
-            </Link>
-          ) : (
-            <p className="text-xl font-semibold truncate">{displayName}</p>
-          )}
+              </Link>
+            ) : (
+              displayName
+            )}
+          </p>
           <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground mt-0.5">
             {ticker}
             {exchange ? ` · ${exchange}` : ""}

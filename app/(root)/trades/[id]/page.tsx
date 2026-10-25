@@ -101,6 +101,7 @@ export default async function TradeDetailPage({
   // "submitted to Alpaca, not yet filled". Conflating the two is what made
   // `hasPendingOrder` miss proposals entirely.
   const proposalOrder = orders.find((o) => o.status === 'AWAITING_APPROVAL') ?? null;
+  const hasFilledBuy = orders.some((o) => o.side === 'BUY' && o.status === 'FILLED');
   const openingBuy = orders.find((o) => o.side === 'BUY');
   const closingSell = orders.filter((o) => o.side === 'SELL').slice(-1)[0];
 
@@ -148,9 +149,14 @@ export default async function TradeDetailPage({
   const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
   const isPos = pnl >= 0;
 
+  // Days held: to the sale once closed, to today while open.
   const daysHeld = position.closedAt
     ? Math.max(1, Math.round((new Date(position.closedAt).getTime() - new Date(position.openedAt).getTime()) / 86_400_000))
-    : null;
+    : isOpen && hasFilledBuy
+      ? Math.max(0, Math.round((Date.now() - new Date(position.openedAt).getTime()) / 86_400_000))
+      : null;
+  // What the shares are worth now, for the summary's second line while open.
+  const marketValue = isOpen ? currentPrice * position.quantity : null;
 
   // The levels in force, read off the thesis's resolved trigger list. This
   // used to be `position.targetPrice ?? avgCost * 1.1` / `* 0.9` — a made-up
@@ -245,8 +251,9 @@ export default async function TradeDetailPage({
         {/* ════ SIDEBAR ════ */}
         <div className="hidden lg:block space-y-4">
 
-          {/* ── Post-Sale Result (closed trades only) ── */}
-          {isClosed && (
+          {/* ── Position summary: the result once closed, the live position
+              while held. Same card either way; only the words change. ── */}
+          {(isClosed || (isOpen && hasFilledBuy)) && (
             <div className={cn(
               'rounded-lg border p-4 space-y-3',
               isPos ? 'border-positive/20 bg-positive/5' : 'border-negative/20 bg-negative/5',
@@ -256,7 +263,7 @@ export default async function TradeDetailPage({
                   'text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
                   isPos ? 'bg-positive/10 text-positive' : 'bg-negative/10 text-negative',
                 )}>
-                  {position.outcome === 'WIN' ? 'Win' : position.outcome === 'LOSS' ? 'Loss' : 'Closed'}
+                  {isOpen ? 'Holding' : position.outcome === 'WIN' ? 'Win' : position.outcome === 'LOSS' ? 'Loss' : 'Closed'}
                 </span>
                 {daysHeld != null && (
                   <span className="text-xs text-muted-foreground tabular-nums">
@@ -267,7 +274,7 @@ export default async function TradeDetailPage({
 
               <div className="flex items-baseline gap-2">
                 <span className={cn('text-2xl font-bold tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
-                  {isPos ? '+' : ''}{fmtCur(realizedPnl)}
+                  {isPos ? '+' : ''}{fmtCur(pnl)}
                 </span>
                 <span className={cn('text-sm tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
                   {isPos ? '+' : ''}{Math.abs(pnlPct).toFixed(2)}%
@@ -283,6 +290,12 @@ export default async function TradeDetailPage({
                   <div className="flex items-center justify-between text-sm border-b border-border pb-1">
                     <span className="text-muted-foreground">Sold @ {fmtCur(closePrice)}</span>
                     <span className="font-medium tabular-nums">{fmtCur(exitProceeds)}</span>
+                  </div>
+                )}
+                {isOpen && marketValue != null && (
+                  <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                    <span className="text-muted-foreground">Now @ {fmtCur(currentPrice)}</span>
+                    <span className="font-medium tabular-nums">{fmtCur(marketValue)}</span>
                   </div>
                 )}
                 {fmtExitReason(position.closeReason) && (
