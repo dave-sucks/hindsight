@@ -2,8 +2,8 @@
 
 /**
  * ThesisHeader — the top of a thesis, the same on the sheet and the trade
- * page: the status pill and conviction on one row, then the stock's logo,
- * name and ticker with the action buttons on the right. One component, so
+ * page: the stock's logo, its name with the status pill beside it, the
+ * ticker and the conviction under them, the action buttons on the right. One component, so
  * the two surfaces cannot drift.
  */
 
@@ -60,10 +60,12 @@ export function StatusPill({
   );
 }
 
-// ── ConvictionBadge ──
-// The writer's view-strength tier. One variant for every tier — the word
-// carries it, and the top tiers add a flame. Null on legacy rows.
-export function ConvictionBadge({
+// ── ConvictionText ──
+// The writer's view-strength tier as words on the ticker line — "🔥 High
+// conviction" — in place of the exchange, which said nothing you act on. The
+// flame marks the top two tiers; the rationale sits behind a hover. Null on
+// legacy rows and passes, so the line is just the ticker.
+export function ConvictionText({
   conviction,
   rationale,
 }: {
@@ -71,18 +73,18 @@ export function ConvictionBadge({
   rationale: string | null;
 }) {
   if (!conviction) return null;
-  const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} Conviction`;
+  const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} conviction`;
   const hot = conviction === "STRONG" || conviction === "HIGH";
-  const badge = (
-    <Badge variant="secondary">
+  const text = (
+    <span className="inline-flex items-center gap-1">
       {hot ? <FlameIcon className="size-3" /> : null}
       {label}
-    </Badge>
+    </span>
   );
-  if (!rationale) return badge;
+  if (!rationale) return text;
   return (
     <Tooltip>
-      <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>{badge}</TooltipTrigger>
+      <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>{text}</TooltipTrigger>
       <TooltipContent>{rationale}</TooltipContent>
     </Tooltip>
   );
@@ -91,7 +93,8 @@ export function ConvictionBadge({
 export interface ThesisHeaderProps {
   ticker: string;
   displayName: string;
-  exchange: string | null;
+  /** Kept for callers; the exchange no longer shows — the conviction does. */
+  exchange?: string | null;
   status: ThesisStatus | string;
   agentWatchDays: number | null;
   conviction: Conviction | null;
@@ -107,7 +110,6 @@ export interface ThesisHeaderProps {
 export function ThesisHeader({
   ticker,
   displayName,
-  exchange,
   status,
   agentWatchDays,
   conviction,
@@ -117,16 +119,22 @@ export function ThesisHeader({
   onSent,
   extraActions,
 }: ThesisHeaderProps) {
+  const convictionText = <ConvictionText conviction={conviction} rationale={convictionRationale} />;
   return (
     <StockIdentityHeader
       ticker={ticker}
       displayName={displayName}
-      exchange={exchange}
-      badges={
-        <>
-          <StatusPill status={status} agentWatchDays={agentWatchDays} />
-          <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
-        </>
+      inlineBadge={<StatusPill status={status} agentWatchDays={agentWatchDays} />}
+      subline={
+        <span className="inline-flex items-center gap-1.5">
+          {ticker}
+          {conviction ? (
+            <>
+              <span>·</span>
+              {convictionText}
+            </>
+          ) : null}
+        </span>
       }
       actions={
         <>
