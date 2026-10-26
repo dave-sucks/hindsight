@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { ThesisHeader } from '@/components/domain/thesis-header';
 import { ThesisPageBody } from '@/components/trades/ThesisPageBody';
-import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { Badge } from '@/components/ui/badge';
 import { getTradeStatusDisplay } from '@/lib/trade-status';
@@ -145,7 +144,6 @@ export default async function TradeDetailPage({
   const exitProceeds = closePrice != null ? closePrice * position.quantity : null;
   const pnl = isOpen ? unrealizedDollars : realizedPnl;
   const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
-  const isPos = pnl >= 0;
 
   // Days held: to the sale once closed, to today while open.
   const daysHeld = position.closedAt
@@ -427,21 +425,6 @@ export default async function TradeDetailPage({
                 </div>
               ))}
 
-              {/* Unrealized P&L — open trades only */}
-              {isOpen && (
-                <div className="pt-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Unrealized P&L</span>
-                    <span className={cn('font-medium tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
-                      {isPos ? '+' : ''}{fmtCur(pnl)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm mt-1">
-                    <span className="text-muted-foreground">Return</span>
-                    <PnlBadge value={pnlPct} />
-                  </div>
-                </div>
-              )}
           </Card>
 
           {/* Price Targets — standalone, identical to the thesis sheet */}
