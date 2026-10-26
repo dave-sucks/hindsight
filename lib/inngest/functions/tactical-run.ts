@@ -37,6 +37,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { doItTrade } from "@/lib/agent/triggers/fire-mode";
 import { doItCall } from "@/lib/agent/triggers/do-it";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
+import { saleUnderWay } from "@/lib/proposals/position-lock";
 import { useOnce } from "@/lib/agent/triggers/use-once";
 import { recordGateRejection } from "@/lib/agent/gate-rejections";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
@@ -297,12 +298,9 @@ export const tacticalRun = inngest.createFunction(
             positionId: position.id,
             intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
             OR: [
-              { status: "AWAITING_APPROVAL" },
-              // A PENDING close is already submitted to Alpaca and awaiting
-              // fill (or reconcile). closeOpenPosition would fold a second
-              // close into it (under a row lock); this read only saves the
-              // run. reconcile-orders resolves the PENDING order.
-              { status: "PENDING" },
+              // A sale proposed and not expired, or sent to Alpaca (PENDING) and
+              // awaiting fill. The five-minute check already skips these unstamped; this is the backstop.
+              ...saleUnderWay(new Date()),
               {
                 status: "REJECTED",
                 updatedAt: {

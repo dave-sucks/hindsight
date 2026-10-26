@@ -36,13 +36,13 @@ Where it goes is the trigger's On fire, the same three choices on every trigger:
 Several rules stop one move from waking the desk twice:
 
 - **Together:** a stop and a trail firing in one pass fold into one run, which sees both. Each still gets its own Activity line. Buys, adds and reviews never fold.
-- **A sale already waiting:** if a sale of the position is waiting for you, already sent, or was declined in the last four hours, the fire starts nothing. A lapsed sale doesn't count, so the next day's fire proposes it again.
+- **A sale already waiting:** if a sale of the position is waiting for you or already sent, the check skips the fire and doesn't start its cooldown, so it asks again on the first check after that proposal expires: every day, not every other day. A proposal past its 24 hours counts as gone even before it is marked expired. A sale you declined in the last four hours also starts nothing; that fire does start its cooldown.
 - **A buy already waiting,** or checked in the last four hours by a completed run, starts nothing.
 - **A buy that slipped back:** if the run passed because the price had fallen back under the level, without trying to buy, the buy stays armed and can fire again that day, up to three times.
 
 ## The high the trails use
 
-A trail measures the give-back from the highest price since the buy (the lowest, for a short). Every five-minute check raises that mark before it reads any trigger: from the live price, and for a stock held since before today's open, from the day's high so far, so a spike between two checks still counts. A price that isn't live moves nothing.
+A trail measures the give-back from the highest price since the buy (the lowest, for a short). Every five-minute check raises that mark before it reads any trigger: from the live price, and for a stock held since before today's open, from the day's high so far, so a spike between two checks still counts. A price that isn't live moves nothing. The 4:20 PM close pass raises it once more from the finished day's bar, so a high in the last minutes of the day counts too. A mark is never lowered.
 
 <details>
 <summary>Technical details</summary>
@@ -60,11 +60,11 @@ A trail measures the give-back from the highest price since the buy (the lowest,
 `effectiveTriggerAction` and `watchedFloorOnClose` in `lib/agent/triggers/types.ts`. DEMOTE runs `demoteThesisPlan` in `lib/agent/triggers/demote.ts`. Reviews write a `TRIGGER_FIRED` row; `filingNeedsSameDayLook` in `lib/market-data/sec-events.ts`. Which fires wait for the morning and which trade with no agent is `waitsForMorning` and `doItTrade` in `lib/agent/triggers/fire-mode.ts`. An Auto-sell is the `direct-close` step in `lib/inngest/functions/tactical-run.ts` and calls `closeOpenPosition`; a paused analyst's sale takes the same step with `propose: true` unless it is Auto (`pausedAnalystTriggers` and `PAUSED_SALE_NOTE` in `lib/agent/triggers/paused.ts`); a trim, buy or add is the `do-it` step, which calls the trade tool with `doItCall` and then `useOnce`.
 
 #### Folding and snoozes
-`collapseProtectiveFires` in `lib/agent/triggers/co-fire.ts` (EXIT and TRIM only). In `tactical-run.ts`: `check-queued-close` and `EXIT_RECHECK_SNOOZE_MS` (four hours, rejected sales only); `check-queued-buy`; `check-recent-enter-run`.
+`collapseProtectiveFires` in `lib/agent/triggers/co-fire.ts` (EXIT and TRIM only). A sale under way is `saleUnderWay` in `lib/proposals/position-lock.ts` (PENDING, or AWAITING_APPROVAL and not past `expiresAt`); the evaluator drops a sale fire on such a position before `stampLastFiredAt`. In `tactical-run.ts`, the backstop: `check-queued-close` and `EXIT_RECHECK_SNOOZE_MS` (four hours, rejected sales only); `check-queued-buy`; `check-recent-enter-run`.
 
 #### Re-arm
 `decideBuyRearm` and `rearmBuyAfterPass` in `lib/agent/triggers/rearm.ts`, `MAX_REARMS_PER_DAY` = 3, stored as `rearmedAt` in `Thesis.triggerState`.
 
 #### Peak
-`raiseWaterMarks` in `lib/trading/water-mark.ts`, called by the intraday pass before the check: writes `Position.peakPrice` / `peakAt` (and the trough) when a fresh quote moves them. The day's high is the quote's own Alpaca daily bar, regular hours only.
+`raiseWaterMarks` in `lib/trading/water-mark.ts`, called by the intraday pass before the check: writes `Position.peakPrice` / `peakAt` (and the trough) when a fresh quote moves them. The day's high is the quote's own Alpaca daily bar, regular hours only. On the close pass, `raiseMarksFromDayBars` reads `getTodaySessionBars` for every open position bought before that day's open.
 </details>

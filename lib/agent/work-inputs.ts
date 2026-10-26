@@ -21,6 +21,7 @@ import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
+import { notExpired } from "@/lib/proposals/position-lock";
 import { computeLadderHealth, isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import {
   declinedSaleWhere,
@@ -223,12 +224,13 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   // query: a buy or add proposed and not yet approved, a sale in the queue.
   // The row says so, so a run does not propose it again (step 8). An order
   // carries its thesis since 2026-08-18; a proposal lives a day, so every
-  // open one has it.
+  // open one has it. One past its expiry waits for nothing, so it isn't listed.
   if (live.length > 0) {
     try {
       const awaiting = await prisma.order.findMany({
         where: {
           userId: ctx.userId, status: "AWAITING_APPROVAL", thesisId: { in: live.map((t) => t.id) },
+          ...notExpired(now),
           ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
         },
         orderBy: { createdAt: "asc" },

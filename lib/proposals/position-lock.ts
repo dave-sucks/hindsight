@@ -11,6 +11,12 @@
 
 import { prisma } from "@/lib/prisma";
 
+/** A proposal past its expiry can't be approved, so from then on it waits for nothing (the sweeper marks it EXPIRED within 30 min). */
+export const notExpired = (now: Date) => ({ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] });
+
+/** A sale still under way: sent to Alpaca, or proposed and not past its expiry. */
+export const saleUnderWay = (now: Date) => [{ status: "PENDING" as const }, { status: "AWAITING_APPROVAL" as const, ...notExpired(now) }];
+
 type TransactionClient = Omit<
   typeof prisma,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
@@ -47,7 +53,7 @@ export async function lockPositionSales(
   const open = await tx.order.findMany({
     where: {
       positionId,
-      status: { in: ["PENDING", "AWAITING_APPROVAL"] },
+      OR: saleUnderWay(new Date()),
       intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
       ...(exceptOrderId ? { id: { not: exceptOrderId } } : {}),
     },
