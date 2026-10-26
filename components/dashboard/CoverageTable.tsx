@@ -28,7 +28,6 @@ import {
 import { formatSignedCurrency } from "@/lib/format";
 import { sharesLine, proposalTooltip } from "@/lib/trade-status";
 import { StatusDot } from "@/components/ui/trade-row";
-import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
@@ -150,6 +149,8 @@ function NameCell({ row }: { row: CoverageRow }) {
             "text-xs tabular-nums truncate text-muted-foreground",
             // In flight — same shimmer the agent's running rows use.
             pp?.executing && "shimmer-text",
+            // Waiting on your approval — a sweep every few seconds.
+            pp && !pp.executing && "shimmer-text-periodic",
           )}
         >
           {subhead}
@@ -190,21 +191,6 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
         </span>
       )}
       <span className="inline-flex items-center gap-1.5 justify-end">
-        {/* Approve / reject inline — the same control as the Pending approval
-            rail and the thesis sheet, so the decision can be made while
-            reading the row's 1D/5D/30D move. */}
-        {/* Nothing left to review once it's approved and on its way — the
-            row says "Executing" instead. */}
-        {row.pendingProposal && !row.pendingProposal.executing && (
-          <ProposalActions
-            orderId={row.pendingProposal.orderId}
-            expiresAt={row.pendingProposal.expiresAt}
-            align="end"
-            // Phones: the amber dot marks it and the row opens the thesis
-            // where it's approved; the button cut the shares line to "300 sh…".
-            className="hidden sm:inline-flex"
-          />
-        )}
         {pct == null ? (
           <span className="text-muted-foreground/40 text-xs">—</span>
         ) : (
@@ -260,9 +246,9 @@ function CoverageTab({
             <TableHead className="hidden md:table-cell w-24 text-right">5D</TableHead>
             <TableHead className="hidden md:table-cell w-24 text-right">30D</TableHead>
             {/* Last column — "Lifetime" label on desktop, toggle on mobile.
-                Narrower on phones (no Review button there) so the name
-                column can show the shares line instead of "300 sh…". */}
-            <TableHead className="w-44 sm:w-64 text-right">
+                Sized to the gain + badge so the name column keeps the
+                shares line instead of "300 sh…". */}
+            <TableHead className="w-44 md:w-52 text-right">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger
