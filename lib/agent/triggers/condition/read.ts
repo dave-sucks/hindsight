@@ -141,15 +141,10 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       const snap = ctx.indicators;
       const minPct = c.value;
       if (!snap || minPct == null) return false;
-      const minVol = num(setting(c, "volume")) ?? 3;
-      const within = num(setting(c, "withinDays")) ?? 1;
       const prevClose = ctx.latestQuote?.prevClose;
       const open = ctx.today?.open;
-      if (open != null && prevClose != null && prevClose > 0) {
-        const ratio = volumeRatio(snap, ctx.today?.volume);
-        if (((open - prevClose) / prevClose) * 100 >= minPct && ratio != null && ratio >= minVol) return true;
-      }
-      return snap.gaps.some((g) => g.sessionsAgo < within && g.pct >= minPct && g.volumeRatio != null && g.volumeRatio >= minVol);
+      if (open != null && prevClose != null && prevClose > 0 && ((open - prevClose) / prevClose) * 100 >= minPct) return true;
+      return snap.gaps.some((g) => g.sessionsAgo < 1 && g.pct >= minPct);
     },
   },
 
@@ -166,7 +161,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       const r = ctx.earnings;
       if (!r || r.epsActual == null) return false;
       const since = -daysUntilReport(r, ctx.now);
-      return since >= (num(setting(c, "fromDay")) ?? 0) && since <= c.value;
+      return since >= 0 && since <= c.value;
     },
     readsReport: (c) => c.is === "before",
   },

@@ -33,7 +33,7 @@ describe("the cooldown a trigger gets when it names none", () => {
     ["volume", { watch: "volume", value: 2 }, "REVIEW", 1],
     ["RSI", { watch: "rsi", is: "below", value: 30 }, "ENTER", 1],
     ["strength vs the S&P", { watch: "strength", value: 5 }, "REVIEW", 7],
-    ["a gap over 3 sessions", { watch: "gap", value: 4, settings: { withinDays: 3 } }, "REVIEW", 3],
+    ["a gap, one fire per gap", { watch: "gap", value: 4 }, "REVIEW", 1],
     ["a gap, no window", { watch: "gap", value: 4 }, "REVIEW", 1],
     ["the report window", { watch: "report", is: "before", value: 3 }, "REVIEW", 30],
     ["an earnings result", { watch: "surprise", is: "beat", value: 0 }, "REVIEW", 7],

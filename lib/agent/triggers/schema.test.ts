@@ -93,9 +93,9 @@ describe("the condition a model writes", () => {
   it("lists every setting it can send, and keeps the one it sent", () => {
     const schema = predicateInputSchema();
     const json = JSON.stringify(zodSchema(schema as never).jsonSchema);
-    for (const key of ["close", "period", "window", "fromDay"]) expect(json).toContain(`"${key}":`);
+    for (const key of ["close", "period", "window", "days"]) expect(json).toContain(`"${key}":`);
     // Deleted: an agent has no field to write them in.
-    for (const key of ["startOnceUpPct", "widenAtr", "fastWinnerPct", "fastWinnerDays"]) expect(json).not.toContain(`"${key}"`);
+    for (const key of ["startOnceUpPct", "widenAtr", "fastWinnerPct", "fastWinnerDays", "withinDays", "fromDay"]) expect(json).not.toContain(`"${key}"`);
     expect(schema.parse({ watch: "price", is: "above", value: 183, settings: { close: true } })).toEqual({ watch: "price", is: "above", value: 183, settings: { close: true } });
   });
 
@@ -117,8 +117,8 @@ describe("the condition a model writes", () => {
       volume: [],
       rsi: ["period"],
       strength: ["window"],
-      gap: ["volume", "withinDays"],
-      report: ["fromDay"],
+      gap: [],
+      report: [],
       surprise: [],
       filing: [],
       insiders: ["days"],

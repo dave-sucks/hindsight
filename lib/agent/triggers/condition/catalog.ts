@@ -19,7 +19,6 @@ import { move, price } from "./measures/price";
 import { fromDate, repeat } from "./measures/schedule";
 import type { Condition, SettingDef, SettingValue, TriggerType, VariableId, Watch, When } from "./types";
 import { isGroup } from "./types";
-import { variableDef } from "./variables";
 
 export const MEASURES: Readonly<Record<Watch, MeasureDef>> = {
   price,

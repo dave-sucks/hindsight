@@ -1,8 +1,9 @@
 /**
  * Every setting a trigger carries is a field in the trigger form, or it doesn't
- * exist. The trail's arming gain and range widening (startOnceUpPct, widenAtr)
- * and the big-winner switch (fastWinnerPct, fastWinnerDays) are deleted; a
- * stored trigger that still carries one reads, fires and saves without it.
+ * exist. The trail's arming gain and range widening (startOnceUpPct, widenAtr),
+ * the big-winner switch (fastWinnerPct, fastWinnerDays), a gap's volume and
+ * look-back (volume, withinDays) and "after earnings" starting later (fromDay)
+ * are deleted; a stored trigger that still carries one reads, fires and saves without it.
  *
  * V (Secular Compounder, LIVE): its "Review if above 4.6% from our entry"
  * (Flag for Review, 7-day wait, last fired 10-16) carries fastWinnerPct 10.
@@ -26,6 +27,14 @@ const V_PLAN = [
   { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", source: "PRINCIPAL", fireMode: "DO_IT", predicate: { is: "below", value: 401.91, watch: "price" }, rationale: "The floor.", cooldownDays: 1 },
   { id: "203c3f47-82be-4411-a399-01d8a2c91278", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 434, watch: "price" }, rationale: "The target.", cooldownDays: 1 },
 ];
+/** CEG's live report review (Send to Agent), stored with fromDay 0. */
+const CEG_REVIEW = {
+  id: "19574c52-632d-493e-a4d1-670c1d4fdeda", action: "REVIEW", source: "AGENT", fireMode: "ASK_NOW",
+  predicate: { is: "before", value: 5, watch: "report", settings: { fromDay: 0 } },
+  rationale: "Earnings are due Nov. 6. Review the business and guidance before the report.", cooldownDays: 7,
+};
+/** The episodic-pivot setup's old gap, as its template wrote it. */
+const OLD_GAP = { id: "old-gap", action: "REVIEW", source: "AGENT", predicate: { watch: "gap", value: 8, settings: { volume: 3, withinDays: 3 } }, rationale: "An 8% gap.", cooldownDays: 3 };
 /** The PEAD seat's old trail, as a stored row still carries it. */
 const OLD_TRAIL = { id: "f552414c-ff2a-455d-b779-d5401ac9ea98", action: "EXIT", source: "PRINCIPAL", predicate: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, widenAtr: 3 } }, rationale: "Gave back 12% from the high.", cooldownDays: 0 };
 
@@ -72,6 +81,15 @@ afterEach(() => {
 });
 
 describe("a stored trigger still carrying a deleted key", () => {
+  it("CEG's report review and an old gap read without their keys", () => {
+    const { triggers } = parseTriggersResilient([CEG_REVIEW, OLD_GAP]);
+    expect(triggers.map((t) => t.predicate)).toEqual([
+      { is: "before", value: 5, watch: "report" },
+      { watch: "gap", value: 8 },
+    ]);
+    expect(triggers.map((t) => sentenceOf(t, true))).toEqual(["Review if within 5 days before earnings", "Review if at least 8% gap up"]);
+  });
+
   it("reads without it, and says only its number", () => {
     const { triggers } = parseTriggersResilient([V_REVIEW, OLD_TRAIL]);
     expect(triggers.map((t) => t.predicate)).toEqual([

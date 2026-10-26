@@ -89,7 +89,7 @@ function chosenSetups(analyst: BriefAnalyst): Setup[] {
  * target, how it is managed, its time limit and what failure looks like. The
  * brief takes the first line of it. "decision" (a row's `setup_lines`): the
  * lines a fire checks, from the entry on; the summary is in the brief and the
- * preconditions are the writer's. With a horizon, the one Manage line for it;
+ * preconditions are the writer's. With a horizon, the one Manage line for it (none when it has none);
  * without, each horizon's, labelled.
  */
 export function setupLines(setup: Setup, horizon?: string | null, cut: "all" | "decision" = "all"): string[] {
@@ -97,7 +97,7 @@ export function setupLines(setup: Setup, horizon?: string | null, cut: "all" | "
   const chase = setup.entry.chaseLimitPct != null ? `; not more than ${setup.entry.chaseLimitPct}% past the level` : "";
   const trail = setup.trail as Partial<Record<string, string>>;
   const manage = horizon
-    ? [trail[horizon] ?? Object.values(trail)[0]].filter((t): t is string => !!t).map((t) => `Manage: ${t}`)
+    ? [trail[horizon]].filter((t): t is string => !!t).map((t) => `Manage: ${t}`)
     : (Object.keys(trail) as Horizon[]).map((h) => `Manage (${h}): ${trail[h]}`);
   return [
     ...(cut === "all" ? [`${setup.id} — ${setup.name}: ${setup.summary}`, `Needs: ${setup.preconditions.join("; ")}`] : []),

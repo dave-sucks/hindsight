@@ -73,8 +73,7 @@ const FACTS: Partial<Record<Watch, Facts>> = {
     const min = c.value ?? 0;
     if (today?.open != null && today.prevClose) {
       const g = ((today.open - today.prevClose) / today.prevClose) * 100;
-      const r = volumeRatio(snap, today.volume);
-      if (g >= min) return `opened ${pct(g)} over the prior close ${$(today.prevClose)}${r != null ? ` on ${r.toFixed(1)}× volume so far` : ""}`;
+      if (g >= min) return `opened ${pct(g)} over the prior close ${$(today.prevClose)}`;
     }
     const g = snap.gaps.find((x) => x.pct >= min);
     return g ? `gapped ${pct(g.pct)} ${g.sessionsAgo} session${g.sessionsAgo === 1 ? "" : "s"} ago (gap-day low ${$(g.low)}, high ${$(g.high)})` : null;

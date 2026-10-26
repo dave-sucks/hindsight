@@ -53,7 +53,7 @@ export const TRIGGER_TYPE_DOCS: readonly TriggerTypeDoc[] = [
       { action: "REVIEW", when: { watch: "volume", value: 2 }, why: "Twice the normal volume means someone knows something. Look before it moves." },
       { action: "ENTER", when: { watch: "rsi", is: "below", value: 30 }, why: "An oversold dip in a stock whose trend is still up." },
       { action: "REVIEW", when: { watch: "strength", value: 5, settings: { window: "3M" } }, why: "Leading the market by 5 points over three months: a leader worth a closer look." },
-      { action: "ENTER", when: { watch: "gap", value: 8, settings: { volume: 3, withinDays: 3 } }, why: "An 8% gap on three times the volume, held for three days: an episodic pivot." },
+      { action: "ENTER", when: { watch: "gap", value: 8 }, why: "An 8% gap up at the open: an episodic pivot." },
     ],
   },
   {

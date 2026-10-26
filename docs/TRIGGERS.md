@@ -71,8 +71,8 @@ evaluation, so the gate rejects it up front, with the list of measures.
 | `volume` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio. | `value` (×) |
 | `rsi` | RSI over the snapshot's closes with the live price as today's. | `value`; `settings.period` 14 or 2 |
 | `strength` | Return over the window minus the S&P's, percentage points, as of the last close. A state (§6). | `value`; `settings.window` 1M / 3M / 6M |
-| `gap` | Opened ≥ `value`% over the prior close on ≥ `volume`× normal volume — today, or within `withinDays` sessions. | `value` (%); `volume`, `withinDays` |
-| `report` | **Before** a report: "reports within N days" (the heads-up; 14-day lookahead). **After** one: "reported up to N days ago" (0 = the report day; `fromDay: 1` starts the day after) — the post-report drift window. Off the Finnhub calendar on the cron (`triggers/earnings.ts`), one firm-wide call per pass. Once per report (30-day cooldown); the audit row carries the date, bell and estimates. | `value` (days); `fromDay` |
+| `gap` | Opened ≥ `value`% over the prior close, whatever the volume — today, or the snapshot's latest session. Fires once per gap (1-day wait). | `value` (%) |
+| `report` | **Before** a report: "reports within N days" (the heads-up; 14-day lookahead). **After** one: "reported up to N days ago", counting from the report day (0) — the post-report drift window. Off the Finnhub calendar on the cron (`triggers/earnings.ts`), one firm-wide call per pass. Once per report (30-day cooldown); the audit row carries the date, bell and estimates. | `value` (days) |
 | `surprise` | Earnings beat or miss — reported EPS vs estimate, same calendar call. Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. 0 = any amount. | `value` (% or more) |
 | `filing` | The company filed something with the SEC. Keyed on the 8-K item or the form, never "a 10-Q was filed": `tier:MATERIAL` / `tier:RED` ("at least" — material matches serious too), `item:8.01`, `form:S-3`. Several events are "any of" one-event conditions. Read live off EDGAR — one search per pass for every name carrying a filing trigger, 4-day lookback. **One fire per filing** (the filing IDs are remembered on the trigger, or in `triggerState` for an inherited rule); no cooldown, because filings cluster. A serious filing on a HOLDING spawns a tactical run the same day; everything else goes to the next daily review. The tier table is `lib/market-data/sec-events.ts`. | `variable` |
 | `insiders` | At least N distinct insiders bought on the open market (Form 4 code P; grants and exercises excluded) within 30 or 90 days. Read from the snapshot's `insiderBuys` (Finnhub, refreshed 06:30 ET). The fire's audit row names the buyers. Cooldown 30. | `value`; `settings.days` |
@@ -83,8 +83,10 @@ evaluation, so the gate rejects it up front, with the list of measures.
 computed in ONE function, `lib/agent/triggers/trail.ts` → `trailFireLevel`,
 which the evaluator, the floor-health block and the sheet's and trade page's
 levels all call. The arming gain (`startOnceUpPct`), the range widening
-(`widenAtr`) and the big-winner switch on the move from our entry
-(`fastWinnerPct` / `fastWinnerDays`) were deleted 2026-10: every setting a
+(`widenAtr`), the big-winner switch on the move from our entry
+(`fastWinnerPct` / `fastWinnerDays`), a gap's volume and look-back (`volume`,
+`withinDays`) and "after earnings" starting later (`fromDay`) were deleted
+2026-10: every setting a
 trigger carries is a visible field in the trigger form, or it doesn't exist.
 A stored trigger still carrying one of those keys reads without it
 (`declaredOnly` in `condition/catalog.ts`).
@@ -397,7 +399,7 @@ same day whatever is set (`filingNeedsSameDayLook`).
 `cooldownDays` rate-limits re-fires. Omit it → the measure's default
 (`cooldownDays` on its catalog entry; `defaultCooldownDays` in
 `condition/rules.ts`): a surprise 7, a report 30, insiders 30, a price level,
-a move, volume and RSI 1, a gap its `withinDays`, the move from our entry 7 —
+a move, volume, RSI and a gap 1, the move from our entry 7 —
 the milestone latches, so 7d stops a same-week re-fire if the acting agent
 forgets to re-arm the next checkpoint; the trail 1, the review clock and a
 date its own day count. **`cooldownDays: 0` is reserved for terminal `EXIT`

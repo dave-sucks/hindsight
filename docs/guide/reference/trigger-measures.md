@@ -158,21 +158,16 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 ### Gap up
 
-`watch: "gap"` · value: more than 0% and up to 100% · actions: buy, add, trim, sell, review · reads: snapshot, volume
+`watch: "gap"` · value: more than 0% and up to 100% · actions: buy, add, trim, sell, review · reads: snapshot
 
-**Settings:**
-
-- `volume`: from 0× to 50×, default 3
-- `withinDays`: a whole number from 1 to 10 sessions, default 1
-
-**Rest period for a plain condition, when none is set:** 3 days.
+**Rest period for a plain condition, when none is set:** 1 day.
 
 **Examples:**
 
-- "Buy if at least 8% gap up". An 8% gap on three times the volume, held for three days: an episodic pivot.
+- "Buy if at least 8% gap up". An 8% gap up at the open: an episodic pivot.
 
   ```json
-  {"action":"ENTER","predicate":{"watch":"gap","value":8,"settings":{"volume":3,"withinDays":3}}}
+  {"action":"ENTER","predicate":{"watch":"gap","value":8}}
   ```
 
 ## Earnings
@@ -182,10 +177,6 @@ Before a report, after a report, and what the report said. Read from the earning
 ### Report date
 
 `watch: "report"` · is: `before` / `after` · value: a whole number from 1 to 14 days · actions: review · reads: earnings
-
-**Settings:**
-
-- `fromDay`: a whole number from 0 to 5, default 0
 
 **Rest period for a plain condition, when none is set:** 30 days.
 

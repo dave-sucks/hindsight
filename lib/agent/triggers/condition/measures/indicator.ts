@@ -3,7 +3,6 @@
 
 import { BELOW_ABOVE, type MeasureDef } from "../measure";
 import type { Condition } from "../types";
-import { num } from "../words";
 
 const window = (c: Condition) => (typeof c.settings?.window === "string" ? c.settings.window : "3M");
 
@@ -79,21 +78,15 @@ export const strength: MeasureDef = {
 
 export const gap: MeasureDef = {
   id: "gap",
-  reads: ["snapshot", "volume"],
+  reads: ["snapshot"],
   type: "indicator",
   label: "Gap up",
   word: "At least",
   value: { suffix: "% gap up", placeholder: "4", range: { what: "A gap", unit: "%", over: 0, max: 100 } },
-  // An agent's choices; a gap added here needs 3× volume within 3 days.
-  settings: [
-    { key: "volume", default: 3, range: { what: "A gap's volume (volume)", unit: "×", min: 0, max: 50 } },
-    // Up to the 10 sessions the snapshot keeps gaps for.
-    { key: "withinDays", default: 1, range: { what: "A gap's look-back (withinDays)", unit: " sessions", integer: true, min: 1, max: 10, why: "The snapshot keeps 10." } },
-  ],
-  // A gap stays "within the last N sessions" for N days: one fire per gap.
-  cooldownDays: (c) => Math.max(1, num(c.settings?.withinDays) ?? 1),
+  // One fire per gap, whatever its volume.
+  cooldownDays: () => 1,
   rises: () => true,
-  fresh: () => ({ watch: "gap", settings: { volume: 3, withinDays: 3 } }),
+  fresh: () => ({ watch: "gap" }),
   fits: (c) => c.value != null,
   shape: "A gap takes a number: the % gap up.",
 };
