@@ -1401,6 +1401,25 @@ export function ThesisBody({
   const pendingProposal = position?.pendingProposal ?? null;
   const showBanner = position != null && (surface === "sheet" || pendingProposal != null);
 
+  // The stock-level insights: Analyst Consensus and Earnings. On the sheet
+  // they sit in the body; on the page they join the right-hand cards under
+  // Price Targets. Coverage (FMP — the slow vendor) hydrates on its own
+  // boundary so it never blocks the chart; skeleton until it lands.
+  const stockInsights = {
+    consensus:
+      coverageLoading && !coverage ? (
+        <Skeleton className="h-40 w-full rounded-lg" />
+      ) : (
+        <AnalystConsensusWidget
+          coverage={coverage}
+          fallbackConsensus={mintConsensus}
+          narrative={state.analystConsensus ?? null}
+          currentPrice={quote?.currentPrice ?? null}
+        />
+      ),
+    earnings: earnings ? <EarningsCard data={earnings} /> : null,
+  };
+
   return (
     <div className="space-y-5">
       {/* ── Live price + the selected range's move ───────────── */}
@@ -1536,18 +1555,9 @@ export function ThesisBody({
         />
       ) : null}
 
-      {/* Analyst Consensus — coverage (FMP — the slow vendor) hydrates on its
-          own boundary so it never blocks the chart; skeleton until it lands. */}
-      {coverageLoading && !coverage ? (
-        <Skeleton className="h-40 w-full rounded-lg" />
-      ) : (
-        <AnalystConsensusWidget
-          coverage={coverage}
-          fallbackConsensus={mintConsensus}
-          narrative={state.analystConsensus ?? null}
-          currentPrice={quote?.currentPrice ?? null}
-        />
-      )}
+      {/* Analyst Consensus — in the main column on the sheet; the page's
+          sidebar carries it (see `stockInsights`). */}
+      {surface === "sheet" ? stockInsights.consensus : null}
 
       {/* Composite Score — 4-dim scoring breakdown. */}
       {state.scoring ? (
@@ -1574,8 +1584,8 @@ export function ThesisBody({
         </Card>
       ) : null}
 
-      {/* ── Earnings ─────────────────────────────────────────── */}
-      {earnings ? <EarningsCard data={earnings} /> : null}
+      {/* ── Earnings — main column on the sheet, sidebar on the page ── */}
+      {surface === "sheet" ? stockInsights.earnings : null}
 
       {filings ? <FilingsBlock data={filings} /> : null}
 
@@ -1659,7 +1669,13 @@ export function ThesisBody({
           )}
         </TabsContent>
         </div>
-        {aside ? <div className="hidden lg:block space-y-4">{aside}</div> : null}
+        {aside ? (
+          <div className="hidden lg:block space-y-4">
+            {aside}
+            {stockInsights.consensus}
+            {stockInsights.earnings}
+          </div>
+        ) : null}
         </div>
       </Tabs>
     </div>

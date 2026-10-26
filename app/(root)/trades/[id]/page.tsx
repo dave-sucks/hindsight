@@ -29,13 +29,9 @@ import {
 import { agentWatchDays } from '@/lib/agent/triggers/agent-watch';
 import { canonicalLevels } from '@/lib/agent/triggers/price-levels';
 import { getThesisComposite } from '@/lib/agent/thesis-narrative';
-import {
-  getStockProfile,
-  getStockQuote,
-} from '@/lib/actions/finnhub.actions';
+import { getStockQuote } from '@/lib/actions/finnhub.actions';
 import { getStockInfo } from '@/lib/actions/stock-info';
 import { cn } from '@/lib/utils';
-import { ExternalLink } from 'lucide-react';
 import { TradeActions } from '@/components/trades/TradeActions';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -112,9 +108,8 @@ export default async function TradeDetailPage({
   // country / weburl), stockQuote and candles are independent — parallel.
   // The HEADER reads identity so the name + normalized exchange match the
   // thesis sheet exactly (same cache, same normalizer).
-  const [identity, stockProfile, stockQuote] = await Promise.all([
+  const [identity, stockQuote] = await Promise.all([
     getStockInfo(position.symbol),
-    getStockProfile(position.symbol),
     getStockQuote(position.symbol),
   ]);
 
@@ -464,36 +459,6 @@ export default async function TradeDetailPage({
             direction={position.direction === 'SHORT' ? 'SHORT' : 'LONG'}
           />
 
-          {/* Stock Info */}
-          {stockProfile && (
-            <Card>
-              <CardContent className="p-3 flex flex-col gap-1">
-                <p className="text-sm font-medium mb-0.5">Stock Info</p>
-                {[
-                  { label: 'Symbol', value: trade.ticker },
-                  { label: 'Exchange', value: stockProfile.exchange || '—' },
-                  { label: 'Industry', value: stockProfile.finnhubIndustry || '—' },
-                  { label: 'Country', value: stockProfile.country || '—' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-medium text-right max-w-[60%] truncate">{value}</span>
-                  </div>
-                ))}
-                {stockProfile.weburl && (
-                  <a
-                    href={stockProfile.weburl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 flex items-center gap-1 text-sm text-primary hover:underline"
-                  >
-                    {stockProfile.weburl.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </CardContent>
-            </Card>
-          )}
           </>
         }
       />
