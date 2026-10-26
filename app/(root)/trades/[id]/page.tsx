@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { ThesisHeader } from '@/components/domain/thesis-header';
 import { ThesisPageBody } from '@/components/trades/ThesisPageBody';
 import { PnlBadge } from '@/components/ui/pnl-badge';
@@ -250,8 +250,7 @@ export default async function TradeDetailPage({
               isOpen ? 'OPEN' : position.outcome === 'WIN' ? 'CLOSED_WIN' : position.outcome === 'LOSS' ? 'CLOSED_LOSS' : 'CLOSED_EXPIRED',
             );
             return (
-              <Card>
-                <CardContent className="p-3 flex flex-col gap-1">
+              <Card className="p-3 gap-1">
                   <div className="flex items-center justify-between pb-1">
                     <Badge variant="secondary" className="gap-1.5 font-normal">
                       <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', summaryStatus.dotClass)} />
@@ -288,14 +287,12 @@ export default async function TradeDetailPage({
                       <span className="font-medium">{fmtExitReason(position.closeReason)}</span>
                     </div>
                   )}
-                </CardContent>
               </Card>
             );
           })()}
 
           {/* ── Trade Details (always shown) ── */}
-          <Card>
-            <CardContent className="p-3 flex flex-col gap-1">
+          <Card className="p-3 gap-1">
               {/* Static field rows */}
               {([
                 { label: 'Shares', value: String(trade.shares) },
@@ -445,7 +442,6 @@ export default async function TradeDetailPage({
                   </div>
                 </div>
               )}
-            </CardContent>
           </Card>
 
           {/* Price Targets — standalone, identical to the thesis sheet */}
