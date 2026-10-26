@@ -68,7 +68,6 @@ export function triggerForAgent(
     ...(t.rationale ? { rationale: t.rationale } : {}),
     // On fire, said only when it isn't the action's default (the tools' fire_mode names the defaults).
     ...(t.fireMode && t.fireMode !== defaultFireMode(t.action) ? { fireMode: t.fireMode } : {}),
-    ...(t.trimPct != null ? { trimPct: t.trimPct } : {}),
     ...(t.cooldownDays != null ? { cooldownDays: t.cooldownDays } : {}),
     ...(t.lastFiredAt ? { lastFiredAt: t.lastFiredAt } : {}),
     ...(t.source ? { setBy: t.source } : {}),

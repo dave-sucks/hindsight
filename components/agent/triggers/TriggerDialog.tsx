@@ -24,7 +24,7 @@ import {
 import type { TriggerAction } from "@/lib/agent/triggers/types";
 import { DEFAULT_TRIM_PCT, defaultFireMode } from "@/lib/agent/triggers/fire-mode";
 import type { Trigger } from "@/lib/types/thesis-sheet";
-import { ConditionFields, FieldLabel, OnFireSelect, TYPE_ICON, draftOf, useTriggerRequest, whenOf, type Draft, type Level } from "./TriggerFields";
+import { ConditionFields, FieldLabel, OnFireSelect, TYPE_ICON, TrimSizeField, draftOf, useTriggerRequest, whenOf, type Draft, type Level } from "./TriggerFields";
 
 interface AddProps {
   level: Level;
@@ -128,8 +128,8 @@ export function TriggerDialog({
   const w = whenOf(draft);
   const actions = allowedActions(w, { held, standing });
   const action = actions.includes(draft.action) ? draft.action : (actions[0] ?? "REVIEW");
-  // An Auto-trim needs its size.
-  const trimSize = action === "TRIM" && draft.fireMode === "DO_IT";
+  // A trim's size, in every On fire mode.
+  const trimSize = action === "TRIM";
   const trimProblem = trimSize && !(Number.isFinite(draft.trimPct) && draft.trimPct >= 1 && draft.trimPct <= 99) ? "A trim sells 1% to 99% of the position." : null;
   const problem = whenProblem(w, ctx) ?? trimProblem;
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
@@ -206,16 +206,9 @@ export function TriggerDialog({
             />
           )}
 
-          <OnFireSelect
-            action={action}
-            standing={standing}
-            value={draft.fireMode}
-            trimPct={draft.trimPct}
-            onChange={(fireMode) => update({ fireMode })}
-            onTrimPct={(trimPct) => update({ trimPct })}
-            disabled={pending}
-          />
+          {trimSize ? <TrimSizeField trimPct={draft.trimPct} onTrimPct={(trimPct) => update({ trimPct })} disabled={pending} /> : null}
           {trimProblem ? <p className="text-xs text-muted-foreground">{trimProblem}</p> : null}
+          <OnFireSelect action={action} standing={standing} value={draft.fireMode} onChange={(fireMode) => update({ fireMode })} disabled={pending} />
           {err ? <p className="text-xs text-destructive">{err}</p> : null}
         </div>
 

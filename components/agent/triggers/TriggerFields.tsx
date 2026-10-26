@@ -117,23 +117,19 @@ export function useTriggerRequest(onDone: () => void) {
   return { pending, err, setErr, send };
 }
 
-/** On fire: the same three choices on every trigger, one the action can't take disabled; a trim's size beside it. */
+/** On fire: the same three choices on every trigger, one the action can't take disabled. */
 export function OnFireSelect({
   action,
   standing,
   value,
-  trimPct,
   onChange,
-  onTrimPct,
   disabled,
 }: {
   action: TriggerAction;
   /** An account or analyst rule: Auto only on a sale. */
   standing: boolean;
   value: FireMode;
-  trimPct: number;
   onChange: (v: FireMode) => void;
-  onTrimPct: (n: number) => void;
   disabled: boolean;
 }) {
   const [approval, setApproval] = useState<AccountApprovalSettings | null>(null);
@@ -144,52 +140,54 @@ export function OnFireSelect({
       live = false;
     };
   }, []);
+  const line = approvalLine(action, approval);
+  return (
+    <div className="space-y-1.5">
+      <FieldLabel>On fire</FieldLabel>
+      <Select value={value} onValueChange={(v) => isFireMode(v) && onChange(v)} disabled={disabled}>
+        <SelectTrigger width="full" aria-label="On fire">
+          <SelectValue>{fireModeLabel(value, action)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false} align="start">
+          {FIRE_MODES.map((m) => (
+            <SelectItem key={m} value={m} disabled={fireModeProblem(action, m, { standing }) != null}>
+              {fireModeLabel(m, action)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {line ? <p className="text-xs text-muted-foreground">{line}</p> : null}
+    </div>
+  );
+}
+
+/** A trim's size, the share of the position it sells in every On fire mode. Shown only for a trim. */
+export function TrimSizeField({ trimPct, onTrimPct, disabled }: { trimPct: number; onTrimPct: (n: number) => void; disabled: boolean }) {
   const [text, setText] = useState(String(trimPct));
   // Follow a size set from outside (a reset) without fighting typing.
   useEffect(() => {
     if (Number(text) !== trimPct) setText(String(trimPct));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trimPct]);
-  const line = approvalLine(action, approval);
   return (
     <div className="space-y-1.5">
-      <FieldLabel>On fire</FieldLabel>
-      <ButtonGroup width="full">
-        <Select value={value} onValueChange={(v) => isFireMode(v) && onChange(v)} disabled={disabled}>
-          <SelectTrigger aria-label="On fire">
-            <SelectValue>{fireModeLabel(value, action)}</SelectValue>
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false} align="start">
-            {FIRE_MODES.map((m) => (
-              <SelectItem key={m} value={m} disabled={fireModeProblem(action, m, { standing }) != null}>
-                {fireModeLabel(m, action)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {/* A trim's size: always here, used only by an Auto-trim. */}
-        <InputGroup>
-          <InputGroupAddon>
-            <InputGroupText>Trim</InputGroupText>
-          </InputGroupAddon>
-          <InputGroupInput
-            type="text"
-            inputMode="numeric"
-            size={3}
-            value={text}
-            aria-label="Trim size"
-            disabled={disabled || action !== "TRIM" || value !== "DO_IT"}
-            onChange={(e) => {
-              setText(e.target.value);
-              onTrimPct(Number(e.target.value));
-            }}
-          />
-          <InputGroupAddon align="inline-end">
-            <InputGroupText>%</InputGroupText>
-          </InputGroupAddon>
-        </InputGroup>
-      </ButtonGroup>
-      {line ? <p className="text-xs text-muted-foreground">{line}</p> : null}
+      <FieldLabel>Trim size</FieldLabel>
+      <InputGroup>
+        <InputGroupInput
+          type="text"
+          inputMode="numeric"
+          value={text}
+          aria-label="Trim size"
+          disabled={disabled}
+          onChange={(e) => {
+            setText(e.target.value);
+            onTrimPct(Number(e.target.value));
+          }}
+        />
+        <InputGroupAddon align="inline-end">
+          <InputGroupText>% of the position</InputGroupText>
+        </InputGroupAddon>
+      </InputGroup>
     </div>
   );
 }

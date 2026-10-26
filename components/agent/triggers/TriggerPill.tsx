@@ -16,13 +16,14 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SendToAgentIcon } from "@/components/ui/send-to-agent-icon";
 import {
-  actionLabel,
   conditionsOf,
   shapeOf,
   isGroup,
   measureOf,
   pillParts,
+  triggerLabel,
   triggerText,
+  trimPctOf,
   type PillPart,
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
@@ -76,6 +77,12 @@ export function TriggerPill(props: TriggerPillProps) {
             />
           }
         >
+          {/* A trim's size leads, so the row reads "Trim 30% if above $150". */}
+          {trigger.action === "TRIM" ? (
+            <span className="flex items-center gap-1 border-r border-border px-2 text-foreground tabular-nums">
+              {trimPctOf(trigger)}%<span className="text-muted-foreground">if</span>
+            </span>
+          ) : null}
           {parts.map((p, i) => (
             <Fragment key={i}>
               {i > 0 ? <span className="flex items-center border-l border-border px-1.5 text-muted-foreground">{joiner}</span> : null}
@@ -156,7 +163,7 @@ function TriggerCard({
       <div className="flex items-start gap-2">
         {/* The same two halves as the pill: the muted direction, then the value. */}
         <p className="min-w-0 flex-1 text-sm">
-          <span className="text-muted-foreground">{actionLabel(trigger.action, sells)} </span>
+          <span className="text-muted-foreground">{triggerLabel(trigger, sells)} </span>
           {parts.map((p, i) => (
             <Fragment key={i}>
               {i > 0 ? <span className="text-muted-foreground"> {joiner} </span> : null}

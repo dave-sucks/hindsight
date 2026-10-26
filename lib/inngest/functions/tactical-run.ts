@@ -34,7 +34,7 @@ import { refusalLinesFor, refusalNudge } from "@/lib/agent/refusal-carryover";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { autoSellCloseReason, protectiveExitCloseReason } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { doItTrade } from "@/lib/agent/triggers/fire-mode";
+import { doItTrade, trimPctOf } from "@/lib/agent/triggers/fire-mode";
 import { doItCall } from "@/lib/agent/triggers/do-it";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
@@ -474,7 +474,7 @@ export const tacticalRun = inngest.createFunction(
     });
 
     // The analyst's limits and keys, as every tool reads them: the same for the agent's run and an Auto trade.
-    const toolsFor = async (extra: { protectiveExitReason?: "STOP" | "TARGET"; protectiveExitTriggerLabel?: string; payFromCash?: number | null } = {}) =>
+    const toolsFor = async (extra: { protectiveExitReason?: "STOP" | "TARGET"; protectiveExitTriggerLabel?: string; firedTrim?: { ticker: string; pct: number }; payFromCash?: number | null } = {}) =>
       createResearchTools({
         runId: run.id,
         userId: agentConfig.userId,
@@ -662,7 +662,9 @@ export const tacticalRun = inngest.createFunction(
       const protectiveExitTriggerLabel = protectiveExitReason
         ? conditionSentence((trigger as Trigger).predicate)
         : undefined;
-      const allTools = await toolsFor({ protectiveExitReason, protectiveExitTriggerLabel });
+      // A trim that woke the run sells its own size unless the run names another.
+      const firedTrim = trigger.action === "TRIM" ? { ticker: thesis.ticker, pct: trimPctOf(trigger as Trigger) } : undefined;
+      const allTools = await toolsFor({ protectiveExitReason, protectiveExitTriggerLabel, firedTrim });
 
       const allowlist = MODES["tactical"].toolAllowlist;
       const tools = allowlist

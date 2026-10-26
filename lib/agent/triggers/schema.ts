@@ -231,7 +231,7 @@ export const triggerSchema = z.object({
     .describe(
       "NEXT_MORNING (Flag for Review): routine looks; unset on a review. ASK_NOW (Send to Agent): a look today (a sharp drop, a broken level, a milestone); unset otherwise. DO_IT (Auto-sell): the line you sell at regardless. Auto buy/add/trim is the owner's.",
     ),
-  trimPct: z.number().min(1).max(99).optional().describe("A trim set to DO_IT: the % of the position it sells. Omitted: 50."),
+  trimPct: z.number().min(1).max(99).optional().describe("A trim's size: the % of the position it sells, in every On fire mode. Omitted: 50."),
   // Server-owned provenance. Deliberately NO .default() — this schema is
   // also the disk-READ gate (trigger-evaluator, get-theses, thesis-sheet-
   // state, tactical-run, live-evaluate), so a default would silently
@@ -276,7 +276,7 @@ export const triggerInputSchema = triggerSchema
     writtenPrice: true,
     writtenAt: true,
     source: true,
-    // A trim's size is the owner's (the dialog); an agent's trim set to DO_IT sells the default half.
+    // A trim's size is the owner's (the dialog); an agent's trim sells the default half unless the run names another.
     trimPct: true,
   })
   .extend({ predicate: predicateInputSchema() });

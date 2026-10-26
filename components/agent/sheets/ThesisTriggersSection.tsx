@@ -71,7 +71,8 @@ export function TriggerGroups({
         if (items.length === 0) return null;
         return (
           <div key={action} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-            <span className="shrink-0 text-sm text-muted-foreground">{actionLabel(action, level === "THESIS" ? held : undefined)}</span>
+            {/* Each trim pill leads with its size: "Trim [30% if | above | $150]". */}
+            <span className="shrink-0 text-sm text-muted-foreground">{action === "TRIM" ? "Trim" : actionLabel(action, level === "THESIS" ? held : undefined)}</span>
             {items.map((t) => (
               <TriggerPill
                 key={t.id}

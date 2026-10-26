@@ -410,8 +410,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
-    if ((fireMode && fireMode !== fireModeOf(target)) || (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)))
-      parts.push(`${name}: ${fireModeWords({ action, fireMode: fireMode ?? target.fireMode, trimPct: op.trimPct ?? target.trimPct }, held)}`);
+    if (fireMode && fireMode !== fireModeOf(target)) parts.push(`${name}: ${fireModeWords({ action, fireMode }, held)}`);
+    if (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)) parts.push(`${name}: size ${trimPctOf(target)}% → ${op.trimPct}%`);
     if (op.cooldownDays !== undefined && op.cooldownDays !== target.cooldownDays)
       parts.push(`${name}: cooldown ${op.cooldownDays} days`);
     if (parts.length === 0 && rationale !== target.rationale)
