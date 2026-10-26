@@ -1,70 +1,56 @@
 /**
- * The armed trail (DAV-250): a TARGET position's 12% trail has no level
- * until the position has once been up 10%. The evaluator, the sheet's price
- * levels and the ratchet must all agree on that.
+ * A trail is one number: N% off the high since we bought. The arming gain and
+ * the range widening were deleted, so a stored trigger that still carries
+ * either fires at its plain line, and the sheet draws that same line.
  */
 
-import { trailFireLevel, trailOf } from "./trail";
+import { trailFireLevel } from "./trail";
 import { evaluateTrigger, type EvaluationContext } from "./evaluate";
 import { protectiveRatchetViolations } from "./ratchet";
 import type { Trigger } from "./types";
 import type { Condition, When } from "@/lib/agent/triggers/condition";
 
-const armed12: Condition = { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10 } };
+const trail12: Condition = { watch: "move", is: "below", value: 12, variable: "peak" };
+/** The PEAD seat's old trail, as a stored row still carries it. */
+const storedOld: Condition = { ...trail12, settings: { startOnceUpPct: 10, widenAtr: 3 } };
 
 const ctx = (price: number, peak: number): EvaluationContext => ({
   thesis: { createdAt: new Date("2026-09-01"), direction: "LONG" },
   now: new Date("2026-09-11"),
   latestQuote: { price, changePct: -1 },
   position: { avgCost: 100, peakPrice: peak },
+  indicators: { atr14: 50 } as EvaluationContext["indicators"],
 });
 
 describe("trailFireLevel", () => {
-  it("has no level before the peak clears the arming gain", () => {
-    expect(trailFireLevel(trailOf(armed12), { peak: 109, avgCost: 100, isLong: true })).toBeNull();
+  it("is N% off the high, from the first peak", () => {
+    expect(trailFireLevel(12, { peak: 105, isLong: true })).toBeCloseTo(92.4);
+    expect(trailFireLevel(8, { peak: 101, isLong: true })).toBeCloseTo(92.92);
   });
-  it("draws the line once armed", () => {
-    expect(trailFireLevel(trailOf(armed12), { peak: 120, avgCost: 100, isLong: true })).toBeCloseTo(105.6);
+  it("SHORT: N% above the low", () => {
+    expect(trailFireLevel(12, { peak: 85, isLong: false })).toBeCloseTo(95.2);
   });
-  it("an unarmed-by-design trail (no armAtGainPct) is live from the first peak", () => {
-    expect(trailFireLevel(trailOf({ watch: "move", is: "below", value: 8, variable: "peak" }), { peak: 101, isLong: true })).toBeCloseTo(92.92);
-  });
-  it("SHORT arms on the low-water mark", () => {
-    expect(trailFireLevel(trailOf(armed12), { peak: 91, avgCost: 100, isLong: false })).toBeNull();
-    expect(trailFireLevel(trailOf(armed12), { peak: 85, avgCost: 100, isLong: false })).toBeCloseTo(95.2);
+  it("no tracked peak, no line", () => {
+    expect(trailFireLevel(12, { peak: null, isLong: true })).toBeNull();
   });
 });
 
-describe("evaluateTrigger — the armed trail", () => {
-  it("does not fire on a 12% give-back from a +5% peak (never armed)", () => {
-    // Peak 105 → 12% give-back is 92.4. Below it, but the trail never armed:
-    // the floor is what governs a position that hasn't earned a gain.
-    expect(evaluateTrigger(armed12, ctx(92, 105))).toBe(false);
+describe("evaluateTrigger — a stored trail with the deleted keys", () => {
+  it("fires on a 12% give-back from a +5% peak: no arming gain any more", () => {
+    expect(evaluateTrigger(storedOld, ctx(92, 105))).toBe(true);
+    expect(evaluateTrigger(trail12, ctx(92, 105))).toBe(true);
   });
-  it("fires on a 12% give-back once the position had been up 10%", () => {
-    expect(evaluateTrigger(armed12, ctx(105.5, 120))).toBe(true);
-    expect(evaluateTrigger(armed12, ctx(106, 120))).toBe(false);
+  it("is not widened by the stock's range", () => {
+    // 3× a $50 range on a $120 peak would have been 125%; the line is 12% off: $105.60.
+    expect(evaluateTrigger(storedOld, ctx(105.5, 120))).toBe(true);
+    expect(evaluateTrigger(storedOld, ctx(106, 120))).toBe(false);
   });
 });
 
-describe("the ratchet — arming later is a loosening", () => {
+describe("the ratchet — a wider trail is still a loosening", () => {
   const rung = (p: When): Trigger => ({ id: "t", predicate: p, action: "EXIT", rationale: "trail" });
-  it("raising armAtGainPct is refused for an agent", () => {
-    const v = protectiveRatchetViolations({
-      direction: "LONG",
-      before: [rung(armed12)],
-      after: [rung({ ...armed12, settings: { startOnceUpPct: 20 } })],
-      inherited: [],
-    });
-    expect(v.map((x) => x.reason)).toEqual(["LOWERED"]);
-  });
-  it("adding an arm to a live trail is refused for an agent", () => {
-    const v = protectiveRatchetViolations({
-      direction: "LONG",
-      before: [rung({ watch: "move", is: "below", value: 12, variable: "peak" })],
-      after: [rung(armed12)],
-      inherited: [],
-    });
+  it("12% → 15% is refused for an agent", () => {
+    const v = protectiveRatchetViolations({ direction: "LONG", before: [rung(trail12)], after: [rung({ ...trail12, value: 15 })], inherited: [] });
     expect(v.map((x) => x.reason)).toEqual(["LOWERED"]);
   });
 });

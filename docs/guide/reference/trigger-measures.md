@@ -84,16 +84,16 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
   {"action":"ENTER","predicate":{"watch":"move","is":"near","value":2,"variable":"sma20"}}
   ```
 
-- "Sell if below 12% from the high since we bought, once it has been up 10%". A trail. It arms once the position has been up 10%, then follows the high.
+- "Sell if below 12% from the high since we bought". A trail. Its line follows the highest price since the buy and never comes down.
 
   ```json
-  {"action":"EXIT","predicate":{"watch":"move","is":"below","value":12,"variable":"peak","settings":{"startOnceUpPct":10}}}
+  {"action":"EXIT","predicate":{"watch":"move","is":"below","value":12,"variable":"peak"}}
   ```
 
-- "Trim if above 15.6% from our entry (not if it ran up 20% within 21 days)". Take a partial at twice the risk, unless it's a fast winner worth holding whole.
+- "Trim if above 15.6% from our entry". Take a partial at twice the risk.
 
   ```json
-  {"action":"TRIM","predicate":{"watch":"move","is":"above","value":15.6,"variable":"entry","settings":{"fastWinnerPct":20,"fastWinnerDays":21}}}
+  {"action":"TRIM","predicate":{"watch":"move","is":"above","value":15.6,"variable":"entry"}}
   ```
 
 - "Add if above 7% from yesterday's close". A big up day on a holding asks whether to press it.

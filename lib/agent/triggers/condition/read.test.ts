@@ -54,7 +54,7 @@ function live(price: number): EvaluationContext {
     indicators,
     today: { open: price * 1.04, volume: 2_000_000 },
     session: "INTRADAY",
-    position: { avgCost: price * 0.9, peakPrice: price * 1.2, openedAt: ago(40), peakAt: null },
+    position: { avgCost: price * 0.9, peakPrice: price * 1.2, openedAt: ago(40) },
     thesis: { createdAt: ago(120), lastReviewedAt: ago(3), catalystDate: null, direction: "LONG" },
     now: NOW,
   };
@@ -95,23 +95,16 @@ function cases(): Case[] {
       add(`the close ${n} days back`, { watch: "move", is: m > 0 ? "above" : "below", value: Math.abs(m), variable }, ctx, true);
     }
     add("our entry", { watch: "move", is: "above", value: ((price - ctx.position!.avgCost!) / ctx.position!.avgCost!) * 100, variable: "entry" }, ctx, true);
-    // The big-winner switch: a peak exactly this far off the buy, exactly this
-    // many days after it, turns the stop from our entry off.
+    // A stop from our entry, and a trail, exactly on the line. A deleted key a stored trigger still carries changes nothing.
     const avg = ctx.position!.avgCost!;
     const down = withPrice(ctx, avg * 0.92);
     const fell = ((avg - down.latestQuote!.price) / avg) * 100;
-    for (const days of [5, 21]) {
-      const fast = { ...down, position: { ...down.position!, peakAt: new Date(down.position!.openedAt!.getTime() + days * DAY) } };
-      const ran = ((fast.position.peakPrice! - avg) / avg) * 100;
-      add("the stop from our entry", { watch: "move", is: "below", value: fell, variable: "entry" }, fast, true);
-      add("the big-winner switch", { watch: "move", is: "below", value: fell, variable: "entry", settings: { fastWinnerPct: ran, fastWinnerDays: days } }, fast, false);
-      const sameDay = { ...down, position: { ...down.position!, peakAt: down.position!.openedAt } };
-      add("the big-winner switch, peak on the day we bought", { watch: "move", is: "below", value: fell, variable: "entry", settings: { fastWinnerPct: ran, fastWinnerDays: days } }, sameDay, false);
-    }
+    add("the stop from our entry", { watch: "move", is: "below", value: fell, variable: "entry" }, down, true);
+    add("the stop from our entry, a deleted key stored", { watch: "move", is: "below", value: fell, variable: "entry", settings: { fastWinnerPct: 1, fastWinnerDays: 365 } }, down, true);
     for (const pct of [5, 12, 25]) {
-      const at = { peak: ctx.position!.peakPrice, avgCost: ctx.position!.avgCost!, isLong: true, atr: null };
-      add("the trail line", { watch: "move", is: "below", value: pct, variable: "peak" }, withPrice(ctx, trailFireLevel({ pct }, at)!), true);
-      add("the trail line, armed", { watch: "move", is: "below", value: pct, variable: "peak", settings: { startOnceUpPct: 10 } }, withPrice(ctx, trailFireLevel({ pct, armAtGainPct: 10 }, at)!), true);
+      const line = withPrice(ctx, trailFireLevel(pct, { peak: ctx.position!.peakPrice, isLong: true })!);
+      add("the trail line", { watch: "move", is: "below", value: pct, variable: "peak" }, line, true);
+      add("the trail line, deleted keys stored", { watch: "move", is: "below", value: pct, variable: "peak", settings: { startOnceUpPct: 200, widenAtr: 10 } }, line, true);
     }
     const ratio = volumeRatio(snap, ctx.today!.volume)!;
     add("the volume ratio", { watch: "volume", value: ratio }, ctx, true);

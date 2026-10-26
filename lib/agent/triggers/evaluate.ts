@@ -120,13 +120,6 @@ export interface EvaluationContext {
     peakPrice?: number | null;
     /** When the position opened — the anchor for a day count `from: "BUY"`. */
     openedAt?: Date | null;
-    /**
-     * When that water mark was set, written alongside peakPrice by the
-     * five-minute pass. Read by the big-winner switch, which needs to tell a run that
-     * took two weeks from one that took six months. Absent → the switch
-     * can't prove the run was fast, so the partial stands.
-     */
-    peakAt?: Date | null;
   } | null;
 
   /** Thesis fields needed by time-based predicates. */

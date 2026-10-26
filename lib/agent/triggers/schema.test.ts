@@ -93,7 +93,9 @@ describe("the condition a model writes", () => {
   it("lists every setting it can send, and keeps the one it sent", () => {
     const schema = predicateInputSchema();
     const json = JSON.stringify(zodSchema(schema as never).jsonSchema);
-    for (const key of ["close", "startOnceUpPct", "widenAtr", "fastWinnerPct", "period", "window", "fromDay"]) expect(json).toContain(`"${key}":`);
+    for (const key of ["close", "period", "window", "fromDay"]) expect(json).toContain(`"${key}":`);
+    // Deleted: an agent has no field to write them in.
+    for (const key of ["startOnceUpPct", "widenAtr", "fastWinnerPct", "fastWinnerDays"]) expect(json).not.toContain(`"${key}"`);
     expect(schema.parse({ watch: "price", is: "above", value: 183, settings: { close: true } })).toEqual({ watch: "price", is: "above", value: 183, settings: { close: true } });
   });
 
@@ -111,7 +113,7 @@ describe("the condition a model writes", () => {
     const fields = Object.fromEntries(arms.map((a) => [(a.properties.watch as { const?: string }).const, Object.keys(a.properties.settings?.properties ?? {})]));
     expect(fields).toEqual({
       price: ["close"],
-      move: ["fastWinnerPct", "fastWinnerDays", "startOnceUpPct", "widenAtr"],
+      move: [],
       volume: [],
       rsi: ["period"],
       strength: ["window"],
@@ -140,10 +142,10 @@ describe("a setting the measure doesn't take is dropped at the gate", () => {
     expect(waitsForClose(stored)).toBe(false);
   });
 
-  it("the condition a model writes drops it too, and keeps what the measure or variable declares", () => {
+  it("the condition a model writes drops it too, and keeps what the measure declares", () => {
     expect(predicateInputSchema().parse(undeclared)).toEqual({ watch: "move", is: "below", value: 7, variable: "prev_close" });
-    const trail = { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, close: true } };
-    expect(predicateInputSchema().parse(trail)).toEqual({ watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10 } });
+    const trail = { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, widenAtr: 3, close: true } };
+    expect(predicateInputSchema().parse(trail)).toEqual({ watch: "move", is: "below", value: 12, variable: "peak" });
     const closeBuy = { watch: "price", is: "above", value: 183, settings: { close: true } };
     expect(triggerPredicateSchema.parse(closeBuy)).toEqual(closeBuy);
   });

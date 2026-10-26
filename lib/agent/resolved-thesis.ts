@@ -132,8 +132,6 @@ export interface ResolverThesisInput {
    * for the rows that need it; absent ⇒ that check is skipped.
    */
   dayRangePct?: number | null;
-  /** The stock's ATR(14) from the daily snapshot — widens an atrMultiple trail (DAV-294). */
-  atr14?: number | null;
   /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
   avgCost?: number | null;
   /** Paired open Position's share count — with avgCost, the loss at the floor (DAV-344). */
@@ -334,7 +332,6 @@ export function buildResolvedEnvelope(args: {
           currentPrice,
           peakPrice: thesis.peakPrice ?? null,
           triggers: thesis.parsedTriggers,
-          atr14: thesis.atr14 ?? null,
           lastLadderEditAt: thesis.lastLadderEditAt ?? null,
           now,
         })

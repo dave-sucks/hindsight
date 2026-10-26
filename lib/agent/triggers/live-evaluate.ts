@@ -99,7 +99,7 @@ export async function evaluateLiveTriggerMatches({
   );
   const positionInfoByTicker = new Map<
     string,
-    { openedAt: Date; avgCost: number | null; peakPrice: number | null; peakAt: Date | null }
+    { openedAt: Date; avgCost: number | null; peakPrice: number | null }
   >();
   if (activeTickers.length > 0) {
     const openPositions = await prisma.position.findMany({
@@ -113,7 +113,6 @@ export async function evaluateLiveTriggerMatches({
         openedAt: true,
         avgCost: true,
         peakPrice: true,
-        peakAt: true,
       },
       orderBy: { openedAt: "desc" },
     });
@@ -123,7 +122,6 @@ export async function evaluateLiveTriggerMatches({
           openedAt: p.openedAt,
           avgCost: p.avgCost,
           peakPrice: p.peakPrice,
-          peakAt: p.peakAt,
         });
       }
     }
@@ -187,7 +185,6 @@ export async function evaluateLiveTriggerMatches({
           ? {
               avgCost: posInfo.avgCost,
               peakPrice: posInfo.peakPrice,
-              peakAt: posInfo.peakAt,
               openedAt: posInfo.openedAt,
             }
           : null,

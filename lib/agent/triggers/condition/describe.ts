@@ -53,7 +53,7 @@ function valueText(c: Condition, say: "chip" | "words" = "chip"): string {
     text = number + (suffix ? (/^[%×]/.test(suffix) ? suffix : ` ${suffix}`) : "");
   }
   if (vars?.mode === "from" && chip) text += ` ${vars.word ? vars.word(c) : "from"} ${chip}`;
-  // A setting shows only when it isn't the default: "· only on the close", ", once it has been up 20%".
+  // A setting shows only when it isn't the default: "· only on the close", ", counting from the day after".
   const set = c.settings ?? {};
   for (const s of settingDefs(c)) {
     const value = set[s.key];

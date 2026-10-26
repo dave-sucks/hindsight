@@ -9,7 +9,7 @@
 import { BELOW_ABOVE, type MeasureDef } from "../measure";
 import { PRICE_VARIABLES, variableDef } from "../variables";
 
-import { trailFireLevel, trailOf } from "../../trail";
+import { trailFireLevel } from "../../trail";
 
 const SMA_PERIOD: Readonly<Record<string, 20 | 50 | 150 | 200>> = { sma20: 20, sma50: 50, sma150: 150, sma200: 200 };
 const MOVE_WINDOW: Readonly<Record<string, "1D" | "5D" | "20D">> = { prev_close: "1D", close_5d: "5D", close_20d: "20D" };
@@ -90,12 +90,12 @@ export const move: MeasureDef = {
     word: (c) => (c.is === "near" ? "of" : "from"),
     required: "Choose what the % is measured from.",
   },
-  // A % from our position is a line that moves with it: a give-back off the high (null until armed), a gain or loss off our entry.
+  // A % from our position is a line that moves with it: a give-back off the high, a gain or loss off our entry.
   line: (c, ctx) => {
     if (c.value == null || (c.is !== "above" && c.is !== "below")) return null;
     const side = c.is === "above" ? "UPSIDE" : "DOWNSIDE";
     if (c.variable === "peak") {
-      return { price: trailFireLevel(trailOf(c), { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: ctx.isLong, atr: ctx.atr14 }), side, projected: true };
+      return { price: trailFireLevel(c.value, { peak: ctx.peakPrice, isLong: ctx.isLong }), side, projected: true };
     }
     if (c.variable !== "entry") return null;
     const avg = ctx.avgCost;

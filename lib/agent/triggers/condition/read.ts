@@ -63,21 +63,6 @@ function gainFrom(base: number, price: number, ctx: EvaluationContext): number {
   return isLong(ctx) ? ((price - base) / base) * 100 : ((base - price) / base) * 100;
 }
 
-/** The big-winner switch: the peak ran this far off the buy, fast enough (playbook: +20% in ≤ 3 weeks, then hold). */
-function ranUpFast(c: Condition, ctx: EvaluationContext, avg: number): boolean {
-  const pct = num(setting(c, "fastWinnerPct"));
-  const peak = ctx.position?.peakPrice;
-  if (pct == null || peak == null) return false;
-  if (gainFrom(avg, peak, ctx) < pct) return false;
-  const within = num(setting(c, "fastWinnerDays"));
-  if (within == null) return true;
-  const opened = ctx.position?.openedAt;
-  const peakAt = ctx.position?.peakAt;
-  if (opened == null || peakAt == null) return false;
-  const days = (peakAt.getTime() - opened.getTime()) / DAY;
-  return days >= 0 && days <= within;
-}
-
 export const READERS: Readonly<Record<Watch, Reader>> = {
   price: {
     holds: (c, ctx) => {
@@ -108,17 +93,13 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       if (variable === "entry") {
         const avg = ctx.position?.avgCost;
         if (avg == null || avg <= 0 || price == null) return false;
-        if (ranUpFast(c, ctx, avg)) return false;
         const gain = gainFrom(avg, price, ctx);
         return c.is === "above" ? gain >= v : gain <= -v;
       }
       if (variable === "peak") {
         const peak = ctx.position?.peakPrice;
         if (peak == null || peak <= 0 || price == null) return false;
-        const trail = trailFireLevel(
-          { pct: v, armAtGainPct: num(setting(c, "startOnceUpPct")), atrMultiple: num(setting(c, "widenAtr")) },
-          { peak, avgCost: ctx.position?.avgCost, isLong: isLong(ctx), atr: ctx.indicators?.atr14 },
-        );
+        const trail = trailFireLevel(v, { peak, isLong: isLong(ctx) });
         if (trail == null) return false;
         return isLong(ctx) ? price <= trail : price >= trail;
       }
