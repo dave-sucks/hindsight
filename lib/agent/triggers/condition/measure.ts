@@ -67,7 +67,6 @@ export interface LineContext {
   isLong: boolean;
   avgCost?: number | null;
   peakPrice?: number | null;
-  atr14?: number | null;
 }
 
 /** What the trigger check loads for a condition beyond the live quote. */

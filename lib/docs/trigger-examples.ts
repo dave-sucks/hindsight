@@ -38,8 +38,8 @@ export const TRIGGER_TYPE_DOCS: readonly TriggerTypeDoc[] = [
     examples: [
       { action: "EXIT", when: { watch: "price", is: "below", value: 40.8 }, why: "The floor. Under the breakout shelf, and above the rising 20-day." },
       { action: "ENTER", when: { watch: "move", is: "near", value: 2, variable: "sma20" }, why: "Buy the pullback, not the spike: the setup is true near a rising average." },
-      { action: "EXIT", when: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10 } }, why: "A trail. It arms once the position has been up 10%, then follows the high." },
-      { action: "TRIM", when: { watch: "move", is: "above", value: 15.6, variable: "entry", settings: { fastWinnerPct: 20, fastWinnerDays: 21 } }, why: "Take a partial at twice the risk, unless it's a fast winner worth holding whole." },
+      { action: "EXIT", when: { watch: "move", is: "below", value: 12, variable: "peak" }, why: "A trail. Its line follows the highest price since the buy and never comes down." },
+      { action: "TRIM", when: { watch: "move", is: "above", value: 15.6, variable: "entry" }, why: "Take a partial at twice the risk." },
       { action: "ADD", when: { watch: "move", is: "above", value: 7, variable: "prev_close" }, why: "A big up day on a holding asks whether to press it." },
       { action: "REVIEW", when: { watch: "price", is: "below", variable: "sma200" }, why: "A long-term holding losing its 200-day is worth a look. A state, so it asks at most weekly." },
     ],
@@ -53,7 +53,7 @@ export const TRIGGER_TYPE_DOCS: readonly TriggerTypeDoc[] = [
       { action: "REVIEW", when: { watch: "volume", value: 2 }, why: "Twice the normal volume means someone knows something. Look before it moves." },
       { action: "ENTER", when: { watch: "rsi", is: "below", value: 30 }, why: "An oversold dip in a stock whose trend is still up." },
       { action: "REVIEW", when: { watch: "strength", value: 5, settings: { window: "3M" } }, why: "Leading the market by 5 points over three months: a leader worth a closer look." },
-      { action: "ENTER", when: { watch: "gap", value: 8, settings: { volume: 3, withinDays: 3 } }, why: "An 8% gap on three times the volume, held for three days: an episodic pivot." },
+      { action: "ENTER", when: { watch: "gap", value: 8 }, why: "An 8% gap up at the open: an episodic pivot." },
     ],
   },
   {

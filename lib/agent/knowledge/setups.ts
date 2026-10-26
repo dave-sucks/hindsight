@@ -43,29 +43,6 @@ export const COMPOUNDER_CATASTROPHE_PCT = 25;
 /** A compounder giving back this much from its high opens a review. */
 export const COMPOUNDER_GIVEBACK_REVIEW_PCT = 15;
 
-/**
- * Playbook E5: a trail is "the larger of 3× the stock's average daily range
- * or the analyst's percent". A quiet name and a jumpy one should not wear
- * the same give-back — MU's range is $50 a day, ABT's is $2.58 (DAV-294).
- */
-export const TRAIL_ATR_MULTIPLE = 3;
-
-/**
- * Playbook: "sell part into strength at +20–25%, unless the stock did +20%
- * in ≤ 3 weeks — then hold". A stock that runs this far off the buy THAT
- * FAST is a likely big winner: the partial sale at N R is off and the trail
- * manages it from there. Cutting a winner in half is how a good year becomes
- * an average one.
- *
- * Both halves are load-bearing. The size alone would switch the partial off
- * for any name that ever touched +20% — including a six-month grind, which
- * is an ordinary winner and exactly what the partial is for. On the book
- * today SMMT ran 30.5% in 13 days (fast) while MU took 54 days to reach
- * 15.5% (a grind).
- */
-export const BIG_WINNER_PEAK_GAIN_PCT = 20;
-/** …and it has to have got there within this many days of the buy. */
-export const BIG_WINNER_PEAK_WITHIN_DAYS = 21;
 /** Binary catalysts (PDUFA, readouts) risk this share of normal (DAV-245 ruling 2). */
 export const BINARY_RISK_MULTIPLIER = 0.5;
 /** …and a −50% gap on one may not cost more than this % of equity. */
@@ -168,6 +145,7 @@ export interface Setup {
   /** Multiplies the risk-per-trade (1.0 normal; binary events 0.5). */
   riskMultiplier: number;
   sizing: string;
+  /** A TRADE or CATALYST holding's exit line. A TARGET or COMPOUNDER holding sells by its analyst's and the account's rules, so it has none. */
   trail: Partial<Record<Horizon, string>>;
   /**
    * What a fill writes onto the stock as its own exits (lib/agent/triggers/
@@ -364,8 +342,6 @@ export const SETUPS: Setup[] = [
     sizing: "Risk-based (Part E4).",
     trail: {
       TRADE: "Stop to breakeven at +1R; close under the 21-day EMA.",
-      TARGET: "After +10%: max(3 ATR, 12–15%) under the high, or a close under the 50-day.",
-      COMPOUNDER: "No automatic sale under 25%; a 15% give-back and a close under the 200-day are reviews.",
     },
     manage: { partialAtR: 2, beatAndFadeReview: true },
     time: {
@@ -433,7 +409,7 @@ export const SETUPS: Setup[] = [
       "Growth numbers mid-double-digit or better; liquidity floor met",
     ],
     entry: {
-      template: { match: "all", conditions: [{ watch: "gap", value: EP_GAP_MIN_PCT, settings: { volume: EP_GAP_MIN_VOLUME_RATIO, withinDays: 3 } }, { match: "any", conditions: [{ watch: "price", is: "above", value: "{gapDayHigh}", settings: { close: true } }, { watch: "price", is: "above", value: "{gapDayMid}", settings: { close: true } }] }] },
+      template: { match: "all", conditions: [{ watch: "gap", value: EP_GAP_MIN_PCT }, { match: "any", conditions: [{ watch: "price", is: "above", value: "{gapDayHigh}", settings: { close: true } }, { watch: "price", is: "above", value: "{gapDayMid}", settings: { close: true } }] }] },
       confirmation: ["The gap holds (day 2 closes above the gap-day midpoint)", "Volume stays heavy"],
       chaseLimitPct: CHASE_LIMIT_PCT,
       text: "A close above the gap-day high, or a day-2 hold above the gap-day midpoint.",
@@ -449,7 +425,6 @@ export const SETUPS: Setup[] = [
     sizing: "Risk-based (Part E4); a wide gap-day low means fewer shares.",
     trail: {
       TRADE: "Close under the 10- or 20-day.",
-      TARGET: "After +10%: max(3 ATR, 12–15%) under the high, or a close under the 21-day EMA.",
     },
     manage: { partialAtR: null, beatAndFadeReview: true },
     time: { count: 5, unit: "SESSIONS", text: "Partial at 3–5 sessions; the trail decides the rest." },
@@ -473,7 +448,7 @@ export const SETUPS: Setup[] = [
       "Never a beat the market sold: a beat that gaps down is a fade signal, not a buy",
     ],
     entry: {
-      template: { match: "all", conditions: [{ watch: "report", is: "after", value: PEAD_ENTRY_WINDOW[1], settings: { fromDay: PEAD_ENTRY_WINDOW[0] } }, { watch: "price", is: "above", value: "{gapDayLow}" }] },
+      template: { match: "all", conditions: [{ watch: "report", is: "after", value: PEAD_ENTRY_WINDOW[1] }, { watch: "price", is: "above", value: "{gapDayLow}" }] },
       confirmation: ["Gap held", "Surprise and guidance confirmed from the release or transcript"],
       chaseLimitPct: PEAD_MAX_RUN_PAST_GAP_PCT,
       windowDays: PEAD_ENTRY_WINDOW,
@@ -492,7 +467,6 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
     trail: {
-      TARGET: "After +10%: max(3 ATR, 12–15%) under the high.",
       TRADE: "Close under the 20-day.",
     },
     manage: { partialAtR: 2, beatAndFadeReview: true },
@@ -548,8 +522,6 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
     trail: {
-      TARGET: "After +10%: max(3 ATR, 12–15%) under the high, or a close under the 50-day.",
-      COMPOUNDER: "No automatic sale under 25%; a 15% give-back and a close under the 200-day are reviews.",
       CATALYST: "The structural stop until the event.",
     },
     manage: { partialAtR: null, beatAndFadeReview: true },
@@ -768,9 +740,7 @@ export const SETUPS: Setup[] = [
     target: { minR: MIN_REWARD_RISK, text: "A 3–5 year valuation case; trims only at valuation extremes." },
     riskMultiplier: 1,
     sizing: "First tranche 50% of target size; second on strength (+7% from the first fill, or a new high after a pause) or on a held 50-day pullback in a market-wide dip. Never add into company-specific bad news.",
-    trail: {
-      COMPOUNDER: `No automatic sale under ${COMPOUNDER_CATASTROPHE_PCT}%; a ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% give-back and a close under the 200-day are reviews.`,
-    },
+    trail: {},
     manage: { partialAtR: null, beatAndFadeReview: false },
     time: { count: 60, unit: "CALENDAR", text: "A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop." },
     failureSigns: ["The named invalidation happens", "Guidance cut", "Margin break"],

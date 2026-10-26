@@ -21,10 +21,7 @@ describe("setupExitTriggers", () => {
       ["REVIEW", "all"],
     ]);
     expect(out[0].predicate).toEqual({ watch: "from_date", is: "after", value: 60, variable: "buy" });
-    // The partial carries the big-winner switch: once IOT has run 20% off
-    // the buy inside three weeks it is held and managed on the trail, not
-    // cut in half. A slower climb to the same gain is still de-risked.
-    expect(out[1].predicate).toEqual({ watch: "move", is: "above", value: 15.5, variable: "entry", settings: { fastWinnerPct: 20, fastWinnerDays: 21 } });
+    expect(out[1].predicate).toEqual({ watch: "move", is: "above", value: 15.5, variable: "entry" });
     expect(out[2].predicate).toEqual({ match: "all", conditions: [{ watch: "surprise", is: "beat", value: 0 }, { watch: "move", is: "below", value: BEAT_AND_FADE_DOWN_PCT, variable: "prev_close" }] });
     expect(out.every((t) => t.source === "DEFAULT")).toBe(true);
   });
@@ -63,7 +60,7 @@ describe("heldSetupExitOps — a held stock whose review just named its setup", 
   it("a floor still under cost writes the partial from the real cost and floor", () => {
     const ops = heldSetupExitOps({ setup: pead, horizon: "TRADE", entry: 100, stop: 94, direction: "LONG", stored: [], mintId });
     const trim = ops.find((o) => o.op === "add" && o.trigger.action === "TRIM");
-    expect(trim && trim.op === "add" ? trim.trigger.predicate : null).toEqual({ watch: "move", is: "above", value: pead.manage.partialAtR! * 6, variable: "entry", settings: { fastWinnerPct: 20, fastWinnerDays: 21 } });
+    expect(trim && trim.op === "add" ? trim.trigger.predicate : null).toEqual({ watch: "move", is: "above", value: pead.manage.partialAtR! * 6, variable: "entry" });
   });
 
   it("leaves a trigger already in the same bucket alone", () => {

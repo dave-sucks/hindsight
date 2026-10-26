@@ -59,14 +59,12 @@ export function onTheClose(w: When): When {
   return { ...w, settings: { ...w.settings, close: true } };
 }
 
-/** Whether the trigger check must load `source` for it: its measure reads it, or (the snapshot) a variable or setting it uses does. */
+/** Whether the trigger check must load `source` for it: its measure reads it, or (the snapshot) its variable does. */
 export function readsSource(w: When, source: Source): boolean {
   return conditionsOf(w).some(
     (c) =>
       measureOf(c).reads?.includes(source) === true ||
-      (source === "snapshot" &&
-        ((c.variable != null && variableDef(c.variable).snapshot === true) ||
-          settingDefs(c).some((s) => s.snapshot === true && c.settings?.[s.key] != null))),
+      (source === "snapshot" && c.variable != null && variableDef(c.variable).snapshot === true),
   );
 }
 

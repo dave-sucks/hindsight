@@ -197,8 +197,6 @@ interface PositionInfo {
   avgCost: number | null;
   /** For trail — the high since we bought, brought up to date by this pass. */
   peakPrice: number | null;
-  /** When that water mark was set — the big-winner switch needs the clock. */
-  peakAt: Date | null;
 }
 
 async function buildPositionOpenedAtMap(
@@ -259,7 +257,6 @@ async function buildPositionOpenedAtMap(
         openedAt: p.openedAt,
         avgCost: p.avgCost,
         peakPrice: p.peakPrice,
-        peakAt: p.peakAt,
       });
     }
   }
@@ -711,7 +708,6 @@ export const triggerEvaluator = inngest.createFunction(
             ? {
                 avgCost: posInfo.avgCost,
                 peakPrice: posInfo.peakPrice,
-                peakAt: posInfo.peakAt,
                 openedAt: posInfo.openedAt,
               }
             : null,

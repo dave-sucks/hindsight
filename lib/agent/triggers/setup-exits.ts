@@ -18,12 +18,7 @@
  * (the analyst chose one) is left alone by the caller.
  */
 
-import {
-  BIG_WINNER_PEAK_GAIN_PCT,
-  BIG_WINNER_PEAK_WITHIN_DAYS,
-  type Setup,
-  type Horizon,
-} from "@/lib/agent/knowledge/setups";
+import type { Setup, Horizon } from "@/lib/agent/knowledge/setups";
 import type { Trigger } from "./types";
 import type { TriggerOp } from "./ops";
 import { triggerSlot } from "./condition/slot";
@@ -48,9 +43,6 @@ export function setupExitTriggers(input: {
 }): Trigger[] {
   const { setup, entry, stop } = input;
   const out: Trigger[] = [];
-  // The big-winner rule is a trade/target idea; a compounder never trims on
-  // a gain milestone and a catalyst exits on its event.
-  const bigWinnerApplies = input.horizon === "TRADE" || input.horizon === "TARGET";
 
   // The time limit — "no progress in 20 sessions", the 60-day business
   // checkpoint — as a day count from the buy (#655). Always a review: the
@@ -82,34 +74,16 @@ export function setupExitTriggers(input: {
     });
   }
 
-  // The partial sale at N R — and the one thing that turns it off. A stock
-  // that ran BIG_WINNER_PEAK_GAIN_PCT off the buy inside
-  // BIG_WINNER_PEAK_WITHIN_DAYS is a likely big winner: the playbook holds
-  // it and lets the trail manage it rather than cutting it in half. A slower
-  // climb to the same gain is an ordinary winner and still gets de-risked.
-  // Only where the partial lives at all, so a compounder and a catalyst are
-  // untouched.
+  // The partial sale at N R. Only where the setup has one, so a compounder and a catalyst are untouched.
   if (setup.manage.partialAtR != null && stop != null && entry > 0 && stop > 0 && stop !== entry) {
     const distPct = (Math.abs(entry - stop) / entry) * 100;
     const pct = Math.round(setup.manage.partialAtR * distPct * 10) / 10;
     if (pct > 0) {
       out.push({
         id: input.mintId(),
-        predicate: {
-          watch: "move",
-          is: "above",
-          value: pct,
-          variable: "entry",
-          ...(bigWinnerApplies
-            ? { settings: { fastWinnerPct: BIG_WINNER_PEAK_GAIN_PCT, fastWinnerDays: BIG_WINNER_PEAK_WITHIN_DAYS } }
-            : {}),
-        },
+        predicate: { watch: "move", is: "above", value: pct, variable: "entry" },
         action: "TRIM",
-        rationale:
-          `Up ${pct}% from entry — ${setup.manage.partialAtR}R on a ${distPct.toFixed(1)}% stop. ${setup.target.text}` +
-          (bigWinnerApplies
-            ? ` Off for good once the stock has run ${BIG_WINNER_PEAK_GAIN_PCT}% off the buy within ${BIG_WINNER_PEAK_WITHIN_DAYS} days: a winner that fast is held and managed on the trail, not cut in half.`
-            : ""),
+        rationale: `Up ${pct}% from entry — ${setup.manage.partialAtR}R on a ${distPct.toFixed(1)}% stop. ${setup.target.text}`,
         cooldownDays: 7,
         source: "DEFAULT",
       });

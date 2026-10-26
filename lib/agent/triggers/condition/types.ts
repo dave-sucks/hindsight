@@ -58,7 +58,7 @@ export type VariableId = PriceVariable | DateVariable | FilingVariable;
 
 export type SettingValue = number | boolean | string;
 
-/** A condition's settings. Which keys it may carry is declared on its measure and its variable. */
+/** A condition's settings. Which keys it may carry is declared on its measure. */
 export type Settings = Readonly<Record<string, SettingValue>>;
 
 /** One setting, declared on the measure (the RSI's length) or the variable (the trailing options on the high since we bought). */
@@ -96,9 +96,7 @@ export interface SettingDef {
   identity?: boolean;
   /** Raising it, or turning it on, protects less: on a sale it counts as loosening the stop. */
   looser?: boolean;
-  /** When set, the check reads the daily indicator snapshot for it (the trail's daily range). */
-  snapshot?: boolean;
-  /** Added to the sentence when set: ", once it has been up 20%". */
+  /** Added to the sentence when set: ", counting from the day after". */
   words?: (v: SettingValue, s: Settings) => string;
 }
 

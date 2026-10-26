@@ -63,21 +63,6 @@ function gainFrom(base: number, price: number, ctx: EvaluationContext): number {
   return isLong(ctx) ? ((price - base) / base) * 100 : ((base - price) / base) * 100;
 }
 
-/** The big-winner switch: the peak ran this far off the buy, fast enough (playbook: +20% in ≤ 3 weeks, then hold). */
-function ranUpFast(c: Condition, ctx: EvaluationContext, avg: number): boolean {
-  const pct = num(setting(c, "fastWinnerPct"));
-  const peak = ctx.position?.peakPrice;
-  if (pct == null || peak == null) return false;
-  if (gainFrom(avg, peak, ctx) < pct) return false;
-  const within = num(setting(c, "fastWinnerDays"));
-  if (within == null) return true;
-  const opened = ctx.position?.openedAt;
-  const peakAt = ctx.position?.peakAt;
-  if (opened == null || peakAt == null) return false;
-  const days = (peakAt.getTime() - opened.getTime()) / DAY;
-  return days >= 0 && days <= within;
-}
-
 export const READERS: Readonly<Record<Watch, Reader>> = {
   price: {
     holds: (c, ctx) => {
@@ -108,17 +93,13 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       if (variable === "entry") {
         const avg = ctx.position?.avgCost;
         if (avg == null || avg <= 0 || price == null) return false;
-        if (ranUpFast(c, ctx, avg)) return false;
         const gain = gainFrom(avg, price, ctx);
         return c.is === "above" ? gain >= v : gain <= -v;
       }
       if (variable === "peak") {
         const peak = ctx.position?.peakPrice;
         if (peak == null || peak <= 0 || price == null) return false;
-        const trail = trailFireLevel(
-          { pct: v, armAtGainPct: num(setting(c, "startOnceUpPct")), atrMultiple: num(setting(c, "widenAtr")) },
-          { peak, avgCost: ctx.position?.avgCost, isLong: isLong(ctx), atr: ctx.indicators?.atr14 },
-        );
+        const trail = trailFireLevel(v, { peak, isLong: isLong(ctx) });
         if (trail == null) return false;
         return isLong(ctx) ? price <= trail : price >= trail;
       }
@@ -160,15 +141,10 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       const snap = ctx.indicators;
       const minPct = c.value;
       if (!snap || minPct == null) return false;
-      const minVol = num(setting(c, "volume")) ?? 3;
-      const within = num(setting(c, "withinDays")) ?? 1;
       const prevClose = ctx.latestQuote?.prevClose;
       const open = ctx.today?.open;
-      if (open != null && prevClose != null && prevClose > 0) {
-        const ratio = volumeRatio(snap, ctx.today?.volume);
-        if (((open - prevClose) / prevClose) * 100 >= minPct && ratio != null && ratio >= minVol) return true;
-      }
-      return snap.gaps.some((g) => g.sessionsAgo < within && g.pct >= minPct && g.volumeRatio != null && g.volumeRatio >= minVol);
+      if (open != null && prevClose != null && prevClose > 0 && ((open - prevClose) / prevClose) * 100 >= minPct) return true;
+      return snap.gaps.some((g) => g.sessionsAgo < 1 && g.pct >= minPct);
     },
   },
 
@@ -185,7 +161,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       const r = ctx.earnings;
       if (!r || r.epsActual == null) return false;
       const since = -daysUntilReport(r, ctx.now);
-      return since >= (num(setting(c, "fromDay")) ?? 0) && since <= c.value;
+      return since >= 0 && since <= c.value;
     },
     readsReport: (c) => c.is === "before",
   },

@@ -200,9 +200,10 @@ describe("the writer names a setup by id from the same lines", () => {
 
 describe("setupLines", () => {
   const pullback = getSetup("MA_PULLBACK")!;
-  it("with a horizon, the one Manage line for it", () => {
-    const lines = setupLines(pullback, "TARGET");
-    expect(lines.filter((l) => l.startsWith("Manage"))).toEqual([`Manage: ${pullback.trail.TARGET}`]);
+  it("with a horizon, the one Manage line for it, and none when it has none (never another horizon's)", () => {
+    const breakout = getSetup("BASE_BREAKOUT")!;
+    expect(setupLines(breakout, "TRADE").filter((l) => l.startsWith("Manage"))).toEqual([`Manage: ${breakout.trail.TRADE}`]);
+    expect(setupLines(pullback, "TARGET").filter((l) => l.startsWith("Manage"))).toEqual([]);
   });
   it("without one, each horizon's, labelled", () => {
     const lines = setupLines(pullback);

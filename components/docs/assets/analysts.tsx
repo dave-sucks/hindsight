@@ -13,7 +13,7 @@ const ANALYSTS = [
     icon: Rocket,
     style: "Post-earnings drift, long only",
     body: "Buys the 30 to 60 days of drift after a clean beat and raise. Never the gap day, never into the next print.",
-    rule: { action: "EXIT", when: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10 } }, why: "Its trail: 12% off the high, once up 10%.", level: "ANALYST" },
+    rule: { action: "EXIT", when: { watch: "move", is: "below", value: 12, variable: "peak" }, why: "Its trail: 12% off the high.", level: "ANALYST" },
     pos: "sm:mr-24",
   },
   {

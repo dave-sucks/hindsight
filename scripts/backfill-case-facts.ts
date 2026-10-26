@@ -205,7 +205,7 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
         id, direction, status, triggers: ladder, createdAt: date(row.createdAt) ?? at,
         lastReviewedAt, researchUpdatedAt: date(row.researchUpdatedAt), horizon: (row.horizon as string | null) ?? null,
         positionOpenedAt: position?.openedAt ?? null, avgCost: position?.avgCost ?? null, peakPrice: position?.peakPrice ?? null,
-        atr14: snap?.atr14 ?? null, quantity: position && position.quantity > 0 ? position.quantity : null,
+        quantity: position && position.quantity > 0 ? position.quantity : null,
         structure: snap ? { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] } : null,
         targetPrice: num(row.targetPrice),
         paperTenureDays: num(row.paperTenureDays), paperRealizedPnl: num(row.paperRealizedPnl), paperReviewCount: num(row.paperReviewCount), promotedAt: date(row.promotedAt),
@@ -227,7 +227,7 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
         .map((o) => ({ createdAt: o.createdAt, rejectionMessage: o.rejectionMessage, status: o.status }));
       const folded = foldDeclines(declineRows);
       if (folded) {
-        const floor = computeLadderHealth({ direction, avgCost: position?.avgCost ?? null, currentPrice: price, peakPrice: position?.peakPrice ?? null, triggers: ladder, atr14: snap?.atr14 ?? null, lastLadderEditAt: null, now: at })?.floor?.price ?? null;
+        const floor = computeLadderHealth({ direction, avgCost: position?.avgCost ?? null, currentPrice: price, peakPrice: position?.peakPrice ?? null, triggers: ladder, lastLadderEditAt: null, now: at })?.floor?.price ?? null;
         input.declinedSale = declinedSaleWork({ status, direction, decline: folded, floorPrice: floor, currentPrice: price, recentLow: null, now: at });
       }
     }

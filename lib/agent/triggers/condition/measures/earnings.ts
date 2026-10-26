@@ -2,7 +2,6 @@
 
 
 import type { MeasureDef } from "../measure";
-import { num, shown } from "../words";
 
 export const report: MeasureDef = {
   id: "report",
@@ -23,15 +22,10 @@ export const report: MeasureDef = {
       { is: "after", range: { what: "After earnings", unit: " days", integer: true, min: 0, max: 5, why: "The calendar looks 5 days back." } },
     ],
   },
-  settings: [
-    { key: "fromDay", default: 0, range: { what: "After earnings' first day (fromDay)", integer: true, min: 0, max: 5 }, words: (v) => (v === 1 ? ", counting from the day after" : "") },
-  ],
   actions: ["REVIEW"],
   says: (c) => {
     const n = c.value ?? 0;
-    const from = num(c.settings?.fromDay) ?? 0;
     if (n === 0) return "on the day of earnings";
-    if (c.is === "after" && from > 0) return `${from}–${n} days after earnings`;
     return `within ${n} ${n === 1 ? "day" : "days"} ${c.is === "after" ? "after" : "before"} earnings`;
   },
   // True every day of the window, so the cooldown is what makes it fire once; 30 clears any window and is short of a quarter.
@@ -39,10 +33,6 @@ export const report: MeasureDef = {
   fresh: () => ({ watch: "report", is: "before" }),
   fits: (c) => c.value != null && (c.is === "before" || c.is === "after"),
   shape: "Earnings is before or after the report, a number of days.",
-  rule: (c) => {
-    const from = num(c.settings?.fromDay) ?? 0;
-    return c.is === "after" && c.value != null && from > c.value ? `After earnings can't end on day ${shown(c.value)} before it starts on day ${shown(from)}.` : null;
-  },
 };
 
 export const surprise: MeasureDef = {

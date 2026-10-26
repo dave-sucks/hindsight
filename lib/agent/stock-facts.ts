@@ -248,7 +248,6 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
           targetPrice: t.targetPrice ?? null,
           stopLoss: t.stopLoss ?? null,
           dayRangePct: dayRangePct[t.ticker.toUpperCase()] ?? null,
-          atr14: w?.atr14 ?? null,
           avgCost: w?.avgCost ?? null,
           quantity: w?.quantity ?? null,
           equity: load.equity,

@@ -67,41 +67,29 @@ evaluation, so the gate rejects it up front, with the list of measures.
 | Measure (`watch`) | Means | Number · variable · settings |
 |---|---|---|
 | `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought. `settings.close` = the day must **close** past it — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
-| `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the five-minute check from the live price and, for a position held since before the open, the session's high) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required; entry: `fastWinnerPct` / `fastWinnerDays`; peak: `startOnceUpPct` / `widenAtr` |
+| `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the five-minute check from the live price and, for a position held since before the open, the session's high) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required |
 | `volume` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio. | `value` (×) |
 | `rsi` | RSI over the snapshot's closes with the live price as today's. | `value`; `settings.period` 14 or 2 |
 | `strength` | Return over the window minus the S&P's, percentage points, as of the last close. A state (§6). | `value`; `settings.window` 1M / 3M / 6M |
-| `gap` | Opened ≥ `value`% over the prior close on ≥ `volume`× normal volume — today, or within `withinDays` sessions. | `value` (%); `volume`, `withinDays` |
-| `report` | **Before** a report: "reports within N days" (the heads-up; 14-day lookahead). **After** one: "reported up to N days ago" (0 = the report day; `fromDay: 1` starts the day after) — the post-report drift window. Off the Finnhub calendar on the cron (`triggers/earnings.ts`), one firm-wide call per pass. Once per report (30-day cooldown); the audit row carries the date, bell and estimates. | `value` (days); `fromDay` |
+| `gap` | Opened ≥ `value`% over the prior close, whatever the volume — today, or the snapshot's latest session. Fires once per gap (1-day wait). | `value` (%) |
+| `report` | **Before** a report: "reports within N days" (the heads-up; 14-day lookahead). **After** one: "reported up to N days ago", counting from the report day (0) — the post-report drift window. Off the Finnhub calendar on the cron (`triggers/earnings.ts`), one firm-wide call per pass. Once per report (30-day cooldown); the audit row carries the date, bell and estimates. | `value` (days) |
 | `surprise` | Earnings beat or miss — reported EPS vs estimate, same calendar call. Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. 0 = any amount. | `value` (% or more) |
 | `filing` | The company filed something with the SEC. Keyed on the 8-K item or the form, never "a 10-Q was filed": `tier:MATERIAL` / `tier:RED` ("at least" — material matches serious too), `item:8.01`, `form:S-3`. Several events are "any of" one-event conditions. Read live off EDGAR — one search per pass for every name carrying a filing trigger, 4-day lookback. **One fire per filing** (the filing IDs are remembered on the trigger, or in `triggerState` for an inherited rule); no cooldown, because filings cluster. A serious filing on a HOLDING spawns a tactical run the same day; everything else goes to the next daily review. The tier table is `lib/market-data/sec-events.ts`. | `variable` |
 | `insiders` | At least N distinct insiders bought on the open market (Form 4 code P; grants and exercises excluded) within 30 or 90 days. Read from the snapshot's `insiderBuys` (Finnhub, refreshed 06:30 ET). The fire's audit row names the buyers. Cooldown 30. | `value`; `settings.days` |
 | `repeat` | The review clock: N days since the last actual review (`lastReviewedAt`), repeating. Cooldown is its own interval. | `value` (days) |
 | `from_date` | N days after the buy (false until held — the playbook's time limits: "sell 20 days after the buy if still held"), or N days before or after the thesis's own `catalystDate` (the FDA decision, the deal close) — read off the thesis, never typed into the trigger. Cooldown defaults to N, so a review re-asks every N days once reached; an EXIT is the usual standing order. | `value` (days), `variable` buy / event |
 
-**A big winner is not trimmed.** A sale or trim on the move from our entry
-takes optional `fastWinnerPct` + `fastWinnerDays`: once the position's tracked
-peak has run that far off the buy, *that fast*, the rung is off for good. The
-playbook's rule is "+20% in ≤ 3 weeks — then hold", and both halves matter: the
-size alone would switch the partial off for a six-month grind to the same gain,
-which is an ordinary winner and exactly what the partial is for. A fill writes
-both onto the partial sale for a trade or a target position, at 20% and 21
-days. It reads `Position.peakPrice` and `Position.peakAt` — the same water mark
-the trail reads, plus the clock written beside it — so the rule
-needs no memory of its own. A missing `peakAt` means the run can't be shown to
-be fast, so the partial stands. SMMT ran 30.5% in 13 days and loses its
-partial; MU took 54 days to reach 15.5% and keeps it.
-
-**A trail that widens with the stock.** The trail takes an optional
-`widenAtr`: the give-back is the larger of its % and `widenAtr` × the stock's
-ATR(14) from the daily snapshot (playbook E5). It only ever widens — a missing
-snapshot falls back to the written percent. The line is computed in ONE
-function, `lib/agent/triggers/trail.ts` → `trailFireLevel`, and every surface
-that draws it passes the same ATR: the evaluator, the floor-health block the
-agents read, and the thesis sheet's and trade page's levels. MU (ATR $50 on a
-$1,035 peak) trails 14.5%; ABT (ATR $2.58) keeps its written 25%.
-`startOnceUpPct`: the trail has no level until the position has once been up
-that much from entry, so an unarmed trail is never drawn.
+**A trail is one number.** Its line is the give-back % off the tracked high,
+computed in ONE function, `lib/agent/triggers/trail.ts` → `trailFireLevel`,
+which the evaluator, the floor-health block and the sheet's and trade page's
+levels all call. The arming gain (`startOnceUpPct`), the range widening
+(`widenAtr`), the big-winner switch on the move from our entry
+(`fastWinnerPct` / `fastWinnerDays`), a gap's volume and look-back (`volume`,
+`withinDays`) and "after earnings" starting later (`fromDay`) were deleted
+2026-10: every setting a
+trigger carries is a visible field in the trigger form, or it doesn't exist.
+A stored trigger still carrying one of those keys reads without it
+(`declaredOnly` in `condition/catalog.ts`).
 
 **A day count is always calendar days — the catalog is not.** A setup's short
 time limits are written in sessions ("no progress in 10–20 sessions is a failed
@@ -411,7 +399,7 @@ same day whatever is set (`filingNeedsSameDayLook`).
 `cooldownDays` rate-limits re-fires. Omit it → the measure's default
 (`cooldownDays` on its catalog entry; `defaultCooldownDays` in
 `condition/rules.ts`): a surprise 7, a report 30, insiders 30, a price level,
-a move, volume and RSI 1, a gap its `withinDays`, the move from our entry 7 —
+a move, volume, RSI and a gap 1, the move from our entry 7 —
 the milestone latches, so 7d stops a same-week re-fire if the acting agent
 forgets to re-arm the next checkpoint; the trail 1, the review clock and a
 date its own day count. **`cooldownDays: 0` is reserved for terminal `EXIT`

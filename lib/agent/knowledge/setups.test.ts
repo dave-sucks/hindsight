@@ -58,11 +58,14 @@ describe("the setup catalog", () => {
     expect(s.manage.partialAtR === null || s.manage.partialAtR > 0).toBe(true);
   });
 
-  it("every ENTRY setup has a condition and a trail for each of its horizons", () => {
+  it("every ENTRY setup has a condition and a trail for its TRADE and CATALYST horizons; TARGET and COMPOUNDER sell by the analyst's and the account's rules", () => {
     for (const s of SETUPS.filter((x) => x.role === "ENTRY")) {
       if (s.id === "PRE_CATALYST") continue; // entered via D1/D5; its trail is the event
       expect({ id: s.id, template: s.entry.template }).not.toEqual({ id: s.id, template: null });
-      for (const h of s.horizons) expect({ id: s.id, h, trail: s.trail[h] ?? null }).not.toMatchObject({ trail: null });
+      for (const h of s.horizons) {
+        const own = h === "TRADE" || h === "CATALYST";
+        expect({ id: s.id, h, trail: s.trail[h] != null }).toEqual({ id: s.id, h, trail: own });
+      }
     }
   });
 
@@ -122,7 +125,7 @@ describe("the setup catalog", () => {
       "above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}",
     );
     expect(describeTemplate(getSetup("PEAD")!.entry.template)).toBe(
-      "1–3 days after earnings and above {gapDayLow}",
+      "within 3 days after earnings and above {gapDayLow}",
     );
   });
 
@@ -148,7 +151,7 @@ describe("read_knowledge_library — topic 'setup'", () => {
     const r = await tool.execute({ topic: "setup", id: "PEAD" }, opts);
     expect(r.data.found).toBe(true);
     expect(String(r.data.content)).toContain("Post-earnings drift (D4)");
-    expect(String(r.data.content)).toContain("Condition: 1–3 days after earnings and above {gapDayLow}");
+    expect(String(r.data.content)).toContain("Condition: within 3 days after earnings and above {gapDayLow}");
   });
 
   it("names the available setups on an unknown id", async () => {

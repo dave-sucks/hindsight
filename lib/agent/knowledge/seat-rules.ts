@@ -17,7 +17,7 @@
 
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { withFireMode, type FireMode } from "@/lib/agent/triggers/fire-mode";
-import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT, TRAIL_ATR_MULTIPLE, isNamedSetup, type SetupId } from "./setups";
+import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT, isNamedSetup, type SetupId } from "./setups";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export interface SeatRule {
@@ -28,12 +28,12 @@ export interface SeatRule {
   cooldownDays?: number;
 }
 
-/** PEAD (TARGET): E5 — a trail that arms once the drift has paid; the ±10/12 attention lines. */
+/** PEAD (TARGET): E5 — a 12% trail off the high; the ±10/12 attention lines. */
 const PEAD_RULES: SeatRule[] = [
   {
     action: "EXIT",
-    predicate: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, widenAtr: TRAIL_ATR_MULTIPLE } },
-    rationale: `Sell if it gives back 12% from its high once we've been up 10% (more room for a stock that swings more: ${TRAIL_ATR_MULTIPLE}× its average daily range). Keeps most of the gain from the earnings move instead of handing it back.`,
+    predicate: { watch: "move", is: "below", value: 12, variable: "peak" },
+    rationale: "Sell if it gives back 12% from its high. Keeps most of the gain from the earnings move instead of handing it back.",
     fireMode: "DO_IT",
     cooldownDays: 0,
   },
@@ -86,8 +86,8 @@ const COMPOUNDER_RULES: SeatRule[] = [
   },
   {
     action: "EXIT",
-    predicate: { watch: "move", is: "below", value: COMPOUNDER_CATASTROPHE_PCT, variable: "peak", settings: { widenAtr: TRAIL_ATR_MULTIPLE } },
-    rationale: `Down ${COMPOUNDER_CATASTROPHE_PCT}% from its high (more room for a stock that swings more: ${TRAIL_ATR_MULTIPLE}× its average daily range). For a stock we mean to hold for years, a drop this deep is the one automatic sale.`,
+    predicate: { watch: "move", is: "below", value: COMPOUNDER_CATASTROPHE_PCT, variable: "peak" },
+    rationale: `Down ${COMPOUNDER_CATASTROPHE_PCT}% from its high. For a stock we mean to hold for years, a drop this deep is the one automatic sale.`,
     fireMode: "DO_IT",
     cooldownDays: 0,
   },

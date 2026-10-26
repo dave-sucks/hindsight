@@ -102,8 +102,6 @@ export interface LevelInputs {
   avgCost?: number | null;
   /** Position high-water mark, for placing a trail at a real price. */
   peakPrice?: number | null;
-  /** The stock's ATR(14) — widens an atrMultiple trail, so the column matches the evaluator (DAV-294). */
-  atr14?: number | null;
 }
 
 const isLong = (d: string | null | undefined) => d !== "SHORT";
@@ -130,14 +128,14 @@ function typedLevel(t: Pick<Trigger, "predicate">, direction: string | null) {
  *            `all` so tiered trims render as their own chart lines.
  */
 export function canonicalLevels(input: LevelInputs): CanonicalLevels {
-  const { triggers, direction, status, avgCost, peakPrice, atr14 } = input;
+  const { triggers, direction, status, avgCost, peakPrice } = input;
   const long = isLong(direction);
 
   const all: PriceLevel[] = [];
   for (const t of triggers) {
     // A typed level, or a % from our position (./condition: each measure's `line`).
     const w = shapeOf(t.predicate);
-    const line = w == null ? null : lineOf(w, { isLong: long, avgCost, peakPrice, atr14 });
+    const line = w == null ? null : lineOf(w, { isLong: long, avgCost, peakPrice });
     // A projected level with no position state genuinely is not at a price.
     if (line?.price == null || !Number.isFinite(line.price) || line.price <= 0) continue;
     all.push({
