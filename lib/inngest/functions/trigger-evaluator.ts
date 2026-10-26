@@ -32,7 +32,8 @@
 // close ticks fire at most once.
 //
 // Each intraday pass first brings every held position's high since the buy
-// up to date from its quote (lib/trading/water-mark), so the trails read it.
+// up to date from its quote (lib/trading/water-mark), so the trails read it;
+// the close pass does it from the finished day's bar, so a last-minute high counts.
 //
 // - Cooldown lives on the trigger object inside Thesis.triggers JSONB.
 //   No schema change in PR 2. A separate TriggerFiring table is a
@@ -72,7 +73,8 @@ import {
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
-import { raiseWaterMarks } from "@/lib/trading/water-mark";
+import { raiseMarksFromDayBars, raiseWaterMarks } from "@/lib/trading/water-mark";
+import { saleUnderWay } from "@/lib/proposals/position-lock";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
 import { describeChartFire } from "@/lib/agent/triggers/condition/facts";
 import { fetchBookFilings, type BookFilings } from "@/lib/market-data/sec-filings";
@@ -189,6 +191,7 @@ function isClosePassTick(now: Date): boolean {
  * evaluator falls back to createdAt — fail-soft, never throws.
  */
 interface PositionInfo {
+  id: string;
   openedAt: Date;
   /** For move-from-entry — entry economics of the open position. */
   avgCost: number | null;
@@ -252,6 +255,7 @@ async function buildPositionOpenedAtMap(
     const key = `${p.analystId}::${p.symbol}`;
     if (!byKey.has(key)) {
       byKey.set(key, {
+        id: p.id,
         openedAt: p.openedAt,
         avgCost: p.avgCost,
         peakPrice: p.peakPrice,
@@ -448,6 +452,7 @@ export const triggerEvaluator = inngest.createFunction(
     if (!session) {
       return { path: "cron", skipped: "market-closed" };
     }
+    if (session === "CLOSE") await step.run("close-pass-water-marks", () => raiseMarksFromDayBars(now));
 
     const cronFires = await step.run("evaluate-cron", async () => {
       // ACTIVE + WATCHING. ACTIVE theses have positions at risk (stop /
@@ -540,6 +545,18 @@ export const triggerEvaluator = inngest.createFunction(
       const openedAtByThesisId = await buildPositionOpenedAtMap(
         candidates.map((c) => c.thesis),
         session === "INTRADAY" ? { quotes: liveQuotes, now } : null,
+      );
+      // Held positions with a sale already under way: their sale fires are dropped unstamped (below).
+      const heldIds = Array.from(openedAtByThesisId.values(), (p) => p.id);
+      const saleWaiting = new Set(
+        heldIds.length === 0
+          ? []
+          : (
+              await prisma.order.findMany({
+                where: { positionId: { in: heldIds }, intent: { in: ["CLOSE", "PARTIAL_CLOSE"] }, OR: saleUnderWay(now) },
+                select: { positionId: true },
+              })
+            ).map((o) => o.positionId),
       );
       const quoteResults = uniqueTickers.map((ticker) => {
         const { quote: q, error } = liveQuotes[ticker.toUpperCase()] ?? { quote: null };
@@ -707,7 +724,7 @@ export const triggerEvaluator = inngest.createFunction(
           now,
         };
 
-        const { fires } = evaluateThesisTriggers({
+        const { fires: matched } = evaluateThesisTriggers({
           thesisId: thesis.id,
           ticker: thesis.ticker,
           triggers,
@@ -715,15 +732,26 @@ export const triggerEvaluator = inngest.createFunction(
           predicateFilter: isPriceSidePredicate,
         });
 
-        if (fires.length === 0) continue;
+        if (matched.length === 0) continue;
         // The filings behind each filing fire, read before the stamp
         // remembers them.
         const tickerFilings = filingsRead.byTicker.get(thesis.ticker);
         const filingsByTrigger = new Map(
-          fires
+          matched
             .map((t) => [t.id, filingsBehindFire(t, tickerFilings)] as const)
             .filter(([, f]) => f.length > 0),
         );
+        // A paused analyst has no morning run: its sale goes to the owner now.
+        const paused = thesis.researchRun.agentConfig?.enabled === false;
+        // A red filing on a stock we own is looked at today (2026-09-15).
+        const sameDayLook = (t: Trigger) => {
+          const f = filingsByTrigger.get(t.id);
+          return paused || (f != null && filingNeedsSameDayLook(f, thesis.status));
+        };
+        // A sale fire while a sale already waits is dropped unstamped, so it asks again the first pass after that proposal expires.
+        const sale = (t: Trigger) => (t.action === "EXIT" || t.action === "TRIM") && !waitsForMorning(t, sameDayLook(t));
+        const fires = posInfo && saleWaiting.has(posInfo.id) ? matched.filter((t) => !sale(t)) : matched;
+        if (fires.length === 0) continue;
         await stampLastFiredAt({
           thesisId: thesis.id,
           ...splitFiresByLevel(fires),
@@ -821,12 +849,8 @@ export const triggerEvaluator = inngest.createFunction(
           }
 
           // On fire "Flag for Review": write the TRIGGER_FIRED row (with the price that fired it) and
-          // start no run; the morning run answers it. A red filing on a stock we own is looked at today (2026-09-15).
-          const sameDayFiling =
-            firedFilingList != null && filingNeedsSameDayLook(firedFilingList, thesis.status);
-          // A paused analyst has no morning run: its sale goes to the owner now.
-          const paused = thesis.researchRun.agentConfig?.enabled === false;
-          if (waitsForMorning(t, sameDayFiling || paused)) {
+          // start no run; the morning run answers it.
+          if (waitsForMorning(t, sameDayLook(t))) {
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",
