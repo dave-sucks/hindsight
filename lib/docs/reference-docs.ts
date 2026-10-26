@@ -5,7 +5,7 @@
  * regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
  */
 
-import { TRIGGER_TYPES, triggerText, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
+import { TRIGGER_TYPES, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
 import { rangeWords, valueRange } from "@/lib/agent/triggers/condition/range";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
 import { SETUPS, type Setup } from "@/lib/agent/knowledge/setups";
@@ -54,7 +54,7 @@ function measureSection(m: MeasureDef): string[] {
   const examples = TRIGGER_TYPE_DOCS.flatMap((t) => t.examples).filter((e) => !("match" in e.when) && e.when.watch === m.id);
   if (examples.length) {
     out.push("**Examples:**", "");
-    for (const e of examples) out.push(`- "${triggerText(e.action, e.when)}". ${e.why}`, "", "  ```json", `  ${JSON.stringify({ action: e.action, predicate: e.when })}`, "  ```", "");
+    for (const e of examples) out.push(`- "${sentenceOf({ action: e.action, predicate: e.when })}". ${e.why}`, "", "  ```json", `  ${JSON.stringify({ action: e.action, predicate: e.when })}`, "  ```", "");
   }
   return out;
 }

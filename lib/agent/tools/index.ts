@@ -109,6 +109,8 @@ interface ToolCtx {
    * auto-correction audit note.
    */
   protectiveExitTriggerLabel?: string;
+  /** A trigger run woken by a trim — see ToolContext.firedTrim. */
+  firedTrim?: { ticker: string; pct: number };
   /** An Auto trigger: the account's cash — see ToolContext.payFromCash. */
   payFromCash?: number | null;
 }

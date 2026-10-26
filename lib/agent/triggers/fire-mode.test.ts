@@ -108,7 +108,8 @@ describe("the words", () => {
   it("the dialog's choices, labelled by action; the pill's and Activity's words", () => {
     expect(["EXIT", "ENTER", "ADD", "TRIM"].map((a) => fireModeLabel("DO_IT", a))).toEqual(["Auto-sell", "Auto-buy", "Auto-add", "Auto-trim"]);
     expect([fireModeLabel("ASK_NOW", "EXIT"), fireModeLabel("NEXT_MORNING", "REVIEW")]).toEqual(["Send to Agent", "Flag for Review"]);
-    expect(fireModeWords({ action: "TRIM", fireMode: "DO_IT", trimPct: 30 })).toBe("Auto-trim 30%");
+    // A trim's size is in its sentence, so On fire is only the choice.
+    expect(fireModeWords({ action: "TRIM", fireMode: "DO_IT" })).toBe("Auto-trim");
     expect(fireModeWords({ action: "EXIT", fireMode: "DO_IT" })).toBe("Auto-sell");
     expect(fireModeWords({ action: "REVIEW" })).toBe("Flag for Review");
     expect(fireModeWords({ action: "EXIT" })).toBe("Send to Agent");

@@ -62,12 +62,7 @@ export function doItTrade(t: { action: string; fireMode?: FireMode | null }, hel
 /** How soon a fire is acted on. An agent may not slow a protective sale on a stock we own. */
 export const FIRE_MODE_SPEED: Readonly<Record<FireMode, number>> = { DO_IT: 2, ASK_NOW: 1, NEXT_MORNING: 0 };
 
-/** The share of the position an Auto-trim sells when the trigger names none: half, as manage_position's trim. */
-export const DEFAULT_TRIM_PCT = 50;
-
-export function trimPctOf(t: { trimPct?: number | null }): number {
-  return t.trimPct ?? DEFAULT_TRIM_PCT;
-}
+export { DEFAULT_TRIM_PCT, trimPctOf } from "./condition/describe";
 
 const AUTO: Readonly<Record<string, string>> = { ENTER: "Auto-buy", ADD: "Auto-add", TRIM: "Auto-trim", EXIT: "Auto-sell" };
 
@@ -92,16 +87,12 @@ export function approvalLine(
 
 /** The Activity line when an Auto buy, add or trim is used and comes off the stock: "Used once: Trim 30% if above $150 (Auto-trim)". */
 export function usedOnceLine(t: { action: string; predicate: unknown; trimPct?: number | null }, held: boolean): string {
-  const sentence = sentenceOf(t, held);
-  const said = t.action === "TRIM" ? sentence.replace(/^Trim /, `Trim ${trimPctOf(t)}% `) : sentence;
-  return `Used once: ${said} (${fireModeLabel("DO_IT", t.action)})`;
+  return `Used once: ${sentenceOf(t, held)} (${fireModeLabel("DO_IT", t.action)})`;
 }
 
-/** What it does when it fires, as the pill and Activity say it: "Auto-sell", "Auto-trim 30%", "Send to Agent". */
-export function fireModeWords(t: { action: string; fireMode?: FireMode | null; trimPct?: number | null }, sells = true): string {
+/** What it does when it fires, as the pill and Activity say it: "Auto-sell", "Auto-trim", "Send to Agent". A trim's size is in its sentence. */
+export function fireModeWords(t: { action: string; fireMode?: FireMode | null }, sells = true): string {
   // A sale on a stock we don't own takes the plan down when it fires, whatever is set.
   if (t.action === "EXIT" && !sells) return "Takes the plan down when it fires";
-  const mode = fireModeOf(t);
-  const label = fireModeLabel(mode, t.action);
-  return mode === "DO_IT" && t.action === "TRIM" ? `${label} ${trimPctOf(t)}%` : label;
+  return fireModeLabel(fireModeOf(t), t.action);
 }

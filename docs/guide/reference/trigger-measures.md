@@ -90,7 +90,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
   {"action":"EXIT","predicate":{"watch":"move","is":"below","value":12,"variable":"peak"}}
   ```
 
-- "Trim if above 15.6% from our entry". Take a partial at twice the risk.
+- "Trim 50% if above 15.6% from our entry". Take a partial at twice the risk.
 
   ```json
   {"action":"TRIM","predicate":{"watch":"move","is":"above","value":15.6,"variable":"entry"}}

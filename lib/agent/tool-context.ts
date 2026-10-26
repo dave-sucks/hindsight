@@ -145,6 +145,9 @@ export interface ToolContext {
    */
   protectiveExitTriggerLabel?: string;
 
+  /** A trigger run woken by a trim: its stock and size, the trim a partial_close naming no size sells. */
+  firedTrim?: { ticker: string; pct: number };
+
   /** Set only for an Auto trigger: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
   payFromCash?: number | null;
 

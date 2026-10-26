@@ -26,7 +26,7 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
 - **cooldownDays** — don't re-fire within N days (see §6).
 - **fireMode** — on fire: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or
   `NEXT_MORNING` (Flag for Review) (see §4). Every stored trigger names one.
-- **trimPct** — an Auto-trim: the % of the position it sells (50 when unset).
+- **trimPct** — a trim's size: the % of the position it sells, in every mode (50 when unset). The sentence says it ("Trim 30% if above $150"); Auto sells it, and a trigger run woken by the trim passes it to `manage_position` as the default `close_pct` (`ToolContext.firedTrim`).
 
 The condition is the form's own fields: `watch` is the measure (the tab),
 `is` the direction (the button group), `value` the number typed, `variable`

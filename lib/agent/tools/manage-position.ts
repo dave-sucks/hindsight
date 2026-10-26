@@ -47,6 +47,7 @@ import {
   recordProposalRunEvent,
 } from "@/lib/proposals/maybe-await-approval";
 import { lockPositionSales } from "@/lib/proposals/position-lock";
+import { DEFAULT_TRIM_PCT } from "@/lib/agent/triggers/fire-mode";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { positionTotalCap, positionBand, sizeByRisk, sizingStop, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
@@ -130,7 +131,7 @@ const schema = z.object({
     .min(1)
     .max(99)
     .optional()
-    .describe("For partial_close: percentage of the position to exit (1–99)"),
+    .describe("For partial_close: percentage of the position to exit (1–99). Omitted: the size of the trim trigger that woke this run, else 50."),
 
   // add_to_position — principal chat only. Inside a run this field is not
   // in the schema: the analyst's rules size the add (DAV-317).
@@ -227,7 +228,8 @@ export const managePosition = defineTool({
       switch (args.action) {
         // ── PARTIAL CLOSE ───────────────────────────────────────────────────
         case "partial_close": {
-          const pct = args.close_pct ?? 50;
+          // Unnamed, the trim that woke the run sells its own size.
+          const pct = args.close_pct ?? (ctx.firedTrim?.ticker === ticker ? ctx.firedTrim.pct : DEFAULT_TRIM_PCT);
           const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
           const idempotencyKey = randomUUID();
           const placedAt = new Date();

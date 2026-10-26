@@ -15,7 +15,7 @@
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
-import { conditionSentence, isGroup, shapeOf } from "@/lib/agent/triggers/condition";
+import { conditionSentence, isGroup, shapeOf, trimPctOf } from "@/lib/agent/triggers/condition";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/lib/agent/situations";
 import { rowForModel } from "@/lib/agent/row-for-model";
@@ -179,7 +179,7 @@ ${trigger.action === "ENTER" || trigger.action === "ADD" ? "If they declined thi
 TRIGGER THAT FIRED (id: ${trigger.id})
 ═══════════════════════════════════════════════════════════════════
   predicate: ${predicateSummary}
-  declared action: ${trigger.action}
+  declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}
   rationale you wrote when you set it: "${trigger.rationale}"${trailingPeakBlock}
 ${pathSection}
 ═══════════════════════════════════════════════════════════════════

@@ -56,15 +56,17 @@ What happens next is the trigger's **On fire**, in the next section. The whole p
 | What happens | The trade, with no agent. With your approval switch on, it comes to you as a proposal right away, with the research brief | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
 | Buy | ✓ one-time; only you set it | ✓ default | ✓ |
 | Add | ✓ one-time; only you set it | ✓ default | ✓ |
-| Trim | ✓ one-time, sells the % you set; only you | ✓ default | ✓ |
+| Trim | ✓ one-time, sells its size; only you | ✓ default | ✓ |
 | Sell | ✓ asks again every day until sold; agents may set it | ✓ default | ✓ |
 | Review | — (a review is asking) | ✓ the same day | ✓ default |
 
 What a trigger does when it comes true, the same three choices on every trigger:
 
-- **Auto** (Auto-sell, Auto-buy, Auto-add, Auto-trim): the trade, with no agent. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells the share it names (half, unless you set another). With nothing to trade (a buy on a stock we already hold), the agent is asked instead. A review can't be Auto; it is asking.
+- **Auto** (Auto-sell, Auto-buy, Auto-add, Auto-trim): the trade, with no agent. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells its size. With nothing to trade (a buy on a stock we already hold), the agent is asked instead. A review can't be Auto; it is asking.
 - **Send to Agent:** a [trigger run](../agents/trigger-runs.md) starts within minutes to look at that one stock and decide.
 - **Flag for Review:** the fire goes on the stock's list and the next [morning run](../agents/morning-runs.md) answers it. A worrying new filing on a stock we hold still gets a look the same day.
+
+**A trim's size** is its own field, shown whenever the action is Trim: the share of the position it sells (50% filled in). It means the same thing in every mode, and the trigger says it everywhere: "Trim 30% if above $150". Auto sells that share. A trigger run woken by the trim sells it too unless the analyst names another size, and the morning run reads it in the same sentence.
 
 Left unset, a review is Flag for Review and everything else is Send to Agent. Auto is always chosen: the stop set when buying and a new analyst's trailing sale are Auto-sells.
 
