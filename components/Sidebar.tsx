@@ -23,7 +23,7 @@ import {
   MessageCircle,
   X,
 } from 'lucide-react';
-import HindsightLogo from '@/components/HindsightLogo';
+import { UserBlob } from '@/components/UserBlob';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
 import { EnvironmentSwitcher } from '@/components/settings/EnvironmentSwitcher';
 import type { AlpacaEnvironment } from '@/lib/actions/api-keys.actions';
@@ -41,7 +41,6 @@ import {
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Tooltip,
   TooltipContent,
@@ -123,16 +122,9 @@ export default function AppSidebar({
 
   return (
     <Sidebar collapsible="icon">
-      {/* Brand + env switcher */}
+      {/* Account switcher (Paper / Live) — the whole header; no logo */}
       <SidebarHeader>
         <div className="flex items-center gap-1 px-1 py-1 w-full">
-          <Link
-            href="/"
-            onClick={() => isMobile && setOpenMobile(false)}
-            className="flex items-center justify-center rounded-md p-1.5 text-brand hover:bg-sidebar-accent transition-colors shrink-0"
-          >
-            <HindsightLogo className="size-4" />
-          </Link>
           {exposeLive && (
             <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
               <EnvironmentSwitcher current={currentEnv} />
@@ -225,15 +217,8 @@ export default function AppSidebar({
                 render={<SidebarMenuButton size="lg" />}
                 className="data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground"
               >
-                <Avatar className="h-7 w-7 rounded-md shrink-0">
-                  <AvatarFallback className="rounded-md text-xs bg-brand text-brand-foreground font-semibold">
-                    {user.name?.[0]?.toUpperCase() ?? '?'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0 text-left overflow-hidden">
-                  <p className="text-xs font-medium truncate">{user.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                </div>
+                <UserBlob size={28} />
+                <p className="flex-1 min-w-0 text-left text-sm font-medium truncate">{user.name}</p>
                 <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
