@@ -1324,16 +1324,6 @@ export function useThesisSheetData(thesis_id: string | undefined, ticker: string
   };
 }
 
-/** The period a move is over, said after the number in the price row. */
-const MOVE_PERIOD: Record<string, string> = {
-  "1D": "today",
-  "1W": "past week",
-  "1M": "past month",
-  "3M": "past 3 months",
-  "1Y": "past year",
-  Trade: "this trade",
-};
-
 // ─── ThesisBody ──────────────────────────────────────────────────────────────
 // Everything under the header, in this order on both the sheet and the trade
 // page: the price with the chart's selected move · the trade banner · the
@@ -1347,11 +1337,17 @@ export function ThesisBody({
   thesis_id,
   ticker,
   surface,
+  aside,
 }: {
   data: ThesisSheetData & { state: ThesisDossier };
   thesis_id?: string;
   ticker: string;
   surface: "sheet" | "page";
+  /**
+   * The page's right-hand cards. Rendered beside the tab panels, under the
+   * tab row, so they start level with the chart instead of with the price.
+   */
+  aside?: ReactNode;
 }) {
   const { state, quote, quoteLoading, earnings, filings, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
   // What the chart's selected range shows; the price row prints it.
@@ -1401,7 +1397,6 @@ export function ThesisBody({
     move == null || move.range === "1D"
       ? (dayMove ?? (move ? { dollars: move.dollars, pct: move.pct } : null))
       : { dollars: move.dollars, pct: move.pct };
-  const period = MOVE_PERIOD[move?.range ?? "1D"] ?? "";
 
   const pendingProposal = position?.pendingProposal ?? null;
   const showBanner = position != null && (surface === "sheet" || pendingProposal != null);
@@ -1419,10 +1414,7 @@ export function ThesisBody({
             {formatCurrency(quote.currentPrice)}
           </span>
           {shownMove ? (
-            <span className="flex items-baseline gap-1.5">
-              <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" />
-              <span className="text-sm text-muted-foreground">{period}</span>
-            </span>
+            <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" />
           ) : null}
         </div>
       ) : null}
@@ -1447,6 +1439,8 @@ export function ThesisBody({
           <TabsTrigger value={1}>Activity</TabsTrigger>
         </TabsList>
 
+        <div className={cn(aside && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]")}>
+        <div className="min-w-0">
         <TabsContent value={0} className="space-y-5">
 
       {/* ── Price chart (annotated) ───────────────────────────── */}
@@ -1664,6 +1658,9 @@ export function ThesisBody({
             </p>
           )}
         </TabsContent>
+        </div>
+        {aside ? <div className="hidden lg:block space-y-4">{aside}</div> : null}
+        </div>
       </Tabs>
     </div>
   );

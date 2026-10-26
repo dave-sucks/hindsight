@@ -4,6 +4,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ThesisHeader } from '@/components/domain/thesis-header';
 import { ThesisPageBody } from '@/components/trades/ThesisPageBody';
 import { PnlBadge } from '@/components/ui/pnl-badge';
+import { PriceChange } from '@/components/ui/price-change';
+import { Badge } from '@/components/ui/badge';
+import { getTradeStatusDisplay } from '@/lib/trade-status';
 import { formatCurrency } from '@/lib/format';
 import {
   Tooltip,
@@ -237,76 +240,63 @@ export default async function TradeDetailPage({
         />
       </div>
 
-      {/* ── 2-col grid ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-        {/* ════ MAIN column — the thesis sheet's body, same order as the sheet ════ */}
-        <div className="min-w-0">
-          {trade.thesis ? (
-            <ThesisPageBody thesisId={trade.thesis.id} ticker={trade.ticker} />
-          ) : (
-            <p className="py-8 text-sm text-muted-foreground">No thesis on record for this trade.</p>
-          )}
-        </div>
-
-        {/* ════ SIDEBAR ════ */}
-        <div className="hidden lg:block space-y-4">
-
+      {/* The body carries the right-hand cards beside its tab panels, so they
+          start level with the chart. */}
+      <ThesisPageBody
+        thesisId={trade.thesis?.id ?? null}
+        ticker={trade.ticker}
+        aside={
+          <>
           {/* ── Position summary: the result once closed, the live position
-              while held. Same card either way; only the words change. ── */}
-          {(isClosed || (isOpen && hasFilledBuy)) && (
-            <div className={cn(
-              'rounded-lg border p-4 space-y-3',
-              isPos ? 'border-positive/20 bg-positive/5' : 'border-negative/20 bg-negative/5',
-            )}>
-              <div className="flex items-center justify-between">
-                <span className={cn(
-                  'text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
-                  isPos ? 'bg-positive/10 text-positive' : 'bg-negative/10 text-negative',
-                )}>
-                  {isOpen ? 'Holding' : position.outcome === 'WIN' ? 'Win' : position.outcome === 'LOSS' ? 'Loss' : 'Closed'}
-                </span>
-                {daysHeld != null && (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {daysHeld} day{daysHeld !== 1 ? 's' : ''} held
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-baseline gap-2">
-                <span className={cn('text-2xl font-bold tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
-                  {isPos ? '+' : ''}{fmtCur(pnl)}
-                </span>
-                <span className={cn('text-sm tabular-nums', isPos ? 'text-positive' : 'text-negative')}>
-                  {isPos ? '+' : ''}{Math.abs(pnlPct).toFixed(2)}%
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                  <span className="text-muted-foreground">Bought @ {fmtCur(trade.entryPrice)}</span>
-                  <span className="font-medium tabular-nums">{fmtCur(positionCost)}</span>
-                </div>
-                {exitProceeds != null && closePrice != null && (
+              while held. The same card style as Trade Details below; the
+              number is the header's PriceChange, the status is the app's pill. ── */}
+          {(isClosed || (isOpen && hasFilledBuy)) && (() => {
+            const summaryStatus = getTradeStatusDisplay(
+              isOpen ? 'OPEN' : position.outcome === 'WIN' ? 'CLOSED_WIN' : position.outcome === 'LOSS' ? 'CLOSED_LOSS' : 'CLOSED_EXPIRED',
+            );
+            return (
+              <Card>
+                <CardContent className="p-3 flex flex-col gap-1">
+                  <div className="flex items-center justify-between pb-1">
+                    <Badge variant="secondary" className="gap-1.5 font-normal">
+                      <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', summaryStatus.dotClass)} />
+                      {summaryStatus.label}
+                    </Badge>
+                    {daysHeld != null && (
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {daysHeld} day{daysHeld !== 1 ? 's' : ''} held
+                      </span>
+                    )}
+                  </div>
+                  <div className="pb-2">
+                    <PriceChange dollarChange={pnl} percentChange={pnlPct} size="xl" />
+                  </div>
                   <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                    <span className="text-muted-foreground">Sold @ {fmtCur(closePrice)}</span>
-                    <span className="font-medium tabular-nums">{fmtCur(exitProceeds)}</span>
+                    <span className="text-muted-foreground">Bought @ {fmtCur(trade.entryPrice)}</span>
+                    <span className="font-medium tabular-nums">{fmtCur(positionCost)}</span>
                   </div>
-                )}
-                {isOpen && marketValue != null && (
-                  <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                    <span className="text-muted-foreground">Now @ {fmtCur(currentPrice)}</span>
-                    <span className="font-medium tabular-nums">{fmtCur(marketValue)}</span>
-                  </div>
-                )}
-                {fmtExitReason(position.closeReason) && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Exit</span>
-                    <span className="font-medium">{fmtExitReason(position.closeReason)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+                  {exitProceeds != null && closePrice != null && (
+                    <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                      <span className="text-muted-foreground">Sold @ {fmtCur(closePrice)}</span>
+                      <span className="font-medium tabular-nums">{fmtCur(exitProceeds)}</span>
+                    </div>
+                  )}
+                  {isOpen && marketValue != null && (
+                    <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                      <span className="text-muted-foreground">Now @ {fmtCur(currentPrice)}</span>
+                      <span className="font-medium tabular-nums">{fmtCur(marketValue)}</span>
+                    </div>
+                  )}
+                  {fmtExitReason(position.closeReason) && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Exit</span>
+                      <span className="font-medium">{fmtExitReason(position.closeReason)}</span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* ── Trade Details (always shown) ── */}
           <Card>
@@ -504,8 +494,9 @@ export default async function TradeDetailPage({
               </CardContent>
             </Card>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
     </div>
   );
 }
