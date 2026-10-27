@@ -1,7 +1,7 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TRIGGER_TYPES, actionLabel } from "@/lib/agent/triggers/condition";
+import { TRIGGER_TYPES, rowLabel } from "@/lib/agent/triggers/condition";
 import { TRIGGER_TYPE_DOCS } from "@/lib/docs/trigger-examples";
 import { P } from "../doc-text";
 import { DocFact } from "../primitives";
@@ -26,7 +26,7 @@ export function TriggerKinds() {
             {t.examples.map((e, i) => (
               <div key={i} className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{actionLabel(e.action, true)}</span>
+                  <span className="text-sm font-medium text-foreground">{rowLabel(e.action, true)}</span>
                   <ExamplePill spec={e} index={i} />
                 </div>
                 <P>{e.why}</P>

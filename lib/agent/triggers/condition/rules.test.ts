@@ -21,10 +21,10 @@ describe("the cooldown a trigger gets when it names none", () => {
     ["a price under an average, sold", { watch: "price", is: "below", variable: "sma200" }, "EXIT", 1],
     ["a price under an average, reviewed", { watch: "price", is: "below", variable: "sma200" }, "REVIEW", 7],
     ["a new 52-week high, reviewed", { watch: "price", is: "above", variable: "high52" }, "REVIEW", 1],
-    // A gain from our entry latches: up 10% stays up 10%, so a week, whatever it does.
+    // A gain from our entry latches: up 10% stays up 10%, so a week. A sale on it is a standing order: daily.
     ["a gain from our entry, added to", { watch: "move", is: "above", value: 10, variable: "entry" }, "ADD", 7],
     ["a gain from our entry, reviewed", { watch: "move", is: "above", value: 10, variable: "entry" }, "REVIEW", 7],
-    ["a fall from our entry, sold", { watch: "move", is: "below", value: 8, variable: "entry" }, "EXIT", 7],
+    ["a fall from our entry, sold", { watch: "move", is: "below", value: 8, variable: "entry" }, "EXIT", 1],
     ["a day's move", { watch: "move", is: "below", value: 7, variable: "prev_close" }, "REVIEW", 1],
     ["a trail", { watch: "move", is: "below", value: 12, variable: "peak" }, "EXIT", 1],
     ["near the 52-week high, reviewed", { watch: "move", is: "near", value: 5, variable: "high52" }, "REVIEW", 7],

@@ -401,7 +401,8 @@ same day whatever is set (`filingNeedsSameDayLook`).
 `condition/rules.ts`): a surprise 7, a report 30, insiders 30, a price level,
 a move, volume, RSI and a gap 1, the move from our entry 7 —
 the milestone latches, so 7d stops a same-week re-fire if the acting agent
-forgets to re-arm the next checkpoint; the trail 1, the review clock and a
+forgets to re-arm the next checkpoint (a sale on it is 1: a standing order
+asks daily); the trail 1, the review clock and a
 date its own day count. **`cooldownDays: 0` is reserved for terminal `EXIT`
 triggers only** — `0` on any other action causes a 5-min evaluator infinite
 loop the instant the condition latches true, so the write path overwrites it

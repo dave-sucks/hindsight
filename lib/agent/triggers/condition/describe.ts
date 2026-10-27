@@ -29,6 +29,11 @@ export function actionLabel(action: string, sells = true): string {
   return ACTION_LABEL[action] ?? "Review if";
 }
 
+/** The word before a row of pills: a trim's pill starts "N% if" itself, so its row says "Trim". */
+export function rowLabel(action: string, sells = true): string {
+  return action === "TRIM" ? "Trim" : actionLabel(action, sells);
+}
+
 /** The share of the position a trim sells when it names none: half. */
 export const DEFAULT_TRIM_PCT = 50;
 

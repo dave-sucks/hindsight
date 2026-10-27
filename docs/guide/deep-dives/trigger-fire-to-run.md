@@ -17,7 +17,7 @@ At 4:20 PM a close pass runs for the rules that wait for the closing price, with
 1. **Does the condition hold?** If not, nothing else matters.
 2. **A buy or an add on a stale quote** never fires. In market hours, a price older than 15 minutes isn't today's price; at the open, the last close was once served as "now". A sale or a review still fires on a stale quote, because missing a stop is worse.
 3. **A buy fires on its crossing:** true now, false at the prior close. A buy written after that close is measured from the price it was written at, so a level set on a down day isn't dead on arrival.
-4. **Is it resting?** A cooldown holds back a trigger that fired recently. When it ends, a sale or review that still holds fires again; that's how a declined sale returns.
+4. **Is it resting?** A cooldown holds back a trigger that fired recently. When it ends, anything but a buy that still holds fires again: an add, a trim, a sale or a review. That's how a declined sale returns. The hard stop a new plan starts with has no rest at all, so it asks again at the next check if a run holds.
 
 The check has first claim on prices. Every other caller is refused a quote once a vendor's per-minute allowance falls to a reserve, so a busy page can't leave stops unpriced.
 
