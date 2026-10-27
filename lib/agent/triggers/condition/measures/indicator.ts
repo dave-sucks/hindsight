@@ -3,7 +3,6 @@
 
 import { BELOW_ABOVE, type MeasureDef } from "../measure";
 import type { Condition } from "../types";
-import { num } from "../words";
 
 const window = (c: Condition) => (typeof c.settings?.window === "string" ? c.settings.window : "3M");
 
@@ -40,6 +39,7 @@ export const rsi: MeasureDef = {
     },
   ],
   cooldownDays: () => 1,
+  rises: (c) => (c.is === "above" ? true : c.is === "below" ? false : null),
   fresh: () => ({ watch: "rsi", is: "below" }),
   fits: (c) => c.value != null && (c.is === "above" || c.is === "below"),
   shape: "RSI is above or below a number.",
@@ -69,6 +69,8 @@ export const strength: MeasureDef = {
   // A daily number that stays true for weeks: once a week.
   cooldownDays: () => 7,
   state: () => true,
+  // Ahead of the S&P is up; "not lagging by more than N" is neither.
+  rises: (c) => ((c.value ?? 0) >= 0 ? true : null),
   fresh: () => ({ watch: "strength", settings: { window: "3M" } }),
   fits: (c) => c.value != null && ["1M", "3M", "6M"].includes(window(c)),
   shape: "Strength vs the S&P takes a number and a window of 1M, 3M or 6M.",
@@ -76,20 +78,15 @@ export const strength: MeasureDef = {
 
 export const gap: MeasureDef = {
   id: "gap",
-  reads: ["snapshot", "volume"],
+  reads: ["snapshot"],
   type: "indicator",
   label: "Gap up",
   word: "At least",
   value: { suffix: "% gap up", placeholder: "4", range: { what: "A gap", unit: "%", over: 0, max: 100 } },
-  // An agent's choices; a gap added here needs 3× volume within 3 days.
-  settings: [
-    { key: "volume", default: 3, range: { what: "A gap's volume (volume)", unit: "×", min: 0, max: 50 } },
-    // Up to the 10 sessions the snapshot keeps gaps for.
-    { key: "withinDays", default: 1, range: { what: "A gap's look-back (withinDays)", unit: " sessions", integer: true, min: 1, max: 10, why: "The snapshot keeps 10." } },
-  ],
-  // A gap stays "within the last N sessions" for N days: one fire per gap.
-  cooldownDays: (c) => Math.max(1, num(c.settings?.withinDays) ?? 1),
-  fresh: () => ({ watch: "gap", settings: { volume: 3, withinDays: 3 } }),
+  // One fire per gap, whatever its volume.
+  cooldownDays: () => 1,
+  rises: () => true,
+  fresh: () => ({ watch: "gap" }),
   fits: (c) => c.value != null,
   shape: "A gap takes a number: the % gap up.",
 };

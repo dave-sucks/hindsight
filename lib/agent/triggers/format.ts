@@ -8,6 +8,7 @@
  */
 
 import { sentenceOf } from "./condition/describe";
+import { defaultFireMode, type FireMode } from "./fire-mode";
 
 /**
  * Where a rung lives, in the second person. Shown in the popover of an
@@ -58,14 +59,15 @@ export function levelBadgeLabel(
  * itself is never sent as data: the sentence is the one vocabulary.
  */
 export function triggerForAgent(
-  t: { id: string; action: string; predicate: unknown; rationale?: string; fireMode?: string; lastFiredAt?: string; source?: string; cooldownDays?: number },
+  t: { id: string; action: string; predicate: unknown; rationale?: string; fireMode?: FireMode; trimPct?: number; lastFiredAt?: string; source?: string; cooldownDays?: number },
   sells: boolean,
 ) {
   return {
     id: t.id,
     says: sentenceOf(t, sells),
     ...(t.rationale ? { rationale: t.rationale } : {}),
-    ...(t.fireMode === "DIRECT" ? { firesDirectly: true } : {}),
+    // On fire, said only when it isn't the action's default (the tools' fire_mode names the defaults).
+    ...(t.fireMode && t.fireMode !== defaultFireMode(t.action) ? { fireMode: t.fireMode } : {}),
     ...(t.cooldownDays != null ? { cooldownDays: t.cooldownDays } : {}),
     ...(t.lastFiredAt ? { lastFiredAt: t.lastFiredAt } : {}),
     ...(t.source ? { setBy: t.source } : {}),

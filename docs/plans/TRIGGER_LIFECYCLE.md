@@ -39,7 +39,7 @@ last 30 days, word for word — `lib/agent/stock-context.ts`).
 held stock, layer 4 (the agent) may only move protective sell levels toward
 MORE protection. `update_thesis` hard-rejects an edit that lowers a stop,
 widens a trailing give-back, deletes a protective sell rung, or demotes one
-from automatic (DIRECT) to judgment-first — including the sneaky form where a
+or slows one down (Auto-sell → Send to Agent → Flag for Review) — including the sneaky form where a
 thesis override is deleted so a weaker inherited value shows through. The
 check runs on the effective ladder (`protectiveRatchetViolations`,
 `lib/agent/triggers/ratchet.ts`); the principal's paths (thesis sheet, reject
@@ -65,14 +65,15 @@ sibling into cooldown. Per-thesis fire state for inherited rungs lives in
 
 The critical distinction the principal asked for: **a rung firing never
 changes a level by itself.** Firing either (a) stages a mechanical proposal,
-or (b) summons judgment. Which one is declared per-rung by `action` +
-`fireMode`:
+(b) summons judgment now, or (c) leaves it for the morning run. Which one is
+declared per-rung by `fireMode`, the same three choices on every action
+(docs/TRIGGERS.md §4):
 
 | Rung shape | On fire | Who decides | Latency |
 |---|---|---|---|
-| `EXIT` + fireMode `DIRECT` (floors, trails) | Close **proposal** staged directly — no agent | Nobody (mechanical) → **you approve** | ~5 min from the move |
-| `EXIT`/`ADD`/`TRIM`/`ENTER` + `TACTICAL` | Tactical run wakes (~15 steps): validates, decides press/hold/take/pass, **re-ladders**, proposes | **Agent, with nuance** → you approve | minutes |
-| `REVIEW` (any predicate — incl. the +10% checkpoint) | `TRIGGER_FIRED` row written, **batched to next morning run** (no intraday agent; BREAKING signals excepted) | **Agent next morning, with nuance** | next 8 AM |
+| `DO_IT` (Auto-sell, Auto-trim of its %, Auto-buy, Auto-add) — only ever chosen; a buy, add or trim only by the owner, on a stock, and used once | The trade staged directly — no agent; sized and gated by the same tool an agent calls | Nobody (mechanical) → **you approve** (approval switch on) | ~5 min from the move |
+| `ASK_NOW` (Send to Agent) — the default for every action but a review | Tactical run wakes (~15 steps): validates, decides press/hold/take/pass, **re-ladders**, proposes | **Agent, with nuance** → you approve | minutes |
+| `NEXT_MORNING` (Flag for Review) — the default for a review (incl. the +10% checkpoint) | `TRIGGER_FIRED` row written, **left for the next morning run** (a red filing on a held stock is looked at the same day) | **Agent next morning, with nuance** | next 8 AM |
 | `UNPROTECTED_GAIN` / `RUNNING_WINNER` (computed flags, not stored rungs) | Flag on the thesis row every morning until resolved | Agent (must act or explicitly attest) | daily until fixed |
 
 **The worked example (IONS replay, annotated with WHO):**
@@ -86,12 +87,12 @@ or (b) summons judgment. Which one is declared per-rung by `action` +
 
 | Runner | Cadence | Reads | May write | May trade |
 |---|---|---|---|---|
-| Trigger-evaluator cron | 5 min, market hours | quotes + ladders | `lastFiredAt`, `TRIGGER_FIRED` rows, emits fire events | never |
+| Trigger-evaluator cron | 5 min, market hours | quotes + ladders | peak/trough water marks (before the check), `lastFiredAt`, `TRIGGER_FIRED` rows, emits fire events | never |
 | Signal path (same cron file) | on `app/signal.routed` | routed signals | same | never |
-| Tactical run | on non-REVIEW fire | ONE thesis + full ladder + fresh data | surgical `update_thesis` (incl. ladder) | proposals |
+| Tactical run | on a fire set to Send to Agent (or Auto: the trade, no agent) | ONE thesis + full ladder + fresh data | surgical `update_thesis` (incl. ladder) | proposals |
 | Daily run | 8 AM Mon–Fri | whole book + flags + ladder-health | ladder patches, reviews, status | proposals |
 | Thesis-writer | dispatched (promotion / staleness) | deep research | full research + authored ladder — never status | never |
-| Price-monitor | hourly | positions | peak/trough water marks, near-target events | never |
+| Price-monitor | hourly | positions | `PRICE_CHECK` rows (the trade page's event list) | never |
 | Principal | anytime | everything | any level, any rung, approve/reject | approvals ARE the trades |
 
 ## 4. Visibility audit — trace a rung end-to-end today?

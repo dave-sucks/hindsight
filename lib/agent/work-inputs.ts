@@ -21,6 +21,7 @@ import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
+import { notExpired } from "@/lib/proposals/position-lock";
 import { computeLadderHealth, isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import {
   declinedSaleWhere,
@@ -223,12 +224,13 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   // query: a buy or add proposed and not yet approved, a sale in the queue.
   // The row says so, so a run does not propose it again (step 8). An order
   // carries its thesis since 2026-08-18; a proposal lives a day, so every
-  // open one has it.
+  // open one has it. One past its expiry waits for nothing, so it isn't listed.
   if (live.length > 0) {
     try {
       const awaiting = await prisma.order.findMany({
         where: {
           userId: ctx.userId, status: "AWAITING_APPROVAL", thesisId: { in: live.map((t) => t.id) },
+          ...notExpired(now),
           ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
         },
         orderBy: { createdAt: "asc" },
@@ -307,14 +309,12 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     }
   }
 
-  // ATR(14) and the structure a floor could sit under, from the daily snapshot the evaluator reads.
-  const atr = new Map<string, number>();
+  // The structure a floor could sit under, from the daily snapshot the evaluator reads.
   const structure = new Map<string, FloorStructure>();
   if (live.length > 0) {
     try {
       for (const [ticker, snap] of await loadIndicatorSnapshots(live.map((t) => t.ticker.toUpperCase()))) {
         load.indicators.set(ticker, snap);
-        if (snap.atr14 != null && snap.atr14 > 0) atr.set(ticker, snap.atr14);
         structure.set(ticker, { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] });
       }
     } catch (err) {
@@ -397,7 +397,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
         positionOpenedAt: pos?.openedAt ?? null,
         avgCost: pos && Number.isFinite(pos.avgCost) ? pos.avgCost : null,
         peakPrice: pos?.peakPrice ?? null,
-        atr14: atr.get(t.ticker.toUpperCase()) ?? null, quantity: pos && pos.quantity > 0 ? pos.quantity : null,
+        quantity: pos && pos.quantity > 0 ? pos.quantity : null,
         structure: structure.get(t.ticker.toUpperCase()) ?? null, targetPrice: t.targetPrice ?? null,
         paperTenureDays: t.paperTenureDays ?? null,
         paperRealizedPnl: t.paperRealizedPnl != null ? Number(t.paperRealizedPnl) : null,
@@ -416,7 +416,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     if (decline) {
       const floor = computeLadderHealth({
         direction: t.direction, avgCost: input.thesis.avgCost ?? null, currentPrice: quote?.price ?? null, peakPrice: pos?.peakPrice ?? null,
-        triggers, atr14: input.thesis.atr14 ?? null, lastLadderEditAt: null, now,
+        triggers, lastLadderEditAt: null, now,
       })?.floor?.price ?? null;
       input.declinedSale = declinedSaleWork({
         status: t.status, direction: t.direction, decline, floorPrice: floor, currentPrice: quote?.price ?? null,

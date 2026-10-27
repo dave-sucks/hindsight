@@ -32,15 +32,16 @@ Why a run and not an automatic order? A level is a call made days ago. The run c
 
 ## When it runs
 
-Every five minutes while the market is open, plus a pass at 4:20 PM for levels read on the close, every trigger on every stock is checked. When a buy, add, trim or sale trigger comes true, the fire is written into Activity and a trigger run starts on that stock.
+Every five minutes while the market is open, plus a pass at 4:20 PM for levels read on the close, every trigger on every stock is checked. When a trigger set to **Send to Agent** comes true (every trigger but a review, unless you chose otherwise), the fire is written into Activity and a trigger run starts on that stock.
 
-- **A buy fires on the crossing:** the moment the price reaches its level, not every day it stays there. A sale keeps asking every day its condition holds.
-- **Reviews wait for the morning.** A review is a question, not an order, so it goes on the stock's list for the next [morning run](morning-runs.md). The one exception: a worrying new filing on a stock we hold gets a look the same day.
-- **Some sales skip the run.** A floor can be set to propose its sale straight away, with no analyst. It goes through the same [approval](../concepts/approvals.md) as any sale.
+- **A buy fires on the crossing:** the moment the price reaches its level, not every day it stays there. A sale keeps asking every day its condition holds, until the stock is sold. An add or a trim asks again each time its rest period ends: a day on a price line, a week on the move from our entry.
+- **Reviews are flagged for the morning, unless sent to the agent.** A review is a question, not an order, so by default (**Flag for Review**) it goes on the stock's list for the next [morning run](morning-runs.md). Set to **Send to Agent**, it starts a trigger run the same day, which answers it with the review's guidance (each one is a run, about 6–18 cents). A worrying new filing on a stock we hold always gets a look the same day.
+- **A trim names its size.** The run is told "Trim 30% if above $150", and a partial sale it makes without naming a size sells that 30%.
+- **Auto trades skip the run.** An Auto-sell, Auto-trim, Auto-buy or Auto-add happens with no agent. The trigger run makes the trade the agent would have made, with the same tool, sizing and checks, and it goes through the same [approval](../concepts/approvals.md) as any trade. A refused one leaves one line in Activity saying why. An Auto buy, add or trim is used once and comes off the stock; an Auto-sell keeps asking.
 
 ## What it reads
 
-The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, and your notes. It comes with the trigger that fired and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news.
+The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, and your notes. It comes with the trigger that fired and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
 
 A give-back is measured from the highest price since the buy, over the whole holding. The run can't call a fire false by reading a lower high off a short chart; declining a sale takes new evidence about the business.
 
@@ -48,7 +49,7 @@ A give-back is measured from the highest price since the buy, over the whole hol
 
 - **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. On the live account, the [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
 - **Tighten the line:** move the trigger to a level the chart supports. It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the line is wrong, it says so and names the level, and lowering it is yours to do on the thesis.
-- **Hold, with a reason:** "not acting yet," and why. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse. While a sale is waiting for your approval, the stock is yours to decide and no run touches it.
+- **Hold, with a reason:** what is going on with the stock and why it isn't acting. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse. While a sale is waiting for your approval, the stock is yours to decide and no run touches it.
 
 Whatever it decides, it brings the stock's other triggers up to date: after an add the floor goes up, and a level the price blew through is reset off the new chart, not a round number.
 
@@ -69,7 +70,7 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 <summary>Technical details</summary>
 
 #### Wake
-`lib/inngest/functions/trigger-evaluator.ts` sends `app/thesis.trigger.fired`; `tactical-run.ts` starts the run. A review writes its fire and waits, unless a same-day filing calls for a look (`filingNeedsSameDayLook`).
+`lib/inngest/functions/trigger-evaluator.ts` sends `app/thesis.trigger.fired`; `tactical-run.ts` starts the run. A fire set to the next morning run (a review, unless set otherwise) writes its fire and waits, unless a same-day filing calls for a look (`filingNeedsSameDayLook`).
 
 #### Mode
 `tactical` in `lib/agent/modes.ts`: `gpt-5.4`, up to 15 steps.
@@ -81,8 +82,8 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on its crossing, a protective rule every day it holds.
 
 #### Floors
-`lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens or deletes a protective level. Your edits on the thesis sheet don't go through it.
+`lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens, deletes or slows a protective sale. Your edits on the thesis sheet don't go through it.
 
-#### Direct sales
-`fireMode: DIRECT` on a sale skips the run and goes to `closeOpenPosition`.
+#### Auto
+`fireMode: DO_IT` skips the agent: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`).
 </details>

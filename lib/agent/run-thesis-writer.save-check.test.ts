@@ -95,7 +95,6 @@ const ctx = {
   groupId: (phase: string) => phase,
   // The pull phase called get_stock_data for the ticker, as the writer ctx records.
   calledTickers: new Map([["DOCU", new Set(["get_stock_data"])], ["FIVE", new Set(["get_stock_data"])]]),
-  signalsByTicker: new Map(),
 } as unknown as ToolContext;
 
 type Fx = (typeof fixtures)["DOCU"];

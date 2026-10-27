@@ -19,6 +19,7 @@ const FORBIDDEN: Array<[string, RegExp]> = [
   ["bracket", /\[Belief unchanged|\[STRUCTURED|\[WEB:/g],
   ["checking", /\bvalidat\w*|\bpredicate\b|\bgates?\b|execution time|\bladder\b|re-ladder\w*|\boverrid\w*|close-out|false fire/gi],
   ["principal", /\bthe principal\b|\bthis seat\b/gi],
+  ["shorthand", /\bdrift\w*|time-hold|trend template|\bR\/R\b|\bATR\b|\brungs?\b|fire mode|\bslot\b/gi],
 ];
 
 interface Run { case: string; run: number; narration: string; saved: Array<{ tool: string; field: string; text: string }>; invalid?: Array<{ tool: string; error: string }> }

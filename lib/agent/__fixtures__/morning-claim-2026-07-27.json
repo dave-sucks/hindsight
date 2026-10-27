@@ -44,7 +44,7 @@
         "action": "REVIEW",
         "rationale": "Material filings after approval can change the launch, financing, or commercialization setup and need review.",
         "cooldownDays": 1,
-        "fireMode": "TACTICAL"
+        "fireMode": "NEXT_MORNING"
       },
       {
         "id": "661d2640-07d3-4eaf-a978-69193002512c",
@@ -56,7 +56,7 @@
         "action": "REVIEW",
         "rationale": "An earnings beat after approval could confirm FUROSCIX launch traction and justify pressing the post-event winner.",
         "cooldownDays": 7,
-        "fireMode": "TACTICAL"
+        "fireMode": "NEXT_MORNING"
       },
       {
         "id": "c6c1986d-c3ac-41b4-888c-734ccf370def",
@@ -68,7 +68,7 @@
         "action": "REVIEW",
         "rationale": "A miss after approval could suggest the launch is not changing the economic story fast enough and warrants reassessment.",
         "cooldownDays": 7,
-        "fireMode": "TACTICAL"
+        "fireMode": "NEXT_MORNING"
       },
       {
         "id": "9cc5909c-dd57-4331-a1ad-896d3edb586e",
@@ -81,7 +81,7 @@
         "action": "REVIEW",
         "rationale": "If the position reaches roughly +20% from entry, reassess whether to bank gains or raise the target and floor.",
         "cooldownDays": 7,
-        "fireMode": "TACTICAL"
+        "fireMode": "NEXT_MORNING"
       },
       {
         "id": "caa63ecc-0081-4bd1-bd7f-0653d7bc1d9e",
@@ -93,7 +93,7 @@
         "action": "EXIT",
         "rationale": "A break back below $4.00 after approval would negate the post-event breakout and justify exiting to protect capital.",
         "cooldownDays": 1,
-        "fireMode": "TACTICAL"
+        "fireMode": "ASK_NOW"
       },
       {
         "id": "14f4b73f-ed21-4cbb-8492-7e124ad34610",
@@ -106,7 +106,7 @@
         "action": "REVIEW",
         "rationale": "If the position falls 12% from entry, reassess whether the post-approval hold is failing or just retracing.",
         "cooldownDays": 7,
-        "fireMode": "TACTICAL"
+        "fireMode": "NEXT_MORNING"
       },
       {
         "id": "new-mnkd-review-30d",
@@ -117,7 +117,7 @@
         "action": "REVIEW",
         "rationale": "Thirty-day post-approval check on launch traction, financing digestion, and whether the rerating is still unfolding.",
         "cooldownDays": 24,
-        "fireMode": "TACTICAL"
+        "fireMode": "NEXT_MORNING"
       }
     ]
   },
@@ -172,7 +172,7 @@
       {
         "id": "7de42a86-ad73-4070-99e3-1be1daa57cd4",
         "action": "EXIT",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "price",
           "is": "below",
@@ -184,7 +184,7 @@
       {
         "id": "a06f9853-46a4-425e-8208-7e495a114aa0",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "kind": "OR",
           "predicates": [
@@ -208,7 +208,7 @@
       {
         "id": "661d2640-07d3-4eaf-a978-69193002512c",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "surprise",
           "is": "beat",
@@ -220,7 +220,7 @@
       {
         "id": "c6c1986d-c3ac-41b4-888c-734ccf370def",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "surprise",
           "is": "miss",
@@ -232,7 +232,7 @@
       {
         "id": "cac0764f-8bec-4e02-8866-58e6b46f23c5",
         "action": "ADD",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "move",
           "is": "below",
@@ -245,7 +245,7 @@
       {
         "id": "9cc5909c-dd57-4331-a1ad-896d3edb586e",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "move",
           "is": "above",
@@ -258,7 +258,7 @@
       {
         "id": "caa63ecc-0081-4bd1-bd7f-0653d7bc1d9e",
         "action": "EXIT",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "price",
           "is": "below",
@@ -270,7 +270,7 @@
       {
         "id": "14f4b73f-ed21-4cbb-8492-7e124ad34610",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "move",
           "is": "below",

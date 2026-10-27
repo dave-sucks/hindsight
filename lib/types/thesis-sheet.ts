@@ -13,6 +13,8 @@
 
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { When } from "@/lib/agent/triggers/condition";
+import type { ResearchBriefView } from "@/lib/research/brief-types";
+import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 
 export interface Trigger {
   id: string;
@@ -21,8 +23,10 @@ export interface Trigger {
   rationale: string;
   cooldownDays?: number;
   lastFiredAt?: string;
-  /** "TACTICAL" (wake an agent) | "DIRECT" (close directly, no agent). Absent ⇒ TACTICAL. */
-  fireMode?: "TACTICAL" | "DIRECT";
+  /** On fire (lib/agent/triggers/fire-mode). Absent ⇒ the action's default. */
+  fireMode?: FireMode;
+  /** An Auto-trim: the % it sells. */
+  trimPct?: number;
   /**
    * Which record this rung is stored on — the cascade level. Set by the
    * server's resolver (lib/agent/triggers/levels), never by the client.
@@ -100,6 +104,8 @@ export interface ThesisPendingProposal {
    * was — there is nothing left to decide. Clears itself on the fill.
    */
   executing?: boolean;
+  /** The research brief built for this order; null until it lands. */
+  brief?: ResearchBriefView | null;
 }
 
 export interface ThesisScoringDim {
@@ -233,6 +239,8 @@ export interface ThesisDossier {
   analystConsensus: ResearchTextSection | null;
   insiderTechnical: ResearchTextSection | null;
   researchUpdatedAt: string | null;
+  /** When the research writer last wrote this up, and the stock's price in its own pull (lib/thesis/written-up.ts). Null when no writer run saved it. */
+  writtenUp: { at: string; price: number | null } | null;
   // Provenance: where the thesis came from + the analyst's one-line
   // rationale + the Signal rows that informed it.
   sourceKind: string | null;

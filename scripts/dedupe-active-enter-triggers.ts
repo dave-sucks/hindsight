@@ -26,7 +26,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   defaultTriggersForHorizon,
-  applyTriggerCooldownDefaults,
+  applyTriggerDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -93,7 +93,7 @@ async function main() {
           },
           "HELD",
         );
-        nextTriggers = applyTriggerCooldownDefaults(heldDefaults);
+        nextTriggers = applyTriggerDefaults(heldDefaults);
       } else {
         // Conservative fallback: drop ENTER-action triggers, keep
         // everything else.

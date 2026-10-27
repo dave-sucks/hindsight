@@ -3,7 +3,8 @@
  * ticker on the book and store the numbers a trigger reads. DAV-247.
  *
  * "On the book" = every HOLDING / WATCHING / PROMOTED thesis under an
- * enabled analyst — the same set the trigger evaluator walks — plus SPY,
+ * enabled analyst, and every HOLDING one under a paused analyst (its sales
+ * are still checked) — the set the trigger evaluator walks — plus SPY,
  * which the regime reading uses (DAV-251). One year of
  * completed SIP daily bars per ticker (lib/alpaca.ts getDailyBars), SPY
  * once, lib/market-data/price-structure.ts for the arithmetic, one
@@ -38,7 +39,8 @@ export const indicatorSnapshot = inngest.createFunction(
       const rows = await prisma.thesis.findMany({
         where: {
           status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
-          researchRun: { agentConfig: { enabled: true } },
+          // A paused analyst's held stocks too: their sales are still checked.
+          OR: [{ researchRun: { agentConfig: { enabled: true } } }, { status: "HOLDING" }],
         },
         select: { ticker: true },
         distinct: ["ticker"],

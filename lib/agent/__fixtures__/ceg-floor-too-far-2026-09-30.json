@@ -14,7 +14,7 @@
       {
         "id": "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e",
         "action": "EXIT",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "price",
           "is": "below",
@@ -26,7 +26,7 @@
       {
         "id": "a2fa9578-c744-4568-a02c-ec2c2333f5a0",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "price",
           "is": "below",
@@ -52,7 +52,7 @@
         "id": "0cec3fcf-053d-46b0-bc63-5138726788ea",
         "action": "REVIEW",
         "source": "DEFAULT",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "repeat",
           "value": 30
@@ -211,7 +211,7 @@
         "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
         "action": "ADD",
         "source": "DEFAULT",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "move",
           "is": "above",
@@ -225,7 +225,7 @@
         "id": "b459cc93-12a4-43f1-8904-d8a8cd846b93",
         "action": "REVIEW",
         "source": "DEFAULT",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "repeat",
           "value": 7
@@ -390,7 +390,7 @@
       {
         "id": "b2e6d511-2bf0-4094-a25d-812708a70020",
         "action": "ENTER",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "price",
           "is": "above",
@@ -403,7 +403,7 @@
       {
         "id": "6ad21e4b-5622-4a39-81c3-b22e199f3691",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "surprise",
           "is": "beat",
@@ -415,7 +415,7 @@
       {
         "id": "82b5b477-6441-4e06-810d-ea0875245307",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "surprise",
           "is": "miss",
@@ -427,7 +427,7 @@
       {
         "id": "0238fe2c-3614-431b-a247-ad74e23b7319",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "kind": "GUIDANCE_CHANGE",
           "direction": "DOWN"
@@ -438,7 +438,7 @@
       {
         "id": "712d795b-814a-4db7-9cce-95b2ab3a481f",
         "action": "REVIEW",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "days": 90,
           "kind": "TIME_ELAPSED"

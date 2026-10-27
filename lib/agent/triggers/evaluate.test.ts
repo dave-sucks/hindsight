@@ -6,6 +6,7 @@
  */
 
 import { evaluateTrigger, shouldFire } from "./evaluate";
+import { applyTriggerDefaults } from "./defaults";
 import type { EvaluationContext } from "./evaluate";
 import type { EarningsReport } from "./earnings";
 import type { Trigger } from "./types";
@@ -340,16 +341,15 @@ describe("evaluateTrigger", () => {
   });
 
   describe("gap", () => {
-    it("fires on today's gap: open vs prior close, on volume", () => {
-      const p: When = { watch: "gap", value: 8, settings: { volume: 3 } };
+    it("fires on today's gap: open vs prior close, whatever the volume", () => {
+      const p: When = { watch: "gap", value: 8 };
       expect(evaluateTrigger(p, at(175, { today: { open: 172, volume: 3_500_000 } }))).toBe(true);
-      expect(evaluateTrigger(p, at(175, { today: { open: 172, volume: 2_000_000 } }))).toBe(false);
+      expect(evaluateTrigger(p, at(175, { today: { open: 172, volume: 2_000_000 } }))).toBe(true);
       expect(evaluateTrigger(p, at(165, { today: { open: 163, volume: 5_000_000 } }))).toBe(false);
     });
-    it("withinDays reaches back to a recent gap in the snapshot", () => {
-      expect(evaluateTrigger({ watch: "gap", value: 8, settings: { volume: 3, withinDays: 3 } }, at(155))).toBe(true);
-      expect(evaluateTrigger({ watch: "gap", value: 8, settings: { volume: 3, withinDays: 2 } }, at(155))).toBe(false);
-      expect(evaluateTrigger({ watch: "gap", value: 10, settings: { volume: 3, withinDays: 3 } }, at(155))).toBe(false);
+    it("counts a gap on its day: the snapshot's gap two sessions back doesn't, and a stored look-back is ignored", () => {
+      expect(evaluateTrigger({ watch: "gap", value: 8 }, at(155))).toBe(false);
+      expect(evaluateTrigger({ watch: "gap", value: 8, settings: { volume: 3, withinDays: 3 } }, at(155))).toBe(false);
     });
   });
 
@@ -536,21 +536,22 @@ describe("evaluateTrigger", () => {
       const reported = report({ reportDate: "2026-08-26", surprisePct: 3.8 });
       const at = (iso: string) => makeCtx({ earnings: reported, now: new Date(`${iso}T15:00:00Z`) });
 
-      it("fires inside the window, counting the report day as 0", () => {
-        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-27"))).toBe(true);
-        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-29"))).toBe(true);
-        expect(evaluateTrigger({ watch: "report", is: "after", value: 0, settings: { fromDay: 0 } }, at("2026-08-26"))).toBe(true);
+      it("fires inside the window, counting from the report day (0)", () => {
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3 }, at("2026-08-26"))).toBe(true);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3 }, at("2026-08-29"))).toBe(true);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 0 }, at("2026-08-26"))).toBe(true);
+        // A stored fromDay no longer holds back the report day.
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-26"))).toBe(true);
       });
 
-      it("does not fire before min or after max", () => {
-        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-26"))).toBe(false);
-        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 1 } }, at("2026-08-30"))).toBe(false);
+      it("does not fire after the window", () => {
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3 }, at("2026-08-30"))).toBe(false);
       });
 
       it("does not fire on an upcoming row or with nothing reported", () => {
         const upcoming = { ...report({ reportDate: "2026-09-30" }), epsActual: null, surprisePct: null };
-        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 0 } }, makeCtx({ earnings: upcoming, now: new Date("2026-09-30T15:00:00Z") }))).toBe(false);
-        expect(evaluateTrigger({ watch: "report", is: "after", value: 3, settings: { fromDay: 0 } }, makeCtx())).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3 }, makeCtx({ earnings: upcoming, now: new Date("2026-09-30T15:00:00Z") }))).toBe(false);
+        expect(evaluateTrigger({ watch: "report", is: "after", value: 3 }, makeCtx())).toBe(false);
       });
     });
 
@@ -762,7 +763,7 @@ describe("shouldFire", () => {
 
   // ── Defense-in-depth — non-EXIT cooldownDays=0 (NVDA runaway shape) ───
   //
-  // The write-path fix (applyTriggerCooldownDefaults) stops new bad
+  // The write-path fix (applyTriggerDefaults) stops new bad
   // values from landing on disk. The evaluator-layer defense below
   // catches existing on-disk bad rows: a non-EXIT action with explicit
   // cooldownDays=0 is treated as "needs default" and falls back to the
@@ -981,6 +982,28 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
       lastFiredAt: new Date("2026-08-12T10:00:00Z").toISOString(),
     };
     expect(shouldFire(fired, at(130, day1, 127)).reason).toBe("cooldown");
+  });
+});
+
+describe("the move from our entry: a sale asks daily, an add weekly", () => {
+  // Saved with no rest named, each takes its measure's default; both fired yesterday.
+  const [sale, add] = applyTriggerDefaults([
+    { id: "s", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "entry" }, rationale: "stop" },
+    { id: "a", action: "ADD", predicate: { watch: "move", is: "above", value: 10, variable: "entry" }, rationale: "press" },
+  ]).map((t) => ({ ...t, lastFiredAt: "2026-08-12T14:00:00Z" }));
+  const on = (price: number): EvaluationContext => ({
+    latestQuote: { price, changePct: 0 },
+    thesis: { createdAt: new Date("2026-08-01"), direction: "LONG" },
+    position: { avgCost: 100, peakPrice: 112 },
+    now: new Date("2026-08-13T14:05:00Z"),
+  });
+
+  it("saves the sale with a one-day rest and the add with seven", () => {
+    expect([sale.cooldownDays, add.cooldownDays]).toEqual([1, 7]);
+  });
+  it("the next day, the sale still under its line asks again; the add still up 10% rests", () => {
+    expect(shouldFire(sale, on(91)).reason).toBe("match");
+    expect(shouldFire(add, on(111)).reason).toBe("cooldown");
   });
 });
 

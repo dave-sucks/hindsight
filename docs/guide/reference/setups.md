@@ -29,8 +29,6 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 **Trail:**
 
 - trade: Stop to breakeven at +1R; close under the 21-day EMA.
-- target: After +10%: max(3 ATR, 12–15%) under the high, or a close under the 50-day.
-- compounder: No automatic sale under 25%; a 15% give-back and a close under the 200-day are reviews.
 
 **Time limit:** No progress in 10–20 sessions = a failed breakout; exit or re-set. If it gains 20% within 3 weeks of the breakout, hold at least 8 weeks (O'Neil's 8-week rule) instead of selling the partial.
 
@@ -92,7 +90,6 @@ A neglected stock reprices on unexpected news with volume many times average; in
 **Trail:**
 
 - trade: Close under the 10- or 20-day.
-- target: After +10%: max(3 ATR, 12–15%) under the high, or a close under the 21-day EMA.
 
 **Time limit:** Partial at 3–5 sessions; the trail decides the rest.
 
@@ -125,7 +122,6 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 
 **Trail:**
 
-- target: After +10%: max(3 ATR, 12–15%) under the high.
 - trade: Close under the 20-day.
 
 **Time limit:** Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.
@@ -156,8 +152,6 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 **Trail:**
 
-- target: After +10%: max(3 ATR, 12–15%) under the high, or a close under the 50-day.
-- compounder: No automatic sale under 25%; a 15% give-back and a close under the 200-day are reviews.
 - catalyst: The structural stop until the event.
 
 **Time limit:** 10 sessions to reclaim the prior high, else review.
@@ -313,10 +307,6 @@ A business bought at conviction size and held through volatility, entered on con
 **Floor:** Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a 15% give-back are reviews. The 25% catastrophe line off the high is the only automatic sale.
 
 **Target:** A 3–5 year valuation case; trims only at valuation extremes.
-
-**Trail:**
-
-- compounder: No automatic sale under 25%; a 15% give-back and a close under the 200-day are reviews.
 
 **Time limit:** A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.
 

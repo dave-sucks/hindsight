@@ -14,7 +14,7 @@ import {
   REPLAY_RUN_ID,
   planTriggers,
 } from "@/lib/replay";
-import { applyTriggerCooldownDefaults, defaultCooldownDaysForPredicate } from "@/lib/agent/triggers/defaults";
+import { applyTriggerDefaults, defaultCooldownDaysForPredicate } from "@/lib/agent/triggers/defaults";
 import { isBinaryBet } from "@/lib/agent/knowledge/setups";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -358,7 +358,7 @@ describe("DAV-329 — a state re-asks weekly, a crossing daily", () => {
     expect(defaultCooldownDaysForPredicate(below200, "TRIM")).toBe(1);
     // No action given, no way to tell a review from a sale: take the safe
     // one. Under-firing a protective rung is the worse failure, and the
-    // only production caller (`applyTriggerCooldownDefaults`) always knows.
+    // only production caller (`applyTriggerDefaults`) always knows.
     expect(defaultCooldownDaysForPredicate(below200)).toBe(1);
   });
 
@@ -375,7 +375,7 @@ describe("DAV-329 — a state re-asks weekly, a crossing daily", () => {
     expect(defaultCooldownDaysForPredicate(pullback, "REVIEW")).toBe(7);
 
     // …and that is what the write path stores on a new rung.
-    const written = applyTriggerCooldownDefaults([
+    const written = applyTriggerDefaults([
       { id: "buy", action: "ENTER", predicate: above50 },
       { id: "review", action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma200" } },
     ] as unknown as Trigger[]);

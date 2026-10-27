@@ -37,6 +37,12 @@ jest.mock("@/lib/emails/proposal-pending", () => ({
   sendProposalPendingEmail: mockSendProposalPendingEmail,
 }));
 
+// The email rides the proposal-pending event (it waits for the research brief).
+const mockInngestSend = jest.fn().mockResolvedValue(undefined);
+jest.mock("@/lib/inngest/client", () => ({ inngest: { send: mockInngestSend } }));
+const told = (orderId: string) =>
+  expect(mockInngestSend).toHaveBeenCalledWith(expect.objectContaining({ name: "app/proposal.pending", data: { orderId } }));
+
 import {
   maybeAwaitApproval,
   ApprovalGateAccountUnresolvedError,
@@ -74,8 +80,8 @@ function baseArgs() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockAccountFindUnique.mockResolvedValue(ALL_TOGGLES_ON);
-  // Default: a discretionary agent close with no prior rejections → the
-  // P1-28 cooldown gate is a no-op and the call stages/folds as before.
+  // Default: a discretionary agent close with no prior rejections; the call
+  // stages/folds as usual.
   mockOrderFindUnique.mockResolvedValue({
     closeReason: "MANUAL",
     closeSource: "agent",
@@ -97,7 +103,7 @@ describe("maybeAwaitApproval — staging", () => {
         data: expect.objectContaining({ status: "AWAITING_APPROVAL" }),
       }),
     );
-    expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
+    told("order-new");
   });
 
   it("stages a PARTIAL_CLOSE — scale-outs can legitimately stack", async () => {
@@ -127,13 +133,9 @@ describe("maybeAwaitApproval — staging", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GAPS P1-28 — unapproved-exit cooldown. The agent re-proposed the same
-// discretionary CLOSE ~daily; prod showed the user mostly IGNORES the card
-// (NVDA 10 expired / 0 rejected, IREN 7/0) rather than explicitly rejecting.
-// The gate refuses to re-stage a discretionary close within the cooldown of a
-// prior unapproved proposal — REJECTED-by-user OR EXPIRED — while ALWAYS
-// letting risk-management exits (STOP/TARGET, price_monitor) through and
-// ignoring systemic tombstones.
+// The unapproved-exit cooldown, and its removal. It refused to re-stage a
+// discretionary close within days of a REJECTED or EXPIRED proposal; it was
+// removed 2026-08-10. These tests pin that nothing suppresses a repeat now.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)", () => {
   // The P1-28 cross-day cooldown was REMOVED 2026-08-10: it went silent on
@@ -154,7 +156,7 @@ describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)
 
     expect(awaiting(result).orderId).toBe("order-new");
     expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
+    told("order-new");
   });
 
   it("re-stages after an ignored EXPIRY (the MU/CYTK silence case) — reminds again", async () => {
@@ -184,7 +186,7 @@ describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)
 
     expect(awaiting(result).orderId).toBe("order-new");
     expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
+    told("order-new");
   });
 
   it("still stages a PARTIAL_CLOSE normally", async () => {
@@ -225,6 +227,7 @@ describe("maybeAwaitApproval — unresolved account fails CLOSED on LIVE", () =>
     expect(mockOrderFindFirst).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
+    expect(mockInngestSend).not.toHaveBeenCalled();
   });
 
   it("fails closed on a LIVE OPEN (buy) too, not just closes", async () => {
@@ -253,5 +256,6 @@ describe("maybeAwaitApproval — unresolved account fails CLOSED on LIVE", () =>
     expect(mockOrderFindFirst).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
+    expect(mockInngestSend).not.toHaveBeenCalled();
   });
 });

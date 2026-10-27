@@ -1,22 +1,19 @@
 /**
  * print-analyst-config.ts
  *
- * Pre-flight inspection for the manual discovery trigger. Prints the
- * Universe + edge fields the discovery prompt will render.
+ * Prints an analyst's Universe and edge fields from the database, to check
+ * what its agents (and discovery in chat) will see for it.
  *
  * Run with:
  *   npx tsx scripts/print-analyst-config.ts <agentConfigId>
  *
  * Or with the default (Tech Momentum):
  *   npx tsx scripts/print-analyst-config.ts
- *
- * Useful for: "I'm about to fire app/discovery.run.manual — what will
- * the agent see?"
  */
 
 import { prisma } from "@/lib/prisma";
 
-// Default to Tech Momentum (same default as trigger-discovery-manual.ts).
+// Default to Tech Momentum.
 const DEFAULT_AGENT_CONFIG_ID = "cmmofy6t3000004l7858o1xma";
 
 function fmtList(arr: string[] | null | undefined): string {

@@ -209,7 +209,7 @@ Answer, in order:
 
 What you can do (one of these):
 - Press: manage_position add_to_position (it sizes the add), then update_thesis raising the target, and the floor (stop_loss) under the bigger position.
-- Hold: raise the floor to lock a real share of the gain, under structure, with update_thesis stop_loss. The \`protection\` line shows what the floor locks in now. Breakeven only guards against a loss.
+- Hold: raise the floor to lock a real share of the gain, under structure, with update_thesis stop_loss; a review line above the floor moves up too, never down. The \`protection\` line shows what the floor locks in now. Breakeven only guards against a loss.
 - Take: manage_position partial_close, or close_position.
 Then one update_thesis saying which and why. A trade may wait for the principal's approval.
 
@@ -289,7 +289,7 @@ Answer, in order:
 2. Where is real structure? The \`floor_risk\` line names it when the floor is too far; otherwise the 20-day low, a swing low, the breakout level, an average (the \`chart\` line, or get_stock_data).
 
 What you can do:
-- Raise the floor under that structure: update_thesis with stop_loss. Tightening is always allowed. A compounder breathes wider than a trade.
+- Raise the floor under that structure: update_thesis with stop_loss; a review line above the floor moves up too, never down. Tightening is always allowed. A compounder breathes wider than a trade.
 - Or protect by taking: manage_position partial_close so the loss at the floor fits, or close_position when the structure is breaking or the reward is gone.
 - Or say in one sentence why this floor stands and why the risk is worth it (a binary event this week that any trail would shake out).
 

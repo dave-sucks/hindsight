@@ -98,12 +98,8 @@ export function planManualOrder(
   // can be served as "now", and the stop would be checked against it.
   if (priceStale) return { ok: false, error: "The price isn't live right now — try again in a minute." };
   if (!Number.isInteger(shares)) return { ok: false, error: "Buy whole shares." };
-  // Paid from cash, never margin.
-  if (market.cash == null) return { ok: false, error: "Couldn't read the account's cash — try again." };
-  const cost = shares * livePrice;
-  if (cost > market.cash) {
-    return { ok: false, error: `You have ${usd(market.cash)} in cash; this buy is ${usd(cost)}.` };
-  }
+  const short = cashShortfall(shares * livePrice, market.cash);
+  if (short) return { ok: false, error: short };
   const buy = lane.buy;
   if (buy.kind === "NONE") return { ok: false, error: buy.reason };
   if (buy.kind === "ADD") {
@@ -131,6 +127,12 @@ export function planManualOrder(
     return { ok: false, error: `The target ($${targetPrice.toFixed(2)}) has to be above the price ($${livePrice.toFixed(2)}).` };
   }
   return { ok: true, intent: "OPEN", shares };
+}
+
+/** A buy is paid from cash, never margin: why this one can't be, or null. The Trade button and an Auto trigger ask this. */
+export function cashShortfall(cost: number, cash: number | null): string | null {
+  if (cash == null) return "Couldn't read the account's cash — try again.";
+  return cost > cash ? `You have ${usd(cash)} in cash; this buy is ${usd(cost)}.` : null;
 }
 
 /**

@@ -17,6 +17,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
+import { isFireMode } from "@/lib/agent/triggers/fire-mode";
 import { prisma } from "@/lib/prisma";
 import { resolveLadder } from "@/lib/agent/triggers/levels";
 import { parseLevelTriggers } from "@/lib/agent/triggers/load-levels";
@@ -139,6 +140,7 @@ export async function POST(
     action?: unknown;
     predicate?: unknown;
     fireMode?: unknown;
+    trimPct?: unknown;
     rationale?: unknown;
   };
   try {
@@ -149,6 +151,7 @@ export async function POST(
   if (typeof body.action !== "string" || typeof body.predicate !== "object" || !body.predicate) {
     return new Response("Body must include `action` and `predicate`.", { status: 400 });
   }
+  if (body.fireMode != null && !isFireMode(body.fireMode)) return new Response('`fireMode` must be "DO_IT", "ASK_NOW" or "NEXT_MORNING".', { status: 400 });
 
   try {
     const created = await addLevelTrigger(
@@ -157,10 +160,8 @@ export async function POST(
       {
         action: body.action as TriggerAction,
         predicate: body.predicate as When,
-        fireMode:
-          body.fireMode === "TACTICAL" || body.fireMode === "DIRECT"
-            ? body.fireMode
-            : undefined,
+        fireMode: isFireMode(body.fireMode) ? body.fireMode : undefined,
+        trimPct: typeof body.trimPct === "number" ? body.trimPct : undefined,
         rationale: typeof body.rationale === "string" ? body.rationale : undefined,
       },
       { accountId, actorUserId: user.id },

@@ -46,10 +46,10 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Buy level:** the price a watched stock's buy trigger waits for.
 - **Fire:** a trigger coming true. It's written into Activity with the price that fired it.
 - **On the cross:** how a buy fires: once, on the day the price reaches its level, never every day it stays there.
-- **Standing order:** how a sale or a review fires: every day its condition holds, until it's answered.
+- **Standing order:** how every trigger but a buy fires: again each time its rest period ends, while its condition holds. A sale asks every day until the stock is sold.
 - **Review clock:** a review that repeats, like "Review every 30 days". When it comes round, the stock is due a fresh look.
-- **Direct sale:** a floor set to propose its sale the moment it fires, with no agent run in between.
-- **Rest period:** how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day.
+- **On fire:** what a trigger does when it comes true: Auto (the trade, no agent: Auto-sell, Auto-trim, Auto-buy, Auto-add), Send to Agent (a trigger run), or Flag for Review (the next morning run).
+- **Rest period:** how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day: a day for a price line or the trail, a week for an add, trim or review on the move from our entry. A sale asks daily whatever it watches. A trigger's popover shows it.
 - **Inherited rule:** a trigger that comes from the analyst or the account, not the thesis. Never copied onto the thesis; the closest rule wins.
 - **Close pass:** the 4:20 PM check for levels that read the day's closing price.
 - **Chart numbers:** the averages, highs, volume, RSI, strength and gaps worked out at 6:30 every morning, which every check that day reads.
@@ -59,9 +59,9 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Morning run:** each analyst's review of its whole book, every run day at 8 AM. See [Morning runs](agents/morning-runs.md).
 - **Trigger run:** an analyst's short look at one stock, started by a trigger that fired. See [Trigger runs](agents/trigger-runs.md).
 - **Chat:** the agent you talk to, on one analyst or the whole account. See [Chat](agents/chat.md).
-- **Discovery:** finding new stocks for an analyst. In practice it's done in chat, which carries Discovery's tools and rules. See [Discovery](agents/discovery.md).
+- **Discovery:** finding new stocks for an analyst. It's done in chat, which carries the tools and rules for it. See [Discovery](agents/discovery.md).
 - **The Writer:** the only agent that writes a whole thesis, from in-depth research. See [the Writer](agents/writer.md).
-- **Door:** one way an agent is started: the morning run, the trigger run, chat, Discovery or the Writer. The Framework tab compares them.
+- **Door:** one way an agent is started: the morning run, the trigger run, chat or the Writer. The Framework tab compares them.
 
 ## What an agent reads
 

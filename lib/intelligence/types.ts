@@ -4,7 +4,6 @@
 //   - Background intelligence jobs (Inngest functions)
 //   - Sonar API response parsing
 //   - Signal creation/routing utilities
-//   - Runtime tools (read_morning_brief, read_signals)
 //   - Intelligence config UI
 
 // ── Enums (string unions matching Prisma schema) ────────────────────────────
@@ -177,8 +176,8 @@ export interface IntelligencePolicy {
   // Discovery budget — caps how much the agent reads per run.
   // 30 was too low (TMT had 165 routes, agent saw 20), 100 was over-generous.
   // 50 balances "see the full useful slice of your day" with context budget.
-  // read_signals' HARD_LIMIT = 75 acts as a secondary ceiling.
-  maxSignalsPerRun: number;        // default 50 — max signals to surface via read_signals
+  // Nothing reads it since the signal-inbox tools were deleted.
+  maxSignalsPerRun: number;        // default 50
   maxArtifactReads: number;        // default 5 — full article reads per run
 
   // Source category preferences — steer what types of intelligence get priority
@@ -209,25 +208,6 @@ export const DEFAULT_INTELLIGENCE_POLICY: IntelligencePolicy = {
   minUrgency: "LOW",
   minSourceQuality: 2,
 };
-
-/**
- * Parse an IntelligencePolicy from a Prisma Json field.
- * Returns defaults for any missing fields — safe to call on null/undefined.
- */
-export function parseIntelligencePolicy(raw: unknown): IntelligencePolicy {
-  if (!raw || typeof raw !== "object") return { ...DEFAULT_INTELLIGENCE_POLICY };
-  const obj = raw as Record<string, unknown>;
-  return {
-    maxSignalsPerRun: typeof obj.maxSignalsPerRun === "number" ? obj.maxSignalsPerRun : DEFAULT_INTELLIGENCE_POLICY.maxSignalsPerRun,
-    maxArtifactReads: typeof obj.maxArtifactReads === "number" ? obj.maxArtifactReads : DEFAULT_INTELLIGENCE_POLICY.maxArtifactReads,
-    preferredSourceCategories: Array.isArray(obj.preferredSourceCategories) ? obj.preferredSourceCategories as SourceCategory[] : DEFAULT_INTELLIGENCE_POLICY.preferredSourceCategories,
-    excludedSourceCategories: Array.isArray(obj.excludedSourceCategories) ? obj.excludedSourceCategories as SourceCategory[] : DEFAULT_INTELLIGENCE_POLICY.excludedSourceCategories,
-    allowLiveSearch: typeof obj.allowLiveSearch === "boolean" ? obj.allowLiveSearch : DEFAULT_INTELLIGENCE_POLICY.allowLiveSearch,
-    liveSearchBudget: typeof obj.liveSearchBudget === "number" ? obj.liveSearchBudget : DEFAULT_INTELLIGENCE_POLICY.liveSearchBudget,
-    minUrgency: (["LOW", "MEDIUM", "HIGH", "BREAKING"] as const).includes(obj.minUrgency as SignalUrgency) ? obj.minUrgency as SignalUrgency : DEFAULT_INTELLIGENCE_POLICY.minUrgency,
-    minSourceQuality: typeof obj.minSourceQuality === "number" ? obj.minSourceQuality : DEFAULT_INTELLIGENCE_POLICY.minSourceQuality,
-  };
-}
 
 // ── Dynamic Query Types ─────────────────────────────────────────────────────
 // Output from the briefing agent's dynamic_queries section.

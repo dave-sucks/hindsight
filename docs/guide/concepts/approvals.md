@@ -12,7 +12,7 @@ No agent places a trade by itself. A trade becomes a proposal the moment an agen
 
 - **A [trigger run](../agents/trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
 - **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its target.
-- **A floor set to sell straight away,** with no agent at all.
+- **An Auto trigger** (Auto-sell, Auto-trim, Auto-buy, Auto-add), with no agent at all.
 - **[Chat](../agents/chat.md)**, when you ask for a trade.
 
 A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no agent picks a size. Only chat may name one, at your word.
@@ -20,6 +20,8 @@ A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no ag
 ## What a proposal carries
 
 It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the reason in the analyst's words, what caused it (the trigger that fired or the run that decided it), and when it expires.
+
+A sale made by a trigger set to Auto-sell names that trigger first ("Sell if below $41.42" fired, with no agent run), then the trigger's own reason, and Activity calls it an Auto-sell.
 
 ## What your answer does
 
@@ -34,6 +36,8 @@ Approval is a setting on each account, for buys and sales separately:
 
 - **Live account:** on by default. Every trade waits for you.
 - **Paper account:** off by default, so paper trades go straight to the broker and analysts can practise freely. Turn it on to review paper trades too.
+
+The switches cover every trade the app makes for you, a trigger's automatic sale included. Only your own buy and sell buttons skip them: the click is the approval.
 
 Until it's approved, a proposal isn't a holding, and it isn't counted in your positions or your P&L.
 

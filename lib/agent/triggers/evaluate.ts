@@ -112,7 +112,7 @@ export interface EvaluationContext {
    * trail (peakPrice). Supplied by the cron + live paths for
    * HOLDING theses; absent/null (WATCHING, or caller didn't join the
    * position) → those predicates return false (missed trigger, not a
-   * crash). peakPrice is the price-monitor-maintained water mark:
+   * crash). peakPrice is the water mark the five-minute pass keeps:
    * high-water for LONG, low-water for SHORT.
    */
   position?: {
@@ -120,13 +120,6 @@ export interface EvaluationContext {
     peakPrice?: number | null;
     /** When the position opened — the anchor for a day count `from: "BUY"`. */
     openedAt?: Date | null;
-    /**
-     * When that water mark was set, written alongside peakPrice by the price
-     * monitor. Read by the big-winner switch, which needs to tell a run that
-     * took two weeks from one that took six months. Absent → the switch
-     * can't prove the run was fast, so the partial stands.
-     */
-    peakAt?: Date | null;
   } | null;
 
   /** Thesis fields needed by time-based predicates. */
@@ -192,14 +185,15 @@ export interface Checker {
  *   2. `cooldownDays === 0` on a non-EXIT action — STRUCTURALLY INVALID,
  *      treat as "absent" and fall back to the per-kind default. This is
  *      the read-path mirror of the write-path fix in
- *      `applyTriggerCooldownDefaults`. Required because the write-path
+ *      `applyTriggerDefaults`. Required because the write-path
  *      fix only stops *future* bad values from landing — existing on-disk
  *      rows with the bad shape would otherwise keep tick-firing until
  *      something rewrites them. Background: 2026-06-02 NVDA runaway.
  *
  *   3. `cooldownDays === 0` on an EXIT action — legitimate escape hatch.
- *      EXIT is terminal; the position closes and the cron's `status:ACTIVE`
- *      filter removes the row from evaluation. No runaway risk.
+ *      A sale asks again on every check while its condition holds; while
+ *      one is waiting for approval, the trigger run drops the repeat fires
+ *      (tactical-run's check-queued-close), so there is no runaway.
  */
 export function shouldFire(
   trigger: Trigger,

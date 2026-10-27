@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/tooltip";
 
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
+import { AutoStopSetting } from "@/components/settings/AutoStopSetting";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import { positionBand, positionTotalCap } from "@/lib/agent/position-sizing";
 import { setupIndex } from "@/lib/agent/knowledge/setups";
@@ -181,6 +182,7 @@ export function AnalystConfigForm({
           <TabsContent value="triggers" className="flex-1 min-h-0 mt-0">
             <ScrollArea className="h-full">
               <div className="space-y-3 p-3">
+                <AutoStopSetting level="analyst" ownerId={analystId} />
                 <LevelTriggersSection level="analyst" ownerId={analystId} />
               </div>
             </ScrollArea>
@@ -492,7 +494,7 @@ function SettingsTab({
 
           <RowLabel
             label="Min Confidence"
-            tooltip="Lowest thesis confidence (0–100) that can place a trade. Enforced."
+            tooltip="Lowest score a stock needs before this analyst may buy it. Scores are out of 10, so 70 here means 7 out of 10. In your chat a lower score is a line on the proposal, not a refusal."
           />
           <Input
             type="number"
@@ -510,7 +512,7 @@ function SettingsTab({
 
           <RowLabel
             label="Max Positions"
-            tooltip="Most concurrent open positions this analyst can hold. Enforced."
+            tooltip="Most stocks this analyst can hold at once. A buy waiting for your approval counts; adding to a stock it already holds doesn't."
           />
           <Input
             type="number"

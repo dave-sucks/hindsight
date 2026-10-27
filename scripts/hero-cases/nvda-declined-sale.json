@@ -241,7 +241,7 @@
      "action": "EXIT",
      "rationale": "Gave back 12% from the high, once the position had been up 10% — bank the run.",
      "cooldownDays": 0,
-     "fireMode": "TACTICAL",
+     "fireMode": "ASK_NOW",
      "source": "PRINCIPAL",
      "level": "ANALYST",
      "inherited": true
@@ -287,7 +287,7 @@
      "action": "ADD",
      "rationale": "Up 7% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
      "cooldownDays": 3,
-     "fireMode": "TACTICAL",
+     "fireMode": "ASK_NOW",
      "source": "DEFAULT",
      "level": "ACCOUNT",
      "inherited": true

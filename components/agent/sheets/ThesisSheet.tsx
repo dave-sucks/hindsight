@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
+import { ResearchBrief } from "@/components/domain/research-brief";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { ThesisChart } from "@/components/domain/thesis-chart";
 import {
@@ -370,11 +371,9 @@ function humanizeCloseReason(raw: string | null | undefined): string | null {
 }
 
 // ── ClampedParagraph ──
-// The two long paragraphs on this sheet — the newest written note at the top
-// and the research snapshot at the bottom — are the same thing at different
-// times, so they are one size, one colour and one gesture. Clamped to four
-// lines; the whole paragraph is the hit area, hover darkens, click toggles.
-// Same as the Activity feed's rows.
+// The newest written note at the top of the sheet. Clamped to four lines;
+// the whole paragraph is the hit area, hover darkens, click toggles. Same as
+// the Activity feed's rows.
 function ClampedParagraph({ text, className }: { text: string; className?: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -556,6 +555,7 @@ function TradeBlock({
       {review ? <div className="flex justify-start">{review}</div> : null}
       <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
       {note ? <TradeNote text={note} /> : null}
+      {pp && !pp.executing ? <ResearchBrief orderId={pp.orderId} initial={pp.brief ?? null} /> : null}
       {/* Meta line doubles as the path to the trade detail page — the old
           standalone "View trade →" under the sheet header is gone (principal
           feedback: the banner already exists exactly when a trade exists). */}
@@ -894,6 +894,19 @@ function WrittenByLine({
   );
 }
 
+/** "Written Sep 13 at $38.38": the date the research writer wrote the belief, and the price its own pull read. */
+function WrittenUpLine({ writtenUp }: { writtenUp: ThesisDossier["writtenUp"] }) {
+  if (!writtenUp) return null;
+  const at = new Date(writtenUp.at);
+  if (!Number.isFinite(at.getTime())) return null;
+  return (
+    <p className="text-xs text-muted-foreground tabular-nums">
+      Written {at.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+      {writtenUp.price != null ? ` at $${writtenUp.price.toFixed(2)}` : ""}
+    </p>
+  );
+}
+
 // ── TerminalStatusAlert ─────────────────────────────────────────────────
 // Renders a single Alert when the thesis is in a terminal state. Tells
 // the user *why* the thesis ended + when, so the rest of the sheet
@@ -1057,10 +1070,8 @@ function ResearchSectionsAccordion({
     }
   }
 
-  // Display order + labels. Snapshot + Analyst Consensus are promoted out
-  // of the accordion to tier-1 always-visible blocks (Snapshot as prose
-  // under Core Belief; Analyst Consensus as a structured widget). Order
-  // here matches the user-facing accordion grouping spec — Bull/Bear come
+  // Display order + labels. The snapshot is not shown (a later run's edit
+  // read as current); Analyst Consensus has its own widget. Order here matches the user-facing accordion grouping spec — Bull/Bear come
   // first since they're the most opened sections.
   const RENDER_ORDER: Array<{ key: keyof ThesisResearchSections; label: string }> = [
     { key: "bullCase", label: "Bull Case" },
@@ -1633,30 +1644,16 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         </div>
       ) : null}
 
-      {/* ── Core belief, over the snapshot it heads ──────────── */}
-      {/* Two halves of one statement, so they read as one: the belief says
-          what WILL happen (the falsifiable claim the trade evaluator grades
-          on close), the snapshot says what IS happening. The belief takes no
-          label — at this size, over that paragraph, it does not need one, and
-          it stopped leading the sheet because it is written once at mint and
-          never moves. Citations render as inline chips. */}
-      {state.coreBelief || state.snapshot ? (
+      {/* ── Core belief, dated by the write-up that set it ─────── */}
+      {/* Why we own the company, from the research writer. The snapshot
+          paragraph under it is gone: a later run's edit read as today's
+          news. A pass's reason is the note at the top of the sheet. */}
+      {state.coreBelief ? (
         <div className="space-y-2">
-          {state.coreBelief ? (
-            <p className="text-xl font-normal leading-relaxed">{state.coreBelief}</p>
-          ) : null}
-          {state.snapshot ? (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">
-              {state.snapshot.text}{" "}
-              <SourceCitation sources={researchCitationSources(state.snapshot.citations)} />
-            </p>
-          ) : null}
+          <p className="text-xl font-normal leading-relaxed">{state.coreBelief}</p>
+          <WrittenUpLine writtenUp={state.writtenUp} />
         </div>
       ) : null}
-
-      {/* (The old props-fed "Pass reason" paragraph is gone — a PASSED
-          thesis's reasoning lives in the Snapshot section above, straight
-          from the payload.) */}
 
       {/* ── Card cluster: Price Targets → Analyst Consensus → Composite ── */}
 
@@ -1780,9 +1777,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
 
       {/* ── Research Synthesis accordions ───────────────────── */}
       {/* Multi-section synthesis produced by the thesis-writer agent
-          (THESIS_RESEARCH_V2 Phase 1). Snapshot and Analyst Consensus
-          are promoted out of the accordion to tier-1 always-visible
-          blocks above; this collapsible holds the deep-research sections
+          (THESIS_RESEARCH_V2 Phase 1), dated by the writer's own run.
+          Analyst Consensus has its own widget above; this collapsible
+          holds the deep-research sections
           (Bull/Bear Case, Recent Catalysts, Catalysts & Events,
           Fundamentals, Latest Earnings, Insider & Technical) — all
           collapsed by default. */}
@@ -1797,14 +1794,14 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
             bearCase: state.bearCase ?? undefined,
             insiderTechnicalSetup: state.insiderTechnical ?? undefined,
           }}
-          updatedAt={state.researchUpdatedAt}
+          updatedAt={state.writtenUp?.at ?? state.researchUpdatedAt}
         />
       )}
 
       {/* The header-level fundamentals chip block (Sector / Market Cap /
           Beta / Volume / 52W Range / signal-type chips) was removed —
           that data now lives inside the Fundamentals accordion above.
-          The at-a-glance need is covered by the Snapshot prose + Analyst
+          The at-a-glance need is covered by the note at the top + Analyst
           Consensus widget. */}
 
         </TabsContent>

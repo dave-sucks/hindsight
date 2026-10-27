@@ -1,12 +1,11 @@
 /**
- * sample-prompts.ts — the five agent prompts, built from one fixed sample
+ * sample-prompts.ts — the four agent prompts, built from one fixed sample
  * input. Shared by the field-contract test (is each rule stated?) and the
  * prompt-size test (did a prompt get longer?).
  */
 import { buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
-import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 import type { RunInput } from "@/lib/agent/run-input";
 import type { PromptName } from "@/lib/agent/tools/field-contract";
@@ -16,7 +15,7 @@ import { sentenceOf } from "@/lib/agent/triggers/condition";
 
 const runInput = {
   portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
-  watchlist: [], activeTheses: [], priorityReviews: [],
+  watchlist: [], activeTheses: [],
   triggersFiredSinceLastRun: [], triggersMatchingNow: [],
   earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, openRefusals: [],
 } as unknown as RunInput;
@@ -41,7 +40,6 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
       // A trail sale on a holding: the one situation it puts the stock in.
       situations: { codes: ["PROTECTIVE_SALE"], guidance: guidanceFor(["PROTECTIVE_SALE"]) },
     } as never),
-  discovery: () => buildDiscoverySystemPrompt({ config: { name: "PEAD Specialist", sectors: [], minConfidence: 70, maxPositionSize: 14000 }, existingTickers: ["MU"] } as never),
   chat: () =>
     buildPrincipalSystemPrompt({
       scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 8 },

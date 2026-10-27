@@ -70,7 +70,7 @@ async function livePrice(ticker: string, userId: string, environment: Environmen
 }
 
 /** Alpaca's `cash` for this book — not `buying_power`, which counts margin. */
-async function accountCash(userId: string, environment: Environment): Promise<number | null> {
+export async function accountCash(userId: string, environment: Environment): Promise<number | null> {
   try {
     const creds = (await resolveAlpacaCredentials(userId, environment)) ?? undefined;
     const cash = Number((await getAccount(creds)).cash);
@@ -407,7 +407,7 @@ export async function placeManualOrder(opts: {
 
   // ── Send it: the approval path every proposal takes ────────────────────────
   try {
-    const result = await approveProposal(orderId, opts.userId);
+    const result = await approveProposal(orderId, opts.userId, undefined, { tradeTicket: true });
     return {
       ok: true,
       intent: plan.intent,

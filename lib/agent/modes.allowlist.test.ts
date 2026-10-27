@@ -14,9 +14,8 @@
  * prompts treated zero as a hard stop — so the builder refused every fence and
  * blamed "no coverage yet" (DAV-260 §2).
  *
- * `read_signals` and `read_artifact` are kept in the codebase on purpose
- * (principal's call, 2026-09-16) — registered, but on no mode. The other
- * three signal tools are deleted.
+ * All five signal-inbox tools are deleted; `read_signals` and `read_artifact`
+ * were the last, kept unlisted from 2026-09-16 until the owner let them go.
  *
  * On main, the "no signal tool" cases fail for eight modes.
  */
@@ -56,17 +55,17 @@ function registeredToolNames(): Set<string> {
 const REGISTERED = registeredToolNames();
 const MODE_NAMES = Object.keys(MODES) as AgentMode[];
 
-/** Kept in the codebase, listed nowhere. */
-const KEPT_UNLISTED = ["read_signals", "read_artifact"];
 /** Deleted with the router they read from. */
 const DELETED = [
   "discover_signals_for_fence",
   "read_analyst_inbox_stats",
   "list_monitors",
+  "read_signals",
+  "read_artifact",
 ];
 /** Deleted in step 10: the chat reads the account through get_theses with no analyst. */
 const DELETED_READS = ["list_theses_all"];
-const SIGNAL_TOOLS = [...KEPT_UNLISTED, ...DELETED];
+const SIGNAL_TOOLS = DELETED;
 
 function allowlistOf(mode: AgentMode): readonly string[] {
   return (MODES[mode].toolAllowlist ?? []) as readonly string[];
@@ -86,10 +85,6 @@ describe("mode tool allowlists", () => {
   it.each(MODE_NAMES)("%s asks for no signal-inbox tool", (mode) => {
     const named = allowlistOf(mode).filter((n) => SIGNAL_TOOLS.includes(n));
     expect(named).toEqual([]);
-  });
-
-  it("keeps read_signals and read_artifact registered", () => {
-    expect(KEPT_UNLISTED.filter((n) => !REGISTERED.has(n))).toEqual([]);
   });
 
   it("no longer registers the deleted signal tools", () => {

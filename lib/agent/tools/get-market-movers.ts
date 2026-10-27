@@ -93,7 +93,7 @@ export const getMarketMovers = defineTool({
     //
     // FIX: three scopes —
     //   "all"      — full top-list (no filter). Default.
-    //   "universe" — top-list MINUS coveredTickers (discovery set).
+    //   "universe" — top-list MINUS the book (watchlist ∪ positions).
     //   "coverage" — top-list ∩ (watchlist ∪ positions) (book set —
     //                what the old "universe" used to mean).
     //
@@ -104,16 +104,10 @@ export const getMarketMovers = defineTool({
     // candidates the agent can drill into via get_stock_data.
     const watchlist = (ctx as { watchlist?: string[] })?.watchlist ?? [];
     const positionTickers = (ctx as { positionTickers?: string[] })?.positionTickers ?? [];
-    const ctxCovered = (ctx as { coveredTickers?: string[] })?.coveredTickers ?? [];
     const coverageSet = new Set(
       [...watchlist, ...positionTickers].map((t) => t.toUpperCase()),
     );
-    const coveredSet = new Set(
-      (ctxCovered.length > 0
-        ? ctxCovered
-        : [...watchlist, ...positionTickers]
-      ).map((t) => t.toUpperCase()),
-    );
+    const coveredSet = coverageSet;
     let filtered: MoverRow[];
     if (scope === "coverage") {
       filtered = coverageSet.size > 0

@@ -204,7 +204,8 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     expect(now.map((t) => [t.action, t.predicate])).toEqual([
       ["REVIEW", { watch: "repeat", value: 30 }],
       ["REVIEW", { watch: "price", is: "below", value: 132, settings: { close: true } }],
-      ["REVIEW", { watch: "report", is: "after", value: 2, settings: { fromDay: 0 } }],
+      // The writer sent fromDay 0; the setting is deleted, so the save drops it.
+      ["REVIEW", { watch: "report", is: "after", value: 2 }],
     ]);
     const old = new Set(fx.thesisBefore.triggers.map((t) => t.id));
     expect(now.some((t) => old.has(t.id))).toBe(false);

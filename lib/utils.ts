@@ -29,16 +29,3 @@ export const PNL_HEX = {
   negative: "#ff6d87",
 } as const;
 
-/** Returns the correct hex for a numeric value (for chart strokes, etc.) */
-export function pnlHex(value: number): string {
-  return value >= 0 ? PNL_HEX.positive : PNL_HEX.negative;
-}
-
-export function getFormattedTodayDate(): string {
-  return new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-}

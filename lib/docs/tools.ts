@@ -7,7 +7,7 @@
 
 import type { AgentMode } from "@/lib/agent/modes";
 
-export type DocsAgentId = "morning" | "trigger" | "chat" | "discovery" | "writer" | "builder";
+export type DocsAgentId = "morning" | "trigger" | "chat" | "writer" | "builder";
 export type ToolKind = "market" | "book" | "thesis" | "trade" | "run";
 export type ToolSource = "alpaca" | "finnhub" | "sec" | "perplexity" | "anthropic" | "xai" | "hindsight" | "inngest";
 
@@ -22,7 +22,6 @@ export const DOCS_AGENTS: readonly DocsAgent[] = [
   { id: "morning", name: "Morning run", modes: ["research-run"] },
   { id: "trigger", name: "Trigger run", modes: ["tactical"] },
   { id: "chat", name: "Chat", modes: ["principal"] },
-  { id: "discovery", name: "Discovery", modes: ["discovery"] },
   { id: "writer", name: "Writer", modes: [] },
   { id: "builder", name: "Analyst builder", modes: ["builder", "editor"] },
 ];

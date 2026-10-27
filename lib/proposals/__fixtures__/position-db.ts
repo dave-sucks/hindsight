@@ -21,11 +21,14 @@ export const db = {
 
 export function matches(row: Row, where: Row = {}): boolean {
   return Object.entries(where).every(([key, cond]) => {
+    if (key === "OR") return (cond as Row[]).some((w) => matches(row, w));
     const value = row[key];
+    if (cond === null) return value == null;
     if (cond && typeof cond === "object" && !(cond instanceof Date)) {
-      const c = cond as { in?: unknown[]; not?: unknown };
+      const c = cond as { in?: unknown[]; not?: unknown; gt?: Date };
       if (c.in) return c.in.includes(value);
       if ("not" in c) return value !== c.not;
+      if (c.gt) return value instanceof Date && value > c.gt;
     }
     return value === cond;
   });

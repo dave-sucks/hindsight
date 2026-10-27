@@ -35,8 +35,8 @@ model Account {
 
   // Trade-as-Proposal — when true, agent-initiated buys/sells require
   // human approval via /api/proposals/[orderId]/(approve|reject) before
-  // submission to Alpaca. Manual UI actions and system auto-stops (price-
-  // monitor trailing stops) bypass these gates. Scoped PER ENVIRONMENT so
+  // submission to Alpaca. Automatic trigger sales are gated too; only a manual
+  // UI click bypasses these gates. Scoped PER ENVIRONMENT so
   // PAPER can auto-execute (fast iteration / testing) while LIVE requires
   // review (the disclosure requirement that motivated this feature).
   // LIVE defaults to TRUE — real money is gated by default; a forgotten
@@ -65,6 +65,10 @@ model Account {
   // deleted every rule" — without it, emptying your account rules would
   // silently resurrect the defaults on the next read.
   triggersSeededAt DateTime?
+  // Stop when buying: a new holding's floor this % under its buy price
+  // (lib/trading/auto-stop.ts). An analyst may override both.
+  autoStopOnBuy Boolean @default(false)
+  autoStopPct   Float   @default(8)
 
   // ── The playbook's numbers, as settings (DAV-273) ─────────────────────
   // Per-setup overrides of the setup catalog's numbers (lib/agent/knowledge/
@@ -618,6 +622,9 @@ model AgentConfig {
   // rung in the same bucket. Empty array = inherit from the account.
   // Resolution lives in lib/agent/triggers/levels.
   triggers               Json                 @default("[]")
+  // Stop when buying (lib/trading/auto-stop.ts). Null = the account's setting.
+  autoStopOnBuy          Boolean?
+  autoStopPct            Float?
   // ── The setups this analyst runs (DAV-280) ─────────────────────────────
   // Catalog ids (lib/agent/knowledge/setups). The writer prices a plan by
   // one of these; the first is the analyst's signature setup, whose rules
@@ -779,8 +786,8 @@ model Signal {
   segmentRoutes PodcastSegmentSignalRoute[] @relation("SegmentSignalRoute")
 
   // Phase 1 — today-only filtering. The market trading day this signal
-  // belongs to (ET timezone). All consumers (router, brief, read_signals)
-  // default-filter on this. Backfilled from createdAt for legacy rows.
+  // belongs to (ET timezone). Its readers (the router, the brief and the
+  // inbox tool, all since deleted) default-filtered on this. Backfilled from createdAt for legacy rows.
   tradingDay DateTime? @db.Date
 
   // Phase 1 — how long this signal stays actionable, in hours from createdAt.
@@ -799,8 +806,8 @@ model Signal {
   emailMessageId String?
 
   // Phase 3 — soft-delete tombstone. Set by pipeline-cleanup cron when a
-  // signal ages past 30d. Active queries (router, brief, read_signals,
-  // discovery) filter out non-null. Theses still resolve sourceSignalIds
+  // signal ages past 30d. Active queries (the router, the brief and the
+  // inbox tool, all since deleted) filtered out non-null. Theses still resolve sourceSignalIds
   // against soft-deleted rows for historical attribution.
   deletedAt DateTime?
 
@@ -842,8 +849,8 @@ model AnalystSignalRoute {
   rawRelevanceScore Int? // 0-100, pre-novelty raw score (debugging — see signal-router.ts)
   noveltyScore      Int? // 0-100, per-(analyst,signal) novelty value applied as multiplier
   routeReason       String // legacy free-form: "ticker_match:AMD", "sector_match:TECH", …
-  // Session 3: canonical routing code used by agent/brief/read_signals to
-  // segment inbox. Enum (string, not Postgres enum — easier to evolve):
+  // Session 3: canonical routing code the (deleted) inbox used to
+  // segment. Enum (string, not Postgres enum — easier to evolve):
   //   DISCOVERY | WATCHLIST | POSITION | DIRECT_TICKER |
   //   SECTOR_MATCH | INDUSTRY_MATCH | THEME_MATCH | CROSS_ANALYST
   // Nullable for legacy rows; all new routes populate it.
@@ -855,7 +862,7 @@ model AnalystSignalRoute {
   status            String      @default("PENDING") // "PENDING" | "READ" | "ACTED_ON" | "DISMISSED"
 
   // Phase 1 — denormalized trading day for fast today-only queries. Every
-  // consumer (brief generator, dashboards, read_signals) filters on this.
+  // consumer (brief generator, dashboards) filters on this.
   // Backfilled from routedAt::date (ET) for legacy rows.
   tradingDay DateTime? @db.Date
 
@@ -880,7 +887,6 @@ model AnalystSignalRoute {
 /// Signal routed to a specific PodcastSegment — the segment's intelligence inbox.
 /// Mirror of AnalystSignalRoute. Same shape, same indexes, same uniqueness
 /// constraint. The signal-router builds rows of both types from a single pass.
-/// read_signals branches on ToolContext.podcastSegmentId vs analystId.
 ///
 /// See docs/PODCAST_PLAN.md "Signal pipeline reaches segments" for the design.
 model PodcastSegmentSignalRoute {
@@ -925,7 +931,7 @@ model Position {
   accountId           String // scope: the Account this position belongs to
   // Snapshot of which Alpaca account this position lives in. Set at
   // place_trade time from the run's environment. Filters
-  // get_portfolio_context and the price-monitor / sync-heartbeat crons
+  // get_portfolio_context and the sync-heartbeat cron
   // so paper and live inventories never mix. See docs/PROD_DEPLOYMENT_PLAN.md.
   environment         String                     @default("PAPER") // "PAPER" | "LIVE"
   symbol              String
@@ -958,12 +964,10 @@ model Position {
   outcome             String? // "WIN" | "LOSS" | "BREAKEVEN"
   // Evaluation
   agentEvaluation     String? // post-trade GPT-4o evaluation narrative
-  // Monitoring
-  nearTargetAlertSent Boolean                    @default(false)
   // Audit trail — who closed / modified and why
   closeSource         String? // "agent" | "price_monitor" | "user" — who triggered the close
   initialQty          Float? // qty at open, before any partial closes or adds
-  // Running high/low water marks — maintained by price monitor on each tick
+  // Running high/low water marks — raised by the five-minute trigger check (lib/trading/water-mark.ts)
   peakPrice           Float?
   troughPrice         Float?
   peakAt              DateTime?
@@ -1118,13 +1122,13 @@ model PositionEvent {
   @@index([positionId, createdAt])
 }
 
-/// Audit record for every position change — agent decisions, price monitor closes,
+/// Audit record for every position change — agent decisions, automatic trigger sales,
 /// partial exits, target updates. Every row has a human-readable reason string.
 model PositionManagementAction {
   id         String       @id @default(cuid())
   positionId String
   position   Position     @relation(fields: [positionId], references: [id])
-  runId      String? // null when triggered by price monitor
+  runId      String? // null when no run made the change
   run        ResearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   actionType String // "FULL_CLOSE" | "PARTIAL_CLOSE" | "ADD_TO_POSITION" | "UPDATE_TARGETS" | "MOVE_STOP_TO_BREAKEVEN" | "SET_TRAILING_STOP"
@@ -1469,5 +1473,25 @@ model TickerIndicators {
   snapshot   Json
 
   @@unique([ticker, asOf])
+}
+
+// A research brief: why a stock moved, what Wall Street says, what X says, and
+// our own numbers, built when a trade is proposed or a sale is sent
+// (lib/research/brief.ts). kind is "DAILY" | "PROPOSAL" | "SALE".
+model ResearchBrief {
+  id           String   @id @default(cuid())
+  ticker       String
+  kind         String
+  orderId      String?  @unique
+  accountId    String?
+  payload      Json
+  sources      Json
+  costs        Json
+  error        String?
+  /// Set when the paid research was reused from a brief under two hours old.
+  reusedFromId String?
+  createdAt    DateTime @default(now())
+
+  @@index([ticker, createdAt])
 }
 

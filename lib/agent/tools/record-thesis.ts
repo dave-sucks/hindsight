@@ -18,10 +18,11 @@ import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
 import {
   defaultTriggersForHorizon,
   mergeTriggers,
-  applyTriggerCooldownDefaults,
+  applyTriggerDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
+import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
@@ -49,7 +50,7 @@ const recordFields = z.object({
     .string()
     .optional()
     .describe(
-      "The thesis in two or three sentences; on a PASS, what you found and why it doesn't fit.",
+      "The note the owner reads at the top of the new stock's page: what the company does, how it is doing and where the stock is and why, then your call. On a PASS, what you found and why it doesn't fit. Write it by How you write.",
     ),
   thesis_bullets: z
     .array(z.string())
@@ -139,7 +140,7 @@ const recordFields = z.object({
   catalyst_date: F.catalyst_date.optional(),
   // next_review_at is gone (DAV-221). Review timing is a review-clock
   // trigger counted from the last actual review; the mint templates stamp it.
-  // Explicit status arg. Daily watchlist-review and weekly discovery both
+  // Explicit status arg. Daily watchlist-review and discovery both
   // need to write WATCHING; trade-eligible coverage stays ACTIVE. When
   // omitted the effective status is derived from source_kind:
   // WATCHLIST_REVIEW → WATCHING, everything else → ACTIVE. Direction is
@@ -267,6 +268,16 @@ export const recordThesis = defineTool({
             status: "FAILED" as const,
             note: "Every record_thesis call MUST declare provenance. Add source_rationale (a one-line explanation like 'Reviewed position after price alert' or 'Surfaced on today's most-actives and it fits the fence') with source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW. Retry with the correct shape.",
           },
+          sources: [],
+        };
+      }
+
+      // A review can't be Auto; a buy, add or trim is Auto only on the owner's word (his chat).
+      const modeProblem = (args.triggers ?? []).map((t) => fireModeProblem(t.action, t.fireMode, { agent: ctx.runMode !== "PRINCIPAL_CHAT" })).find(Boolean);
+      if (modeProblem) {
+        return {
+          summary: `Thesis rejected for ${args.ticker}: a trigger's fireMode.`,
+          data: { thesis_id: null, status: "FAILED" as const, note: `${modeProblem} Resend the trigger with fireMode ASK_NOW or NEXT_MORNING, or none.` },
           sources: [],
         };
       }
@@ -486,8 +497,8 @@ export const recordThesis = defineTool({
               status: "FAILED" as const,
               note:
                 `Whenever you set conviction, you must also pass conviction_rationale — a sentence or two explaining why this tier. ` +
-                `Example HIGH: "Composite 7/10, post-print PEAD setup, first day of drift, no analyst PT updates yet — R/R 2.6:1." ` +
-                `Example LOW: "Late-stage chase, RSI 73, volume below threshold."`,
+                `Example HIGH: "The quarter beat on sales and profit, guidance went up, and analysts haven't raised their numbers yet; the reward is 2.6 times the risk." ` +
+                `Example LOW: "A good company, but the stock has run 30% in a month on light volume."`,
             },
             sources: [],
           };
@@ -553,41 +564,7 @@ export const recordThesis = defineTool({
       //   LONG/SHORT → WATCHING (place_trade later flips it to HOLDING)
       // args.direction is LONG | SHORT | PASS (the seed sentinel direction=null
       // is unmintable by agents — not in the input enum).
-      //
-      // 2026-05-13 — discovery hard-clamp for LONG/SHORT (additive on top
-      // of the legal-pair mapping). Discovery agents previously landed
-      // status=ACTIVE on high-conviction LONG/SHORT mints — the prompt
-      // instruction was advisory and GPT-4o overrode it (see INTC mint
-      // cmp3i0y01 on 2026-05-13). ACTIVE attaches HELD-template triggers
-      // (EXIT on stop_loss, REVIEW on target_hit) but no place_trade
-      // fires, so the trigger evaluator later fires orphan tactical EXIT
-      // runs that fail silently. Discovery is a WATCHING-mint surface by
-      // design; ACTIVE promotion is the daily run's job (portfolio-fit
-      // comparison + place_trade pairing). PASS is unaffected — it maps
-      // to PASSED in the same step below.
-      const isDiscoveryDirectional =
-        ctx.discoveryOnly === true &&
-        (args.direction === "LONG" || args.direction === "SHORT");
-      // ── Chat-dispatch hard-clamp for LONG/SHORT (Phase 1 mint flow) ───
-      // Same shape as the discovery clamp above, different trigger source:
-      // dispatch_thesis_research sets ctx.forceWatchingMint = true on
-      // chat-dispatched mint events. Chat exploration is EXPLORATORY by
-      // design; auto-ACTIVE coverage from a "write me a thesis on $X"
-      // turn would silently attach HELD-template triggers (EXIT on
-      // stop_loss, REVIEW on target_hit) without a paired place_trade,
-      // and the trigger evaluator would later fire orphan tactical EXIT
-      // runs that fail silently — exact failure mode the discovery clamp
-      // was added to prevent in 2026-05-13. To trade after a chat-
-      // dispatched thesis, the user sends a follow-up "buy this" message
-      // which routes through place_trade and flips status separately.
-      //
-      // Future Phase-3 daily-run refresh dispatches (forceWatchingMint=false,
-      // mode=refresh — refreshes are status-preserving so the clamp
-      // wouldn't apply anyway) and Phase-4 tactical inline calls (bypass
-      // dispatch entirely) are unaffected.
-      const isChatDispatchDirectional =
-        ctx.forceWatchingMint === true &&
-        (args.direction === "LONG" || args.direction === "SHORT");
+
       // P1-24 contract: a record_thesis mint NEVER has an open position, so
       // the only two persistable mint statuses are WATCHING (directional
       // coverage, entry-gated) and PASSED (researched-and-declined). The
@@ -613,49 +590,6 @@ export const recordThesis = defineTool({
             ? "WATCHING"
             : "PASSED"
           : "WATCHING";
-
-      // ── Discovery LONG/SHORT WATCHING cap (Layer-1 enforcement) ────────
-      // The discovery prompt has a soft cap ("mint up to 8 new WATCHING
-      // theses per run") that GPT-4o doesn't honor — 2026-05-17's run
-      // produced 7-8 mints per analyst across 5 analysts (38 new WATCHING
-      // theses in one Sunday, against a documented 8/run target). Given
-      // each thesis gets ~3-4 min of deep research in V2, 5 is closer to
-      // a quality bar than 8. Enforce as a Layer-1 reject so the prompt
-      // can't override it.
-      //
-      // Counts existing LONG/SHORT WATCHING theses minted in THIS run
-      // (researchRunId === ctx.runId). PASS theses don't count (those are
-      // institutional memory, not coverage). Doesn't apply outside
-      // discovery — daily-run still mints freely.
-      const DISCOVERY_WATCHING_CAP = 5;
-      if (
-        isDiscoveryDirectional &&
-        effectiveStatusForTriggers === "WATCHING" &&
-        ctx.runId
-      ) {
-        const existingMints = await prisma.thesis.count({
-          where: {
-            researchRunId: ctx.runId,
-            status: "WATCHING",
-            direction: { in: ["LONG", "SHORT"] },
-          },
-        });
-        if (existingMints >= DISCOVERY_WATCHING_CAP) {
-          return {
-            summary: `Thesis rejected for ${args.ticker}: discovery cap reached (${existingMints}/${DISCOVERY_WATCHING_CAP} LONG/SHORT WATCHING mints in this run).`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note:
-                `Discovery cap: ${DISCOVERY_WATCHING_CAP} new LONG/SHORT WATCHING theses per discovery run. ` +
-                `You've minted ${existingMints} already. Tighten the watchlist — ` +
-                `the agent's next run can re-evaluate. ` +
-                `PASS theses are not capped (those are institutional memory).`,
-            },
-            sources: [],
-          };
-        }
-      }
 
       // TERMINAL PASS theses reject triggers[] at write — no wake-up
       // needed. Future re-encounter mints a fresh thesis chained via
@@ -765,10 +699,10 @@ export const recordThesis = defineTool({
         // No committed view, so no horizon template — those are directional
         // plans. Whatever triggers the caller sent, verbatim.
         if (passKeepsWatch) {
-          return applyTriggerCooldownDefaults(supplied);
+          return applyTriggerDefaults(supplied);
         }
         if (!args.horizon) {
-          return applyTriggerCooldownDefaults(supplied);
+          return applyTriggerDefaults(supplied);
         }
         const defaults = defaultTriggersForHorizon(
           args.horizon as Horizon,
@@ -782,7 +716,7 @@ export const recordThesis = defineTool({
           effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
         );
         const merged = mergeTriggers(defaults, supplied);
-        return applyTriggerCooldownDefaults(merged);
+        return applyTriggerDefaults(merged);
       })();
 
       // ── Derive-on-write: levels are triggers (DAV-195 L3) ───────────
@@ -816,7 +750,7 @@ export const recordThesis = defineTool({
       // on a down day isn't judged against yesterday's close (./written-price).
       mergedTriggers = stampWrittenPrice(
         [],
-        applyTriggerCooldownDefaults(levelled.triggers),
+        applyTriggerDefaults(levelled.triggers),
         freshForStamp,
         new Date(),
       );

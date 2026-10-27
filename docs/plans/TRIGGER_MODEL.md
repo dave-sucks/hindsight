@@ -18,8 +18,8 @@ Every trigger is four fields:
 |---|---|---|
 | **condition** | The IF — a machine-evaluable condition over price, position P&L, time, or an external event | One shape, `{ watch, is?, value?, variable?, settings? }` or `{ match, conditions }`, one catalog entry per measure (`lib/agent/triggers/condition/`) — incl. the move from our entry and the trail off the high |
 | **action** | The THEN — ENTER / ADD / TRIM / EXIT / REVIEW | `TriggerAction` |
-| **mode** | **Instant** (action fully pre-specified; stage it deterministically — still approval-gated) vs **Agent** (wake judgment to validate/decide) | `fireMode: DIRECT \| TACTICAL` — but DIRECT is currently EXIT-only (gap, see §5) |
-| **timing** | Agent-mode only: **now** (tactical run, ~5 min) vs **batched** (next daily run) | Hard-wired by action today: REVIEW batches, everything else is now (gap: not yet a per-trigger choice) |
+| **mode** | **Instant** (action fully pre-specified; stage it deterministically — still approval-gated) vs **Agent** (wake judgment to validate/decide) | `fireMode: DO_IT` vs `ASK_NOW` / `NEXT_MORNING`, on every action but REVIEW (built 2026-10-22) |
+| **timing** | Agent-mode only: **now** (tactical run, ~5 min) vs **batched** (next daily run) | `ASK_NOW` vs `NEXT_MORNING`, per trigger (built 2026-10-22) |
 
 The principal's canonical pair, proving mode is orthogonal to action:
 - *"I know I want to buy more at $115"* → `(price ≥ 115, ADD, Instant)`
@@ -32,9 +32,8 @@ Same condition, same action — different mode. That's the whole model.
 REVIEW is simply **the action whose payload is "summon judgment" instead of
 "place an order."** Consequence: **REVIEW is the one action that is always
 Agent-mode** (a deterministic "review" is a contradiction — reviewing IS the
-judgment); its only sub-choice is timing (now vs batched; today always
-batched, except BREAKING-urgency signals). ENTER/ADD/TRIM/EXIT can be either
-mode. The daily run being "a review of the book" is the same verb at
+judgment); its only sub-choice is timing (now vs batched; batched unless
+set to Send to Agent). ENTER/ADD/TRIM/EXIT can be either mode. The daily run being "a review of the book" is the same verb at
 portfolio scope — consistent, not conflated.
 
 ## 3. Three distinct layers (do not blur them)
@@ -107,14 +106,15 @@ over everything.
 | RUNNING_WINNER | trigger-in-disguise | ≥ 75% to target OR gain ≥ 12% | press / hold / take |
 | REVIEW_DUE | trigger-in-disguise | nextReviewAt reached / directive | re-underwrite |
 
-Fire-route correction worth repeating: floor/trail EXITs default to
-**tactical** (fast agent validates, then proposes) — the *arming and firing*
-is mechanical (peak tracked, predicate evaluated with no agent), and DIRECT
-(skip the agent entirely) is per-trigger opt-in.
+Fire-route correction worth repeating (2026-10-22): a new floor/trail EXIT
+defaults to **Send to Agent** and can be made an **Auto-sell** (skip the agent;
+still approval-gated) or **Flag for Review**; the stop set when buying and the
+seat rules' trails are Auto-sells on purpose. The *arming and firing* is
+mechanical either way (peak tracked, predicate evaluated with no agent).
 
 ## 5. Convergence gaps (what "building it correctly" means)
 
-1. **Extend Instant mode beyond EXIT** (old PR7): pre-planned deterministic
+1. ~~**Extend Instant mode beyond EXIT**~~ — **built 2026-10-22** (`DO_IT` on a buy, an add, a trim; docs/TRIGGERS.md §4). (old PR7): pre-planned deterministic
    ENTER/ADD/TRIM rungs — the mode axis completed. Risk asymmetry respected:
    instant ADD stays approval-gated with a conviction floor.
 2. **Trigger provenance** — a `source: DEFAULT | ANALYST_RULE | AGENT |
@@ -124,7 +124,7 @@ is mechanical (peak tracked, predicate evaluated with no agent), and DIRECT
    #486-style defaults surfaces.
 3. **Fold RUNNING_WINNER into a visible trigger** so the whole ladder is
    uniform and self-documenting; keep UNPROTECTED_GAIN a linter.
-4. **Timing as a real per-trigger field** (now vs batched) instead of
+4. ~~**Timing as a real per-trigger field**~~ — **built 2026-10-22** (`ASK_NOW` / `NEXT_MORNING`). (now vs batched) instead of
    hard-wired by action.
 5. ~~**The cascade (PR-E / P1-31/32)**~~ — **built 2026-08-13.**
    `resolveLadder` (`lib/agent/triggers/levels`) resolves thesis → analyst

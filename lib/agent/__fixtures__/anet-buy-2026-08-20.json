@@ -31,7 +31,7 @@
         "id": "anet_buy",
         "action": "ENTER",
         "source": "AGENT",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "price",
           "is": "above",
@@ -44,7 +44,7 @@
         "id": "61c7c342-b7b5-47fc-8939-680fa3da5c9e",
         "action": "REVIEW",
         "source": "DEFAULT",
-        "fireMode": "TACTICAL",
+        "fireMode": "NEXT_MORNING",
         "predicate": {
           "watch": "price",
           "is": "above",
@@ -57,7 +57,7 @@
         "id": "09a4a3f1-6a7d-4e39-9506-9f5cf0c50ed2",
         "action": "EXIT",
         "source": "DEFAULT",
-        "fireMode": "TACTICAL",
+        "fireMode": "ASK_NOW",
         "predicate": {
           "watch": "price",
           "is": "below",

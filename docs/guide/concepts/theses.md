@@ -10,10 +10,21 @@ A thesis is the record every agent reads and edits. Its life is a loop: research
 
 A thesis has two halves, written and kept by different hands.
 
-- **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (one sentence we can be wrong about, with an outcome, a date and a reason), the two or three assumptions it rests on, what would prove it wrong, the case for and against, and a score. Every agent reads it as the claim of record. Only a new write-up, or you through [chat](../agents/chat.md), changes the belief, its assumptions and what would prove it wrong; a morning run can change the setup it trades as and its conviction.
+- **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (why we own the company and what has to stay true, in plain words), the two or three assumptions it rests on, what would prove it wrong, the case for and against, and a score. Every agent reads it as the claim of record. Only a new write-up, or you through [chat](../agents/chat.md), changes the belief, its assumptions and what would prove it wrong; a morning run can change the setup it trades as and its conviction.
 - **The plan** is its [triggers](triggers.md): one sentence each saying when to buy, add, trim, sell or look again. The buy, the floor and the target are triggers too, so the plan can't disagree with itself. This is the half the agents keep up to date.
 
 Alongside both sits what's been said: your notes and decisions, and the analyst's last answer to them.
+
+## What you read
+
+Every agent writes for you in plain English, in one of two styles (`lib/agent/voice.ts`):
+
+- **A note** (a review, a trigger run's decision, a trade's reason, a run-summary line) answers "what's going on with this stock, and what should I do?": what happened and why, with dates; whether it touches the reason we own it; what it means for your position in shares and dollars, with the stop and target; then the call. A trigger is context in that story, never the reason by itself.
+- **The stock's standing description** (the belief, the snapshot, the variant view) reads like a company page: what the company does, what it has done lately, the numbers that matter, what Wall Street thinks, and what has to stay true.
+
+Before writing a decision note, an agent searches the web once for the stock's latest news, so the note can say why it moved. If it still doesn't know, it says so. None of the app's shorthand reaches you: no setup names, no "drift", no "rung".
+
+On the thesis sheet, the belief carries the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38").
 
 ## Where it comes from
 
@@ -91,7 +102,7 @@ The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A
 `update_thesis`: `add_triggers`, `edit_triggers` by id, `remove_trigger_ids`. The fields each agent may send are pinned by `update-thesis-doors.test.ts`: the Writer 35, chat 21, a morning run 18, a trigger run 11.
 
 #### Status changes
-The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` sets the floor and target from the trade, stamps the entry with the fill price, adds the held review clock and earnings reviews, and leaves the sell rules inherited. A sale retires it as SOLD, unless it was a profit-take at the target or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
+The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` sets the floor and target from the trade, applies stop when buying (`lib/trading/auto-stop.ts`) when it is on, stamps the entry with the fill price, adds the held review clock and earnings reviews, and leaves the sell rules inherited. A sale retires it as SOLD, unless it was a profit-take at the target or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
 
 #### Floors
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers or loosens a protective level on a stock we hold.

@@ -465,7 +465,7 @@ describe("isLadderEditUpdate", () => {
       isLadderEditUpdate("UPDATED", { triggers: { from: [], to: [{}] } }),
     ).toBe(true);
     expect(
-      isLadderEditUpdate("UPDATED", { fireMode: { from: "TACTICAL", to: "DIRECT" } }),
+      isLadderEditUpdate("UPDATED", { fireMode: { from: "ASK_NOW", to: "DO_IT" } }),
     ).toBe(true);
     expect(
       isLadderEditUpdate("UPDATED", { stopLoss: { from: 65, to: 80 } }),

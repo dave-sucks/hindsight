@@ -18,7 +18,7 @@ const DIALOG_POSTS: When[] = [
   { watch: "price", is: "above", variable: "high52" },
   { watch: "move", is: "near", value: 5, variable: "high52" },
   { watch: "volume", value: 1.5 },
-  { watch: "gap", value: 8, settings: { volume: 3 } },
+  { watch: "gap", value: 8 },
   { watch: "rsi", is: "below", value: 10, settings: { period: 2 } },
   { watch: "strength", value: 0, settings: { window: "3M" } },
   { watch: "insiders", value: 3, settings: { days: 30 } },
@@ -33,7 +33,6 @@ describe("the Add-trigger dialog's chart conditions", () => {
       action: isLevel(p) ? "ENTER" : "REVIEW",
       predicate: p,
       defaultRationale: "test",
-      allowDirect: false,
     });
     expect(t.predicate).toEqual(p);
     expect(t.source).toBe("PRINCIPAL");
@@ -55,7 +54,6 @@ describe("the Add-trigger dialog's chart conditions", () => {
         action: "REVIEW",
         predicate: { kind: "FILING", formType: "8-K" } as unknown as When,
         defaultRationale: "test",
-        allowDirect: false,
       }),
     ).toThrow(/Invalid trigger/);
   });
@@ -73,7 +71,7 @@ describe("the Add-trigger dialog's chart conditions", () => {
       expect(addProblem(result, "THESIS")).toBeNull();
       expect(addProblem(result, "ANALYST")).toBeNull();
     }
-    const t = buildPrincipalTrigger({ action: "REVIEW", predicate: BEAT_THE_MARKET_SOLD, defaultRationale: "test", allowDirect: false });
+    const t = buildPrincipalTrigger({ action: "REVIEW", predicate: BEAT_THE_MARKET_SOLD, defaultRationale: "test" });
     expect(t.predicate).toEqual(BEAT_THE_MARKET_SOLD);
   });
 

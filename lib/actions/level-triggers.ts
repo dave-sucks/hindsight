@@ -21,7 +21,7 @@
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { addProblem, conditionSentence } from "@/lib/agent/triggers/condition";
-import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
+import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { ThesisEditError, buildPrincipalTrigger } from "@/lib/actions/thesis-edit";
@@ -118,7 +118,8 @@ function assertLevelEligible(predicate: When): void {
 export interface LevelTriggerAddInput {
   action: TriggerAction;
   predicate: When;
-  fireMode?: "TACTICAL" | "DIRECT";
+  fireMode?: FireMode;
+  trimPct?: number;
   rationale?: string;
   cooldownDays?: number;
 }
@@ -147,14 +148,10 @@ export async function addLevelTrigger(
     );
   }
 
-  // DIRECT (act with no agent) stays restricted to deterministic EXITs,
-  // exactly as on the thesis. There's no position to check here, so the
-  // predicate gate is the whole gate.
   const created = buildPrincipalTrigger({
     ...input,
     defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
-    allowDirect:
-      input.action === "EXIT" && isDirectEligiblePredicate(input.predicate),
+    standing: true,
   });
 
   const next = [...existing, created];
@@ -195,11 +192,11 @@ export async function replaceLevelTrigger(
   const built = buildPrincipalTrigger({
     ...input,
     defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
-    allowDirect: input.action === "EXIT" && isDirectEligiblePredicate(input.predicate),
+    standing: true,
   });
   const sameSlot = triggerSlot(found) === bucket;
   const updated: Trigger = sameSlot
-    ? { ...found, predicate: built.predicate, action: built.action, fireMode: built.fireMode, source: built.source }
+    ? { ...found, predicate: built.predicate, action: built.action, fireMode: built.fireMode, trimPct: built.trimPct, source: built.source }
     : built;
   const next = existing.map((t) => (t.id === triggerId ? updated : t));
   if (!triggersArraySchema.safeParse(next).success) {

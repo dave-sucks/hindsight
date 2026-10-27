@@ -1103,57 +1103,6 @@ export async function updateAnalystField(
 }
 
 
-// ── updateAnalystWatchlist (add/remove single symbol) ────────────────────────
-// Now thin wrappers around addWatchlistItem / removeWatchlistItem from
-// lib/actions/watchlist.actions.ts. Returns the live WATCHING symbol list.
-
-import {
-  addWatchlistItem,
-  removeWatchlistItem,
-} from "@/lib/actions/watchlist.actions";
-
-async function getAnalystWatchingSymbols(
-  analystId: string,
-  accountId: string,
-): Promise<string[]> {
-  const theses = await prisma.thesis.findMany({
-    where: {
-      accountId,
-      status: "WATCHING",
-      researchRun: { agentConfigId: analystId },
-    },
-    select: { ticker: true },
-    orderBy: { createdAt: "desc" },
-  });
-  return Array.from(new Set(theses.map((t) => t.ticker)));
-}
-
-export async function addToWatchlist(
-  id: string,
-  symbol: string,
-): Promise<string[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
-
-  await addWatchlistItem(id, symbol, "Added manually", "USER", "NORMAL");
-  return getAnalystWatchingSymbols(id, accountId);
-}
-
-export async function removeFromWatchlist(
-  id: string,
-  symbol: string,
-): Promise<string[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
-
-  await removeWatchlistItem(id, symbol, "Removed manually");
-  return getAnalystWatchingSymbols(id, accountId);
-}
-
 // ── deleteAnalyst (cascade delete all related data) ─────────────────────────
 
 export async function deleteAnalyst(analystId: string): Promise<void> {

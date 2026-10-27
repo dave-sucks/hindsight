@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { loadIndicatorSnapshots } from '@/lib/market-data/load-indicators';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { StockIdentityHeader } from '@/components/domain/stock-identity-header';
@@ -71,7 +70,6 @@ import { getTradeStatusDisplay } from '@/lib/trade-status';
 function EventIcon({ type }: { type: string }) {
   switch (type) {
     case 'PLACED':      return <ArrowDownUp className="h-3.5 w-3.5" />;
-    case 'NEAR_TARGET': return <Target className="h-3.5 w-3.5 text-amber-500" />;
     case 'CLOSED':      return <CheckCircle2 className="h-3.5 w-3.5 text-positive" />;
     case 'EVALUATED':   return <Brain className="h-3.5 w-3.5 text-primary" />;
     default:            return <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />;
@@ -258,11 +256,6 @@ export default async function TradeDetailPage({
   const levelSources = position.analystId
     ? (await loadLevelSources([position.analystId])).get(position.analystId)
     : undefined;
-  // The stock's ATR(14) — a trail that widens with the stock's range draws
-  // the line the evaluator will actually sell at (DAV-294).
-  const tradeAtr14 = await loadIndicatorSnapshots([position.symbol.toUpperCase()])
-    .then((m) => m.get(position.symbol.toUpperCase())?.atr14 ?? null)
-    .catch(() => null);
   const thesisLevels = position.decisions[0]?.thesis
     ? canonicalLevels({
         triggers: resolveThesisLadder(
@@ -275,8 +268,6 @@ export default async function TradeDetailPage({
         avgCost: Number(position.avgCost),
         peakPrice:
           position.peakPrice != null ? Number(position.peakPrice) : null,
-        // Same snapshot the evaluator reads (DAV-294).
-        atr14: tradeAtr14,
       })
     : null;
   const targetLevel = thesisLevels?.target ?? null;
@@ -558,7 +549,7 @@ export default async function TradeDetailPage({
                 <div className="space-y-0">
                   {activity.map((event: ActivityEvent, i: number) => {
                     const isLast = i === activity.length - 1;
-                    const sourceLabel = event.source === 'price_monitor' ? 'Price monitor' : event.source === 'user' ? 'You' : 'Agent';
+                    const sourceLabel = event.source === 'price_monitor' ? 'Auto-sell' : event.source === 'user' ? 'You' : 'Agent';
                     const SourceIcon = event.source === 'price_monitor' ? Clock : event.source === 'user' ? User : Bot;
                     const ActionIcon =
                       event.kind === 'BUY' || event.kind === 'ADD' ? TrendingUp

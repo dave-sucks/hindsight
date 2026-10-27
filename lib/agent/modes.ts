@@ -38,11 +38,6 @@ export type AgentMode =
   // (signal-side or price-cron). Single ticker, single decision,
   // small step budget. Spawned by lib/inngest/functions/tactical-run.ts.
   | "tactical"
-  // PR 3 — weekly discovery run (Sundays 9am ET). Finds net-new
-  // ticker coverage worth WATCHING. Spawned by
-  // lib/inngest/functions/discovery-run.ts. Mints WATCHING theses;
-  // does NOT touch existing ones (daily run handles those).
-  | "discovery"
   // Principal chat — operator-perspective chat at /chat. Free-floating
   // scope (the agent infers which analyst/ticker/thesis from the user's
   // message). Wide read access across analysts; write tools execute the
@@ -142,24 +137,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // leaves ~10 steps of breathing room.
     maxSteps: 65,
     // Fix #5 (docs/MORNING_RUN_V2_DESIGN.md). The Daily Run manages the
-    // existing book; minting NEW coverage is the Discovery cron's job
-    // (Sundays). record_thesis intentionally excluded.
-    // Three paths still mint new coverage:
-    //   (a) Tactical promotion — ENTER trigger fires on a WATCHING thesis
-    //       (already minted by Discovery), tactical-run flips status to
-    //       ACTIVE via update_thesis + place_trade.
-    //   (b) Sunday Discovery cron — the weekly mint window.
-    //   (c) `app/discovery.run.manual` event — fire on demand for a hot
-    //       mid-week name.
+    // existing book; minting NEW coverage is Discovery's job, done in chat.
+    // record_thesis intentionally excluded.
     toolAllowlist: [
       // Read
-      // NOTE: read_signals intentionally removed 2026-05-31 as part of
-      // DISCOVERY_OVERHAUL NOW-3. The 4 noise crons that fed it (firm-market-
-      // sweep, portfolio-watchlist-monitor, domain-monitor, signal-router)
-      // were paused, then deleted 2026-09-15; the agent reads per-thesis
-      // state directly via get_theses and pulls per-name fresh data via
-      // the catalyst tools below. See
-      // docs/plans/DISCOVERY_OVERHAUL.md.
       "get_portfolio_context",
       "get_theses",
       "get_stock_data",
@@ -241,108 +222,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     ] as const,
     hasSuggestConfig: true,
     maxDuration: 150,
-  },
-  // ── Discovery (PR 3) ─────────────────────────────────────────────────────
-  // Weekly cron, finds NEW coverage candidates. NEVER touches existing
-  // theses (no update_thesis, no close_position, no manage_position).
-  // record_thesis IS allowed — that's the primary output. place_trade
-  // allowed for high-conviction starters.
-  "discovery": {
-    // 2026-05-14 — moved discovery off gpt-4o.
-    //
-    // GPT-4o failed the 2026-05-13 audit head-on: researched 4 of ~60
-    // candidates, invented Cerebras (CRBR) reasoning from limited data,
-    // scored TSEM 10/10 against a clearly broken price ($270 spot with
-    // $232 52w high), and dropped CRBR without a record_thesis call
-    // despite the prompt explicitly demanding one. Classic "happily
-    // fills in the blanks" pattern at the final-decision layer.
-    //
-    // Trying GPT-5.5 as the primary candidate per external advice that
-    // it's the strongest model for complex reasoning / tool-heavy
-    // workflows / final-synthesis steps. If the API rejects this model
-    // ID (string may be wrong — the codebase has never seen a gpt-5
-    // reference), the AI SDK will surface a "model not found" error and
-    // we adjust. Known-good fallbacks if gpt-5.5 doesn't resolve:
-    //   • "claude-sonnet-4-6" + thinkingBudget: 4000 (provider:"anthropic")
-    //     — the model principal-chat already uses successfully
-    //   • "claude-opus-4-6" — heavier reasoning, more expensive
-    //   • back to "gpt-4o" — known baseline, the bug we're trying to leave
-    //
-    // maxSteps raised 25 → 45 to support deeper research per candidate.
-    // Discovery is weekly and unattended; cost difference per run is
-    // small and analyst-quality difference should be meaningful.
-    // 2026-06-15 — gpt-5.5 → gpt-5.4 cost swap (~½ price). docs/plans/OPENAI_COST_REDUCTION.md #1.
-    model: "gpt-5.4",
-    provider: "openai",
-    maxSteps: 45,
-    toolAllowlist: [
-      // Read-only intel — two discovery sources: movers and the earnings
-      // calendar, both universe-fenced. read_signals / read_artifact left
-      // 2026-09-10 with the Signals retirement (docs/plans/MARKET_DATA.md
-      // §1): routing has been paused since May, so the inbox they read is
-      // empty, and a prompt that said "ALWAYS call read_signals" started
-      // every run from an empty pool.
-      "get_stock_data",
-      "get_earnings_data",
-      "get_earnings_calendar",
-      "get_market_movers",
-      // The computed candidate lists (DAV-255) — one setup, the numbers.
-      "run_screen",
-      "get_market_context",
-      "get_sec_filings",
-      "get_catalyst_calendar",
-      "web_search",
-      // Grok Live Search over X — handle-attributed posts on a ticker /
-      // theme / named handle. SOON-1b in DISCOVERY_OVERHAUL. The agent
-      // uses this for multi-archetype convergence and net-new ticker
-      // surfacing via attention shifts; falls back to web_search for
-      // general news / consensus / sell-side. Budget-limited per run.
-      "twitter_search",
-      "get_theses",
-      // Mint new coverage. PASS rows still go through record_thesis
-      // directly (cheap, terminal-at-write institutional memory).
-      "record_thesis",
-      // Phase 2 — deep-research dispatch for WATCHING-worthy survivors only.
-      "dispatch_thesis_research",
-      // Finalize
-      "record_run_summary",
-      "complete_run",
-    ] as const,
-    hasSuggestConfig: false,
-    // 2026-05-15 — raised 270 → 800 after the Vercel Pro upgrade. The
-    // prior 270 was a workaround for Hobby's 300s function timeout
-    // ceiling — option (c) in the deferred-fix list (see history below)
-    // is the path that actually landed.
-    //
-    // What this unlocks for discovery specifically:
-    //   • 800 maxDuration → AbortSignal at 770s → ~770/13 ≈ 59 tool
-    //     calls of budget. Today's discovery shape is 3 parallel pulls
-    //     + 2N candidate research + N record_thesis + 2 finishers =
-    //     3N + 5. At 770s of headroom, N=15+ mints fit comfortably vs
-    //     the prior N=4–5 ceiling.
-    //   • Removes the bias toward "shorter PASS+ARCHIVED rows" the
-    //     prompt was leaning on to fit inside the 240s of agent budget.
-    //     Discovery can now populate full structural fields (horizon,
-    //     triggers, coreBelief, keyAssumptions, invalidationConds) on
-    //     every minted thesis without timing out.
-    //
-    // History (the workaround that this replaces):
-    //   • 270 was the safe value under Hobby's 300s ceiling. PR #271
-    //     briefly raised to 480 — that was a mistake because the in-code
-    //     AbortSignal formula is `(maxDuration - 30) * 1000`, so 480
-    //     meant abort at 450s but Vercel killed the function ungracefully
-    //     at ~300s, well before the catch block could persist the run.
-    //   • 270 → AbortSignal at 240s → 60s later than the 210s wall that
-    //     had killed Tech Momentum (cmp698wva) and Secular Theme
-    //     (cmp6bryy) under prior tuning, and 30s before Vercel's 300s
-    //     hard kill so the catch block could mark COMPLETE/FAILED
-    //     cleanly.
-    //
-    // Tactical-run.ts + discovery-run.ts read this value directly and
-    // compute their AbortSignal from `(maxDuration - 30) * 1000`. The
-    // morning-research.ts cron now does the same (used to be a hardcoded
-    // 240_000ms — fixed in this PR).
-    maxDuration: 800,
   },
   // ── Tactical (PR 2) ─────────────────────────────────────────────────────
   // Event-driven, single-thesis, single-decision. Spawned by tactical-run
@@ -494,9 +373,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // record_thesis, etc.) are intentionally excluded — segments are
   // research+write, not trade.
   //
-  // Segments research from web_search + get_stock_data. read_signals /
-  // read_artifact came off this list 2026-09-15 with the router that filled
-  // PodcastSegmentSignalRoute; both tools stay in the codebase, unlisted.
+  // Segments research from web_search + get_stock_data.
   "podcast-segment-run": {
     model: "gpt-4o",
     provider: "openai",
@@ -584,7 +461,7 @@ export function buildPrincipalSystemPrompt(opts: {
    * System 1 context bundle (THREE_SYSTEMS.md Move 1). When the chat is
    * pinned to an analyst, the seat's money and book travel with the SCOPE —
    * not with the mode name. Before 2026-08-26 these were wired into
-   * discovery-run.ts and run-thesis-writer.ts by import, so an operator who
+   * run-thesis-writer.ts by import, so an operator who
    * scoped this chat to an analyst and ran a triage got the fence, the
    * watchlist and the guardrails but no equity, no positions and no trade
    * history. Render with formatMoneyContextBlock / formatBookContextBlock

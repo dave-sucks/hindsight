@@ -19,7 +19,6 @@ import { move, price } from "./measures/price";
 import { fromDate, repeat } from "./measures/schedule";
 import type { Condition, SettingDef, SettingValue, TriggerType, VariableId, Watch, When } from "./types";
 import { isGroup } from "./types";
-import { variableDef } from "./variables";
 
 export const MEASURES: Readonly<Record<Watch, MeasureDef>> = {
   price,
@@ -65,13 +64,14 @@ export function measureOf(c: Condition): MeasureDef {
   return MEASURES[c.watch];
 }
 
-/** The settings a condition can carry: its measure's, then its variable's. */
+/** The settings a condition can carry: its measure's. */
 export function settingDefs(c: Condition): readonly SettingDef[] {
-  return [...(measureOf(c).settings ?? []), ...(c.variable ? (variableDef(c.variable).settings ?? []) : [])];
+  return measureOf(c).settings ?? [];
 }
 
 /**
- * The condition with only the settings its measure or its variable declares.
+ * The condition with only the settings its measure declares. A key a stored
+ * trigger still carries after it was deleted (a trail's startOnceUpPct) is dropped on every read and write.
  * A key nothing reads is dropped, never stored: a % move carrying `close`
  * would otherwise be picked for the close pass while its reader ignores it
  * (the old gate dropped such keys the same way).
@@ -103,9 +103,7 @@ export function withSetting(c: Condition, key: string, v: SettingValue): Conditi
   return { ...c, settings: Object.keys(settings).length ? settings : undefined };
 }
 
-/** A new variable. Settings that belonged to the old one go with it. */
+/** A new variable. */
 export function withVariable(c: Condition, id: VariableId | undefined): Condition {
-  const old = c.variable ? (variableDef(c.variable).settings ?? []).map((s) => s.key) : [];
-  const settings = Object.fromEntries(Object.entries(c.settings ?? {}).filter(([k]) => !old.includes(k)));
-  return { ...c, variable: id, settings: Object.keys(settings).length ? settings : undefined };
+  return { ...c, variable: id };
 }

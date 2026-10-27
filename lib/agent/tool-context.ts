@@ -90,55 +90,16 @@ export interface ToolContext {
   intelligencePolicy?: IntelligencePolicy;
 
   /**
-   * When true, read_signals returns ONLY the discoverySignals bucket and
-   * zeroes out portfolioSignals + watchlistSignals. Used by the weekly
-   * discovery cron to keep the agent focused on net-new candidates only —
-   * the prompt was asking the LLM to mentally filter, but the chat
-   * rendering of "all three buckets in one flat list" looked like noise
-   * about already-covered names and the agent still acted on the wrong
-   * signals. Set in lib/inngest/functions/discovery-run.ts.
-   */
-  discoveryOnly?: boolean;
-
-  /**
-   * Mirror of discoveryOnly for the Daily Run (Fix #6). When true,
-   * read_signals zeroes out the discoverySignals bucket and returns
-   * portfolio + watchlist signals only. Daily's job is to MANAGE the
-   * existing book; new-coverage candidates are the Discovery cron's
-   * responsibility. Set in lib/inngest/functions/morning-research.ts
-   * when the V2 prompt is enabled.
-   */
-  dailyRunOnly?: boolean;
-
-  /**
    * Chat-dispatched thesis-writer mints clamp to WATCHING. P1-24: a
    * record_thesis mint is always WATCHING regardless of this flag (a mint
    * never has a position; HOLDING is execution-owned). This flag survives as
    * the chat-dispatch marker that also suppresses the would-be ACTIVE-request
    * warning. Set by dispatch_thesis_research for the Principal Chat flow so
    * exploratory chat dispatches don't produce trade-eligible coverage that
-   * would later fire orphan tactical EXIT runs (the same failure shape
-   * the discovery clamp was added to prevent). Phase-3 daily-run refresh
+   * would later fire orphan tactical EXIT runs. Phase-3 daily-run refresh
    * dispatches and Phase-4 tactical inline calls leave this unset.
    */
   forceWatchingMint?: boolean;
-
-  /**
-   * Full set of tickers this analyst already covers — ACTIVE + WATCHING
-   * theses, plus watchlist, plus open positions. Used by:
-   *   • read_signals discoveryOnly path: "discovery" means signals on
-   *     tickers NOT in this set (was incorrectly using routeReasonCode
-   *     buckets which silently dropped AGGREGATE_TICKER_MATCH routes on
-   *     watchlist names into the watchlist bucket and then hid them).
-   *   • get_market_movers / get_earnings_calendar scope:"universe":
-   *     "universe" means the full firm firehose minus this set (was
-   *     incorrectly intersecting WITH watchlist+positions which is the
-   *     opposite of discovery semantics).
-   *
-   * Populated by lib/inngest/functions/discovery-run.ts. Daily/manual
-   * runs leave undefined → tools fall back to watchlist ∪ positionTickers.
-   */
-  coveredTickers?: string[];
 
   /**
    * Returns a stable group key for the given phase string.
@@ -163,28 +124,14 @@ export interface ToolContext {
   calledTickers?: Map<string, Set<string>>;
 
   /**
-   * In-run signal tracker. Maps TICKER (uppercase) → set of signalIds that
-   * were returned by read_signals for that ticker in this run. Drives the
-   * provenance soft-nudge in record_thesis: when the agent picks
-   * source_kind=WEB_SEARCH for a ticker that had matching routed signals,
-   * we know read_signals informed the thesis and the trade-evaluator's
-   * monitor-credit chain just lost its hook. Skipping the citation kills
-   * the Pillar 5 self-improvement loop. Populated by read_signals.
-   */
-  signalsByTicker?: Map<string, Set<string>>;
-
-  /**
-   * Deterministic close reason for a protective/price EXIT tactical run
-   * (P1-28). Set by lib/inngest/functions/tactical-run.ts when THIS run was
-   * woken by a price-level protective EXIT trigger (trail,
-   * move-from-entry, price levels, move-from-a-close). When present,
-   * close_position tags the close with this STOP/TARGET reason INSTEAD of the
-   * model-chosen `reason` arg — so the close is treated as a material risk
-   * event and stays exempt from the unapproved-exit cooldown (a rejected
-   * gain-lock must re-fire when price re-crosses the level). Undefined for
-   * daily runs and for tactical runs woken by judgment EXIT triggers
-   * (earnings, signals) — those keep the LLM's own tag and a discretionary
-   * MANUAL close correctly stays on cooldown. See
+   * Deterministic close reason for a protective/price EXIT tactical run. Set
+   * by lib/inngest/functions/tactical-run.ts when THIS run was woken by a
+   * price-level protective EXIT trigger (trail, move-from-entry, price
+   * levels, move-from-a-close). When present, close_position tags the close
+   * with this STOP/TARGET reason INSTEAD of the model-chosen `reason` arg:
+   * a declined STOP is a declined sale the next run must answer (lib/agent/declined-sale.ts), and a TARGET sale sends the stock back to watching (lib/proposals/thesis-flips.ts).
+   * Undefined for daily runs and for tactical runs woken by judgment EXIT
+   * triggers (earnings, filings), which keep the LLM's own tag. See
    * lib/agent/triggers/types.ts → protectiveExitCloseReason.
    */
   protectiveExitReason?: "STOP" | "TARGET";
@@ -197,6 +144,12 @@ export interface ToolContext {
    * corrected sale label explains itself without a code read (DAV-192).
    */
   protectiveExitTriggerLabel?: string;
+
+  /** A trigger run woken by a trim: its stock and size, the trim a partial_close naming no size sells. */
+  firedTrim?: { ticker: string; pct: number };
+
+  /** Set only for an Auto trigger: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
+  payFromCash?: number | null;
 
   /**
    * Check only: record_thesis / update_thesis run every check they run on a

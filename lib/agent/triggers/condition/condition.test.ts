@@ -27,6 +27,7 @@ import {
   TRIGGER_TYPES,
   conditionProblem,
   pillParts,
+  rowLabel,
   shapeOf,
   triggerText,
   variableOptions,
@@ -92,6 +93,12 @@ describe("what people read: the form's words, direction · value", () => {
 
   it("names the plan coming down on a stock we don't own", () => {
     expect(triggerText("EXIT", { watch: "price", is: "below", value: 225 }, false)).toBe("Take the plan down if below $225");
+  });
+
+  it("a row of trim pills says \"Trim\": the pill's own \"50% if\" finishes the sentence", () => {
+    expect(rowLabel("TRIM")).toBe("Trim");
+    expect(rowLabel("EXIT")).toBe("Sell if");
+    expect(rowLabel("EXIT", false)).toBe("Take the plan down if");
   });
 });
 
@@ -161,9 +168,9 @@ describe("the catalog", () => {
     expect(ids({ watch: "from_date", is: "before", value: 5 })).toEqual(["event"]);
   });
 
-  it("keeps a variable's own settings with it, and drops them when it goes", () => {
-    const trail: Condition = { watch: "move", is: "below", value: 25, variable: "peak", settings: { startOnceUpPct: 20 } };
-    expect(triggerText("EXIT", trail)).toBe("Sell if below 25% from the high since we bought, once it has been up 20%");
-    expect(withVariable(trail, "prev_close").settings).toBeUndefined();
+  it("a stored trail still carrying a deleted key says only its number", () => {
+    const trail: Condition = { watch: "move", is: "below", value: 25, variable: "peak", settings: { startOnceUpPct: 20, widenAtr: 3 } };
+    expect(triggerText("EXIT", trail)).toBe("Sell if below 25% from the high since we bought");
+    expect(withVariable(trail, "prev_close")).toMatchObject({ variable: "prev_close" });
   });
 });

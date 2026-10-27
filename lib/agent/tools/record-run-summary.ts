@@ -42,7 +42,7 @@ export const recordRunSummary = defineTool({
       .string()
       .min(120)
       .describe(
-        "Why the run did what it did, in a few plain sentences: the buys, sales and plan changes it made and the reason for each, or why it changed nothing. Name the stocks and the numbers that decided it.",
+        "What the run did and why, in a few plain sentences the owner reads on the run page: what moved the stocks you worked on, then the buys, sales and plan changes and the reason for each, or why nothing changed. Name the stocks and the numbers; write it by How you write.",
       ),
     ranked_picks: z
       .array(
@@ -51,7 +51,7 @@ export const recordRunSummary = defineTool({
           ticker: z.string(),
           direction: z.enum(["LONG", "SHORT", "PASS"]),
           confidence: z.number(),
-          reasoning: z.string().describe('One line, 80 characters or fewer: "Holding; ugly chart, nothing wrong with the business." Shown to the owner on the run page; write it by How you write.'),
+          reasoning: z.string().describe('One line, 80 characters or fewer, the stock first: "Holding; down with software stocks, no company news." Shown to the owner on the run page.'),
           action: z.enum(["INITIATE", "ADD", "HOLD", "REDUCE", "EXIT", "WATCH", "REMOVE_WATCH", "PASS", "FAILED"])
             .describe(
               "What ACTUALLY happened to this ticker this run. Choose by what you have, not what you thought:\n" +

@@ -20,7 +20,7 @@ const pos = (symbol: string) => ({
 const runInput = (symbols: string[]) =>
   ({
     portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: symbols.map(pos), exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
-    watchlist: [], activeTheses: [], priorityReviews: [],
+    watchlist: [], activeTheses: [],
     triggersFiredSinceLastRun: [], triggersMatchingNow: [], earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] },
   }) as unknown as RunInput;
 

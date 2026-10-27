@@ -7,7 +7,7 @@ import fixture from "./__fixtures__/refusals-2026-09-25.json";
 
 const base = {
   portfolio: { cash: 31000, buyingPower: 62000, portfolioValue: 100000, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
-  watchlist: [], activeTheses: [], priorityReviews: [],
+  watchlist: [], activeTheses: [],
   triggersFiredSinceLastRun: [], triggersMatchingNow: [], earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] },
 };
 const cfg = { name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 };

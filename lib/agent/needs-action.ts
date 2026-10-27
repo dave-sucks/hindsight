@@ -310,14 +310,12 @@ export interface NeedsActionInput {
     avgCost?: number | null;
     targetPrice?: number | null;
     /**
-     * Paired open Position's water mark (high LONG / low SHORT), maintained
-     * hourly by the price monitor. Feeds the trail floor math
+     * Paired open Position's water mark (high LONG / low SHORT), raised
+     * by the five-minute trigger check. Feeds the trail floor math
      * in the UNPROTECTED_GAIN computation. Null when not held / not tracked
      * — ladder-health falls back to the current price.
      */
     peakPrice?: number | null;
-    /** ATR(14) from the daily snapshot — widens an atrMultiple trail (DAV-294). */
-    atr14?: number | null;
     /** Paired open Position's share count — with avgCost, what the floor would lose (DAV-344). */
     quantity?: number | null;
     /** The chart numbers FLOOR_TOO_FAR names as places the floor could go. */
@@ -439,7 +437,6 @@ export function computeNeedsAction(
           currentPrice: latestQuote?.price ?? null,
           peakPrice: thesis.peakPrice ?? null,
           triggers: thesis.triggers,
-          atr14: thesis.atr14 ?? null,
           lastLadderEditAt: null, // not needed for the flag; surfaced via get_theses
           now,
         })

@@ -71,12 +71,6 @@ const refused: Array<{ name: string; c: Condition; says: RegExp; inside: Conditi
     inside: { watch: "repeat", value: 365 },
   },
   {
-    name: "a gap within 12 days",
-    c: { watch: "gap", value: 4, settings: { withinDays: 12 } },
-    says: /\(withinDays\) takes a whole number from 1 to 10 sessions; 12 sessions isn't\..*Leave `withinDays` out unless you mean it\.$/,
-    inside: { watch: "gap", value: 4, settings: { withinDays: 10 } },
-  },
-  {
     name: "a typed $0 price",
     c: { watch: "price", is: "above", value: 0 },
     says: /^A typed price takes more than \$0; \$0 isn't\.$/,

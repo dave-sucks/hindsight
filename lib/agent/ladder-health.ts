@@ -36,8 +36,8 @@
  *   OR count (any branch fires alone); predicates inside an AND don't (the
  *   level alone doesn't guarantee the exit).
  *
- * Trail floor peak source: Position.peakPrice is maintained hourly by the
- * price monitor, so it can lag the live quote. The trail's enforceable floor
+ * Trail floor peak source: Position.peakPrice is raised by the five-minute
+ * trigger check, so it can lag the live quote. The trail's enforceable floor
  * only ever ratchets toward the live price, so we use the water-mark-corrected
  * value — LONG: max(peakPrice, currentPrice); SHORT: min(peakPrice,
  * currentPrice) — falling back to currentPrice when peakPrice is null.
@@ -47,7 +47,7 @@
  * mark — mirroring lib/agent/triggers/evaluate.ts.
  */
 
-import { effectiveTrailPct, trailFireLevel, trailOf } from "@/lib/agent/triggers/trail";
+import { trailFireLevel } from "@/lib/agent/triggers/trail";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { conditionSentence, isGroup, levelOf, shapeOf, type When } from "@/lib/agent/triggers/condition";
 
@@ -153,7 +153,7 @@ const fmtPct = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}%`;
  * neither protects nor counts as a rung). Anything with no one price (an
  * average, a day's move, a date) yields nothing.
  */
-function extractPriceRungs(w: When, ctx: { isLong: boolean; avgCost: number; peak: number; atr?: number | null }): ExtractedRung[] {
+function extractPriceRungs(w: When, ctx: { isLong: boolean; avgCost: number; peak: number }): ExtractedRung[] {
   if (isGroup(w)) return w.match === "any" ? w.conditions.flatMap((c) => extractPriceRungs(c, ctx)) : [];
   const level = levelOf(w);
   if (level) {
@@ -169,13 +169,10 @@ function extractPriceRungs(w: When, ctx: { isLong: boolean; avgCost: number; pea
     return [{ firesWhen: priceRises ? "RISES" : "FALLS", price, isTrail: false, label: `${conditionSentence(w)} → ${fmtUsd(price)}` }];
   }
   if (w.variable === "peak") {
-    // LONG: the give-back below the high; SHORT: above the low. A trail that
-    // hasn't armed yet protects nothing and is not a rung.
-    const trail = trailOf(w);
-    const price = trailFireLevel(trail, ctx);
+    // LONG: the give-back below the high; SHORT: above the low.
+    const price = trailFireLevel(w.value, ctx);
     if (price == null) return [];
-    const pct = effectiveTrailPct(trail, { peak: ctx.peak, atr: ctx.atr });
-    return [{ firesWhen: ctx.isLong ? "FALLS" : "RISES", price, isTrail: true, label: `below ${pct}% from the high of ${fmtUsd(ctx.peak)} → ${fmtUsd(price)}` }];
+    return [{ firesWhen: ctx.isLong ? "FALLS" : "RISES", price, isTrail: true, label: `below ${w.value}% from the high of ${fmtUsd(ctx.peak)} → ${fmtUsd(price)}` }];
   }
   return [];
 }
@@ -195,13 +192,11 @@ export function computeLadderHealth(opts: {
   /** Position.peakPrice (high-water LONG / low-water SHORT); null → falls back to currentPrice. */
   peakPrice?: number | null;
   triggers: Trigger[];
-  /** The stock's ATR(14) from the daily snapshot — widens an atrMultiple trail (DAV-294). */
-  atr14?: number | null;
   /** When the ladder was last edited; null → daysSinceLadderEdit omitted. */
   lastLadderEditAt?: Date | null;
   now: Date;
 }): LadderHealth | null {
-  const { direction, avgCost, currentPrice, peakPrice, triggers, atr14, lastLadderEditAt, now } =
+  const { direction, avgCost, currentPrice, peakPrice, triggers, lastLadderEditAt, now } =
     opts;
   if (avgCost == null || avgCost <= 0) return null;
   if (currentPrice == null || currentPrice <= 0) return null;
@@ -219,7 +214,7 @@ export function computeLadderHealth(opts: {
     ? Math.max(rawPeak, currentPrice)
     : Math.min(rawPeak, currentPrice);
 
-  const ctx = { isLong, avgCost, peak, atr: atr14 ?? null };
+  const ctx = { isLong, avgCost, peak };
   const protectiveSide: ExtractedRung["firesWhen"] = isLong ? "FALLS" : "RISES";
 
   // ── Floors: EXIT rungs on the protective side, tightest (max locked gain) wins

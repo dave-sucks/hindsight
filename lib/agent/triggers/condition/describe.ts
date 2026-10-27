@@ -29,6 +29,24 @@ export function actionLabel(action: string, sells = true): string {
   return ACTION_LABEL[action] ?? "Review if";
 }
 
+/** The word before a row of pills: a trim's pill starts "N% if" itself, so its row says "Trim". */
+export function rowLabel(action: string, sells = true): string {
+  return action === "TRIM" ? "Trim" : actionLabel(action, sells);
+}
+
+/** The share of the position a trim sells when it names none: half. */
+export const DEFAULT_TRIM_PCT = 50;
+
+/** A trim's size, in every On fire mode. */
+export function trimPctOf(t: { trimPct?: number | null }): number {
+  return t.trimPct ?? DEFAULT_TRIM_PCT;
+}
+
+/** The action as a trigger says it; a trim names its size: "Trim 30% if". */
+export function triggerLabel(t: { action: string; trimPct?: number | null }, sells = true): string {
+  return t.action === "TRIM" ? `Trim ${trimPctOf(t)}% if` : actionLabel(t.action, sells);
+}
+
 /** The two halves: "below" and "$868". */
 export function conditionParts(c: Condition): PillPart {
   const m = measureOf(c);
@@ -53,7 +71,7 @@ function valueText(c: Condition, say: "chip" | "words" = "chip"): string {
     text = number + (suffix ? (/^[%×]/.test(suffix) ? suffix : ` ${suffix}`) : "");
   }
   if (vars?.mode === "from" && chip) text += ` ${vars.word ? vars.word(c) : "from"} ${chip}`;
-  // A setting shows only when it isn't the default: "· only on the close", ", once it has been up 20%".
+  // A setting shows only when it isn't the default: "· only on the close", ", counting from the day after".
   const set = c.settings ?? {};
   for (const s of settingDefs(c)) {
     const value = set[s.key];
@@ -80,7 +98,10 @@ export function whenText(w: When): string {
 
 /** The whole trigger: "Sell if below $868". A clock has no "if": "Review every 30 days". */
 export function triggerText(action: string, w: When, sells = true): string {
-  const label = actionLabel(action, sells);
+  return labelled(actionLabel(action, sells), w);
+}
+
+function labelled(label: string, w: When): string {
   return `${!isGroup(w) && measureOf(w).timed ? label.replace(/ if$/, "") : label} ${whenText(w)}`;
 }
 
@@ -91,12 +112,13 @@ export function pillParts(w: When): { parts: PillPart[]; joiner: "and" | "or" } 
 
 /**
  * A stored trigger in words, the way the pill and every agent read it: "Sell
- * if below $868". `sells` is false on a stock we don't own (a sale there takes
- * the plan down). A removed condition reads as one, never as a blank.
+ * if below $868", "Trim 30% if above $150". `sells` is false on a stock we
+ * don't own (a sale there takes the plan down). A removed condition reads as one, never as a blank.
  */
-export function sentenceOf(t: { action: string; predicate: unknown }, sells = true): string {
+export function sentenceOf(t: { action: string; predicate: unknown; trimPct?: number | null }, sells = true): string {
   const w = shapeOf(t.predicate);
-  return w ? triggerText(t.action, w, sells) : `${actionLabel(t.action, sells)} a removed condition`;
+  const label = triggerLabel(t, sells);
+  return w ? labelled(label, w) : `${label} a removed condition`;
 }
 
 /** A stored condition in words, without the action: "below $868". */

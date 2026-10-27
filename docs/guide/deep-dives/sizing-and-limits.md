@@ -14,6 +14,8 @@ Each buy risks a share of the account. By default that is 1% of equity, set per 
 
 The shares are that risk divided by the distance from the entry to the floor. With $100,000, 1%, high conviction, a $50 entry and a $45 floor, the buy risks $1,000 over $5 a share: 200 shares, $10,000.
 
+With [stop when buying](../concepts/triggers.md) on, the distance is the wider of the plan's floor and the setting's line, because the sale floor will sit on that line. A 4% plan floor with an 8% setting is sized like an 8% stop, and the proposal says so (`sizingStop` in `lib/agent/position-sizing.ts`, for buys and adds).
+
 Then the analyst's dollar limits clamp it: never under its smallest trade, never over its largest. The proposal says which limit moved it and what the risk alone had asked for. If there is no usable floor or no equity reading, the buy is sized from the analyst's band by conviction (the largest trade for strong or high, the smallest otherwise), and the proposal says why. An add risks half the shares a new buy would get.
 
 ## Who picks the size

@@ -16,19 +16,20 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SendToAgentIcon } from "@/components/ui/send-to-agent-icon";
 import {
-  actionLabel,
-  canProposeDirectly,
   conditionsOf,
   shapeOf,
   isGroup,
   measureOf,
   pillParts,
+  triggerLabel,
   triggerText,
+  trimPctOf,
   type PillPart,
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
 import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
-import { watchedFloorOnClose, type TriggerAction } from "@/lib/agent/triggers/types";
+import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
+import { fireModeWords } from "@/lib/agent/triggers/fire-mode";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { cn } from "@/lib/utils";
 import { TriggerDialog } from "./TriggerDialog";
@@ -76,6 +77,12 @@ export function TriggerPill(props: TriggerPillProps) {
             />
           }
         >
+          {/* A trim's size leads, so the row reads "Trim 30% if above $150". */}
+          {trigger.action === "TRIM" ? (
+            <span className="flex items-center gap-1 border-r border-border px-2 text-foreground tabular-nums">
+              {trimPctOf(trigger)}%<span className="text-muted-foreground">if</span>
+            </span>
+          ) : null}
           {parts.map((p, i) => (
             <Fragment key={i}>
               {i > 0 ? <span className="flex items-center border-l border-border px-1.5 text-muted-foreground">{joiner}</span> : null}
@@ -148,7 +155,7 @@ function TriggerCard({
     trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : null,
     // A schedule's rate limit is its own interval, so saying it again would repeat the number.
     cooldown && !timed ? (cooldown === 1 ? "At most once a day" : `At most once every ${cooldown} days`) : null,
-    w && canProposeDirectly(w, trigger.action as TriggerAction) && sells && trigger.fireMode === "DIRECT" ? "Proposes the sale right away" : null,
+    fireModeWords(trigger, sells),
   ].filter(Boolean);
 
   return (
@@ -156,7 +163,7 @@ function TriggerCard({
       <div className="flex items-start gap-2">
         {/* The same two halves as the pill: the muted direction, then the value. */}
         <p className="min-w-0 flex-1 text-sm">
-          <span className="text-muted-foreground">{actionLabel(trigger.action, sells)} </span>
+          <span className="text-muted-foreground">{triggerLabel(trigger, sells)} </span>
           {parts.map((p, i) => (
             <Fragment key={i}>
               {i > 0 ? <span className="text-muted-foreground"> {joiner} </span> : null}

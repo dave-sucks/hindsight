@@ -78,7 +78,7 @@ describe("replace — same slot", () => {
   });
 
   it("a save that keeps the number keeps the old sentence", () => {
-    const out = run({ id: "floor", trigger: built({ predicate: floor.predicate, action: "EXIT", fireMode: "DIRECT" }) });
+    const out = run({ id: "floor", trigger: built({ predicate: floor.predicate, action: "EXIT", fireMode: "DO_IT" }) });
     expect(out.triggers.find((x) => x.id === "floor")!.rationale).toBe(floor.rationale);
   });
 

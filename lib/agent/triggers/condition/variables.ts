@@ -4,17 +4,16 @@
  * "below $288.29"), or is what a % or a day count is measured from.
  *
  * Each variable carries what belongs to it: its words, whether it needs a
- * position, whether a sale measured from it can go straight to a proposal,
- * and its own settings (the trailing options live on the high since we
- * bought). The resolver that reads a variable's number lives with the
- * checker (PR 2); this module is the words.
+ * position, and whether its number comes off the daily snapshot. The
+ * resolver that reads a variable's number lives with the checker
+ * (./read.ts); this module is the words.
  *
  * Pure and client-safe.
  */
 
 import { FORM_NAMES, ITEM_NAMES } from "@/lib/market-data/sec-events";
-import type { DateVariable, FilingVariable, PriceVariable, SettingDef, VariableId } from "./types";
-import { capitalise, pct } from "./words";
+import type { DateVariable, FilingVariable, PriceVariable, VariableId } from "./types";
+import { capitalise } from "./words";
 
 export interface VariableDef {
   id: VariableId;
@@ -28,51 +27,18 @@ export interface VariableDef {
   words: string;
   /** Exists only once we own the stock. */
   position?: boolean;
-  /** A sale measured from it has nothing to judge, so it can be proposed with no analyst. */
-  direct?: boolean;
   /** Its number comes off the daily indicator snapshot, so the check loads it. */
   snapshot?: boolean;
   /** Variables that are one rule at different values share a slot ("any material filing" and "a red flag"). */
   slot?: string;
-  /** Settings that belong to this variable. None has a select: an agent writes them, the form carries them. */
-  settings?: readonly SettingDef[];
 }
 
 export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] = [
-  { id: "prev_close", label: "Yesterday's close", group: "Recent closes", chip: "yesterday's close", words: "yesterday's close", direct: true },
-  { id: "close_5d", label: "Close 5 days ago", group: "Recent closes", chip: "5 days ago", words: "the close 5 days ago", direct: true, snapshot: true },
-  { id: "close_20d", label: "Close 20 days ago", group: "Recent closes", chip: "20 days ago", words: "the close 20 days ago", direct: true, snapshot: true },
-  {
-    id: "entry",
-    label: "Our entry",
-    group: "Our position",
-    chip: "our entry",
-    words: "our entry",
-    position: true,
-    direct: true,
-    settings: [
-      // The big-winner switch: don't take the profit on a stock that ran up fast.
-      {
-        key: "fastWinnerPct",
-        range: { what: "The big-winner switch's gain (fastWinnerPct)", unit: "%", over: 0, max: 500 },
-        words: (v, s) => ` (not if it ran up ${pct(Number(v))}${typeof s.fastWinnerDays === "number" ? ` within ${s.fastWinnerDays} days` : ""})`,
-      },
-      { key: "fastWinnerDays", range: { what: "The big-winner switch's days (fastWinnerDays)", unit: " days", integer: true, min: 1, max: 365 } },
-    ],
-  },
-  {
-    id: "peak",
-    label: "High since we bought",
-    group: "Our position",
-    chip: "the high",
-    words: "the high since we bought",
-    position: true,
-    direct: true,
-    settings: [
-      { key: "startOnceUpPct", looser: true, range: { what: "A trail's start (startOnceUpPct)", unit: "%", min: 0, max: 200 }, words: (v) => `, once it has been up ${pct(Number(v))}` },
-      { key: "widenAtr", looser: true, snapshot: true, range: { what: "A trail's widening (widenAtr)", unit: "×", over: 0, max: 10 }, words: (v) => ` (or ${v}× its daily range, if wider)` },
-    ],
-  },
+  { id: "prev_close", label: "Yesterday's close", group: "Recent closes", chip: "yesterday's close", words: "yesterday's close" },
+  { id: "close_5d", label: "Close 5 days ago", group: "Recent closes", chip: "5 days ago", words: "the close 5 days ago", snapshot: true },
+  { id: "close_20d", label: "Close 20 days ago", group: "Recent closes", chip: "20 days ago", words: "the close 20 days ago", snapshot: true },
+  { id: "entry", label: "Our entry", group: "Our position", chip: "our entry", words: "our entry", position: true },
+  { id: "peak", label: "High since we bought", group: "Our position", chip: "the high", words: "the high since we bought", position: true },
   { id: "sma20", label: "20-day average", group: "Averages", chip: "20-day average", words: "the 20-day average", snapshot: true },
   { id: "sma50", label: "50-day average", group: "Averages", chip: "50-day average", words: "the 50-day average", snapshot: true },
   { id: "sma150", label: "150-day average", group: "Averages", chip: "150-day average", words: "the 150-day average", snapshot: true },

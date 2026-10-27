@@ -19,7 +19,15 @@ stamps them onto the thesis: a thesis rung beats every rule above it, so a
 stamped copy would freeze the old numbers. See TRIGGERS.md §2a.
 `resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners
 whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
-Everything fires as approval-gated proposals — nothing auto-trades. **Fire
+Every trade a fire leads to goes through the approval switch (on: a proposal). **On fire
+is the same three choices on every trigger (2026-10-22):** Auto (`DO_IT`: the
+trade with no agent run, sized and gated by the tool an agent would call;
+Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
+(`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
+run answers it). Unset, a review is Flag for Review and everything else Send to
+Agent; every stored trigger names one. Auto on a buy, add or trim is the
+owner's alone, on a stock (not an account or analyst rule), and is used once;
+an Auto-sell is a standing order (`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Fire
 semantics differ by action (DAV-229):** a protective/review rung is a standing
 order (re-fires every day its condition holds; a decline is "did nothing");
 an ENTER fires on the *crossing* of its level (true now, false at the prior
@@ -116,7 +124,12 @@ The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 - Supabase (Postgres + Auth + Realtime)
 - Prisma ORM (v7 with adapter-pg)
 - Inngest for background jobs and crons
-- Vercel (Next.js only — no Railway). **Migrations auto-apply on
+- Vercel (Next.js only — no Railway). **Functions run in `pdx1`
+  (Portland)** — `vercel.json` `regions`. That is AWS us-west-2, where the
+  database, its pooler and Supabase auth live. In the default `iad1` every
+  query crossed the country (~75 ms a trip, ~650 ms for a new connection,
+  ~280 ms per auth check). Don't move functions away from the database.
+  **Migrations auto-apply on
   production deploys** — `build` starts with `scripts/deploy-migrate.mjs`
   (`prisma migrate deploy`, production only, using `DIRECT_URL`). Merging a
   migration is enough; don't apply it by hand. Preview deploys deliberately
@@ -134,8 +147,8 @@ portfolio/watchlist monitor, domain monitor, the signal router, their cleanup
 cron and the newsletter extraction — were deleted 2026-09-15. The tables and
 rows are **kept**: `Signal`, `Monitor`, `AnalystSignalRoute`, `SignalBatch`,
 `Artifact` are readable on `/intelligence` (read-only) and via `read_database`,
-but nothing adds to them. `read_signals` / `read_artifact` stay in the
-codebase and on **no** mode's allowlist. Outside facts reach an agent through a
+but nothing adds to them. The `read_signals` / `read_artifact` tools that read
+them were deleted 2026-10-23. Outside facts reach an agent through a
 measure the five-minute check can evaluate, or a data field the agent
 pulls mid-run — see `docs/plans/LANES.md` §2.
 
@@ -198,7 +211,9 @@ plus `get_stock_data`.
 - The **trigger evaluator** is the other clock: every 5 min during regular US
   market hours (gated on `isMarketOpen()`) plus a close pass at 16:20 ET; it
   fires `app/thesis.trigger.fired` when a thesis predicate matches, which
-  wakes a tactical run. See `docs/TRIGGERS.md`. (Its `app/signal.routed`
+  wakes a tactical run (or makes an Auto trade with no agent); a fire set to
+  Flag for Review is written down and wakes nothing. See
+  `docs/TRIGGERS.md`. (Its `app/signal.routed`
   path was deleted with the router.)
 - The 6:30–7:30 intelligence jobs (sweep, portfolio monitor, domain monitor,
   router) and the 11 PM `pipeline-cleanup` are **deleted** (2026-09-15).
@@ -285,7 +300,7 @@ plus `get_stock_data`.
 
 ## Pages
 - / (Dashboard) — MarketPulseStrip (Finnhub WebSocket), portfolio
-  summary, Today's Picks, AgentActivityLog
+  summary, Today's Picks, the activity feed
 - /analysts — analyst card grid with enable/disable toggles
 - /analysts/new — AI-driven analyst creation (AgentChat in builder mode + AnalystConfigPanel)
 - /analysts/[id] — 2-col: Overview + config | floating editor chat;
@@ -312,12 +327,10 @@ plus `get_stock_data`.
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
   - tactical: GPT-5.5, maxSteps 15 (single-thesis, single-decision)
-  - discovery: GPT-5.5, maxSteps 45 (weekly Sunday cron)
   - podcast-builder / podcast-segment-run / podcast-editor
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
 - /api/chat/run-followup — post-run discussion with trade tools
-- /api/agent-activity — dashboard activity stream
 - /api/intelligence/* — read-only signal history (signals, batches, routes,
   health) + sync-health + thesis-ingest. email-ingest is a 200-and-drop stub
   so Resend stops retrying. The trigger, monitors and coverage routes are
@@ -336,9 +349,9 @@ podcast-only tools (`read_past_transcripts`, `suggest_podcast_config`,
 trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 
 ### Intelligence Tools (read pre-gathered data)
-1–2. read_signals / read_artifact — the signal inbox and its article reader.
-   **In the codebase, on no mode's allowlist** since 2026-09-15 (the router
-   that filled the inbox is deleted). Kept so the history stays reachable.
+1–2. read_signals / read_artifact — DELETED 2026-10-23 (on no mode's list
+   since the router that filled the inbox went, 2026-09-15). The signal history
+   is on /intelligence and through `read_database`.
 3. get_theses — read the analyst's durable thesis library (default HOLDING+WATCHING; include_history=true for the activity log)
 4. get_portfolio_context — open positions, exposure, available buying power, recent fills
 5. web_search — live Perplexity Sonar search (budget-limited)
@@ -434,20 +447,9 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
 ```
 
 ## Domain Components (components/domain/)
-- ThesisCard / ThesisArtifactSheet — thesis display + detail sheet
-- TradeCard / TradeConfirmation — trade display + pre-trade summary
-- MarketContextCard — SPY/VIX/sector performance
-- StockCard — quote + company profile
-- ScanResultsCard — candidate ticker chip grid
-- TechnicalCard — RSI/SMA/volume analysis
-- EarningsCard — earnings calendar + EPS beats
-- OptionsFlowCard — options flow summary
-- NewsCard — news headlines + press releases
-- SecFilingsCard — SEC filings list
-- AnalystTargetsCard — analyst consensus targets
-- PeersCard — peer company comparison
-- RunSummaryCard — portfolio synthesis
-- AgentConfigCard — analyst config summary
+Shared domain cards and blocks (agent config card, decision summary, earnings
+card, thesis chart and carousel, onboarding, research brief…). Read the folder;
+a list here goes stale.
 
 ## Inngest Crons (lib/inngest/functions/)
 ### Pre-market (Mon-Fri)
@@ -462,42 +464,19 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
   at 16:20 ET; fires app/thesis.trigger.fired when a thesis predicate
   matches
 - tactical-run.ts — event-driven, consumes app/thesis.trigger.fired,
-  spawns a focused single-thesis agent (~15 steps)
+  spawns a focused single-thesis agent (~15 steps), or makes an Auto
+  trigger's trade with no agent
 ### Agent + Trading
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
-- discovery-run.ts — Sundays 9 AM ET, per-analyst weekly discovery
-  scan (mints up to 5 new WATCHING theses)
-- price-monitor.ts — hourly price check, exit evaluation
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
 - weekly-digest.ts — Sunday 9 AM ET digest email
 - accuracy-scorer.ts — Sunday 10 AM, weekly AccuracyReport
 
-## Manifest UI Components (components/manifest-ui/)
-External component library installed via `npx shadcn@latest add @manifest/<name>`.
-All use semantic prop structure: data, actions, appearance, control.
-- **XPost** — read-only social post card (Reddit/Twitter sentiment).
-  Props: data.{author, username, avatar, content, time, likes, retweets, replies}.
-  Avatar renders as letter circle. Stats are read-only spans (not buttons).
-- **PostCard** — blog/news card with variants: default, compact, horizontal, covered.
-  Props: data.post (Post type), appearance.variant, actions.onReadMore.
-- **PostList** — wraps PostCard[] with layout variants: list, grid, carousel, fullwidth.
-  Props: data.posts, appearance.{variant, columns, showAuthor, showCategory}.
-  **Carousel** variant is the default for article lists in agent tool UIs.
-- **ProductList** — product grid with variants: list, grid, carousel, picker.
-- **OrderConfirm** — order confirmation card with product info + confirm button.
-  Used for trade pending state in agent UI.
-- **QuickReply** — pill-shaped quick reply buttons for chat follow-ups.
-- **Types** in components/manifest-ui/types.ts: Post, Product, Option, OrderItem.
-
 ## AI Elements Components (components/ai-elements/)
-Custom chain-of-thought and source display components:
-- **Reasoning** — collapsible reasoning block (ReasoningTrigger + ReasoningContent)
-- **Sources** — collapsible source list (SourcesTrigger + SourcesContent + Source)
-- **ChainOfThought** — multi-step progress display with icons and status
-  (ChainOfThoughtHeader, ChainOfThoughtStep, ChainOfThoughtContent,
-  ChainOfThoughtSearchResults, ChainOfThoughtSearchResult)
-- **Citation** — inline/chip source citation with favicon + domain
+- **tool-progress** — the primitive every tool row renders into (see "Tool UI architecture")
+- **inline-citation** — inline source citation
+- **json-block** — a code block for JSON
 
 ## Agent Run Flow (AgentChat)
 The agent run page (`/runs/[id]`) renders via:
@@ -506,7 +485,7 @@ The agent run page (`/runs/[id]`) renders via:
    hydrate `messages` from the persisted `thread` RunMessage through
    `convertPersistedToUIMessages` (`lib/agent/convert-messages.ts`).
    Not live and no persisted thread → empty state instead. `autoStart` is
-   suppressed for server-side modes (INTRADAY_TACTICAL, DISCOVERY,
+   suppressed for server-side modes (INTRADAY_TACTICAL,
    THESIS_WRITER, PRINCIPAL_CHAT, Inngest podcast segment runs) so the
    page can't launch a second competing agent on the same runId.
 2. **AgentChat** connects to `/api/agent/[mode]` via **ChatRuntime**
@@ -570,6 +549,10 @@ it with a ticker chip as if it were a traded security.
 - Body text: text-sm text-muted-foreground
 - Labels: text-xs font-medium uppercase tracking-wide
 - Empty/loading/error states on every page and data fetch
+- A section folder with more than one page (`app/(root)/<section>/`) has a
+  `loading.tsx` (`components/PageLoading.tsx` unless it has its own); so do
+  `app/(root)/` and `app/(settings)/settings/`. Without one, a click between
+  two pages there shows nothing until the server finishes.
 
 ## Key Technical Notes
 - AI SDK v6: useChat sends UIMessage[] (parts array), streamText
@@ -585,12 +568,12 @@ it with a ticker chip as if it were a traded security.
 - Live prices come from `lib/market-data/live-quote.ts` (Alpaca, Finnhub
   behind it) — never a new direct vendor call
 - Model strategy (post-2026-05-15):
-  - **research-run + tactical + discovery**: GPT-5.5 (provider: openai).
-    research-run uses temperature 0.2 + maxSteps 65; tactical maxSteps 15;
-    discovery maxSteps 45. Vercel Pro plan required — the 800s function
+  - **research-run + tactical**: GPT-5.5 (provider: openai).
+    research-run uses temperature 0.2 + maxSteps 65; tactical maxSteps 15.
+    Vercel Pro plan required — the 800s function
     timeout headroom is needed because gpt-5.5 with implicit reasoning
     runs ~13s/tool-call vs gpt-4o's faster cadence. modes.ts maxDuration
-    is 800 for all three; the cron/route AbortSignal derives 770s from
+    is 800 for both; the cron/route AbortSignal derives 770s from
     `(maxDuration - 30) * 1000`.
   - **builder + editor**: GPT-4o still (user-facing latency matters in
     the chat panel; gpt-5.5 would feel slow when interactively
@@ -738,7 +721,7 @@ When you spot something new, file it there — not here.)
 
 ### Triggers (the living ladder)
 - lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id / a plan level as an op) + checkLadder (the one post-op plan check). update_thesis, the UI popover, a buy fill and a plan set-down all go through it (DAV-242)
-- lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, direct sale + close reason, levels, states), the check (read.ts), the words (describe.ts), and what the save accepts (valid.ts)
+- lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, a protective sale's close reason, levels, states), the check (read.ts), the words (describe.ts), and what the save accepts (valid.ts)
 - lib/agent/triggers/types.ts — the Trigger type + watchedFloorOnClose
 - lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
 - lib/agent/triggers/defaults.ts — horizon templates + accountStandingRules() (the account's add prompts) + cooldown defaults
@@ -765,7 +748,6 @@ When you spot something new, file it there — not here.)
 - lib/intelligence/sonar.ts — Perplexity Sonar client (behind `web_search`)
 - lib/intelligence/types.ts — shared types, incl. IntelligencePolicy (the
   router's attention weights were removed from it 2026-09-15)
-- lib/agent/tools/read-signals.ts, read-artifact.ts — kept, unlisted
 - app/(root)/intelligence/page.tsx — read-only signal history
 - (firecrawl.ts, signals.ts, data-payload-extractor.ts, trading-day.ts,
   email-signal-extractor.ts, urgent-trigger.ts and the four pipeline
@@ -774,7 +756,6 @@ When you spot something new, file it there — not here.)
 
 ### Inngest Crons
 - lib/inngest/functions/morning-research.ts — daily agent run
-- lib/inngest/functions/price-monitor.ts — hourly price check
 - lib/inngest/functions/trade-evaluator.ts — post-trade GPT-4o eval
 - lib/inngest/functions/eod-evaluation.ts — end-of-day snapshots
 - lib/inngest/functions/accuracy-scorer.ts — weekly accuracy

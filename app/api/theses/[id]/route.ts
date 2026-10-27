@@ -31,9 +31,10 @@ import {
 import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 import { HERO_UPDATE_TYPES } from "@/lib/thesis/latest-note";
+import { briefForOrderView } from "@/lib/research/brief-read";
+import { writtenUpPrice } from "@/lib/thesis/written-up";
 
 export async function GET(
   _req: Request,
@@ -193,9 +194,21 @@ export async function GET(
     .then((rows) => rows.find((r) => !isYourEdit(r)) ?? null)
     .catch(() => null);
 
-  const atr14Value: number | null = await loadIndicatorSnapshots([thesis.ticker.toUpperCase()])
-    .then((m) => m.get(thesis.ticker.toUpperCase())?.atr14 ?? null)
+  // The write-up's own date: the newest row a research-writer run saved, never
+  // a later run's edit. Its price is the writer's own pull ("Data pulled").
+  const writtenUpRow = await prisma.thesisUpdate
+    .findFirst({
+      where: { thesisId: thesis.id, run: { mode: "THESIS_WRITER" } },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true, priceAtTime: true, type: true, runId: true },
+    })
     .catch(() => null);
+  const writerPull = writtenUpRow?.runId
+    ? await prisma.runEvent
+        .findFirst({ where: { runId: writtenUpRow.runId, type: "writer_phase", title: "Data pulled" }, select: { payload: true } })
+        .catch(() => null)
+    : null;
+
   let position: PositionInfo | null = null;
   const isActiveish =
     thesis.status === "HOLDING" || thesis.status === "WATCHING";
@@ -251,6 +264,7 @@ export async function GET(
         Math.floor((Date.now() - pos.openedAt.getTime()) / 86_400_000),
       );
       const picked = pickProposalOrder(pos.orders ?? []);
+      const brief = picked ? await briefForOrderView(picked.order.id) : null;
       const cost = Number(pos.avgCost) * Number(pos.quantity);
       position = {
         id: pos.id,
@@ -276,6 +290,7 @@ export async function GET(
               expiresAt: picked.order.expiresAt?.toISOString() ?? null,
               rationale: picked.order.rationale,
               executing: picked.executing,
+              brief,
             }
           : null,
       };
@@ -322,9 +337,6 @@ export async function GET(
     entryPrice: thesis.entryPrice,
     targetPrice: thesis.targetPrice,
     stopLoss: thesis.stopLoss,
-    // The stock's ATR(14), for a trail whose give-back widens with its range
-    // (DAV-294). The same snapshot the evaluator reads; missing → the written
-    // percent, which is what the evaluator uses too.
     // The levels actually in force, read off the resolved trigger list —
     // the columns above are a cache and, until the L6 backfill runs, can
     // still name a price nothing enforces. The card renders THIS and flags
@@ -335,9 +347,6 @@ export async function GET(
       status: thesis.status,
       avgCost: position?.avgCost ?? null,
       peakPrice: position?.peakPrice ?? null,
-      // Same snapshot the evaluator reads, so a range-widened trail draws
-      // the line that actually sells (DAV-294).
-      atr14: atr14Value,
     }),
     catalystDate: thesis.catalystDate,
     // When an analyst last actually looked. Stored (schema:321) and, until
@@ -394,6 +403,9 @@ export async function GET(
     insiderTechnical: thesis.insiderTechnical,
     researchUpdatedAt: thesis.researchUpdatedAt
       ? thesis.researchUpdatedAt.toISOString()
+      : null,
+    writtenUp: writtenUpRow
+      ? { at: writtenUpRow.timestamp.toISOString(), price: writtenUpPrice(writtenUpRow, writerPull?.payload ?? null) }
       : null,
     sourceKind: thesis.sourceKind,
     sourceRationale: thesis.sourceRationale,

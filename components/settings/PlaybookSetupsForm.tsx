@@ -75,14 +75,6 @@ const NUMBER_FIELDS: NumberField[] = [
     step: 0.5,
   },
   {
-    key: "targetMinR",
-    label: "Target floor",
-    suffix: "R",
-    help: "The reward-to-risk a plan must clear.",
-    nullable: false,
-    step: 0.5,
-  },
-  {
     key: "partialAtR",
     label: "Partial sale at",
     suffix: "R",
@@ -98,14 +90,6 @@ const NUMBER_FIELDS: NumberField[] = [
     nullable: true,
     step: 1,
   },
-  {
-    key: "riskMultiplier",
-    label: "Risk multiplier",
-    suffix: "×",
-    help: "Multiplies the risk per trade (0.5 for a binary event).",
-    nullable: false,
-    step: 0.25,
-  },
 ];
 
 function titleCase(s: string): string {
@@ -117,19 +101,17 @@ function unitFor(field: NumberField, setup: PlaybookSetupView): string {
   return setup.timeUnit === "SESSIONS" ? "sessions" : "days";
 }
 
-/** "Stop ≤ 8% · ≥ 2R · trim 2R · 20 sessions" — the row's one-line shape. */
+/** "Stop ≤ 8% · trim 2R · 20 sessions" — the row's one-line shape. */
 function numbersSentence(setup: PlaybookSetupView): string {
   const n = setup.numbers;
   const parts: string[] = [];
   if (n.stopMaxPct != null) parts.push(`stop ≤ ${n.stopMaxPct}%`);
-  parts.push(`target ≥ ${n.targetMinR}R`);
   if (n.partialAtR != null) parts.push(`trim at ${n.partialAtR}R`);
   if (n.timeTradingDays != null) {
     parts.push(
       `${n.timeTradingDays} ${setup.timeUnit === "SESSIONS" ? "sessions" : "days"}`,
     );
   }
-  if (n.riskMultiplier !== 1) parts.push(`${n.riskMultiplier}× risk`);
   return parts.join(" · ");
 }
 

@@ -8,13 +8,6 @@ const USD = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-const USD_COMPACT = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
 /** "$1,234.56" */
 export function formatCurrency(value: number): string {
   return USD.format(value);
@@ -24,11 +17,6 @@ export function formatCurrency(value: number): string {
 export function formatSignedCurrency(value: number): string {
   const abs = USD.format(Math.abs(value));
   return value >= 0 ? `+${abs}` : `-${abs}`;
-}
-
-/** "$1.2K", "$3.5M" — for compact displays */
-export function formatCompactCurrency(value: number): string {
-  return USD_COMPACT.format(value);
 }
 
 /** "12.34%" */

@@ -27,7 +27,9 @@ import {
   positionBand,
   entrySizeForConviction,
   sizeByRisk,
+  sizingStop,
 } from "@/lib/agent/position-sizing";
+import { loadAutoStop } from "@/lib/trading/auto-stop";
 import { loadAccountRisk, industryOf } from "@/lib/agent/load-account-risk";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { heatLine, industryLine } from "@/lib/agent/portfolio-risk";
@@ -37,6 +39,7 @@ import {
 } from "@/lib/agent/thesis-narrative";
 import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import { cashShortfall } from "@/lib/trading/manual-order-rules";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
 
 /**
@@ -100,7 +103,7 @@ const placeTradeSchema = z.object({
       .string()
       .optional()
       .describe(
-        "REQUIRED on every buy proposal, from a trigger run or the daily run: why you're buying now. The buy and the price first, then the reason in a sentence or two, then the target and the stop. Skip only for a one-shot buy in the chat, where the thesis you just wrote is the reason. Shown to the owner on the proposal and in the approval email; write it by How you write.",
+        "REQUIRED on every buy proposal, from a trigger run or the daily run: the reason the owner reads on the proposal and in the approval email. What the company is doing and why the stock is where it is today, then the buy: the price, the target and the stop. Skip only for a one-shot buy in the chat, where the thesis you just wrote is the reason. Write it by How you write.",
       ),
 });
 
@@ -370,8 +373,8 @@ export const placeTrade = defineTool({
       // both: a row without one is told how to set it. For LONG the target
       // sits ABOVE entry and the floor BELOW it; for SHORT the reverse.
       // Without the ordering check a stale plan (a target set when the price
-      // was lower) closes the position on the first price-monitor tick after
-      // the fill, because `currentPrice >= targetPrice` holds at avgCost.
+      // was lower) fires the target on the first trigger check after the
+      // fill, because `currentPrice >= targetPrice` holds at avgCost.
       const plan = planOfRow(planRow);
       if (plan.target == null || plan.stop == null) {
         const missing = [plan.stop == null ? "floor" : null, plan.target == null ? "target" : null].filter(Boolean).join(" and ");
@@ -432,8 +435,8 @@ export const placeTrade = defineTool({
       // the model may have used a stale entry estimate (e.g. last
       // night's close, or an old thesis's entry level). If the live
       // market price has already crossed target or stop, the
-      // price-monitor will close the position on its next tick —
-      // refuse here instead. Quote failure is non-fatal (the
+      // target or floor fires on the next trigger check — refuse here
+      // instead. Quote failure is non-fatal (the
       // ordering guardrail above is the static fallback).
       try {
         const livePrice = await getLatestPrice(ticker, ctx.alpacaCreds);
@@ -490,7 +493,7 @@ export const placeTrade = defineTool({
       // to the analyst's dollar limits. Whatever path sized it, the proposal
       // carries the arithmetic plus the open-risk, industry and regime lines
       // — lines the principal reads when approving, never refusals.
-      const [sizingThesis, sizingAnalyst, accountRisk] = await Promise.all([
+      const [sizingThesis, sizingAnalyst, accountRisk, autoStop] = await Promise.all([
         prisma.thesis.findUnique({
           where: { id: args.thesis_id },
           select: { conviction: true, horizon: true, setupId: true, catalystDate: true },
@@ -503,6 +506,7 @@ export const placeTrade = defineTool({
           environment: ctx.runEnvironment ?? "PAPER",
           creds: ctx.alpacaCreds,
         }).catch(() => null),
+        effectiveAnalystId ? loadAutoStop(effectiveAnalystId) : Promise.resolve(null),
       ]);
       // A bet into a dated binary event is half the risk (DAV-328). The
       // answer is `isBinaryBet` — one function for the entry and the add.
@@ -510,6 +514,8 @@ export const placeTrade = defineTool({
       // AIR, KMX and JBL (CATALYST rows wearing the PEAD setup) were sized
       // in full the day before their print.
       const binary = sizingThesis ? isBinaryBet(sizingThesis) : false;
+      // Stop when buying on: sized off the wider of the plan's floor and the setting's line.
+      const riskStop = sizingStop({ entry: args.entry_price, stop, direction: args.direction, autoStop });
       const riskSized =
         accountRisk?.equity != null
           ? sizeByRisk({
@@ -517,7 +523,7 @@ export const placeTrade = defineTool({
               riskPct: sizingAnalyst?.riskPct,
               conviction: sizingThesis?.conviction,
               entry: args.entry_price,
-              stop: stop,
+              stop: riskStop.stop,
               direction: args.direction,
               binary,
               regime: accountRisk.regime?.regime ?? null,
@@ -547,7 +553,7 @@ export const placeTrade = defineTool({
       } else if (riskSized) {
         resolvedShares = riskSized.shares;
         resolvedNotional = riskSized.notional;
-        sizingNotes.push(riskSized.line);
+        sizingNotes.push(riskSized.line, ...(riskStop.line ? [riskStop.line] : []));
       } else {
         // No usable stop distance or no equity reading: the band, placed by
         // conviction (the pre-DAV-251 rule), and the proposal says why.
@@ -560,11 +566,20 @@ export const placeTrade = defineTool({
         );
       }
       if (accountRisk?.open && accountRisk.equity) {
-        const perShare = args.direction === "SHORT" ? stop - args.entry_price : args.entry_price - stop;
+        const perShare = args.direction === "SHORT" ? riskStop.stop - args.entry_price : args.entry_price - riskStop.stop;
         const addedRisk = Math.max(0, perShare) * (resolvedShares ?? 0);
         sizingNotes.push(heatLine(accountRisk.open, accountRisk.equity, addedRisk));
         const ind = industryLine(accountRisk.open, await industryOf(ticker), ticker);
         if (ind) sizingNotes.push(ind);
+      }
+      // A buy no analyst placed (an Auto trigger) is paid from cash, never margin, as the Trade button's is.
+      const short = ctx.payFromCash !== undefined ? cashShortfall(resolvedNotional ?? (resolvedShares ?? 1) * args.entry_price, ctx.payFromCash) : null;
+      if (short) {
+        return {
+          summary: `Trade blocked: $${ticker} — not enough cash`,
+          data: { success: false, ticker, status: "FAILED" as const, direction: args.direction, message: `Trade blocked: ${short}`, tickers: [{ ticker, tag: "Failed", summary: short, actionIcon: "failed" }] },
+          sources: [],
+        };
       }
       if (accountRisk?.regime) sizingNotes.push(accountRisk.regime.line);
       // Where the event date sits against a pre-catalyst setup's buying
@@ -736,7 +751,6 @@ export const placeTrade = defineTool({
           environment: positionEnvironment,
           rationale: proposalRationale,
         });
-        // OPEN is a buy — never subject to the P1-28 CLOSE-only cooldown.
         if (awaiting?.state === "awaiting_approval") {
           return {
             summary: `Proposed: ${args.direction} ${finalShares} $${ticker}`,

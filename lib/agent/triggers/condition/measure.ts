@@ -67,7 +67,6 @@ export interface LineContext {
   isLong: boolean;
   avgCost?: number | null;
   peakPrice?: number | null;
-  atr14?: number | null;
 }
 
 /** What the trigger check loads for a condition beyond the live quote. */
@@ -87,8 +86,6 @@ export interface MeasureDef {
   settings?: readonly SettingDef[];
   /** The actions it can take. All five unless listed. */
   actions?: readonly TriggerAction[];
-  /** "Propose the sale right away" is offered: a sale nothing needs judging on. */
-  direct?: (c: Condition) => boolean;
   /** A clock, not a condition: "Review every 30 days." It stands alone. */
   timed?: boolean;
   /** In a sentence, where the two halves don't read as English: "30 days after the buy". `words` is the value half in words. */
@@ -100,8 +97,10 @@ export interface MeasureDef {
    * reached before the buy says the plan is stale.
    */
   level?: (c: Condition) => boolean;
-  /** The label a direct sale on it closes with: STOP for a protective give-back, TARGET for a favourable level. */
-  closeReason?: (c: Condition, isLong: boolean) => "STOP" | "TARGET";
+  /** The label a sale on it closes with: STOP for a protective give-back, TARGET for a favourable level; null when the analyst labels it. */
+  closeReason?: (c: Condition, isLong: boolean) => "STOP" | "TARGET" | null;
+  /** Which way the price went when it holds: true up, false down; absent or null, neither (volume, a date). Labels an Auto-sell with no close label of its own. */
+  rises?: (c: Condition) => boolean | null;
   /** Where it sits on the chart, when it has one price: a typed level, a % from our position. Absent or null: no line. */
   line?: (c: Condition, ctx: LineContext) => Line | null;
   /** The review clock: counted from the last review. The one schedule a watched stock opts into, and what "review due" reads. */

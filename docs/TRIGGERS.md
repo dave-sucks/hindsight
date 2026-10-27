@@ -15,7 +15,7 @@
 Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
 
 ```ts
-{ id, predicate, action, rationale, cooldownDays?, lastFiredAt?, fireMode? }
+{ id, predicate, action, rationale, cooldownDays?, lastFiredAt?, fireMode, trimPct? }
 ```
 
 - **predicate** — the condition, in one shape (`lib/agent/triggers/condition/types.ts`):
@@ -24,7 +24,9 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
 - **action** — what firing means: `ENTER | EXIT | REVIEW | ADD | TRIM`.
 - **rationale** — prose the agent reads when it acts.
 - **cooldownDays** — don't re-fire within N days (see §6).
-- **fireMode** — `TACTICAL` (default) or `DIRECT` (see §4).
+- **fireMode** — on fire: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or
+  `NEXT_MORNING` (Flag for Review) (see §4). Every stored trigger names one.
+- **trimPct** — a trim's size: the % of the position it sells, in every mode (50 when unset). The sentence says it ("Trim 30% if above $150"); Auto sells it, and a trigger run woken by the trim passes it to `manage_position` as the default `close_pct` (`ToolContext.firedTrim`).
 
 The condition is the form's own fields: `watch` is the measure (the tab),
 `is` the direction (the button group), `value` the number typed, `variable`
@@ -42,7 +44,7 @@ maps the result onto the stored shape. The condition is defined once per tool.
 **One catalog entry per measure, no switches** (`lib/agent/triggers/condition/catalog.ts`
 and `condition/measures/*`). Each entry carries everything about its measure:
 its words, its number, its variables and settings, the actions it allows,
-whether a sale on it may propose directly and with what close reason, its
+the label a protective sale on it closes with, its
 default cooldown, what the check must load for it, whether it is a typed price
 level, and how the check reads it (`condition/read.ts`). Adding a measure is one
 entry; nothing else switches on it.
@@ -65,41 +67,29 @@ evaluation, so the gate rejects it up front, with the list of measures.
 | Measure (`watch`) | Means | Number · variable · settings |
 |---|---|---|
 | `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought. `settings.close` = the day must **close** past it — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
-| `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the price monitor) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required; entry: `fastWinnerPct` / `fastWinnerDays`; peak: `startOnceUpPct` / `widenAtr` |
+| `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the five-minute check from the live price and, for a position held since before the open, the session's high) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required |
 | `volume` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio. | `value` (×) |
 | `rsi` | RSI over the snapshot's closes with the live price as today's. | `value`; `settings.period` 14 or 2 |
 | `strength` | Return over the window minus the S&P's, percentage points, as of the last close. A state (§6). | `value`; `settings.window` 1M / 3M / 6M |
-| `gap` | Opened ≥ `value`% over the prior close on ≥ `volume`× normal volume — today, or within `withinDays` sessions. | `value` (%); `volume`, `withinDays` |
-| `report` | **Before** a report: "reports within N days" (the heads-up; 14-day lookahead). **After** one: "reported up to N days ago" (0 = the report day; `fromDay: 1` starts the day after) — the post-report drift window. Off the Finnhub calendar on the cron (`triggers/earnings.ts`), one firm-wide call per pass. Once per report (30-day cooldown); the audit row carries the date, bell and estimates. | `value` (days); `fromDay` |
+| `gap` | Opened ≥ `value`% over the prior close, whatever the volume — today, or the snapshot's latest session. Fires once per gap (1-day wait). | `value` (%) |
+| `report` | **Before** a report: "reports within N days" (the heads-up; 14-day lookahead). **After** one: "reported up to N days ago", counting from the report day (0) — the post-report drift window. Off the Finnhub calendar on the cron (`triggers/earnings.ts`), one firm-wide call per pass. Once per report (30-day cooldown); the audit row carries the date, bell and estimates. | `value` (days) |
 | `surprise` | Earnings beat or miss — reported EPS vs estimate, same calendar call. Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. 0 = any amount. | `value` (% or more) |
 | `filing` | The company filed something with the SEC. Keyed on the 8-K item or the form, never "a 10-Q was filed": `tier:MATERIAL` / `tier:RED` ("at least" — material matches serious too), `item:8.01`, `form:S-3`. Several events are "any of" one-event conditions. Read live off EDGAR — one search per pass for every name carrying a filing trigger, 4-day lookback. **One fire per filing** (the filing IDs are remembered on the trigger, or in `triggerState` for an inherited rule); no cooldown, because filings cluster. A serious filing on a HOLDING spawns a tactical run the same day; everything else goes to the next daily review. The tier table is `lib/market-data/sec-events.ts`. | `variable` |
 | `insiders` | At least N distinct insiders bought on the open market (Form 4 code P; grants and exercises excluded) within 30 or 90 days. Read from the snapshot's `insiderBuys` (Finnhub, refreshed 06:30 ET). The fire's audit row names the buyers. Cooldown 30. | `value`; `settings.days` |
 | `repeat` | The review clock: N days since the last actual review (`lastReviewedAt`), repeating. Cooldown is its own interval. | `value` (days) |
 | `from_date` | N days after the buy (false until held — the playbook's time limits: "sell 20 days after the buy if still held"), or N days before or after the thesis's own `catalystDate` (the FDA decision, the deal close) — read off the thesis, never typed into the trigger. Cooldown defaults to N, so a review re-asks every N days once reached; an EXIT is the usual standing order. | `value` (days), `variable` buy / event |
 
-**A big winner is not trimmed.** A sale or trim on the move from our entry
-takes optional `fastWinnerPct` + `fastWinnerDays`: once the position's tracked
-peak has run that far off the buy, *that fast*, the rung is off for good. The
-playbook's rule is "+20% in ≤ 3 weeks — then hold", and both halves matter: the
-size alone would switch the partial off for a six-month grind to the same gain,
-which is an ordinary winner and exactly what the partial is for. A fill writes
-both onto the partial sale for a trade or a target position, at 20% and 21
-days. It reads `Position.peakPrice` and `Position.peakAt` — the same water mark
-the trail reads, plus the clock the price monitor writes beside it — so the rule
-needs no memory of its own. A missing `peakAt` means the run can't be shown to
-be fast, so the partial stands. SMMT ran 30.5% in 13 days and loses its
-partial; MU took 54 days to reach 15.5% and keeps it.
-
-**A trail that widens with the stock.** The trail takes an optional
-`widenAtr`: the give-back is the larger of its % and `widenAtr` × the stock's
-ATR(14) from the daily snapshot (playbook E5). It only ever widens — a missing
-snapshot falls back to the written percent. The line is computed in ONE
-function, `lib/agent/triggers/trail.ts` → `trailFireLevel`, and every surface
-that draws it passes the same ATR: the evaluator, the floor-health block the
-agents read, and the thesis sheet's and trade page's levels. MU (ATR $50 on a
-$1,035 peak) trails 14.5%; ABT (ATR $2.58) keeps its written 25%.
-`startOnceUpPct`: the trail has no level until the position has once been up
-that much from entry, so an unarmed trail is never drawn.
+**A trail is one number.** Its line is the give-back % off the tracked high,
+computed in ONE function, `lib/agent/triggers/trail.ts` → `trailFireLevel`,
+which the evaluator, the floor-health block and the sheet's and trade page's
+levels all call. The arming gain (`startOnceUpPct`), the range widening
+(`widenAtr`), the big-winner switch on the move from our entry
+(`fastWinnerPct` / `fastWinnerDays`), a gap's volume and look-back (`volume`,
+`withinDays`) and "after earnings" starting later (`fromDay`) were deleted
+2026-10: every setting a
+trigger carries is a visible field in the trigger form, or it doesn't exist.
+A stored trigger still carrying one of those keys reads without it
+(`declaredOnly` in `condition/catalog.ts`).
 
 **A day count is always calendar days — the catalog is not.** A setup's short
 time limits are written in sessions ("no progress in 10–20 sessions is a failed
@@ -247,9 +237,12 @@ economics (`avgCost` for the move from entry, `peakPrice` for the trail — both
 maintained per HOLDING) alongside the latest quote; no candles needed. Both are
 **HOLDING-only**: with no open position in context (WATCHING theses, or a
 caller that didn't join the position) they evaluate false rather than throw.
-`peakPrice` is the price-monitor-maintained water mark — the trail floor
-ratchets up with the high automatically, so a give-back fires the EXIT with no
-memory required of any prior review.
+`peakPrice` is the water mark each intraday pass raises before it checks
+anything (`lib/trading/water-mark.ts`): from the live price, and for a position
+held since before today's open from the session's high off the same Alpaca
+snapshot (regular hours only), so a spike between two passes counts. Only a
+fresh quote moves it. The trail floor ratchets up with the high automatically,
+so a give-back fires the EXIT with no memory required of any prior review.
 
 **One trigger the check can't read never stops the pass.** The check runs each
 trigger inside its own catch: an error is logged loudly with the trigger's id,
@@ -257,25 +250,66 @@ the stock and the thesis (`CHECK FAILED on …`), that trigger is skipped this
 pass, and every other trigger on that stock and the rest of the book is still
 checked.
 
-## 4. Fire modes — TACTICAL vs DIRECT
+## 4. On fire — the same three choices on every trigger
 
-Set per-trigger (`fireMode`, default `TACTICAL`):
+One field, `fireMode`, the same for every action, condition and author
+(`lib/agent/triggers/fire-mode.ts`). The stored values are never shown; the
+names are:
 
-- **`TACTICAL`** ("Trigger Tactical Run") — fires `app/thesis.trigger.fired` →
-  a focused GPT-5.5 **tactical run** validates and decides.
-- **`DIRECT`** ("Automatically Exit") — **EXIT action only**, on a deterministic
-  predicate. The tactical-run consumer **short-circuits past the agent** and
-  calls `closeOpenPosition` directly. Saves the GPT cost on mechanical exits.
-  Which conditions may propose directly is on the catalog (`direct` on the
-  measure and its variables; `isDirectEligible` in `condition/rules.ts`): a
-  typed price level, and a move from a recent close, from our entry or from the
-  high since we bought — i.e. the gain-lock and the trail alongside the
-  absolute price and daily-% levels. Everything judgment-bearing (earnings,
-  filings, RSI, time, two conditions) refuses DIRECT and falls back to
-  TACTICAL. A protective EXIT closes with a deterministic STOP/TARGET reason
-  (`closeReason` on the measure; `protectiveCloseReason`) — trail and
-  gain-lock give-backs tag STOP — so the P1-28 unapproved-exit cooldown exempts
-  them and a rejected protective exit re-fires when price re-crosses (#490).
+| `fireMode` | The name | On fire |
+|---|---|---|
+| **`DO_IT`** | Auto-sell / Auto-buy / Auto-add / Auto-trim | The trade, with no agent run. A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
+| **`ASK_NOW`** | Send to Agent | `app/thesis.trigger.fired` → a trigger run (the tactical run) starts now and decides. |
+| **`NEXT_MORNING`** | Flag for Review | The `TRIGGER_FIRED` row is written and no run starts; the next morning run answers it. |
+
+**One default.** Unset (a template, an agent that names none), a review is
+Flag for Review and everything else is Send to Agent. Auto is only ever chosen:
+the seat rules' trails for a new analyst and the stop set when buying are Auto
+on purpose. The write paths stamp the mode (`applyTriggerDefaults`), so every
+stored trigger names one; the migration `20261022130000_on_fire_every_trigger`
+wrote each existing trigger with the mode it already behaved as. A value a read
+doesn't know is read as the default (Send to Agent for a sale).
+
+**Who may set Auto** (`fireModeProblem`, run by every write path):
+
+- Never on a review: "A review asks the agent, so it can't be Auto."
+- On a buy, an add or a trim, only the owner: the thesis sheet, or his chat
+  acting on his word. The morning run, the writer and the trigger run are
+  refused by id (`ownersWord` on `applyTriggerOps`; `record_thesis` refuses the
+  mint). An agent may still move the level of the owner's Auto trigger, and may
+  make a sale Auto (it only speeds up protection).
+- On an account or analyst rule, only on a sale: a standing Auto buy, add or
+  trim would fire on every stock under it. None is stored (2026-10-22).
+
+**An Auto buy, add or trim is a one-time order.** Once it fires and its trade is
+tried (proposed, sent or refused), the trigger comes off the stock through
+`applyTriggerOps` (actor SYSTEM) with one Activity line, "Used once: Trim 30% if
+above $150 (Auto-trim)" (`useOnce`, `lib/agent/triggers/use-once.ts`). A tool
+that crashes leaves it in place for its next fire. An Auto-sell stays a standing
+order: a sale you don't take is proposed again each day.
+
+**Auto is the trade the agent would have made, minus the agent.** The
+trigger run calls the same tool its agent would (`doItCall`,
+`lib/agent/triggers/do-it.ts`), so the trade is sized and gated exactly as an
+agent's: a buy needs a floor and a target on the plan, the analyst's
+minimum score, a free position slot, and is sized by `sizeByRisk` off the
+floor; an add is half a buy's risk inside the analyst's most in one stock. A
+buy or an add is also paid from cash, never margin, as the Trade button's is
+(`cashShortfall`, `lib/trading/manual-order-rules.ts`). A buy never fires on a
+stale price (`shouldFire`), and the fired price is the entry. A refused
+trade writes a `GateRejection` row, which is the one Activity line the
+attempt feed shows ("Buy blocked: You have $1,000.00 in cash…"). With
+nothing to trade (a sale on a stock we don't own, a buy on one we do) the
+agent is asked instead.
+
+A protective EXIT closes with a deterministic STOP/TARGET reason
+(`closeReason` on the measure; `protectiveCloseReason`) — trail and gain-lock
+give-backs tag STOP — so the P1-28 unapproved-exit cooldown exempts them and a
+rejected protective exit re-fires when price re-crosses (#490). An Auto-sell on
+any other condition (RSI, an average, volume, a gap, days from a date) closes as
+TARGET when the condition is a rise for a long (a fall for a short), else STOP,
+so a profit-take goes back on watch (`autoSellCloseReason`; which way a
+condition goes is `rises` on its measure; volume and a date go neither way).
 
 **A sale from a protective fire always carries the STOP/TARGET label** (DAV-192).
 The close tool — `close_position`, the only whole-position exit since DAV-220 — runs the
@@ -297,23 +331,33 @@ in the audit note **and** by forcing `belief_survived = false` — keyed off wha
 the agent *declared*, so a corrected label can never route a structurally-broken
 name back to the watchlist.
 
-**Both modes still go through the approval gate.** `closeOpenPosition` (and the
-agent's `close_position`/`place_trade`) call `maybeAwaitApproval` **before** any
-Alpaca submit. With require-approval-sells ON, a DIRECT exit **proposes** the
-close (you approve/reject) — it does **not** auto-sell. DIRECT saves the *agent*
-cost, never the *approval* step. True auto-sell requires approvals OFF (a
-separate account setting).
+**Every mode still goes through the approval gate.** `closeOpenPosition` and
+the trade tools ask the account's approval switch for that side **before** any
+Alpaca submit. With the switch on, Auto **proposes** the trade (you
+approve/reject) — it does **not** auto-trade. Auto saves the *agent* cost,
+never the *approval* step. The dialog says "Waits for your approval." under On
+fire when the switch for that side is on.
+
+**Only the owner slows a protective sale.** On a held stock an agent may not
+move a protective sale down the order Auto-sell → Send to Agent → Flag for
+Review (`FIRE_MODE_SPEED`, `ratchet.ts`), the same as it may not lower the line.
+
+**A trade left for the morning asks at most once a day.** A morning run
+answers once a day, so a non-review set to `NEXT_MORNING` has a one-day floor
+on its cooldown (a floor stored at 0 would otherwise write a fire every pass;
+`flooredCooldownDays`).
 
 ## 5. From fire to trade (the pipeline)
 
 ```
 predicate matches
   → stamp lastFiredAt + write ThesisUpdate(TRIGGER_FIRED)
-  → REVIEW (non-BREAKING)? defer to the next daily run (no tactical spawn)
+  → NEXT_MORNING (no red filing on a held stock)? stop: the morning run answers it
   → else emit app/thesis.trigger.fired
       → tactical-run consumer
-          → DIRECT EXIT?  closeOpenPosition  ─┐
-          → else          GPT-5.5 agent ──────┤→ maybeAwaitApproval
+          → DO_IT sale?            closeOpenPosition ──────────────┐
+          → DO_IT trim/buy/add?    manage_position / place_trade ──┤
+          → else                   GPT-5.5 agent ──────────────────┤→ approval switch
                                                └→ approvals on → PROPOSAL
                                                   approvals off → execute
 ```
@@ -342,23 +386,27 @@ run's `TRIGGER_MATCHING_NOW`, the resolver's `ENTER_FIRED`) carry no prior
 close and keep level semantics — "is the condition true now" is the right
 question for a snapshot.
 
-**REVIEW-batching:** a `REVIEW` fire means "re-evaluate," not "act now" — it
-converts to a trade rarely, so (except BREAKING-urgency signals) it writes the
-`TRIGGER_FIRED` audit row and defers to the next daily run instead of spawning a
-tactical run. `ENTER`/`EXIT` always spawn (or DIRECT-close).
+**Reviews wait for the morning by default:** a `REVIEW` fire means
+"re-evaluate," not "act now" — it converts to a trade rarely, so unset it is
+`NEXT_MORNING`: the `TRIGGER_FIRED` audit row, and the next morning run. A
+review set to Send to Agent starts a trigger run, which answers it with the
+review's situation guidance (each one costs a trigger run, about 6–18 cents;
+its cooldown limits repeats). A red filing on a stock we hold is looked at the
+same day whatever is set (`filingNeedsSameDayLook`).
 
 ## 6. Cooldown
 
 `cooldownDays` rate-limits re-fires. Omit it → the measure's default
 (`cooldownDays` on its catalog entry; `defaultCooldownDays` in
 `condition/rules.ts`): a surprise 7, a report 30, insiders 30, a price level,
-a move, volume and RSI 1, a gap its `withinDays`, the move from our entry 7 —
+a move, volume, RSI and a gap 1, the move from our entry 7 —
 the milestone latches, so 7d stops a same-week re-fire if the acting agent
-forgets to re-arm the next checkpoint; the trail 1, the review clock and a
+forgets to re-arm the next checkpoint (a sale on it is 1: a standing order
+asks daily); the trail 1, the review clock and a
 date its own day count. **`cooldownDays: 0` is reserved for terminal `EXIT`
 triggers only** — `0` on any other action causes a 5-min evaluator infinite
 loop the instant the condition latches true, so the write path overwrites it
-with the default (`applyTriggerCooldownDefaults`). The
+with the default (`applyTriggerDefaults`). The
 standing trail ratchet is stamped `cooldownDays: 0` at mint (terminal EXIT, same
 as the hard stop).
 
@@ -384,7 +432,7 @@ but the price path only **evaluates during the regular session**:
   holidays — all of which would evaluate price predicates against thin/erratic
   pre/after-market quotes (a daily-% trigger firing on a pre-market print). So
   the cron path gates on `isMarketOpen()` (regular session 9:30–16:00 ET,
-  holiday-aware — the same guard `price-monitor` uses) and no-ops outside it.
+  holiday-aware) and no-ops outside it.
 - **The close pass:** the ticks from 16:20 to 16:34 ET on a trading day are
   not skipped: they evaluate only rungs with a price level read on the close (`settings.close`),
   with today's consolidated close (Alpaca SIP daily bar) as the price. A name
@@ -406,8 +454,8 @@ Once a thesis exists, its triggers change **one at a time**, through one
 function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
 
 - **UI** — `lib/actions/thesis-edit.ts` + `/api/theses/[id]/triggers`:
-  `applyTriggerAdd`, `applyTriggerValueEdit`, `applyTriggerFireModeChange`,
-  `applyTriggerDelete` — each is one op. The reject dialog embeds the same
+  `applyTriggerAdd`, `applyTriggerReplace` (the dialog's Save: condition,
+  action and On fire in one write), `applyTriggerDelete` — each is one op. The reject dialog embeds the same
   editor (`editableOnly`: price/% triggers only).
 - **Agent** — `update_thesis(add_triggers | edit_triggers | remove_trigger_ids)`;
   `entry_price` / `target_price` / `stop_loss` are the same op on the buy /
@@ -416,7 +464,23 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
 - **A buy fill** removes the buy trigger, sets the floor and target to the
   executed levels, and adds the held-side template triggers that are missing
   (`armHeldLadderOnFill`). Never a rewrite: the analyst's target and reviews
-  survive the fill.
+  survive the fill. The templates' hard stop is not written: the one
+  automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
+  setting on the account (Settings → Triggers) that an analyst may override
+  (its Triggers tab). On, a new long holding gets two lines. The **sale
+  floor** is always the buy price less the setting's % (0.5–50, default 8):
+  "Sell if below $X", DO_IT, stamped as the owner's — added, or the floor
+  there moved to it in place. A floor an analyst or a template set tighter
+  than that is kept as the **review line** above it: "Review if below $Y",
+  ASK_NOW, with the floor's own note; with a review already in that slot the
+  higher price is kept, never two. A tighter floor the owner set is left
+  exactly as it is, and a stop typed on the Trade ticket is the owner's
+  (`approveProposal(…, { tradeTicket: true })` → `stopIsOwners`; one equal
+  to the row's floor, the ticket's default, stays the analyst's). With the
+  setting on, a buy (and an add) is sized off the
+  wider of the plan's floor and the setting's line (`sizingStop`,
+  `lib/agent/position-sizing.ts`), so a loss at the sale floor stays inside
+  the risk per trade. An add to a holding never moves the lines.
 - **A plan set-down** (DEMOTE) removes the buy, floor and target triggers.
   An automatic one comes from the floor on the close pass (§7).
 
@@ -455,6 +519,9 @@ on the row's `fieldChanges.triggerOps`.
 - `lib/agent/triggers/evaluate.ts` — `shouldFire`: crossing, stale quote, cooldown, re-arm
 - `lib/agent/triggers/defaults.ts` — horizon templates + `accountStandingRules()` (the account's add prompts) + cooldown defaults
 - `lib/inngest/functions/trigger-evaluator.ts` — the cron and close passes, one catch per trigger
-- `lib/inngest/functions/tactical-run.ts` — consumer (TACTICAL agent / DIRECT close)
+- `lib/agent/triggers/fire-mode.ts` — on fire: the three modes, their defaults, where a fire goes (`waitsForMorning`, `doItTrade`), the words
+- `lib/agent/triggers/do-it.ts` — the trade tool call an Auto trigger makes
+- `lib/agent/triggers/use-once.ts` — an Auto buy, add or trim comes off the stock once used
+- `lib/inngest/functions/tactical-run.ts` — consumer (the agent, or an Auto trade)
 - `lib/actions/thesis-edit.ts` — add / edit / delete / fire-mode write paths
 - `components/agent/sheets/ThesisTriggersSection.tsx` — the trigger UI

@@ -322,9 +322,9 @@ export const morningResearch = inngest.createFunction(
         // research-run allowlist (Fix #5). The unified route already
         // does this; the cron previously did not, so the Daily Run
         // saw every tool — including record_thesis + manage_watchlist
-        // — and could mint new coverage that's the Discovery cron's
+        // — and could mint new coverage that's Discovery's
         // job. Mirrors the same allowlist-filter pattern in
-        // tactical-run.ts and discovery-run.ts.
+        // tactical-run.ts.
         const allTools = createResearchTools({
           runId: run.id,
           userId: config.userId,
@@ -341,11 +341,6 @@ export const morningResearch = inngest.createFunction(
           minConfidence: config.minConfidence,
           alpacaCreds,
           runEnvironment,
-          // Fix #6 (V2). Narrows read_signals to portfolio + watchlist
-          // buckets only — Daily Run shouldn't act on discovery candidates
-          // (that's the Sunday Discovery cron's job). V1 had a different
-          // expectation; V1 path is deprecated as of 2026-05-16.
-          dailyRunOnly: true,
         });
         const allowlist = MODES["research-run"].toolAllowlist;
         const tools = allowlist
@@ -587,21 +582,12 @@ export const morningResearch = inngest.createFunction(
               actionableThesisIds.add(t.id);
             }
           }
-          // priorityReviews carry position ids, not thesis ids — map via
-          // ticker against the active book.
-          for (const p of runInput.priorityReviews ?? []) {
-            const match = (runInput.activeTheses ?? []).find(
-              (t) => t.ticker === p.symbol,
-            );
-            if (match) actionableThesisIds.add(match.id);
-          }
           const expectedCoverage = actionableThesisIds.size;
           // ZERO-TOUCH only (review finding #1). The cron-side actionable
           // set is an approximation from runInput streams the agent never
           // sees — it over-counts in ordinary states (fire already answered
           // by a tactical run, fire on a since-RETIRED thesis, ENTER
-          // suppressed by a pending buy proposal, near-stop priorityReviews
-          // with no needsAction, seeds whose review was legitimately
+          // suppressed by a pending buy proposal, seeds whose review was legitimately
           // bumped). A count-vs-count comparison would re-trigger the
           // daily phantom retry this PR removes. So the gate only fires on
           // the shape it exists for: work signal present, agent touched

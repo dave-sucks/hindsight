@@ -274,6 +274,17 @@ export function sessionsToCalendarDays(sessions: number, from: Date = new Date()
   return days;
 }
 
+/** The ET date (YYYY-MM-DD) the last `n` sessions start on, today counted when it is one. */
+export function lastSessionsFrom(n: number, now: Date = new Date()): string {
+  const DAY = 86_400_000;
+  const etDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  for (let back = 0, counted = 0; back < n * 3 + 30; back++) {
+    const d = new Date(now.getTime() - back * DAY);
+    if (isTradingDay(d) && ++counted >= n) return etDay(d);
+  }
+  return etDay(new Date(now.getTime() - n * DAY));
+}
+
 /** 16:00 ET on the trading day before the current (or last) session — the close a quote's `prevClose` is. */
 export function priorSessionCloseAt(now: Date = new Date()): Date {
   const DAY = 86_400_000;
@@ -288,6 +299,11 @@ export function priorSessionCloseAt(now: Date = new Date()): Date {
 /** The closing bell of a session date (YYYY-MM-DD, ET): 13:00 on a half day, else 16:00. */
 export function sessionCloseAt(ymd: string): Date {
   return etWallClock(ymd, sessionCloseHour(ymd), 0);
+}
+
+/** The opening bell of a session date (YYYY-MM-DD, ET): 9:30. */
+export function sessionOpenAt(ymd: string): Date {
+  return etWallClock(ymd, 9, 30);
 }
 
 /** The UTC instant of a wall-clock time in New York on a given date (DST-aware). */
@@ -341,13 +357,3 @@ export function isMarketOpen(now: Date = new Date()): boolean {
   return totalMinutes >= marketOpen && totalMinutes < marketClose;
 }
 
-/**
- * Returns minutes until market open (0 if already open).
- */
-export function minutesUntilOpen(now: Date = new Date()): number {
-  if (isMarketOpen(now)) return 0;
-  // Simplified: next 9:30am ET
-  const next = new Date(now);
-  next.setHours(next.getHours() + 1); // rough estimate
-  return 60;
-}

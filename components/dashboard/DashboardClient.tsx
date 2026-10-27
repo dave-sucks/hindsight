@@ -348,7 +348,7 @@ function getDecisionAction(item: ActivityFeedItem): string {
 }
 
 function getActivitySentence(item: ActivityFeedItem): string {
-  const src = item.source === 'price_monitor' ? 'price monitor' : item.source === 'user' ? 'you' : 'the agent';
+  const src = item.source === 'price_monitor' ? 'an Auto-sell' : item.source === 'user' ? 'you' : 'the agent';
   if (item.type === 'OPENED') {
     return item.direction === 'SHORT'
       ? `Short position opened in ${item.symbol} by ${src}.`

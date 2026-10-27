@@ -5,7 +5,7 @@
  * regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
  */
 
-import { TRIGGER_TYPES, triggerText, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
+import { TRIGGER_TYPES, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
 import { rangeWords, valueRange } from "@/lib/agent/triggers/condition/range";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
 import { SETUPS, type Setup } from "@/lib/agent/knowledge/setups";
@@ -26,7 +26,6 @@ function measureSection(m: MeasureDef): string[] {
     m.value.none ? "no number" : range ? `value: ${rangeWords(range)}` : `value: ${[m.value.prefix, m.value.suffix].filter(Boolean).join(" … ") || "a number"}`,
     `actions: ${actions.map((a) => ACTION_WORD[a]).join(", ")}`,
     m.reads?.length ? `reads: ${m.reads.join(", ")}` : m.timed ? null : "reads: the live quote",
-    m.direct ? "a sale can be direct (no agent)" : null,
     m.timed ? "a clock, stands alone" : null,
   ].filter((x): x is string => x != null);
 
@@ -48,14 +47,30 @@ function measureSection(m: MeasureDef): string[] {
     out.push("");
   }
 
-  const rests = actions.map((a) => m.cooldownDays(fresh, a));
-  const cool = rests.every((n) => n === rests[0]) ? days(rests[0]) : actions.map((a, i) => `${ACTION_WORD[a]} ${days(rests[i])}`).join(" · ");
+  // The usual rest, then any action that differs: "review 7 days, the rest 1 day".
+  const restOf = (c: Condition) => {
+    const rests = actions.map((a) => m.cooldownDays(c, a));
+    const usual = rests.find((n) => rests.filter((x) => x === n).length * 2 > rests.length) ?? rests[0];
+    const odd = actions.flatMap((a, i) => (rests[i] === usual ? [] : [`${ACTION_WORD[a]} ${days(rests[i])}`]));
+    return odd.length ? `${odd.join(", ")}, the rest ${days(usual)}` : days(usual);
+  };
+  const cool = restOf(fresh);
   out.push(`**Rest period for a plain condition, when none is set:** ${cool}.`, "");
+  // A variable that changes the rest (our entry: a week) gets its own line.
+  const other = new Map<string, string[]>();
+  for (const v of m.variables?.options ?? []) {
+    const r = restOf({ ...fresh, variable: v.id });
+    if (r !== cool) other.set(r, [...(other.get(r) ?? []), `\`${v.id}\``]);
+  }
+  if (other.size) {
+    for (const [r, ids] of other) out.push(`- From ${ids.join(", ")}: ${r}.`);
+    out.push("");
+  }
 
   const examples = TRIGGER_TYPE_DOCS.flatMap((t) => t.examples).filter((e) => !("match" in e.when) && e.when.watch === m.id);
   if (examples.length) {
     out.push("**Examples:**", "");
-    for (const e of examples) out.push(`- "${triggerText(e.action, e.when)}". ${e.why}`, "", "  ```json", `  ${JSON.stringify({ action: e.action, predicate: e.when })}`, "  ```", "");
+    for (const e of examples) out.push(`- "${sentenceOf({ action: e.action, predicate: e.when })}". ${e.why}`, "", "  ```json", `  ${JSON.stringify({ action: e.action, predicate: e.when })}`, "  ```", "");
   }
   return out;
 }

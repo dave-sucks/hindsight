@@ -1,9 +1,8 @@
 /**
  * The trigger rules every measure answers on its catalog entry, combined for
  * a whole condition or group: the default cooldown, the weekly floor on a
- * state review, whether a sale can go straight to a proposal and the label
- * it closes with, the close-only reading of a watched stock's floor, and what
- * the trigger check loads for it.
+ * state review, the label a protective sale closes with, the close-only
+ * reading of a watched stock's floor, and what the trigger check loads for it.
  * docs/plans/TRIGGER_TYPES.md §6.1.
  *
  * Pure and client-safe.
@@ -34,15 +33,15 @@ export function isState(w: When): boolean {
   return measureOf(w).state?.(w) === true;
 }
 
-/** A sale with nothing for an analyst to judge: a typed price, or a % from a close, our entry or the high. */
-export function isDirectEligible(w: When): boolean {
-  return !isGroup(w) && measureOf(w).direct?.(w) === true;
+/** The label a protective sale closes with (a typed price, or a % from a close, our entry or the high); null for a judgment sale the agent labels itself. */
+export function protectiveCloseReason(w: When, direction: string | null): "STOP" | "TARGET" | null {
+  return isGroup(w) ? null : (measureOf(w).closeReason?.(w, direction !== "SHORT") ?? null);
 }
 
-/** The label a protective sale closes with, or null for a judgment sale the agent labels itself. */
-export function protectiveCloseReason(w: When, direction: string | null): "STOP" | "TARGET" | null {
-  if (isGroup(w) || !isDirectEligible(w)) return null;
-  return measureOf(w).closeReason?.(w, direction !== "SHORT") ?? "STOP";
+/** Which way the price went when it holds: true up, false down, null neither. Two conditions count only when they agree. */
+export function risesWith(w: When): boolean | null {
+  const ways = conditionsOf(w).map((c) => measureOf(c).rises?.(c) ?? null).filter((x): x is boolean => x != null);
+  return ways.length > 0 && ways.every((x) => x === ways[0]) ? ways[0] : null;
 }
 
 /** A typed price level (a floor or a target), not a group. */
@@ -60,14 +59,12 @@ export function onTheClose(w: When): When {
   return { ...w, settings: { ...w.settings, close: true } };
 }
 
-/** Whether the trigger check must load `source` for it: its measure reads it, or (the snapshot) a variable or setting it uses does. */
+/** Whether the trigger check must load `source` for it: its measure reads it, or (the snapshot) its variable does. */
 export function readsSource(w: When, source: Source): boolean {
   return conditionsOf(w).some(
     (c) =>
       measureOf(c).reads?.includes(source) === true ||
-      (source === "snapshot" &&
-        ((c.variable != null && variableDef(c.variable).snapshot === true) ||
-          settingDefs(c).some((s) => s.snapshot === true && c.settings?.[s.key] != null))),
+      (source === "snapshot" && c.variable != null && variableDef(c.variable).snapshot === true),
   );
 }
 

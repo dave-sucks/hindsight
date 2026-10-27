@@ -16,7 +16,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 ### Price
 
-`watch: "price"` · is: `below` / `above` · value: more than $0 · actions: buy, add, trim, sell, review · reads: the live quote · a sale can be direct (no agent)
+`watch: "price"` · is: `below` / `above` · value: more than $0 · actions: buy, add, trim, sell, review · reads: the live quote
 
 **Variables** (stands in for the number):
 
@@ -40,6 +40,8 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 **Rest period for a plain condition, when none is set:** 1 day.
 
+- From `sma20`, `sma50`, `sma150`, `sma200`: review 7 days, the rest 1 day.
+
 **Examples:**
 
 - "Sell if below $40.80". The floor. Under the breakout shelf, and above the rising 20-day.
@@ -56,7 +58,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 ### Move
 
-`watch: "move"` · is: `below` / `near` / `above` · value: more than 0% and under 100% · actions: buy, add, trim, sell, review · reads: the live quote · a sale can be direct (no agent)
+`watch: "move"` · is: `below` / `near` / `above` · value: more than 0% and under 100% · actions: buy, add, trim, sell, review · reads: the live quote
 
 **Variables** (the number is measured from it):
 
@@ -76,6 +78,8 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 **Rest period for a plain condition, when none is set:** 1 day.
 
+- From `entry`: sell 1 day, the rest 7 days.
+
 **Examples:**
 
 - "Buy if within 2% of the 20-day average". Buy the pullback, not the spike: the setup is true near a rising average.
@@ -84,16 +88,16 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
   {"action":"ENTER","predicate":{"watch":"move","is":"near","value":2,"variable":"sma20"}}
   ```
 
-- "Sell if below 12% from the high since we bought, once it has been up 10%". A trail. It arms once the position has been up 10%, then follows the high.
+- "Sell if below 12% from the high since we bought". A trail. Its line follows the highest price since the buy and never comes down.
 
   ```json
-  {"action":"EXIT","predicate":{"watch":"move","is":"below","value":12,"variable":"peak","settings":{"startOnceUpPct":10}}}
+  {"action":"EXIT","predicate":{"watch":"move","is":"below","value":12,"variable":"peak"}}
   ```
 
-- "Trim if above 15.6% from our entry (not if it ran up 20% within 21 days)". Take a partial at twice the risk, unless it's a fast winner worth holding whole.
+- "Trim 50% if above 15.6% from our entry". Take a partial at twice the risk.
 
   ```json
-  {"action":"TRIM","predicate":{"watch":"move","is":"above","value":15.6,"variable":"entry","settings":{"fastWinnerPct":20,"fastWinnerDays":21}}}
+  {"action":"TRIM","predicate":{"watch":"move","is":"above","value":15.6,"variable":"entry"}}
   ```
 
 - "Add if above 7% from yesterday's close". A big up day on a holding asks whether to press it.
@@ -158,21 +162,16 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 ### Gap up
 
-`watch: "gap"` · value: more than 0% and up to 100% · actions: buy, add, trim, sell, review · reads: snapshot, volume
+`watch: "gap"` · value: more than 0% and up to 100% · actions: buy, add, trim, sell, review · reads: snapshot
 
-**Settings:**
-
-- `volume`: from 0× to 50×, default 3
-- `withinDays`: a whole number from 1 to 10 sessions, default 1
-
-**Rest period for a plain condition, when none is set:** 3 days.
+**Rest period for a plain condition, when none is set:** 1 day.
 
 **Examples:**
 
-- "Buy if at least 8% gap up". An 8% gap on three times the volume, held for three days: an episodic pivot.
+- "Buy if at least 8% gap up". An 8% gap up at the open: an episodic pivot.
 
   ```json
-  {"action":"ENTER","predicate":{"watch":"gap","value":8,"settings":{"volume":3,"withinDays":3}}}
+  {"action":"ENTER","predicate":{"watch":"gap","value":8}}
   ```
 
 ## Earnings
@@ -182,10 +181,6 @@ Before a report, after a report, and what the report said. Read from the earning
 ### Report date
 
 `watch: "report"` · is: `before` / `after` · value: a whole number from 1 to 14 days · actions: review · reads: earnings
-
-**Settings:**
-
-- `fromDay`: a whole number from 0 to 5, default 0
 
 **Rest period for a plain condition, when none is set:** 30 days.
 

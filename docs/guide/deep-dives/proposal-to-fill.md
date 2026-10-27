@@ -20,7 +20,7 @@ The agent doesn't pick the size. It's set by risk: the money at risk, divided by
 
 Next the order meets the [approval](../concepts/approvals.md) setting for its account: one switch for buys and one for sales, set separately for live and paper. Live is on by default, paper off. With the switch off, the order goes straight to the broker.
 
-If it's on, the order becomes `AWAITING_APPROVAL` with a 24-hour expiry, the new position is held as pending, and you get an email and a phone push. A live trade whose account can't be read is refused. A sale is staged the same way, already waiting. Only a close you make by hand skips the gate.
+If it's on, the order becomes `AWAITING_APPROVAL` with a 24-hour expiry, the new position is held as pending, and you get a phone push at once and an email that waits up to 30 seconds for the research brief: why the stock moved, analyst ratings and targets, what X is saying and our own numbers, each fact with its source and date. The same brief shows on the proposal in the stock's sheet, and a brief that takes longer appears there when it lands. A sale sent without approval gets a brief too, on file. A live trade whose account can't be read is refused. A sale is staged the same way, already waiting. Only a close you make by hand skips the gate.
 
 ## Approving
 
@@ -42,7 +42,7 @@ Only one click can win. The order goes to the broker with the same key. A defini
 
 The thesis moves when the broker accepts the order, not when the fill prints. With approval off, it moves when the fill is seen.
 
-- **A buy** turns Watching into Holding. The buy trigger is removed, and the floor and target are set to the levels on the trade. The reconcile job then stamps the buy price with what was paid.
+- **A buy** turns Watching into Holding. The buy trigger is removed, and the floor and target are set to the levels on the trade. With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the buy price, set to Auto-sell; an analyst's tighter floor stays above it as a review line set to Send to Agent, and a tighter floor you set, or typed on the Trade ticket, stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid.
 - **A sale** retires the thesis as sold. The exceptions are a sale at the target, or one where the agent attested the belief survived: those return to Watching with a one-day review.
 
 When a protective trigger woke the run that sold, the sale is labelled stop or target, whatever the agent wrote. A wrong label would hide the sale from the rules that read it.
@@ -58,7 +58,7 @@ A sale waiting for you takes the stock off the agents' work list: it's yours to 
 `lib/agent/tools/place-trade.ts`: `isExcluded`, the committed-direction guard, `minConfidence`, the `maxOpenPositions` count over `OPEN` and `PENDING_APPROVAL`, the duplicate-position check and the live-price guard. Sized by `sizeByRisk` in `lib/agent/position-sizing.ts`. The `Order` carries `idempotencyKey` (a UUID) and `intent: "OPEN"`.
 
 #### Gate
-`maybeAwaitApproval` and `approvalRequired` in `lib/proposals/maybe-await-approval.ts`; `ApprovalGateAccountUnresolvedError` on live. Switches: `requireApprovalBuysLive`, `requireApprovalSellsLive` (default true), `requireApprovalBuysPaper`, `requireApprovalSellsPaper` (default false) in `prisma/schema.prisma`. `PROPOSAL_TTL_MS` is 24 hours. Alerts: `lib/emails/proposal-pending.ts` (skipped when the analyst's `emailAlerts` is off) and `lib/notify/proposal-push.ts` (needs `NTFY_TOPIC`). Sales are staged in `closeOpenPosition` (`lib/actions/closeTrade.actions.ts`), where `source: "user"` skips the gate.
+`maybeAwaitApproval` and `approvalRequired` in `lib/proposals/maybe-await-approval.ts`; `ApprovalGateAccountUnresolvedError` on live. Switches: `requireApprovalBuysLive`, `requireApprovalSellsLive` (default true), `requireApprovalBuysPaper`, `requireApprovalSellsPaper` (default false) in `prisma/schema.prisma`. `PROPOSAL_TTL_MS` is 24 hours. Alerts: `lib/emails/proposal-pending.ts` (skipped when the analyst's `emailAlerts` is off) and `lib/notify/proposal-push.ts` (needs `NTFY_TOPIC`). The brief: `lib/research/brief.ts` (built by the `research-brief` Inngest function; the email waits in `proposal-pending-email`, `lib/inngest/functions/research-brief.ts`), stored in `ResearchBrief`, reused for two hours. Sales are staged in `closeOpenPosition` (`lib/actions/closeTrade.actions.ts`), where `source: "user"` skips the gate.
 
 #### Approval
 `approveProposal` in `lib/proposals/execute.ts`; locks from `lib/proposals/position-lock.ts` (`lockPositionSales`, `lockPositionBuys`, `cancelOrphanedSellProposals`). Errors are `ProposalExecutionError` codes such as `ALPACA_REJECTED`, `ALPACA_UNCERTAIN`, `SALE_UNDER_WAY`, `NO_ROOM_IN_POSITION`.

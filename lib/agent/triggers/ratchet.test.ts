@@ -31,30 +31,49 @@ describe("protectiveRatchetViolations — the MU 2026-08-18 shape", () => {
   it("flags lowering a hard floor (948 → 814)", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
-      before: [floor(948, { fireMode: "DIRECT" })],
-      after: [floor(814, { fireMode: "DIRECT" })],
+      before: [floor(948, { fireMode: "DO_IT" })],
+      after: [floor(814, { fireMode: "DO_IT" })],
       inherited: [],
     });
     expect(v).toHaveLength(1);
     expect(v[0].reason).toBe("LOWERED");
   });
 
-  it("flags demoting a floor from DIRECT to TACTICAL at the same level", () => {
+  it("flags slowing a floor from Auto-sell to Send to Agent at the same level", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
-      before: [floor(948, { fireMode: "DIRECT" })],
-      after: [floor(948, { fireMode: "TACTICAL" })],
+      before: [floor(948, { fireMode: "DO_IT" })],
+      after: [floor(948, { fireMode: "ASK_NOW" })],
       inherited: [],
     });
     expect(v).toHaveLength(1);
     expect(v[0].reason).toBe("FIREMODE_DEMOTED");
   });
 
+  it("flags slowing a floor from Send to Agent to Flag for Review, and says so in words", () => {
+    const v = protectiveRatchetViolations({
+      direction: "LONG",
+      before: [floor(948, { fireMode: "ASK_NOW" })],
+      after: [floor(948, { fireMode: "NEXT_MORNING" })],
+      inherited: [],
+    });
+    expect(v.map((x) => x.reason)).toEqual(["FIREMODE_DEMOTED"]);
+    expect(describeRatchetViolation(v[0])).toBe(
+      '"Sell if below $948" is set to "Send to Agent"; your edit sets it to "Flag for Review". That slows the protection on a stock we own.',
+    );
+  });
+
+  it("allows speeding a floor up (Flag for Review → Send to Agent → Auto-sell)", () => {
+    const at = (fireMode: Trigger["fireMode"]) => [floor(948, { fireMode })];
+    expect(protectiveRatchetViolations({ direction: "LONG", before: at("NEXT_MORNING"), after: at("ASK_NOW"), inherited: [] })).toEqual([]);
+    expect(protectiveRatchetViolations({ direction: "LONG", before: at("ASK_NOW"), after: at("DO_IT"), inherited: [] })).toEqual([]);
+  });
+
   it("reports LOWERED (not also DEMOTED) when both happen at once — one line per rung", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
-      before: [floor(948, { fireMode: "DIRECT" })],
-      after: [floor(814, { fireMode: "TACTICAL" })],
+      before: [floor(948, { fireMode: "DO_IT" })],
+      after: [floor(814, { fireMode: "ASK_NOW" })],
       inherited: [],
     });
     expect(v).toHaveLength(1);
@@ -65,7 +84,7 @@ describe("protectiveRatchetViolations — the MU 2026-08-18 shape", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
       before: [floor(860)],
-      after: [floor(948, { fireMode: "DIRECT" })],
+      after: [floor(948, { fireMode: "DO_IT" })],
       inherited: [],
     });
     expect(v).toHaveLength(0);
@@ -102,7 +121,7 @@ describe("protectiveRatchetViolations — delete and cascade shapes", () => {
       direction: "LONG",
       before: [],
       after: [],
-      inherited: [trail(8, { fireMode: "DIRECT" })],
+      inherited: [trail(8, { fireMode: "DO_IT" })],
     });
     expect(v).toHaveLength(0);
   });
@@ -118,12 +137,12 @@ describe("protectiveRatchetViolations — delete and cascade shapes", () => {
     expect(v[0].reason).toBe("LOWERED");
   });
 
-  it("flags a thesis override that demotes an inherited DIRECT rung", () => {
+  it("flags a thesis override that slows an inherited Auto-sell", () => {
     const v = protectiveRatchetViolations({
       direction: "LONG",
       before: [],
-      after: [trail(8, { fireMode: "TACTICAL" })],
-      inherited: [trail(8, { fireMode: "DIRECT" })],
+      after: [trail(8, { fireMode: "ASK_NOW" })],
+      inherited: [trail(8, { fireMode: "DO_IT" })],
     });
     expect(v).toHaveLength(1);
     expect(v[0].reason).toBe("FIREMODE_DEMOTED");

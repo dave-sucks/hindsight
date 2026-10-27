@@ -47,10 +47,13 @@ import {
   recordProposalRunEvent,
 } from "@/lib/proposals/maybe-await-approval";
 import { lockPositionSales } from "@/lib/proposals/position-lock";
+import { DEFAULT_TRIM_PCT } from "@/lib/agent/triggers/fire-mode";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { positionTotalCap, positionBand, sizeByRisk, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
+import { positionTotalCap, positionBand, sizeByRisk, sizingStop, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
+import { loadAutoStop } from "@/lib/trading/auto-stop";
 import { isBinaryBet } from "@/lib/agent/knowledge/setups";
+import { cashShortfall } from "@/lib/trading/manual-order-rules";
 
 /**
  * Classify an Alpaca submit error — same shape as place_trade / closeOpenPosition.
@@ -119,7 +122,7 @@ const schema = z.object({
     .string()
     .min(20)
     .describe(
-      "Required: what you're doing and why, in 1–3 sentences, with the price, the catalyst and what you expect. Shown to the owner on the Activity line and, for an add or a trim, on the proposal and in the approval email; write it by How you write.",
+      "Required: the reason the owner reads on the Activity line and, for an add or a trim, on the proposal and in the approval email. What is happening to the company and the stock and why, then the add or trim: the price and what it does to the position. Write it by How you write.",
     ),
 
   // partial_close
@@ -128,7 +131,7 @@ const schema = z.object({
     .min(1)
     .max(99)
     .optional()
-    .describe("For partial_close: percentage of the position to exit (1–99)"),
+    .describe("For partial_close: percentage of the position to exit (1–99). Omitted: the size of the trim trigger that woke this run, else 50."),
 
   // add_to_position — principal chat only. Inside a run this field is not
   // in the schema: the analyst's rules size the add (DAV-317).
@@ -225,7 +228,8 @@ export const managePosition = defineTool({
       switch (args.action) {
         // ── PARTIAL CLOSE ───────────────────────────────────────────────────
         case "partial_close": {
-          const pct = args.close_pct ?? 50;
+          // Unnamed, the trim that woke the run sells its own size.
+          const pct = args.close_pct ?? (ctx.firedTrim?.ticker === ticker ? ctx.firedTrim.pct : DEFAULT_TRIM_PCT);
           const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
           const idempotencyKey = randomUUID();
           const placedAt = new Date();
@@ -628,20 +632,23 @@ export const managePosition = defineTool({
             addSizingLine = `Sized by you: $${Math.round(notional).toLocaleString()}.`;
           } else {
             const band = positionBand({ minPositionSize: ctx.minPositionSize, maxPositionSize: ctx.maxPositionSize });
-            const [accountRisk, convictionRow] = await Promise.all([
+            const [accountRisk, convictionRow, autoStop] = await Promise.all([
               loadAccountRisk({ accountId: ctx.accountId, environment: position.environment as "PAPER" | "LIVE", creds }).catch(() => null),
               auditThesisId ? prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { conviction: true, horizon: true, setupId: true, catalystDate: true } }).catch(() => null) : Promise.resolve(null),
+              analystId ? loadAutoStop(analystId) : Promise.resolve(null),
             ]);
-            const floor = position.stopLoss != null ? Number(position.stopLoss) : null;
+            const direction = position.direction === "SHORT" ? "SHORT" : "LONG";
+            // Stop when buying on: the wider of the floor in force and the setting's line, as a new buy.
+            const riskStop = position.stopLoss != null ? sizingStop({ entry: sizingPrice, stop: Number(position.stopLoss), direction, autoStop }) : null;
             const sized =
-              accountRisk?.equity != null && floor != null
+              accountRisk?.equity != null && riskStop != null
                 ? sizeByRisk({
                     equity: accountRisk.equity,
                     riskPct: analystRiskPct,
                     conviction: convictionRow?.conviction ?? null,
                     entry: sizingPrice,
-                    stop: floor,
-                    direction: position.direction === "SHORT" ? "SHORT" : "LONG",
+                    stop: riskStop.stop,
+                    direction,
                     // An add into a binary event is a buy into it: the same
                     // halving the entry took, from the same function.
                     binary: convictionRow ? isBinaryBet(convictionRow) : false,
@@ -652,7 +659,7 @@ export const managePosition = defineTool({
             if (sized) {
               const shares = Math.max(1, Math.floor(sized.shares * ADD_RISK_FRACTION));
               notional = shares * sizingPrice;
-              addSizingLine = `Add: ${shares} shares ($${Math.round(notional).toLocaleString()}), half the size of a new buy. A new buy would be ${sized.line}`;
+              addSizingLine = `Add: ${shares} shares ($${Math.round(notional).toLocaleString()}), half the size of a new buy. A new buy would be ${sized.line}${riskStop?.line ? ` ${riskStop.line}` : ""}`;
             } else {
               notional = Math.max(1, entrySizeForConviction({ conviction: convictionRow?.conviction ?? null, band }) * ADD_RISK_FRACTION);
               addSizingLine =
@@ -684,6 +691,16 @@ export const managePosition = defineTool({
                 message: `Adding $${notional} to the current $${currentValue.toFixed(0)} position would take it past the most this analyst may hold in one stock ($${totalCap.toFixed(0)}, a setting on the analyst). Trim or wait rather than adding beyond it.`,
                 tickers: [{ ticker, tag: "Failed", summary: "Exceeds most-in-one-stock", actionIcon: "failed" }],
               },
+              sources: [],
+            };
+          }
+
+          // An add no analyst placed (an Auto trigger) is paid from cash, never margin, as the Trade button's is.
+          const short = ctx.payFromCash !== undefined ? cashShortfall(notional, ctx.payFromCash) : null;
+          if (short) {
+            return {
+              summary: `Add blocked: $${ticker} — not enough cash`,
+              data: { success: false, ticker, action: args.action, status: "FAILED" as const, message: short, tickers: [{ ticker, tag: "Failed", summary: short, actionIcon: "failed" }] },
               sources: [],
             };
           }

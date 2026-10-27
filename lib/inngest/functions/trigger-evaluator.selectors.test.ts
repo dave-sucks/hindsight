@@ -34,9 +34,9 @@ describe("needsIndicators / needsTodayVolume", () => {
     expect(needsIndicators({ watch: "price", is: "above", value: 1 })).toBe(false);
     expect(needsIndicators(breakout)).toBe(true);
   });
-  it("only volume and gap kinds fetch today's volume", () => {
+  it("only the volume kind fetches today's volume: a gap counts whatever its volume", () => {
     expect(needsTodayVolume(breakout)).toBe(true);
-    expect(needsTodayVolume({ watch: "gap", value: 8, settings: { volume: 3 } })).toBe(true);
+    expect(needsTodayVolume({ watch: "gap", value: 8, settings: { volume: 3 } })).toBe(false);
     expect(needsTodayVolume({ watch: "move", is: "near", value: 2, variable: "sma50" })).toBe(false);
   });
 });

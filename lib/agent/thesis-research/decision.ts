@@ -45,7 +45,7 @@ export const thesisDecisionSchema = z.object({
   direction: W.direction,
   rationale: z
     .string()
-    .describe("The decision in two or three sentences: the call and the price first, then why. On a refresh it becomes the stock's newest Activity note, shown to the owner; write it by How you write."),
+    .describe("Your decision, by How you write: what the company is doing and where the stock is and why, then your call. On a refresh it is the note at the top of the stock's page."),
   horizon: W.horizon,
   setup_id: W.setup_id.optional(),
   entry_price: W.entry_price.optional(),

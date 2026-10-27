@@ -561,40 +561,6 @@ export async function removeWatchlistItem(
   revalidatePath(`/analysts/${analystId}`);
 }
 
-/**
- * Update display fields on a watchlist item. Under the unified model, the
- * "item" is a Thesis row; the only updateable field via this path is
- * `reasoningSummary` (the user's note). Priority and notes are not stored
- * on the Thesis row — they were UI metadata on the legacy table that nothing
- * actually consumed. Callers that need the old behavior should call
- * `update_thesis` directly.
- */
-export async function updateWatchlistItem(
-  itemId: string,
-  data: { priority?: string; notes?: string; reason?: string },
-): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
-
-  const owned = await prisma.thesis.findFirst({
-    where: { id: itemId, accountId },
-    select: { id: true },
-  });
-  if (!owned) throw new Error("Watchlist item not found");
-
-  if (data.reason !== undefined) {
-    // PR-9: legacy reasoningSummary (String) replaced by snapshot
-    // (JSONB { text, citations }). Wrap the user's note in the new shape.
-    await prisma.thesis.update({
-      where: { id: itemId },
-      data: { snapshot: { text: data.reason, citations: [] } },
-    });
-  }
-  // priority + notes are no-ops under the unified model.
-}
-
 // markWatchlistReviewed was deleted with the cached review-date column
 // (DAV-221) — it had no callers, and "reviewed" is the lastReviewedAt
 // stamp update_thesis writes.

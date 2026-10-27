@@ -14,6 +14,7 @@ import type { MeasureDef } from "./condition/measure";
 import { MEASURES, declaredOnly, settingDefs } from "./condition/catalog";
 import { notACondition, refusalOf } from "./condition/valid";
 import { settingRefusal } from "./condition/range";
+import { FIRE_MODES, isFireMode } from "./fire-mode";
 
 /**
  * A trigger's condition, in the condition shape (./condition): one its
@@ -100,13 +101,6 @@ function fittingVariables(m: MeasureDef) {
   );
 }
 
-/** A measure's settings: its own, and on a measure counted from a variable, that variable's (the trail's, on a move). */
-function measureSettings(m: MeasureDef) {
-  const own = m.settings ?? [];
-  const fromVariables = m.variables?.mode === "from" ? fittingVariables(m).flatMap((o) => (o.settings ?? []).map((d) => ({ d, with: o.id }))) : [];
-  return [...own.map((d) => ({ d, with: undefined as string | undefined })), ...fromVariables];
-}
-
 /**
  * One measure's condition: its own fields only. A number's range is not
  * said here: the save holds it to the catalog's range and refuses with the
@@ -126,21 +120,17 @@ function measureBranch(m: MeasureDef) {
     shape.value = m.value.zero != null ? z.number().optional() : z.number();
   }
   if (m.variables?.mode === "from") shape.variable = z.enum(ids);
-  const settings = measureSettings(m);
+  const settings = m.settings ?? [];
   if (settings.length) {
     const fields: Record<string, z.ZodTypeAny> = {};
-    for (const { d, with: from } of settings) {
-      if (fields[d.key]) continue;
+    for (const d of settings) {
       const sample = d.options?.[0]?.value ?? d.default;
-      // A setting with choices is its enum; a yes/no says what yes means; one that belongs to a variable
-      // says which, since the save drops it on a condition measured from any other.
+      // A setting with choices is its enum; a yes/no says what yes means.
       const typed = d.options
         ? typeof sample === "boolean"
           ? z.boolean().describe(`true: ${d.options.find((o) => o.value === true)?.label.toLowerCase()}.`)
           : z.literal(d.options.map((o) => o.value) as [string | number, ...(string | number)[]])
-        : from
-          ? z.number().describe(`With ${from}.`)
-          : z.number();
+        : z.number();
       fields[d.key] = typed.optional();
     }
     shape.settings = z.object(fields).optional();
@@ -201,7 +191,7 @@ export const triggerSchema = z.object({
     .describe(
       // Description-level discipline — the agent reads this when picking
       // a value. Runtime enforcement lives in the read/write paths
-      // (applyTriggerCooldownDefaults overwrites bad 0s at write time,
+      // (applyTriggerDefaults overwrites bad 0s at write time,
       // shouldFire falls back to the per-kind default at evaluation time).
       // Not enforced by Zod .refine() here because triggersArraySchema is
       // ALSO used at disk-read time (trigger-evaluator parseTriggers,
@@ -234,23 +224,14 @@ export const triggerSchema = z.object({
     .datetime()
     .optional()
     .describe("Server-stamped with writtenPrice. Do not set."),
+  // No .default(): this is also the read gate, and the write paths stamp the action's default (./fire-mode).
   fireMode: z
-    .enum(["TACTICAL", "DIRECT"])
+    .enum(FIRE_MODES)
     .optional()
     .describe(
-      // How a fired trigger is acted on. TACTICAL wakes a GPT-5.5 tactical
-      // run that evaluates + decides. DIRECT skips the agent and closes the
-      // position directly via closeOpenPosition — EXIT-only, and still
-      // routed through the approval gate (it saves the tactical-run cost,
-      // not the approval step). Absent ⇒ TACTICAL (types.ts contract; every
-      // reader does `?? "TACTICAL"`). Was `.default("TACTICAL")` until
-      // DAV-226: the default stamped a "TACTICAL" label onto every rung on
-      // every write — including REVIEW rungs, whose fires never wake a
-      // tactical agent (they batch into the next daily run), so the stored
-      // label claimed behavior that doesn't exist. The UI add-path still
-      // opts new EXIT stops into DIRECT explicitly.
-      "How a fired trigger is acted on: TACTICAL (wake a tactical run; the behavior when omitted) or DIRECT (close directly, no agent — EXIT-only, still approval-gated).",
+      "NEXT_MORNING (Flag for Review): routine looks; unset on a review. ASK_NOW (Send to Agent): a look today (a sharp drop, a broken level, a milestone); unset otherwise. DO_IT (Auto-sell): the line you sell at regardless. Auto buy/add/trim is the owner's.",
     ),
+  trimPct: z.number().min(1).max(99).optional().describe("A trim's size: the % of the position it sells, in every On fire mode. Omitted: 50."),
   // Server-owned provenance. Deliberately NO .default() — this schema is
   // also the disk-READ gate (trigger-evaluator, get-theses, thesis-sheet-
   // state, tactical-run, live-evaluate), so a default would silently
@@ -295,6 +276,8 @@ export const triggerInputSchema = triggerSchema
     writtenPrice: true,
     writtenAt: true,
     source: true,
+    // A trim's size is the owner's (the dialog); an agent's trim sells the default half unless the run names another.
+    trimPct: true,
   })
   .extend({ predicate: predicateInputSchema() });
 
@@ -316,7 +299,7 @@ export const editTriggerOpSchema = z.looseObject({
   id: z.string().describe("The trigger's id, as shown on the thesis."),
   value: z.number().optional().describe("The new number, in the trigger's own unit (a price, a %, a count of days)."),
   action: triggerActionSchema.optional(),
-  fire_mode: z.enum(["TACTICAL", "DIRECT"]).optional(),
+  fire_mode: z.enum(FIRE_MODES).optional(),
   rationale: z.string().optional().describe("REQUIRED when the value changes — the sentence moves with the number."),
   cooldown_days: z.number().int().min(0).max(90).optional(),
   close: z.boolean().optional().describe("A price level: true fires only on the 16:20 close pass; false = intraday."),
@@ -403,6 +386,13 @@ export function parseTriggersResilient(raw: unknown): ResilientParseResult {
         candidate = { ...(candidate as object), cooldownDays: fixed };
         clamped++;
       }
+    }
+    // A fire mode this code doesn't know reads as unset (the action's default) rather than losing the rung.
+    if (candidate && typeof candidate === "object" && "fireMode" in candidate && !isFireMode((candidate as { fireMode?: unknown }).fireMode)) {
+      console.error("[triggers] an unknown fire mode reads as the action's default:", (candidate as { id?: unknown }).id);
+      const { fireMode: _unknown, ...rest } = candidate as { fireMode?: unknown };
+      void _unknown;
+      candidate = rest;
     }
 
     const parsed = triggerSchema.safeParse(candidate);

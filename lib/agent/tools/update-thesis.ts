@@ -94,7 +94,7 @@ const updateSchema = z.object({
     .string()
     .min(10)
     .describe(
-      "Required. What you did on this stock and why: every update writes one Activity line, and the newest one heads the stock's page. When you move a level and the belief still holds, say why in one sentence here. Shown to the owner on the stock's Activity and at the top of the stock's page; write it by How you write.",
+      "Required. The note the owner reads at the top of the stock's page and on its Activity (every update writes one line): what happened to the company and the stock and why, whether it touches the reason we own it, then what you did and what it means for the position. Write it by How you write.",
     ),
   trigger_id: z
     .string()
@@ -1244,6 +1244,8 @@ export const updateThesis = defineTool({
           direction: levelDirection,
           status: levelStatus,
           actor: "AGENT",
+          // Only the owner's chat may make a buy, add or trim Auto.
+          ownersWord: ctx.runMode === "PRINCIPAL_CHAT",
           // The tape decides which side a re-levelled buy trigger compares on.
           // Without it every re-level was a breakout: the CRM shape, where the
           // analyst wrote "buy the pullback to $203" and the row stored

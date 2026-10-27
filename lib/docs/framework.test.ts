@@ -6,7 +6,6 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
-import { DISPATCH_CAP } from "@/lib/agent/system-prompts/discovery";
 import { MODES } from "@/lib/agent/modes";
 import { buildFrameworkData } from "./framework";
 import { loadGuide } from "./guide";
@@ -37,16 +36,10 @@ describe("the framework page's measurements", () => {
   });
 });
 
-describe("numbers the doc pages write in words", () => {
-  it("Discovery says it starts the Writer on up to five stocks a run", () => {
-    expect(DISPATCH_CAP).toBe(5);
-  });
-});
-
 describe("each agent doc's facts strip", () => {
   const doors = Object.fromEntries(buildFrameworkData().doors.map((d) => [d.id, d]));
   const guide = loadGuide();
-  const AGENT_DOCS = { discovery: "discovery", writer: "writer", "morning-runs": "morning", "trigger-runs": "trigger", chat: "chat" } as const;
+  const AGENT_DOCS = { writer: "writer", "morning-runs": "morning", "trigger-runs": "trigger", chat: "chat" } as const;
 
   it.each(Object.entries(AGENT_DOCS))("%s states the model, steps and tool count its mode has", (slug, door) => {
     const facts = parseDoc(guide[slug])

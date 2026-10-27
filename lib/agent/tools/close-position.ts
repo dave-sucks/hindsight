@@ -43,7 +43,7 @@ export const closePosition = defineTool({
       .string()
       .optional()
       .describe(
-        "Why you're selling, always supplied: the sale and the price first, then the reason in a sentence or two. Shown to the owner on the sale proposal and in the approval email; write it by How you write.",
+        "Why you're selling, always supplied: the reason the owner reads on the sale proposal and in the approval email. What happened to the company and the stock and why, whether it breaks the reason we own it, then the sale: the price and the profit or loss. Write it by How you write.",
       ),
     belief_survived: z
       .boolean()
@@ -348,8 +348,8 @@ export const closePosition = defineTool({
 
       // Thesis ACTIVE → CLOSED flip + CLOSED audit row now happens inside
       // closeOpenPosition's FILLED-close branch (lib/proposals/thesis-flips.ts
-      // → closeThesisForPosition), so every close path — agent, the
-      // price-monitor cron, and manual UI — flips identically. The audit row
+      // → closeThesisForPosition), so every close path — agent, an
+      // Auto-sell, and manual UI — flips identically. The audit row
       // (type CLOSED, awaited inside closeOpenPosition before it returns)
       // still satisfies the tactical-run close-out gate, which looks for any
       // non-TRIGGER_FIRED ThesisUpdate row. See P1-18.

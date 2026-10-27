@@ -37,7 +37,8 @@ export function setupChecklist(
     id: s.id,
     name: s.name,
     failureSigns: s.failureSigns,
-    manage: (h && s.trail[h]) ?? Object.values(s.trail)[0] ?? null,
+    // A horizon with no line of its own gets none, never another horizon's.
+    manage: h ? (s.trail[h] ?? null) : (Object.values(s.trail)[0] ?? null),
     time: s.time.text,
     partialAtR: s.manage.partialAtR,
     beatAndFadeReview: s.manage.beatAndFadeReview,

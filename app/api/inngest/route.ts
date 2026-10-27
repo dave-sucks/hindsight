@@ -1,6 +1,5 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
-import { priceMonitor } from "@/lib/inngest/functions/price-monitor";
 import { reconcileOrders } from "@/lib/inngest/functions/reconcile-orders";
 import { syncHeartbeat } from "@/lib/inngest/functions/sync-heartbeat";
 import { evaluateTrade } from "@/lib/inngest/functions/trade-evaluator";
@@ -12,7 +11,6 @@ import { dailyRunDigest } from "@/lib/inngest/functions/daily-run-digest";
 import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
 import { triggerEvaluator } from "@/lib/inngest/functions/trigger-evaluator";
 import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
-import { discoveryRun } from "@/lib/inngest/functions/discovery-run";
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
 import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 // THESIS_RESEARCH_V2 Phase 1 — sub-agent dispatched by Principal Chat
@@ -29,6 +27,8 @@ import { proposalExpiry } from "@/lib/inngest/functions/proposal-expiry";
 // rows yet (agent rewire is a separate reviewed PR). See
 // docs/plans/PORTFOLIO_DIGEST.md (Feature A).
 import { portfolioDigest } from "@/lib/inngest/functions/portfolio-digest";
+// The research brief on every proposal and autonomous sale; the proposal email waits for it.
+import { researchBrief, proposalPendingEmail } from "@/lib/inngest/functions/research-brief";
 
 // Vercel function timeout for ALL Inngest functions served from this route.
 // Set to the Vercel Pro plan's 800s ceiling because the heaviest paths
@@ -52,7 +52,6 @@ export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
     // Existing
-    priceMonitor,
     reconcileOrders,
     // Hourly Alpaca↔DB drift detector. Writes one SyncHealthSnapshot row per run.
     // Restored 2026-05-11 after PR #238 deleted it — see /intelligence Health tab.
@@ -86,11 +85,6 @@ export const { GET, POST, PUT } = serve({
     // tactical agent runs INSIDE the function (mode='INTRADAY_TACTICAL'
     // on ResearchRun). 240s maxDuration covers the agent + bookkeeping.
     tacticalRun,
-    // PR 3 — weekly discovery cron, Sundays 9am ET. Spawns a focused
-    // agent run per analyst that scans the past week of signals for
-    // net-new ticker coverage and mints WATCHING theses. Does NOT
-    // touch existing theses (the daily run handles those).
-    discoveryRun,
     // 2026-06-01: intradayEodFlatten removed — no DAY-horizon analysts in
     // production; the auto-flatten cron had no consumers. Deleted as part
     // of the Trade-as-Proposal rollout (the proposal flow would have made
@@ -115,5 +109,7 @@ export const { GET, POST, PUT } = serve({
     proposalExpiry,
     // Daily Portfolio Digest — EOD account-level brief (Feature A backend).
     portfolioDigest,
+    researchBrief,
+    proposalPendingEmail,
   ],
 });

@@ -300,7 +300,7 @@ These are the canonical flows. If your code path doesn't fit one of these, it's 
 
 ### Scenario A — Discovery picks up $NVDA, agent likes it.
 
-1. Sunday 9am cron. Discovery agent calls `read_signals`; $NVDA appears.
+1. Discovery in chat: a screen or the movers list surfaces $NVDA.
 2. Research: `get_stock_data`, `get_market_context`, optional `web_search`.
 3. Scores on the 4-dim composite → 6.5. Setup is clean.
 4. `record_thesis({ ticker: 'NVDA', direction: 'LONG', status: 'WATCHING', target_price: 220, stop_loss: 180, entry_price: 195, triggers: [...], core_belief, key_assumptions, invalidation_conditions })`.
@@ -637,7 +637,7 @@ All ultimately produce Thesis rows; no parallel table.
 | **Daily-run prompt** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildDailyRunSystemPromptV2`) | Identity + edge + universe + yesterday's standup + horizon glossary + needsAction walk-through. ~165 lines. | Agent reads per-thesis state through `get_theses.needsAction` and walks each row with the appropriate decision shape. **This is the only live prompt.** The legacy `buildV2SystemPrompt` (misleadingly named — it was the V1 600-line builder) is `@deprecated` with zero callers and tracked for deletion in `GAPS.md` P0-2. |
 | **`get_theses.needsAction`** ([`needs-action.ts`](../lib/agent/needs-action.ts)) | Per-thesis: `direction`, `triggers[]`, `nextReviewAt`, latest `ThesisUpdate` row, fresh quote. | Returns `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` / `REVIEW_DUE` / null. PENDING theses surface as `REVIEW_DUE` with `pendingFirstReview: true`. Trigger-driven only — no hardcoded proximity. |
 | **Tactical-run prompt** ([`intraday-tactical.ts`](../lib/agent/system-prompts/intraday-tactical.ts)) | Full thesis: id, ticker, direction, horizon, **coreBelief, keyAssumptions, invalidationConds**, entry/target/stop, targetSizePct, recentUpdates. Plus the firing trigger and signal payload. | Validates trigger → scores against keyAssumptions → executes the action. |
-| **Discovery-run prompt** ([`discovery.ts`](../lib/agent/system-prompts/discovery.ts)) | `existingTickers` (already-covered set) + analyst config. | Mints LONG/SHORT WATCHING or PASS ARCHIVED. Cannot update or close. |
+| **Discovery, in chat** ([`modes.ts`](../lib/agent/modes.ts) → `buildPrincipalSystemPrompt`, its Triage flow) | The analyst's brief and fence; the discovery tools hide stocks it already watches or holds. | New coverage goes to the Writer (`dispatch_thesis_research`); a pass or a watch is `record_thesis`. |
 | **Trigger evaluator** ([`evaluate.ts`](../lib/agent/triggers/evaluate.ts)) | `triggers[]`, `nextReviewAt`, `createdAt`. | Pure predicate matching. No belief reading. PENDING and PASS rows have empty triggers and are naturally skipped. |
 | **Trade evaluator** ([`trade-evaluator.ts`](../lib/inngest/functions/trade-evaluator.ts)) | `direction`, `horizon`, **`coreBelief`, `keyAssumptions`, `invalidationConds`**, `sourceSignalIds`, `reasoningSummary`, `signalTypes`, `thesisBullets`. | GPT-4o post-mortem grades against the BELIEF: did each `keyAssumption` hold? Did any `invalidationCondition` come true? |
 | **Briefing agent** | Run transcript + portfolio. | Doesn't crack open thesis-level belief fields today. Future enhancement. |

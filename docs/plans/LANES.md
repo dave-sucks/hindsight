@@ -23,9 +23,15 @@ file it and let Dave assign it.
 ## 2. How a signal reaches the agents — three doors, nothing else
 
 A fact from the Signals lane is only useful when it lands through one of
-these. There is no fourth path (no inbox, no routed "signal" rows, no
-summary sentence stored for later — that was the machinery deleted in
-September).
+these. There is no fourth path (no inbox, no routed "signal" rows — that
+was the machinery deleted in September).
+
+One stored write-up is allowed, and only one: the **research brief**
+(`lib/research/brief.ts`, table `ResearchBrief`). It is built on demand
+for one order (a proposal, or a sale sent without approval), every claim
+carries a source and a date, and it is reused for at most two hours. It
+records what was known when the decision was put to the owner. It is not
+a feed: nothing routes it, and no job builds it on a schedule.
 
 ### Door 1 — a measure (the ladder)
 
