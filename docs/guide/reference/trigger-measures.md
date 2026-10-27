@@ -78,7 +78,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 **Rest period for a plain condition, when none is set:** 1 day.
 
-- From `entry`: 7 days.
+- From `entry`: sell 1 day, the rest 7 days.
 
 **Examples:**
 

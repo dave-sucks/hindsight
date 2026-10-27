@@ -112,8 +112,10 @@ export const move: MeasureDef = {
   },
   // Near the 52-week high is up; near an average is neither.
   rises: (c) => (c.is === "near" ? (c.variable === "high52" ? true : null) : c.is === "above" ? true : c.is === "below" ? false : null),
-  // A gain milestone latches (up 10% stays up 10%), so a week; near the 52-week high is a state a review asks weekly; the rest daily.
-  cooldownDays: (c, action) => (c.variable === "entry" ? 7 : c.is === "near" && c.variable === "high52" && action === "REVIEW" ? 7 : 1),
+  // A gain milestone latches (up 10% stays up 10%), so a week, but a sale on it is a standing order and asks daily;
+  // near the 52-week high is a state a review asks weekly; the rest daily.
+  cooldownDays: (c, action) =>
+    c.variable === "entry" ? (action === "EXIT" ? 1 : 7) : c.is === "near" && c.variable === "high52" && action === "REVIEW" ? 7 : 1,
   state: (c) => c.is === "near" && c.variable === "high52",
   fresh: () => ({ watch: "move", is: "below", variable: "prev_close" }),
   // Within: of an average or the 52-week high. Above or below: a recent close or our entry; below only for the high since we bought.

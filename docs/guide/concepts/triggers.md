@@ -60,7 +60,7 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 **The rest period** is how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day. It comes with the kind of trigger:
 
 - **A day:** a price line, a day's move, a gap, volume, RSI and the trail.
-- **A week:** the move from our entry (a sale on it too), a beat or a miss, strength against the S&P, and a review of a state like "below the 200-day".
+- **A week:** the move from our entry (a sale on it asks daily, like every sale), a beat or a miss, strength against the S&P, and a review of a state like "below the 200-day".
 - **A month:** an earnings window and insider buying.
 - **Once per filing** for a filing, and **its own interval** for a schedule.
 - **None:** the hard stop a new plan starts with. If a trigger run holds instead of selling, it asks again at the next check.
