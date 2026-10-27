@@ -5,13 +5,13 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
 import {
-  DashboardSquare01Icon,
-  BubbleChatIcon,
-  RoboticIcon,
+  AppleStocksIcon,
+  MessageCircleIcon,
+  AiScanIcon,
   Mic01Icon,
-  ChartCandlestickIcon,
-  PlayCircleIcon,
-  ArrowDataTransferHorizontalIcon,
+  Activity02Icon,
+  AiAutoRotateIcon,
+  MoneyExchange01Icon,
   Analytics01Icon,
   Settings01Icon,
   Logout01Icon,
@@ -68,18 +68,18 @@ const PODCASTS_ENABLED = process.env.NEXT_PUBLIC_PODCASTS_ENABLED === "true";
 type NavItem = { href: string; label: string; icon: IconSvgElement; tooltip: string };
 
 const MAIN_NAV: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: DashboardSquare01Icon, tooltip: 'Portfolio overview' },
-  { href: '/chat', label: 'Chat', icon: BubbleChatIcon, tooltip: 'Principal chat — talk to everything' },
-  { href: '/analysts', label: 'Analysts', icon: RoboticIcon, tooltip: 'AI trading personas' },
+  { href: '/', label: 'Dashboard', icon: AppleStocksIcon, tooltip: 'Portfolio overview' },
+  { href: '/chat', label: 'Chat', icon: MessageCircleIcon, tooltip: 'Principal chat — talk to everything' },
+  { href: '/analysts', label: 'Analysts', icon: AiScanIcon, tooltip: 'AI trading personas' },
   ...(PODCASTS_ENABLED
     ? [{ href: '/podcasts', label: 'Podcasts', icon: Mic01Icon, tooltip: 'AI-generated podcasts (PoC)' }]
     : []),
-  { href: '/market', label: 'Market', icon: ChartCandlestickIcon, tooltip: 'Earnings, filings, movers and signals' },
-  { href: '/runs', label: 'Runs', icon: PlayCircleIcon, tooltip: 'Research sessions' },
+  { href: '/market', label: 'Market', icon: Activity02Icon, tooltip: 'Earnings, filings, movers and signals' },
+  { href: '/runs', label: 'Runs', icon: AiAutoRotateIcon, tooltip: 'Research sessions' },
 ];
 
 const PORTFOLIO_NAV: NavItem[] = [
-  { href: '/trades', label: 'Trades', icon: ArrowDataTransferHorizontalIcon, tooltip: 'Paper trades and P&L' },
+  { href: '/trades', label: 'Trades', icon: MoneyExchange01Icon, tooltip: 'Paper trades and P&L' },
   { href: '/performance', label: 'Performance', icon: Analytics01Icon, tooltip: 'Win rate and accuracy' },
 ];
 
