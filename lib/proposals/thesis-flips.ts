@@ -136,7 +136,7 @@ export async function promoteThesisOnApproval(opts: {
 export async function armHeldLadderOnFill(opts: {
   analystId: string;
   ticker: string;
-  /** The price the buy actually filled at. Becomes Thesis.entryPrice. */
+  /** The fill, or on an approval the price then (the fill corrects it). Becomes Thesis.entryPrice. */
   fillPrice: number;
   /** Null leaves the thesis's own target / floor trigger as it is. */
   targetPrice: number | null;
@@ -280,10 +280,9 @@ export async function armHeldLadderOnFill(opts: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
-        // On an approval this is the proposal's price, not the fill: the
-        // fill lands later with its own line (reconcile-orders.ts). V,
-        // 2026-10-05: "filled at $368.90", then filled at $369.25.
-        rationale: `${opts.via === "approved proposal" ? `Bought on your approval at the proposed $${opts.fillPrice.toFixed(2)}` : `Bought at $${opts.fillPrice.toFixed(2)}`}; it moves from the watchlist to the stocks we hold. The buy trigger is gone; the other triggers stay, and the analyst's own sell rules apply.`,
+        // On an approval this is the price when you approved, not the fill:
+        // the fill lands later with its own line (reconcile-orders.ts).
+        rationale: `${opts.via === "approved proposal" ? `Bought on your approval at about $${opts.fillPrice.toFixed(2)}, the price then` : `Bought at $${opts.fillPrice.toFixed(2)}`}; it moves from the watchlist to the stocks we hold. The buy trigger is gone; the other triggers stay, and the analyst's own sell rules apply.`,
         fieldChanges: {
           status: { from: "WATCHING", to: "HOLDING" },
           triggerOps: { from: null, to: acceptedOps(results) },

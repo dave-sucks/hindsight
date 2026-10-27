@@ -206,9 +206,10 @@ export async function approveProposal(
   // An add buys at what the stock costs now, and adds go to winners — so the
   // room left in it is measured at the live price, not at what the shares we
   // already own cost us. One read, before the transaction; a quote that fails
-  // falls back to average cost and never refuses the trade (DAV-283).
+  // falls back to average cost and never refuses the trade (DAV-283). A new
+  // buy is bought at it too: its stop-when-buying floor is priced off it.
   let livePrice: number | null = null;
-  if (intent === "ADD") {
+  if (intent === "ADD" || intent === "OPEN") {
     livePrice = await getLatestPrice(order.symbol, creds).catch(() => null);
     if (livePrice == null || !Number.isFinite(livePrice) || livePrice <= 0) livePrice = null;
   }
@@ -456,12 +457,9 @@ export async function approveProposal(
       analystId: order.position.analystId,
       ticker: order.position.symbol,
       positionId: order.position.id,
-      // Position carries the proposed levels (set in the tool's DB tx
-      // before the seam) — use them as the "executed" levels for trigger
-      // regeneration. The real Alpaca fill price corrects avgCost via
-      // reconcile-orders; targets/stops were already set from the
-      // proposal args.
-      entryPrice: order.position.avgCost,
+      // The price now, not the proposal's (it may be a day old); the fill
+      // corrects it, and the stop-when-buying floor, in reconcile-orders.
+      entryPrice: livePrice ?? order.position.avgCost,
       // A buy placed by hand may name neither: the thesis keeps its own
       // levels. Never the entry, which would arm a sale at the buy price.
       targetPrice: effectiveTarget ?? null,
