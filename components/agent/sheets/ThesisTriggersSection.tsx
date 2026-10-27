@@ -8,7 +8,7 @@
  * docs/plans/TRIGGER_TYPES.md §7.
  */
 import { useEffect, useState } from "react";
-import { actionLabel, carriesNumber, shapeOf } from "@/lib/agent/triggers/condition";
+import { carriesNumber, rowLabel, shapeOf } from "@/lib/agent/triggers/condition";
 import { AddTrigger } from "@/components/agent/triggers/TriggerDialog";
 import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 
@@ -72,7 +72,7 @@ export function TriggerGroups({
         return (
           <div key={action} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
             {/* Each trim pill leads with its size: "Trim [30% if | above | $150]". */}
-            <span className="shrink-0 text-sm text-muted-foreground">{action === "TRIM" ? "Trim" : actionLabel(action, level === "THESIS" ? held : undefined)}</span>
+            <span className="shrink-0 text-sm text-muted-foreground">{rowLabel(action, level === "THESIS" ? held : undefined)}</span>
             {items.map((t) => (
               <TriggerPill
                 key={t.id}

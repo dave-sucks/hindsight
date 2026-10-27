@@ -27,6 +27,7 @@ import {
   TRIGGER_TYPES,
   conditionProblem,
   pillParts,
+  rowLabel,
   shapeOf,
   triggerText,
   variableOptions,
@@ -92,6 +93,12 @@ describe("what people read: the form's words, direction · value", () => {
 
   it("names the plan coming down on a stock we don't own", () => {
     expect(triggerText("EXIT", { watch: "price", is: "below", value: 225 }, false)).toBe("Take the plan down if below $225");
+  });
+
+  it("a row of trim pills says \"Trim\": the pill's own \"50% if\" finishes the sentence", () => {
+    expect(rowLabel("TRIM")).toBe("Trim");
+    expect(rowLabel("EXIT")).toBe("Sell if");
+    expect(rowLabel("EXIT", false)).toBe("Take the plan down if");
   });
 });
 
