@@ -3,27 +3,28 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
+import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
 import {
-  CandlestickChart,
-  LayoutDashboard,
-  Bot,
-  PlayCircle,
-  ArrowLeftRight,
-  BarChart3,
-  Settings,
-  LogOut,
-  ChevronsUpDown,
-  Wallet,
-  Sun,
-  Moon,
-  Workflow,
-  BookOpen,
-  Sparkles,
-  Mic,
-  MessageCircle,
-  X,
-} from 'lucide-react';
-import HindsightLogo from '@/components/HindsightLogo';
+  AppleStocksIcon,
+  MessageCircleIcon,
+  AiScanIcon,
+  Mic01Icon,
+  Activity02Icon,
+  AiAutoRotateIcon,
+  MoneyExchange01Icon,
+  Analytics01Icon,
+  Settings01Icon,
+  Logout01Icon,
+  UnfoldMoreIcon,
+  Wallet01Icon,
+  Sun03Icon,
+  Moon02Icon,
+  WorkflowSquare03Icon,
+  BookOpen01Icon,
+  SparklesIcon,
+  Cancel01Icon,
+} from '@hugeicons/core-free-icons';
+import { UserBlob } from '@/components/UserBlob';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
 import { EnvironmentSwitcher } from '@/components/settings/EnvironmentSwitcher';
 import type { AlpacaEnvironment } from '@/lib/actions/api-keys.actions';
@@ -41,7 +42,6 @@ import {
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Tooltip,
   TooltipContent,
@@ -65,20 +65,22 @@ import { signOut } from '@/lib/actions/auth.actions';
 // whether the sidebar entry shows. See docs/PODCAST_PLAN.md.
 const PODCASTS_ENABLED = process.env.NEXT_PUBLIC_PODCASTS_ENABLED === "true";
 
-const MAIN_NAV = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard, tooltip: 'Portfolio overview' },
-  { href: '/chat', label: 'Chat', icon: MessageCircle, tooltip: 'Principal chat — talk to everything' },
-  { href: '/analysts', label: 'Analysts', icon: Bot, tooltip: 'AI trading personas' },
+type NavItem = { href: string; label: string; icon: IconSvgElement; tooltip: string };
+
+const MAIN_NAV: NavItem[] = [
+  { href: '/', label: 'Dashboard', icon: AppleStocksIcon, tooltip: 'Portfolio overview' },
+  { href: '/chat', label: 'Chat', icon: MessageCircleIcon, tooltip: 'Principal chat — talk to everything' },
+  { href: '/analysts', label: 'Analysts', icon: AiScanIcon, tooltip: 'AI trading personas' },
   ...(PODCASTS_ENABLED
-    ? [{ href: '/podcasts', label: 'Podcasts', icon: Mic, tooltip: 'AI-generated podcasts (PoC)' }]
+    ? [{ href: '/podcasts', label: 'Podcasts', icon: Mic01Icon, tooltip: 'AI-generated podcasts (PoC)' }]
     : []),
-  { href: '/market', label: 'Market', icon: CandlestickChart, tooltip: 'Earnings, filings, movers and signals' },
-  { href: '/runs', label: 'Runs', icon: PlayCircle, tooltip: 'Research sessions' },
+  { href: '/market', label: 'Market', icon: Activity02Icon, tooltip: 'Earnings, filings, movers and signals' },
+  { href: '/runs', label: 'Runs', icon: AiAutoRotateIcon, tooltip: 'Research sessions' },
 ];
 
-const PORTFOLIO_NAV = [
-  { href: '/trades', label: 'Trades', icon: ArrowLeftRight, tooltip: 'Paper trades and P&L' },
-  { href: '/performance', label: 'Performance', icon: BarChart3, tooltip: 'Win rate and accuracy' },
+const PORTFOLIO_NAV: NavItem[] = [
+  { href: '/trades', label: 'Trades', icon: MoneyExchange01Icon, tooltip: 'Paper trades and P&L' },
+  { href: '/performance', label: 'Performance', icon: Analytics01Icon, tooltip: 'Win rate and accuracy' },
 ];
 
 export default function AppSidebar({
@@ -123,20 +125,17 @@ export default function AppSidebar({
 
   return (
     <Sidebar collapsible="icon">
-      {/* Brand + env switcher */}
+      {/* Account switcher (Paper / Live) — the whole header; no logo. A
+          SidebarMenuButton like the nav rows, so hover width and padding
+          match them. */}
       <SidebarHeader>
-        <div className="flex items-center gap-1 px-1 py-1 w-full">
-          <Link
-            href="/"
-            onClick={() => isMobile && setOpenMobile(false)}
-            className="flex items-center justify-center rounded-md p-1.5 text-brand hover:bg-sidebar-accent transition-colors shrink-0"
-          >
-            <HindsightLogo className="size-4" />
-          </Link>
+        <div className="flex items-center gap-1">
           {exposeLive && (
-            <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-              <EnvironmentSwitcher current={currentEnv} />
-            </div>
+            <SidebarMenu className="flex-1 min-w-0">
+              <SidebarMenuItem>
+                <EnvironmentSwitcher current={currentEnv} />
+              </SidebarMenuItem>
+            </SidebarMenu>
           )}
           {isMobile && (
             <button
@@ -144,7 +143,7 @@ export default function AppSidebar({
               className="ml-auto flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors shrink-0"
               aria-label="Close navigation"
             >
-              <X className="size-4" />
+              <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
             </button>
           )}
         </div>
@@ -156,7 +155,7 @@ export default function AppSidebar({
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                {MAIN_NAV.map(({ href, label, icon: Icon, tooltip }) => (
+                {MAIN_NAV.map(({ href, label, icon, tooltip }) => (
                   <SidebarMenuItem key={href}>
                     <Tooltip>
                       <TooltipTrigger
@@ -166,7 +165,7 @@ export default function AppSidebar({
                             isActive={isActive(href)}
                             onClick={() => isMobile && setOpenMobile(false)}
                           >
-                            <Icon />
+                            <HugeiconsIcon icon={icon} />
                             <span>{label}</span>
                           </SidebarMenuButton>
                         }
@@ -186,7 +185,7 @@ export default function AppSidebar({
             <SidebarGroupLabel>Portfolio</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {PORTFOLIO_NAV.map(({ href, label, icon: Icon, tooltip }) => (
+                {PORTFOLIO_NAV.map(({ href, label, icon, tooltip }) => (
                   <SidebarMenuItem key={href}>
                     <Tooltip>
                       <TooltipTrigger
@@ -196,7 +195,7 @@ export default function AppSidebar({
                             isActive={isActive(href)}
                             onClick={() => isMobile && setOpenMobile(false)}
                           >
-                            <Icon />
+                            <HugeiconsIcon icon={icon} />
                             <span>{label}</span>
                           </SidebarMenuButton>
                         }
@@ -225,23 +224,16 @@ export default function AppSidebar({
                 render={<SidebarMenuButton size="lg" />}
                 className="data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground"
               >
-                <Avatar className="h-7 w-7 rounded-md shrink-0">
-                  <AvatarFallback className="rounded-md text-xs bg-brand text-brand-foreground font-semibold">
-                    {user.name?.[0]?.toUpperCase() ?? '?'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0 text-left overflow-hidden">
-                  <p className="text-xs font-medium truncate">{user.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                </div>
-                <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <UserBlob size={28} />
+                <p className="flex-1 min-w-0 text-left text-sm font-medium truncate">{user.name}</p>
+                <HugeiconsIcon icon={UnfoldMoreIcon} className="ml-auto text-muted-foreground" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-56">
+              <DropdownMenuContent side="top" align="start">
                 {/* Portfolio value — DropdownMenuLabel is Menu.GroupLabel which requires Menu.Group wrapper */}
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Wallet className="h-3.5 w-3.5" />
+                      <HugeiconsIcon icon={Wallet01Icon} className="size-3.5" />
                       <span>Portfolio</span>
                       <span className="ml-auto font-semibold text-foreground tabular-nums">
                         {formattedPortfolio}
@@ -253,41 +245,38 @@ export default function AppSidebar({
 
                 {/* Settings — onClick only, no render={<Link>} to avoid Base UI / Next router conflict */}
                 <DropdownMenuItem onClick={() => router.push('/settings')}>
-                  <Settings className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={Settings01Icon} />
                   Settings
                 </DropdownMenuItem>
 
                 <DropdownMenuItem onClick={() => router.push('/how-it-works')}>
-                  <Workflow className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={WorkflowSquare03Icon} />
                   How it works
                 </DropdownMenuItem>
 
                 <DropdownMenuItem onClick={() => router.push('/docs')}>
-                  <BookOpen className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={BookOpen01Icon} />
                   Docs
                 </DropdownMenuItem>
 
                 <DropdownMenuItem onClick={() => onProductTour?.()}>
-                  <Sparkles className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={SparklesIcon} />
                   Product Tour
                 </DropdownMenuItem>
 
                 {/* Theme toggle */}
                 <DropdownMenuItem onClick={() => setTheme(isDark ? 'light' : 'dark')}>
                   {isDark ? (
-                    <Sun className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={Sun03Icon} />
                   ) : (
-                    <Moon className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={Moon02Icon} />
                   )}
                   {isDark ? 'Light mode' : 'Dark mode'}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleSignOut}
-                  className="text-destructive focus:text-destructive cursor-pointer"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
+                <DropdownMenuItem variant="destructive" onClick={handleSignOut}>
+                  <HugeiconsIcon icon={Logout01Icon} />
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>

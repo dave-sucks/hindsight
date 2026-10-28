@@ -318,7 +318,7 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
   NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
   // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
-  PROPOSED: { label: 'Pending',        dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
+  PROPOSED: { label: 'Proposal',       dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
   REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
   BLOCKED:  { label: 'Blocked',        dotClass: 'bg-negative',               tooltip: 'The analyst tried this and a rule stopped it — read why, and act by hand if you disagree' },
   PASSED:   { label: 'Passed',         dotClass: 'bg-muted-foreground/40',    tooltip: 'A buy, add, sale or trim trigger fired and the analyst chose not to act — often the right call' },
@@ -500,7 +500,13 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
           {isProposed && (
-            <ProposalActions orderId={item.orderId!} expiresAt={item.expiresAt} />
+            // Phones: the amber "Proposal" badge already says it; the row
+            // opens where it's approved, and the button ate the sentence.
+            <ProposalActions
+              orderId={item.orderId!}
+              expiresAt={item.expiresAt}
+              className="hidden sm:inline-flex"
+            />
           )}
         </div>
       </HoverCardTrigger>
@@ -524,10 +530,12 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   );
 }
 
-function HomeBottomSection({ activity, loading, coverage }: {
+function HomeBottomSection({ activity, loading, coverage, mobileDigest }: {
   activity: ActivityFeedItem[];
   loading: boolean;
   coverage?: CoverageData;
+  /** Rendered below lg only, between the holdings table and Activity. */
+  mobileDigest?: ReactNode;
 }) {
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
   const [showAllActivity, setShowAllActivity] = useState(false);
@@ -564,6 +572,8 @@ function HomeBottomSection({ activity, loading, coverage }: {
           </Card>
         )}
       </div>
+
+      {mobileDigest && <div className="lg:hidden">{mobileDigest}</div>}
 
       {/* Activity */}
       <div>
@@ -642,9 +652,11 @@ function ProposalsPanel({
 }) {
   if (proposals.length === 0) return null;
   return (
-    <div className="mb-3">
-      <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
-        Pending
+    <div className="relative mb-3">
+      {/* On desktop the label sits above the card, out of the flow, so the
+          card's top lines up with the chart card's. On a phone it's inline. */}
+      <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1 lg:absolute lg:bottom-full lg:left-0">
+        Proposals
       </p>
       {/* Plain bordered container — TradeRowShell supplies its own px-3 py-2.5
           padding + border-b dividers, so rows sit flush (matches the coverage
@@ -723,18 +735,63 @@ function stripMarkdown(md: string): string {
     .trim();
 }
 
-function formatDigestDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+/** "Today, 4:32 PM" / "Yesterday, 4:32 PM" / "Mon Oct 26, 4:32 PM" — the
+ *  trading day the digest covers (a UTC-midnight date) against today in ET,
+ *  with the time it was written. */
+function formatDigestStamp(digest: LatestDigest): string {
+  const day = digest.date.slice(0, 10);
+  const etDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const dayLabel =
+    day === etDay(now)
+      ? 'Today'
+      : day === etDay(yesterday)
+        ? 'Yesterday'
+        : new Date(digest.date).toLocaleDateString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
+          }).replace(',', '');
+  const written = new Date(digest.createdAt);
+  if (Number.isNaN(written.getTime())) return dayLabel;
+  const time = written.toLocaleTimeString('en-US', {
+    hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York',
   });
+  return `${dayLabel}, ${time}`;
+}
+
+/** Win rate as ten ticks; the tooltip trigger is the ticks alone so hovering
+ *  beside them does nothing. */
+function WinRateTicks({ winRate }: { winRate: number | null }) {
+  return (
+    <UITooltipProvider>
+      <UITooltip>
+        <UITooltipTrigger render={<span className="inline-flex cursor-default" />}>
+          <TickBar
+            height={12}
+            ticks={Array.from({ length: 10 }, (_, i): Tick => ({
+              color: winRate != null && i < Math.round(winRate * 10)
+                ? 'bg-foreground'
+                : 'bg-muted-foreground/25',
+            }))}
+            className="w-12"
+          />
+        </UITooltipTrigger>
+        <UITooltipContent side="bottom" align="end">
+          <div className="text-xs">
+            {winRate != null ? `${Math.round(winRate * 100)}% win rate` : 'No closed trades yet'}
+          </div>
+        </UITooltipContent>
+      </UITooltip>
+    </UITooltipProvider>
+  );
 }
 
 function DigestPreviewCard({
   digest,
+  winRate,
 }: {
   digest: LatestDigest | null | undefined;
+  winRate: number | null;
 }) {
   const [open, setOpen] = useState(false);
   if (digest === undefined) return null;
@@ -755,9 +812,12 @@ function DigestPreviewCard({
           digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
         )}
       >
-        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1 shrink-0">
-          {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
-        </p>
+        <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
+          <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+            {digest ? formatDigestStamp(digest) : 'Portfolio Digest'}
+          </p>
+          <WinRateTicks winRate={winRate} />
+        </div>
         {digest && preview ? (
           <div className="relative flex-1 min-h-0 overflow-hidden">
             <p className="text-base font-medium leading-relaxed line-clamp-6 lg:line-clamp-none">
@@ -776,7 +836,7 @@ function DigestPreviewCard({
           <DialogContent className="sm:max-w-2xl p-0">
             <DialogHeader className="px-5 pt-5 pb-3 border-b">
               <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                {formatDigestDate(digest.date)} · after close
+                {formatDigestStamp(digest)}
               </p>
               <DialogTitle className="text-base font-semibold">Portfolio Digest</DialogTitle>
             </DialogHeader>
@@ -1486,58 +1546,32 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
               and reviewable on a phone. Renders nothing when empty. */}
           <div className="lg:hidden">
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
-            <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
-            {/* The after-close digest lives in the desktop rail, which is
-                hidden below lg — so on a phone the end-of-day summary was
-                not on the page at all. Same order as the rail: proposals
-                first (time-sensitive), then pinned, then the digest. */}
-            <DigestPreviewCard digest={digest} />
           </div>
 
-          {/* Portfolio + Activity stacked section */}
+          {/* Portfolio + Activity stacked section. On a phone the after-close
+              digest (which lives in the desktop rail) sits between the
+              holdings table and Activity. Pinned is desktop-only — on a
+              phone it repeated the pending and held rows right above it. */}
           <HomeBottomSection
             activity={data?.activityFeed ?? []}
             loading={loading}
             coverage={coverage}
+            mobileDigest={<DigestPreviewCard digest={digest} winRate={portfolio.winRate} />}
           />
           </div>
 
-          {/* ══ RIGHT column — win rate + digest (desktop only) ════════════ */}
+          {/* ══ RIGHT column — proposals, digest, pinned (desktop only) ═════ */}
           <div className="hidden lg:block w-80 shrink-0">
-            {/* Win Rate — sized h-16 + mb-5 to mirror the left header height
-                so the digest card aligns with the top of the chart card. */}
-            <UITooltipProvider>
-              <UITooltip>
-                <UITooltipTrigger render={<div className="flex h-16 flex-col items-end justify-center gap-1.5 mb-5 cursor-default" />}>
-                  <TickBar
-                    ticks={Array.from({ length: 10 }, (_, i): Tick => ({
-                      color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
-                        ? 'bg-foreground'
-                        : 'bg-muted-foreground/25',
-                    }))}
-                    className="w-16"
-                  />
-                  <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                    Win Rate
-                  </span>
-                </UITooltipTrigger>
-                <UITooltipContent side="bottom" align="end">
-                  <div className="text-xs">
-                    {portfolio.winRate != null
-                      ? `${Math.round(portfolio.winRate * 100)}% win rate`
-                      : 'No closed trades yet'}
-                  </div>
-                </UITooltipContent>
-              </UITooltip>
-            </UITooltipProvider>
+            {/* Spacer the height of the left column's balance header (h-16 +
+                mb-5), so the first card's top lines up with the chart card. */}
+            <div aria-hidden className="h-16 mb-5" />
             {/* Pending proposals sit above the digest — they're the most
                 time-sensitive thing on the page. Renders nothing when empty. */}
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
-            {/* Pinned shortlist — the hand-picked names you want in view
-                regardless of what the agents proposed today. Below proposals
-                (those are time-sensitive), above the digest. */}
+            <DigestPreviewCard digest={digest} winRate={portfolio.winRate} />
+            {/* Pinned shortlist — the hand-picked names you want in view.
+                Last in the rail: proposals and the digest come first. */}
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
-            <DigestPreviewCard digest={digest} />
           </div>
 
         </div>

@@ -274,11 +274,6 @@ function AnalystsEmptyState() {
         features={{
           placeholder: "Describe any strategy, sector, or style…",
         }}
-        tooltip={{
-          title: "Build any analyst",
-          description: "Describe a strategy, sector, or style and I'll create a custom analyst for you.",
-          storageKey: "analyst-composer",
-        }}
       />
     </div>
   );

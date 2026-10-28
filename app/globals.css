@@ -298,6 +298,38 @@
   color: transparent;
   animation: shimmer-slide 2.5s linear infinite;
 }
+
+/* Periodic shimmer — a proposal waiting on you. One quick sweep, then a
+ * rest, so it catches the eye without crawling non-stop. The gradient is
+ * muted at both ends and wider than the text, so between sweeps the text
+ * reads as plain muted. */
+@keyframes shimmer-sweep {
+  0%        { background-position: 100% 0; }
+  30%, 100% { background-position: 0% 0; }
+}
+
+.shimmer-text-periodic {
+  background-image: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--muted-foreground) 40%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 60%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 0% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer-sweep 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text-periodic { animation: none; }
+}
 /* ── Agent Watch — a name the agent reviews on its own schedule ────────── */
 /* Slow on purpose: this is ambient state, not activity. It should read as a
  * heartbeat you notice once, never as something demanding attention. */

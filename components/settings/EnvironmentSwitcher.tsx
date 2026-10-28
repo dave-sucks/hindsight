@@ -8,25 +8,26 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronsUpDown } from "lucide-react";
-import { setCurrentEnvironment } from "@/lib/actions/environment.actions";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { UnfoldMoreIcon } from "@hugeicons/core-free-icons";
+import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { setCurrentEnvironment } from "@/lib/actions/environment.actions";
 import type { AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
 
 /**
- * Global env switcher — lives in the sidebar header next to the logo icon.
- * Ghost-style button that fills remaining header width: colored dot + env
- * name + chevron (chevron only visible on hover).
+ * Global env switcher — the sidebar header. The trigger is a
+ * SidebarMenuButton (render inside a SidebarMenuItem) so it lines up with the
+ * nav rows; the menu takes the trigger's width (the DropdownMenuContent
+ * default). Same chevron as the profile button in the footer.
  *
  * Paper: muted gray dot, static. Live: blue pulsing dot (matches the
  * "Holding" trade status dot).
  */
 export function EnvironmentSwitcher({
   current,
-  className,
 }: {
   current: AlpacaEnvironment;
-  className?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -43,23 +44,14 @@ export function EnvironmentSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={
-          <button
-            disabled={pending}
-            className={cn(
-              "group/env-trigger flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm",
-              "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              "transition-colors disabled:opacity-50 outline-none",
-              className,
-            )}
-          />
-        }
+        render={<SidebarMenuButton disabled={pending} />}
+        className="data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground"
       >
         <EnvDot env={current} />
         <span className="flex-1 truncate text-left">{isLive ? "Live" : "Paper"}</span>
-        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover/env-trigger:opacity-100 transition-opacity" />
+        <HugeiconsIcon icon={UnfoldMoreIcon} className="text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="start" className="w-40">
+      <DropdownMenuContent side="bottom" align="start">
         <DropdownMenuItem onClick={() => select("PAPER")}>
           <EnvDot env="PAPER" />
           <span className="flex-1">Paper</span>

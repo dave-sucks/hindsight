@@ -5,8 +5,9 @@
  *
  * Renders a badge-sized black button (sized to match PnlBadge) that opens a
  * dropdown with Approve / Reject. Same control everywhere a proposal shows:
- * homepage + analyst sidebar trade rows, the homepage activity feed, the
- * /trades table, the agent chat, and the thesis sheet.
+ * the homepage activity feed (wider screens), the trade page, the agent
+ * chat, and the thesis sheet. The homepage holdings table and the /trades
+ * table have none: their rows open a page that does.
  *
  * Approve fires immediately. Reject opens a dialog so the principal can
  * (optionally) type a reason the agent will read on its next run. Both
