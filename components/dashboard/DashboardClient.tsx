@@ -424,8 +424,8 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   // An attempt says what it was ("Buy passed", "Sale blocked", "Thesis edit
   // blocked") — the server names it; the generic word is the fallback.
   const status = isAttempt(item) && item.label ? { ...meta, label: item.label } : meta;
-  // Trade-as-Proposal — render inline [Approve][Reject] when this row is
-  // awaiting the user's decision. See docs/plans/TRADE_AS_PROPOSAL.md.
+  // Trade-as-Proposal — a row awaiting the user's decision. It's decided on
+  // the trade page the row opens. See docs/plans/TRADE_AS_PROPOSAL.md.
   const isProposed = item.type === 'PROPOSED' && item.orderId != null;
 
   // The middle text + right side, built per event type. Trade events

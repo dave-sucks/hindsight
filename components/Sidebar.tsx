@@ -244,7 +244,7 @@ export default function AppSidebar({
                 <DropdownMenuSeparator />
 
                 {/* Settings — onClick only, no render={<Link>} to avoid Base UI / Next router conflict */}
-                <DropdownMenuItem onClick={() => router.push('/settings/profile')}>
+                <DropdownMenuItem onClick={() => router.push('/settings')}>
                   <HugeiconsIcon icon={Settings01Icon} />
                   Settings
                 </DropdownMenuItem>
