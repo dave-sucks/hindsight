@@ -43,7 +43,7 @@ export const closePosition = defineTool({
       .string()
       .optional()
       .describe(
-        "Why you're selling, always supplied: the reason the owner reads on the sale proposal and in the approval email. What happened to the company and the stock and why, whether it breaks the reason we own it, then the sale: the price and the profit or loss. Write it by How you write.",
+        "Why you're selling, always supplied: the reason the owner reads on the sale proposal and in the approval email. What happened to the company and the stock and why, whether it breaks the reason we own it, then the sale: the price and the profit or loss. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
       ),
     belief_survived: z
       .boolean()

@@ -50,7 +50,7 @@ const recordFields = z.object({
     .string()
     .optional()
     .describe(
-      "The note the owner reads at the top of the new stock's page: what the company does, how it is doing and where the stock is and why, then your call. On a PASS, what you found and why it doesn't fit. Write it by How you write.",
+      "The note the owner reads at the top of the new stock's page: what the company does, how it is doing and where the stock is and why, then your call. On a PASS, what you found and why it doesn't fit. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
     ),
   thesis_bullets: z
     .array(z.string())

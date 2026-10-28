@@ -71,7 +71,7 @@ describe("TRV: an Auto-buy", () => {
     expect(cost).toBeGreaterThanOrEqual(SECULAR.minPositionSize - 398.95);
     expect(cost).toBeLessThanOrEqual(SECULAR.maxPositionSize);
     const rationale = String((doIt.result.data as { rationale?: string }).rationale);
-    expect(rationale).toContain('Your "Buy if above $398.70 · only on the close" came true. It\'s set to Auto-buy, so this came straight to you with no analyst review.');
+    expect(rationale).toContain('Your "Buy if above $398.70 · only on the close" came true. It\'s set to Auto-buy, so no analyst reviewed it.');
     // sizeByRisk on the $382.40 floor at 1% risk and HIGH conviction ($100,000 replay account), capped at the $10,000 largest trade.
     expect(orderOf(doIt)?.quantity).toBe(25);
     expect(rationale).toContain("25 shares, $9,974, capped at this analyst's largest trade. Risk alone said 60 shares");

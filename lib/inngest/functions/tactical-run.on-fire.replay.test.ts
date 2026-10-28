@@ -71,7 +71,7 @@ describe("the trigger run, by fire mode", () => {
     expect(r.closes).toHaveLength(1);
     expect(r.closes[0].slice(0, 2)).toEqual(["pos_iot", "STOP"]);
     // The sale says which trigger sold it, then the trigger's own reason.
-    expect(r.closes[0][4]).toBe('Your "Sell if below $41.42" came true. It\'s set to Auto-sell, so this came straight to you with no analyst review.');
+    expect(r.closes[0][4]).toBe('Your "Sell if below $41.42" came true. It\'s set to Auto-sell, so no analyst reviewed it.');
     expect(r.runs[0]).toMatchObject({ status: "COMPLETE" });
   });
 

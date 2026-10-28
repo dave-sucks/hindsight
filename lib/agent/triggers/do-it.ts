@@ -19,7 +19,7 @@ export function doItCall(opts: {
   price: number;
 }): DoItCall {
   const { trade, trigger, thesis } = opts;
-  const why = `Your "${sentenceOf(trigger)}" came true. It's set to ${fireModeWords({ ...trigger, fireMode: "DO_IT" })}, so this came straight to you with no analyst review.`;
+  const why = `Your "${sentenceOf(trigger)}" came true. It's set to ${fireModeWords({ ...trigger, fireMode: "DO_IT" })}, so no analyst reviewed it.`;
   if (trade === "BUY") {
     return {
       tool: "place_trade",

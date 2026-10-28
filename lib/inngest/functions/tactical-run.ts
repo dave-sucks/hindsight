@@ -533,7 +533,7 @@ export const tacticalRun = inngest.createFunction(
             reason,
             undefined, // creds resolved inside from the position's environment
             "price_monitor", // the stored name for an automatic trigger sale; approval-gated
-            `Your "${sentenceOf(trigger as Trigger)}" came true. It's set to Auto-sell, so this came straight to you with no analyst review.${rationale ? ` ${rationale}` : ""}`,
+            `Your "${sentenceOf(trigger as Trigger)}" came true. It's set to Auto-sell, so no analyst reviewed it.${rationale ? ` ${rationale}` : ""}`,
             run.id,
             undefined,
             { propose: ownerSale && doIt !== "SELL" },
