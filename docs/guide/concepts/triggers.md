@@ -73,7 +73,7 @@ What happens next is the trigger's **On fire**, in the next section. The whole p
 
 | | Auto | Send to Agent | Flag for Review |
 |---|---|---|---|
-| What happens | The trade, with no agent. With your approval switch on, it comes to you as a proposal right away, with the research brief | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
+| What happens | The trade, with no agent. With your approval switch on, it comes to you as a proposal right away, with a research paragraph on the company | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
 | Buy | ✓ one-time; only you set it | ✓ default | ✓ |
 | Add | ✓ one-time; only you set it | ✓ default | ✓ |
 | Trim | ✓ one-time, sells its size; only you | ✓ default | ✓ |

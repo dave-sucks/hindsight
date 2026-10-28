@@ -126,6 +126,16 @@ export interface ThesisScoring {
  * expects, so the header line and the timeline are worded by the same
  * function. The fields the header never needs are sent as null/[].
  */
+/** One of the analyst's last notes on the stock, for the Recent section (recentAnswers, lib/agent/stock-context.ts). */
+export interface ThesisRecentNote {
+  id: string;
+  timestamp: string;
+  priceAtTime: number | null;
+  /** "morning run", "trigger run", "chat"… */
+  by: string;
+  text: string;
+}
+
 export interface ThesisLatestUpdate {
   id: string;
   timestamp: string;
@@ -192,6 +202,8 @@ export interface ThesisDossier {
    * `titleSegments`, so there is one grammar for both.
    */
   latestUpdate: ThesisLatestUpdate | null;
+  /** The analyst's last notes, newest first: the same ones every run is handed. */
+  recentNotes: ThesisRecentNote[];
   triggers: Trigger[];
   /**
    * The analyst that owns this thesis. Lets the trigger section deep-link

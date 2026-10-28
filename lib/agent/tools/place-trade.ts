@@ -103,7 +103,7 @@ const placeTradeSchema = z.object({
       .string()
       .optional()
       .describe(
-        "REQUIRED on every buy proposal, from a trigger run or the daily run: the reason the owner reads on the proposal and in the approval email. What the company is doing and why the stock is where it is today, then the buy: the price, the target and the stop. Skip only for a one-shot buy in the chat, where the thesis you just wrote is the reason. Write it by How you write.",
+        "REQUIRED on every buy proposal, from a trigger run or the daily run: the reason the owner reads on the proposal and in the approval email. What the company is doing and why the stock is where it is today, then the buy: the price, the target and the stop. Skip only for a one-shot buy in the chat, where the thesis you just wrote is the reason. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
       ),
 });
 

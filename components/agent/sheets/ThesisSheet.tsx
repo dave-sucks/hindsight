@@ -46,7 +46,6 @@ import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
-import { planSanityLabel } from "@/lib/agent/plan-sanity-label";
 import { latestNoteView } from "@/lib/thesis/latest-note";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
@@ -60,7 +59,7 @@ import {
   type ResearchBulletSection,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
-import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
+import type { EarningsResponse, FilingsResponse, ThesisRecentNote } from "@/lib/types/thesis-sheet";
 import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -257,6 +256,56 @@ function ClampedParagraph({ text, className }: { text: string; className?: strin
     >
       {text}
     </p>
+  );
+}
+
+// ── Recent ──
+// The analyst's last notes on the stock, newest first: the same ones every
+// run is handed (recentAnswers, lib/agent/stock-context.ts). Each shows three
+// lines; a click opens the rest.
+const noteDay = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
+const noteTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
+
+function RecentNote({ note }: { note: ThesisRecentNote }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="grid grid-cols-[4.5rem_1fr] gap-3">
+      <div className="text-xs text-muted-foreground tabular-nums leading-relaxed">
+        <p className="text-sm text-foreground">{noteDay(note.timestamp)}</p>
+        <p>{noteTime(note.timestamp)}</p>
+      </div>
+      <div className="min-w-0 space-y-1">
+        <p className="text-sm tabular-nums">
+          {note.priceAtTime != null ? `$${note.priceAtTime.toFixed(2)}` : null}
+          <span className="text-muted-foreground">{note.priceAtTime != null ? " · " : null}{note.by}</span>
+        </p>
+        <p
+          className={cn(
+            "text-sm text-muted-foreground leading-relaxed cursor-pointer transition-colors hover:text-foreground",
+            !open && "line-clamp-3",
+          )}
+          onClick={() => setOpen((v) => !v)}
+          title={open ? "Collapse" : "Expand"}
+        >
+          {note.text}
+        </p>
+      </div>
+    </li>
+  );
+}
+
+function RecentNotes({ notes }: { notes: ThesisRecentNote[] }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent</p>
+      <ol className="space-y-4">
+        {notes.map((n) => (
+          <RecentNote key={n.id} note={n} />
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -477,11 +526,13 @@ function LatestNoteBlock({
   quoteLoading,
   quoteFailed,
   analystName,
+  recentNotes,
   /** Text already shown verbatim in the trade block — never repeated here. */
   suppressText,
 }: {
   status: string;
   latestUpdate: ThesisDossier["latestUpdate"];
+  recentNotes: ThesisRecentNote[];
   needsAction: NeedsAction | null;
   /** Every situation the stock is in, lead first; the ones the lead didn't put it in follow the flag. */
   situations: Array<{ name: string; lead: boolean }>;
@@ -500,6 +551,9 @@ function LatestNoteBlock({
     suppressText != null &&
     note.replace(/\s+/g, " ") === suppressText.replace(/\s+/g, " ");
   const text = sameAsTrade ? null : note;
+  // The pending proposal's reason is in the trade block already.
+  const same = (a: string, b: string | null) => b != null && a.replace(/\s+/g, " ") === b.replace(/\s+/g, " ");
+  const recent = recentNotes.filter((n) => !same(n.text, suppressText));
 
   // ONE flag line. `planSanity` used to stack under it — a second, unrelated
   // system (is this PLAN coherent?) painting the same amber as the work flag
@@ -540,7 +594,9 @@ function LatestNoteBlock({
         </p>
       ) : null}
 
-      {view.showNote && text ? (
+      {recent.length > 0 ? (
+        <RecentNotes notes={recent} />
+      ) : view.showNote && text ? (
         <>
           <ClampedParagraph text={text} />
           <WrittenByLine latestUpdate={latestUpdate} analystName={analystName} />
@@ -1131,7 +1187,6 @@ export function ThesisBody({
   const [move, setMove] = useState<RangeMove | null>(null);
 
   // ── Derived — durable from `state`, live from the hydration states ────────
-  const resolved = quote?.resolved ?? null;
   const liveStatus = state.status as ThesisStatus;
   const position = state.position;
   // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
@@ -1325,29 +1380,12 @@ export function ThesisBody({
         />
       ) : null}
 
-      {/* ── Plan checks ──────────────────────────────────────────── */}
-      {/* Arithmetic on the plan above — does it have a buy level, is the stop
-          inside normal daily noise, does the reward clear 2:1. The label is
-          which check failed; the sentence under it is the agent's own. */}
-      {resolved?.planSanity && resolved.planSanity.length > 0 ? (
-        <div className="space-y-1.5">
-          <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-            Plan checks
-          </p>
-          {resolved.planSanity.map((f, i) => (
-            <div key={i} className="space-y-0.5">
-              <p className="text-sm text-foreground">{planSanityLabel(f.kind)}</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">{f.text}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
       {/* ── What just happened, and whether it needs work (DAV-304) ── */}
       {/* Under the chart it comments on, above the triggers it leads to. */}
       <LatestNoteBlock
         status={state.status}
         latestUpdate={state.latestUpdate}
+        recentNotes={state.recentNotes ?? []}
         needsAction={quote?.needsAction ?? null}
         situations={quote?.situations ?? []}
         quoteLoading={quoteLoading}

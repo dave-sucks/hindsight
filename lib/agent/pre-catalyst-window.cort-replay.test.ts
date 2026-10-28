@@ -162,7 +162,9 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     const [head, tail] = production.split(` ${FIRED_CONTEXT} `);
     // The trigger reads as the pill says it now; the rest is production's, word for word.
     const said = head.replace("Within 3% of the 50-day — consider entry.", "Buy if within 3% of the 50-day average.");
-    expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tail}`);
+    // 2026-10-28: the run is told to find out what is going on, not to validate the fire.
+    const tailNow = tail.replace("Validate, decide, act if warranted, then close out via update_thesis.", "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis.");
+    expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tailNow}`);
   });
 
   it("the kickoff carries the stock's research brief when one is on file", async () => {
@@ -174,9 +176,9 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     const kickoff = await at(fx.run.startedAt, () =>
       triggerRunKickoff({ researchBrief: [{ id: "b1", ticker: "CORT", kind: "PROPOSAL", orderId: "o1", payload, createdAt: builtAt }] }),
     );
-    expect(kickoff).toContain("Research brief on $CORT");
+    expect(kickoff).toContain("Today's research on $CORT");
     expect(kickoff).toContain("The stock rose with healthcare; no company news found.");
-    expect(kickoff).toContain("(X search failed: no xAI key is configured (XAI_API_KEY).)");
+    expect(kickoff).not.toContain("X search");
   });
 
   it("the proposal it makes carries the same line, and is still a proposal", async () => {

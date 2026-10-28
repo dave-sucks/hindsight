@@ -524,7 +524,7 @@ export const tacticalRun = inngest.createFunction(
           ticker: thesis.ticker,
           direction: thesis.direction,
         });
-        const rationale = [trigger.rationale, heldThroughNote, paused ? PAUSED_SALE_NOTE : null]
+        const rationale = [heldThroughNote, paused ? PAUSED_SALE_NOTE : null]
           .filter(Boolean)
           .join(" ");
         try {
@@ -533,7 +533,7 @@ export const tacticalRun = inngest.createFunction(
             reason,
             undefined, // creds resolved inside from the position's environment
             "price_monitor", // the stored name for an automatic trigger sale; approval-gated
-            `"${sentenceOf(trigger as Trigger)}" fired, with no agent run. ${rationale}`,
+            `Your "${sentenceOf(trigger as Trigger)}" came true. It's set to Auto-sell, so no analyst reviewed it.${rationale ? ` ${rationale}` : ""}`,
             run.id,
             undefined,
             { propose: ownerSale && doIt !== "SELL" },
@@ -729,10 +729,11 @@ export const tacticalRun = inngest.createFunction(
       );
       // The stock's research brief from the last day, when one is on file (lib/research/brief.ts).
       const brief = (await latestBriefs([(thesis as { ticker: string }).ticker], 24 * 60 * 60 * 1000)).values().next().value;
-      const briefSuffix = brief ? ` ${briefKickoffLine(brief)}` : "";
+      const briefLine = brief ? briefKickoffLine(brief) : null;
+      const briefSuffix = briefLine ? ` ${briefLine}` : "";
       const userPrompt =
         `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock}${briefSuffix} ` +
-        `Validate, decide, act if warranted, then close out via update_thesis. ` +
+        `Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis. ` +
         `You are running unattended — no human will respond. Every turn must call a tool; ` +
         `text-only turns terminate the run as FAILED.`;
       // What this run read and wrote, every request counted, recorded on

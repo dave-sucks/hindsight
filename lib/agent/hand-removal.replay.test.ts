@@ -204,7 +204,7 @@ describe("counted inside the cap with the notes, and never cut", () => {
     expect(text).toContain(`"${long}"\n${HEADER}\n  10-06 04:00: Review if above $40\n  10-06 03:00: Review if above $30\n  10-06 02:00: Review if above $20\nLast look:`);
     expect(text).not.toContain("Review if above $10\n");
     expect(text).toMatch(/ and \d more fired since: /);
-    expect(text!.length - long.length).toBeLessThanOrEqual(1_600);
+    expect(text!.slice(text!.indexOf("Since then")).length).toBeLessThanOrEqual(1_600);
   });
 });
 

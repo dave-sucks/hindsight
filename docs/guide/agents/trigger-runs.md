@@ -41,7 +41,7 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels r
 
 ## What it reads
 
-The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, and your notes. It comes with the trigger that fired and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
+The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, your notes, and the analyst's last three notes on the stock. It comes with the trigger that fired and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
 
 A give-back is measured from the highest price since the buy, over the whole holding. The run can't call a fire false by reading a lower high off a short chart; declining a sale takes new evidence about the business.
 

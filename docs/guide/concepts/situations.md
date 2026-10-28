@@ -22,7 +22,9 @@ A stock can be in several at once. The most urgent leads, and none are hidden be
 
 ## How they're answered
 
-What to do in each situation is written once, in one table, and never in an agent's prompt. When a stock is in a situation, its instructions travel with it, once per read however many stocks share it: when it applies, what to check in order, what counts as an answer, and the mistakes to avoid.
+What to do in each situation is written once, in one table, and never in an agent's prompt. When a stock is in a situation, its instructions travel with it, once per read however many stocks share it: when it applies; what to find out, starting with the company and the stock (why is it down, what did they report, what has changed since the last note); what to check after that; what counts as an answer; what its note covers; and the mistakes to avoid.
+
+The note is the write-up of what the situation sent the agent to find out. Every note has the same shape, set once in the house rules: what is going on and why, what it means for why we own it, then one sentence on what the analyst did.
 
 - A [morning run](../agents/morning-runs.md) gets the situations across its whole book; a [trigger run](../agents/trigger-runs.md) gets those of the one stock it woke for; [chat](../agents/chat.md) sees them on any stock it reads; you see them on the thesis sheet.
 - One save on the stock answers every situation it's in. Many answers end in a [proposal](approvals.md), a trigger moved, or the stock sent back to [the Writer](../agents/writer.md).

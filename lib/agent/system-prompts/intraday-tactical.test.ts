@@ -143,7 +143,7 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
     expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + SITUATIONS.PROTECTIVE_SALE.guidance);
     expect(prompt).toContain("Two sales fired together: one decision covers both");
     expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("YOUR_WORD_UNANSWERED — "));
-    expect(prompt.indexOf("YOUR_WORD_UNANSWERED — ")).toBeLessThan(prompt.indexOf("3. If the check FAILS"));
+    expect(prompt.indexOf("YOUR_WORD_UNANSWERED — ")).toBeLessThan(prompt.indexOf("3. If it no longer holds"));
   });
 
   it("ASML 10-07: a declined sale's facts are on the row under the morning row's name, so PROTECTIVE_SALE's pointer is true here too", () => {

@@ -1,19 +1,18 @@
 /**
- * The research brief: when a trade is proposed or a sale is sent, the four
- * questions the owner used to take to outside tools — why did it move, what is
- * Wall Street saying, where are the targets, what does X say — answered with
- * sources and dates, plus our own numbers and a short plain-English read.
+ * The research brief: when a trade is proposed or a sale is sent, one
+ * paragraph on what is going on with the company and the stock, the way a
+ * research assistant answers "what's going on with GEV?", with its sources.
  *
- * One Sonar request, one X search, Finnhub's rating counts, one small-model
- * synthesis. Every claim keeps a source from the pages the vendor actually
- * read and a date; anything without both is dropped, never filled in.
+ * One Sonar request and Finnhub's rating counts gather the facts; one
+ * small-model synthesis writes the paragraph from them. Only the paragraph
+ * and its sources are stored (2026-10-28: the brief used to store and show
+ * ~100 values, an X search that never ran, and the failures).
  */
 
 import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { prisma } from "@/lib/prisma";
 import { askSonar, type SonarSearchResult } from "@/lib/intelligence/sonar";
-import { searchXSentiment, type XSentiment } from "@/lib/intelligence/xai-live-search";
 import { finnhub } from "@/lib/agent/research-helpers";
 import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { sectorEtfFor } from "@/lib/market-data/price-structure";
@@ -22,15 +21,14 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import {
   actionLine,
   ratingsLine,
-  socialLine,
   targetsLine,
   type BriefAnalystAction,
   type BriefClaim,
+  type BriefFacts,
   type BriefFailure,
   type BriefKind,
   type BriefNumbers,
   type BriefRatings,
-  type BriefSocial,
   type BriefSource,
   type BriefTargets,
   type ResearchBriefPayload,
@@ -303,22 +301,11 @@ async function loadRatings(ticker: string): Promise<BriefRatings | null> {
   return { strongBuy: n("strongBuy"), buy: n("buy"), hold: n("hold"), sell: n("sell"), strongSell: n("strongSell"), period: String(latest.period ?? "") };
 }
 
-function socialFrom(x: XSentiment): BriefSocial {
-  return {
-    status: "ok",
-    posts: x.posts,
-    seen: x.seen,
-    spam: x.spam,
-    mostlySpam: x.seen >= 4 && x.spam * 2 >= x.seen,
-    summary: x.summary,
-  };
-}
-
 // ── The synthesis ────────────────────────────────────────────────────────────
 
 const JARGON = /\b(PEAD|drift|trend template|R\/R|risk[- ]reward|ATR|pivot|VCP|setup|breakout shelf|in the money)\b/i;
 
-const SYNTHESIS_SYSTEM = `You write the note a sharp human analyst hands a portfolio manager who is deciding on this trade right now. Four to six sentences of plain English, one paragraph, no headings or bullets. Cover, in this order: what is going on with the stock and why (say plainly when the move was the whole market or the sector rather than the company); whether the business looks intact; what Wall Street thinks, with firms and targets; and what it means for this position: state its shares, dollars, gain or loss, share of the account, stop and target plainly, without calling it big, small, safe or risky. Give Wall Street's buy, hold and sell counts as numbers. Use only the facts given. When a part has no facts, say so in a few words, for example "no company news found". Never use trading jargon or internal labels: no setup names, "PEAD", "drift", "Trend Template", "R/R", "ATR", "pivot", no chart talk like support or resistance. A stop, floor or trigger is context, never the reason. Do not tell the reader what to do or predict what the stock will do. Call something the reason for a move only when it is listed under "Why it moved"; company news is news that happened, never the cause. With nothing under "Why it moved", say there is no clear reason in the news. When the facts say the price is already past the stop, the note gets that sentence added for you; do not state the gap yourself. Don't read meaning into the stop or target. Keep each sentence under 35 words.`;
+const SYNTHESIS_SYSTEM = `You write the paragraph a sharp analyst hands the person deciding on this trade right now, the way a good research assistant answers "what's going on with this stock?". Four to six plain sentences, one paragraph, no headings or bullets. In order: what is going on with the company and the stock and why, with dates (its own news, its sector, the market; say plainly when the move was the whole market or the sector rather than the company, and when there is no clear reason in the news); whether the business looks intact (growth, profits, guidance); what Wall Street thinks, in one sentence with a firm or two, the average target and the buy, hold and sell counts as numbers; then one short sentence on this position: the shares and the gain or loss in dollars and percent. Use only the facts given. When a part has no facts, say so in a few words. Never mention a stop, a floor, a target, a trigger or a rule: the card already says why this trade was proposed. Never use trading jargon or internal labels: no setup names, "PEAD", "drift", "Trend Template", "R/R", "ATR", "pivot", no chart talk like support or resistance. Call something the reason for a move only when it is listed under "Why it moved"; company news is news that happened, never the cause. Do not tell the reader what to do or predict what the stock will do. Keep each sentence under 35 words.`;
 
 const money = (n: number) => {
   const d = Math.abs(n) >= 1000 ? 0 : 2;
@@ -326,11 +313,9 @@ const money = (n: number) => {
 };
 const signed = (n: number | null, unit = "%") => (n == null ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}${unit}`);
 
-/** Which side of the stop a losing price sits on: below for a long, above for a short. */
-const dirWord = (n: BriefNumbers) => (n.position && n.price != null && n.position.stop != null && n.price > n.position.stop ? "above" : "below");
 
 /** The facts, as the lines the synthesis model reads. Exported for the tests. */
-export function factsText(p: ResearchBriefPayload): string {
+export function factsText(p: BriefFacts): string {
   const n = p.numbers;
   const out: string[] = [];
   out.push(
@@ -342,9 +327,6 @@ export function factsText(p: ResearchBriefPayload): string {
     if (pos.avgCost != null) bits.push(`Cost ${money(pos.avgCost)} a share.`);
     if (pos.marketValue != null) bits.push(`Worth ${money(pos.marketValue)}${pos.pctOfAccount != null ? `, ${pos.pctOfAccount.toFixed(1)}% of the account` : ""}.`);
     if (pos.pnlUsd != null) bits.push(`${pos.pnlUsd >= 0 ? "Up" : "Down"} ${money(pos.pnlUsd)} (${signed(pos.pnlPct)}).`);
-    if (pos.stop != null) bits.push(`Stop ${money(pos.stop)}.`);
-    if (pos.pastStop != null && pos.stop != null) bits.push(`The price is already ${money(pos.pastStop)} ${dirWord(n)} the ${money(pos.stop)} stop.`);
-    if (pos.target != null) bits.push(`Target ${money(pos.target)}.`);
     out.push(`Position: ${bits.join(" ")}`);
   }
   const section = (title: string, lines: string[], empty: string) =>
@@ -361,13 +343,11 @@ export function factsText(p: ResearchBriefPayload): string {
   );
   section("Company news (things that happened; no source ties them to the move)", p.companyNews.map((c) => `[${c.date}] ${c.text}`), "no company news found");
   section("Fundamentals", p.fundamentals.map((c) => `[${c.date}] ${c.text}`), "nothing found");
-  if (p.social) out.push(`On X: ${socialLine(p.social)}`);
-  const missing = p.failures.filter((f) => f.part !== "synthesis").map((f) => f.part);
-  if (missing.length) out.push(`Not available: ${missing.join(", ")}.`);
+  if (p.missing.length) out.push(`Not available: ${p.missing.join(", ")}.`);
   return out.join("\n");
 }
 
-async function synthesize(p: ResearchBriefPayload): Promise<{ text: string; costUsd: number }> {
+async function synthesize(p: BriefFacts): Promise<{ text: string; costUsd: number }> {
   let cost = 0;
   const ask = async (extra: string) => {
     const r = await generateText({
@@ -409,15 +389,15 @@ const ORDER_SELECT = {
   position: { select: { id: true, userId: true, accountId: true, environment: true, direction: true, quantity: true, avgCost: true, stopLoss: true, targetPrice: true } },
 } as const;
 
-async function save(orderId: string, accountId: string, p: ResearchBriefPayload, costs: BriefCosts, reusedFromId: string | null, now: Date) {
+async function save(orderId: string, accountId: string, p: ResearchBriefPayload, costs: BriefCosts, failures: BriefFailure[], reusedFromId: string | null, now: Date) {
   const data = {
     ticker: p.ticker,
     kind: p.kind,
     accountId,
     payload: p as object,
     sources: p.sources as object,
-    costs: { ...costs, totalUsd: Math.round((costs.webUsd + costs.xUsd + costs.synthesisUsd) * 10_000) / 10_000 } as object,
-    error: p.failures.length ? p.failures.map((f) => `${f.part}: ${f.message}`).join("; ") : null,
+    costs: { ...costs, totalUsd: Math.round((costs.webUsd + costs.synthesisUsd) * 10_000) / 10_000 } as object,
+    error: failures.length ? failures.map((f) => `${f.part}: ${f.message}`).join("; ") : null,
     reusedFromId,
   };
   return prisma.researchBrief.upsert({
@@ -428,15 +408,13 @@ async function save(orderId: string, accountId: string, p: ResearchBriefPayload,
   });
 }
 
-const isLoading = (payload: unknown) => (payload as ResearchBriefPayload | null)?.social?.status === "loading";
-
-export type BriefCosts = { webUsd: number; xUsd: number; synthesisUsd: number };
+export type BriefCosts = { webUsd: number; synthesisUsd: number };
 
 /**
- * Build one brief, touching no table: our numbers, then Sonar + Finnhub + X in
- * parallel (or the paid research of `reuse`), then the synthesis. When X is the
- * last thing out, `onPartial` gets the brief without it first. Never throws on
- * a vendor failure: the brief says what failed.
+ * Build one brief, touching no table: our numbers, then Sonar and Finnhub in
+ * parallel, then the paragraph. With `reuse` (a brief on the same stock under
+ * two hours old) its paragraph and sources are copied and nothing is paid
+ * for. Never throws on a vendor failure: the paragraph says what wasn't found.
  */
 export async function buildBriefPayload(input: {
   kind: BriefKind;
@@ -445,98 +423,72 @@ export async function buildBriefPayload(input: {
   target: number | null;
   reuse?: ResearchBriefPayload | null;
   now?: Date;
-  onPartial?: (p: ResearchBriefPayload, costs: BriefCosts) => Promise<unknown>;
-}): Promise<{ payload: ResearchBriefPayload; costs: BriefCosts }> {
+}): Promise<{ payload: ResearchBriefPayload; costs: BriefCosts; failures: BriefFailure[] }> {
   const { kind, order, stop, target, reuse } = input;
   const now = input.now ?? new Date();
   const ticker = order.symbol.toUpperCase();
   const failures: BriefFailure[] = [];
-  const profile = reuse
-    ? null
-    : ((await finnhub(`/stock/profile2?symbol=${encodeURIComponent(ticker)}`, 1).catch(() => null))?.data as { name?: string; finnhubIndustry?: string } | null);
-  const company = reuse?.company ?? str(profile?.name) ?? null;
-  const sectorEtf = reuse ? reuse.numbers.sectorEtf : sectorEtfFor(profile?.finnhubIndustry ?? null);
+  const costs: BriefCosts = { webUsd: 0, synthesisUsd: 0 };
+  const stored = (company: string | null, synthesis: string | null, sources: BriefSource[]): ResearchBriefPayload => ({
+    version: 2, ticker, company, kind, builtAt: now.toISOString(), synthesis, sources,
+  });
+  if (reuse?.synthesis) return { payload: stored(reuse.company, reuse.synthesis, reuse.sources ?? []), costs, failures };
 
+  const profile = (await finnhub(`/stock/profile2?symbol=${encodeURIComponent(ticker)}`, 1).catch(() => null))?.data as
+    | { name?: string; finnhubIndustry?: string }
+    | null;
+  const sectorEtf = sectorEtfFor(profile?.finnhubIndustry ?? null);
   const numbers = await loadNumbers(kind, order, sectorEtf, stop, target).catch((e) => {
     failures.push({ part: "numbers", message: errText(e) });
     return { price: null, dayPct: null, spyPct: null, sectorEtf, sectorPct: null, position: null } as BriefNumbers;
   });
-
-  const payload: ResearchBriefPayload = {
-    version: 1, ticker, company, kind, builtAt: now.toISOString(), numbers,
-    whyItMoved: [], analystActions: [], targets: null, ratings: null, companyNews: [], fundamentals: [],
-    social: null, synthesis: null, sources: [], failures,
+  const facts: BriefFacts = {
+    ticker, company: str(profile?.name) ?? null, kind, numbers,
+    whyItMoved: [], analystActions: [], targets: null, ratings: null, companyNews: [], fundamentals: [], missing: [],
   };
-  const costs: BriefCosts = { webUsd: 0, xUsd: 0, synthesisUsd: 0 };
 
-  if (reuse) {
-    Object.assign(payload, {
-      whyItMoved: reuse.whyItMoved, analystActions: reuse.analystActions, targets: reuse.targets,
-      ratings: reuse.ratings, companyNews: reuse.companyNews, fundamentals: reuse.fundamentals,
-      social: reuse.social, sources: reuse.sources,
-    });
-    failures.push(...reuse.failures.filter((f) => f.part === "x" || f.part === "ratings"));
-  } else {
-    const today = now.toISOString().slice(0, 10);
-    const move = numbers.dayPct != null ? `Today it is ${signed(numbers.dayPct)}; the S&P 500 is ${signed(numbers.spyPct)}.` : "";
-    const after = new Date(now.getTime() - 120 * 86_400_000);
-    const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
-    const x = track(searchXSentiment({ ticker, company, fromDate: weekAgo }));
-    const [web, ratings] = await Promise.all([
-      track(askSonar({
-        system: SONAR_SYSTEM,
-        user: sonarQuestion(ticker, company, today, move),
-        schema: SONAR_SCHEMA,
-        schemaName: "research_brief",
-        afterDate: `${after.getUTCMonth() + 1}/${after.getUTCDate()}/${after.getUTCFullYear()}`,
-      })).promise,
-      track(loadRatings(ticker)).promise,
-    ]);
+  const today = now.toISOString().slice(0, 10);
+  const move = numbers.dayPct != null ? `Today it is ${signed(numbers.dayPct)}; the S&P 500 is ${signed(numbers.spyPct)}.` : "";
+  const after = new Date(now.getTime() - 120 * 86_400_000);
+  const [web, ratings] = await Promise.all([
+    track(askSonar({
+      system: SONAR_SYSTEM,
+      user: sonarQuestion(ticker, facts.company, today, move),
+      schema: SONAR_SCHEMA,
+      schemaName: "research_brief",
+      afterDate: `${after.getUTCMonth() + 1}/${after.getUTCDate()}/${after.getUTCFullYear()}`,
+    })).promise,
+    track(loadRatings(ticker)).promise,
+  ]);
+  const book = sourceBook(web.ok ? web.value.searchResults : []);
+  if (web.ok) {
+    costs.webUsd = web.value.costUsd;
+    const r = cleanWebResearch(web.value.json, book, now);
+    Object.assign(facts, { whyItMoved: r.whyItMoved, analystActions: r.analystActions, targets: r.targets, companyNews: r.companyNews, fundamentals: r.fundamentals });
+    facts.company = facts.company ?? r.company;
+  } else failures.push({ part: "web", message: web.error });
+  if (ratings.ok) facts.ratings = ratings.value;
+  else failures.push({ part: "ratings", message: ratings.error });
+  facts.missing = failures.map((f) => f.part);
 
-    const book = sourceBook(web.ok ? web.value.searchResults : []);
-    if (web.ok) {
-      costs.webUsd = web.value.costUsd;
-      const r = cleanWebResearch(web.value.json, book, now);
-      Object.assign(payload, { whyItMoved: r.whyItMoved, analystActions: r.analystActions, targets: r.targets, companyNews: r.companyNews, fundamentals: r.fundamentals });
-      payload.company = payload.company ?? r.company;
-    } else failures.push({ part: "web", message: web.error });
-    if (ratings.ok) {
-      payload.ratings = ratings.value;
-      if (ratings.value) book.add("https://finnhub.io/docs/api/recommendation-trends", "Finnhub recommendation trends", isoDay(ratings.value.period));
-    } else failures.push({ part: "ratings", message: ratings.error });
-    payload.sources = book.sources;
-
-    if (!x.done && input.onPartial) {
-      // X is the slow one: hand over what we have so the email isn't empty-handed.
-      payload.social = { status: "loading", posts: [], seen: 0, spam: 0, mostlySpam: false, summary: null };
-      await writeSynthesis(payload, costs, failures);
-      await input.onPartial(payload, costs);
-    }
-    const xr = await x.promise;
-    if (xr.ok) {
-      costs.xUsd = xr.value.costUsd;
-      payload.social = socialFrom(xr.value);
-      for (const post of xr.value.posts) book.add(post.url, `@${post.handle} on X`, null);
-    } else {
-      payload.social = { status: "failed", posts: [], seen: 0, spam: 0, mostlySpam: false, summary: null };
-      failures.push({ part: "x", message: xr.error });
-    }
-    payload.sources = book.sources;
+  let synthesis: string | null = null;
+  try {
+    const s = await synthesize(facts);
+    synthesis = s.text || null;
+    costs.synthesisUsd += s.costUsd;
+  } catch (e) {
+    failures.push({ part: "synthesis", message: errText(e) });
   }
-
-  payload.failures = failures.filter((f) => f.part !== "synthesis");
-  await writeSynthesis(payload, costs, payload.failures);
-  return { payload, costs };
+  return { payload: stored(facts.company, synthesis, book.sources), costs, failures };
 }
 
 /**
  * Build the brief for one order and attach it (one row per order). Reuses the
- * paid research of a brief on the same stock under two hours old; our numbers
- * and the synthesis are always fresh, since they are about THIS order.
+ * paragraph of a brief on the same stock under two hours old.
  */
 export async function briefForOrder(orderId: string, kind: BriefKind, now: Date = new Date()): Promise<{ briefId: string; reused: boolean } | null> {
-  const existing = await prisma.researchBrief.findUnique({ where: { orderId }, select: { id: true, payload: true } });
-  if (existing && !isLoading(existing.payload)) return { briefId: existing.id, reused: false };
+  const existing = await prisma.researchBrief.findUnique({ where: { orderId }, select: { id: true } });
+  if (existing) return { briefId: existing.id, reused: false };
 
   const order = (await prisma.order.findUnique({ where: { id: orderId }, select: ORDER_SELECT })) as OrderForBrief | null;
   if (!order) return null;
@@ -551,35 +503,16 @@ export async function briefForOrder(orderId: string, kind: BriefKind, now: Date 
     orderBy: { createdAt: "desc" },
     take: 5,
     select: { id: true, orderId: true, payload: true },
-  })).find((r) => {
-    const p = r.payload as unknown as ResearchBriefPayload;
-    return r.orderId !== orderId && !isLoading(p) && !p.failures?.some((f) => f.part === "web");
-  });
+  })).find((r) => r.orderId !== orderId && !!(r.payload as unknown as ResearchBriefPayload | null)?.synthesis);
 
-  const accountId = order.position.accountId;
-  const { payload, costs } = await buildBriefPayload({
+  const { payload, costs, failures } = await buildBriefPayload({
     kind,
     order,
     stop: thesis?.stopLoss ?? order.position.stopLoss ?? null,
     target: thesis?.targetPrice ?? order.position.targetPrice ?? null,
     reuse: recent ? (recent.payload as unknown as ResearchBriefPayload) : null,
     now,
-    onPartial: (p, c) => save(orderId, accountId, p, c, null, now),
   });
-  const row = await save(orderId, accountId, payload, costs, recent?.id ?? null, now);
+  const row = await save(orderId, order.position.accountId, payload, costs, failures, recent?.id ?? null, now);
   return { briefId: row.id, reused: !!recent };
-}
-
-async function writeSynthesis(p: ResearchBriefPayload, costs: { synthesisUsd: number }, failures: BriefFailure[]) {
-  try {
-    const s = await synthesize(p);
-    // The gap past the stop is arithmetic, so the app says it, not the model (CEG 10-20 read it as "in the money").
-    const pos = p.numbers.position;
-    const gap = pos?.pastStop != null && pos.stop != null ? `The price is already ${money(pos.pastStop)} ${dirWord(p.numbers)} your ${money(pos.stop)} stop.` : null;
-    p.synthesis = [s.text, gap && pos?.pastStop != null && !s.text.includes(money(pos.pastStop)) ? gap : null].filter(Boolean).join(" ") || null;
-    costs.synthesisUsd += s.costUsd;
-  } catch (e) {
-    p.synthesis = null;
-    failures.push({ part: "synthesis", message: errText(e) });
-  }
 }

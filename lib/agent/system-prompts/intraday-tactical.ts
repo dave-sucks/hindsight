@@ -3,8 +3,9 @@
  *
  * Spawned when a structured trigger fires (the 5-min cron in
  * trigger-evaluator.ts). Single-thesis, single-decision scope. The
- * agent's job: validate the trigger fired correctly, then either do
- * the declared action, override with reasoning, or pass.
+ * agent's job: find out what is going on with the company and the stock,
+ * decide (the declared action, another, or nothing), and write the review
+ * the owner and the next run read.
  *
  * Why a separate prompt: the daily run prompt is about walking the
  * book and deciding per-thesis. The tactical prompt is about ONE
@@ -143,7 +144,7 @@ PATH: the predicate fired on the 5-minute check.${
 
   return `${analystBrief(analyst, args.capacity)}
 
-A trigger you set on your $${stock.ticker} thesis just fired. Your job is to decide what to do about it — fast, focused, one decision.
+A trigger on your $${stock.ticker} thesis just fired. Find out what is going on with the company and the stock today, decide what to do, and write the review the principal reads: one decision.
 
 ═══════════════════════════════════════════════════════════════════
 TOOL-CALL DISCIPLINE — read first
@@ -186,12 +187,13 @@ ${pathSection}
 DECISION FRAMEWORK
 ═══════════════════════════════════════════════════════════════════
 
-1. Check the trigger fired correctly.
-   - Pull fresh data with get_stock_data($${stock.ticker}).
-   - Confirm the price level / move / reported figure actually holds right
-     now, not just at the moment the cron sampled.
+1. Find out what is going on.
+   - get_stock_data($${stock.ticker}): the live price and the company's news.
+   - One web_search: why $${stock.ticker} is moving and the latest on the
+     company, unless today's research brief on it is already in what you read.
+   - Confirm the condition still holds now, not just when the check sampled it.
 
-2. If the check HOLDS:
+2. If it still holds:
    - Default: execute the declared action (${trigger.action}). REVIEW means
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade once the buy's
@@ -201,7 +203,7 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). Say in the note what you did and why.
 
-3. If the check FAILS:
+3. If it no longer holds:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
      patch) and a note on what is happening to the stock and why you are
      not acting.
@@ -232,8 +234,9 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
    - Always EXACTLY one update_thesis call documenting what you did and why.
      Pass trigger_id="${trigger.id}" so the timeline carries the link.
    - When the row's \`said\` lists the principal's decisions or other triggers
-     fired since the last answer, your update_thesis answers them too: say
-     what you decided on each, by name.
+     fired since the last answer, your note answers what each asks (an
+     earnings date coming, a gain to reassess, a drop to explain) inside the
+     story of the stock, not as a list of the triggers.
    - Then complete_run.
 
 ═══════════════════════════════════════════════════════════════════

@@ -3,7 +3,7 @@
  * decides (docs/plans/AGENT_CONTEXT.md §3.2, §3.3). Everything counts from
  * the analyst's LAST ANSWER, the newest line a run wrote on the stock:
  *
- *  - that answer, a sentence or two;
+ *  - that answer in full, and the two before it, so a run picks up the story;
  *  - the principal's decisions since it, word for word, with the price then
  *    and now (once answered, a decision is done);
  *  - every trigger fired since it, collapsed, with its rule.
@@ -74,10 +74,14 @@ export interface StockContext {
   principalNote: string | null;
 }
 
-/** ~400 tokens. Past it, alerts fold into a count; the principal's words are never cut. */
+/** ~400 tokens of alerts. Past it, alerts fold into a count; the notes above them are never cut. */
 export const CONTEXT_CHAR_CAP = 1_600;
-/** Answers and rules: whole sentences up to this many characters. */
+/** Rules: whole sentences up to this many characters. */
 const SENTENCE_CHARS = 220;
+/** The analysts' notes a run is handed: the newest, then the two before it. */
+export const ANSWERS_SHOWN = 3;
+const LAST_NOTE_CHARS = 900;
+const EARLIER_NOTE_CHARS = 500;
 
 type Changes = {
   source?: { to?: unknown };
@@ -104,6 +108,16 @@ export function isPrincipalRow(r: ActivityRow): boolean {
  */
 export function isAgentAnswer(r: ActivityRow): boolean {
   return !!r.runId && r.type !== "TRIGGER_FIRED" && r.type !== "NOTE" && !isPrincipalRow(r);
+}
+
+/**
+ * The analysts' newest notes on a stock, newest first: what every run is
+ * handed and what the stock's Recent section shows. Fires, proposal
+ * decisions, the principal's edits and the app's bookkeeping are events, not
+ * notes, and are left out.
+ */
+export function recentAnswers(rows: ActivityRow[]): ActivityRow[] {
+  return newestFirst(rows).filter(isAgentAnswer).slice(0, ANSWERS_SHOWN);
 }
 
 /** How many of the principal's notes an agent is shown: the newest. */
@@ -244,7 +258,7 @@ export function principalDecision(r: ActivityRow, priceThen: number | null = nul
   return change ? { at: r.timestamp, line: `Set by hand: ${change}${at}`, wantsAnswer: true } : null;
 }
 
-const RUN_WORDS: Record<string, string> = {
+export const RUN_WORDS: Record<string, string> = {
   MORNING_PLAN: "morning run",
   INTRADAY_TACTICAL: "trigger run",
   THESIS_WRITER: "writer",
@@ -278,7 +292,8 @@ export function buildStockContext(args: {
   currentPrice?: number | null;
 }): StockContext {
   const rows = newestFirst(args.rows);
-  const last = rows.find(isAgentAnswer) ?? null;
+  const answers = recentAnswers(rows);
+  const last = answers[0] ?? null;
   const since = last ? rows.slice(0, rows.indexOf(last)) : rows;
   const fires = openFires(rows);
   // The price when a decision was made: its own line's, or the newest before it.
@@ -311,18 +326,24 @@ export function buildStockContext(args: {
   // Counted against the cap with the notes, and like them never cut.
   if (removed.length) lines.push(REMOVALS_HEADER);
   for (const x of removed) lines.push(`  ${etStamp(x.at)}: ${x.sentence}`);
-  const said = last?.rationale?.trim() ? ` — "${sentences(last.rationale.split(/\n\s*\n\s*\[/)[0])}"` : "";
-  lines.push(last ? `Last look: ${(last.runMode && RUN_WORDS[last.runMode]) ?? "a run"}, ${etStamp(last.timestamp)}${said}` : "Last look: none on record.");
+  const quoted = (r: ActivityRow, n: number) => (r.rationale?.trim() ? ` — "${sentences(r.rationale.split(/\n\s*\n\s*\[/)[0], n)}"` : "");
+  const ranBy = (r: ActivityRow) => (r.runMode && RUN_WORDS[r.runMode]) ?? "a run";
+  lines.push(last ? `Last look: ${ranBy(last)}, ${etStamp(last.timestamp)}${quoted(last, LAST_NOTE_CHARS)}` : "Last look: none on record.");
+  if (answers.length > 1) lines.push("Before that:");
+  for (const r of answers.slice(1)) {
+    lines.push(`  ${ranBy(r)}, ${etStamp(r.timestamp)}${typeof r.priceAtTime === "number" ? ` at ${money(r.priceAtTime)}` : ""}${quoted(r, EARLIER_NOTE_CHARS)}`);
+  }
   const tail = `Full history: get_theses(tickers: ["${T}"], include_history: true)`;
 
   if (decisions.length === 0 && fires.length === 0) {
     lines.push("Nothing since.");
   } else {
+    const sinceAt = lines.length;
     lines.push("Since then, not yet answered:");
     for (const d of decisions) lines.push(`  The principal, ${etStamp(d.at)}: ${d.line}`);
     const label = (f: OpenFire) => args.labelFor(f.triggerId)?.label ?? oneLine(f.summary ?? "a trigger since removed");
     const folded: OpenFire[] = [];
-    let used = [...lines, tail].join("\n").length;
+    let used = [...lines.slice(sinceAt), tail].join("\n").length;
     for (const f of fires) {
       const rule = args.labelFor(f.triggerId)?.rationale;
       const when = f.count === 1 ? etStamp(f.lastAt) : `fired ${f.count}×, ${etStamp(f.firstAt)} to ${etStamp(f.lastAt)}, last`;
