@@ -24,6 +24,8 @@ export interface LatestDigest {
   narrative: string;
   /** Which LLM wrote it (or "fallback"), if recorded. */
   model: string | null;
+  /** When it was written, ISO string. */
+  createdAt: string;
 }
 
 /**
@@ -51,7 +53,7 @@ export async function getLatestDigest(
   const row = await prisma.portfolioDigest.findFirst({
     where: { accountId, environment },
     orderBy: { date: "desc" },
-    select: { id: true, date: true, narrative: true, model: true },
+    select: { id: true, date: true, narrative: true, model: true, createdAt: true },
   });
   if (!row) return null;
 
@@ -60,5 +62,6 @@ export async function getLatestDigest(
     date: row.date.toISOString(),
     narrative: row.narrative,
     model: row.model,
+    createdAt: row.createdAt.toISOString(),
   };
 }
