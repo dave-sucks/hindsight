@@ -777,6 +777,6 @@ WATCHING TICKERS]. Top 3-5 → dispatch. Rest → PASS-record with rationale.
 - [`docs/plans/ANALYST_LINEUP.md`](./plans/ANALYST_LINEUP.md) — why the 4-analyst lineup looks like it does + sizing math
 - [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — thesis state machine the discovery agent writes into
 - The discovery-overhaul and discovery-v2 plans were deleted in the 2026-09-15 docs prune; their history is in git and their live successor is `plans/AGENT_REBUILD.md` (screens) plus the principal chat.
-- `lib/agent/knowledge/strategy-archetypes.ts` — the 10 archetypes; this playbook serves the 4 archetypes mapped to live analysts (THEMATIC_SECULAR, EARNINGS_DRIFT, CATALYST_EVENT, MOMENTUM_BREAKOUT)
+- `lib/agent/knowledge/strategy-archetypes.ts` — the 8 archetypes; this playbook serves the 4 archetypes mapped to live analysts (THEMATIC_SECULAR, EARNINGS_DRIFT, CATALYST_EVENT, MOMENTUM_BREAKOUT)
 - [`docs/discovery/scout-roster.md`](./discovery/scout-roster.md) — the durable per-theme bench of credible X handles (built by the Scout Loop, scored by `/review-discovery`)
 - [`docs/prompts/DISCOVERY_PREP.md`](./prompts/DISCOVERY_PREP.md) — the `/discovery-prep` instruction doc (turns a "Feed to Discovery" gap into Grok/Perplexity prompts via the Scout Loop)

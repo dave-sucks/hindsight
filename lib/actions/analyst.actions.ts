@@ -763,7 +763,7 @@ export async function createAnalystFromBuilder(
   const minConf = Math.round(Number(data.minConfidence) || 70);
   const bias = (["LONG", "SHORT", "BOTH"] as const).includes(data.directionBias as "LONG" | "SHORT" | "BOTH")
     ? data.directionBias
-    : "BOTH";
+    : "LONG";
   const holdDurs = Array.isArray(data.holdDurations) ? data.holdDurations : ["SWING"];
   const setupIds = Array.from(new Set((data.setupIds ?? []).filter(isNamedSetup)));
   const sectors = Array.isArray(data.sectors) ? data.sectors : [];

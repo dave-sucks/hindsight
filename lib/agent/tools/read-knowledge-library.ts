@@ -352,21 +352,6 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
     lines.push(entry.keySources.map(humanizeToken).join(", "));
     lines.push("");
   }
-  if (entry.risk) {
-    lines.push("Suggested risk profile:");
-    if (entry.risk.minConfidence) {
-      lines.push(`  Confidence: ${entry.risk.minConfidence[0]}–${entry.risk.minConfidence[1]}%`);
-    }
-    if (entry.risk.positionSizeBand) {
-      lines.push(
-        `  Position size: $${entry.risk.positionSizeBand[0].toLocaleString()}–$${entry.risk.positionSizeBand[1].toLocaleString()}`,
-      );
-    }
-    if (entry.risk.maxOpenPositions != null) {
-      lines.push(`  Max concurrent positions: ${entry.risk.maxOpenPositions}`);
-    }
-    lines.push("");
-  }
   if (entry.universeHints) {
     const bits: string[] = [];
     if (entry.universeHints.sectors?.length) bits.push(`sectors: ${entry.universeHints.sectors.join(", ")}`);

@@ -632,7 +632,7 @@ This single SQL UPDATE 6× the conviction capacity. No prompt change, no scope c
 
 3. **Should the PEAD Specialist be allowed to short?** Per principal's call: no. LONG-only across the board. The asymmetric tail risk of shorting earnings misses contradicts the "big gains, conviction" thesis.
 
-4. **What about a DAY trader?** No current DAY-only analyst exists. The `INTRADAY_MOMENTUM_SCALPER` archetype is available but contradicts the principal's stated goal of long-term conviction. Defer indefinitely.
+4. **What about a DAY trader?** No current DAY-only analyst exists. The `INTRADAY_MOMENTUM_SCALPER` archetype contradicted the principal's stated goal of long-term conviction, and was deleted 2026-10-27: nothing closes a position the same day since the end-of-day close job went in June.
 
 ---
 
