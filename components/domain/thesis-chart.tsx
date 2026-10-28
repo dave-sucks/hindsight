@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { StockPriceChart } from '@/components/stocks/StockPriceChart';
+import { StockPriceChart, type RangeMove } from '@/components/stocks/StockPriceChart';
 import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import type { ThesisStateLevels } from '@/lib/types/thesis-sheet';
@@ -58,6 +58,10 @@ type ThesisChartProps = {
    * The chart is JUST a chart — no children/slot; siblings live in the wrapper.
    */
   frameless?: boolean;
+  /** The selected range's move, for a parent that prints it in its price row. */
+  onChange?: (change: RangeMove | null) => void;
+  /** Draw the move inside the chart, top-right. Defaults to on. */
+  showChange?: boolean;
 };
 
 /**
@@ -83,6 +87,8 @@ export function ThesisChart({
   soldAt,
   variant,
   frameless,
+  onChange,
+  showChange,
 }: ThesisChartProps) {
   const entry = avgCost ?? entryPrice; // actual fill wins over planned
   const dir: 'LONG' | 'SHORT' = direction === 'SHORT' ? 'SHORT' : 'LONG';
@@ -286,6 +292,8 @@ export function ThesisChart({
         if (r === '1W') setWantWeek(true);
       }}
       tradeSpan={tradeSpan}
+      onChange={onChange}
+      showChange={showChange}
     />
   );
 }

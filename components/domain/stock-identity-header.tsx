@@ -30,8 +30,12 @@ interface StockIdentityHeaderProps {
   /** Big title — company full name, falling back to ticker (caller resolves). */
   displayName: string;
   exchange?: string | null;
-  /** Pill row above the identity (StatusPill, ConvictionBadge, trade status …). */
+  /** Pill row above the identity. Prefer `inlineBadge`: a row of pills costs a line. */
   badges?: ReactNode;
+  /** One pill beside the name, on its line (the thesis's status). */
+  inlineBadge?: ReactNode;
+  /** The small line under the name. Defaults to `TICKER · EXCHANGE`. */
+  subline?: ReactNode;
   /**
    * Icon-button strip on the far right of the whole header — pin, bookmark,
    * per-surface menus. A slot rather than per-page siblings so the trade page,
@@ -52,6 +56,8 @@ export function StockIdentityHeader({
   displayName,
   exchange,
   badges,
+  inlineBadge,
+  subline,
   actions,
   href,
   className,
@@ -74,19 +80,31 @@ export function StockIdentityHeader({
           <span className="shrink-0">{logo}</span>
         )}
         <div className="flex-1 min-w-0">
-          {link ? (
-            <Link href={link} className="group/stocklink min-w-0">
-              <p className="text-xl font-semibold truncate group-hover/stocklink:underline underline-offset-4">
-                {displayName}
-              </p>
-            </Link>
-          ) : (
-            <p className="text-xl font-semibold truncate">{displayName}</p>
-          )}
-          <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground mt-0.5">
-            {ticker}
-            {exchange ? ` · ${exchange}` : ""}
-          </p>
+          {/* The link is the name's own text, nothing wider: an anchor wrapping
+              a block stretched across the whole row, so hovering anywhere in
+              the header underlined the name. The paragraph owns truncation;
+              the anchor is inline inside it. */}
+          <div className="flex items-center gap-2 min-w-0">
+            <p className="text-xl font-semibold truncate">
+              {link ? (
+                <Link href={link} className="hover:underline underline-offset-4">
+                  {displayName}
+                </Link>
+              ) : (
+                displayName
+              )}
+            </p>
+            {/* The name truncates first; the pill never does. */}
+            {inlineBadge ? <span className="shrink-0 inline-flex items-center">{inlineBadge}</span> : null}
+          </div>
+          <div className="font-mono text-xs uppercase tracking-wide text-muted-foreground mt-0.5">
+            {subline ?? (
+              <>
+                {ticker}
+                {exchange ? ` · ${exchange}` : ""}
+              </>
+            )}
+          </div>
         </div>
         {/* The one right edge — icon buttons only, same place on every surface. */}
         {actions ? (

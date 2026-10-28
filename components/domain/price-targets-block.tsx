@@ -86,6 +86,15 @@ export function PriceTargetsBlock({
   };
   const entryPct = pctFor(entry);
   const currentPct = current != null ? pctFor(current) : null;
+  // A floating label is centred on its marker in the middle of the bar, but
+  // near either edge it hangs off the card and gets cropped ("try $369.25").
+  // There it anchors to its edge instead and grows inward.
+  const floatAt = (pct: number): React.CSSProperties =>
+    pct < 18
+      ? { left: `${pct}%`, transform: "translateX(-4px)" }
+      : pct > 82
+        ? { right: `${100 - pct}%`, transform: "translateX(4px)" }
+        : { left: `${pct}%`, transform: "translateX(-50%)" };
 
   return (
     <Card className="bg-muted/40 p-2 gap-3">
@@ -101,15 +110,15 @@ export function PriceTargetsBlock({
             Target are fixed at the ends below. */}
         <div className="relative h-8 text-xs tabular-nums">
           <span
-            className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-muted-foreground"
-            style={{ left: `${entryPct}%` }}
+            className="absolute top-0 whitespace-nowrap text-muted-foreground"
+            style={floatAt(entryPct)}
           >
             Entry ${entry.toFixed(2)}
           </span>
           {current != null && currentPct != null ? (
             <span
-              className="absolute bottom-0 -translate-x-1/2 whitespace-nowrap font-medium"
-              style={{ left: `${currentPct}%` }}
+              className="absolute bottom-0 whitespace-nowrap font-medium"
+              style={floatAt(currentPct)}
             >
               ${current.toFixed(2)}
             </span>

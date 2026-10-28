@@ -21,6 +21,7 @@
 
 import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 import { NextResponse } from "next/server";
+import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -37,7 +38,7 @@ import { briefForOrderView } from "@/lib/research/brief-read";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -154,6 +155,7 @@ export async function GET(
     realizedPnl: number | null;
     realizedPnlPct: number | null;
     closeReason: string | null;
+    outcome: string | null;
     pendingProposal: ThesisPendingProposal | null;
   };
 
@@ -210,23 +212,18 @@ export async function GET(
     : null;
 
   let position: PositionInfo | null = null;
-  const isActiveish =
-    thesis.status === "HOLDING" || thesis.status === "WATCHING";
-  // P1-24 B3: a sold position retires the thesis (RETIRED+SOLD). Treat RETIRED
-  // as closed-side — the CLOSED lookup finds the exit for SOLD rows and
-  // harmlessly returns null for DROPPED/REPLACED.
-  const isClosed = thesis.status === "RETIRED";
-  if ((isActiveish || isClosed) && thesis.researchRun?.agentConfigId) {
-    const pos = await prisma.position.findFirst({
-      where: {
-        accountId,
-        analystId: thesis.researchRun.agentConfigId,
-        symbol: thesis.ticker,
-        status: isClosed ? "CLOSED" : { in: ["OPEN", "PENDING_APPROVAL"] },
-      },
-      orderBy: { openedAt: "desc" },
-      select: {
+  // The trade page pins its own row (`?position=`): the one trade it is
+  // about, whatever the thesis's status has since become. The sheet takes
+  // the thesis's current trade: open or proposed first, else the last one
+  // closed, so a thesis that went back to Watching after a sale still shows
+  // the trade it had and the way to it.
+  const pinnedPositionId = new URL(req.url).searchParams.get("position");
+  const lookupAnalystId = thesis.researchRun?.agentConfigId ?? null;
+  if (pinnedPositionId || lookupAnalystId) {
+    const select = {
         id: true,
+        status: true,
+        outcome: true,
         quantity: true,
         avgCost: true,
         peakPrice: true,
@@ -256,12 +253,27 @@ export async function GET(
             rationale: true,
           },
         },
-      },
-    });
+    } satisfies Prisma.PositionSelect;
+    const wheres: Prisma.PositionWhereInput[] = pinnedPositionId
+      ? [{ id: pinnedPositionId, accountId, symbol: thesis.ticker }]
+      : [
+          { accountId, analystId: lookupAnalystId!, symbol: thesis.ticker, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
+          { accountId, analystId: lookupAnalystId!, symbol: thesis.ticker, status: "CLOSED" },
+        ];
+    let pos: Prisma.PositionGetPayload<{ select: typeof select }> | null = null;
+    for (const where of wheres) {
+      pos = await prisma.position.findFirst({ where, orderBy: { openedAt: "desc" }, select });
+      if (pos) break;
+    }
     if (pos) {
+      const closed = pos.status === "CLOSED";
+      // To the sale once closed, to today while held.
       const daysHeld = Math.max(
         0,
-        Math.floor((Date.now() - pos.openedAt.getTime()) / 86_400_000),
+        Math.floor(
+          ((closed && pos.closedAt ? pos.closedAt.getTime() : Date.now()) - pos.openedAt.getTime()) /
+            86_400_000,
+        ),
       );
       const picked = pickProposalOrder(pos.orders ?? []);
       const brief = picked ? await briefForOrderView(picked.order.id) : null;
@@ -273,7 +285,7 @@ export async function GET(
         peakPrice: pos.peakPrice != null ? Number(pos.peakPrice) : null,
         openedAt: pos.openedAt.toISOString(),
         daysHeld,
-        closed: isClosed,
+        closed,
         closedAt: pos.closedAt?.toISOString() ?? null,
         closePrice: pos.closePrice != null ? Number(pos.closePrice) : null,
         realizedPnl: pos.realizedPnl != null ? Number(pos.realizedPnl) : null,
@@ -282,6 +294,7 @@ export async function GET(
             ? (Number(pos.realizedPnl) / cost) * 100
             : null,
         closeReason: pos.closeReason,
+        outcome: pos.outcome,
         pendingProposal: picked
           ? {
               orderId: picked.order.id,

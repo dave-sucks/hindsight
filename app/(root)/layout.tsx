@@ -70,7 +70,10 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             />
             <SidebarInset>
                 {/* Top bar — sidebar toggle + search + theme */}
-                <header className="flex h-12 shrink-0 items-center gap-2 bg-sidebar dark:bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+                {/* The shell is muted (bg-sidebar) by default; a page that wants the
+                    sheet's white puts data-surface="paper" on its root and the header
+                    and main both follow it — the header has no colour of its own. */}
+                <header className="flex h-12 shrink-0 items-center gap-2 bg-sidebar dark:bg-background [&:has(+main_[data-surface=paper])]:bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
                     <div className="flex flex-1 w-full items-center gap-2 px-4">
                         <SidebarTrigger className="-ml-1" />
                         <DynamicBreadcrumb />
@@ -80,7 +83,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                         <MarketStatusPill open={marketOpen} />
                     </div>
                 </header>
-                <main className="flex-1 bg-sidebar dark:bg-background">
+                <main className="flex-1 bg-sidebar dark:bg-background has-[[data-surface=paper]]:bg-background">
                     {children}
                 </main>
             </SidebarInset>

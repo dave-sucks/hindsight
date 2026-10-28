@@ -238,27 +238,8 @@ export function EarningsCard({
   const imminent = next != null && earningsSoon(next.reportDate);
 
   return (
-    <Card className={className ?? "bg-muted/40 p-2 gap-4"}>
-      {/* The key sits where the verdict badge was: it is what you need to
-          read the plot, and "Beat 4 of 4" was a number the plot already
-          shows four times over. */}
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Earnings</p>
-        <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <span className="size-1.5 rounded-full border border-muted-foreground/70 bg-card" />
-            Expected
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="size-1.5 rounded-full bg-positive" />
-            Beat
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="size-1.5 rounded-full bg-negative" />
-            Miss
-          </span>
-        </div>
-      </div>
+    <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
+      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Earnings</p>
 
       {imminent && next ? (
         <p className="text-sm tabular-nums">
@@ -268,6 +249,24 @@ export function EarningsCard({
       ) : null}
 
       {columns.length > 0 ? <DotPlot columns={columns} /> : null}
+
+      {/* The key under the plot, the same row the consensus card's key sits
+          in: it is what you need to read the plot, and "Beat 4 of 4" was a
+          number the plot already shows four times over. */}
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full border border-muted-foreground/70 bg-card" />
+          Expected
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-positive" />
+          Beat
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-negative" />
+          Miss
+        </span>
+      </div>
     </Card>
   );
 }

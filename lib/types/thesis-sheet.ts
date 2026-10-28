@@ -79,6 +79,8 @@ export interface ThesisStatePosition {
   realizedPnl?: number | null;
   realizedPnlPct?: number | null;
   closeReason?: string | null;
+  /** The post-trade verdict once closed: WIN | LOSS | BREAKEVEN. */
+  outcome?: string | null;
   // Trade-as-Proposal — populated when this position has an outstanding
   // order attached. Drives the sheet's trade block: the Review control while
   // the decision is yours, "Executing" once you've approved it.

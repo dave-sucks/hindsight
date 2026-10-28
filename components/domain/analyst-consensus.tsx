@@ -125,7 +125,7 @@ export function AnalystConsensusWidget({
   if (!hasAnyData) return null;
 
   return (
-    <Card className={className ?? "bg-muted/40 p-2 gap-4"}>
+    <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
           Analyst Consensus
@@ -262,15 +262,18 @@ function ConsensusDistributionRow({
   const ticks: Tick[] = Array.from({ length: 60 }, (_, i) => {
     const isLeftmostBear = sell > 0 && i === 0;
     const isRightmostBull = buy > 0 && i === lastBullIdx;
+    // The Price Targets gauge's palette and heights, so the two bars read
+    // as one family: muted fills at base height, the two endpoint markers
+    // full-strength and tall.
+    if (isLeftmostBear) return { color: "bg-negative", tall: true };
+    if (isRightmostBull) return { color: "bg-positive", tall: true };
     const color =
       i < sellSlots
-        ? "bg-negative"
+        ? "bg-negative/40"
         : i < sellSlots + holdSlots
-          ? "bg-muted-foreground/40"
-          : "bg-positive";
-    return isLeftmostBear || isRightmostBull
-      ? { color, heightPx: 22 }
-      : { color, tall: true };
+          ? "bg-muted-foreground/25"
+          : "bg-positive/40";
+    return { color };
   });
 
   return (
