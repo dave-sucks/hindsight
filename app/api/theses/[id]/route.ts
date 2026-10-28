@@ -21,6 +21,7 @@
 
 import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 import { NextResponse } from "next/server";
+import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -211,29 +212,15 @@ export async function GET(
     : null;
 
   let position: PositionInfo | null = null;
-  const isActiveish =
-    thesis.status === "HOLDING" || thesis.status === "WATCHING";
-  // P1-24 B3: a sold position retires the thesis (RETIRED+SOLD). Treat RETIRED
-  // as closed-side — the CLOSED lookup finds the exit for SOLD rows and
-  // harmlessly returns null for DROPPED/REPLACED.
-  const isClosed = thesis.status === "RETIRED";
   // The trade page pins its own row (`?position=`): the one trade it is
-  // about, whatever the thesis's status has since become (a sale at the
-  // target sends the thesis back to Watching; the page for that trade still
-  // shows that trade). The sheet takes the thesis's current trade.
+  // about, whatever the thesis's status has since become. The sheet takes
+  // the thesis's current trade: open or proposed first, else the last one
+  // closed, so a thesis that went back to Watching after a sale still shows
+  // the trade it had and the way to it.
   const pinnedPositionId = new URL(req.url).searchParams.get("position");
-  if (pinnedPositionId || ((isActiveish || isClosed) && thesis.researchRun?.agentConfigId)) {
-    const pos = await prisma.position.findFirst({
-      where: pinnedPositionId
-        ? { id: pinnedPositionId, accountId, symbol: thesis.ticker }
-        : {
-            accountId,
-            analystId: thesis.researchRun!.agentConfigId!,
-            symbol: thesis.ticker,
-            status: isClosed ? "CLOSED" : { in: ["OPEN", "PENDING_APPROVAL"] },
-          },
-      orderBy: { openedAt: "desc" },
-      select: {
+  const lookupAnalystId = thesis.researchRun?.agentConfigId ?? null;
+  if (pinnedPositionId || lookupAnalystId) {
+    const select = {
         id: true,
         status: true,
         outcome: true,
@@ -266,8 +253,18 @@ export async function GET(
             rationale: true,
           },
         },
-      },
-    });
+    } satisfies Prisma.PositionSelect;
+    const wheres: Prisma.PositionWhereInput[] = pinnedPositionId
+      ? [{ id: pinnedPositionId, accountId, symbol: thesis.ticker }]
+      : [
+          { accountId, analystId: lookupAnalystId!, symbol: thesis.ticker, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
+          { accountId, analystId: lookupAnalystId!, symbol: thesis.ticker, status: "CLOSED" },
+        ];
+    let pos: Prisma.PositionGetPayload<{ select: typeof select }> | null = null;
+    for (const where of wheres) {
+      pos = await prisma.position.findFirst({ where, orderBy: { openedAt: "desc" }, select });
+      if (pos) break;
+    }
     if (pos) {
       const closed = pos.status === "CLOSED";
       // To the sale once closed, to today while held.
