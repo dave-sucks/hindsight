@@ -37,7 +37,7 @@ import { briefForOrderView } from "@/lib/research/brief-read";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -154,6 +154,7 @@ export async function GET(
     realizedPnl: number | null;
     realizedPnlPct: number | null;
     closeReason: string | null;
+    outcome: string | null;
     pendingProposal: ThesisPendingProposal | null;
   };
 
@@ -216,17 +217,26 @@ export async function GET(
   // as closed-side — the CLOSED lookup finds the exit for SOLD rows and
   // harmlessly returns null for DROPPED/REPLACED.
   const isClosed = thesis.status === "RETIRED";
-  if ((isActiveish || isClosed) && thesis.researchRun?.agentConfigId) {
+  // The trade page pins its own row (`?position=`): the one trade it is
+  // about, whatever the thesis's status has since become (a sale at the
+  // target sends the thesis back to Watching; the page for that trade still
+  // shows that trade). The sheet takes the thesis's current trade.
+  const pinnedPositionId = new URL(req.url).searchParams.get("position");
+  if (pinnedPositionId || ((isActiveish || isClosed) && thesis.researchRun?.agentConfigId)) {
     const pos = await prisma.position.findFirst({
-      where: {
-        accountId,
-        analystId: thesis.researchRun.agentConfigId,
-        symbol: thesis.ticker,
-        status: isClosed ? "CLOSED" : { in: ["OPEN", "PENDING_APPROVAL"] },
-      },
+      where: pinnedPositionId
+        ? { id: pinnedPositionId, accountId, symbol: thesis.ticker }
+        : {
+            accountId,
+            analystId: thesis.researchRun!.agentConfigId!,
+            symbol: thesis.ticker,
+            status: isClosed ? "CLOSED" : { in: ["OPEN", "PENDING_APPROVAL"] },
+          },
       orderBy: { openedAt: "desc" },
       select: {
         id: true,
+        status: true,
+        outcome: true,
         quantity: true,
         avgCost: true,
         peakPrice: true,
@@ -259,9 +269,14 @@ export async function GET(
       },
     });
     if (pos) {
+      const closed = pos.status === "CLOSED";
+      // To the sale once closed, to today while held.
       const daysHeld = Math.max(
         0,
-        Math.floor((Date.now() - pos.openedAt.getTime()) / 86_400_000),
+        Math.floor(
+          ((closed && pos.closedAt ? pos.closedAt.getTime() : Date.now()) - pos.openedAt.getTime()) /
+            86_400_000,
+        ),
       );
       const picked = pickProposalOrder(pos.orders ?? []);
       const brief = picked ? await briefForOrderView(picked.order.id) : null;
@@ -273,7 +288,7 @@ export async function GET(
         peakPrice: pos.peakPrice != null ? Number(pos.peakPrice) : null,
         openedAt: pos.openedAt.toISOString(),
         daysHeld,
-        closed: isClosed,
+        closed,
         closedAt: pos.closedAt?.toISOString() ?? null,
         closePrice: pos.closePrice != null ? Number(pos.closePrice) : null,
         realizedPnl: pos.realizedPnl != null ? Number(pos.realizedPnl) : null,
@@ -282,6 +297,7 @@ export async function GET(
             ? (Number(pos.realizedPnl) / cost) * 100
             : null,
         closeReason: pos.closeReason,
+        outcome: pos.outcome,
         pendingProposal: picked
           ? {
               orderId: picked.order.id,

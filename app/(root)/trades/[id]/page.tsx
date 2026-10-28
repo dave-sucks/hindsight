@@ -3,9 +3,6 @@ import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { ThesisHeader } from '@/components/domain/thesis-header';
 import { ThesisPageBody } from '@/components/trades/ThesisPageBody';
-import { PriceChange } from '@/components/ui/price-change';
-import { Badge } from '@/components/ui/badge';
-import { getTradeStatusDisplay } from '@/lib/trade-status';
 import { formatCurrency } from '@/lib/format';
 import {
   Tooltip,
@@ -13,7 +10,6 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
 import { getAccountId } from '@/lib/auth/account';
@@ -28,7 +24,6 @@ import {
 import { agentWatchDays } from '@/lib/agent/triggers/agent-watch';
 import { canonicalLevels } from '@/lib/agent/triggers/price-levels';
 import { getThesisComposite } from '@/lib/agent/thesis-narrative';
-import { getStockQuote } from '@/lib/actions/finnhub.actions';
 import { getStockInfo } from '@/lib/actions/stock-info';
 import { cn } from '@/lib/utils';
 import { TradeActions } from '@/components/trades/TradeActions';
@@ -46,11 +41,6 @@ function fmtDateTime(d: Date | string): string {
   });
 }
 
-
-function fmtExitReason(reason: string | null | undefined): string | null {
-  if (!reason) return null;
-  return reason.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -99,18 +89,14 @@ export default async function TradeDetailPage({
   // "submitted to Alpaca, not yet filled". Conflating the two is what made
   // `hasPendingOrder` miss proposals entirely.
   const proposalOrder = orders.find((o) => o.status === 'AWAITING_APPROVAL') ?? null;
-  const hasFilledBuy = orders.some((o) => o.side === 'BUY' && o.status === 'FILLED');
   const openingBuy = orders.find((o) => o.side === 'BUY');
   const closingSell = orders.filter((o) => o.side === 'SELL').slice(-1)[0];
 
-  // identity (StockInfo cache), stockProfile (sidebar info card: industry /
-  // country / weburl), stockQuote and candles are independent — parallel.
   // The HEADER reads identity so the name + normalized exchange match the
-  // thesis sheet exactly (same cache, same normalizer).
-  const [identity, stockQuote] = await Promise.all([
-    getStockInfo(position.symbol),
-    getStockQuote(position.symbol),
-  ]);
+  // thesis sheet exactly (same cache, same normalizer). The price, the
+  // position's P&L and the levels are the body's: it loads them the way the
+  // sheet does, pinned to this position.
+  const identity = await getStockInfo(position.symbol);
 
   const trade = {
     ...position,
@@ -128,32 +114,6 @@ export default async function TradeDetailPage({
   // PENDING_APPROVAL into every closed-trade branch on the page.
   const isProposal = position.status === 'PENDING_APPROVAL';
   const isClosed = !isOpen && !isProposal;
-  const livePrice = stockQuote?.c ?? null;
-  const closePrice = position.closePrice; // actual fill price per share at close
-  const currentPrice = !isClosed && livePrice ? livePrice : (closePrice ?? position.avgCost);
-
-  // P&L. A proposal has no P&L of any kind — no shares were ever bought, so
-  // realized is meaningless and unrealized is not yet real.
-  const realizedPnl = position.realizedPnl ?? 0;
-  const unrealizedDollars = isOpen
-    ? position.direction === 'LONG'
-      ? (currentPrice - position.avgCost) * position.quantity
-      : (position.avgCost - currentPrice) * position.quantity
-    : realizedPnl;
-  const positionCost = position.avgCost * position.quantity;
-  const exitProceeds = closePrice != null ? closePrice * position.quantity : null;
-  const pnl = isOpen ? unrealizedDollars : realizedPnl;
-  const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
-
-  // Days held: to the sale once closed, to today while open.
-  const daysHeld = position.closedAt
-    ? Math.max(1, Math.round((new Date(position.closedAt).getTime() - new Date(position.openedAt).getTime()) / 86_400_000))
-    : isOpen && hasFilledBuy
-      ? Math.max(0, Math.round((Date.now() - new Date(position.openedAt).getTime()) / 86_400_000))
-      : null;
-  // What the shares are worth now, for the summary's second line while open.
-  const marketValue = isOpen ? currentPrice * position.quantity : null;
-
   // The levels in force, read off the thesis's resolved trigger list. This
   // used to be `position.targetPrice ?? avgCost * 1.1` / `* 0.9` — a made-up
   // ±10% band rendered as though it were the plan whenever the columns were
@@ -237,65 +197,17 @@ export default async function TradeDetailPage({
           start level with the chart. */}
       <ThesisPageBody
         thesisId={trade.thesis?.id ?? null}
+        positionId={position.id}
         ticker={trade.ticker}
         aside={
           <>
-          {/* ── Position summary: the result once closed, the live position
-              while held. The same card style as Trade Details below; the
-              number is the header's PriceChange, the status is the app's pill. ── */}
-          {(isClosed || (isOpen && hasFilledBuy)) && (() => {
-            const summaryStatus = getTradeStatusDisplay(
-              isOpen ? 'OPEN' : position.outcome === 'WIN' ? 'CLOSED_WIN' : position.outcome === 'LOSS' ? 'CLOSED_LOSS' : 'CLOSED_EXPIRED',
-            );
-            return (
-              <Card className="p-3 gap-1">
-                  <div className="flex items-center justify-between pb-1">
-                    <Badge variant="secondary" className="gap-1.5 font-normal">
-                      <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', summaryStatus.dotClass)} />
-                      {summaryStatus.label}
-                    </Badge>
-                    {daysHeld != null && (
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {daysHeld} day{daysHeld !== 1 ? 's' : ''} held
-                      </span>
-                    )}
-                  </div>
-                  <div className="pb-2">
-                    <PriceChange dollarChange={pnl} percentChange={pnlPct} size="xl" />
-                  </div>
-                  <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                    <span className="text-muted-foreground">Bought @ {fmtCur(trade.entryPrice)}</span>
-                    <span className="font-medium tabular-nums">{fmtCur(positionCost)}</span>
-                  </div>
-                  {exitProceeds != null && closePrice != null && (
-                    <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                      <span className="text-muted-foreground">Sold @ {fmtCur(closePrice)}</span>
-                      <span className="font-medium tabular-nums">{fmtCur(exitProceeds)}</span>
-                    </div>
-                  )}
-                  {isOpen && marketValue != null && (
-                    <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                      <span className="text-muted-foreground">Now @ {fmtCur(currentPrice)}</span>
-                      <span className="font-medium tabular-nums">{fmtCur(marketValue)}</span>
-                    </div>
-                  )}
-                  {fmtExitReason(position.closeReason) && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Exit</span>
-                      <span className="font-medium">{fmtExitReason(position.closeReason)}</span>
-                    </div>
-                  )}
-              </Card>
-            );
-          })()}
-
           {/* ── Trade Details (always shown) ── */}
           <Card className="p-3 gap-1">
               {/* Static field rows */}
               {([
                 { label: 'Shares', value: String(trade.shares) },
                 { label: 'Avg Entry', value: fmtCur(trade.entryPrice) },
-                { label: 'Cost Basis', value: fmtCur(positionCost) },
+                { label: 'Cost Basis', value: fmtCur(position.avgCost * position.quantity) },
                 ...(() => {
                   const composite = trade.thesis ? getThesisComposite(trade.thesis) : null;
                   return composite != null
@@ -426,17 +338,6 @@ export default async function TradeDetailPage({
               ))}
 
           </Card>
-
-          {/* Price Targets — standalone, identical to the thesis sheet */}
-          <PriceTargetsBlock
-            entry={trade.entryPrice}
-            target={targetLevel}
-            stop={floorLevel}
-            storedTarget={position.decisions[0]?.thesis?.targetPrice ?? null}
-            storedStop={position.decisions[0]?.thesis?.stopLoss ?? null}
-            current={currentPrice}
-            direction={position.direction === 'SHORT' ? 'SHORT' : 'LONG'}
-          />
 
           </>
         }

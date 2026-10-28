@@ -16,7 +16,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
-import { ResearchBrief } from "@/components/domain/research-brief";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { ThesisChart } from "@/components/domain/thesis-chart";
 import {
@@ -33,8 +32,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import Link from "next/link";
 import { ThesisHeader } from "@/components/domain/thesis-header";
+import { TradeSummary } from "@/components/domain/trade-summary";
 import type { RangeMove } from "@/components/stocks/StockPriceChart";
 import { formatCurrency } from "@/lib/format";
 import { TickBar, type Tick } from "@/components/ui/gauge";
@@ -54,7 +53,6 @@ import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import {
   ThesisTriggersSection,
   type ThesisDossier,
-  type ThesisPendingProposal,
   type QuoteResponse,
   type ResolvedEnvelope,
   type ThesisResearchSections,
@@ -71,14 +69,6 @@ import {
   researchCitationSources,
 } from "@/components/domain/analyst-consensus";
 import { SourceCitation } from "@/components/ai-elements/inline-citation";
-import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
-import { ProposalActions } from "@/components/proposals/ProposalActions";
-import { buildTradeSentence } from "@/lib/trade-statement";
-import {
-  EXECUTING_LABEL,
-  EXECUTING_TOOLTIP,
-  getTradeStatusDisplay,
-} from "@/lib/trade-status";
 import type { ThesisStatus } from "@/lib/thesis-status";
 import { ChevronDown, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -249,36 +239,6 @@ function VariantViewBlock({ variantView }: { variantView: string | null }) {
 // trade this is and where the exits are. Renders only when we have
 // horizon/target/stop info to show.
 
-// ── TradeBlock helpers ──
-
-/** Compact "Jun 2" date for the meta line. */
-function fmtTradeDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-/**
- * Close reason from close_position is an enum (TARGET / STOP / MANUAL) or
- * PROMOTED from the promote action — sometimes with " — {notes}" appended.
- * Rendering "STOP" raw read as a broken label; humanize the known codes and
- * pass through anything that's already a sentence.
- */
-function humanizeCloseReason(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const [head, ...rest] = raw.split(" — ");
-  const map: Record<string, string> = {
-    STOP: "Stopped out",
-    TARGET: "Hit target",
-    MANUAL: "Closed manually",
-    PROMOTED: "Closed on promotion to live",
-  };
-  const mapped = map[head.trim().toUpperCase()];
-  if (mapped) return rest.length ? `${mapped} — ${rest.join(" — ")}` : mapped;
-  return raw;
-}
-
 // ── ClampedParagraph ──
 // The newest written note at the top of the sheet. Clamped to four lines;
 // the whole paragraph is the hit area, hover darkens, click toggles. Same as
@@ -297,194 +257,6 @@ function ClampedParagraph({ text, className }: { text: string; className?: strin
     >
       {text}
     </p>
-  );
-}
-
-// ── TradeNote ──
-// The proposal's own write-up. These run long — the agent explains the level,
-// the risk math, the exposure after the buy — and at full length the trade
-// block pushed the chart and the triggers off the screen.
-//
-// Same gesture as the Activity feed's rows: clamped to four lines, the whole
-// paragraph is the hit area, hover darkens it so it reads as pressable, click
-// toggles. No "Show more" link — the text itself is the control.
-function TradeNote({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <p
-      className={cn(
-        "text-sm text-muted-foreground leading-relaxed cursor-pointer transition-colors hover:text-foreground",
-        !open && "line-clamp-4",
-      )}
-      onClick={() => setOpen((v) => !v)}
-      title={open ? "Collapse" : "Expand"}
-    >
-      {text}
-    </p>
-  );
-}
-
-// ── TradeBlock ──
-// The ONE trade section in the sheet. Every state — pending proposal,
-// holding, closed — renders through the SAME container and the SAME slot
-// layout below (heading · optional Review · P&L · note · meta). Only the
-// slot values differ per state; the JSX is shared, so the states are
-// guaranteed to be visually identical blocks. The headings follow one
-// consistent grammar:
-//   • pending buy      → "Proposed: Buy N shares at $entry"
-//   • holding          → "Bought N shares at $entry, now trading at $current"
-//   • closed           → "Bought N shares at $entry, closed at $closePrice"
-//   • held + pending   → "Proposed: Bought N shares at $entry, <verb> at $current"
-// The meta line carries the timestamp per state (Opened / Closed / Expires).
-// `position` (cost basis + qty + dates) comes from /triggers; `pnl` (live
-// price + unrealized P&L) from /quote — the two land at different times, so
-// the P&L line appears once /quote resolves. See TRADE_AS_PROPOSAL.md §6.
-function TradeBlock({
-  position,
-  pnl,
-  pendingProposal,
-  direction,
-}: {
-  position: NonNullable<ThesisDossier["position"]>;
-  pnl: QuoteResponse["positionPnl"] | null;
-  pendingProposal: ThesisPendingProposal | null;
-  direction: "LONG" | "SHORT" | null;
-}) {
-  const pp = pendingProposal;
-  const entry = position.avgCost;
-  const current = pnl?.currentPrice ?? null;
-
-  // The sentence is built by the SHARED buildTradeSentence, and the row is the
-  // SHARED <TradeStatement> — the exact same component + visual the trade detail
-  // page uses (dot + font-medium sentence + inline gain). This block only picks
-  // the per-state inputs (sentence / dot color / gain / Review / note / meta);
-  // the look is not re-implemented here.
-  let sentence: string | null;
-  let review: ReactNode = null;
-  let gain: TradeStatementGain | null = null;
-  let dotClass = "bg-muted-foreground/40";
-  let note: string | null = null;
-  let meta: string | null = null;
-
-  // The slot above the statement. While the decision is yours it holds the
-  // Review control; once you've approved, the order is at Alpaca and there is
-  // nothing left to decide, so the same slot reads a shimmering "Executing"
-  // until the fill lands. Leaving it empty was the bug — approving made the
-  // control vanish with nothing in its place, and the sheet looked like it
-  // had lost the trade (PRAX, 2026-08-31). Same expiry caveat: an order
-  // that's already been sent can't lapse, so its "Expires" meta goes too.
-  let reviewSlot: ReactNode = null;
-  let proposalMeta: string | null = null;
-  if (pp?.executing) {
-    reviewSlot = (
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className="text-xs shimmer-text cursor-default" />}
-        >
-          {EXECUTING_LABEL}
-        </TooltipTrigger>
-        <TooltipContent className="text-xs">{EXECUTING_TOOLTIP}</TooltipContent>
-      </Tooltip>
-    );
-  } else if (pp) {
-    reviewSlot = (
-      <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />
-    );
-    proposalMeta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
-  }
-
-  if (pp && pp.intent === "OPEN") {
-    // ── Pending buy (no position held yet) ──
-    sentence = buildTradeSentence({
-      kind: "proposed-buy",
-      qty: pp.quantity,
-      entry,
-      buyVerb: direction === "SHORT" ? "Short" : "Buy",
-      executing: pp.executing,
-    });
-    review = reviewSlot;
-    // Amber is "waiting on you". Once the order is at Alpaca there is nothing
-    // to decide, so it takes the same live-and-open blue the holding row uses —
-    // from the shared status map, not a colour spelled out here.
-    dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
-    note = pp.rationale;
-    meta = proposalMeta;
-  } else if (pp) {
-    // ── Held + pending sell / add / trim ──
-    // Action leads, entry context trails: "Proposed: Sell at $45.41, bought
-    // 100 shares at $40.93". Adds/trims carry the proposal's own share count.
-    sentence = buildTradeSentence({
-      kind: "proposed-exit",
-      qty: position.quantity,
-      entry,
-      current,
-      exitVerb:
-        pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
-      proposalQty: pp.quantity,
-      executing: pp.executing,
-    });
-    review = reviewSlot;
-    dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
-    if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
-    note = pp.rationale;
-    meta = proposalMeta;
-  } else if (position.closed) {
-    // ── Closed ──
-    sentence = buildTradeSentence({
-      kind: "closed",
-      qty: position.quantity,
-      entry,
-      closePrice: position.closePrice,
-    });
-    dotClass = "bg-muted-foreground/40";
-    if (position.realizedPnl != null)
-      gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
-    note = humanizeCloseReason(position.closeReason);
-    meta = position.closedAt ? `Closed ${fmtTradeDate(position.closedAt)}` : null;
-  } else {
-    // ── Holding ──
-    sentence = buildTradeSentence({
-      kind: "holding",
-      qty: position.quantity,
-      entry,
-      current,
-    });
-    dotClass = "bg-positive";
-    if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
-    meta =
-      `Opened ${fmtTradeDate(position.openedAt)}` +
-      (position.daysHeld > 0 ? ` · ${position.daysHeld}d held` : "");
-  }
-
-  return (
-    <div className="rounded-lg border px-4 py-3 space-y-1.5">
-      {/* Review sits on its own row ABOVE the statement, left-aligned — the
-          statement row is always the same shape (dot + sentence left, P&L
-          right), never squeezed by an action control. */}
-      {review ? <div className="flex justify-start">{review}</div> : null}
-      <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
-      {note ? <TradeNote text={note} /> : null}
-      {pp && !pp.executing ? <ResearchBrief orderId={pp.orderId} initial={pp.brief ?? null} /> : null}
-      {/* Meta line doubles as the path to the trade detail page — the old
-          standalone "View trade →" under the sheet header is gone (principal
-          feedback: the banner already exists exactly when a trade exists). */}
-      {meta || position.id ? (
-        <p className="text-xs text-muted-foreground">
-          {meta}
-          {position.id ? (
-            <>
-              {meta ? " · " : null}
-              <Link
-                href={`/trades/${position.id}`}
-                className="hover:text-foreground hover:underline underline-offset-2"
-              >
-                View trade →
-              </Link>
-            </>
-          ) : null}
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -1150,7 +922,12 @@ export interface ThesisSheetData {
  *   • GET /api/theses/:id/analyst-coverage → consensus (FMP — the slow one)
  * Each live layer has its own loading flag driving a region-level skeleton.
  */
-export function useThesisSheetData(thesis_id: string | undefined, ticker: string): ThesisSheetData {
+export function useThesisSheetData(
+  thesis_id: string | undefined,
+  ticker: string,
+  /** The trade page's own position row; the sheet takes the thesis's current one. */
+  positionId?: string | null,
+): ThesisSheetData {
   const [state, setState] = useState<ThesisDossier | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
@@ -1223,7 +1000,7 @@ export function useThesisSheetData(thesis_id: string | undefined, ticker: string
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
-    fetch(`/api/theses/${thesis_id}`)
+    fetch(`/api/theses/${thesis_id}${positionId ? `?position=${encodeURIComponent(positionId)}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((json: ThesisDossier | null) => {
         if (cancelled) return;
@@ -1236,7 +1013,7 @@ export function useThesisSheetData(thesis_id: string | undefined, ticker: string
     return () => {
       cancelled = true;
     };
-  }, [thesis_id, refreshKey]);
+  }, [thesis_id, positionId, refreshKey]);
 
   // Quote ALSO re-fetches on refreshKey: it carries the `resolved` envelope,
   // whose actionability is computed from the thesis's triggers, so a trigger
@@ -1399,7 +1176,6 @@ export function ThesisBody({
       : { dollars: move.dollars, pct: move.pct };
 
   const pendingProposal = position?.pendingProposal ?? null;
-  const showBanner = position != null && (surface === "sheet" || pendingProposal != null);
 
   // The stock-level insights: Analyst Consensus and Earnings. On the sheet
   // they sit in the body; on the page they join the right-hand cards under
@@ -1420,8 +1196,65 @@ export function ThesisBody({
     earnings: earnings ? <EarningsCard data={earnings} /> : null,
   };
 
+  // The trade, in its two looks. The banner sits under the price: on the
+  // sheet in every state, on the page only while a proposal waits (the card
+  // in the sidebar carries the held numbers there). Both read the same
+  // position and the same live P&L, so they can't disagree.
+  const tradeBanner =
+    position && (surface === "sheet" || pendingProposal != null) ? (
+      <TradeSummary
+        look="banner"
+        position={position}
+        pnl={quote?.positionPnl ?? null}
+        pendingProposal={pendingProposal}
+        direction={direction}
+      />
+    ) : null;
+  const tradeCard =
+    position && surface === "page" ? (
+      <TradeSummary
+        look="card"
+        position={position}
+        pnl={quote?.positionPnl ?? null}
+        pendingProposal={pendingProposal}
+        direction={direction}
+      />
+    ) : null;
+
+  // The stock cards — Price Targets, Analyst Consensus, Earnings — built once.
+  // With a sidebar (the page) they go there; without one (the sheet) they
+  // stack at the foot of Overview.
+  const stockCards = (
+    <>
+      {showLevels && entryPrice != null ? (
+        <PriceTargetsBlock
+          entry={entryPrice}
+          target={targetLevel}
+          stop={floorLevel}
+          storedTarget={targetPrice}
+          storedStop={stopLoss}
+          current={quote?.currentPrice ?? null}
+          direction={direction === "SHORT" ? "SHORT" : "LONG"}
+        />
+      ) : null}
+      {stockInsights.consensus}
+      {stockInsights.earnings}
+    </>
+  );
+
   return (
-    <div className="space-y-5">
+    <Tabs defaultValue={0}>
+      <TabsList>
+        <TabsTrigger value={0}>Overview</TabsTrigger>
+        <TabsTrigger value={1}>Research</TabsTrigger>
+        <TabsTrigger value={2}>Activity</TabsTrigger>
+      </TabsList>
+
+      <div className={cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]")}>
+      <div className="min-w-0">
+
+      {/* ── Overview: price → the trade → chart → triggers → the latest note ── */}
+      <TabsContent value={0} className="space-y-5">
       {/* ── Live price + the selected range's move ───────────── */}
       {/* Hydrates from /quote after the dossier paints: skeleton while in
           flight, nothing if the vendor failed (currentPrice null). */}
@@ -1438,29 +1271,7 @@ export function ThesisBody({
         </div>
       ) : null}
 
-      {/* ── The trade, above the tabs ─────────────────────────── */}
-      {/* Held or merely proposed, it sits with the identity and the price,
-          over both tabs. On the page the right-hand card carries the held
-          trade, so only a proposal shows here. */}
-      {showBanner && position ? (
-        <TradeBlock
-          position={position}
-          pnl={quote?.positionPnl ?? null}
-          pendingProposal={pendingProposal}
-          direction={direction}
-        />
-      ) : null}
-
-      {/* ── Tabs: Thesis (the dossier) | Activity (the audit log) ── */}
-      <Tabs defaultValue={0}>
-        <TabsList>
-          <TabsTrigger value={0}>Thesis</TabsTrigger>
-          <TabsTrigger value={1}>Activity</TabsTrigger>
-        </TabsList>
-
-        <div className={cn(aside && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]")}>
-        <div className="min-w-0">
-        <TabsContent value={0} className="space-y-5">
+      {tradeBanner}
 
       {/* ── Price chart (annotated) ───────────────────────────── */}
       {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
@@ -1487,19 +1298,6 @@ export function ThesisBody({
           showChange={false}
         />
       ) : null}
-
-      {/* ── What just happened, and whether it needs work (DAV-304) ── */}
-      {/* Under the chart it comments on, above the triggers it leads to. */}
-      <LatestNoteBlock
-        status={state.status}
-        latestUpdate={state.latestUpdate}
-        needsAction={quote?.needsAction ?? null}
-        situations={quote?.situations ?? []}
-        quoteLoading={quoteLoading}
-        quoteFailed={!quoteLoading && quote == null}
-        analystName={state.analystName}
-        suppressText={showBanner ? (pendingProposal?.rationale ?? null) : null}
-      />
 
       {/* ── Triggers (the standing opinion in action) ── */}
       {thesis_id ? (
@@ -1532,6 +1330,24 @@ export function ThesisBody({
         </div>
       ) : null}
 
+      {/* ── What just happened, and whether it needs work (DAV-304) ── */}
+      {/* Under the chart it comments on, above the triggers it leads to. */}
+      <LatestNoteBlock
+        status={state.status}
+        latestUpdate={state.latestUpdate}
+        needsAction={quote?.needsAction ?? null}
+        situations={quote?.situations ?? []}
+        quoteLoading={quoteLoading}
+        quoteFailed={!quoteLoading && quote == null}
+        analystName={state.analystName}
+        suppressText={tradeBanner ? (pendingProposal?.rationale ?? null) : null}
+      />
+
+      {surface === "sheet" ? stockCards : null}
+      </TabsContent>
+
+      {/* ── Research: the claim and the write-up behind it ─────── */}
+      <TabsContent value={1} className="space-y-5">
       {/* ── Core belief, dated by the write-up that set it ─────── */}
       {state.coreBelief ? (
         <div className="space-y-2">
@@ -1539,25 +1355,6 @@ export function ThesisBody({
           <WrittenUpLine writtenUp={state.writtenUp} />
         </div>
       ) : null}
-
-      {/* ── Card cluster: Price Targets → Analyst Consensus → Composite ── */}
-      {/* Price Targets — the entry/target/current/stop gauge. The page's
-          sidebar renders the same block, so it shows here on the sheet only. */}
-      {surface === "sheet" && showLevels && entryPrice != null ? (
-        <PriceTargetsBlock
-          entry={entryPrice}
-          target={targetLevel}
-          stop={floorLevel}
-          storedTarget={targetPrice}
-          storedStop={stopLoss}
-          current={quote?.currentPrice ?? null}
-          direction={direction === "SHORT" ? "SHORT" : "LONG"}
-        />
-      ) : null}
-
-      {/* Analyst Consensus — in the main column on the sheet; the page's
-          sidebar carries it (see `stockInsights`). */}
-      {surface === "sheet" ? stockInsights.consensus : null}
 
       {/* Composite Score — 4-dim scoring breakdown. */}
       {state.scoring ? (
@@ -1583,9 +1380,6 @@ export function ThesisBody({
           </div>
         </Card>
       ) : null}
-
-      {/* ── Earnings — main column on the sheet, sidebar on the page ── */}
-      {surface === "sheet" ? stockInsights.earnings : null}
 
       {filings ? <FilingsBlock data={filings} /> : null}
 
@@ -1645,11 +1439,10 @@ export function ThesisBody({
         }}
         updatedAt={state.writtenUp?.at ?? state.researchUpdatedAt}
       />
-
-        </TabsContent>
+      </TabsContent>
 
         {/* ── Activity tab: timeline + provenance footer ───────── */}
-        <TabsContent value={1} className="space-y-5">
+        <TabsContent value={2} className="space-y-5">
           {thesis_id ? (
             <ThesisTimelineSection
               thesisId={thesis_id}
@@ -1667,18 +1460,18 @@ export function ThesisBody({
               No activity yet — this thesis hasn&apos;t been persisted.
             </p>
           )}
-        </TabsContent>
+      </TabsContent>
+      </div>
+
+      {surface === "page" ? (
+        <div className="hidden lg:block space-y-4">
+          {tradeCard}
+          {aside}
+          {stockCards}
         </div>
-        {aside ? (
-          <div className="hidden lg:block space-y-4">
-            {aside}
-            {stockInsights.consensus}
-            {stockInsights.earnings}
-          </div>
-        ) : null}
-        </div>
-      </Tabs>
-    </div>
+      ) : null}
+      </div>
+    </Tabs>
   );
 }
 

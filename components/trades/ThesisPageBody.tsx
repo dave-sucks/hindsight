@@ -4,14 +4,25 @@ import type { ReactNode } from "react";
 import { ThesisBody, ThesisBodySkeleton, useThesisSheetData } from "@/components/agent/sheets/ThesisSheet";
 
 /**
- * The trade page's main column: the thesis sheet's body — price with the
- * chart's move, a proposal if one waits, the tabs, the chart, the note, the
- * triggers and the rest — loaded the same way the sheet loads it. The page's
- * right-hand cards (`aside`) render beside the tab panels so they start
- * level with the chart; while the thesis loads they sit beside the skeleton.
+ * The trade page's body: the thesis sheet's body with a sidebar — the same
+ * tabs, chart, triggers and notes, loaded the same way the sheet loads them,
+ * pinned to this page's own position row. The body puts the position card
+ * and the stock cards in the sidebar itself; `aside` is the page's one extra
+ * card (Trade Details), rendered between them. While the thesis loads it
+ * sits beside the skeleton.
  */
-export function ThesisPageBody({ thesisId, ticker, aside }: { thesisId: string | null; ticker: string; aside?: ReactNode }) {
-  const data = useThesisSheetData(thesisId ?? undefined, ticker);
+export function ThesisPageBody({
+  thesisId,
+  positionId,
+  ticker,
+  aside,
+}: {
+  thesisId: string | null;
+  positionId: string;
+  ticker: string;
+  aside?: ReactNode;
+}) {
+  const data = useThesisSheetData(thesisId ?? undefined, ticker, positionId);
   const state = data.state;
   if (!thesisId || !data.loaded || !state) {
     return (
