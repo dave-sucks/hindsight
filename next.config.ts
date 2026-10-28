@@ -13,6 +13,13 @@ const nextConfig: NextConfig = {
     "/docs/[slug]": ["./docs/guide/**/*.md"],
     "/how-it-works": ["./docs/guide/**/*.md"],
   },
+  // /settings has no page of its own. Redirecting here, before render, keeps
+  // a navigation that also swaps the whole shell (main app -> settings) from
+  // hitting redirect() mid-render, which left the previous page's table
+  // painted under the settings page (seen 3x, 2026-10).
+  async redirects() {
+    return [{ source: "/settings", destination: "/settings/profile", permanent: false }];
+  },
   images: {
     remotePatterns: [
       { hostname: "www.google.com" },          // Google Favicons S2
