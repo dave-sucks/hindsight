@@ -370,6 +370,7 @@ function Row({
                 <Button
                   size="icon-xs"
                   variant="ghost"
+                  nativeButton={false}
                   render={<Link href={`/runs/${row.runId}`} />}
                   title="View run"
                 >

@@ -376,30 +376,23 @@ function SegmentRow({
 
   return (
     <Collapsible defaultOpen={defaultOpen} className="rounded-md border bg-background/40">
-      <CollapsibleTrigger
-        render={
-          <div className="flex items-center gap-2 w-full px-3 py-2 cursor-pointer hover:bg-accent/30 group">
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
-            <span className="text-sm font-medium flex-1 truncate text-left">
-              {segment.name || `Segment ${index + 1}`}
-            </span>
-            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-              ~{minutes}m
-            </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
-              className="text-muted-foreground hover:text-destructive transition-colors p-1 -mr-1"
-              aria-label="Remove segment"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </div>
-        }
-      />
+      {/* The header is a row of two sibling controls: the trigger that opens
+          the segment, and the remove button beside it — never a button
+          inside the trigger. */}
+      <div className="flex items-center gap-1 pl-3 pr-2 py-1 hover:bg-accent/30">
+        <CollapsibleTrigger className="group flex flex-1 min-w-0 items-center gap-2 py-1 text-left">
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform -rotate-90 group-data-panel-open:rotate-0" />
+          <span className="text-sm font-medium flex-1 truncate">
+            {segment.name || `Segment ${index + 1}`}
+          </span>
+          <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+            ~{minutes}m
+          </span>
+        </CollapsibleTrigger>
+        <Button variant="ghost" size="icon-xs" aria-label="Remove segment" onClick={onRemove}>
+          <Trash2 />
+        </Button>
+      </div>
       <CollapsibleContent>
         <div className="border-t">
           {/* Fixed-height container so the inner Tabs + ScrollArea behave

@@ -312,6 +312,7 @@ function CoverageTab({
             variant="ghost"
             size="sm"
             className="w-full text-muted-foreground"
+            nativeButton={false}
             render={<Link href="/trades" />}
           >
             All trades

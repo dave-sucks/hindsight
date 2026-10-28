@@ -43,7 +43,7 @@ export function AnalystEditClient({
     <div className="relative h-[calc(100dvh-3rem)] overflow-hidden">
       {/* Back button */}
       <div className="absolute top-2 left-3 z-20 flex items-center gap-1">
-        <Button variant="ghost" size="icon" render={<Link href={`/analysts/${analystId}`} />}>
+        <Button variant="ghost" size="icon" nativeButton={false} render={<Link href={`/analysts/${analystId}`} />}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
       </div>

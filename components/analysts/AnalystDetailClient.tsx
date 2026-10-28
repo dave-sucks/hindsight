@@ -664,6 +664,7 @@ export default function AnalystDetailClient({
               <Button
                 variant="outline"
                 size="sm"
+                nativeButton={false}
                 render={<Link href={`/chat?analyst=${config.id}`} />}
               >
                 <MessageSquare className="h-3.5 w-3.5" />
