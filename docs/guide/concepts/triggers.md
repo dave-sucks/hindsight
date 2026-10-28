@@ -31,7 +31,7 @@ Every measure, with its numbers, variables, settings and the shape it's saved in
 A stock answers to three layers of triggers, and the closest one wins:
 
 1. **Its thesis.** [The Writer](../agents/writer.md) writes the first plan, priced from the setup's rules and the chart. When the buy goes through, the floor and target are set to the levels the trade went in with. After that, runs keep it current one trigger at a time, and you can edit any of it on the thesis sheet.
-2. **Its analyst.** The [analyst](analysts.md)'s sell rules guard every stock it holds, like the Secular Compounder's "Sell if 25% off the high".
+2. **Its analyst.** The [analyst](analysts.md)'s rules cover every stock it holds, like the Secular Compounder's "Review if below the 200-day average".
 3. **The account.** Rules for every holding, set in Settings. By default there's one: consider adding when a holding is up 7% in a day.
 
 An inherited rule is never copied onto the thesis, so changing an analyst's style changes every holding at once. Every edit, from any layer, is one line in the stock's Activity.

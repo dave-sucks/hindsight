@@ -38,8 +38,8 @@ export const MIN_REWARD_RISK = 2;
 export const PORTFOLIO_HEAT_PCT = 6;
 /** Most names held in one industry group. */
 export const MAX_NAMES_PER_INDUSTRY = 2;
-/** The only automatic sale on a compounder: this far off the high. */
-export const COMPOUNDER_CATASTROPHE_PCT = 25;
+/** The widest a compounder's plan floor may sit under its buy. */
+export const COMPOUNDER_STOP_MAX_PCT = 25;
 /** A compounder giving back this much from its high opens a review. */
 export const COMPOUNDER_GIVEBACK_REVIEW_PCT = 15;
 
@@ -733,9 +733,9 @@ export const SETUPS: Setup[] = [
     },
     stop: {
       structure: ["a named thesis invalidation"],
-      maxPct: COMPOUNDER_CATASTROPHE_PCT,
+      maxPct: COMPOUNDER_STOP_MAX_PCT,
       minAtr: MIN_STOP_ATR,
-      text: `Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% give-back are reviews. The ${COMPOUNDER_CATASTROPHE_PCT}% catastrophe line off the high is the only automatic sale.`,
+      text: `Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% give-back are reviews.`,
     },
     target: { minR: MIN_REWARD_RISK, text: "A 3–5 year valuation case; trims only at valuation extremes." },
     riskMultiplier: 1,

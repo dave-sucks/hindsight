@@ -15,9 +15,9 @@ import type { Trigger } from "./types";
 let n = 0;
 const mintId = () => `t${++n}`;
 
-// The live PEAD Specialist rules (set through the popover on 09-14).
+// The live PEAD Specialist rules (set through the popover on 09-14; its 12% trail
+// gave way to the account's 6% on 10-25).
 const PEAD_LIVE: Trigger[] = [
-  { id: "f552414c", action: "EXIT", predicate: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10 } }, rationale: "Gave back 12% from the high, once the position had been up 10% — bank the run." },
   { id: "8d64ad2b", action: "REVIEW", predicate: { watch: "move", is: "above", value: 10, variable: "entry" }, rationale: "Up 10% from entry." },
   { id: "56be49ac", action: "REVIEW", predicate: { watch: "move", is: "below", value: 12, variable: "entry" }, rationale: "Down 12% from entry." },
 ];
@@ -39,7 +39,11 @@ describe("the seat templates", () => {
   it("the template is the analyst's FIRST setup; a setup with no seat rules, or no setups, seeds nothing rather than guessing", () => {
     expect(analystStandingTriggers(["BASE_BREAKOUT", "PEAD"], mintId)).toEqual([]);
     expect(analystStandingTriggers([], mintId)).toEqual([]);
-    expect(analystStandingTriggers(["PEAD", "BASE_BREAKOUT"], mintId)).toHaveLength(3);
+    expect(analystStandingTriggers(["PEAD", "BASE_BREAKOUT"], mintId)).toHaveLength(2);
+  });
+  it("a new analyst starts with no sale and no add on a down day: the account's sale rules govern every holding", () => {
+    const rules = Object.entries(SETUP_STANDING_RULES).flatMap(([seat, rs]) => (rs ?? []).map((r) => ({ seat, action: r.action, predicate: r.predicate })));
+    expect(rules.filter((r) => r.action === "EXIT" || r.action === "TRIM" || (r.action === "ADD" && (r.predicate as { is?: string }).is === "below"))).toEqual([]);
   });
 });
 
@@ -47,7 +51,7 @@ describe("reseedDiff", () => {
   it("PEAD: the live rules match the template bucket for bucket — nothing to add, nothing foreign", () => {
     const d = reseedDiff(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"], PEAD_LIVE, mintId);
     expect(d.toAdd).toEqual([]);
-    expect(d.present).toHaveLength(3);
+    expect(d.present).toHaveLength(2);
     expect(d.foreign).toEqual([]);
   });
   it("Catalyst: the two event-date rules would be added; the −10% review is kept as the analyst's own", () => {
