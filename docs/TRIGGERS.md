@@ -163,27 +163,26 @@ rows are not these):
 
 | Level | Rule | Does |
 |---|---|---|
+| Account | 6% off the high since we bought | EXIT — asks the analyst |
 | Account | up 7% in a day | ADD |
 | Account | every 7 days | REVIEW |
 | Account | reports earnings within 3 days | REVIEW |
 | Account | earnings beat · earnings miss | REVIEW |
 | Account | a material filing | REVIEW |
-| PEAD Specialist | 12% off the high, **once up 10%** | EXIT |
 | PEAD Specialist | up 10% from entry · down 12% from entry | REVIEW |
 | Catalyst Event PM | 10 days before the event date | REVIEW |
 | Catalyst Event PM | 30 days after the event date | REVIEW |
 | Catalyst Event PM | an 8-K under item 8.01 or 7.01 | REVIEW |
-| Secular Compounder | **25% off the high** | EXIT — the only automatic sale |
 | Secular Compounder | 15% off the high | REVIEW |
 | Secular Compounder | below the 200-day | REVIEW — once a week while it holds (§6) |
 | Secular Compounder | up 15% from entry · down 15% from entry | REVIEW |
-| Secular Compounder | down 7% in a day | ADD |
 
-Three things the table used to say that the rows do not:
+Two things the table used to say that the rows do not:
 
-- The account has no "down 7% in a day → add". It moved to the Secular
-  Compounder on 2026-09-18; trades never average down.
-- The account has no trailing sale. Every automatic sale belongs to an analyst.
+- Nothing adds on a down day. The Secular Compounder's "down 7% in a day →
+  add" and the analysts' own sales (PEAD's 12% and the Compounder's 25% off
+  the high) were removed from the starter rules on 2026-10-27; the account's
+  6% off the high governs every holding.
 - The Catalyst Event PM has no "down 10% → review". Its reviews are tied to the
   event date; the thesis carries the stop.
 

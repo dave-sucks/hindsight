@@ -13,8 +13,8 @@ Every thesis carries a **trigger ladder** (condition → action: ENTER/ADD/TRIM/
 EXIT/REVIEW) the agents author and maintain. The move from our entry
 (cumulative % vs entry) and the trail (the give-back off the tracked peak)
 protect gains. Every HOLDING inherits its sell rules from its ANALYST
-(the analyst's Triggers tab — its style, e.g. the Secular Compounder's only
-automatic sale is 25% off the high) and the account's universal rules. Nothing
+(the analyst's Triggers tab — its style) and the account's universal rules
+(Settings → Triggers). Nothing
 stamps them onto the thesis: a thesis rung beats every rule above it, so a
 stamped copy would freeze the old numbers. See TRIGGERS.md §2a.
 `resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners

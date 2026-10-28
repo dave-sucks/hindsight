@@ -3,9 +3,10 @@
  * stage 8 of the rebuild).
  *
  * The rules an analyst carries on its Triggers tab, from its signature
- * setup — the first of `AgentConfig.setupIds` — and the playbook's E5 (the
- * trail), E6 (the time limit) and Part F (selling), as ruled on DAV-279
- * (2026-09-17). A new analyst starts with these instead of a blank tab; an
+ * setup — the first of `AgentConfig.setupIds` — and the playbook's E6 (the
+ * time limit) and Part F (selling), as ruled on DAV-279 (2026-09-17). No seat
+ * carries a sale or an add on a down day: the account's own sale rules govern
+ * every holding. A new analyst starts with these instead of a blank tab; an
  * existing one can be re-seeded from them, shown as a diff first. Nothing here stamps onto a stock — this is
  * the analyst level of the cascade only. The stock's own exits from its
  * setup (the partial, the beat-that-sold review, the time limit from the
@@ -17,7 +18,7 @@
 
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { withFireMode, type FireMode } from "@/lib/agent/triggers/fire-mode";
-import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT, isNamedSetup, type SetupId } from "./setups";
+import { COMPOUNDER_GIVEBACK_REVIEW_PCT, isNamedSetup, type SetupId } from "./setups";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export interface SeatRule {
@@ -28,15 +29,8 @@ export interface SeatRule {
   cooldownDays?: number;
 }
 
-/** PEAD (TARGET): E5 — a 12% trail off the high; the ±10/12 attention lines. */
+/** PEAD (TARGET): the ±10/12 attention lines. */
 const PEAD_RULES: SeatRule[] = [
-  {
-    action: "EXIT",
-    predicate: { watch: "move", is: "below", value: 12, variable: "peak" },
-    rationale: "Sell if it gives back 12% from its high. Keeps most of the gain from the earnings move instead of handing it back.",
-    fireMode: "DO_IT",
-    cooldownDays: 0,
-  },
   {
     action: "REVIEW",
     predicate: { watch: "move", is: "above", value: 10, variable: "entry" },
@@ -76,20 +70,13 @@ const CATALYST_RULES: SeatRule[] = [
   },
 ];
 
-/** Compounder (COMPOUNDER): only a named invalidation sells; price alarms are reviews; one catastrophe line (D11, F). */
+/** Compounder (COMPOUNDER): only a named invalidation sells; price alarms are reviews (D11, F). */
 const COMPOUNDER_RULES: SeatRule[] = [
   {
     action: "REVIEW",
     predicate: { watch: "move", is: "below", value: COMPOUNDER_GIVEBACK_REVIEW_PCT, variable: "peak" },
     rationale: `Down ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from its high. A question, not a sale: is the reason we bought still true? If it is, hold, and move the stop up under the gain.`,
     cooldownDays: 7,
-  },
-  {
-    action: "EXIT",
-    predicate: { watch: "move", is: "below", value: COMPOUNDER_CATASTROPHE_PCT, variable: "peak" },
-    rationale: `Down ${COMPOUNDER_CATASTROPHE_PCT}% from its high. For a stock we mean to hold for years, a drop this deep is the one automatic sale.`,
-    fireMode: "DO_IT",
-    cooldownDays: 0,
   },
   {
     action: "REVIEW",
@@ -108,12 +95,6 @@ const COMPOUNDER_RULES: SeatRule[] = [
     predicate: { watch: "move", is: "below", value: 15, variable: "entry" },
     rationale: "Down 15% from our buy: is the reason we bought still true? For a long-term holding, a drop like this means a closer look, never an automatic sale.",
     cooldownDays: 7,
-  },
-  {
-    action: "ADD",
-    predicate: { watch: "move", is: "below", value: 7, variable: "prev_close" },
-    rationale: "Down 7% in a day: if the whole market fell and nothing changed at the company, buy the second half of a position we started at the 50-day average. Never on bad company news. This analyst's rule only; the others never add to a falling stock.",
-    cooldownDays: 3,
   },
 ];
 

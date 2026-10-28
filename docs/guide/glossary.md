@@ -41,7 +41,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Trigger:** a condition and an action, written as one sentence: "Sell if below $384". See [Triggers](concepts/triggers.md).
 - **Action:** what a trigger does when it comes true: **buy**, **add**, **trim**, **sell** or **review**. A review wakes the analyst with no order behind it.
 - **Floor:** the sale trigger under the price. The stop.
-- **Trail:** a sale measured as a give-back from the highest price since the buy, like "12% off the high".
+- **Trail:** a sale measured as a give-back from the highest price since the buy, like "6% off the high".
 - **Target:** the price the plan aims for. Reaching it is a review: take it, or trail higher.
 - **Buy level:** the price a watched stock's buy trigger waits for.
 - **Fire:** a trigger coming true. It's written into Activity with the price that fired it.

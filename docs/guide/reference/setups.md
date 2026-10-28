@@ -304,7 +304,7 @@ A business bought at conviction size and held through volatility, entered on con
 **Buy:** Whichever comes first: a base breakout, a reclaim of the 50-day, or a pullback that holds the 50-day. A stock at new highs on a working thesis is working, not extended; with no pullback in 30 days of uptrend, take the breakout. When one is already true, set the entry at the current price.
  Entry through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
-**Floor:** Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a 15% give-back are reviews. The 25% catastrophe line off the high is the only automatic sale.
+**Floor:** Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a 15% give-back are reviews.
 
 **Target:** A 3–5 year valuation case; trims only at valuation extremes.
 
