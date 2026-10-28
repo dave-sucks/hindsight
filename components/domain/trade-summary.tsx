@@ -231,7 +231,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
 
 // ── The card ──
 // The page's position summary: the result once closed, the live position
-// while held. Same frame as Trade Details; the gain is the header's
+// while held. Same frame as the stock cards; the gain is the header's
 // PriceChange; the status is the app's pill.
 function TradeCard({ position, pnl, pendingProposal }: TradeSummaryProps) {
   // A proposed buy holds no shares yet — nothing to summarise.
@@ -256,7 +256,7 @@ function TradeCard({ position, pnl, pendingProposal }: TradeSummaryProps) {
   const exit = humanizeCloseReason(position.closeReason);
 
   return (
-    <Card className="p-3 gap-1">
+    <Card className="bg-muted/40 p-2 gap-1">
       <div className="flex items-center justify-between pb-1">
         <Badge variant="secondary" className="gap-1.5 font-normal">
           <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />

@@ -501,20 +501,20 @@ export default function TradesPage({
                         {/* One legend row per level, each carrying the SAME
                             marker colour the gauge draws, sorted by price so
                             the list reads left-to-right like the bar itself.
-                            Current is drawn as an outline: the gauge paints it
-                            `bg-foreground`, and this tooltip's own surface is
-                            bg-foreground — a solid dot was invisible on it. */}
+                            Current is the gauge's diamond, drawn as an outline:
+                            the gauge paints it `bg-foreground`, and this tooltip's
+                            own surface is bg-foreground — solid was invisible. */}
                         <div className="space-y-0.5">
                           {[
                             { label: 'Stop', value: trade.stopPrice, marker: 'bg-negative' },
                             { label: 'Entry', value: trade.entryPrice, marker: 'bg-muted-foreground' },
-                            { label: 'Current', value: trade.currentPrice, marker: 'border border-current' },
+                            { label: 'Current', value: trade.currentPrice, marker: 'border border-current rotate-45 rounded-[1px]' },
                             { label: 'Target', value: trade.targetPrice, marker: 'bg-positive' },
                           ]
                             .sort((a, b) => a.value - b.value)
                             .map((lvl) => (
                               <div key={lvl.label} className="flex items-center gap-2">
-                                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', lvl.marker)} />
+                                <span className={cn('h-1.5 w-1.5 shrink-0', lvl.label === 'Current' ? '' : 'rounded-full', lvl.marker)} />
                                 {lvl.label} ${lvl.value.toFixed(2)}
                               </div>
                             ))}

@@ -203,7 +203,7 @@ export default async function TradeDetailPage({
         aside={
           <>
           {/* ── Trade Details (always shown) ── */}
-          <Card className="p-3 gap-1">
+          <Card className="bg-muted/40 p-2 gap-1">
               {/* Static field rows */}
               {([
                 { label: 'Shares', value: String(trade.shares) },

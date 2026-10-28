@@ -163,14 +163,12 @@ export function PriceGauge({
   const overshootHi = beyondTarget ? Math.max(targetIdx, currentIdx) : -1;
 
   const ticks: Tick[] = Array.from({ length: count }, (_, i) => {
-    // Ordered by visual priority — current > entry > stop > target
-    if (i === currentIdx) return { color: "bg-foreground", tall: true };
-    if (i === entryIdx) {
-      return {
-        color: current != null ? "bg-muted-foreground" : "bg-foreground",
-        tall: true,
-      };
-    }
+    // Ordered by visual priority — entry > stop > target. Current is not a
+    // tick: it is the diamond riding on the bar (below), so it can never be
+    // mistaken for a level, and entry stays black whether or not a live
+    // price is on the bar (the grey entry read as "nothing" in the trades
+    // table's mini gauge).
+    if (i === entryIdx) return { color: "bg-foreground", tall: true };
     if (i === stopIdx) return { color: "bg-negative", tall: true };
     if (i === targetIdx) return { color: "bg-positive", tall: true };
 
@@ -189,5 +187,43 @@ export function PriceGauge({
     return { color: "bg-muted-foreground/25" };
   });
 
-  return <TickBar ticks={ticks} height={height} className={className} />;
+  // The live price: a diamond sitting on the bar at its place, centred on
+  // the tick column it would have been. Same column maths as the ticks so
+  // the two can't drift.
+  const currentPct = currentIdx >= 0 ? ((currentIdx + 0.5) / count) * 100 : null;
+
+  return (
+    <div className={cn("relative", className)}>
+      <TickBar ticks={ticks} height={height} />
+      {currentPct != null ? (
+        <CurrentMarker
+          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
+          style={{ left: `${currentPct}%` }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The live-price glyph — a small black diamond — so a legend can draw the
+ * same mark the gauge does.
+ */
+export function CurrentMarker({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "block size-2 rotate-45 rounded-[1px] bg-foreground ring-2 ring-background",
+        className,
+      )}
+      style={style}
+    />
+  );
 }
