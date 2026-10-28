@@ -149,8 +149,10 @@ describe("the block, counted from the analyst's last answer", () => {
     expect(text).not.toContain("Approved");
     expect(text).not.toContain("buy price set");
     expect(unansweredDecision).toBeNull();
-    // Under 700 before the principal's removal joined it as two short lines.
-    expect(text!.replace(/Removed by the principal .*\n(  .*\n)+/, "").length).toBeLessThan(700);
+    // The story so far: the last look in full and the two answers before it (10-28: a run read one sentence of it).
+    expect(text).toMatch(/\nBefore that:\n  (morning run|trigger run), 09-\d\d \d\d:\d\d at \$\d+\.\d\d — "[^"]+"\n  (morning run|trigger run), 09-\d\d \d\d:\d\d/);
+    // The alerts stay short: the one review nobody answered.
+    expect(text!.slice(text!.indexOf("Since then")).length).toBeLessThan(700);
   });
 
   it("09-18 morning read: the 09-16 answer and all three fires since it, collapsed", () => {

@@ -22,10 +22,10 @@ import { MODES } from "@/lib/agent/modes";
 import { createResearchTools } from "@/lib/agent/tools";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  daily: 6_354,
-  tactical: 11_367,
-  writer: 12_620,
-  chat: 33_099,
+  daily: 7_131,
+  tactical: 12_392,
+  writer: 13_397,
+  chat: 33_876,
 };
 
 /**

@@ -145,9 +145,9 @@ Answer, in order:
 
 What you can do:
 - Sell: close_position with reason STOP, answering belief_survived as its description says, or trim with manage_position partial_close; then one update_thesis saying why.
-- After a decline or lapse, propose the sale again with today's reasons: a sale asks every day its condition holds. Say which day of the breach it is, quote any note, and offer the recent low as a level for the line.
+- After a decline or lapse, propose the sale again with today's reasons: what is going on with the company and the stock today. A sale asks every day its condition holds. Quote their note, and offer the recent low as a level for the line.
 - Or tighten the line: update_thesis with edit_triggers on the fired trigger's id (the \`triggers\` lines give each id).
-- Two sales fired together: one decision covers both (all, some or none); name the rule you followed.
+- Two sales fired together: one decision covers both (all, some or none).
 
 Answered: a sale or trim, or the line tightened. A note that changes nothing leaves the sale asking again tomorrow; after a decline or lapse, complete_run takes no note.
 

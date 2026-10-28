@@ -52,24 +52,6 @@ export interface BriefRatings {
   period: string;
 }
 
-export interface BriefPost {
-  handle: string;
-  excerpt: string;
-  sentiment: "BULLISH" | "BEARISH" | "MIXED" | "NEUTRAL";
-  recency: string;
-  url: string;
-}
-
-export interface BriefSocial {
-  /** "loading" while the X search is still out; the brief is saved without it first. */
-  status: "ok" | "loading" | "failed";
-  posts: BriefPost[];
-  seen: number;
-  spam: number;
-  mostlySpam: boolean;
-  summary: string | null;
-}
-
 export interface BriefPosition {
   /** What the order does: a proposed buy, a proposed sale, a sale already sent. */
   occasion: string;
@@ -99,12 +81,11 @@ export interface BriefFailure {
   message: string;
 }
 
-export interface ResearchBriefPayload {
-  version: 1;
+/** What the research gathered, the paragraph's input. Not stored: only the paragraph and its sources are. */
+export interface BriefFacts {
   ticker: string;
   company: string | null;
   kind: BriefKind;
-  builtAt: string;
   numbers: BriefNumbers;
   whyItMoved: BriefClaim[];
   analystActions: BriefAnalystAction[];
@@ -112,34 +93,32 @@ export interface ResearchBriefPayload {
   ratings: BriefRatings | null;
   companyNews: BriefClaim[];
   fundamentals: BriefClaim[];
-  social: BriefSocial | null;
-  /** 4–6 plain sentences by a small model, from the facts above only. */
-  synthesis: string | null;
-  sources: BriefSource[];
-  failures: BriefFailure[];
+  /** The parts that could not be read, for the paragraph to say "not found". */
+  missing: BriefFailure["part"][];
 }
 
-/** The card's view: the payload plus when it was built. */
+/**
+ * What a brief stores and every reader shows: one paragraph and its sources.
+ * Briefs before 2026-10-28 (version 1) stored ~100 values; their paragraph
+ * and sources are read the same way and the rest is ignored.
+ */
+export interface ResearchBriefPayload {
+  version: 1 | 2;
+  ticker: string;
+  company: string | null;
+  kind: BriefKind;
+  builtAt: string;
+  /** Four to six plain sentences by a small model, from the facts only. */
+  synthesis: string | null;
+  sources: BriefSource[];
+}
+
 export interface ResearchBriefView {
   id: string;
   createdAt: string;
   payload: ResearchBriefPayload;
 }
 
-const PART_LABEL: Record<BriefFailure["part"], string> = {
-  web: "Web research",
-  x: "X search",
-  ratings: "Analyst ratings",
-  numbers: "Prices",
-  synthesis: "Summary",
-};
-
-/** "X search failed: no xAI key is configured" — one line per part that failed. */
-export function failureLines(p: ResearchBriefPayload): string[] {
-  return p.failures.map((f) => `${PART_LABEL[f.part]} failed: ${f.message}`);
-}
-
-/** "10 buy · 4 hold · 0 sell" from Finnhub's counts. */
 export function ratingsLine(r: BriefRatings): string {
   return `${r.strongBuy + r.buy} buy · ${r.hold} hold · ${r.sell + r.strongSell} sell`;
 }
@@ -177,53 +156,33 @@ export function actionLine(a: BriefAnalystAction): string {
   return `${a.firm} ${v}${rating}${target}`;
 }
 
-/** What X says, in one line, saying so plainly when it is mostly spam. */
-export function socialLine(s: BriefSocial): string {
-  if (s.status === "loading") return "X search still running.";
-  if (s.status === "failed") return "X search failed.";
-  if (s.seen === 0) return "No posts about this stock found on X this week.";
-  const spam = s.mostlySpam ? `Mostly spam: ${s.spam} of ${s.seen} posts were promotion, bots or another ticker. ` : "";
-  return `${spam}${s.summary ?? `${s.posts.length} genuine posts.`}`.trim();
-}
-
-/** The newest "why it moved" fact, dated — one line for the stock's row and the agents. */
+/** The paragraph's first sentence: the stock's row and the run's kickoff carry it as "why it moved". */
 export function whyItMovedLine(p: ResearchBriefPayload): string | null {
-  const c = [...p.whyItMoved].sort((a, b) => b.date.localeCompare(a.date))[0];
-  return c ? `${c.text} (${c.date})` : null;
+  const text = p.synthesis?.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.split(/(?<=[.!?])\s+/)[0];
 }
 
 const etStamp = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " ET";
 
-/** The brief as an agent reads it: the read, then each dated fact with its link, then what failed. */
+/** The web pages behind a paragraph, the ones a reader can open. */
+export function briefLinks(p: ResearchBriefPayload): BriefSource[] {
+  return (p.sources ?? []).filter((x) => /^https?:\/\//.test(x.url));
+}
+
+/** The brief as an agent reads it: when it was built, the paragraph, and its links. */
 export function briefForModel(v: ResearchBriefView) {
   const b = v.payload;
-  const url = (ids: number[]) => b.sources.find((s) => s.id === ids[0])?.url ?? null;
-  const facts = (cs: BriefClaim[]) => cs.map((c) => ({ text: c.text, date: c.date, source: url(c.sourceIds) }));
   return {
     builtAt: etStamp(v.createdAt),
     read: b.synthesis,
-    whyItMoved: facts(b.whyItMoved),
-    wallStreet: {
-      ratings: b.ratings ? `${ratingsLine(b.ratings)} (Finnhub, ${b.ratings.period})` : null,
-      targets: b.targets ? { text: targetsLine(b.targets), date: b.targets.asOf, source: url(b.targets.sourceIds) } : null,
-      actions: b.analystActions.map((a) => ({ text: actionLine(a), date: a.date, source: url(a.sourceIds) })),
-    },
-    companyNews: facts(b.companyNews),
-    fundamentals: facts(b.fundamentals),
-    x: b.social ? socialLine(b.social) : null,
-    failed: failureLines(b),
+    sources: briefLinks(b).slice(0, 6).map((x) => ({ title: x.title, date: x.date, url: x.url })),
   };
 }
 
-/** One paragraph for a run's kickoff: when it was built, the read, what failed. */
-export function briefKickoffLine(v: ResearchBriefView): string {
+/** One paragraph for a run's kickoff: when it was built, then the read. */
+export function briefKickoffLine(v: ResearchBriefView): string | null {
   const b = v.payload;
-  const why = whyItMovedLine(b);
-  const failed = failureLines(b);
-  return [
-    `Research brief on $${b.ticker} (${etStamp(v.createdAt)}, every fact sourced and dated):`,
-    b.synthesis ?? (why ? `Why it moved: ${why}.` : "No company news found."),
-    failed.length ? `(${failed.join("; ")}.)` : null,
-  ].filter(Boolean).join(" ");
+  return b.synthesis ? `Today's research on $${b.ticker} (${etStamp(v.createdAt)}): ${b.synthesis}` : null;
 }

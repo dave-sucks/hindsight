@@ -198,7 +198,7 @@ describe("the 09-14 trigger runs", () => {
     });
   };
 
-  it("15:30, the first run after the decline: the whole decline, the price then and now, and the rule to answer it by name", () => {
+  it("15:30, the first run after the decline: the whole decline, the price then and now, and the rule to answer what it asks", () => {
     const prompt = promptAt(fx.runs.trigger0914_1530.loadedAt, 264.6);
     expect(prompt).toContain("WHAT'S BEEN SAID ON $CEG");
     expect(prompt).toContain("The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%)");
@@ -237,7 +237,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
     expect(mu.closeout.rationale).not.toMatch(/15%|4%/);
   });
 
-  it("the prompt lists the three open reviews and tells the run its update_thesis answers each, by name", () => {
+  it("the prompt lists the three open reviews and tells the run its note answers what each asks", () => {
     const context = stockContextFor({ ticker: "MU", rows: loaded, triggers: mu.triggers, now: new Date(mu.loadedAt) }).text!;
     const prompt = buildTacticalSystemPrompt({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
@@ -256,7 +256,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
     expect(prompt).toContain("At +15% from entry, reassess");
     expect(prompt).toContain("A sharp 1-day drop could be either normal volatility");
     expect(prompt).toContain(
-      "When the row's `said` lists the principal's decisions or other triggers\n     fired since the last answer, your update_thesis answers them too: say\n     what you decided on each, by name.",
+      "When the row's `said` lists the principal's decisions or other triggers\n     fired since the last answer, your note answers what each asks (an\n     earnings date coming, a gain to reassess, a drop to explain) inside the\n     story of the stock, not as a list of the triggers.",
     );
   });
 });
