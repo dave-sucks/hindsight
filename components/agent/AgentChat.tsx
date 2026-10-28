@@ -29,6 +29,7 @@ import {
   createAnalystFromBuilder,
   updateAnalystFromBuilder,
 } from "@/lib/actions/analyst.actions";
+import { toApplyInput, toCreateInput } from "@/components/analysts/builder-config";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 import { Sparkles, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -368,75 +369,11 @@ function AgentChatInner({
       startMutating(async () => {
         try {
           if (mode === "builder") {
-            // Session B audit follow-up: builder branch mirrors the editor —
-            // industries / themes / marketCap ride through the `universe`
-            // payload so createAnalystFromBuilder persists them to the
-            // AgentConfig columns. Without this, new analysts start with
-            // empty industries/themes even though the Builder proposed them.
-            const result = await createAnalystFromBuilder({
-              name: config.name ?? "Untitled Analyst",
-              analystPrompt: config.analystPrompt ?? "General market research analyst",
-              description: config.description,
-              directionBias: config.directionBias ?? "BOTH",
-              holdDurations: (config.holdDurations ?? ["SWING"]) as ("DAY" | "SWING" | "POSITION")[],
-              sectors: config.sectors ?? [],
-              signalTypes: config.signalTypes ?? [],
-              minConfidence: config.minConfidence ?? 65,
-              maxPositionSize: config.maxPositionSize ?? 5000,
-              maxOpenPositions: config.maxOpenPositions ?? 5,
-              minMarketCapTier: (config.minMarketCapTier ?? "LARGE") as "LARGE" | "MID" | "SMALL",
-              watchlist: (config.watchlist ?? []) as string[],
-              exclusionList: (config.exclusionList ?? []) as string[],
-              intelligencePolicy: config.intelligencePolicy,
-              universe: {
-                sectors: config.sectors,
-                industries: config.industries,
-                themes: config.themes,
-                marketCapMin: config.marketCapMin ?? undefined,
-                marketCapMax: config.marketCapMax ?? undefined,
-              },
-            });
+            const result = await createAnalystFromBuilder(toCreateInput(config));
             toast.success(`Analyst "${config.name}" created`);
             router.push(`/analysts/${result.id}`);
           } else {
-            // Session B: industries/themes/marketCapMin/Max ride through the
-            // `universe` payload so they reach AgentConfig columns. Without
-            // this, cherry-picking a Universe tab diff would silently no-op
-            // because updateAnalystFromBuilder only reads these from `universe`.
-            const universeKeys: Array<keyof AgentConfigData> = [
-              "sectors",
-              "industries",
-              "themes",
-              "marketCapMin",
-              "marketCapMax",
-            ];
-            const hasUniverseField = universeKeys.some((k) => config[k] !== undefined);
-            const universe = hasUniverseField
-              ? {
-                  sectors: config.sectors,
-                  industries: config.industries,
-                  themes: config.themes,
-                  marketCapMin: config.marketCapMin ?? undefined,
-                  marketCapMax: config.marketCapMax ?? undefined,
-                }
-              : undefined;
-
-            await updateAnalystFromBuilder(analystId!, {
-              name: config.name,
-              analystPrompt: config.analystPrompt,
-              directionBias: config.directionBias as "LONG" | "SHORT" | "BOTH",
-              holdDurations: config.holdDurations as ("DAY" | "SWING" | "POSITION")[],
-              sectors: config.sectors,
-              signalTypes: config.signalTypes,
-              minConfidence: config.minConfidence,
-              maxPositionSize: config.maxPositionSize,
-              maxOpenPositions: config.maxOpenPositions,
-              minMarketCapTier: config.minMarketCapTier as "LARGE" | "MID" | "SMALL",
-              watchlist: config.watchlist as string[] | undefined,
-              exclusionList: config.exclusionList as string[] | undefined,
-              intelligencePolicy: config.intelligencePolicy,
-              universe,
-            });
+            await updateAnalystFromBuilder(analystId!, toApplyInput(config));
             router.push(`/analysts/${analystId}`);
           }
         } catch (err) {

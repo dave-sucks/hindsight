@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { seedAnalystTriggers } from "@/lib/agent/triggers/seed-analyst";
 import { isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { boundRiskPct } from "@/lib/agent/position-sizing";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -700,7 +701,7 @@ export async function createAnalystFromWizard(
 
 // ── createAnalystFromBuilder (AI chat builder — richer config) ──────────────
 
-interface BuilderConfig {
+export interface BuilderConfig {
   name: string;
   analystPrompt: string;
   description?: string;
@@ -714,6 +715,10 @@ interface BuilderConfig {
   /** Per-entry floor; omit or 0 for no floor. */
   minPositionSize?: number;
   maxPositionSize: number;
+  /** Most in one stock; omit for twice the largest trade. */
+  maxPositionTotal?: number;
+  /** Risk per trade, % of equity; omit for the default. */
+  riskPct?: number;
   maxOpenPositions: number;
   minMarketCapTier: "LARGE" | "MID" | "SMALL";
   watchlist?: string[];
@@ -878,7 +883,8 @@ export async function createAnalystFromBuilder(
         graduationMinTrades: 50,
         graduationProfitFactor: 1.5,
         tradingEnvironment: "PAPER",
-        maxPositionTotal: posSize * 2,
+        maxPositionTotal: Number(data.maxPositionTotal) > 0 ? Number(data.maxPositionTotal) : posSize * 2,
+        riskPct: boundRiskPct(data.riskPct),
         emailAlerts: true,
         weeklyDigestEnabled: true,
         intelligencePolicy: intelligencePolicy as unknown as object,
@@ -1087,10 +1093,7 @@ export async function updateAnalystField(
     // setup whose rules seed the Triggers tab). Empty = the whole catalog.
     storedValue = Array.from(new Set((value as unknown[]).filter((v): v is string => typeof v === "string" && isNamedSetup(v))));
   } else if (field === "riskPct") {
-    // % of equity at risk per trade. Bounded to a sane band so a typo (10
-    // instead of 1.0) can't size a buy at ten times the intended risk.
-    const n = Number(value);
-    storedValue = Number.isFinite(n) ? Math.min(Math.max(n, 0.1), 3) : 1;
+    storedValue = boundRiskPct(value);
   }
 
   await prisma.agentConfig.update({
@@ -1193,6 +1196,9 @@ export async function updateAnalystFromBuilder(
   if (data.minConfidence !== undefined) updateData.minConfidence = data.minConfidence;
   if (data.minPositionSize !== undefined) updateData.minPositionSize = data.minPositionSize;
   if (data.maxPositionSize !== undefined) updateData.maxPositionSize = data.maxPositionSize;
+  if (data.maxPositionTotal !== undefined) updateData.maxPositionTotal = data.maxPositionTotal;
+  if (data.riskPct !== undefined) updateData.riskPct = boundRiskPct(data.riskPct);
+  if (data.setupIds !== undefined) updateData.setupIds = Array.from(new Set(data.setupIds.filter(isNamedSetup)));
   if (data.maxOpenPositions !== undefined) updateData.maxOpenPositions = data.maxOpenPositions;
   if (data.minMarketCapTier !== undefined) updateData.minMarketCapTier = data.minMarketCapTier;
   if (data.exclusionList !== undefined) updateData.exclusionList = data.exclusionList;

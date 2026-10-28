@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   AnalystConfigForm,
-  type FormValues,
   type FormChangeHandler,
 } from "@/components/analysts/AnalystConfigForm";
+import { applyChange, toFormValues } from "@/components/analysts/builder-config";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 const Silk = dynamic(() => import("@/components/Silk"), { ssr: false });
@@ -102,65 +102,4 @@ export function AnalystConfigPanel({
       </div>
     </div>
   );
-}
-
-// ─── Adapters: AgentConfigData ↔ FormValues ─────────────────────────────────
-
-function toFormValues(config: AgentConfigData): FormValues {
-  const watchlist = (config.watchlist ?? []).map((w) =>
-    typeof w === "string" ? w : w.symbol,
-  );
-
-  return {
-    name: config.name ?? "",
-    description: config.description ?? null,
-    analystPrompt: config.analystPrompt ?? null,
-    watchlist,
-    directionBias: config.directionBias ?? "BOTH",
-    holdDurations: config.holdDurations ?? ["SWING"],
-    minConfidence: config.minConfidence ?? 65,
-    maxOpenPositions: config.maxOpenPositions ?? 5,
-    minPositionSize: config.minPositionSize ?? 0,
-    maxPositionSize: config.maxPositionSize ?? 5000,
-    intelligencePolicy: config.intelligencePolicy ?? null,
-    sectors: config.sectors ?? [],
-    industries: config.industries ?? [],
-    themes: config.themes ?? [],
-    marketCapMin: config.marketCapMin ?? null,
-    marketCapMax: config.marketCapMax ?? null,
-    exclusionList: config.exclusionList ?? [],
-  };
-}
-
-function applyChange<K extends keyof FormValues>(
-  config: AgentConfigData,
-  field: K,
-  value: FormValues[K],
-): AgentConfigData {
-  // Pass-through fields where AgentConfigData and FormValues align 1:1.
-  switch (field) {
-    case "name":
-    case "description":
-    case "analystPrompt":
-    case "directionBias":
-    case "holdDurations":
-    case "minConfidence":
-    case "maxOpenPositions":
-    case "minPositionSize":
-    case "maxPositionSize":
-    case "sectors":
-    case "industries":
-    case "themes":
-    case "marketCapMin":
-    case "marketCapMax":
-    case "exclusionList":
-    case "intelligencePolicy":
-      return { ...config, [field]: value } as AgentConfigData;
-
-    case "watchlist":
-      return { ...config, watchlist: value as string[] };
-
-    default:
-      return config;
-  }
 }

@@ -41,6 +41,7 @@ export default async function AnalystEditPage({
     analystPrompt: config.analystPrompt,
     directionBias: config.directionBias,
     holdDurations: config.holdDurations,
+    setupIds: config.setupIds,
     sectors: config.sectors,
     // ── Universe (B1) — narrower discovery fence ─────────────────
     industries: config.industries,
@@ -49,7 +50,10 @@ export default async function AnalystEditPage({
     marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
     signalTypes: config.signalTypes,
     minConfidence: config.minConfidence,
+    riskPct: config.riskPct,
+    minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize ? Number(config.maxPositionSize) : undefined,
+    maxPositionTotal: config.maxPositionTotal,
     maxOpenPositions: config.maxOpenPositions,
     minMarketCapTier: config.minMarketCapTier,
     watchlist: watchlistSymbols,

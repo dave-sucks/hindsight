@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentChat } from "@/components/agent/AgentChat";
 import { AnalystConfigPanel } from "@/components/analysts/AnalystConfigPanel";
+import { editorPanelStart } from "@/components/analysts/builder-config";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 export function AnalystEditClient({
@@ -26,10 +27,10 @@ export function AnalystEditClient({
 
   const handleConfigSuggested = useCallback(
     (config: AgentConfigData, onConfirm: (override?: AgentConfigData) => void) => {
-      setConfigData(config);
+      setConfigData(editorPanelStart(currentConfig, config));
       setConfirmHandler(() => onConfirm);
     },
-    []
+    [currentConfig]
   );
 
   const handleApplyingChange = useCallback((applying: boolean) => {

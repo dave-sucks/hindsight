@@ -37,6 +37,9 @@ export type AgentConfigData = {
   /** Per-entry floor; 0 = none. Pairs with maxPositionSize as a band. */
   minPositionSize?: number;
   maxPositionSize?: number;
+  /** Most in one stock and risk per trade: set on the panel, not by suggest_config. */
+  maxPositionTotal?: number;
+  riskPct?: number;
   maxOpenPositions?: number;
   minMarketCapTier?: string;
   watchlist?: (string | { symbol: string; reason?: string; priority?: string })[];

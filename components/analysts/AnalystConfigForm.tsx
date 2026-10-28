@@ -97,9 +97,8 @@ export type FormValues = {
   runDaysOfWeek?: number[];
 
   // The setups this analyst runs (DAV-280) — catalog ids, in the order
-  // chosen. The first is its signature setup: its rules seed the Triggers
-  // tab. Empty = the whole catalog. Undefined = the builder preview, which
-  // has no such row.
+  // chosen. The first is its signature setup: its reviews seed the Triggers
+  // tab. Empty = the whole catalog. Undefined = no such row.
   setupIds?: string[];
 
   // Notifications — owner email opt-out, live across every email path.
@@ -465,7 +464,7 @@ function SettingsTab({
             <>
               <RowLabel
                 label="Setups"
-                tooltip="The playbook patterns this analyst may write a plan on. The first one chosen is its signature setup: its sell rules seed the Triggers tab. None chosen = the whole playbook."
+                tooltip="The playbook patterns this analyst may write a plan on. The first one chosen is its signature setup: its reviews start on the Triggers tab. None chosen = the whole playbook."
               />
               <div className="justify-self-end">
                 <SetupsControl
