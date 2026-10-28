@@ -25,7 +25,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { TickBar, type Tick } from '@/components/ui/gauge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -271,6 +271,15 @@ const THESIS_STATUS_ORDER: ThesisStatus[] = [
 ];
 const THESIS_PAGE_SIZE = 10;
 type ActivityTabFilter = 'all' | 'opens' | 'closes' | 'updates';
+
+// A dropdown filter starts on a real "All …" item, and `items` gives the
+// closed trigger the label (otherwise it shows the raw value, "all").
+const ACTIVITY_FILTERS: { value: ActivityTabFilter; label: string }[] = [
+  { value: 'all', label: 'All activity' },
+  { value: 'opens', label: 'Opens' },
+  { value: 'closes', label: 'Closes' },
+  { value: 'updates', label: 'Updates' },
+];
 // The server sends the newest 80 lines — the blocked / passed / failed
 // attempts need the room (getDashboardData). The first 40 show until
 // "Show more".
@@ -579,15 +588,18 @@ function HomeBottomSection({ activity, loading, coverage, mobileDigest }: {
       <div>
         <div className="flex items-center justify-between pb-3">
           <p className="text-sm font-medium">Activity</p>
-          <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
-            <SelectTrigger className="h-8 w-32 text-xs">
+          <Select
+            items={ACTIVITY_FILTERS}
+            value={activityFilter}
+            onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}
+          >
+            <SelectTrigger size="sm" aria-label="Filter activity">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="opens">Opens</SelectItem>
-              <SelectItem value="closes">Closes</SelectItem>
-              <SelectItem value="updates">Updates</SelectItem>
+              {ACTIVITY_FILTERS.map((f) => (
+                <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -1243,23 +1255,14 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             >
               {/* Controls: range tabs (left) + settings dropdown (right) */}
               <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
-                {/* Range tabs */}
-                <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
-                  {RANGES.map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setRange(r)}
-                      className={cn(
-                        'px-2.5 py-1 text-xs rounded transition-colors',
-                        range === r
-                          ? 'bg-background text-foreground font-medium shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
+                {/* Range — a view setting, so small Tabs */}
+                <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
+                  <TabsList size="sm">
+                    {RANGES.map((r) => (
+                      <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
 
                 {/* Settings dropdown */}
                 {!loading && (

@@ -3,25 +3,18 @@
 import { cn } from "@/lib/utils";
 
 /**
- * ChipTabs — reusable segmented filter shaped like the Trades All/Open/Closed
- * row on the analyst page. Single visual language for small inline filters:
+ * ChipTabs — free-standing pills that pick which slice of a list you're
+ * looking at: Trades / Sold / Watching / Passed, All / Open / Closed / Won /
+ * Lost, Active / Watching / Closed, Gainers / Losers.
  *
- *   - Rounded full pill
- *   - Active  → secondary fill
- *   - Inactive → ghost, text at 60% opacity, full opacity on hover
- *   - No counts in the chip itself (caller surfaces totals separately if needed)
- *
- * Used on:
- *   - Analyst page trades filter
- *   - Intelligence Briefs date selector
- *   - Analyst page Routing stats strip
- *
- * `variant="tray"` is the OTHER segmented look the app already uses: pills
- * inside a bordered tray, active one lifted on the card background. It was
- * hand-rolled in four places (the dashboard chart's range tabs, the coverage
- * table's Trades/Watching/Passed bar, that table's mobile All/1D toggle, and
- * the %/$ toggle beside it) and they had already drifted apart. Pick a
- * variant; never re-type the classes.
+ * The app has three switch controls, one job each:
+ *   - Tabs (`components/ui/tabs`): sections of a page, sheet or panel.
+ *   - Tabs `size="sm"`: view settings over the same data — date ranges,
+ *     % / $, Lifetime / 1D / 5D / 30D, Shares / Dollars.
+ *   - ChipTabs (this): slices of one list.
+ * Many options, or several filters at once, is a Select starting on a real
+ * "All …" item instead. Pick the control by its job; never re-type the
+ * classes by hand.
  */
 
 export interface ChipTabOption<T extends string = string> {
@@ -40,10 +33,6 @@ interface ChipTabsProps<T extends string = string> {
    * When false, the active chip is non-toggleable. Default: true.
    */
   clearable?: boolean;
-  /** "chip" = free-standing rounded pills. "tray" = pills in a bordered tray. */
-  variant?: "chip" | "tray";
-  /** "sm" is the compact tray used where a header cell is the whole width. */
-  size?: "default" | "sm";
   className?: string;
 }
 
@@ -52,49 +41,30 @@ export function ChipTabs<T extends string = string>({
   value,
   onChange,
   clearable = true,
-  variant = "chip",
-  size = "default",
   className,
 }: ChipTabsProps<T>) {
-  const tray = variant === "tray";
   return (
-    <div
-      className={cn(
-        tray
-          ? "inline-flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5"
-          : "flex items-center gap-1 flex-wrap",
-        className,
-      )}
-    >
+    <div className={cn("flex items-center gap-1 flex-wrap", className)}>
       {options.map((opt) => {
         const isActive = value === opt.value;
         return (
           <button
             key={opt.value}
             type="button"
+            aria-pressed={isActive}
             onClick={(e) => {
-              // A tray can sit inside a clickable row (a table header cell, a
-              // card) — picking a tab is not picking the row.
-              if (tray) e.stopPropagation();
+              // Chips can sit inside a clickable row or card — picking a
+              // slice is not clicking the row.
+              e.stopPropagation();
               if (isActive && clearable) onChange(null);
               else if (!isActive) onChange(opt.value);
             }}
             title={opt.title}
             className={cn(
-              tray
-                ? cn(
-                    "text-xs rounded transition-colors",
-                    size === "sm" ? "px-2 py-0.5" : "px-2.5 py-1",
-                    isActive
-                      ? "bg-background text-foreground font-medium shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )
-                : cn(
-                    "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-                    isActive
-                      ? "bg-secondary text-secondary-foreground border-secondary"
-                      : "text-muted-foreground opacity-60 hover:opacity-100 border-transparent",
-                  ),
+              "px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors",
+              isActive
+                ? "bg-secondary text-secondary-foreground"
+                : "text-muted-foreground opacity-75 hover:opacity-100",
             )}
           >
             {opt.label}

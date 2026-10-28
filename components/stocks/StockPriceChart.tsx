@@ -15,6 +15,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { cn } from '@/lib/utils';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PriceChange } from '@/components/ui/price-change';
 import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
 import {
@@ -405,21 +406,14 @@ export function StockPriceChart({
       <div className="relative">
       {/* Range pills — absolute top-left of chart area */}
       {showControls && (
-        <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
-          {ranges.map((r) => (
-            <button
-              key={r}
-              onClick={() => handleRange(r)}
-              className={cn(
-                'px-2 py-0.5 text-xs rounded transition-colors',
-                range === r
-                  ? 'bg-muted text-foreground font-medium'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {r}
-            </button>
-          ))}
+        <div className="absolute top-3 left-3 z-10">
+          <Tabs value={range} onValueChange={(v) => handleRange(v as Range)}>
+            <TabsList size="sm">
+              {ranges.map((r) => (
+                <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
         </div>
       )}
 

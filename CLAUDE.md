@@ -549,6 +549,13 @@ it with a ticker chip as if it were a traded security.
 - Body text: text-sm text-muted-foreground
 - Labels: text-xs font-medium uppercase tracking-wide
 - Empty/loading/error states on every page and data fetch
+- **Switch controls — one job each, never hand-rolled:** `Tabs` for sections
+  of a page, sheet or panel; `TabsList size="sm"` for view settings over the
+  same data (date ranges, % / $, Lifetime / 1D, Shares / Dollars); `ChipTabs`
+  for which slice of a list you see (Trades / Sold / Watching / Passed, All /
+  Open / Closed). A filter with many options, or several filters together, is
+  a `Select` (`SelectTrigger size="sm"`) that starts on a real "All …" item and
+  passes `items` so the closed trigger shows the label, never the raw value.
 - A section folder with more than one page (`app/(root)/<section>/`) has a
   `loading.tsx` (`components/PageLoading.tsx` unless it has its own); so do
   `app/(root)/` and `app/(settings)/settings/`. Without one, a click between

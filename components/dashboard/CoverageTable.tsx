@@ -18,6 +18,7 @@ import { cn, pnlColor } from "@/lib/utils";
 import { PriceChange } from "@/components/ui/price-change";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { ChipTabs } from "@/components/ui/chip-tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { moveDollar } from "@/lib/portfolio/move-dollar";
 import {
   Tooltip,
@@ -263,19 +264,15 @@ function CoverageTab({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              {/* Mobile toggle — the shared tray, same as the tabs above it */}
-              <ChipTabs<MobileView>
-                variant="tray"
-                size="sm"
-                clearable={false}
-                className="md:hidden"
-                options={[
-                  { value: "lifetime", label: "All" },
-                  { value: "1d", label: "1D" },
-                ]}
-                value={mobileView}
-                onChange={(v) => v && setMobileView(v)}
-              />
+              {/* Mobile toggle — a view setting, so small Tabs like the %/$ */}
+              <div className="md:hidden">
+                <Tabs value={mobileView} onValueChange={(v) => setMobileView(v as MobileView)}>
+                  <TabsList size="sm">
+                    <TabsTrigger value="lifetime">All</TabsTrigger>
+                    <TabsTrigger value="1d">1D</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -378,25 +375,21 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
 
   return (
     <div className="space-y-3">
-      {/* Which names on the left, what unit their move is in on the right. */}
+      {/* Which names on the left (chips: a slice of the list), what unit
+          their move is in on the right (small Tabs: a view setting). */}
       <div className="flex items-center justify-between gap-2">
         <ChipTabs<Tab>
-          variant="tray"
           clearable={false}
           options={COVERAGE_TABS}
           value={activeTab}
           onChange={(v) => v && setActiveTab(v)}
         />
-        <ChipTabs<MoveMode>
-          variant="tray"
-          clearable={false}
-          options={[
-            { value: "pct", label: "%", title: "1D / 5D / 30D as a percent move" },
-            { value: "dollar", label: "$", title: "1D / 5D / 30D as a dollar move, on the shares held now" },
-          ]}
-          value={mode}
-          onChange={(v) => v && setMode(v)}
-        />
+        <Tabs value={mode} onValueChange={(v) => setMode(v as MoveMode)}>
+          <TabsList size="sm">
+            <TabsTrigger value="pct" title="1D / 5D / 30D as a percent move">%</TabsTrigger>
+            <TabsTrigger value="dollar" title="1D / 5D / 30D as a dollar move, on the shares held now">$</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       <CoverageTab
