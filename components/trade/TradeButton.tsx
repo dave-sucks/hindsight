@@ -31,7 +31,6 @@ import { Label } from "@/components/ui/label";
 import { InfoRow } from "@/components/ui/info-row";
 import { PriceChange } from "@/components/ui/price-change";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChipTabs } from "@/components/ui/chip-tabs";
 import {
   Dialog,
   DialogContent,
@@ -360,22 +359,20 @@ export function TradeButton({
                           label={
                             <span className="flex items-center gap-2">
                               <label htmlFor="trade-shares">Quantity</label>
-                              <ChipTabs<"shares" | "dollars">
-                                variant="tray"
-                                size="sm"
-                                clearable={false}
-                                options={[
-                                  { value: "shares", label: "#", title: "Shares" },
-                                  { value: "dollars", label: "$", title: "Dollars, in whole shares" },
-                                ]}
+                              <Tabs
                                 value={qtyMode}
-                                onChange={(v) => {
-                                  if (v && v !== qtyMode) {
-                                    setQtyMode(v);
+                                onValueChange={(v) => {
+                                  if (v !== qtyMode) {
+                                    setQtyMode(v as "shares" | "dollars");
                                     setShares("");
                                   }
                                 }}
-                              />
+                              >
+                                <TabsList size="sm">
+                                  <TabsTrigger value="shares" title="Shares">#</TabsTrigger>
+                                  <TabsTrigger value="dollars" title="Dollars, in whole shares">$</TabsTrigger>
+                                </TabsList>
+                              </Tabs>
                             </span>
                           }
                           border={false}

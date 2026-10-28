@@ -43,14 +43,26 @@ export function RunsFilterBar({
     [params, router],
   );
 
+  const analystItems = [
+    { value: ALL, label: "All analysts" },
+    ...analysts.map((a) => ({ value: a.id, label: a.name })),
+  ];
+  const modeItems = [
+    { value: ALL, label: "All types" },
+    ...RUNS_MODE_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+  ];
+
   return (
     <div className="flex items-center gap-2">
+      {/* Dropdown filters start on a real "All …" item; `items` gives the
+          closed trigger its label rather than the raw value. */}
       <Select
+        items={analystItems}
         value={selectedAnalystId ?? ALL}
         onValueChange={(v) => updateParam("analyst", v ?? ALL)}
       >
-        <SelectTrigger className="h-8 w-44 text-xs">
-          <SelectValue placeholder="All analysts" />
+        <SelectTrigger size="sm" aria-label="Filter by analyst">
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All analysts</SelectItem>
@@ -63,11 +75,12 @@ export function RunsFilterBar({
       </Select>
 
       <Select
+        items={modeItems}
         value={selectedMode ?? ALL}
         onValueChange={(v) => updateParam("mode", v ?? ALL)}
       >
-        <SelectTrigger className="h-8 w-40 text-xs">
-          <SelectValue placeholder="All types" />
+        <SelectTrigger size="sm" aria-label="Filter by run type">
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All types</SelectItem>

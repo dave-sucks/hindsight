@@ -78,13 +78,15 @@ export function MarketTabs({
 
         <Tabs value={tab} onValueChange={(v) => select(v as MarketTab)}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <TabsList className="self-start">
-              {MARKET_TABS.map((t) => (
-                <TabsTrigger key={t.value} value={t.value}>
-                  {t.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div>
+              <TabsList>
+                {MARKET_TABS.map((t) => (
+                  <TabsTrigger key={t.value} value={t.value}>
+                    {t.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
             {tab === "signals" ? (
               <div className="flex items-center gap-1.5">
                 <Button variant="outline" size="sm" onClick={loadSignals} disabled={signalsLoading}>

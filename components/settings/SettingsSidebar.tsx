@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/sidebar';
 
 const NAV = [
-  { href: '/settings/profile', label: 'Profile', icon: User },
+  { href: '/settings', label: 'Profile', icon: User },
   { href: '/settings/team', label: 'Team', icon: Users },
   { href: '/settings/triggers', label: 'Triggers', icon: Zap },
   { href: '/settings/playbook', label: 'Playbook', icon: BookOpen },
@@ -32,7 +32,9 @@ export function SettingsSidebar() {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
+  // Profile is the settings index, so /settings matches only itself.
+  const isActive = (href: string) =>
+    href === '/settings' ? pathname === href : pathname === href || pathname.startsWith(href + '/');
 
   return (
     <Sidebar collapsible="offcanvas">

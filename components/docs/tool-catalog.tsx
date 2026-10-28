@@ -11,6 +11,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { ShieldCheck } from "lucide-react";
 import { ChipTabs } from "@/components/ui/chip-tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import HindsightLogo from "@/components/HindsightLogo";
 import {
@@ -189,12 +190,13 @@ function ToolDialogBody({ tool }: { tool: CatalogTool }) {
       {tool.resources?.length ? (
         <div className="flex flex-col gap-3">
           {tool.resources.length > 1 ? (
-            <ChipTabs
-              options={tool.resources.map((x, i) => ({ value: String(i), label: x.title }))}
-              value={String(r)}
-              onChange={(v) => v != null && setR(Number(v))}
-              clearable={false}
-            />
+            <Tabs value={String(r)} onValueChange={(v) => setR(Number(v))}>
+              <TabsList>
+                {tool.resources.map((x, i) => (
+                  <TabsTrigger key={i} value={String(i)}>{x.title}</TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           ) : null}
           {res ? (
             <>

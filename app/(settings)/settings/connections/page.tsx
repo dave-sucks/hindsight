@@ -15,7 +15,7 @@ export default async function ConnectionsSettingsPage() {
   if (!user) redirect("/sign-in");
 
   const accountId = await getAccountId(user.id);
-  if (!accountId) redirect("/settings/profile");
+  if (!accountId) redirect("/settings");
 
   const role = await getUserRole(user.id, accountId);
   const isOwner = role === "OWNER";

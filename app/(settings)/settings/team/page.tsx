@@ -18,10 +18,10 @@ export default async function TeamSettingsPage() {
   if (!user) redirect("/sign-in");
 
   const accountId = await getAccountId(user.id);
-  if (!accountId) redirect("/settings/profile");
+  if (!accountId) redirect("/settings");
 
   const role = await getUserRole(user.id, accountId);
-  if (!role) redirect("/settings/profile");
+  if (!role) redirect("/settings");
 
   const [account, memberships, invites] = await Promise.all([
     prisma.account.findUnique({

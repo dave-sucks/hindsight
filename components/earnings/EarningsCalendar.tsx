@@ -28,6 +28,7 @@ import { PriceChange } from "@/components/ui/price-change";
 import { StockLogo } from "@/components/StockLogo";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { cn } from "@/lib/utils";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import { surprisePct } from "@/lib/agent/triggers/earnings";
 import type { EarningsDayView, EarningsDayRow } from "@/lib/market-data/earnings-calendar";
 import type { FilingsDayRow, FilingsWeekView } from "@/lib/market-data/sec-filings";
@@ -295,22 +296,17 @@ export function EarningsCalendar({
     <div className="space-y-3">
       {/* Header line: label left, week controls right — as Perplexity. */}
       <div className="flex items-center justify-between">
-        <div className={cn("flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5", modeProp && "hidden")}>
-          {(["earnings", "filings"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              className={cn(
-                "px-2.5 py-1 text-xs rounded transition-colors",
-                mode === m
-                  ? "bg-background text-foreground font-medium shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {m === "earnings" ? "Earnings" : "Filings"}
-            </button>
-          ))}
+        {/* Which calendar — a slice, so chips. Hidden when the page picks it. */}
+        <div className={cn(modeProp && "hidden")}>
+          <ChipTabs<"earnings" | "filings">
+            options={[
+              { value: "earnings", label: "Earnings" },
+              { value: "filings", label: "Filings" },
+            ]}
+            value={mode}
+            onChange={(v) => v && setMode(v)}
+            clearable={false}
+          />
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon-sm" aria-label="Previous week" onClick={() => shift(-7)}>
