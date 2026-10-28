@@ -51,7 +51,7 @@ export function PodcastBuilderClient() {
   return (
     <div className="relative h-[calc(100dvh-3rem)] overflow-hidden">
       <div className="absolute top-2 left-3 z-20">
-        <Button variant="ghost" size="icon" render={<Link href="/podcasts" />}>
+        <Button variant="ghost" size="icon" nativeButton={false} render={<Link href="/podcasts" />}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
       </div>

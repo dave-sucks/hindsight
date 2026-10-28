@@ -83,55 +83,32 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
   const winRatePct = analyst.winRate != null ? Math.round(analyst.winRate * 100) : null;
 
   return (
-    <Card className="gap-0 h-full overflow-hidden shadow-none py-0 min-w-0">
+    <Card className="relative gap-0 h-full overflow-hidden shadow-none py-0 min-w-0">
+      {/* The header is a link; the kebab is a sibling control beside it,
+          never a button inside the link. */}
       <Link
         href={`/analysts/${analyst.id}`}
         className="block hover:bg-muted/20 transition-colors"
       >
         {/* ── Header, name, description ── */}
         <div className="p-3 flex flex-col gap-2 min-w-0">
-          {/* Row 1: badges left · 3-dot right */}
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-              {/* Always present — an analyst with nothing open still reads as
-                  "no positions" rather than leaving the badge row empty. */}
+          {/* Row 1: badges (the right edge is left for the kebab) */}
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0 min-h-6 pr-8">
+            {/* Always present — an analyst with nothing open still reads as
+                "no positions" rather than leaving the badge row empty. */}
+            <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
+              {openCount === 0
+                ? "No Positions"
+                : `${openCount} ${openCount === 1 ? "Position" : "Positions"}`}
+            </span>
+            {winRatePct != null && (
               <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
-                {openCount === 0
-                  ? "No Positions"
-                  : `${openCount} ${openCount === 1 ? "Position" : "Positions"}`}
+                {winRatePct}% win
               </span>
-              {winRatePct != null && (
-                <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
-                  {winRatePct}% win
-                </span>
-              )}
-              {analyst.totalPnl !== 0 && (
-                <PnlBadge value={analyst.totalPnl} format="currency" />
-              )}
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground shrink-0"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}`)}>
-                  View details
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}/edit`)}>
-                  Edit config
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-negative focus:text-negative"
-                  onSelect={() => onDelete(analyst.id)}
-                >
-                  Delete analyst
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            )}
+            {analyst.totalPnl !== 0 && (
+              <PnlBadge value={analyst.totalPnl} format="currency" />
+            )}
           </div>
 
           {/* Row 2: name — unified header style */}
@@ -147,6 +124,31 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
           </p>
         </div>
       </Link>
+
+      <div className="absolute right-3 top-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="icon-xs" aria-label={`${analyst.name} actions`} />}
+          >
+            <MoreHorizontal />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}`)}>
+              View details
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}/edit`)}>
+              Edit config
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-negative focus:text-negative"
+              onSelect={() => onDelete(analyst.id)}
+            >
+              Delete analyst
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       {/* ── Active trades ── */}
       {analyst.openTrades.length === 0 ? (

@@ -43,12 +43,12 @@ export function NewAnalystClient({
 
       {/* Floating ghost buttons — no background, over the chat */}
       <div className="absolute top-2 left-3 z-20">
-        <Button variant="ghost" size="icon" render={<Link href="/analysts" />}>
+        <Button variant="ghost" size="icon" nativeButton={false} render={<Link href="/analysts" />}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
       </div>
       <div className="absolute top-2 right-3 z-20">
-        <Button variant="ghost" size="icon" aria-label="How the analyst builder works" render={<Link href="/docs/analyst-builder" />}>
+        <Button variant="ghost" size="icon" aria-label="How the analyst builder works" nativeButton={false} render={<Link href="/docs/analyst-builder" />}>
           <ScanSearch className="h-4 w-4" />
         </Button>
       </div>
