@@ -78,13 +78,11 @@ export function TradeRowShell({
   className,
   onClick,
 }: TradeRowShellProps) {
-  const rowClasses = cn(
-    "relative flex items-center gap-3 px-3 py-2.5 hover:bg-accent/40 transition-colors border-b border-border/40 last:border-0 group",
-    flash === "win" && "bg-positive/10",
-    flash === "loss" && "bg-negative/10",
-    className,
-  );
-
+  // The row is a plain container. Its own action (the link, or the button
+  // that opens the sheet) is a real control holding the row's content, and
+  // the kebab is a sibling control beside it — never a button inside a button
+  // or a link. (Nesting them broke the page: the parser closed the row at
+  // the inner button and the rest of the dashboard fell out of the shell.)
   const content = (
     <>
       {leading}
@@ -104,25 +102,39 @@ export function TradeRowShell({
           </div>
         )}
       </div>
-      {menuItems && menuItems.length > 0 && <RowMenu items={menuItems} />}
     </>
   );
+
+  const actionClasses = "flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left";
 
   // prefetch={false}: rows come in lists, and Next fetches every link as it
   // scrolls into view — the dashboard's pinned and movers rows asked for their
   // pages on every load (2026-09-29). The pages a row opens have no loading
   // file, so the early fetch saved nothing on the click.
-  if (href) {
-    return (
-      <Link href={href} prefetch={false} className={rowClasses}>
-        {content}
-      </Link>
-    );
-  }
-  return (
-    <button type="button" onClick={onClick} className={cn(rowClasses, "w-full text-left")}>
+  const action = href ? (
+    <Link href={href} prefetch={false} className={actionClasses}>
+      {content}
+    </Link>
+  ) : onClick ? (
+    <button type="button" onClick={onClick} className={actionClasses}>
       {content}
     </button>
+  ) : (
+    <div className={actionClasses}>{content}</div>
+  );
+
+  return (
+    <div
+      className={cn(
+        "relative hover:bg-accent/40 transition-colors border-b border-border/40 last:border-0 group",
+        flash === "win" && "bg-positive/10",
+        flash === "loss" && "bg-negative/10",
+        className,
+      )}
+    >
+      {action}
+      {menuItems && menuItems.length > 0 && <RowMenu items={menuItems} />}
+    </div>
   );
 }
 
@@ -132,7 +144,7 @@ export function TradeRowShell({
 
 function RowMenu({ items }: { items: RowMenuItem[] }) {
   return (
-    <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
@@ -145,10 +157,6 @@ function RowMenu({ items }: { items: RowMenuItem[] }) {
               size="icon"
               className="rounded-md"
               aria-label="Row actions"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
             />
           }
         >
@@ -159,11 +167,7 @@ function RowMenu({ items }: { items: RowMenuItem[] }) {
             <DropdownMenuItem
               key={item.label}
               variant={item.destructive ? "destructive" : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                item.onSelect();
-              }}
+              onClick={item.onSelect}
             >
               {item.label}
             </DropdownMenuItem>
