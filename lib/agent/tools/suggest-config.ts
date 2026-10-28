@@ -116,12 +116,12 @@ const rawConfigSchema = z.object({
     .describe("DAY = close same day, SWING = hold 2-10 days, POSITION = hold weeks+"),
   // The playbook patterns this analyst writes plans on (DAV-280). Read them
   // with read_knowledge_library(topic:"setup"). The FIRST is the analyst's
-  // signature setup: its sell rules seed the analyst's Triggers tab.
+  // signature setup: its reviews seed the analyst's Triggers tab.
   setupIds: z
     .array(z.enum(SETUP_IDS))
     .optional()
     .describe(
-      "The setups (buy patterns) this analyst runs, from read_knowledge_library(topic:'setup'). Put the signature setup FIRST — its sell rules become the analyst's standing rules. One to four ids. Omit = the whole playbook.",
+      "The setups (buy patterns) this analyst runs, from read_knowledge_library(topic:'setup'). Put the signature setup FIRST — its reviews start on the analyst's Triggers tab. One to four ids. Omit = the whole playbook.",
     ),
   // Session A: sectors are enumerated against the canonical GICS Title Case
   // list. The agent literally cannot propose an unknown value — no more

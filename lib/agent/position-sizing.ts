@@ -134,6 +134,12 @@ export function entrySizeForConviction(opts: {
 /** Risk per trade when an analyst has none set, % of equity (DAV-245 ruling 2). */
 export const DEFAULT_RISK_PCT = 1;
 
+/** A saved risk per trade, held to 0.1–3% so a typo (10 for 1.0) can't size a buy at ten times the risk. */
+export function boundRiskPct(value: unknown): number {
+  const n = value == null || value === "" ? NaN : Number(value);
+  return Number.isFinite(n) ? Math.min(Math.max(n, 0.1), 3) : DEFAULT_RISK_PCT;
+}
+
 /** Conviction scales the risk, not the dollars (DAV-245 ruling 2). Constants, not settings. */
 export const CONVICTION_RISK_MULTIPLIER: Record<string, number> = {
   LOW: 0.5,

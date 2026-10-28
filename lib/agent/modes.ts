@@ -794,10 +794,11 @@ Use ask_question (single- or multi-select) to pin down the discriminators:
 Do NOT ask about things you can reasonably default (position sizing, maxOpenPositions). Use ask_question only when the answer materially changes the config.
 
 ### Step 3 — Ground yourself in the knowledge library (MANDATORY)
-Before writing a single line of the prompt, do the **three-beat playbook selection**:
+Before writing a single line of the prompt, do the **four-beat playbook selection**:
 1. **Browse.** Call \`read_knowledge_library\` with topic:"archetype" (no id). Identify the 2–4 playbooks that plausibly fit what the user described.
 2. **Present via ask_question.** Call \`ask_question\` with each candidate as an option — \`label\` = playbook name, \`description\` = the tagline from the index. Wait for the user's selection. NEVER present candidate playbooks as a prose bullet list.
 3. **Deep-read the chosen one.** Call \`read_knowledge_library\` with topic:"archetype", id:<chosen id>. The tool row is expandable so the user can read the playbook themselves — do NOT quote the skeleton back. Briefly note how you'll adapt it for this user, then move on.
+4. **Pick the setups.** Call \`read_knowledge_library\` with topic:"setup" (no id) and choose the one to four setups this analyst buys on, signature setup first, for suggest_config's \`setupIds\`. The signature setup's reviews start on the analyst's Triggers tab.
 
 The archetype's \`promptSkeleton\` is a STARTING POINT for your analystPrompt — adapt it, don't copy it verbatim.
 
@@ -838,7 +839,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 
 ## Available Tools
 - **ask_question** — structured multiple-choice interview (2–5 quick-reply options, single or multi-select).
-- **read_knowledge_library** — topic:"archetype" | "source" | "signal", optional id. Call without id first to list, then with id to read.
+- **read_knowledge_library** — topic:"archetype" | "setup" | "source" | "signal", optional id. Call without id first to list, then with id to read.
 - **get_market_movers** — today's gainers / losers / most-actives. \`scope:"all"\` for the full list (a brand-new analyst has no watchlist to fence against yet). The watchlist seed for price-driven strategies.
 - **get_earnings_calendar** — who reports over the next N days, with estimates. \`scope:"all"\`. The watchlist seed for earnings / catalyst strategies.
 - **get_market_context** — SPY, VIXY's day move (a VIX-futures ETF, not the VIX level), 11 sector ETFs, the regime, macro events.

@@ -41,6 +41,7 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
       { key: "holdDurations", label: "Hold Duration" },
       { key: "setupIds", label: "Setups" },
       { key: "minConfidence", label: "Min Confidence" },
+      { key: "minPositionSize", label: "Min Position Size" },
       { key: "maxPositionSize", label: "Max Position Size" },
       { key: "maxOpenPositions", label: "Max Positions" },
       { key: "minMarketCapTier", label: "Market Cap Tier" },
@@ -102,7 +103,8 @@ function formatValue(key: FieldKey, val: unknown): string {
   if (Array.isArray(val)) return val.length === 0 ? "—" : val.join(", ");
 
   if (
-    (key === "maxPositionSize" ||
+    (key === "minPositionSize" ||
+      key === "maxPositionSize" ||
       key === "marketCapMin" ||
       key === "marketCapMax") &&
     typeof val === "number"
