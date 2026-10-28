@@ -50,7 +50,6 @@ import {
 import { moveDollar } from '@/lib/portfolio/move-dollar';
 import type { WindowMoves } from '@/lib/portfolio/window-moves';
 import { Loader2, MoreHorizontal, ExternalLink } from 'lucide-react';
-import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { ConceptTooltip } from '@/components/domain/education-card';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 
@@ -377,6 +376,9 @@ export default function TradesPage({
                           className={cn(
                             'text-xs text-muted-foreground tabular-nums leading-tight',
                             executing && 'shimmer-text',
+                            // Waiting on your approval — a sweep every few
+                            // seconds; the row opens the trade page to decide.
+                            awaitingApproval && 'shimmer-text-periodic',
                           )}
                         >
                           {trade.pendingProposal
@@ -430,19 +432,12 @@ export default function TradesPage({
                   {/* P&L — unified PriceChange component (same arrow+color
                       language as the dashboard header). Em-dash when we
                       don't have a live price to compute against.
-                      Trade-as-Proposal: the Review control sits BESIDE the
-                      P&L, never in its place — the same as the dashboard
-                      table. */}
+                      A proposal has no inline Review control (same as the
+                      dashboard table): the amber dot and the shimmering
+                      shares line mark it, and the row opens the trade page
+                      where it's approved. */}
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1.5">
-                      {awaitingApproval && (
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <ProposalActions
-                            orderId={trade.pendingProposal!.orderId}
-                            expiresAt={trade.pendingProposal!.expiresAt}
-                          />
-                        </div>
-                      )}
                       {executing ? (
                         <span className="text-sm shimmer-text">{EXECUTING_LABEL}</span>
                       ) : range !== 'LIFETIME' ? (
