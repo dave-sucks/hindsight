@@ -7,8 +7,10 @@
  * as a review line above it ("Review if below $Y", asking the analyst); a
  * tighter floor the owner set stays as it is. The account holds the setting;
  * an analyst may hold its own (null = the account's). Written by
- * armHeldLadderOnFill (lib/proposals/thesis-flips.ts); a buy is sized off
- * the wider line (sizingStop, lib/agent/position-sizing.ts).
+ * armHeldLadderOnFill (lib/proposals/thesis-flips.ts) at the price when the
+ * buy is approved, and moved to the line under what was paid when the fill
+ * lands (reconcile-orders.ts); a buy is sized off the wider line (sizingStop,
+ * lib/agent/position-sizing.ts).
  */
 
 import { prisma } from "@/lib/prisma";
@@ -89,4 +91,21 @@ export function autoStopOps(input: { triggers: Trigger[]; direction: string | nu
   if (!there) ops.push({ op: "add", trigger: review });
   else if (valueOf(there) < valueOf(floor)) ops.push({ op: "replace", id: there.id, trigger: { ...review, id: there.id } });
   return ops;
+}
+
+/**
+ * When the buy fills: the sale floor this setting put on the line under the
+ * price it was bought at moves to the line under what was paid. [] when no
+ * floor sits on that line (an owner's floor above it, or the setting off).
+ */
+export function autoStopFillOps(input: { triggers: Trigger[]; direction: string | null; boughtAt: number; paid: number; setting: AutoStop }): TriggerOp[] {
+  if (!input.setting.on || input.direction !== "LONG" || !(input.boughtAt > 0) || !(input.paid > 0)) return [];
+  const was = autoStopPrice(input.boughtAt, input.setting.pct);
+  const now = autoStopPrice(input.paid, input.setting.pct);
+  const floor = input.triggers.find(
+    (t) => t.action === "EXIT" && t.fireMode === "DO_IT" && levelSlotOf(t, "LONG") === "FLOOR" && levelOf(shapeOf(t.predicate) as Condition)?.value === was,
+  );
+  if (!floor || was === now) return [];
+  const predicate: Condition = { ...(shapeOf(floor.predicate) as Condition), value: now };
+  return [{ op: "replace", id: floor.id, trigger: { ...floor, predicate, rationale: addedTriggerRationale("EXIT", predicate) } }];
 }
