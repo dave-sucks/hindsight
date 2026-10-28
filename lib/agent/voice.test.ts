@@ -155,6 +155,8 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     expect(VOICE_RULES).toContain(`answers "what's going on with this stock, and what should I do?", in three parts, in this order:`);
     expect(VOICE_RULES).toContain("- What is going on with the company and the stock, and why: what happened, today or since the last look, with dates (its own news, its sector, the market).");
     expect(VOICE_RULES).toContain("- What it means: whether that touches the reason we own it (or watch it), and for this position the shares, the dollars, the profit or loss.");
+    // GEV and ABBV replays, 10-28: the note listed every break that had not happened.
+    expect(VOICE_RULES).toContain("when nothing that would break the case has happened, say so in a few words, never as a list of each thing that hasn't");
     expect(VOICE_RULES).toContain("- What you did, in one closing sentence of plain words, and what would change it");
     expect(VOICE_RULES).toContain("A stop or target goes in this last sentence, and only when the call turns on it.");
     // The standing description: a company page.
