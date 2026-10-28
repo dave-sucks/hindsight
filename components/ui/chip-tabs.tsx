@@ -33,6 +33,8 @@ interface ChipTabsProps<T extends string = string> {
    * When false, the active chip is non-toggleable. Default: true.
    */
   clearable?: boolean;
+  /** default: a list's slice picker. sm: tight spots, e.g. over a chart. */
+  size?: "default" | "sm";
   className?: string;
 }
 
@@ -41,6 +43,7 @@ export function ChipTabs<T extends string = string>({
   value,
   onChange,
   clearable = true,
+  size = "default",
   className,
 }: ChipTabsProps<T>) {
   return (
@@ -61,10 +64,12 @@ export function ChipTabs<T extends string = string>({
             }}
             title={opt.title}
             className={cn(
-              "px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors",
+              "rounded-full font-medium transition-colors",
+              size === "sm" ? "px-2.5 py-0.5 text-xs" : "px-3 py-1 text-sm",
+              // Hover is the active fill, faint.
               isActive
                 ? "bg-secondary text-secondary-foreground"
-                : "text-muted-foreground opacity-75 hover:opacity-100",
+                : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
             )}
           >
             {opt.label}

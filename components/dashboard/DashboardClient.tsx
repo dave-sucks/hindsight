@@ -57,7 +57,6 @@ import { Badge } from '@/components/ui/badge';
 import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
-import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import type { LatestDigest } from '@/lib/actions/digest.actions';
 import { DigestMarkdown } from '@/components/ui/ticker-markdown';
@@ -491,33 +490,30 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
                   : `/stocks/${item.symbol}`
                 : `/trades/${item.positionId}`
             }
-            className="flex items-center gap-1.5 rounded-md p-2 hover:bg-muted/70 transition-colors"
+            // Fixed columns so every row lines up: ticker, status, sentence,
+            // gain. On a phone the status column sizes to its badge.
+            className="grid grid-cols-[4.75rem_auto_minmax(0,1fr)_auto] sm:grid-cols-[5.5rem_9.5rem_minmax(0,1fr)_auto] items-center gap-2 rounded-md p-2 hover:bg-muted/70 transition-colors"
           />
         }
       >
-        <StockLogo ticker={item.symbol} size="sm" />
-        <span className="text-sm font-semibold font-brand shrink-0 mr-1">{item.symbol}</span>
-        <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
-          <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
-          {status.label}
-        </Badge>
-        {middle ? (
-          <span className="flex-1 min-w-0 text-xs text-muted-foreground tabular-nums truncate">
-            {middle}
-          </span>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2 shrink-0">
+        <span className="flex items-center gap-1.5 min-w-0">
+          <StockLogo ticker={item.symbol} size="sm" />
+          <span className="text-sm font-semibold font-brand truncate">{item.symbol}</span>
+        </span>
+        <span className="min-w-0 overflow-hidden">
+          <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
+            {status.label}
+          </Badge>
+        </span>
+        <span className="min-w-0 text-xs text-muted-foreground tabular-nums truncate">
+          {middle}
+        </span>
+        {/* A proposal has no Review button here: the amber badge marks it
+            and the row opens the trade page, where it's approved. */}
+        <span className="justify-self-end">
           {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
-          {isProposed && (
-            // Phones: the amber "Proposal" badge already says it; the row
-            // opens where it's approved, and the button ate the sentence.
-            <ProposalActions
-              orderId={item.orderId!}
-              expiresAt={item.expiresAt}
-              className="hidden sm:inline-flex"
-            />
-          )}
-        </div>
+        </span>
       </HoverCardTrigger>
       <HoverCardContent side="top" align="start" className="w-72">
         <div className="flex flex-col gap-2">
@@ -896,7 +892,7 @@ interface DashboardClientProps {
 
 export default function DashboardClient({ data, userId, digest, coverage, pinned }: DashboardClientProps) {
   const router = useRouter();
-  const [range, setRange] = useState<Range>('1M');
+  const [range, setRange] = useState<Range>('1D');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('dollar');
   const [showMode, setShowMode] = useState<ShowMode>('equity');
@@ -1571,10 +1567,10 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             {/* Pending proposals sit above the digest — they're the most
                 time-sensitive thing on the page. Renders nothing when empty. */}
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
-            <DigestPreviewCard digest={digest} winRate={portfolio.winRate} />
             {/* Pinned shortlist — the hand-picked names you want in view.
-                Last in the rail: proposals and the digest come first. */}
+                Below proposals (time-sensitive), above the digest. */}
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
+            <DigestPreviewCard digest={digest} winRate={portfolio.winRate} />
           </div>
 
         </div>
