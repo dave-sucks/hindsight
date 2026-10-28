@@ -40,11 +40,8 @@
  *
  * ── One source for "a real, protective, recent decline" ──────────────────
  *
- * That filter already existed twice — the batch computation in
- * `tools/get-theses.ts` and its single-position mirror in
- * `proposals/held-through-context.ts`, which carries a comment begging the
- * next person to keep them in sync. This module is now the one place the
- * rule is written; both of those and `complete_run` read it from here. The
+ * That filter once existed twice; this module is the one place the rule is
+ * written, and `tools/get-theses.ts` and `complete_run` read it from here. The
  * rule: a CLOSE order the principal actually saw (`expiresAt` set), that
  * ended REJECTED or EXPIRED, tagged `closeReason: "STOP"` (a declined TARGET
  * exit means "let it run" — a different and benign hold), inside the window,
@@ -82,8 +79,7 @@ export function isSystemicRejection(rejectionMessage: string | null): boolean {
  *
  * Seven days because the exit stream re-surfaces roughly daily while a
  * breach persists, so the window self-refreshes; a decline with no fresh
- * proposals behind it ages out on its own. `held-through-context.ts`
- * re-exports this so its historic import path keeps working.
+ * proposals behind it ages out on its own.
  */
 export const DECLINED_SALE_WINDOW_DAYS = 7;
 

@@ -1,6 +1,6 @@
 # Situations library
 
-**Every situation, and exactly what the agent is sent.** The sixteen codes in rank order, each with what it means and the text an agent reads.
+**Every situation, and exactly what the agent is sent.** The seventeen codes in rank order, each with what it means and the text an agent reads.
 
 This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it by hand. What situations are and where they come from is [Situations](../concepts/situations.md).
 
@@ -11,9 +11,37 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it
 - **In a trigger run,** the stock's own codes and their texts come with the fire. Three situations are never sent to a trigger run, and where a text tells a run to change a stock's status, the trigger run reads a line that takes the plan down instead (its save has no status change).
 - **The full row.** Two situations send the stock's full row, research and all, because the decision needs it: watch woke up, and no setup named.
 
+## Auto trade made
+
+`AUTO_TRADE` · rank 1 of 17 · short row · sent to every run
+
+A trigger set to Auto just made a trade, and the analyst writes it up: what's going on with the company, and whether it agrees.
+
+```text
+When: a trigger set to Auto made a trade on this stock with no analyst deciding: a buy, an add, a trim or a sale, proposed to the principal or already sent (the run's opening line says which). This run writes it up. It cannot trade: the trade is made.
+
+Answer, in order:
+1. What is going on with the company and the stock, and why: its news, its sector, the market (get_stock_data, one web_search)? If the trigger watched a report or a filing, read it first.
+2. Does that touch why we own it, or why we wanted it? Go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has.
+3. Do you agree with the trade? If they passed on it before (`heldThroughFloor`, `said`), what is different today?
+
+What you can do:
+- Write one update_thesis with trigger_id: your note, which the principal reads on the trade.
+- If you would do something different, say so plainly in the note and why: hold instead of sell, wait instead of buy, a smaller trim. The principal decides on the approval, or on a trade that already went through.
+- Change a level only if the trade left one plainly stale.
+
+Answered: that one update_thesis.
+
+The note: what is going on with the company and the stock and why, and what it means for why we own it; then the trade in one sentence ("your Auto-sell at $196 was hit, so the sale is waiting for you") and whether you agree, and if not, what you would do instead.
+
+Mistakes:
+- Explaining the trigger instead of the company: the principal knows it fired.
+- Calling a trade tool: this run has none.
+```
+
 ## Promoted to live
 
-`PROMOTED_AWAITING` · rank 1 of 16 · short row · sent to every run
+`PROMOTED_AWAITING` · rank 2 of 17 · short row · sent to every run
 
 A stock just moved from paper to live money and needs a decision this run.
 
@@ -59,7 +87,7 @@ Mistakes:
 
 ## Sale signal
 
-`PROTECTIVE_SALE` · rank 2 of 16 · short row · sent to every run
+`PROTECTIVE_SALE` · rank 3 of 17 · short row · sent to every run
 
 A floor, a trail or a trim fired on a holding, or a sale you declined or let expire is still past its line.
 
@@ -68,7 +96,7 @@ When: a sale or trim trigger fired or is true now on a stock we hold, or the pri
 
 Answer, in order:
 1. Why is it down? Its own news, its sector, the market (get_stock_data, one web_search; get_market_context when the whole market fell).
-2. Does that touch why we own it? Go down `would_prove_it_wrong`: has any of it happened?
+2. Does that touch why we own it? Go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has.
 3. Is the price past the line now? A give-back counts from the tracked high, kept over the whole holding, not from a high read off a chart window.
 4. Declined, or left to lapse? `heldThroughFloor` counts each, with the floor, the recent low and their note; their words are in `said` too.
 
@@ -90,7 +118,7 @@ Mistakes:
 
 ## Buy level reached
 
-`BUY_ARRIVES` · rank 3 of 16 · short row · sent to every run
+`BUY_ARRIVES` · rank 4 of 17 · short row · sent to every run
 
 A watched stock reached its buy level.
 
@@ -122,7 +150,7 @@ Mistakes:
 
 ## Buy blocked, full
 
-`BUY_BLOCKED_FULL` · rank 4 of 16 · short row · sent to every run
+`BUY_BLOCKED_FULL` · rank 5 of 17 · short row · sent to every run
 
 A buy fired while the analyst already holds all it may.
 
@@ -149,7 +177,7 @@ Mistakes:
 
 ## Add or near target
 
-`ADD_OR_WINNER` · rank 5 of 16 · short row · sent to every run
+`ADD_OR_WINNER` · rank 6 of 17 · short row · sent to every run
 
 An add level fired, or a holding is three quarters of the way to its target.
 
@@ -179,7 +207,7 @@ Mistakes:
 
 ## Earnings
 
-`EARNINGS` · rank 6 of 16 · short row · sent to every run
+`EARNINGS` · rank 7 of 17 · short row · sent to every run
 
 A report is close, or just landed with a beat or a miss.
 
@@ -208,7 +236,7 @@ Mistakes:
 
 ## New filing
 
-`FILING` · rank 7 of 16 · short row · sent to every run
+`FILING` · rank 8 of 17 · short row · sent to every run
 
 The company filed something that matters with the SEC.
 
@@ -238,7 +266,7 @@ Mistakes:
 
 ## Watch woke up
 
-`QUIET_WATCH_WOKE` · rank 8 of 16 · full row · sent to every run
+`QUIET_WATCH_WOKE` · rank 9 of 17 · full row · sent to every run
 
 A watch with no plan hit one of its wakes and needs a fresh look.
 
@@ -284,7 +312,7 @@ Mistakes:
 
 ## Floor to fix
 
-`PROTECTION` · rank 9 of 16 · short row · sent to every run
+`PROTECTION` · rank 10 of 17 · short row · sent to every run
 
 A gain with too little floor under it, or a floor that would lose too much of the account.
 
@@ -311,7 +339,7 @@ Mistakes:
 
 ## First research due
 
-`FIRST_RESEARCH` · rank 10 of 16 · short row · not sent to a trigger run
+`FIRST_RESEARCH` · rank 11 of 17 · short row · not sent to a trigger run
 
 A stock on the watchlist with no view yet is due its first research.
 
@@ -336,7 +364,7 @@ Mistakes:
 
 ## Review due
 
-`REVIEW_DUE` · rank 11 of 16 · short row · sent to every run
+`REVIEW_DUE` · rank 12 of 17 · short row · sent to every run
 
 The review clock came round, or a review fired, and nothing else covers it.
 
@@ -346,7 +374,7 @@ When: the review clock came due on a LONG or SHORT stock, or a review trigger fi
 Answer, in order:
 1. Has the principal said something not yet answered (`said`)? Answer it first.
 2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search)?
-3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? Price being down is not on the list unless you wrote it there.
+3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has. Price being down is not on the list unless you wrote it there.
 4. Is the setup still working? The `setup` line: its failure signs, the manage rule, the time limit.
 5. Did the world move past the levels? An add level blown through, a floor lagging the gain (the `protection` line), a fired checkpoint never replaced, a target the street re-rated past.
 
@@ -359,7 +387,7 @@ What you can do:
 
 Answered: one update_thesis on the stock. "The plan stands" is honest only when neither the story nor the levels moved.
 
-The note: what has happened with the company and the stock since your last note, and what it means for why we own or watch it; then what you did, in one sentence. If nothing happened, say so in one sentence and name what would change it. Never a list of what you checked.
+The note: what has happened with the company and the stock since your last note, and what it means for why we own or watch it; then what you did, in one sentence. If nothing happened, say so and name what would change it. Never a list of what you checked.
 
 Mistakes:
 - The same answer to a review that fired again (the `repeat` line says how often): change the plan, or say what differs from last time.
@@ -374,7 +402,7 @@ When: the review clock came due on a LONG or SHORT stock, or a review trigger fi
 Answer, in order:
 1. Has the principal said something not yet answered (`said`)? Answer it first.
 2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search)?
-3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? Price being down is not on the list unless you wrote it there.
+3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has. Price being down is not on the list unless you wrote it there.
 4. Is the setup still working? The `setup` line: its failure signs, the manage rule, the time limit.
 5. Did the world move past the levels? An add level blown through, a floor lagging the gain (the `protection` line), a fired checkpoint never replaced, a target the street re-rated past.
 
@@ -387,7 +415,7 @@ What you can do:
 
 Answered: one update_thesis on the stock. "The plan stands" is honest only when neither the story nor the levels moved.
 
-The note: what has happened with the company and the stock since your last note, and what it means for why we own or watch it; then what you did, in one sentence. If nothing happened, say so in one sentence and name what would change it. Never a list of what you checked.
+The note: what has happened with the company and the stock since your last note, and what it means for why we own or watch it; then what you did, in one sentence. If nothing happened, say so and name what would change it. Never a list of what you checked.
 
 Mistakes:
 - The same answer to a review that fired again (the `repeat` line says how often): change the plan, or say what differs from last time.
@@ -396,7 +424,7 @@ Mistakes:
 
 ## Research stale
 
-`STALE_RESEARCH` · rank 12 of 16 · short row · sent to every run
+`STALE_RESEARCH` · rank 13 of 17 · short row · sent to every run
 
 The research is older than the analyst's limit.
 
@@ -421,7 +449,7 @@ Mistakes:
 
 ## Plan check
 
-`PLAN_PROBLEM` · rank 13 of 16 · short row · sent to every run
+`PLAN_PROBLEM` · rank 14 of 17 · short row · sent to every run
 
 The plan contradicts the price or the calendar: a buy level left behind, a target passed, a floor too tight.
 
@@ -447,7 +475,7 @@ Mistakes:
 
 ## Your word unanswered
 
-`YOUR_WORD_UNANSWERED` · rank 14 of 16 · short row · sent to every run
+`YOUR_WORD_UNANSWERED` · rank 15 of 17 · short row · sent to every run
 
 You left a note or made a decision since the analyst's last answer.
 
@@ -474,7 +502,7 @@ Mistakes:
 
 ## Sold, one look
 
-`SOLD_ONE_REVIEW` · rank 15 of 16 · short row · not sent to a trigger run
+`SOLD_ONE_REVIEW` · rank 16 of 17 · short row · not sent to a trigger run
 
 A stock sold in the last two weeks is owed one look back.
 
@@ -502,7 +530,7 @@ Mistakes:
 
 ## No setup named
 
-`NO_SETUP_NAMED` · rank 16 of 16 · full row · not sent to a trigger run
+`NO_SETUP_NAMED` · rank 17 of 17 · full row · not sent to a trigger run
 
 A researched stock has no setup named, so nothing says how to trade it.
 

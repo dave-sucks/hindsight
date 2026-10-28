@@ -13,7 +13,6 @@
 
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { When } from "@/lib/agent/triggers/condition";
-import type { ResearchBriefView } from "@/lib/research/brief-types";
 import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 
 export interface Trigger {
@@ -106,8 +105,8 @@ export interface ThesisPendingProposal {
    * was — there is nothing left to decide. Clears itself on the fill.
    */
   executing?: boolean;
-  /** The research brief built for this order; null until it lands. */
-  brief?: ResearchBriefView | null;
+  /** An Auto trade the analyst is still writing up (lib/proposals/auto-writeup.ts); the card reads the reason again until it lands. */
+  writing?: boolean;
 }
 
 export interface ThesisScoringDim {

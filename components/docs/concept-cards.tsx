@@ -442,7 +442,7 @@ const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: Re
   { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <AnalystDesk />, big: true, fit: "fill" },
   { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerLog />, fit: "inset" },
   { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <ApprovalCard />, fit: "center" },
-  { slug: "situations", title: "Situations", line: "The sixteen reasons a stock needs an answer today.", art: <WorkList />, fit: "bleed" },
+  { slug: "situations", title: "Situations", line: "The seventeen reasons a stock needs an answer today.", art: <WorkList />, fit: "bleed" },
 ];
 
 export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {

@@ -832,9 +832,6 @@ export const triggerEvaluator = inngest.createFunction(
                 type: "TRIGGER_FIRED",
                 // held=false: DEMOTE branch ⇒ un-held.
                 summary: sentenceOf(t, false),
-                rationale:
-                  `${t.rationale} There was no priced plan left to set down, ` +
-                  `so this is a look rather than a change.`,
                 triggerId: t.id,
                 signalIds: [],
                 runId: null,
@@ -854,9 +851,7 @@ export const triggerEvaluator = inngest.createFunction(
               // The figures ride along on an earnings fire. Tomorrow's run
               // reads this row to decide what to do; "Earnings miss" alone
               // makes it go and re-fetch what the row could have told it.
-              rationale: firedContext
-                ? `${t.rationale} ${firedContext}`
-                : t.rationale,
+              rationale: firedContext ?? undefined,
               triggerId: t.id,
               signalIds: [],
               runId: null,

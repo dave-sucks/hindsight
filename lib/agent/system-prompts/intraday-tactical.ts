@@ -5,7 +5,9 @@
  * trigger-evaluator.ts). Single-thesis, single-decision scope. The
  * agent's job: find out what is going on with the company and the stock,
  * decide (the declared action, another, or nothing), and write the review
- * the owner and the next run read.
+ * the owner and the next run read. When the trigger was set to Auto, the
+ * trade is already made and the job is the write-up alone (`autoTrade`):
+ * the same stock, the same read, no trade tools.
  *
  * Why a separate prompt: the daily run prompt is about walking the
  * book and deciding per-thesis. The tactical prompt is about ONE
@@ -20,6 +22,10 @@ import { conditionSentence, isGroup, shapeOf, trimPctOf } from "@/lib/agent/trig
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/lib/agent/situations";
 import { rowForModel } from "@/lib/agent/row-for-model";
+import { writtenNote } from "@/lib/agent/triggers/note";
+
+/** The tools a write-up of an Auto trade is not given: the trade is made, and this run only writes. */
+export const NOT_IN_A_WRITEUP: ReadonlySet<string> = new Set(["place_trade", "close_position", "manage_position", "dispatch_thesis_research", "wait_for_thesis_refresh"]);
 
 interface TacticalPromptArgs {
   /** The analyst's row and the account's setup numbers (lib/agent/analyst-brief.ts). */
@@ -56,6 +62,8 @@ interface TacticalPromptArgs {
    * guidance in rank order.
    */
   situations?: { codes: SituationCode[]; guidance: Partial<Record<SituationCode, string>> } | null;
+  /** The trigger was set to Auto and the trade is made: what it was, in one sentence. The run writes it up. */
+  autoTrade?: { line: string } | null;
 }
 
 /**
@@ -92,6 +100,7 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
     : "";
 
   const predicateSummary = conditionSentence(trigger.predicate);
+  const auto = args.autoTrade ?? null;
 
   // DAV-186: a fell-from-peak fire is validated against the system's tracked
   // watermark, never a chart-derived high. On 2026-08-18 a genuine HPE trail
@@ -101,7 +110,8 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   // when Position.peakPrice exists, so a missing peak here means OUR context
   // lookup failed — not that the fire was wrong.
   const trailingPeakBlock = (() => {
-    // A give-back off the high since we bought.
+    // A give-back off the high since we bought. An Auto trade is made: there is no fire to check.
+    if (auto) return "";
     const w = shapeOf(trigger.predicate);
     if (!w || isGroup(w) || w.variable !== "peak" || w.value == null) return "";
     const pct = w.value;
@@ -144,7 +154,11 @@ PATH: the predicate fired on the 5-minute check.${
 
   return `${analystBrief(analyst, args.capacity)}
 
-A trigger on your $${stock.ticker} thesis just fired. Find out what is going on with the company and the stock today, decide what to do, and write the review the principal reads: one decision.
+${
+    auto
+      ? `Your $${stock.ticker} trigger "${predicateSummary}" fired. It is set to Auto, so the trade was made with no analyst deciding: ${auto.line} Find out what is going on with the company and the stock today and write the note the principal reads with this trade.`
+      : `A trigger on your $${stock.ticker} thesis just fired. Find out what is going on with the company and the stock today, decide what to do, and write the review the principal reads: one decision.`
+  }
 
 ═══════════════════════════════════════════════════════════════════
 TOOL-CALL DISCIPLINE — read first
@@ -174,23 +188,41 @@ ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_
 
 **Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
-${trigger.action === "ENTER" || trigger.action === "ADD" ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
+${!auto && (trigger.action === "ENTER" || trigger.action === "ADD") ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
 
 ═══════════════════════════════════════════════════════════════════
 TRIGGER THAT FIRED (id: ${trigger.id})
 ═══════════════════════════════════════════════════════════════════
   predicate: ${predicateSummary}
-  declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}
-  rationale you wrote when you set it: "${trigger.rationale}"${trailingPeakBlock}
+  declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}${writtenNote(trigger) ? `\n  ${trigger.source === "PRINCIPAL" ? "the principal's note on it" : "its note"}: "${writtenNote(trigger)}"` : ""}${trailingPeakBlock}
 ${pathSection}
+${
+  auto
+    ? `═══════════════════════════════════════════════════════════════════
+THE WRITE-UP
 ═══════════════════════════════════════════════════════════════════
+
+1. Find out what is going on.
+   - get_stock_data($${stock.ticker}): the live price and the company's news.
+   - One web_search: why $${stock.ticker} is moving and the latest on the
+     company.
+
+2. Write EXACTLY one update_thesis call with trigger_id="${trigger.id}".
+   Its rationale is your note: the principal reads it on the trade.
+${situationsBlock}   - This run has no trade tools: the trade is made. If you would do
+     something different, say so in the note and why.
+
+3. Then complete_run.
+
+`
+    : `═══════════════════════════════════════════════════════════════════
 DECISION FRAMEWORK
 ═══════════════════════════════════════════════════════════════════
 
 1. Find out what is going on.
    - get_stock_data($${stock.ticker}): the live price and the company's news.
    - One web_search: why $${stock.ticker} is moving and the latest on the
-     company, unless today's research brief on it is already in what you read.
+     company.
    - Confirm the condition still holds now, not just when the check sampled it.
 
 2. If it still holds:
@@ -239,7 +271,8 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
      story of the stock, not as a list of the triggers.
    - Then complete_run.
 
-═══════════════════════════════════════════════════════════════════
+`
+}═══════════════════════════════════════════════════════════════════
 HARD CONSTRAINTS
 ═══════════════════════════════════════════════════════════════════
 

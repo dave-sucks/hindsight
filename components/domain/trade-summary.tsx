@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceChange } from "@/components/ui/price-change";
-import { ProposalNote } from "@/components/domain/research-brief";
+import { ProposalNote } from "@/components/domain/proposal-note";
 import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -207,7 +207,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       {review ? <div className="flex justify-start">{review}</div> : null}
       <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
       {pp && !pp.executing ? (
-        <ProposalNote orderId={pp.orderId} reason={note} initial={pp.brief ?? null} />
+        <ProposalNote orderId={pp.orderId} reason={note} writing={pp.writing ?? false} />
       ) : note ? (
         <TradeNote text={note} />
       ) : null}

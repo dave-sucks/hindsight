@@ -35,7 +35,7 @@ import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 import { HERO_UPDATE_TYPES } from "@/lib/thesis/latest-note";
 import { recentAnswers, RUN_WORDS } from "@/lib/agent/stock-context";
-import { briefForOrderView } from "@/lib/research/brief-read";
+import { writeupComing } from "@/lib/proposals/auto-writeup";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
 
 export async function GET(
@@ -299,7 +299,7 @@ export async function GET(
         ),
       );
       const picked = pickProposalOrder(pos.orders ?? []);
-      const brief = picked ? await briefForOrderView(picked.order.id) : null;
+      const writing = picked ? await writeupComing(picked.order.id) : false;
       const cost = Number(pos.avgCost) * Number(pos.quantity);
       position = {
         id: pos.id,
@@ -326,7 +326,7 @@ export async function GET(
               expiresAt: picked.order.expiresAt?.toISOString() ?? null,
               rationale: picked.order.rationale,
               executing: picked.executing,
-              brief,
+              writing,
             }
           : null,
       };

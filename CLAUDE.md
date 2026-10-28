@@ -21,7 +21,9 @@ stamped copy would freeze the old numbers. See TRIGGERS.md §2a.
 whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
 Every trade a fire leads to goes through the approval switch (on: a proposal). **On fire
 is the same three choices on every trigger (2026-10-22):** Auto (`DO_IT`: the
-trade with no agent run, sized and gated by the tool an agent would call;
+trade with no agent deciding, sized and gated by the tool an agent would call;
+the same trigger run then writes it up with no trade tools, and its note is the
+trade's reason (`lib/proposals/auto-writeup.ts`, situation `AUTO_TRADE`);
 Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
 (`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
 run answers it). Unset, a review is Flag for Review and everything else Send to
@@ -69,7 +71,8 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 ## Situations (shipped 2026-10-08 — the one flag system, and the one home for situation text)
 `computeNeedsAction` (`lib/agent/needs-action.ts`) returns EVERY flag true on a
 stock, today's lead first. `situationsFor` (`lib/agent/situations.ts`) maps that
-list plus the row's facts to sixteen situation codes, and `SITUATIONS` in the
+list plus the row's facts to its situation codes (seventeen in all; `AUTO_TRADE`
+is set by the Auto write-up itself), and `SITUATIONS` in the
 same file is the ONE table of the text an agent gets for each (under 2,200
 characters each). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed
 for the flag math and `loadStockFacts` (`lib/agent/stock-facts.ts`) the one set
@@ -211,7 +214,7 @@ plus `get_stock_data`.
 - The **trigger evaluator** is the other clock: every 5 min during regular US
   market hours (gated on `isMarketOpen()`) plus a close pass at 16:20 ET; it
   fires `app/thesis.trigger.fired` when a thesis predicate matches, which
-  wakes a tactical run (or makes an Auto trade with no agent); a fire set to
+  wakes a tactical run (or makes an Auto trade, which that run then writes up); a fire set to
   Flag for Review is written down and wakes nothing. See
   `docs/TRIGGERS.md`. (Its `app/signal.routed`
   path was deleted with the router.)
@@ -448,7 +451,7 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
 
 ## Domain Components (components/domain/)
 Shared domain cards and blocks (agent config card, decision summary, earnings
-card, thesis chart and carousel, onboarding, research brief…). Read the folder;
+card, thesis chart and carousel, onboarding, the proposal note…). Read the folder;
 a list here goes stale.
 
 ## Inngest Crons (lib/inngest/functions/)
@@ -465,7 +468,7 @@ a list here goes stale.
   matches
 - tactical-run.ts — event-driven, consumes app/thesis.trigger.fired,
   spawns a focused single-thesis agent (~15 steps), or makes an Auto
-  trigger's trade with no agent
+  trigger's trade and then writes it up with no trade tools
 ### Agent + Trading
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)

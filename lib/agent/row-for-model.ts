@@ -141,7 +141,6 @@ function line(row: Row): string {
     noClaim ? (failedOn ? `write-up failed ${etDay(failedOn)}` : "no write-up yet") : null,
     str(row.setupId) ?? str(row.horizon),
     price != null ? money(price) : null,
-    str(row.whyItMoved) ? `moved: ${row.whyItMoved}` : null,
     entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noPlan(row) ? "no plan" : null,
     target != null ? `target ${money(target)}` : null,
     floor != null ? `floor ${money(floor)}` : null,
@@ -367,7 +366,6 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("position", positionLine(row, price));
   put("proposal_waiting", proposalLine(row));
   put("price", priceLine(row));
-  put("why_it_moved", str(row.whyItMoved));
   put("plan", planLine(row));
   put("plan_checks", list<{ text?: string }>(resolved?.planSanity).map((f) => f.text).filter(Boolean));
   put("protection", protectionLine(row, price));

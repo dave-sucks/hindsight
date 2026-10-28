@@ -10,6 +10,7 @@ import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/li
 
 /** Each situation in a sentence for a person. The text an agent reads is SITUATIONS' own. */
 const PLAIN: Record<SituationCode, string> = {
+  AUTO_TRADE: "A trigger set to Auto just made a trade, and the analyst writes it up: what's going on with the company, and whether it agrees.",
   PROMOTED_AWAITING: "A stock just moved from paper to live money and needs a decision this run.",
   PROTECTIVE_SALE: "A floor, a trail or a trim fired on a holding, or a sale you declined or let expire is still past its line.",
   BUY_ARRIVES: "A watched stock reached its buy level.",
@@ -35,7 +36,7 @@ export function situationsLibraryMarkdown(): string {
   const out: string[] = [
     "# Situations library",
     "",
-    "**Every situation, and exactly what the agent is sent.** The sixteen codes in rank order, each with what it means and the text an agent reads.",
+    "**Every situation, and exactly what the agent is sent.** The seventeen codes in rank order, each with what it means and the text an agent reads.",
     "",
     "This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it by hand. What situations are and where they come from is [Situations](../concepts/situations.md).",
     "",

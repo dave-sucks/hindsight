@@ -30,8 +30,8 @@ describe("the framework page's measurements", () => {
     expect(carries).toMatchObject({ morning: true, trigger: true, chat: true });
   });
 
-  it("reads all sixteen situation texts", () => {
-    expect(data.situations).toHaveLength(16);
+  it("reads all seventeen situation texts", () => {
+    expect(data.situations).toHaveLength(17);
     for (const s of data.situations) expect(s.chars).toBeGreaterThan(50);
   });
 });
