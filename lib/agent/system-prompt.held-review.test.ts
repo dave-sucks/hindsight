@@ -48,7 +48,8 @@ const review = SITUATIONS.REVIEW_DUE.guidance;
 describe("answering a fired review: REVIEW_DUE's guidance, which the read carries with the stock", () => {
   it("asks for the trigger id and the sentence", () => {
     expect(review).toContain("Pass trigger_id when a review fired");
-    expect(review).toContain("saying what you checked and why");
+    expect(review).toContain("The note: what has happened with the company and the stock since your last note");
+    expect(review).toContain("Never a list of what you checked.");
   });
 
   it("says what to do when the row reports a repeat", () => {
@@ -61,7 +62,7 @@ describe("answering a fired review: REVIEW_DUE's guidance, which the read carrie
   });
 
   it("tells a held stock's review to go down its invalidation conditions", () => {
-    expect(review).toContain("go down `would_prove_it_wrong` and say for each whether it has happened");
+    expect(review).toContain("go down `would_prove_it_wrong`: has any of it happened?");
     expect(review).toContain("A condition that happened is an exit");
   });
 

@@ -68,7 +68,7 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
     expect(p).toContain("Positions: 4 of 4 — this analyst is FULL.");
     expect(p).toContain("It holds $ABT, $ASML, $CEG, $WST.");
     expect(p).not.toContain("**This analyst is full.**");
-    expect(SITUATIONS.BUY_BLOCKED_FULL.guidance).toContain("full — waiting");
+    expect(SITUATIONS.BUY_BLOCKED_FULL.guidance).toContain("Or say it waits for a free slot, and why.");
   });
 
   it("PEAD, 4 of 6: says two are free and carries no full-analyst rule", () => {

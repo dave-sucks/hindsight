@@ -151,9 +151,12 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   ];
 
   it("the voice rules state the standard and name the shorthand they ban", () => {
-    // A note: what happened and why, whether it touches the reason we own it, this position in dollars, the call.
-    expect(VOICE_RULES).toContain(`answers "what's going on with this stock, and what should I do?": what happened, today or since the last look, and why, with dates`);
-    expect(VOICE_RULES).toContain("whether that touches the reason we own it; what it means for this position (the shares, the dollars, the profit or loss); then the call, and what would change it. A stop or target goes in the last sentence, and only when the call turns on it.");
+    // A note, in three parts: what is going on and why, what it means, then one closing sentence of what we did.
+    expect(VOICE_RULES).toContain(`answers "what's going on with this stock, and what should I do?", in three parts, in this order:`);
+    expect(VOICE_RULES).toContain("- What is going on with the company and the stock, and why: what happened, today or since the last look, with dates (its own news, its sector, the market).");
+    expect(VOICE_RULES).toContain("- What it means: whether that touches the reason we own it (or watch it), and for this position the shares, the dollars, the profit or loss.");
+    expect(VOICE_RULES).toContain("- What you did, in one closing sentence of plain words, and what would change it");
+    expect(VOICE_RULES).toContain("A stop or target goes in this last sentence, and only when the call turns on it.");
     // The standing description: a company page.
     expect(VOICE_RULES).toContain("reads like a research site's company page: what the company does; what it has done lately, with dates; the numbers that matter (growth, profits, valuation); what Wall Street thinks; what has to stay true. Sourced, never a trade formula.");
     expect(VOICE_RULES).toMatch(/never the reason by itself: "the stop at \$41\.42", not "the floor fired"/);

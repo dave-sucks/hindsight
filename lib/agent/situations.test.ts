@@ -148,7 +148,18 @@ describe("the guidance: each situation's text, once", () => {
   it("every text is under the 2,200-character cap and says when, what to do and what answers it", () => {
     for (const [code, { guidance }] of Object.entries(SITUATIONS)) {
       expect([code, guidance.length <= 2_200]).toEqual([code, true]);
-      for (const part of ["When:", "Answered:", "Mistakes:"]) expect([code, guidance.includes(part)]).toEqual([code, true]);
+      for (const part of ["When:", "Answered:", "The note:", "Mistakes:"]) expect([code, guidance.includes(part)]).toEqual([code, true]);
+    }
+  });
+  it("each says what its note covers, the company and the stock first; none asks for the bookkeeping", () => {
+    // The 10-27 sale notes ("still below the $987.31 line… second day after we let the floor lapse") came from
+    // PROTECTIVE_SALE's "say which day of the breach it is… name the rule you followed", and REVIEW_DUE's
+    // checklist notes from "saying what you checked".
+    const writerOrInsideAReview = new Set(["FIRST_RESEARCH", "NO_SETUP_NAMED"]);
+    for (const [code, { guidance }] of Object.entries(SITUATIONS)) {
+      const note = guidance.split("\n").find((l) => l.startsWith("The note: ")) ?? "";
+      if (!writerOrInsideAReview.has(code)) expect([code, /\b(company|stock)\b/.test(note)]).toEqual([code, true]);
+      expect([code, guidance.match(/which day of the breach|name the rule|what you checked and why|say for each whether|full — waiting/g)]).toEqual([code, null]);
     }
   });
   it("comes in rank order, each text once, whatever order the codes arrive in", () => {
