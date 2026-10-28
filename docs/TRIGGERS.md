@@ -468,7 +468,8 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
   setting on the account (Settings → Triggers) that an analyst may override
   (its Triggers tab). On, a new long holding gets two lines. The **sale
-  floor** is always the buy price less the setting's % (0.5–50, default 8):
+  floor** is always the buy price less the setting's % (0.5–50, default 8) —
+  the price at approval, moved to the price paid when the fill lands:
   "Sell if below $X", DO_IT, stamped as the owner's — added, or the floor
   there moved to it in place. A floor an analyst or a template set tighter
   than that is kept as the **review line** above it: "Review if below $Y",

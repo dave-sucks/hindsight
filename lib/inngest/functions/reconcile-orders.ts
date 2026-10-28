@@ -38,6 +38,12 @@ import {
   cancelOrphanedSellProposals,
   lockPositionRow,
 } from "@/lib/proposals/position-lock";
+import { randomUUID } from "node:crypto";
+import { acceptedOps, applyTriggerOps } from "@/lib/agent/triggers/ops";
+import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import type { Trigger } from "@/lib/agent/triggers/types";
+import { autoStopFillOps, loadAutoStop } from "@/lib/trading/auto-stop";
 
 const FIVE_MIN_CRON = "TZ=America/New_York */5 4-19 * * 1-5";
 
@@ -336,7 +342,7 @@ async function applyFillByIntent(
         // planned $51.68 / paid $52.975, ANET planned $186.45 / paid $183.83,
         // found 2026-08-26). place_trade's synchronous-fill path stamps it
         // inline; this is the same stamp for fills that land via reconcile.
-        await restampThesisEntryOnFill(tx, position.analystId, position.symbol, fillPrice);
+        await restampThesisEntryOnFill(tx, position.analystId, position.symbol, fillPrice, position.id);
         await tx.positionEvent.create({
           data: {
             positionId: position.id,
@@ -449,7 +455,7 @@ async function applyFillByIntent(
         });
         // An add moves what the position cost on average — keep the thesis
         // buy price on the same number the protective math measures from.
-        await restampThesisEntryOnFill(tx, position.analystId, position.symbol, newAvg);
+        await restampThesisEntryOnFill(tx, position.analystId, position.symbol, newAvg, null);
         break;
       }
 
@@ -489,6 +495,8 @@ async function restampThesisEntryOnFill(
   analystId: string,
   symbol: string,
   paidPrice: number,
+  /** The opening buy's position, null for an add: its stop-when-buying floor follows the fill. */
+  openedPositionId: string | null,
 ): Promise<void> {
   const thesis = await tx.thesis.findFirst({
     where: {
@@ -497,27 +505,42 @@ async function restampThesisEntryOnFill(
       researchRun: { agentConfigId: analystId },
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true, ticker: true, entryPrice: true },
+    select: { id: true, ticker: true, entryPrice: true, direction: true, triggers: true },
   });
   if (!thesis) return;
   if (thesis.entryPrice != null && Math.abs(thesis.entryPrice - paidPrice) <= 0.01) {
     return;
   }
+  // Stop when buying: its floor moves to the line under what was paid.
+  const stored = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
+  const stopOps =
+    openedPositionId && thesis.entryPrice != null
+      ? autoStopFillOps({ triggers: stored, direction: thesis.direction, boughtAt: thesis.entryPrice, paid: paidPrice, setting: await loadAutoStop(analystId) })
+      : [];
+  const moved = stopOps.length
+    ? applyTriggerOps({ stored, ops: stopOps, direction: thesis.direction, status: "HOLDING", actor: "SYSTEM", mintId: () => randomUUID() })
+    : null;
+  const stopLoss = moved
+    ? canonicalLevels({ triggers: moved.triggers.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })), direction: thesis.direction, status: "HOLDING", avgCost: paidPrice }).columns.stopLoss
+    : undefined;
   await tx.thesis.update({
     where: { id: thesis.id },
-    data: { entryPrice: paidPrice },
+    data: { entryPrice: paidPrice, ...(moved ? { triggers: moved.triggers as unknown as object, stopLoss } : {}) },
   });
+  if (moved && openedPositionId) await tx.position.update({ where: { id: openedPositionId }, data: { stopLoss } });
   await tx.thesisUpdate.create({
     data: {
       thesisId: thesis.id,
       type: "UPDATED",
       summary: `${thesis.ticker} buy price set to what was paid — $${paidPrice.toFixed(2)}`,
       rationale:
-        thesis.entryPrice != null
-          ? `Filled at $${paidPrice.toFixed(2)} against the planned $${thesis.entryPrice.toFixed(2)}. Now that we own it, the buy price on the thesis is what we paid.`
-          : `Filled at $${paidPrice.toFixed(2)}; the thesis had no buy price, so it is now what we paid.`,
+        (thesis.entryPrice != null
+          ? `Filled at $${paidPrice.toFixed(2)} against the $${thesis.entryPrice.toFixed(2)} on the thesis. Now that we own it, the buy price on the thesis is what we paid.`
+          : `Filled at $${paidPrice.toFixed(2)}; the thesis had no buy price, so it is now what we paid.`) +
+        (moved ? ` The automatic stop moves with it, to $${stopLoss?.toFixed(2)}.` : ""),
       fieldChanges: {
         entryPrice: { from: thesis.entryPrice, to: paidPrice },
+        ...(moved ? { triggerOps: { from: null, to: acceptedOps(moved.results) } } : {}),
       },
       priceAtTime: paidPrice,
     },
