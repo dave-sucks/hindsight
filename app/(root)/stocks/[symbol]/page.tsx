@@ -280,7 +280,7 @@ export default async function StockDetailPage({ params }: Props) {
 
 
   return (
-    <div className="min-h-full bg-background">
+    <div data-surface="paper">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       <LiveRefresh />
       {/* ── Header — the SAME StockIdentityHeader the trade page + thesis

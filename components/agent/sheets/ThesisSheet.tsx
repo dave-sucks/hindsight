@@ -1242,6 +1242,20 @@ export function ThesisBody({
     </>
   );
 
+  // The page's two columns: the tab's content on the left, the cards on the
+  // right. Each tab opens its own pair under the tab bar — on Overview under
+  // the price row too — so the cards start level with the chart. Only the
+  // open tab is mounted, so the cards render once.
+  const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
+  const sideColumn =
+    surface === "page" ? (
+      <div className="hidden lg:block space-y-4">
+        {tradeCard}
+        {aside}
+        {stockCards}
+      </div>
+    ) : null;
+
   return (
     <Tabs defaultValue={0}>
       <TabsList>
@@ -1249,9 +1263,6 @@ export function ThesisBody({
         <TabsTrigger value={1}>Research</TabsTrigger>
         <TabsTrigger value={2}>Activity</TabsTrigger>
       </TabsList>
-
-      <div className={cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]")}>
-      <div className="min-w-0">
 
       {/* ── Overview: price → the trade → chart → triggers → the latest note ── */}
       <TabsContent value={0} className="space-y-5">
@@ -1271,6 +1282,8 @@ export function ThesisBody({
         </div>
       ) : null}
 
+      <div className={columns}>
+      <div className="min-w-0 space-y-5">
       {tradeBanner}
 
       {/* ── Price chart (annotated) ───────────────────────────── */}
@@ -1344,10 +1357,15 @@ export function ThesisBody({
       />
 
       {surface === "sheet" ? stockCards : null}
+      </div>
+      {sideColumn}
+      </div>
       </TabsContent>
 
       {/* ── Research: the claim and the write-up behind it ─────── */}
       <TabsContent value={1} className="space-y-5">
+      <div className={columns}>
+      <div className="min-w-0 space-y-5">
       {/* ── Core belief, dated by the write-up that set it ─────── */}
       {state.coreBelief ? (
         <div className="space-y-2">
@@ -1439,10 +1457,15 @@ export function ThesisBody({
         }}
         updatedAt={state.writtenUp?.at ?? state.researchUpdatedAt}
       />
+      </div>
+      {sideColumn}
+      </div>
       </TabsContent>
 
         {/* ── Activity tab: timeline + provenance footer ───────── */}
         <TabsContent value={2} className="space-y-5">
+      <div className={columns}>
+      <div className="min-w-0 space-y-5">
           {thesis_id ? (
             <ThesisTimelineSection
               thesisId={thesis_id}
@@ -1460,17 +1483,10 @@ export function ThesisBody({
               No activity yet — this thesis hasn&apos;t been persisted.
             </p>
           )}
+      </div>
+      {sideColumn}
+      </div>
       </TabsContent>
-      </div>
-
-      {surface === "page" ? (
-        <div className="hidden lg:block space-y-4">
-          {tradeCard}
-          {aside}
-          {stockCards}
-        </div>
-      ) : null}
-      </div>
     </Tabs>
   );
 }
