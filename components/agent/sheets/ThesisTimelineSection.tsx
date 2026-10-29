@@ -175,7 +175,8 @@ export function RecentNotes({ notes, onViewAll }: { notes: TimelineUpdate[]; onV
   const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
   if (notes.length === 0) return null;
-  const rows = notes.map((n) => toRow({ kind: "event", row: n }));
+  // A note's words are the point here: two lines, a click for the rest.
+  const rows = notes.map((n) => ({ ...toRow({ kind: "event", row: n }), showDescription: true }));
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
