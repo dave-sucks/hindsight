@@ -71,6 +71,10 @@ What happens next is the trigger's **On fire**, in the next section. The whole p
 
 ## On fire
 
+Where each fire goes, and how what the agent writes comes back to the stock:
+
+<!-- asset: fire-loop -->
+
 | | Auto | Send to Agent | Flag for Review |
 |---|---|---|---|
 | What happens | The trade, with no agent deciding, then the analyst's write-up of it. With your approval switch on, it comes to you as a proposal right away | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
