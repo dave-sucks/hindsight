@@ -39,8 +39,7 @@ async function fire(trigger: Record<string, unknown>, firedPrice: number, seed =
     jest.doMock("ai", () => ({ generateText: jest.fn(async () => ((modelCalls += 1), { steps: [], response: { messages: [] }, text: "" })), stepCountIs: () => () => false }));
     jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
-    jest.doMock("@/lib/actions/closeTrade.actions", () => ({ closeOpenPosition: jest.fn(async (...a: unknown[]) => (closes.push(a), { kind: "proposed" })) }));
-    jest.doMock("@/lib/proposals/held-through-context", () => ({ heldThroughNoteForPosition: async () => null }));
+    jest.doMock("@/lib/actions/closeTrade.actions", () => ({ closeOpenPosition: jest.fn(async (...a: unknown[]) => (closes.push(a), { kind: "proposed", proposal: { orderId: "o1" } })) }));
     jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({ get_theses: { execute: async () => ({ ok: false }) } }) }));
     await import("@/lib/inngest/functions/tactical-run");
     returned = await handler!({
@@ -48,7 +47,7 @@ async function fire(trigger: Record<string, unknown>, firedPrice: number, seed =
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
     });
   });
-  for (const m of ["ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/proposals/held-through-context", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
+  for (const m of ["ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   return { returned, modelCalls, closes, runs: (db.store.researchRun ?? []) as Array<Record<string, unknown>> };
 }
 
@@ -59,7 +58,8 @@ describe("a paused analyst's held stock", () => {
     expect(r.closes).toHaveLength(1);
     const [positionId, reason, , source, rationale, , , opts] = r.closes[0];
     expect([positionId, reason, source]).toEqual(["cmqf9avuh000604jya2yocv6z", "STOP", "price_monitor"]);
-    expect(rationale).toContain(PAUSED_SALE_NOTE);
+    // It was set to Send to Agent, so it never calls itself an Auto-sell.
+    expect(rationale).toBe(`Your "Sell if below $256.50" came true. ${PAUSED_SALE_NOTE}`);
     expect(opts).toEqual({ propose: true });
     expect(r.runs[0]).toMatchObject({ status: "COMPLETE" });
   });

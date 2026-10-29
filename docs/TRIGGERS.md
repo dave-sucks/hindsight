@@ -257,7 +257,7 @@ names are:
 
 | `fireMode` | The name | On fire |
 |---|---|---|
-| **`DO_IT`** | Auto-sell / Auto-buy / Auto-add / Auto-trim | The trade, with no agent run. A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
+| **`DO_IT`** | Auto-sell / Auto-buy / Auto-add / Auto-trim | The trade, with no agent deciding; the same trigger run then writes it up with no trade tools, and its note becomes the trade's reason (`lib/proposals/auto-writeup.ts`). A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
 | **`ASK_NOW`** | Send to Agent | `app/thesis.trigger.fired` → a trigger run (the tactical run) starts now and decides. |
 | **`NEXT_MORNING`** | Flag for Review | The `TRIGGER_FIRED` row is written and no run starts; the next morning run answers it. |
 

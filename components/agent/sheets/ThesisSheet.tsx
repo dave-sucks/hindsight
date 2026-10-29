@@ -59,7 +59,7 @@ import {
   type ResearchBulletSection,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
-import type { EarningsResponse, FilingsResponse, ThesisRecentNote } from "@/lib/types/thesis-sheet";
+import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
 import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -256,56 +256,6 @@ function ClampedParagraph({ text, className }: { text: string; className?: strin
     >
       {text}
     </p>
-  );
-}
-
-// ── Recent ──
-// The analyst's last notes on the stock, newest first: the same ones every
-// run is handed (recentAnswers, lib/agent/stock-context.ts). Each shows three
-// lines; a click opens the rest.
-const noteDay = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
-const noteTime = (iso: string) =>
-  new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
-
-function RecentNote({ note }: { note: ThesisRecentNote }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <li className="grid grid-cols-[4.5rem_1fr] gap-3">
-      <div className="text-xs text-muted-foreground tabular-nums leading-relaxed">
-        <p className="text-sm text-foreground">{noteDay(note.timestamp)}</p>
-        <p>{noteTime(note.timestamp)}</p>
-      </div>
-      <div className="min-w-0 space-y-1">
-        <p className="text-sm tabular-nums">
-          {note.priceAtTime != null ? `$${note.priceAtTime.toFixed(2)}` : null}
-          <span className="text-muted-foreground">{note.priceAtTime != null ? " · " : null}{note.by}</span>
-        </p>
-        <p
-          className={cn(
-            "text-sm text-muted-foreground leading-relaxed cursor-pointer transition-colors hover:text-foreground",
-            !open && "line-clamp-3",
-          )}
-          onClick={() => setOpen((v) => !v)}
-          title={open ? "Collapse" : "Expand"}
-        >
-          {note.text}
-        </p>
-      </div>
-    </li>
-  );
-}
-
-function RecentNotes({ notes }: { notes: ThesisRecentNote[] }) {
-  return (
-    <div className="space-y-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent</p>
-      <ol className="space-y-4">
-        {notes.map((n) => (
-          <RecentNote key={n.id} note={n} />
-        ))}
-      </ol>
-    </div>
   );
 }
 
@@ -526,13 +476,11 @@ function LatestNoteBlock({
   quoteLoading,
   quoteFailed,
   analystName,
-  recentNotes,
   /** Text already shown verbatim in the trade block — never repeated here. */
   suppressText,
 }: {
   status: string;
   latestUpdate: ThesisDossier["latestUpdate"];
-  recentNotes: ThesisRecentNote[];
   needsAction: NeedsAction | null;
   /** Every situation the stock is in, lead first; the ones the lead didn't put it in follow the flag. */
   situations: Array<{ name: string; lead: boolean }>;
@@ -551,9 +499,6 @@ function LatestNoteBlock({
     suppressText != null &&
     note.replace(/\s+/g, " ") === suppressText.replace(/\s+/g, " ");
   const text = sameAsTrade ? null : note;
-  // The pending proposal's reason is in the trade block already.
-  const same = (a: string, b: string | null) => b != null && a.replace(/\s+/g, " ") === b.replace(/\s+/g, " ");
-  const recent = recentNotes.filter((n) => !same(n.text, suppressText));
 
   // ONE flag line. `planSanity` used to stack under it — a second, unrelated
   // system (is this PLAN coherent?) painting the same amber as the work flag
@@ -594,9 +539,7 @@ function LatestNoteBlock({
         </p>
       ) : null}
 
-      {recent.length > 0 ? (
-        <RecentNotes notes={recent} />
-      ) : view.showNote && text ? (
+      {view.showNote && text ? (
         <>
           <ClampedParagraph text={text} />
           <WrittenByLine latestUpdate={latestUpdate} analystName={analystName} />
@@ -1185,6 +1128,8 @@ export function ThesisBody({
   const { state, quote, quoteLoading, earnings, filings, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
   // What the chart's selected range shows; the price row prints it.
   const [move, setMove] = useState<RangeMove | null>(null);
+  // The open tab: Overview's "View all" opens Activity.
+  const [tab, setTab] = useState(0);
 
   // ── Derived — durable from `state`, live from the hydration states ────────
   const liveStatus = state.status as ThesisStatus;
@@ -1312,7 +1257,7 @@ export function ThesisBody({
     ) : null;
 
   return (
-    <Tabs defaultValue={0}>
+    <Tabs value={tab} onValueChange={(v) => setTab(Number(v))}>
       <TabsList>
         <TabsTrigger value={0}>Overview</TabsTrigger>
         <TabsTrigger value={1}>Research</TabsTrigger>
@@ -1385,7 +1330,6 @@ export function ThesisBody({
       <LatestNoteBlock
         status={state.status}
         latestUpdate={state.latestUpdate}
-        recentNotes={state.recentNotes ?? []}
         needsAction={quote?.needsAction ?? null}
         situations={quote?.situations ?? []}
         quoteLoading={quoteLoading}
@@ -1393,6 +1337,19 @@ export function ThesisBody({
         analystName={state.analystName}
         suppressText={tradeBanner ? (pendingProposal?.rationale ?? null) : null}
       />
+
+      {/* The last few Activity rows with something written, in the Activity tab's own design. */}
+      {thesis_id ? (
+        <ThesisTimelineSection
+          thesisId={thesis_id}
+          provenance={null}
+          recent={{
+            limit: 3,
+            skipTexts: [state.latestUpdate?.rationale ?? null, pendingProposal?.rationale ?? null],
+            onViewAll: () => setTab(2),
+          }}
+        />
+      ) : null}
 
       {surface === "sheet" ? stockCards : null}
       </div>

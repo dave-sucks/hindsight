@@ -73,7 +73,7 @@ What happens next is the trigger's **On fire**, in the next section. The whole p
 
 | | Auto | Send to Agent | Flag for Review |
 |---|---|---|---|
-| What happens | The trade, with no agent. With your approval switch on, it comes to you as a proposal right away, with a research paragraph on the company | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
+| What happens | The trade, with no agent deciding, then the analyst's write-up of it. With your approval switch on, it comes to you as a proposal right away | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
 | Buy | ✓ one-time; only you set it | ✓ default | ✓ |
 | Add | ✓ one-time; only you set it | ✓ default | ✓ |
 | Trim | ✓ one-time, sells its size; only you | ✓ default | ✓ |
@@ -82,7 +82,7 @@ What happens next is the trigger's **On fire**, in the next section. The whole p
 
 What a trigger does when it comes true, the same three choices on every trigger:
 
-- **Auto** (Auto-sell, Auto-buy, Auto-add, Auto-trim): the trade, with no agent. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells its size. With nothing to trade (a buy on a stock we already hold), the agent is asked instead. A review can't be Auto; it is asking.
+- **Auto** (Auto-sell, Auto-buy, Auto-add, Auto-trim): the trade, with no agent deciding; the analyst then writes it up, and says so if it would have done something else. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells its size. With nothing to trade (a buy on a stock we already hold), the agent is asked instead. A review can't be Auto; it is asking.
 - **Send to Agent:** a [trigger run](../agents/trigger-runs.md) starts within minutes to look at that one stock and decide.
 - **Flag for Review:** the fire goes on the stock's list and the next [morning run](../agents/morning-runs.md) answers it. A worrying new filing on a stock we hold still gets a look the same day.
 

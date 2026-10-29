@@ -74,13 +74,13 @@ describe("MU: an Auto-trim is used once", () => {
     expect((await pass(db, new Date("2026-10-23T15:00:00Z"), 1096)).map((e) => e.triggerId)).toEqual([TRIM.id]);
   });
 
-  it("fires, trims 30% with no agent, comes off the stock with one line, and the next day's pass fires nothing", async () => {
+  it("fires, trims 30% with no agent deciding (then one write-up), comes off the stock with one line, and the next day's pass fires nothing", async () => {
     const db = muBook();
     const fired = await pass(db, new Date("2026-10-22T15:00:00Z"), 1095);
     expect(fired.map((e) => e.triggerId)).toEqual([TRIM.id]);
 
     const run = await triggerRun(db, fired[0]);
-    expect(run.modelCalls).toBe(0);
+    expect(run.modelCalls).toBe(1);
     expect(run.calls).toEqual([{ tool: "manage_position", args: expect.objectContaining({ symbol: "MU", action: "partial_close", close_pct: 30 }) }]);
 
     const stored = (db.store.thesis[0] as { triggers: Array<{ id: string }> }).triggers.map((t) => t.id);

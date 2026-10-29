@@ -52,7 +52,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[Theses](concepts/theses.md):** a belief we can be wrong about, and the plan that acts on it. Every stock on the book has one.
 - **[Triggers](concepts/triggers.md):** one sentence each, like "Sell if below $384". A thesis's whole plan is its triggers.
 - **[Analysts](concepts/analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
-- **[Situations](concepts/situations.md):** the sixteen reasons a stock needs an answer today, each with its own instructions.
+- **[Situations](concepts/situations.md):** the seventeen reasons a stock needs an answer today, each with its own instructions.
 - **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day.
 
 ## Deep dives

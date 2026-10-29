@@ -37,7 +37,7 @@ jest.mock("@/lib/emails/proposal-pending", () => ({
   sendProposalPendingEmail: mockSendProposalPendingEmail,
 }));
 
-// The email rides the proposal-pending event (it waits for the research brief).
+// The email rides the proposal-pending event (an Auto trade's waits for the analyst's write-up).
 const mockInngestSend = jest.fn().mockResolvedValue(undefined);
 jest.mock("@/lib/inngest/client", () => ({ inngest: { send: mockInngestSend } }));
 const told = (orderId: string) =>

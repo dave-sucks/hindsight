@@ -21,6 +21,7 @@
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { addProblem, conditionSentence } from "@/lib/agent/triggers/condition";
+import { defaultNote } from "@/lib/agent/triggers/note";
 import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
@@ -150,7 +151,7 @@ export async function addLevelTrigger(
 
   const created = buildPrincipalTrigger({
     ...input,
-    defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
+    defaultRationale: defaultNote(input.action, input.predicate),
     standing: true,
   });
 
@@ -191,7 +192,7 @@ export async function replaceLevelTrigger(
   }
   const built = buildPrincipalTrigger({
     ...input,
-    defaultRationale: `${conditionSentence(input.predicate)} — standing rule set by the principal.`,
+    defaultRationale: defaultNote(input.action, input.predicate),
     standing: true,
   });
   const sameSlot = triggerSlot(found) === bucket;

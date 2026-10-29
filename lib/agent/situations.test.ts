@@ -139,7 +139,7 @@ describe("the situations for a person: the sheet's flag line", () => {
     ]);
   });
   it("every code has a name of a few plain words", () => {
-    expect(Object.keys(SITUATIONS)).toHaveLength(16);
+    expect(Object.keys(SITUATIONS)).toHaveLength(17);
     for (const { name } of Object.values(SITUATIONS)) expect(name.split(" ").length).toBeLessThanOrEqual(4);
   });
 });

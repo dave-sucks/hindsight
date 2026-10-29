@@ -622,8 +622,6 @@ export const getTheses = defineTool({
         // way (agents may raise, never lower); moving a line down is the
         // principal's manual act. null when no recent protective declines.
         heldThroughFloor: facts.heldThroughFloor.get(t.id) ?? null,
-        // The newest research brief's dated reason for the move (lib/research/brief.ts).
-        whyItMoved: facts.whyItMoved.get(t.ticker.toUpperCase()) ?? null,
         // The facts the row lacked (step 8): the open position, the orders
         // awaiting approval, the price with the day's change, the chart
         // numbers the trigger check reads, and the rules the stock inherits
@@ -715,8 +713,9 @@ export const getTheses = defineTool({
             updates: {
               where: { type: { in: ["UPDATED", "REVIEWED", "STATUS_CHANGED"] } },
               orderBy: { timestamp: "desc" },
-              take: 1,
-              select: { timestamp: true },
+              // A few, so an Auto trade's write-up can be skipped below.
+              take: 5,
+              select: { timestamp: true, run: { select: { parameters: true } } },
             },
           },
         });
@@ -764,12 +763,13 @@ export const getTheses = defineTool({
             beliefSurvived: pos?.orders?.[0]?.closeBeliefSurvived ?? null,
             catalystDate: r.catalystDate,
             // The close's own bookkeeping lands in the same second as the
-            // close; only a row written AFTER it is an answer.
-            answered: !!(
-              r.updates[0] &&
-              r.closedAt &&
-              r.updates[0].timestamp.getTime() > r.closedAt.getTime() + 5_000
-            ),
+            // close; only a row written AFTER it is an answer. An Auto trade's
+            // write-up (tactical-run.ts) can land after the sale fills; it
+            // describes the sale, so it is not the look back.
+            answered: (() => {
+              const last = r.updates.find((u) => (u.run?.parameters as { autoTrade?: unknown } | null)?.autoTrade !== true);
+              return !!(last && r.closedAt && last.timestamp.getTime() > r.closedAt.getTime() + 5_000);
+            })(),
             now: resolverNow,
           });
           if (review) {

@@ -20,7 +20,7 @@ import { VOICE_RULES } from "@/lib/agent/voice";
 import { sizeByRisk } from "@/lib/agent/position-sizing";
 import { heatLine, type OpenRisk } from "@/lib/agent/portfolio-risk";
 import { computeRegime } from "@/lib/agent/regime";
-import { buildHeldThroughNote } from "@/lib/proposals/held-through-context";
+import { autoTradeLine } from "@/lib/agent/triggers/do-it";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 
 /** Words the rules forbid, in the forms the old text used them. */
@@ -87,13 +87,11 @@ describe("the lines the app writes under a buy", () => {
   });
 });
 
-describe("Samsara, 2026-09-25: the automatic floor sale, asked a third time", () => {
-  it("says which ask this is, and how to keep holding", () => {
-    const note = buildHeldThroughNote({ declineCount: 2, rejectMessage: null, recentExtreme: 37.77, direction: "LONG" })!;
-    expect(note).toBe(
-      "Third ask: you declined it or let it expire twice in the last 7 days, and it's still below the line. " +
-        "The recent low is $37.77; to keep holding, decline and move the line just under it.",
-    );
+describe("Samsara, 2026-09-25: the automatic floor sale", () => {
+  it("the app writes one plain line until the analyst's write-up replaces it; no ask count, no line to move", () => {
+    const line = autoTradeLine({ action: "EXIT", predicate: { watch: "price", is: "below", value: 41.42 } } as never);
+    expect(line).toBe('Your "Sell if below $41.42" came true. It\'s set to Auto-sell.');
+    expect(line).not.toMatch(/ask|move the line|no analyst|recent low/i);
   });
 });
 
@@ -162,8 +160,8 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     // The standing description: a company page.
     expect(VOICE_RULES).toContain("reads like a research site's company page: what the company does; what it has done lately, with dates; the numbers that matter (growth, profits, valuation); what Wall Street thinks; what has to stay true. Sourced, never a trade formula.");
     expect(VOICE_RULES).toMatch(/never the reason by itself: "the stop at \$41\.42", not "the floor fired"/);
-    // Always look it up, one search per stock, unless the day's research brief is already read.
-    expect(VOICE_RULES).toContain("Before a decision note on a stock, run one web_search for its latest news, unless today's research brief on it is already in what you read. One per stock per run.");
+    // Always look it up, one search per stock.
+    expect(VOICE_RULES).toContain("Before a decision note on a stock, run one web_search for its latest news. One per stock per run.");
     for (const term of ["PEAD", "drift", "time-hold", "Trend Template", "setup names", "R/R", "ATR", "ladder", "rung", "fire mode", "slot", "ids"]) expect(VOICE_RULES).toContain(term);
     expect(VOICE_RULES).not.toMatch(/Open with the call/);
   });

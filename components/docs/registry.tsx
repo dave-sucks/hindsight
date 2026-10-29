@@ -59,7 +59,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, blurb: "A belief we can be wrong about, and the plan that acts on it." },
   { slug: "triggers", title: "Triggers", group: "Concepts", icon: Zap, blurb: "One sentence each: sell below, add above, review every 30 days." },
   { slug: "analysts", title: "Analysts", group: "Concepts", icon: UserRound, blurb: "A trading style with its own universe, sizing and sell rules." },
-  { slug: "situations", title: "Situations", group: "Concepts", icon: Flag, blurb: "The sixteen reasons a stock needs an answer today." },
+  { slug: "situations", title: "Situations", group: "Concepts", icon: Flag, blurb: "The seventeen reasons a stock needs an answer today." },
   { slug: "approvals", title: "Approvals", group: "Concepts", icon: CheckCircle2, blurb: "Analysts propose. You approve. Proposals expire after a day." },
   { slug: "architecture", title: "Architecture", group: "Overview", icon: Layers, blurb: "How the pieces fit: data, the record, the clocks, the read, the agents and the gate." },
   { slug: "glossary", title: "Glossary", group: "Overview", icon: BookOpen, blurb: "Every term the app, the docs and the agents use, a sentence each." },
@@ -67,7 +67,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "sizing-and-limits", title: "Sizing and limits", group: "Deep dives", icon: Layers, blurb: "How big a trade is: risk to the floor, conviction, the market, the analyst's band and slots." },
   { slug: "proposal-to-fill", title: "From proposal to fill", group: "Deep dives", icon: CheckCircle2, blurb: "A trade's life from the agent's call through approval, the broker and the fill." },
   { slug: "trigger-fire-to-run", title: "From fire to run", group: "Deep dives", icon: Zap, blurb: "The five-minute check, what fires, and where each fire goes." },
-  { slug: "situations-library", title: "Situations library", group: "Reference", icon: Flag, blurb: "All sixteen situations: each code, what it means and the exact text an agent is sent." },
+  { slug: "situations-library", title: "Situations library", group: "Reference", icon: Flag, blurb: "All seventeen situations: each code, what it means and the exact text an agent is sent." },
   { slug: "trigger-measures", title: "Trigger measures", group: "Reference", icon: Zap, blurb: "Every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in." },
   { slug: "setups", title: "Setups", group: "Reference", icon: BookOpen, blurb: "Every setup in the playbook: what must be true, where the buy, floor and target go, and when it has failed." },
 ];

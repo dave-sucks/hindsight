@@ -10,7 +10,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { isGroup, measureOf, shapeOf, type MeasureDef, type When } from "@/lib/agent/triggers/condition";
 
 export type SituationCode =
-  | "PROMOTED_AWAITING" | "PROTECTIVE_SALE" | "BUY_ARRIVES" | "BUY_BLOCKED_FULL"
+  | "AUTO_TRADE" | "PROMOTED_AWAITING" | "PROTECTIVE_SALE" | "BUY_ARRIVES" | "BUY_BLOCKED_FULL"
   | "ADD_OR_WINNER" | "EARNINGS" | "FILING" | "QUIET_WATCH_WOKE"
   | "PROTECTION" | "FIRST_RESEARCH" | "REVIEW_DUE" | "STALE_RESEARCH"
   | "PLAN_PROBLEM" | "YOUR_WORD_UNANSWERED" | "SOLD_ONE_REVIEW" | "NO_SETUP_NAMED";
@@ -119,6 +119,28 @@ export function situationsFor(s: SituationSources): SituationCode[] {
  * lib/ (situations.test.ts holds each text to 2,200 characters).
  */
 export const SITUATIONS: Record<SituationCode, { name: string; guidance: string }> = {
+  AUTO_TRADE: {
+    name: "auto trade made",
+    guidance: `When: a trigger set to Auto made or tried a trade on this stock with no analyst deciding: a buy, an add, a trim or a sale, proposed to the principal, already sent, or refused (the run's opening line says which). This run writes it up. It cannot trade.
+
+Answer, in order:
+1. What is going on with the company and the stock, and why: its news, its sector, the market (get_stock_data, one web_search)? If the trigger watched a report or a filing, read it first.
+2. Does that touch why we own it, or why we wanted it? Go down \`would_prove_it_wrong\`: has any of it happened? In the note, name only what has.
+3. Do you agree with the trade? If they passed on it before (\`heldThroughFloor\`, \`said\`), what is different today?
+
+What you can do:
+- Write one update_thesis with trigger_id: your note, which the principal reads on the trade.
+- If you would do something different, say so plainly in the note and why: hold instead of sell, wait instead of buy, a smaller trim. The principal decides on the approval, or on a trade that already went through.
+- Change a level only if the trade left one plainly stale.
+
+Answered: that one update_thesis.
+
+The note: what is going on with the company and the stock and why, and what it means for why we own it; then the trade in one sentence ("your Auto-sell at $196 was hit, so the sale is waiting for you", or why it was refused) and whether you agree, and if not, what you would do instead.
+
+Mistakes:
+- Explaining the trigger instead of the company: the principal knows it fired.
+- Calling a trade tool: this run has none.`,
+  },
   PROMOTED_AWAITING: {
     name: "promoted to live",
     guidance: `When: this stock was promoted to live money and its paper position was closed at promotion. It needs a decision this run. The row's \`paper_record\` line carries the paper record: days held, realized P&L, reviews.
@@ -144,7 +166,7 @@ Mistakes:
 
 Answer, in order:
 1. Why is it down? Its own news, its sector, the market (get_stock_data, one web_search; get_market_context when the whole market fell).
-2. Does that touch why we own it? Go down \`would_prove_it_wrong\`: has any of it happened?
+2. Does that touch why we own it? Go down \`would_prove_it_wrong\`: has any of it happened? In the note, name only what has.
 3. Is the price past the line now? A give-back counts from the tracked high, kept over the whole holding, not from a high read off a chart window.
 4. Declined, or left to lapse? \`heldThroughFloor\` counts each, with the floor, the recent low and their note; their words are in \`said\` too.
 
@@ -347,7 +369,7 @@ Mistakes:
 Answer, in order:
 1. Has the principal said something not yet answered (\`said\`)? Answer it first.
 2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search)?
-3. Has the belief broken? On a stock you hold, go down \`would_prove_it_wrong\`: has any of it happened? Price being down is not on the list unless you wrote it there.
+3. Has the belief broken? On a stock you hold, go down \`would_prove_it_wrong\`: has any of it happened? In the note, name only what has. Price being down is not on the list unless you wrote it there.
 4. Is the setup still working? The \`setup\` line: its failure signs, the manage rule, the time limit.
 5. Did the world move past the levels? An add level blown through, a floor lagging the gain (the \`protection\` line), a fired checkpoint never replaced, a target the street re-rated past.
 
@@ -360,7 +382,7 @@ What you can do:
 
 Answered: one update_thesis on the stock. "The plan stands" is honest only when neither the story nor the levels moved.
 
-The note: what has happened with the company and the stock since your last note, and what it means for why we own or watch it; then what you did, in one sentence. If nothing happened, say so in one sentence and name what would change it. Never a list of what you checked.
+The note: what has happened with the company and the stock since your last note, and what it means for why we own or watch it; then what you did, in one sentence. If nothing happened, say so and name what would change it. Never a list of what you checked.
 
 Mistakes:
 - The same answer to a review that fired again (the \`repeat\` line says how often): change the plan, or say what differs from last time.

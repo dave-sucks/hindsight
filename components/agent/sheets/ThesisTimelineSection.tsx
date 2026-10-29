@@ -2,7 +2,9 @@
 
 /**
  * ThesisTimelineSection — the thesis audit log, rendered inside the
- * ThesisSheet Activity tab (P1-33 slice 1).
+ * ThesisSheet Activity tab (P1-33 slice 1). With `recent` it is the
+ * Overview's short version: the same rows, only the last few with something
+ * written, and a View all that opens the tab.
  *
  * Lazy-fetches /api/theses/:id/updates; that endpoint merges ThesisUpdate
  * rows with proposal lifecycles read from the Order table. Everything
@@ -35,6 +37,7 @@ import {
   dropRepeatedProse,
   toRow,
   episodeMembers,
+  recentRows,
   type LadderChange,
   type DotKind,
   type TimelineFilter,
@@ -162,9 +165,15 @@ interface Props {
   /** Where this thesis came from. Folded into the Created row rather than
    * rendered as its own differently-styled footer (principal, 2026-08-21). */
   provenance?: { sourceKind: string; rationale: string | null } | null;
+  /**
+   * The Overview's short version: the newest `limit` rows that have words,
+   * leaving out proposals (the trade card shows the open one; the rest are
+   * expiries) and any text already on the page above (`skipTexts`).
+   */
+  recent?: { limit: number; skipTexts: Array<string | null>; onViewAll: () => void };
 }
 
-export function ThesisTimelineSection({ thesisId, provenance }: Props) {
+export function ThesisTimelineSection({ thesisId, provenance, recent }: Props) {
   const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<TimelineFilter>("all");
@@ -232,12 +241,47 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
         description: r.description ? `${r.description} ${sourced}` : sourced,
       };
     });
+    if (recent) {
+      const kept = recentRows(mapped, recent.skipTexts, recent.limit);
+      return { rows: kept, spans: new Set<number>(), months: kept.map(() => null) };
+    }
     return {
       rows: mapped,
       spans: proposalSpanSegments(items),
       months: monthAt,
     };
-  }, [updates, filter, open, provenance]);
+  }, [updates, filter, open, provenance, recent]);
+
+  if (recent) {
+    if (error || (updates != null && rows.length === 0)) return null;
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>
+          <Button size="xs" variant="ghost" onClick={recent.onViewAll}>
+            View all
+          </Button>
+        </div>
+        {updates == null ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : (
+          <div>
+            {rows.map((row, idx) => (
+              <Row
+                key={row.key}
+                row={row}
+                isLast={idx === rows.length - 1}
+                span={false}
+                pulse={currentRunId != null && row.runId === currentRunId}
+                open={open.has(row.key)}
+                onToggle={() => toggle(row.key)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">

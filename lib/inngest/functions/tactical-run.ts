@@ -5,6 +5,9 @@
 // Scope is deliberately narrow:
 //   • Single ticker (thesis.ticker)
 //   • Single decision (validate trigger, then act / update / pass)
+//   • A trigger set to Auto makes its trade first, with no agent deciding;
+//     the same run then writes it up with no trade tools, and its note
+//     becomes the trade's reason (lib/proposals/auto-writeup.ts)
 //   • 15 step budget (vs 65 for the daily run)
 //   • update_thesis is the REQUIRED close-out — every tactical run
 //     writes one ThesisUpdate row whether or not it traded.
@@ -24,7 +27,7 @@ import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { NOT_IN_A_WRITEUP, buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
@@ -35,7 +38,9 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { autoSellCloseReason, protectiveExitCloseReason } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { doItTrade, trimPctOf } from "@/lib/agent/triggers/fire-mode";
-import { doItCall } from "@/lib/agent/triggers/do-it";
+import { autoTradeLine, doItCall } from "@/lib/agent/triggers/do-it";
+import { putNoteOnOrder, sendNoteWritten } from "@/lib/proposals/auto-writeup";
+import { guidanceFor } from "@/lib/agent/situations";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
 import { useOnce } from "@/lib/agent/triggers/use-once";
@@ -47,8 +52,6 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
-import { latestBriefs } from "@/lib/research/brief-read";
-import { briefKickoffLine } from "@/lib/research/brief-types";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -245,9 +248,8 @@ export const tacticalRun = inngest.createFunction(
           // the step boundary would turn a Date into a string anyway.
           catalystDate: thesis.catalystDate ? thesis.catalystDate.toISOString() : null,
         },
-        // Each trigger that fired with this one on the same pass, with the
-        // reason it was set (its own audit row says both fired).
-        coFired: (fired.coFired ?? []).map((co) => ({ ...co, rationale: findTriggerById(ladder, co.triggerId)?.rationale ?? null })),
+        // Each trigger that fired with this one on the same pass (its own audit row says both fired).
+        coFired: fired.coFired ?? [],
         trigger,
         agentConfig,
         capacity,
@@ -395,6 +397,16 @@ export const tacticalRun = inngest.createFunction(
       }
     }
 
+    // ── On fire "Auto": decided before the run row, so the row can say a
+    // write-up is coming (the card and the approval email wait for it).
+    // Nothing to sell, or a stock already held for a buy, falls through to
+    // the agent. A paused analyst's sale takes the Auto path whatever On fire
+    // says; a paused analyst writes nothing.
+    const doIt = doItTrade(trigger as Trigger, position != null);
+    const ownerSale = paused && trigger.action === "EXIT";
+    const sells = (doIt === "SELL" || ownerSale) && position != null;
+    const autoTrade = !paused && (sells || doIt === "TRIM" || doIt === "BUY" || doIt === "ADD");
+
     // Snapshot the analyst's env onto the run.
     const runEnvironment =
       (agentConfig.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
@@ -418,6 +430,7 @@ export const tacticalRun = inngest.createFunction(
             action: trigger.action,
             agentMode: true,
             analystName: agentConfig.name,
+            ...(autoTrade ? { autoTrade: true } : {}),
           } as object,
         },
         select: { id: true, createdAt: true },
@@ -438,13 +451,14 @@ export const tacticalRun = inngest.createFunction(
       const summary = sentenceOf(trigger as Trigger);
       // A co-fired protective trigger gets its own audit row — the record
       // says both fired — but shares this one run.
+      // The rows carry what fired and the price; the analyst's note answers them.
       for (const co of coFired) {
         await prisma.thesisUpdate.create({
           data: {
             thesisId: thesis.id,
             type: "TRIGGER_FIRED",
-            summary: `${co.sentence} — folded into the same run`,
-            rationale: co.rationale ?? co.sentence,
+            summary: co.sentence,
+            rationale: null,
             triggerId: co.triggerId,
             signalIds: [],
             runId: run.id,
@@ -457,12 +471,9 @@ export const tacticalRun = inngest.createFunction(
           thesisId: thesis.id,
           type: "TRIGGER_FIRED",
           summary,
-          // Same reasoning as the evaluator's deferred-REVIEW row: an
-          // earnings fire carries its figures so the record says what
+          // An earnings fire carries its figures so the record says what
           // happened, not just that something did.
-          rationale: fired.firedContext
-            ? `${trigger.rationale} ${fired.firedContext}`
-            : trigger.rationale,
+          rationale: fired.firedContext ?? null,
           triggerId: trigger.id,
           signalIds: [],
           runId: run.id,
@@ -494,51 +505,33 @@ export const tacticalRun = inngest.createFunction(
         runEnvironment,
       });
 
-    // ── On fire "Auto": the trade with no agent ──────────────────────
+    // ── On fire "Auto": the trade, then the analyst's write-up ─────────
     // Still through maybeAwaitApproval: with the account's approval switch on
-    // it PROPOSES the trade; off, it executes. Nothing to sell, or a stock
-    // already held for a buy, falls through to the agent.
-    const doIt = doItTrade(trigger as Trigger, position != null);
-    // A paused analyst's sale takes this path whatever On fire says. Auto goes
-    // through the approval switch as always; a sale that asked for the agent
-    // or the morning run asked for judgment, so it always waits for the owner.
-    const ownerSale = paused && trigger.action === "EXIT";
-    if ((doIt === "SELL" || ownerSale) && position) {
+    // it PROPOSES the trade; off, it executes. The trade carries one plain
+    // line (autoTradeLine) until the run below writes the note that replaces it.
+    const line = autoTradeLine(trigger as Trigger);
+    let auto: { line: string; orderId: string | null } | null = null;
+    if (sells && position) {
       const direct = await step.run("direct-close", async () => {
         const { closeOpenPosition } = await import(
           "@/lib/actions/closeTrade.actions"
         );
         const reason = directExitReason(trigger as Trigger, thesis.direction);
-        // DAV-194: on a held-through name, the daily card must be worth
-        // reading — which ask this is, the principal's own reject note, the
-        // recent low with a suggested place for the line. The agent path
-        // gets this via get_theses.heldThroughFloor + the prompt; this
-        // no-agent path appends the same context to the rationale so the
-        // card is never verbatim-identical day over day. Best-effort: a
-        // context failure returns null and never blocks the close.
-        const { heldThroughNoteForPosition } = await import(
-          "@/lib/proposals/held-through-context"
-        );
-        const heldThroughNote = await heldThroughNoteForPosition({
-          positionId: position.id,
-          ticker: thesis.ticker,
-          direction: thesis.direction,
-        });
-        const rationale = [heldThroughNote, paused ? PAUSED_SALE_NOTE : null]
-          .filter(Boolean)
-          .join(" ");
         try {
           const outcome = await closeOpenPosition(
             position.id,
             reason,
             undefined, // creds resolved inside from the position's environment
             "price_monitor", // the stored name for an automatic trigger sale; approval-gated
-            `Your "${sentenceOf(trigger as Trigger)}" came true. It's set to Auto-sell, so no analyst reviewed it.${rationale ? ` ${rationale}` : ""}`,
+            // A paused analyst's sale says so, and calls itself Auto only when it is.
+            paused ? (doIt === "SELL" ? `${line} ${PAUSED_SALE_NOTE}` : `Your "${sentenceOf(trigger as Trigger)}" came true. ${PAUSED_SALE_NOTE}`) : line,
             run.id,
             undefined,
             { propose: ownerSale && doIt !== "SELL" },
           );
-          return { kind: outcome.kind, reason };
+          return outcome.kind === "proposed"
+            ? { kind: outcome.kind, reason, orderId: outcome.proposal.orderId }
+            : { kind: outcome.kind, reason, orderId: outcome.orderId };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(
@@ -548,36 +541,46 @@ export const tacticalRun = inngest.createFunction(
         }
       });
 
-      await step.run("finalize-direct", async () => {
-        const failed = direct != null && "error" in direct;
-        await prisma.researchRun.update({
-          where: { id: run.id },
-          data: {
-            status: failed ? "FAILED" : "COMPLETE",
-            completedAt: new Date(),
-          },
-        });
-        if (failed) {
-          await prisma.runEvent.create({
+      const failed = "error" in direct;
+      // A failed sale, or a paused analyst's: no write-up. The run ends here.
+      if (failed || paused) {
+        await step.run("finalize-direct", async () => {
+          await prisma.researchRun.update({
+            where: { id: run.id },
             data: {
-              runId: run.id,
-              type: "run_failed",
-              title: "Auto-sell failed",
-              message: `The Auto-sell of ${thesis.ticker} failed: ${(direct as { error: string }).error}`,
-              payload: { thesisId: thesis.id, triggerId: trigger.id } as object,
+              status: failed ? "FAILED" : "COMPLETE",
+              completedAt: new Date(),
             },
           });
-        }
-      });
-
-      return {
-        runId: run.id,
-        thesisId: thesis.id,
-        triggerId: trigger.id,
-        ticker: thesis.ticker,
-        action: trigger.action,
-        fireMode: "DO_IT" as const,
-        direct,
+          if (failed) {
+            await prisma.runEvent.create({
+              data: {
+                runId: run.id,
+                type: "run_failed",
+                title: "Auto-sell failed",
+                message: `The Auto-sell of ${thesis.ticker} failed: ${(direct as { error: string }).error}`,
+                payload: { thesisId: thesis.id, triggerId: trigger.id } as object,
+              },
+            });
+          }
+        });
+        return {
+          runId: run.id,
+          thesisId: thesis.id,
+          triggerId: trigger.id,
+          ticker: thesis.ticker,
+          action: trigger.action,
+          fireMode: "DO_IT" as const,
+          direct,
+        };
+      }
+      const qty = position.quantity;
+      auto = {
+        line:
+          direct.kind === "proposed"
+            ? `The sale of all ${qty} shares is proposed and waits for the principal's approval.`
+            : `The sale of all ${qty} shares was sent.`,
+        orderId: direct.orderId,
       };
     }
 
@@ -614,7 +617,14 @@ export const tacticalRun = inngest.createFunction(
             console.error(`[tactical-run] could not take used-once trigger ${trigger.id} off ${thesis.ticker}:`, err instanceof Error ? err.message : err);
             return false;
           });
-          return { ...tried, usedOnce };
+          // The order the tool made on this stock since the run began; none when it was refused. (manage_position
+          // writes its decision row only on a fill, so an approval-held trim or add has none to look up by.)
+          const made = await prisma.order.findFirst({
+            where: { intent: doIt === "BUY" ? "OPEN" : doIt === "ADD" ? "ADD" : "PARTIAL_CLOSE", createdAt: { gte: new Date(run.createdAt) }, position: { analystId: agentConfig.id, symbol: thesis.ticker } },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          });
+          return { ...tried, usedOnce, orderId: made?.id ?? null };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[tactical-run] do-it ${doIt} failed thesis=${thesis.id} trigger=${trigger.id}: ${msg}`);
@@ -622,20 +632,23 @@ export const tacticalRun = inngest.createFunction(
         }
       });
 
-      await step.run("finalize-do-it", async () => {
-        const error = "error" in done ? done.error : null;
-        const fresh = error ? await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } }) : null;
-        await prisma.researchRun.update({
-          where: { id: run.id },
-          data: {
-            status: error ? "FAILED" : "COMPLETE",
-            completedAt: new Date(),
-            ...(error ? { parameters: { ...((fresh?.parameters as object) ?? {}), error } as object } : {}),
-          },
+      if ("error" in done) {
+        await step.run("finalize-do-it", async () => {
+          const fresh = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } });
+          await prisma.researchRun.update({
+            where: { id: run.id },
+            data: {
+              status: "FAILED",
+              completedAt: new Date(),
+              parameters: { ...((fresh?.parameters as object) ?? {}), error: done.error } as object,
+            },
+          });
         });
-      });
-
-      return { runId: run.id, thesisId: thesis.id, triggerId: trigger.id, ticker: thesis.ticker, action: trigger.action, fireMode: "DO_IT" as const, doIt, done };
+        return { runId: run.id, thesisId: thesis.id, triggerId: trigger.id, ticker: thesis.ticker, action: trigger.action, fireMode: "DO_IT" as const, doIt, done };
+      }
+      auto = done.orderId
+        ? { line: `${done.summary ?? "The trade was made"}.`, orderId: done.orderId }
+        : { line: `The trade was not made: ${done.summary ?? "it was refused"}.`, orderId: null };
     }
 
     // ── Run the agent ─────────────────────────────────────────────────
@@ -666,7 +679,8 @@ export const tacticalRun = inngest.createFunction(
       const firedTrim = trigger.action === "TRIM" ? { ticker: thesis.ticker, pct: trimPctOf(trigger as Trigger) } : undefined;
       const allTools = await toolsFor({ protectiveExitReason, protectiveExitTriggerLabel, firedTrim });
 
-      const allowlist = MODES["tactical"].toolAllowlist;
+      // A write-up has no trade tools: the Auto trade is made.
+      const allowlist = (MODES["tactical"].toolAllowlist ?? []).filter((name) => !auto || !NOT_IN_A_WRITEUP.has(name));
       const tools = allowlist
         ? Object.fromEntries(
             allowlist
@@ -700,7 +714,10 @@ export const tacticalRun = inngest.createFunction(
         position,
         fired: { price: fired.firedPrice ?? null },
         capacity: ctx.capacity ?? null,
-        situations: read?.situations ?? null,
+        // A write-up is in one situation: the Auto trade it writes up. (With a
+        // sale now waiting, the read lists none.)
+        situations: auto ? { codes: ["AUTO_TRADE"], guidance: guidanceFor(["AUTO_TRADE"], "INTRADAY_TACTICAL") } : read?.situations ?? null,
+        autoTrade: auto ? { line: auto.line } : null,
       });
 
       // Build the kickoff message so the chat replay shows WHY this run
@@ -727,15 +744,16 @@ export const tacticalRun = inngest.createFunction(
         thesis.id,
         (thesis as { ticker: string }).ticker,
       );
-      // The stock's research brief from the last day, when one is on file (lib/research/brief.ts).
-      const brief = (await latestBriefs([(thesis as { ticker: string }).ticker], 24 * 60 * 60 * 1000)).values().next().value;
-      const briefLine = brief ? briefKickoffLine(brief) : null;
-      const briefSuffix = briefLine ? ` ${briefLine}` : "";
-      const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock}${briefSuffix} ` +
-        `Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis. ` +
-        `You are running unattended — no human will respond. Every turn must call a tool; ` +
-        `text-only turns terminate the run as FAILED.`;
+      const ticker = (thesis as { ticker: string }).ticker;
+      const userPrompt = auto
+        ? `Write-up on $${ticker}. ${fireSentence}: set to Auto, so no analyst decided. ${auto.line}${contextSuffix}${coFiredSuffix} ` +
+          `Find out what is going on with the company and the stock, then write your note with update_thesis. You can't trade on this run. ` +
+          `You are running unattended — no human will respond. Every turn must call a tool; ` +
+          `text-only turns terminate the run as FAILED.`
+        : `Tactical run on $${ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock} ` +
+          `Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis. ` +
+          `You are running unattended — no human will respond. Every turn must call a tool; ` +
+          `text-only turns terminate the run as FAILED.`;
       // What this run read and wrote, every request counted, recorded on
       // the run row at the end (also on the failure path below).
       const tokenUsage = emptyTokenUsage();
@@ -913,7 +931,7 @@ export const tacticalRun = inngest.createFunction(
         // What is still open afterwards is written on the run and carried
         // to the next run on this stock.
         const openRefusals = await listOpenRefusalsForRun(run.id);
-        if (!stopped && openRefusals.length > 0 && responseMessages && responseMessages.length > 0) {
+        if (!auto && !stopped && openRefusals.length > 0 && responseMessages && responseMessages.length > 0) {
           console.warn(
             `[tactical-run] thesis=${thesis.id} ${openRefusals.length} refused call(s) never redone — attempting refusal retry`,
           );
@@ -974,6 +992,16 @@ export const tacticalRun = inngest.createFunction(
         );
 
         await recordTokenUsage(run.id, tokenUsage, MODES["tactical"].model);
+        // An Auto trade's write-up goes on its order before the run reads
+        // finished, so the card and the email never see the run done with the
+        // order still carrying its plain line.
+        if (auto?.orderId) {
+          try {
+            await putNoteOnOrder({ runId: run.id, thesisId: thesis.id, orderId: auto.orderId, line, since: new Date(t0) });
+          } catch (err) {
+            console.error(`[tactical-run] could not put the note on order ${auto.orderId}:`, err instanceof Error ? err.message : err);
+          }
+        }
         await prisma.researchRun.update({
           where: { id: run.id },
           data: {
@@ -1044,12 +1072,19 @@ export const tacticalRun = inngest.createFunction(
       }
     });
 
+    // ── The approval email stops waiting ──────────────────────────────
+    // The note went on the order inside the run (or the run ended without one).
+    if (auto?.orderId) {
+      const orderId = auto.orderId;
+      await step.run("note-written", () => sendNoteWritten(orderId));
+    }
+
     // ── A pass on a wobble doesn't spend the buy (DAV-343) ─────────────
     // AAPL 09-30: fired at $331.47, the run read $330.83 and passed, and the
     // buy was used up for the day. When the pass was because the price was
     // back under the level, the next check past it fires the buy again.
     const rearm =
-      trigger.action === "ENTER" && outcome.closedOut
+      trigger.action === "ENTER" && !auto && outcome.closedOut
         ? await step.run("rearm-buy-after-pass", async () => {
             try {
               return await rearmBuyAfterPass({
@@ -1074,6 +1109,7 @@ export const tacticalRun = inngest.createFunction(
       triggerId: trigger.id,
       ticker: thesis.ticker,
       action: trigger.action,
+      ...(auto ? { fireMode: "DO_IT" as const, auto } : {}),
       ...outcome,
       ...(rearm ? { rearm } : {}),
     };

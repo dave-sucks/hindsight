@@ -167,20 +167,6 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tailNow}`);
   });
 
-  it("the kickoff carries the stock's research brief when one is on file", async () => {
-    const builtAt = new Date(new Date(fx.run.startedAt).getTime() - 60 * 60_000);
-    const payload = {
-      ticker: "CORT", synthesis: "The stock rose with healthcare; no company news found.", whyItMoved: [],
-      failures: [{ part: "x", message: "no xAI key is configured (XAI_API_KEY)" }],
-    };
-    const kickoff = await at(fx.run.startedAt, () =>
-      triggerRunKickoff({ researchBrief: [{ id: "b1", ticker: "CORT", kind: "PROPOSAL", orderId: "o1", payload, createdAt: builtAt }] }),
-    );
-    expect(kickoff).toContain("Today's research on $CORT");
-    expect(kickoff).toContain("The stock rose with healthcare; no company news found.");
-    expect(kickoff).not.toContain("X search");
-  });
-
   it("the proposal it makes carries the same line, and is still a proposal", async () => {
     const { refused, result, db } = await at(fx.proposal.createdAt, () =>
       replayTool("place-trade", "placeTrade", {
