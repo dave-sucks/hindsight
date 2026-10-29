@@ -121,7 +121,7 @@ export function situationsFor(s: SituationSources): SituationCode[] {
 export const SITUATIONS: Record<SituationCode, { name: string; guidance: string }> = {
   AUTO_TRADE: {
     name: "auto trade made",
-    guidance: `When: a trigger set to Auto made a trade on this stock with no analyst deciding: a buy, an add, a trim or a sale, proposed to the principal or already sent (the run's opening line says which). This run writes it up. It cannot trade: the trade is made.
+    guidance: `When: a trigger set to Auto made or tried a trade on this stock with no analyst deciding: a buy, an add, a trim or a sale, proposed to the principal, already sent, or refused (the run's opening line says which). This run writes it up. It cannot trade.
 
 Answer, in order:
 1. What is going on with the company and the stock, and why: its news, its sector, the market (get_stock_data, one web_search)? If the trigger watched a report or a filing, read it first.
@@ -135,7 +135,7 @@ What you can do:
 
 Answered: that one update_thesis.
 
-The note: what is going on with the company and the stock and why, and what it means for why we own it; then the trade in one sentence ("your Auto-sell at $196 was hit, so the sale is waiting for you") and whether you agree, and if not, what you would do instead.
+The note: what is going on with the company and the stock and why, and what it means for why we own it; then the trade in one sentence ("your Auto-sell at $196 was hit, so the sale is waiting for you", or why it was refused) and whether you agree, and if not, what you would do instead.
 
 Mistakes:
 - Explaining the trigger instead of the company: the principal knows it fired.

@@ -20,12 +20,14 @@ const WRITEUP_WINDOW_MS = 15 * 60 * 1000;
 
 /**
  * Puts the run's note on the order in place of the line it was made with,
- * keeping what the trade tool wrote after it (a buy's sizing). False when the
- * run wrote no note.
+ * keeping what the trade tool wrote after it (a buy's sizing). The note is
+ * the analyst's update_thesis row written since the write-up began (`since`),
+ * never a line the trade or the fill wrote for this run. False when there is
+ * none.
  */
-export async function putNoteOnOrder(args: { runId: string; thesisId: string; orderId: string; line: string }): Promise<boolean> {
+export async function putNoteOnOrder(args: { runId: string; thesisId: string; orderId: string; line: string; since: Date }): Promise<boolean> {
   const saved = await prisma.thesisUpdate.findFirst({
-    where: { runId: args.runId, thesisId: args.thesisId, type: { not: "TRIGGER_FIRED" }, rationale: { not: null } },
+    where: { runId: args.runId, thesisId: args.thesisId, type: { in: ["UPDATED", "REVIEWED"] }, timestamp: { gte: args.since }, rationale: { not: null } },
     orderBy: { timestamp: "desc" },
     select: { rationale: true },
   });

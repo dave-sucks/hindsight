@@ -20,6 +20,13 @@ export function ProposalNote({ orderId, reason, writing }: { orderId: string; re
   const [polls, setPolls] = useState(0);
   const [open, setOpen] = useState(false);
 
+  // A refreshed sheet hands a newer reason (or that the write-up is done): take it.
+  useEffect(() => setText(reason), [reason]);
+  useEffect(() => {
+    setBusy(writing);
+    setPolls(0);
+  }, [writing]);
+
   useEffect(() => {
     if (!busy || polls >= MAX_POLLS) return;
     const t = setTimeout(async () => {

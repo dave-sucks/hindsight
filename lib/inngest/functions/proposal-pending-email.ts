@@ -16,13 +16,14 @@ export const EMAIL_WAITS_FOR_NOTE = "6m";
 
 interface StepLike {
   run<T>(id: string, fn: () => Promise<T>): Promise<T>;
-  waitForEvent(id: string, opts: { event: string; match: string; timeout: string }): Promise<unknown>;
+  waitForEvent(id: string, opts: { event: string; if: string; timeout: string }): Promise<unknown>;
 }
 
 /** The email's steps, exported so a test can drive them with a fake step. */
 export async function proposalEmailSteps(orderId: string, step: StepLike): Promise<{ waited: boolean }> {
   const coming = await step.run("writeup-coming", () => writeupComing(orderId));
-  if (coming) await step.waitForEvent("note-written", { event: NOTE_WRITTEN, match: "data.orderId", timeout: EMAIL_WAITS_FOR_NOTE });
+  // The note for this order: `async` is the awaited event, `event` the proposal's own.
+  if (coming) await step.waitForEvent("note-written", { event: NOTE_WRITTEN, if: "async.data.orderId == event.data.orderId", timeout: EMAIL_WAITS_FOR_NOTE });
   await step.run("email", () => sendProposalPendingEmail(orderId));
   return { waited: coming };
 }

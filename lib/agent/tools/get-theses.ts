@@ -713,8 +713,9 @@ export const getTheses = defineTool({
             updates: {
               where: { type: { in: ["UPDATED", "REVIEWED", "STATUS_CHANGED"] } },
               orderBy: { timestamp: "desc" },
-              take: 1,
-              select: { timestamp: true },
+              // A few, so an Auto trade's write-up can be skipped below.
+              take: 5,
+              select: { timestamp: true, run: { select: { parameters: true } } },
             },
           },
         });
@@ -762,12 +763,13 @@ export const getTheses = defineTool({
             beliefSurvived: pos?.orders?.[0]?.closeBeliefSurvived ?? null,
             catalystDate: r.catalystDate,
             // The close's own bookkeeping lands in the same second as the
-            // close; only a row written AFTER it is an answer.
-            answered: !!(
-              r.updates[0] &&
-              r.closedAt &&
-              r.updates[0].timestamp.getTime() > r.closedAt.getTime() + 5_000
-            ),
+            // close; only a row written AFTER it is an answer. An Auto trade's
+            // write-up (tactical-run.ts) can land after the sale fills; it
+            // describes the sale, so it is not the look back.
+            answered: (() => {
+              const last = r.updates.find((u) => (u.run?.parameters as { autoTrade?: unknown } | null)?.autoTrade !== true);
+              return !!(last && r.closedAt && last.timestamp.getTime() > r.closedAt.getTime() + 5_000);
+            })(),
             now: resolverNow,
           });
           if (review) {

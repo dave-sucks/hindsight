@@ -80,10 +80,14 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
           execute: jest.fn(async (args: { entry_rationale?: string }) => {
             toolCalls.push({ tool: name, args, ctx });
             if (name === "place_trade") {
-              await create("order", { id: "ord_trv", positionId: "pos_trv", symbol: "TRV", rationale: `${args.entry_rationale}${SIZING}`, status: "AWAITING_APPROVAL", createdAt: new Date() });
-              await create("tradeDecision", { runId: ctx.runId, orderId: "ord_trv", symbol: "TRV", decision: "BUY", createdAt: new Date() });
+              await create("order", { id: "ord_trv", positionId: "pos_trv", symbol: "TRV", intent: "OPEN", rationale: `${args.entry_rationale}${SIZING}`, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: SECULAR, symbol: "TRV" } });
             }
-            return { ok: true, summary: "Proposed: LONG 27 $TRV" };
+            // A trim waiting for approval: manage_position writes no decision row until it fills.
+            if (name === "manage_position") {
+              const a = args as { reason?: string };
+              await create("order", { id: "ord_iot_trim", positionId: "pos_iot", symbol: "IOT", intent: "PARTIAL_CLOSE", rationale: a.reason, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: PEAD, symbol: "IOT" } });
+            }
+            return { ok: true, summary: name === "place_trade" ? "Proposed: LONG 27 $TRV" : "Partial close proposed: IOT (-30%)" };
           }),
         });
         return { place_trade: tool("place_trade"), manage_position: tool("manage_position"), close_position: tool("close_position"), get_theses: { execute: async () => ({ ok: false }) } };
@@ -100,7 +104,17 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
   return { asked, closes, sent, toolCalls, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate") };
 }
 
+const IOT_TRIM = { id: "7a1c2b3d-0000-4000-8000-000000000001", action: "TRIM", fireMode: "DO_IT", trimPct: 30, predicate: { watch: "price", is: "above", value: 48 }, rationale: "Take some off into strength.", cooldownDays: 1 };
+
 describe("the trigger run, by fire mode", () => {
+  it("IOT's Auto-trim with approval on: the trim waits for approval, and the write-up still lands on it (it has no decision row yet)", async () => {
+    const r = await fire({ thesisId: "iot", triggerId: IOT_TRIM.id, analystId: PEAD, ticker: "IOT", action: "TRIM", firedPrice: 48.2 }, stocks(IOT_TRIM));
+    expect(r.toolCalls).toEqual([expect.objectContaining({ tool: "manage_position", args: expect.objectContaining({ action: "partial_close", close_pct: 30 }) })]);
+    expect(r.asked).toHaveLength(1);
+    expect(r.orders.find((o) => o.id === "ord_iot_trim")?.rationale).toBe(NOTE);
+    expect(r.sent).toContainEqual({ name: "app/proposal.note.written", data: { orderId: "ord_iot_trim" } });
+  });
+
   it("IOT's Auto-sell: the sale is proposed with one plain line, then the run writes it up with no trade tools and its note replaces the line", async () => {
     const r = await fire({ thesisId: "iot", triggerId: IOT_FLOOR.id, analystId: PEAD, ticker: "IOT", action: "EXIT", firedPrice: 41.3 });
     expect(r.closes).toHaveLength(1);

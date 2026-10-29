@@ -617,9 +617,14 @@ export const tacticalRun = inngest.createFunction(
             console.error(`[tactical-run] could not take used-once trigger ${trigger.id} off ${thesis.ticker}:`, err instanceof Error ? err.message : err);
             return false;
           });
-          // The order the tool made, from its decision row (place_trade and manage_position write one); none when refused.
-          const made = await prisma.tradeDecision.findFirst({ where: { runId: run.id, orderId: { not: null } }, orderBy: { createdAt: "desc" }, select: { orderId: true } });
-          return { ...tried, usedOnce, orderId: made?.orderId ?? null };
+          // The order the tool made on this stock since the run began; none when it was refused. (manage_position
+          // writes its decision row only on a fill, so an approval-held trim or add has none to look up by.)
+          const made = await prisma.order.findFirst({
+            where: { intent: doIt === "BUY" ? "OPEN" : doIt === "ADD" ? "ADD" : "PARTIAL_CLOSE", createdAt: { gte: new Date(run.createdAt) }, position: { analystId: agentConfig.id, symbol: thesis.ticker } },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          });
+          return { ...tried, usedOnce, orderId: made?.id ?? null };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[tactical-run] do-it ${doIt} failed thesis=${thesis.id} trigger=${trigger.id}: ${msg}`);
@@ -641,7 +646,9 @@ export const tacticalRun = inngest.createFunction(
         });
         return { runId: run.id, thesisId: thesis.id, triggerId: trigger.id, ticker: thesis.ticker, action: trigger.action, fireMode: "DO_IT" as const, doIt, done };
       }
-      auto = { line: `${done.summary ?? "The trade was tried"}.`, orderId: done.orderId };
+      auto = done.orderId
+        ? { line: `${done.summary ?? "The trade was made"}.`, orderId: done.orderId }
+        : { line: `The trade was not made: ${done.summary ?? "it was refused"}.`, orderId: null };
     }
 
     // ── Run the agent ─────────────────────────────────────────────────
@@ -739,7 +746,7 @@ export const tacticalRun = inngest.createFunction(
       );
       const ticker = (thesis as { ticker: string }).ticker;
       const userPrompt = auto
-        ? `Write-up on $${ticker}. ${fireSentence}: set to Auto, so the trade was made with no analyst deciding. ${auto.line}${contextSuffix}${coFiredSuffix} ` +
+        ? `Write-up on $${ticker}. ${fireSentence}: set to Auto, so no analyst decided. ${auto.line}${contextSuffix}${coFiredSuffix} ` +
           `Find out what is going on with the company and the stock, then write your note with update_thesis. You can't trade on this run. ` +
           `You are running unattended — no human will respond. Every turn must call a tool; ` +
           `text-only turns terminate the run as FAILED.`
@@ -924,7 +931,7 @@ export const tacticalRun = inngest.createFunction(
         // What is still open afterwards is written on the run and carried
         // to the next run on this stock.
         const openRefusals = await listOpenRefusalsForRun(run.id);
-        if (!stopped && openRefusals.length > 0 && responseMessages && responseMessages.length > 0) {
+        if (!auto && !stopped && openRefusals.length > 0 && responseMessages && responseMessages.length > 0) {
           console.warn(
             `[tactical-run] thesis=${thesis.id} ${openRefusals.length} refused call(s) never redone — attempting refusal retry`,
           );
@@ -985,6 +992,16 @@ export const tacticalRun = inngest.createFunction(
         );
 
         await recordTokenUsage(run.id, tokenUsage, MODES["tactical"].model);
+        // An Auto trade's write-up goes on its order before the run reads
+        // finished, so the card and the email never see the run done with the
+        // order still carrying its plain line.
+        if (auto?.orderId) {
+          try {
+            await putNoteOnOrder({ runId: run.id, thesisId: thesis.id, orderId: auto.orderId, line, since: new Date(t0) });
+          } catch (err) {
+            console.error(`[tactical-run] could not put the note on order ${auto.orderId}:`, err instanceof Error ? err.message : err);
+          }
+        }
         await prisma.researchRun.update({
           where: { id: run.id },
           data: {
@@ -1055,19 +1072,11 @@ export const tacticalRun = inngest.createFunction(
       }
     });
 
-    // ── The write-up goes on the Auto trade ───────────────────────────
-    // The note replaces the order's plain line, so the card, the approval
-    // email and the trade page read the analyst. The email waits for this.
+    // ── The approval email stops waiting ──────────────────────────────
+    // The note went on the order inside the run (or the run ended without one).
     if (auto?.orderId) {
       const orderId = auto.orderId;
-      await step.run("note-on-the-trade", async () => {
-        try {
-          await putNoteOnOrder({ runId: run.id, thesisId: thesis.id, orderId, line });
-        } catch (err) {
-          console.error(`[tactical-run] could not put the note on order ${orderId}:`, err instanceof Error ? err.message : err);
-        }
-        await sendNoteWritten(orderId);
-      });
+      await step.run("note-written", () => sendNoteWritten(orderId));
     }
 
     // ── A pass on a wobble doesn't spend the buy (DAV-343) ─────────────

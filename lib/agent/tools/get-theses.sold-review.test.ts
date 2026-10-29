@@ -151,6 +151,28 @@ describe("SMMT reaches the run as sold_to_review", () => {
     expect((await run()).data.sold_to_review).toHaveLength(1);
   });
 
+  it("an Auto trade's write-up landing after the sale is not the look back: it still asks", async () => {
+    const later = new Date(SOLD_AT.getTime() + 90_000);
+    mockThesisFindMany.mockImplementation(async (a: { where?: { status?: unknown } }) =>
+      a?.where?.status === "RETIRED"
+        ? [{ ...SMMT_SOLD, updates: [{ timestamp: later, run: { parameters: { autoTrade: true, ticker: "SMMT" } } }] }]
+        : [],
+    );
+    expect((await run()).data.sold_to_review).toHaveLength(1);
+  });
+
+  it("a real answer after the write-up still clears it", async () => {
+    mockThesisFindMany.mockImplementation(async (a: { where?: { status?: unknown } }) =>
+      a?.where?.status === "RETIRED"
+        ? [{ ...SMMT_SOLD, updates: [
+            { timestamp: new Date(SOLD_AT.getTime() + 7_200_000), run: { parameters: { runMode: "MORNING_PLAN" } } },
+            { timestamp: new Date(SOLD_AT.getTime() + 90_000), run: { parameters: { autoTrade: true } } },
+          ] }]
+        : [],
+    );
+    expect((await run()).data.sold_to_review).toBeUndefined();
+  });
+
   it("a ticker-filtered drill-down does not drag the sold book in", async () => {
     const res = await run({ tickers: ["AAA"] });
     expect(res.data.sold_to_review).toBeUndefined();

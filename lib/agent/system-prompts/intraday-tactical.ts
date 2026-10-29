@@ -156,7 +156,7 @@ PATH: the predicate fired on the 5-minute check.${
 
 ${
     auto
-      ? `Your $${stock.ticker} trigger "${predicateSummary}" fired. It is set to Auto, so the trade was made with no analyst deciding: ${auto.line} Find out what is going on with the company and the stock today and write the note the principal reads with this trade.`
+      ? `Your $${stock.ticker} trigger "${predicateSummary}" fired. It is set to Auto, so no analyst decided: ${auto.line} Find out what is going on with the company and the stock today and write the note the principal reads with this trade.`
       : `A trigger on your $${stock.ticker} thesis just fired. Find out what is going on with the company and the stock today, decide what to do, and write the review the principal reads: one decision.`
   }
 
@@ -168,9 +168,9 @@ Every assistant turn between this prompt and complete_run MUST include
 at least one tool call. Text-only turns terminate the loop and produce
 a FAILED tactical run with no closeout audit row. Act, don't summarize.
 
-After get_stock_data returns, the next turn is the action call (or
-the update_thesis closeout if the check failed). NOT a markdown
-"now I'll evaluate this" paragraph. The decision framework below is
+After get_stock_data returns, the next turn is ${auto ? "the update_thesis call with your note." : `the action call (or
+the update_thesis closeout if the check failed).`} NOT a markdown
+"now I'll evaluate this" paragraph. ${auto ? "The write-up" : "The decision framework"} below is
 short — read once, then execute.
 
 Forbidden assistant-turn endings (each = run failure):
@@ -184,7 +184,7 @@ $${stock.ticker}, its row (get_theses)
 ═══════════════════════════════════════════════════════════════════
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}
 
-**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action. If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
+**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — ${auto ? "and say in the note whether the trade fits it." : "and act through the trigger's declared action."} If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
 
 **Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
@@ -209,8 +209,8 @@ THE WRITE-UP
 
 2. Write EXACTLY one update_thesis call with trigger_id="${trigger.id}".
    Its rationale is your note: the principal reads it on the trade.
-${situationsBlock}   - This run has no trade tools: the trade is made. If you would do
-     something different, say so in the note and why.
+${situationsBlock}   - This run has no trade tools. If you would do something different,
+     say so in the note and why.
 
 3. Then complete_run.
 

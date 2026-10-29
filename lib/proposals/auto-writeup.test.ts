@@ -59,14 +59,14 @@ describe("the approval email", () => {
       const { proposalEmailSteps } = await import("@/lib/inngest/functions/proposal-pending-email");
       await proposalEmailSteps("ord_pltr", {
         run: async (_id, fn) => fn(),
-        waitForEvent: async (_id, opts) => (order.push(`wait ${opts.event} ${opts.match} ${opts.timeout}`), null),
+        waitForEvent: async (_id, opts) => (order.push(`wait ${opts.event} ${opts.if} ${opts.timeout}`), null),
       });
     });
     for (const m of ["@/lib/inngest/client", "@/lib/proposals/auto-writeup", "@/lib/emails/proposal-pending"]) jest.dontMock(m);
     return order;
   }
   it("an Auto trade's waits for the analyst's note, then goes", async () => {
-    expect(await steps(true)).toEqual(["wait app/proposal.note.written data.orderId 6m", "email"]);
+    expect(await steps(true)).toEqual(["wait app/proposal.note.written async.data.orderId == event.data.orderId 6m", "email"]);
   });
   it("an analyst's proposal carries its note already and goes at once", async () => {
     expect(await steps(false)).toEqual(["email"]);
