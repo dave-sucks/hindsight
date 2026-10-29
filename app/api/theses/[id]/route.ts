@@ -34,7 +34,6 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 import { HERO_UPDATE_TYPES } from "@/lib/thesis/latest-note";
-import { recentAnswers, RUN_WORDS } from "@/lib/agent/stock-context";
 import { writeupComing } from "@/lib/proposals/auto-writeup";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
 
@@ -197,27 +196,6 @@ export async function GET(
     .then((rows) => rows.find((r) => !isYourEdit(r)) ?? null)
     .catch(() => null);
 
-  // The analyst's last notes: the rows every run is handed (recentAnswers), so
-  // the Recent section and the agents read the same story.
-  const recentNotes = await prisma.thesisUpdate
-    .findMany({
-      where: { thesisId: thesis.id, runId: { not: null } },
-      orderBy: { timestamp: "desc" },
-      take: 30,
-      select: { id: true, timestamp: true, type: true, summary: true, rationale: true, fieldChanges: true, priceAtTime: true, runId: true, run: { select: { mode: true } } },
-    })
-    .then((rows) =>
-      recentAnswers(rows.map((r) => ({ ...r, runMode: r.run?.mode ?? null })))
-        .filter((r) => r.rationale?.trim())
-        .map((r) => ({
-          id: r.id ?? "",
-          timestamp: r.timestamp.toISOString(),
-          priceAtTime: r.priceAtTime ?? null,
-          by: (r.runMode && RUN_WORDS[r.runMode]) ?? "a run",
-          text: r.rationale!.split(/\n\s*\n\s*\[/)[0].trim(),
-        })),
-    )
-    .catch(() => []);
 
   // The write-up's own date: the newest row a research-writer run saved, never
   // a later run's edit. Its price is the writer's own pull ("Data pulled").
@@ -389,7 +367,6 @@ export async function GET(
     // DAV-304, never sent to the sheet — so "is this being reviewed?" was
     // only answerable by querying the database.
     lastReviewedAt: thesis.lastReviewedAt,
-    recentNotes,
     latestUpdate: latestUpdateRow
       ? {
           id: latestUpdateRow.id,

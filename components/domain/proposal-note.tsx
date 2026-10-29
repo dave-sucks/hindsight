@@ -3,14 +3,16 @@
 /**
  * A proposal's note: the analyst's reason, three lines, a click for the
  * rest. An Auto trade's note is written by the analyst just after the trade
- * (lib/proposals/auto-writeup.ts); until it lands the card says so and reads
- * the reason again every few seconds.
+ * (lib/proposals/auto-writeup.ts); until it lands the card shows one
+ * shimmering line in its place and reads the reason again every few seconds.
  */
 
 import { useEffect, useState } from "react";
 
 const POLL_MS = 8_000;
 const MAX_POLLS = 45;
+
+export const WRITING_LABEL = "Writing a summary for this proposal";
 
 export function ProposalNote({ orderId, reason, writing }: { orderId: string; reason: string | null; writing: boolean }) {
   const [text, setText] = useState(reason);
@@ -36,22 +38,17 @@ export function ProposalNote({ orderId, reason, writing }: { orderId: string; re
     return () => clearTimeout(t);
   }, [orderId, busy, polls]);
 
-  const paragraphs = (text ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-  const stillWriting = busy && polls < MAX_POLLS;
-  if (paragraphs.length === 0 && !stillWriting) return null;
+  if (busy && polls < MAX_POLLS) return <p className="text-sm shimmer-text">{WRITING_LABEL}</p>;
 
+  const paragraphs = (text ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length === 0) return null;
   return (
-    <div className="space-y-2 text-sm text-muted-foreground leading-relaxed">
-      {paragraphs.length ? (
-        <div
-          className="space-y-2 cursor-pointer transition-colors hover:text-foreground"
-          onClick={() => setOpen((v) => !v)}
-          title={open ? "Collapse" : "Expand"}
-        >
-          {open ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-3">{paragraphs.join(" ")}</p>}
-        </div>
-      ) : null}
-      {stillWriting ? <p className="shimmer-text">Your analyst is writing this up…</p> : null}
+    <div
+      className="space-y-2 cursor-pointer text-sm text-muted-foreground leading-relaxed transition-colors hover:text-foreground"
+      onClick={() => setOpen((v) => !v)}
+      title={open ? "Collapse" : "Expand"}
+    >
+      {open ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-3">{paragraphs.join(" ")}</p>}
     </div>
   );
 }

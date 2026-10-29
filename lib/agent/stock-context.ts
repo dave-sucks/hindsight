@@ -258,7 +258,7 @@ export function principalDecision(r: ActivityRow, priceThen: number | null = nul
   return change ? { at: r.timestamp, line: `Set by hand: ${change}${at}`, wantsAnswer: true } : null;
 }
 
-export const RUN_WORDS: Record<string, string> = {
+const RUN_WORDS: Record<string, string> = {
   MORNING_PLAN: "morning run",
   INTRADAY_TACTICAL: "trigger run",
   THESIS_WRITER: "writer",
