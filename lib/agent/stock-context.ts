@@ -128,9 +128,6 @@ export function newestNotes(rows: ActivityRow[]): ActivityRow[] {
   return newestFirst(rows).filter((r) => r.type === "NOTE").slice(0, NOTES_SHOWN);
 }
 
-/** What a removal by hand asks of the analysts; the app writes it on the row (thesis-edit.ts). */
-export const KEEP_IT_REMOVED = "Don't add it back unless the thesis changes.";
-
 /** The same ask, said once over the removals block. */
 const REMOVALS_HEADER = "Removed by the principal (don't add these back unless the thesis changes):";
 
@@ -234,7 +231,7 @@ export function principalDecision(r: ActivityRow, priceThen: number | null = nul
 
   if (r.type === "PROPOSAL_REJECTED") {
     const raw = to?.userMessage ?? r.rationale ?? "";
-    // A no-message decline stores a "[REJECTED:USER] …" sentinel.
+    // A no-message decline stored a "[REJECTED:USER] …" line until 2026-10-29; it stores none now.
     const message = raw && !raw.startsWith("[REJECTED:USER]") ? oneLine(raw) : null;
     return message
       ? { at: r.timestamp, line: `Declined ${what}${qty}${at}: "${message}"`, wantsAnswer: true }

@@ -7,7 +7,8 @@
  * `update_thesis` runs its ops through. One write path, two callers — the
  * same principle as `positionBand()` for sizing (DAV-242). What differs is
  * the actor: the principal is exempt from the ratchet (only a person lowers
- * a safety line), and the rationale on a level change is written for them.
+ * a safety line). The Activity line is the change itself, in its title; no
+ * paragraph is written for it.
  *
  * Each call loads the thesis, applies the op, persists the resulting
  * triggers with the plan columns derived from them, mirrors a moved stop /
@@ -21,7 +22,7 @@ import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
-import { fireModeProblem, fireModeWords, type FireMode } from "@/lib/agent/triggers/fire-mode";
+import { fireModeProblem, type FireMode } from "@/lib/agent/triggers/fire-mode";
 import { addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
@@ -36,7 +37,7 @@ import {
 } from "@/lib/agent/triggers/ops";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { COPIED_RULE_CLEANUP, KEEP_IT_REMOVED } from "@/lib/agent/stock-context";
+import { COPIED_RULE_CLEANUP } from "@/lib/agent/stock-context";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export interface ThesisEditContext {
@@ -228,7 +229,7 @@ async function runPrincipalOp(
   thesisId: string,
   ctx: ThesisEditContext,
   buildOp: (thesis: EditableThesis) => TriggerOp,
-  audit: (thesis: EditableThesis, id: string) => { summary: string; rationale: string },
+  audit: (thesis: EditableThesis, id: string) => { summary: string },
 ): Promise<OpOutcome> {
   const thesis = await loadEditableThesis(thesisId, ctx);
   const op = buildOp(thesis);
@@ -282,7 +283,7 @@ async function runPrincipalOp(
   if (check.columns.targetPrice != null && check.columns.targetPrice !== thesis.targetPrice)
     synced.targetPrice = check.columns.targetPrice;
 
-  const { summary, rationale } = audit(thesis, result.id);
+  const { summary } = audit(thesis, result.id);
   await prisma.$transaction(async (tx) => {
     await tx.thesis.update({
       where: { id: thesis.id },
@@ -324,7 +325,6 @@ async function runPrincipalOp(
     thesisId: thesis.id,
     type: "UPDATED",
     summary,
-    rationale,
     fieldChanges: {
       source: { from: null, to: "USER" },
       triggerOps: { from: null, to: acceptedOps(applied.results) },
@@ -371,11 +371,6 @@ export interface TriggerAddResult {
   synced: { stopLoss?: number; targetPrice?: number };
 }
 
-/** What it does when it fires, as the pill says it: "Auto-sell". */
-function howItRuns(trigger: Trigger, held: boolean): string {
-  return `. ${fireModeWords(trigger, held)}`;
-}
-
 export async function applyTriggerAdd(
   thesisId: string,
   input: TriggerAddInput,
@@ -398,7 +393,6 @@ export async function applyTriggerAdd(
     },
     (thesis) => ({
       summary: `You added a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
-      rationale: `You added this trigger: ${sentenceOf(input, thesis.status === "HOLDING")}${howItRuns(built, thesis.status === "HOLDING")}. It stands until you change it.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -434,7 +428,6 @@ export async function applyTriggerReplace(
     },
     (thesis) => ({
       summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
-      rationale: `You changed this trigger to: ${sentenceOf(input, thesis.status === "HOLDING")}${howItRuns(built, thesis.status === "HOLDING")}. It stands until you change it.`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -473,12 +466,10 @@ export async function applyTriggerDelete(
       if (why) {
         return {
           summary: `${COPIED_RULE_CLEANUP}${thesis.ticker} — ${what}`,
-          rationale: `Removed in the cleanup of copied rules: ${what}. ${why.charAt(0).toUpperCase()}${why.slice(1).replace(/\.$/, "")}. Don't add it back on this stock.`,
         };
       }
       return {
         summary: `You removed a trigger on ${thesis.ticker}: ${what}`,
-        rationale: `You removed this trigger: ${what}. ${KEEP_IT_REMOVED}`,
       };
     },
   );

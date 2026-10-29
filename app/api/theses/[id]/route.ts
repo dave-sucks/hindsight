@@ -19,7 +19,6 @@
  * FMP + Finnhub all resolving.
  */
 
-import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -33,7 +32,8 @@ import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
-import { HERO_UPDATE_TYPES } from "@/lib/thesis/latest-note";
+import { recentAnswers } from "@/lib/agent/stock-context";
+import { ACTIVITY_LINES, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import { writeupComing } from "@/lib/proposals/auto-writeup";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
 
@@ -159,42 +159,18 @@ export async function GET(
     pendingProposal: ThesisPendingProposal | null;
   };
 
-  // The most recent durable event on this thesis, so the sheet can lead with
-  // what just happened instead of a belief written three weeks ago (DAV-304).
-  // The Activity tab's own fetch is lazy and only runs when you open the tab;
-  // this one row rides the first paint. Shaped as the timeline's own row type
-  // so `titleSegments` words it — one grammar, not a second one here.
-  const latestUpdateRow = await prisma.thesisUpdate
+  // The analysts' notes on this stock: the list every run is handed
+  // (recentAnswers over the same newest Activity lines, stock-context.ts), so
+  // what the Overview shows is what the agents read. Newest first.
+  const notes = await prisma.thesisUpdate
     .findMany({
-      // Not simply the newest row: TRIGGER_FIRED is templated machine text
-      // and PROPOSAL_APPROVED is an order receipt, and between them they win
-      // the recency race on most stocks. See lib/thesis/latest-note.ts.
-      // Your own edit from the trigger popover is a real audit row, but it
-      // is your note to the agent, not the analyst's read on the stock —
-      // leading the sheet with it answered "what is going on with this
-      // stock?" with "you moved a stop." Skipped below (it is marked in
-      // fieldChanges; older rows by a [USER] tag) so the headline is always
-      // something a run wrote.
-      where: {
-        thesisId: thesis.id,
-        type: { in: [...HERO_UPDATE_TYPES] },
-      },
+      where: { thesisId: thesis.id },
       orderBy: { timestamp: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        timestamp: true,
-        type: true,
-        summary: true,
-        rationale: true,
-        fieldChanges: true,
-        priceAtTime: true,
-        triggerId: true,
-        runId: true,
-      },
+      take: ACTIVITY_LINES,
+      select: ACTIVITY_SELECT,
     })
-    .then((rows) => rows.find((r) => !isYourEdit(r)) ?? null)
-    .catch(() => null);
+    .then((rows) => recentAnswers(rows.map((r) => ({ ...r, runMode: r.run?.mode ?? null }))))
+    .catch(() => []);
 
 
   // The write-up's own date: the newest row a research-writer run saved, never
@@ -367,25 +343,20 @@ export async function GET(
     // DAV-304, never sent to the sheet — so "is this being reviewed?" was
     // only answerable by querying the database.
     lastReviewedAt: thesis.lastReviewedAt,
-    latestUpdate: latestUpdateRow
-      ? {
-          id: latestUpdateRow.id,
-          timestamp: latestUpdateRow.timestamp.toISOString(),
-          type: latestUpdateRow.type,
-          summary: latestUpdateRow.summary ?? "",
-          rationale: latestUpdateRow.rationale,
-          fieldChanges: (latestUpdateRow.fieldChanges ?? null) as Record<
-            string,
-            { from: unknown; to: unknown }
-          > | null,
-          priceAtTime: latestUpdateRow.priceAtTime,
-          positionAtTime: null,
-          triggerId: latestUpdateRow.triggerId,
-          signalIds: [],
-          runId: latestUpdateRow.runId,
-          tradeId: null,
-        }
-      : null,
+    notes: notes.map((n) => ({
+      id: n.id ?? "",
+      timestamp: n.timestamp.toISOString(),
+      type: n.type,
+      summary: n.summary ?? "",
+      rationale: n.rationale ?? null,
+      fieldChanges: (n.fieldChanges ?? null) as Record<string, { from: unknown; to: unknown }> | null,
+      priceAtTime: n.priceAtTime ?? null,
+      positionAtTime: null,
+      triggerId: n.triggerId ?? null,
+      signalIds: [],
+      runId: n.runId ?? null,
+      tradeId: null,
+    })),
     // Derived at read time from the last actual look + the cadence on the
     // resolved ladder (DAV-221). Null = no scheduled review.
     reviewDueAt: derivedNextReviewAt({

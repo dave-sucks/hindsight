@@ -802,17 +802,6 @@ export function proposalUserMessage(u: TimelineUpdate): string | null {
 //                whether it's visible before any click, per type.
 //   fold         true for the roll-up rows whose whole surface is a control
 
-/**
- * The Overview's Recent activity: the newest `limit` rows that have words,
- * leaving out proposals (the trade card shows the open one; the rest are
- * expiries) and any text already on the page above it.
- */
-export function recentRows(rows: TimelineRow[], skipTexts: Array<string | null>, limit: number): TimelineRow[] {
-  const same = (t: string) => t.replace(/\s+/g, " ").trim();
-  const shown = new Set(skipTexts.filter((t): t is string => !!t?.trim()).map(same));
-  return rows.filter((r) => !r.fold && r.description != null && !r.type.startsWith("PROPOSAL_") && !shown.has(same(r.description))).slice(0, limit);
-}
-
 export interface TimelineRow {
   key: string;
   /** Underlying ThesisUpdate type ("" for fold rows) — lets the caller

@@ -44,7 +44,6 @@ import {
   lockPositionSales,
 } from "@/lib/proposals/position-lock";
 import { positionTotalCap } from "@/lib/agent/position-sizing";
-import { PROPOSAL_NOUN } from "@/lib/trade-status";
 
 export interface ProposalApprovalResult {
   ok: true;
@@ -499,10 +498,6 @@ export async function approveProposal(
       thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
       type: "PROPOSAL_APPROVED",
       summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""}${resized ? ` (${effectiveQty}→${submitQty} sh — ${resizeNote})` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
-      // In plain words (lib/agent/voice.ts): this is the Activity row.
-      rationale:
-        `You approved the ${PROPOSAL_NOUN[intent] ?? "trade"} of ${qtyEdited ? `${effectiveQty} shares, changed from ${order.quantity}` : `${effectiveQty} shares`}` +
-        `${resized ? `; ${isSale ? "sold" : "bought"} ${submitQty} of them, ${resizeNote} at approval` : ""}. Sent to Alpaca as order ${alpacaOrderId}.`,
       fieldChanges: {
         proposal: {
           from: { orderId, status: "AWAITING_APPROVAL", quantity: order.quantity },
@@ -628,9 +623,8 @@ export async function rejectProposal(
       thesisId,
       type: "PROPOSAL_REJECTED",
       summary: `Rejected ${intent} proposal on ${order.symbol}${trimmedMessage ? ` — "${trimmedMessage.slice(0, 80)}"` : ""}`,
-      rationale:
-        trimmedMessage ??
-        `[REJECTED:USER] User rejected the ${intent} proposal without a written reason. Treat this as a soft no; re-proposal is allowed if the setup materially changes.`,
+      // Your words, or nothing: a decline with no comment is the title alone.
+      ...(trimmedMessage ? { rationale: trimmedMessage } : {}),
       fieldChanges: {
         proposal: {
           from: { orderId, status: "AWAITING_APPROVAL" },

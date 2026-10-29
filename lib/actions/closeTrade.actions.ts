@@ -544,16 +544,8 @@ export async function closeOpenPosition(
   //     position isn't CLOSED yet; reconcile-orders flips on actual fill.
   if (position.analystId) {
     const { closeThesisForPosition } = await import("@/lib/proposals/thesis-flips");
-    const flipRationale =
-      auditReason ??
-      buildCloseReason(
-        source,
-        reason,
-        position.symbol,
-        closePrice,
-        position.stopLoss,
-        position.targetPrice,
-      );
+    // The analyst's words on the sale, or none: the title says what sold.
+    const flipRationale = auditReason ?? null;
     await closeThesisForPosition({
       analystId: position.analystId,
       ticker: position.symbol,

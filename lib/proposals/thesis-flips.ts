@@ -280,9 +280,6 @@ export async function armHeldLadderOnFill(opts: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
-        // On an approval this is the price when you approved, not the fill:
-        // the fill lands later with its own line (reconcile-orders.ts).
-        rationale: `${opts.via === "approved proposal" ? `Bought on your approval at about $${opts.fillPrice.toFixed(2)}, the price then` : `Bought at $${opts.fillPrice.toFixed(2)}`}; it moves from the watchlist to the stocks we hold. The buy trigger is gone; the other triggers stay, and the analyst's own sell rules apply.`,
         fieldChanges: {
           status: { from: "WATCHING", to: "HOLDING" },
           triggerOps: { from: null, to: acceptedOps(results) },
@@ -463,11 +460,8 @@ export async function closeThesisForPosition(opts: {
         summary: isProfitTake
           ? `Took profit on ${opts.ticker}${ctxSuffix} — ${opts.closeReason}; kept on watch for re-entry`
           : `Closed ${opts.ticker}${ctxSuffix} — ${opts.closeReason}; belief intact, kept on watch for a reclaim`,
-        rationale:
-          opts.rationale ??
-          (isProfitTake
-            ? `Profit-take. Position closed; thesis kept WATCHING for a re-entry on a pullback.`
-            : `Protective exit on price — the closing agent attested the belief survived. Thesis kept WATCHING for a reclaim; the next run arms a reclaim trigger or archives it.`),
+        // The analyst's words on the sale, or none.
+        rationale: opts.rationale ?? undefined,
         fieldChanges: {
           status: { from: activeThesis.status, to: "WATCHING" },
           ...(isProfitTake ? {} : { beliefSurvived: { from: null, to: true } }),
@@ -494,8 +488,7 @@ export async function closeThesisForPosition(opts: {
       thesisId: activeThesis.id,
       type: "CLOSED",
       summary: `Closed ${opts.ticker} position${ctxSuffix} — ${opts.closeReason}`,
-      rationale:
-        opts.rationale ?? `Position closed. Reason: ${opts.closeReason}.`,
+      rationale: opts.rationale ?? undefined,
       fieldChanges: {
         status: { from: activeThesis.status, to: "RETIRED" },
         retiredReason: { from: null, to: "SOLD" },
@@ -536,8 +529,7 @@ export async function closeThesisOnApproval(opts: {
     ticker: opts.ticker,
     positionId: opts.positionId,
     closeReason: opts.closeReason,
-    rationale:
-      opts.rationale ?? `Close proposal approved. Reason: ${opts.closeReason}.`,
+    rationale: opts.rationale,
     runId: opts.runId,
     summaryContext: "on approved proposal",
     beliefSurvived: opts.beliefSurvived,

@@ -107,11 +107,6 @@ export async function demoteThesisPlan(args: {
     // the end of one.
     type: "TRIGGER_FIRED",
     summary: `${thesis.ticker} plan set down — ${args.reason}`,
-    rationale:
-      `The priced plan on ${thesis.ticker} was removed: ` +
-      removed.map((r) => `${r.action.toLowerCase()} at $${r.price}`).join(", ") +
-      `. ${args.reason} Still watching — re-price it if the setup comes back, ` +
-      `or stop watching if it doesn't.`,
     triggerId: args.triggerId ?? undefined,
     signalIds: [],
     runId: args.runId ?? null,

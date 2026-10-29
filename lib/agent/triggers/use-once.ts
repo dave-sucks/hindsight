@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { fireModeLabel, usedOnceLine } from "./fire-mode";
+import { usedOnceLine } from "./fire-mode";
 import type { ResolvedTrigger } from "./levels";
 import { acceptedOps, applyTriggerOps } from "./ops";
 import { canonicalLevels } from "./price-levels";
@@ -32,7 +32,6 @@ export async function useOnce(args: { thesisId: string; triggerId: string; runId
     thesisId: thesis.id,
     type: "UPDATED",
     summary: line,
-    rationale: `${line}. An ${fireModeLabel("DO_IT", used.action)} is a one-time order: it came off the stock when it fired.`,
     fieldChanges: { triggerOps: { from: null, to: acceptedOps(applied.results) } },
     triggerId: used.id,
     runId: args.runId,

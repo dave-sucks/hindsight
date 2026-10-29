@@ -1343,7 +1343,8 @@ export const recordThesis = defineTool({
               thesisId: resolvedParentId,
               type: "INVALIDATED",
               summary: `Invalidated by PASS thesis on ${args.ticker}`,
-              rationale: invalidReason,
+              // The analyst's words, or none.
+              ...(narrativeText ? { rationale: narrativeText.slice(0, 500) } : {}),
               fieldChanges: {
                 status: { from: "HOLDING", to: "RETIRED" },
                 retiredReason: { from: null, to: "INVALIDATED" },

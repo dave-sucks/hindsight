@@ -104,6 +104,19 @@ describe("the old wording is gone from every line the app writes for the owner",
     ["lib/inngest/functions/proposal-expiry.ts", ["no approve / reject within the expiry window", "Original rationale:"]],
     ["lib/inngest/functions/reconcile-orders.ts", ["Once the stock is owned the buy price is what was paid, not the plan."]],
     ["lib/agent/system-prompts/intraday-tactical.ts", ["ladder intact:", "level no longer holds at\n           execution time", "False fire."]],
+    // 2026-10-29: no Activity line carries a paragraph the app wrote. These
+    // led the sheet (GEV's expiry) or reached the agents as an analyst's note.
+    ["lib/inngest/functions/proposal-expiry.ts", ["expired without an answer", "Its reason:"]],
+    ["lib/proposals/execute.ts", ["You approved the", "User rejected the ${intent} proposal without a written reason"]],
+    ["lib/proposals/thesis-flips.ts", ["Bought on your approval", "Profit-take. Position closed", "Protective exit on price", "Position closed. Reason:", "Close proposal approved. Reason:"]],
+    ["lib/inngest/functions/reconcile-orders.ts", ["Now that we own it, the buy price on the thesis is what we paid", "The automatic stop moves with it"]],
+    ["lib/agent/record-buy-blocked.ts", ["Nothing is wrong with the plan; the analyst has no room"]],
+    ["lib/agent/triggers/use-once.ts", ["is a one-time order: it came off the stock"]],
+    ["lib/agent/triggers/demote.ts", ["was removed: ", "re-price it if the setup comes back"]],
+    ["lib/trading/after-buy.ts", ["the next run will set it"]],
+    ["lib/actions/thesis-edit.ts", ["You added this trigger:", "You changed this trigger to:", "You removed this trigger:", "Removed in the cleanup of copied rules:"]],
+    ["lib/actions/promote-analyst.actions.ts", ["Administrative transition, not a thesis decision", "Demote-while-PROMOTED downgrade"]],
+    ["lib/actions/analyst.actions.ts", ["Analyst was created with this ticker on the suggested watchlist", "Editor removed this ticker from the analyst's watchlist."]],
   ];
   for (const [path, phrases] of cases) {
     it(path, () => {

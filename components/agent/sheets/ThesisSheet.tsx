@@ -43,7 +43,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
-import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
+import { RecentNotes, ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { latestNoteView } from "@/lib/thesis/latest-note";
@@ -59,7 +59,7 @@ import {
   type ResearchBulletSection,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
-import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
+import type { EarningsResponse, FilingsResponse, ThesisNote } from "@/lib/types/thesis-sheet";
 import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -455,9 +455,9 @@ function FilingsBlock({ data }: { data: FilingsResponse }) {
  *   1. the flag, named — `needsActionFlag`, one fixed sentence per enum
  *      case. Absent when nothing is flagged; "nothing is flagged" is not
  *      news and it used to take a line at the top of every stock.
- *   2. the newest thing an analyst WROTE about this stock — the rationale
- *      off the latest run-authored update. This is the block: it is the
- *      only part of the page that says what the situation is today.
+ *   2. the newest note an analyst wrote on this stock — the first of the
+ *      notes every run is handed (`recentAnswers`). This is the block: it is
+ *      the only part of the page that says what the situation is today.
  *   3. who wrote it and when, plus how old that is once it is stale.
  *
  * What this replaced (2026-09-30): "LATEST · Updated · 1h" over the frozen
@@ -470,17 +470,16 @@ function FilingsBlock({ data }: { data: FilingsResponse }) {
  */
 function LatestNoteBlock({
   status,
-  latestUpdate,
+  note: latest,
   needsAction,
   situations,
   quoteLoading,
   quoteFailed,
   analystName,
-  /** Text already shown verbatim in the trade block — never repeated here. */
-  suppressText,
 }: {
   status: string;
-  latestUpdate: ThesisDossier["latestUpdate"];
+  /** The newest analyst note when it has words; null otherwise. */
+  note: ThesisNote | null;
   needsAction: NeedsAction | null;
   /** Every situation the stock is in, lead first; the ones the lead didn't put it in follow the flag. */
   situations: Array<{ name: string; lead: boolean }>;
@@ -488,17 +487,8 @@ function LatestNoteBlock({
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
   analystName: string | null;
-  suppressText: string | null;
 }) {
-  const note = latestUpdate?.rationale?.trim() || latestUpdate?.summary?.trim() || null;
-  // A pending proposal prints its own rationale in the trade block right
-  // below. When the newest written note IS that rationale, showing it twice
-  // made the sheet read as two agents saying the same thing.
-  const sameAsTrade =
-    note != null &&
-    suppressText != null &&
-    note.replace(/\s+/g, " ") === suppressText.replace(/\s+/g, " ");
-  const text = sameAsTrade ? null : note;
+  const text = latest?.rationale?.trim() || null;
 
   // ONE flag line. `planSanity` used to stack under it — a second, unrelated
   // system (is this PLAN coherent?) painting the same amber as the work flag
@@ -542,7 +532,7 @@ function LatestNoteBlock({
       {view.showNote && text ? (
         <>
           <ClampedParagraph text={text} />
-          <WrittenByLine latestUpdate={latestUpdate} analystName={analystName} />
+          <WrittenByLine note={latest} analystName={analystName} />
         </>
       ) : null}
     </div>
@@ -555,14 +545,14 @@ function LatestNoteBlock({
  * current otherwise.
  */
 function WrittenByLine({
-  latestUpdate,
+  note,
   analystName,
 }: {
-  latestUpdate: ThesisDossier["latestUpdate"];
+  note: ThesisNote | null;
   analystName: string | null;
 }) {
-  if (!latestUpdate) return null;
-  const writtenAt = new Date(latestUpdate.timestamp);
+  if (!note) return null;
+  const writtenAt = new Date(note.timestamp);
   if (!Number.isFinite(writtenAt.getTime())) return null;
   const daysOld = Math.floor((Date.now() - writtenAt.getTime()) / 86_400_000);
   return (
@@ -1246,6 +1236,11 @@ export function ThesisBody({
   // right. Each tab opens its own pair under the tab bar — on Overview under
   // the price row too — so the cards start level with the chart. Only the
   // open tab is mounted, so the cards render once.
+  // The analysts' notes the agents are handed: the first large when it has
+  // words, the rest small (a line with only a title is a row).
+  const notes = state.notes ?? [];
+  const lead = notes[0]?.rationale?.trim() ? notes[0] : null;
+
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
   const sideColumn =
     surface === "page" ? (
@@ -1329,27 +1324,16 @@ export function ThesisBody({
       {/* Under the chart it comments on, above the triggers it leads to. */}
       <LatestNoteBlock
         status={state.status}
-        latestUpdate={state.latestUpdate}
+        note={lead}
         needsAction={quote?.needsAction ?? null}
         situations={quote?.situations ?? []}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
         analystName={state.analystName}
-        suppressText={tradeBanner ? (pendingProposal?.rationale ?? null) : null}
       />
 
-      {/* The last few Activity rows with something written, in the Activity tab's own design. */}
-      {thesis_id ? (
-        <ThesisTimelineSection
-          thesisId={thesis_id}
-          provenance={null}
-          recent={{
-            limit: 3,
-            skipTexts: [state.latestUpdate?.rationale ?? null, pendingProposal?.rationale ?? null],
-            onViewAll: () => setTab(2),
-          }}
-        />
-      ) : null}
+      {/* The rest of the notes the agents are handed, small, in the Activity tab's own design. */}
+      <RecentNotes notes={lead ? notes.slice(1) : notes} onViewAll={() => setTab(2)} />
 
       {surface === "sheet" ? stockCards : null}
       </div>

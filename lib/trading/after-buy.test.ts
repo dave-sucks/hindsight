@@ -75,7 +75,9 @@ describe("sendWriterAfterBuy", () => {
     expect(writeThesisUpdate).toHaveBeenCalledTimes(1);
     expect(writeThesisUpdate.mock.calls[0][0]).toMatchObject({
       thesisId: "t1",
-      rationale: "Bought by hand with no floor — the write-up didn't start; the next run will set it.",
+      summary: "Bought ABT by hand; the write-up didn't start",
     });
+    // A title, never a paragraph the app wrote.
+    expect(writeThesisUpdate.mock.calls[0][0].rationale).toBeUndefined();
   });
 });

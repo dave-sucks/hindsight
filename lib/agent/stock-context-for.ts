@@ -9,6 +9,9 @@ import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { buildStockContext, type ActivityRow, type StockContext } from "@/lib/agent/stock-context";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
+/** How many of a stock's newest Activity lines are read (about a month). */
+export const ACTIVITY_LINES = 40;
+
 /** The Activity columns the block reads, for every caller's query. */
 export const ACTIVITY_SELECT = {
   id: true, thesisId: true, type: true, triggerId: true, timestamp: true, fieldChanges: true,

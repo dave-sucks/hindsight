@@ -51,7 +51,6 @@ export async function recordBuyBlockedByFull(opts: {
       thesisId: thesis.id,
       type: "UPDATED",
       summary: buyBlockedSummary(opts.ticker, opts.open, opts.max, held),
-      rationale: `The buy was confirmed and place_trade refused it at the position limit (${opts.open} of ${opts.max}). Nothing is wrong with the plan; the analyst has no room. The decision is the principal's: is $${opts.ticker} a better use of a slot than one of ${held.map((t) => `$${t}`).join(", ") || "the current holdings"}? Raise the limit on the analyst's page, close one, or leave it waiting.`,
       fieldChanges: { buyBlocked: { from: null, to: { limit: "MAX_OPEN_POSITIONS", open: opts.open, max: opts.max, held } } },
       runId: opts.runId ?? null,
     });

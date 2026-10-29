@@ -21,7 +21,6 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
-import { PROPOSAL_NOUN } from "@/lib/trade-status";
 
 // Mon-Fri 4 AM-8 PM ET, every 30 min — covers any proposal expiring during
 // the trading day. Off-hours expiries roll over to the next ET open.
@@ -120,8 +119,9 @@ export const proposalExpiry = inngest.createFunction(
         });
 
         // Write the ThesisUpdate audit OUTSIDE the position-update tx —
-        // failures here shouldn't block the expiry flip. The agent reads
-        // this on its next run to decide whether to re-propose.
+        // failures here shouldn't block the expiry flip. A line with a title
+        // and no paragraph: the agents read the lapse off the order itself
+        // (work-inputs.ts), and the reason stays on the order.
         try {
           // Shared lookup with approve/reject — live statuses first, then
           // most-recent of any status. The old inline live-only query
@@ -135,7 +135,6 @@ export const proposalExpiry = inngest.createFunction(
             thesisId,
             type: "PROPOSAL_EXPIRED",
             summary: `${intent} proposal on ${order.symbol} expired without user decision`,
-            rationale: `The ${PROPOSAL_NOUN[intent] ?? "trade"} of ${order.quantity} ${order.symbol} expired without an answer. ${order.rationale ? `Its reason: ${order.rationale.slice(0, 240)}` : ""}`.trim(),
             fieldChanges: {
               proposal: {
                 from: { orderId: order.id, status: "AWAITING_APPROVAL" },

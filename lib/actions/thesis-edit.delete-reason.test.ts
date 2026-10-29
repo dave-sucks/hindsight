@@ -45,13 +45,12 @@ async function remove(why?: string) {
   return { row, left };
 }
 
-describe("applyTriggerDelete — the line says why when it is not a click", () => {
-  it("the cleanup's removal names itself and its reason", async () => {
+describe("applyTriggerDelete — the line says what it was when it is not a click", () => {
+  it("the cleanup's removal names itself, with no paragraph", async () => {
     const { row, left } = await remove("same rung, same number as the rule above it; the analyst's rule governs from here");
     expect(left).toEqual(["floor"]);
     expect(row.summary).toBe("Removed a copied rule from ABT — Sell if below 25% from the high since we bought");
-    expect(row.rationale).toContain("in the cleanup of copied rules");
-    expect(row.rationale).toContain("the analyst's rule governs from here");
+    expect(row.rationale ?? null).toBeNull();
     expect(row.summary).not.toMatch(/^Principal removed/);
   });
 
@@ -59,7 +58,8 @@ describe("applyTriggerDelete — the line says why when it is not a click", () =
     const { row, left } = await remove();
     expect(left).toEqual(["floor"]);
     expect(row.summary).toBe("You removed a trigger on ABT: Sell if below 25% from the high since we bought");
-    expect(row.rationale).toContain("Don't add it back unless the thesis changes.");
+    // The title is the change; the agents read it from triggerOps, under one header.
+    expect(row.rationale ?? null).toBeNull();
   });
 
   it("what the next run reads from each: the cleanup's line nothing, the click its removal", async () => {
