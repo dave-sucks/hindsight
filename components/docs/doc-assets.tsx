@@ -8,6 +8,7 @@
  */
 
 import { SituationFlow } from "./assets/situations";
+import { FireCanvas } from "./fire-canvas";
 import type { ComponentType } from "react";
 import type { GuideAsset } from "@/lib/docs/guide-parse";
 import type { DocsAgentId } from "@/lib/docs/tools";
@@ -35,6 +36,8 @@ export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   "request-grid": AgentRequests,
   /** A stock's facts into one function, out as its situations: what puts it on the work list. */
   "situation-flow": SituationFlow,
+  /** A thesis's triggers to the agents their On fire reaches, what comes out, and the notes coming back. */
+  "fire-loop": () => <FireCanvas />,
 };
 
 function AgentRequests() {
