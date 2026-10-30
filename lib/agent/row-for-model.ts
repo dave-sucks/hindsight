@@ -18,6 +18,7 @@
  * saved row or a recorded one (scripts/hero-cases) builds the same way.
  */
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import { writtenNote } from "@/lib/agent/triggers/note";
 
 export type RowSize = "line" | "short" | "full";
 
@@ -169,8 +170,9 @@ function whoSet(setBy: string | undefined): string | null {
 }
 
 /**
- * Every rule on the stock as a sentence: the stock's own, each with its
- * reason and its id, then the ones it inherits, marked. An inherited rule's
+ * Every rule on the stock as a sentence: the stock's own, each with its id
+ * and the reason someone wrote (`writtenNote`; a template's is left off),
+ * then the ones it inherits, marked. An inherited rule's
  * reason is the analyst's or the account's standing text and would repeat on
  * every stock of theirs, so it travels only on a rung that fired; so does its
  * id, which a run answering the fire names as trigger_id. An inherited rule
@@ -178,15 +180,19 @@ function whoSet(setBy: string | undefined): string | null {
  * (PBH 09-23, no rules of its own, two runs named the account's for removal).
  */
 function triggerLines(row: Row): string[] {
+  const note = (t: TriggerLine) => {
+    const written = writtenNote({ rationale: t.rationale, source: t.setBy });
+    return written ? `"${stripSourceTags(written)}"` : null;
+  };
   const own = list<TriggerLine>(row.triggers).map((t) => {
     const fired = date(t.lastFiredAt);
-    return [t.says ?? "", fired ? `fired ${etStamp(fired)}` : null, whoSet(t.setBy), t.rationale ? `"${stripSourceTags(t.rationale)}"` : null]
+    return [t.says ?? "", fired ? `fired ${etStamp(fired)}` : null, whoSet(t.setBy), note(t)]
       .filter(Boolean)
       .join(" · ") + ` [id ${t.id}]`;
   });
   const inherited = list<TriggerLine>(row.inheritedTriggers).map((t) => {
     const fired = date(t.lastFiredAt);
-    return [t.says ?? "", "inherited", fired ? `fired ${etStamp(fired)}` : null, fired && t.rationale ? `"${stripSourceTags(t.rationale)}"` : null]
+    return [t.says ?? "", "inherited", fired ? `fired ${etStamp(fired)}` : null, fired ? note(t) : null]
       .filter(Boolean)
       .join(" · ") + (fired ? ` [id ${t.id}]` : "");
   });
