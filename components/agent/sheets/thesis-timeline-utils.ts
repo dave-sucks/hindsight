@@ -474,12 +474,36 @@ export function proposalSpanSegments(items: TimelineItem[]): Set<number> {
 }
 
 /** Month header label — "August", with the year when it isn't this year. */
-export function monthLabel(timestamp: string, now = new Date()): string {
-  const d = new Date(timestamp);
+function monthLabel(d: Date, now: Date): string {
   const month = d.toLocaleString("en-US", { month: "long" });
   return d.getFullYear() === now.getFullYear()
     ? month
     : `${month} ${d.getFullYear()}`;
+}
+
+/**
+ * The period a row falls in, as the list labels it: "Today", "Yesterday",
+ * "This week" (the last seven days), then the month ("October", or
+ * "November 2025" in another year). The labels carry the time now that a
+ * row's own timestamp shows only on hover.
+ */
+export function periodLabel(timestamp: string, now = new Date()): string {
+  const d = new Date(timestamp);
+  if (!Number.isFinite(d.getTime())) return "";
+  if (d.toDateString() === now.toDateString()) return "Today";
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  if (now.getTime() - d.getTime() < 7 * 86_400_000) return "This week";
+  return monthLabel(d, now);
+}
+
+/** A label where the period changes, newest first; null where it doesn't. The first is whatever period the first row is in. */
+export function groupLabels(timestamps: string[], now = new Date()): (string | null)[] {
+  return timestamps.map((t, i) => {
+    const label = periodLabel(t, now);
+    return i === 0 || label !== periodLabel(timestamps[i - 1], now) ? label : null;
+  });
 }
 
 // ── Field-change lines (expanded view) ───────────────────────────────────────
