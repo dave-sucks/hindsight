@@ -12,6 +12,9 @@ import { EarningsCard } from "@/components/domain/earnings-card";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
 import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
+import { ThesisHeader } from "@/components/domain/thesis-header";
+import { StockThesisBody } from "@/components/stocks/StockThesisBody";
+import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { thesisSheetStateSelect } from "@/lib/agent/thesis-sheet-state";
 import {
   getNews,
@@ -151,8 +154,9 @@ export default async function StockDetailPage({ params }: Props) {
             take: 100,
             select: {
               ...thesisSheetStateSelect,
+              id: true,
               createdAt: true,
-              researchRun: { select: { agentConfig: { select: { name: true } } } },
+              researchRun: { select: { agentConfigId: true, agentConfig: { select: { name: true } } } },
             },
           })
         : Promise.resolve([]),
@@ -201,24 +205,16 @@ export default async function StockDetailPage({ params }: Props) {
         }
       : null;
 
+  // The live thesis — what Hindsight thinks of this stock right now. A
+  // holding first, else the newest watch. With one, the page is the thesis
+  // page with the stock's own content in its slots; without, the stock alone.
+  const live = theses.find((t) => t.status === "HOLDING") ?? theses.find((t) => t.status === "WATCHING") ?? null;
+
   const website = profile?.weburl
     ? profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
     : null;
 
-  const sidebar = (
-    <>
-      {held && heldPnl ? (
-        <Link href={`/trades/${held.id}`} className="block">
-          <TradeSummary
-            look="card"
-            position={held}
-            pnl={heldPnl}
-            pendingProposal={null}
-            direction={open?.direction === "SHORT" ? "SHORT" : "LONG"}
-          />
-        </Link>
-      ) : null}
-
+  const stockDetails = (
       <Card className="bg-muted/40 p-2 gap-1">
         <BlockLabel>Stock details</BlockLabel>
         <DetailRows
@@ -258,6 +254,23 @@ export default async function StockDetailPage({ params }: Props) {
           ]}
         />
       </Card>
+  );
+
+  const sidebar = (
+    <>
+      {held && heldPnl ? (
+        <Link href={`/trades/${held.id}`} className="block">
+          <TradeSummary
+            look="card"
+            position={held}
+            pnl={heldPnl}
+            pendingProposal={null}
+            direction={open?.direction === "SHORT" ? "SHORT" : "LONG"}
+          />
+        </Link>
+      ) : null}
+
+      {stockDetails}
 
       <AnalystConsensusWidget coverage={coverage} currentPrice={price} />
 
@@ -308,21 +321,47 @@ export default async function StockDetailPage({ params }: Props) {
         {/* The same header the trade page and the sheet render. href={null}:
             we're already on the stock page. */}
         <div className="mb-6">
-          <StockIdentityHeader
-            ticker={upperSymbol}
-            displayName={identity.companyName}
-            exchange={identity.exchange}
-            href={null}
-            actions={
-              <>
-                <TradeButton ticker={upperSymbol} />
-                <PinButton ticker={upperSymbol} />
-                <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
-              </>
-            }
-          />
+          {live ? (
+            <ThesisHeader
+              ticker={upperSymbol}
+              displayName={identity.companyName}
+              exchange={identity.exchange}
+              status={live.status}
+              agentWatchDays={agentWatchDays(live.triggers)}
+              conviction={(live.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
+              convictionRationale={live.convictionRationale ?? null}
+              analystId={live.researchRun?.agentConfigId ?? null}
+              thesisId={live.id}
+              extraActions={<WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />}
+            />
+          ) : (
+            <StockIdentityHeader
+              ticker={upperSymbol}
+              displayName={identity.companyName}
+              exchange={identity.exchange}
+              href={null}
+              actions={
+                <>
+                  <TradeButton ticker={upperSymbol} />
+                  <PinButton ticker={upperSymbol} />
+                  <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
+                </>
+              }
+            />
+          )}
         </div>
 
+        {live ? (
+          <StockThesisBody
+            thesisId={live.id}
+            positionId={open?.id}
+            ticker={upperSymbol}
+            history={history}
+            research={research}
+            news={news}
+            aside={stockDetails}
+          />
+        ) : (
         <StockPageTabs
           overview={{
             ticker: upperSymbol,
@@ -337,6 +376,7 @@ export default async function StockDetailPage({ params }: Props) {
           news={news}
           sidebar={sidebar}
         />
+        )}
       </div>
     </div>
   );
