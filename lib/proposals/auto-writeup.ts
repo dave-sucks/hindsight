@@ -19,13 +19,12 @@ export const NOTE_WRITTEN = "app/proposal.note.written";
 const WRITEUP_WINDOW_MS = 15 * 60 * 1000;
 
 /**
- * Puts the run's note on the order in place of the line it was made with,
- * keeping what the trade tool wrote after it (a buy's sizing). The note is
- * the analyst's update_thesis row written since the write-up began (`since`),
- * never a line the trade or the fill wrote for this run. False when there is
- * none.
+ * Puts the run's note on the order in place of the line it was made with. The
+ * note is the analyst's update_thesis row written since the write-up began
+ * (`since`), never a line the trade or the fill wrote for this run. False when
+ * there is none.
  */
-export async function putNoteOnOrder(args: { runId: string; thesisId: string; orderId: string; line: string; since: Date }): Promise<boolean> {
+export async function putNoteOnOrder(args: { runId: string; thesisId: string; orderId: string; since: Date }): Promise<boolean> {
   const saved = await prisma.thesisUpdate.findFirst({
     where: { runId: args.runId, thesisId: args.thesisId, type: { in: ["UPDATED", "REVIEWED"] }, timestamp: { gte: args.since }, rationale: { not: null } },
     orderBy: { timestamp: "desc" },
@@ -33,10 +32,9 @@ export async function putNoteOnOrder(args: { runId: string; thesisId: string; or
   });
   const note = saved?.rationale?.trim();
   if (!note) return false;
-  const order = await prisma.order.findUnique({ where: { id: args.orderId }, select: { rationale: true } });
+  const order = await prisma.order.findUnique({ where: { id: args.orderId }, select: { id: true } });
   if (!order) return false;
-  const rest = order.rationale?.startsWith(args.line) ? order.rationale.slice(args.line.length) : "";
-  await prisma.order.update({ where: { id: args.orderId }, data: { rationale: note + rest } });
+  await prisma.order.update({ where: { id: args.orderId }, data: { rationale: note } });
   return true;
 }
 

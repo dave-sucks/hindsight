@@ -533,8 +533,9 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     expect(result.data.status).toBe("PROPOSED");
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale.split("\n\n")[0]).toBe(tacticalEntryReason);
-    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
+    // The reason is the agent's words alone; the sizing line goes to the agent, not the owner's card.
+    expect(callArgs.rationale).toBe(tacticalEntryReason);
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
     // Critical anti-regression: the stale snapshot text must NOT have leaked
     // through.
     expect(callArgs.rationale).not.toMatch(/not actionable/i);
@@ -544,7 +545,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
   it("trims whitespace on entry_rationale (defensive)", async () => {
     setupProposalPath();
 
-    await makeTool(makeCtx()).execute({
+    const result = await makeTool(makeCtx()).execute({
       ticker: "NVTS",
       direction: "LONG",
       entry_price: 30.59,
@@ -557,8 +558,8 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale.split("\n\n")[0]).toBe("Trigger validated: $NVTS broke above $29.50.");
-    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
+    expect(callArgs.rationale).toBe("Trigger validated: $NVTS broke above $29.50.");
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 
   it("falls back to thesis.snapshot when entry_rationale is absent (principal-chat one-shot path)", async () => {
@@ -566,7 +567,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
       "$NTNX is a watching candidate with a clean catalyst setup ahead of the print.";
     setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 80, plan: { entry: 80, target: 95, stop: 74 } });
 
-    await makeTool(makeCtx()).execute({
+    const result = await makeTool(makeCtx()).execute({
       ticker: "NTNX",
       direction: "LONG",
       entry_price: 80,
@@ -579,15 +580,15 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
-    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
+    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 
   it("falls back to snapshot when entry_rationale is an empty string", async () => {
     const fallbackSnapshot = "watching candidate, snapshot text";
     setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200, plan: { entry: 200, target: 240, stop: 184 } });
 
-    await makeTool(makeCtx()).execute({
+    const result = await makeTool(makeCtx()).execute({
       ticker: "TXN",
       direction: "LONG",
       entry_price: 200,
@@ -600,15 +601,15 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
-    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
+    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 
   it("falls back to snapshot when entry_rationale is whitespace-only", async () => {
     const fallbackSnapshot = "snapshot text";
     setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200, plan: { entry: 200, target: 240, stop: 184 } });
 
-    await makeTool(makeCtx()).execute({
+    const result = await makeTool(makeCtx()).execute({
       ticker: "TXN",
       direction: "LONG",
       entry_price: 200,
@@ -621,13 +622,13 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
-    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
+    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 });
 
 describe("place_trade — sized by risk when no size is given (DAV-251)", () => {
-  it("sizes from the stop distance and puts the sizing, open-risk and regime lines on the proposal", async () => {
+  it("sizes from the stop distance; the sizing, open-risk and regime lines go to the agent and the run's event, never on the proposal", async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { loadAccountRisk } = require("@/lib/agent/load-account-risk");
     (loadAccountRisk as jest.Mock).mockResolvedValueOnce({
@@ -672,7 +673,7 @@ describe("place_trade — sized by risk when no size is given (DAV-251)", () => 
       expiresAt: new Date(Date.now() + 86_400_000),
     });
 
-    await makeTool(makeCtx({ minPositionSize: 5_000, maxPositionSize: 16_000 })).execute({
+    const result = await makeTool(makeCtx({ minPositionSize: 5_000, maxPositionSize: 16_000 })).execute({
       ticker: "ABC",
       direction: "LONG",
       entry_price: 100,
@@ -684,11 +685,15 @@ describe("place_trade — sized by risk when no size is given (DAV-251)", () => 
 
     // 1% × 1.0 (HIGH) = $1,000 at risk ÷ $10 = 100 shares ($10,000).
     expect(mockPositionCreate.mock.calls[0][0].data.quantity).toBe(100);
-    const rationale: string = mockMaybeAwaitApproval.mock.calls[0][0].rationale;
-    expect(rationale.split("\n\n")[0]).toBe("Closed above the pivot on 1.8× volume.");
-    expect(rationale).toContain("100 shares, $10,000, sized by risk: 1% of the $100,000 account at high conviction = $1,000 at risk, over $10.00 to the stop.");
-    expect(rationale).toContain("If every open stop hit after this buy, the account would lose 4.0% (the limit is 6%).");
-    expect(rationale).toContain("Market risk-on");
+    expect(mockMaybeAwaitApproval.mock.calls[0][0].rationale).toBe("Closed above the pivot on 1.8× volume.");
+    const lines = [
+      "100 shares, $10,000, sized by risk: 1% of the $100,000 account at high conviction = $1,000 at risk, over $10.00 to the stop.",
+      "If every open stop hit after this buy, the account would lose 4.0% (the limit is 6%).",
+      "Market risk-on: SPY above both averages, so full size.",
+    ];
+    const told = (result.data.sizing as string[]).join("\n");
+    const kept = (mockRunEventCreate.mock.calls.at(-1)![0].data.payload.sizing as string[]).join("\n");
+    for (const line of lines) expect([told.includes(line), kept.includes(line)]).toEqual([true, true]);
   });
 });
 

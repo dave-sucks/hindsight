@@ -105,6 +105,8 @@ interface ManagePositionData {
   addedQty?: number;
   newTotalQty?: number;
   newAvgCost?: number;
+  /** How an add was sized, for the agent; never on the proposal's reason. */
+  sizing?: string[];
   trailPct?: number;
   portfolioUpdate?: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number };
 }
@@ -742,7 +744,7 @@ export const managePosition = defineTool({
               orderId: order.id,
               intent: "ADD",
               environment: position.environment as "PAPER" | "LIVE",
-              rationale: `${args.reason}\n\n${addSizingLine}`,
+              rationale: args.reason,
             });
             if (awaiting?.state === "awaiting_approval") {
               await recordProposalRunEvent({
@@ -751,6 +753,7 @@ export const managePosition = defineTool({
                 ticker,
                 orderId: awaiting.orderId,
                 title: `Proposed adding to ${ticker}`,
+                payload: { sizing: [addSizingLine] },
               });
               return {
                 summary: `Add proposed: ${ticker} +$${notional}`,
@@ -760,6 +763,7 @@ export const managePosition = defineTool({
                   newTotalQty: position.quantity + approxQty,
                   fillPrice: position.avgCost,
                   newAvgCost: position.avgCost,
+                  sizing: [addSizingLine],
                   tickers: [],
                   ...awaitingApprovalEnvelope({
                     awaiting,
@@ -928,7 +932,7 @@ export const managePosition = defineTool({
                   type: "position_modified",
                   title: `Added to ${ticker}`,
                   message: `Added ${fillQty} shares at $${fillPrice!.toFixed(2)}. Now ${newTotalQty} shares @ avg $${newAvgCost.toFixed(2)}.`,
-                  payload: { ticker, action: "add_to_position", addedQty: fillQty, newTotalQty, fillPrice, newAvgCost } as object,
+                  payload: { ticker, action: "add_to_position", addedQty: fillQty, newTotalQty, fillPrice, newAvgCost, sizing: [addSizingLine] } as object,
                 },
               });
             }
@@ -953,6 +957,7 @@ export const managePosition = defineTool({
             data: {
               success: true, ticker, action: args.action, status: "ADDED" as const,
               addedQty: fillQty, newTotalQty, fillPrice, newAvgCost,
+              sizing: [addSizingLine],
               message: `Added ${fillQty} shares of ${ticker} at $${fillPrice.toFixed(2)}. Position is now ${newTotalQty} shares at avg cost $${newAvgCost.toFixed(2)}.`,
               tickers: [{ ticker, tag: "Added", summary: `+${fillQty} shares @ $${fillPrice.toFixed(2)}. ${newTotalQty} total.`, actionIcon: "buy" }],
             },

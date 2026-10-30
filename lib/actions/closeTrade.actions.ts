@@ -217,7 +217,8 @@ export async function closeOpenPosition(
         intent: "CLOSE",
         environment: positionEnvironment,
       })));
-  const rationale = auditReason ?? `Automated ${reason} exit — ${position.symbol}`;
+  // The caller's words or none: a sale with no reason given has none.
+  const rationale = auditReason ?? null;
   const expiresAt = new Date(placedAt.getTime() + PROPOSAL_TTL_MS);
 
   // 1. DB tx — one full close at a time per position. The position row is

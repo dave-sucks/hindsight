@@ -997,7 +997,7 @@ export const tacticalRun = inngest.createFunction(
         // order still carrying its plain line.
         if (auto?.orderId) {
           try {
-            await putNoteOnOrder({ runId: run.id, thesisId: thesis.id, orderId: auto.orderId, line, since: new Date(t0) });
+            await putNoteOnOrder({ runId: run.id, thesisId: thesis.id, orderId: auto.orderId, since: new Date(t0) });
           } catch (err) {
             console.error(`[tactical-run] could not put the note on order ${auto.orderId}:`, err instanceof Error ? err.message : err);
           }

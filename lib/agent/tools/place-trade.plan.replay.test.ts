@@ -108,6 +108,17 @@ describe("ANET 08-20: the trigger run's buy", () => {
     expect(buy.db.store.order ?? []).toHaveLength(0);
   });
 
+  it("the proposal's reason is the run's words alone; the sizing lines go to the agent and the run's event", async () => {
+    const { buy } = await sentVerbatim(175.99);
+    const order = (buy.db.store.order as Array<Record<string, unknown>>)[0];
+    expect(order).toMatchObject({ status: "AWAITING_APPROVAL", rationale: entry.call.entry_rationale });
+    const sizing = buy.result.data?.sizing as string[];
+    expect(sizing.join(" ")).toMatch(/sized by risk|capped at this analyst's largest trade/);
+    for (const line of sizing) expect(String(order.rationale)).not.toContain(line);
+    const placed = (buy.db.store.runEvent as Array<{ type: string; payload: { sizing?: string[] } }>).find((e) => e.type === "trade_placed");
+    expect(placed?.payload.sizing).toEqual(sizing);
+  });
+
   it("the fixture is small", () => {
     expect(statSync(FIXTURE).size).toBeLessThan(40 * 1024);
   });

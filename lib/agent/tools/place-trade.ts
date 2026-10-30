@@ -315,7 +315,7 @@ export const placeTrade = defineTool({
         const compositeOn100Scale = composite != null ? composite * 10 : null;
         const below = !!thesis && (compositeOn100Scale == null || compositeOn100Scale < ctx.minConfidence);
         const compositeLabel = composite != null ? `${composite}/10 (=${compositeOn100Scale}%)` : "unscored";
-        // In the chat the minimum is a line on the proposal, not a refusal, as the principal's size is (ruling 2026-10-15).
+        // In the chat the minimum is a line in the reply, not a refusal, as the principal's size is (ruling 2026-10-15).
         if (below && isPrincipalChat(ctx)) belowMinimum = `Scores ${compositeLabel}, below this analyst's minimum (${ctx.minConfidence}%).`;
         if (below && !isPrincipalChat(ctx)) {
           const blockedMsg = `Trade blocked: thesis composite ${compositeLabel} is below this analyst's minimum (${ctx.minConfidence}%). Raise the composite via update_thesis with a fresh 4-dim scoring, or skip the trade.`;
@@ -490,9 +490,9 @@ export const placeTrade = defineTool({
       // 1. Resolve qty — prefer notional (dollar amount), fall back to shares.
       // With no size from the agent, the risk rule decides (DAV-251):
       // shares = equity × riskPct × conviction ÷ the stop distance, clamped
-      // to the analyst's dollar limits. Whatever path sized it, the proposal
-      // carries the arithmetic plus the open-risk, industry and regime lines
-      // — lines the principal reads when approving, never refusals.
+      // to the analyst's dollar limits. Whatever path sized it, the reply and the
+      // run's event carry the arithmetic plus the open-risk, industry and regime
+      // lines — lines the agent reads, never refusals, never on the proposal.
       const [sizingThesis, sizingAnalyst, accountRisk, autoStop] = await Promise.all([
         prisma.thesis.findUnique({
           where: { id: args.thesis_id },
@@ -536,7 +536,7 @@ export const placeTrade = defineTool({
       const sizingNotes: string[] = belowMinimum ? [belowMinimum] : [];
       // Only the principal's chat may name a size. A size a run's model
       // passed anyway (an older prompt, a direct call) is ignored, not
-      // refused — the rules size the buy and the proposal says so.
+      // refused — the rules size the buy and the reply says so.
       const principalNotional =
         isPrincipalChat(ctx) && args.notional != null && args.notional > 0
           ? args.notional
@@ -556,7 +556,7 @@ export const placeTrade = defineTool({
         sizingNotes.push(riskSized.line, ...(riskStop.line ? [riskStop.line] : []));
       } else {
         // No usable stop distance or no equity reading: the band, placed by
-        // conviction (the pre-DAV-251 rule), and the proposal says why.
+        // conviction (the pre-DAV-251 rule), and the reply says why.
         resolvedNotional = entrySizeForConviction({ conviction: sizingThesis?.conviction, band });
         resolvedShares = Math.max(1, Math.floor(resolvedNotional / args.entry_price));
         sizingNotes.push(
@@ -583,7 +583,7 @@ export const placeTrade = defineTool({
       }
       if (accountRisk?.regime) sizingNotes.push(accountRisk.regime.line);
       // Where the event date sits against a pre-catalyst setup's buying
-      // window (DAV-338): a line the principal reads, never a refusal.
+      // window (DAV-338): a line the agent reads, never a refusal.
       const windowLine = sizingThesis ? preCatalystWindowLine(sizingThesis) : null;
       if (windowLine) sizingNotes.push(windowLine);
 
@@ -696,6 +696,7 @@ export const placeTrade = defineTool({
                 position_id: pos.id,
                 order_id: ord.id,
                 idempotency_key: idempotencyKey,
+                sizing: sizingNotes,
               } as object,
             },
           });
@@ -737,11 +738,6 @@ export const placeTrade = defineTool({
           proposalRationale = thesisForRationale
             ? getThesisSnapshotText(thesisForRationale)
             : null;
-        }
-        // The sizing arithmetic and the book lines ride on the proposal, so
-        // the principal sees them at the moment of approving (DAV-251).
-        if (sizingNotes.length) {
-          proposalRationale = [proposalRationale, sizingNotes.join("\n")].filter(Boolean).join("\n\n");
         }
         const awaiting = await maybeAwaitApproval({
           accountId: ctx.accountId,

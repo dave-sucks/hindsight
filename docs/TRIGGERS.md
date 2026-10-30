@@ -317,8 +317,8 @@ model's chosen `reason` through `enforceCloseReason`
 protective/price EXIT trigger, the stored `Position.closeReason` /
 `Order.closeReason` is that trigger's STOP/TARGET tag, whatever the model
 called it. The sale is **auto-corrected, never refused** — a mismatch writes a
-plain-English note onto the close's rationale (so it shows on the approval card
-and in the run feed) naming what the agent originally declared. This matters
+plain-English note into the tool's reply and the run's event (`label_note`,
+`declared_reason`), never onto the sale's reason, which is the analyst's words. This matters
 because the label is what several rules read: the held-through-floor context in
 `get_theses` counts only `closeReason=STOP` declines, and `shouldRecycleToWatching`
 reads it to decide whether a sold name stays on the re-entry radar. In July,

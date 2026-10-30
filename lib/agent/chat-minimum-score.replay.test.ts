@@ -1,6 +1,7 @@
 /**
- * In the chat, the analyst's minimum score is a line on the proposal, not a
- * refusal (ruling 2026-10-15), as the principal's own size is. MU, 10:49 ET:
+ * In the chat, the analyst's minimum score is a line in the buy's reply, not a
+ * refusal (ruling 2026-10-15), as the principal's own size is; the proposal's
+ * reason is the chat's words alone. MU, 10:49 ET:
  * the chat's buy on the writer's thesis (composite 6, the Secular Compounder
  * buys at 70%) was refused; the chat then re-scored the plan to 7 itself and
  * asked the writer to score it to clear the gate. The analyst's book is the
@@ -22,12 +23,13 @@ const buy = { ticker: "MU", direction: "LONG", entry_price: 906.33, shares: 13, 
 const LINE = "Scores 6/10 (=60%), below this analyst's minimum (70%).";
 
 describe("MU 10:49 — a chat buy below the analyst's minimum score", () => {
-  it("becomes a proposal carrying the line, still waiting for approval", async () => {
+  it("becomes a proposal, still waiting for approval; the line is in the reply, not on the reason", async () => {
     const { result, db } = await replayTool("place-trade", "placeTrade", { seed: seed(), ctx: { ...secular, runMode: "PRINCIPAL_CHAT" }, args: buy, quotes: { MU: 906.33 } });
     expect(result.data?.status).toBe("PROPOSED");
     const order = (db.store.order as Array<{ status: string; rationale: string }>)[0];
     expect(order.status).toBe("AWAITING_APPROVAL");
-    expect(order.rationale).toContain(LINE);
+    expect(result.data?.sizing).toContain(LINE);
+    expect(order.rationale).toBe(buy.entry_rationale);
   });
 
   it("a trigger run's buy below the minimum is still refused", async () => {
