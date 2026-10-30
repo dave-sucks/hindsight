@@ -3,8 +3,7 @@
  *
  * WHICH notes the Overview shows is not decided here: it is the list every
  * run is handed, `recentAnswers` (lib/agent/stock-context.ts), read by the
- * dossier route over the same newest Activity lines. The first shows large,
- * the rest small. (Until 2026-10-29 the sheet had its own list of types, which
+ * dossier route over the same newest Activity lines, shown as Activity rows. (Until 2026-10-29 the sheet had its own list of types, which
  * let an expired proposal's line lead GEV's sheet over the analyst's note.)
  *
  * WHETHER to show it: the note shows on every stock, sold and passed ones

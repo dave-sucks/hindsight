@@ -167,16 +167,15 @@ interface Props {
 }
 
 /**
- * The Overview's small list: the analysts' notes after the newest one (the
- * Overview shows that one large), in the Activity tab's own row design. They
- * are the notes every run is handed (`recentAnswers`, stock-context.ts).
+ * The Overview's Recent activity: the analysts' notes every run is handed
+ * (`recentAnswers`, stock-context.ts), newest first, in the Activity tab's
+ * own row design.
  */
 export function RecentNotes({ notes, onViewAll }: { notes: TimelineUpdate[]; onViewAll: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
   if (notes.length === 0) return null;
-  // A note's words are the point here: two lines, a click for the rest.
-  const rows = notes.map((n) => ({ ...toRow({ kind: "event", row: n }), showDescription: true }));
+  const rows = notes.map((n) => toRow({ kind: "event", row: n }));
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">

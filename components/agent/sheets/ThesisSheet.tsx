@@ -59,7 +59,7 @@ import {
   type ResearchBulletSection,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
-import type { EarningsResponse, FilingsResponse, ThesisNote } from "@/lib/types/thesis-sheet";
+import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
 import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -237,27 +237,6 @@ function VariantViewBlock({ variantView }: { variantView: string | null }) {
 // The third line is the "intent" suffix — at-a-glance what kind of
 // trade this is and where the exits are. Renders only when we have
 // horizon/target/stop info to show.
-
-// ── ClampedParagraph ──
-// The newest written note at the top of the sheet. Clamped to four lines;
-// the whole paragraph is the hit area, hover darkens, click toggles. Same as
-// the Activity feed's rows.
-function ClampedParagraph({ text, className }: { text: string; className?: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <p
-      className={cn(
-        "text-xl font-normal leading-relaxed cursor-pointer transition-colors",
-        !open && "line-clamp-4",
-        className,
-      )}
-      onClick={() => setOpen((v) => !v)}
-      title={open ? "Collapse" : "Expand"}
-    >
-      {text}
-    </p>
-  );
-}
 
 // WatchingRow ("Watching for entry above $X") was deleted in this redesign.
 // The headline is now coreBelief — the standing opinion — and the actual
@@ -449,46 +428,25 @@ function FilingsBlock({ data }: { data: FilingsResponse }) {
 // could name. Nothing here had a reader.
 
 /**
- * The top of the sheet: what is going on with this stock, right now.
- *
- * Three lines, in this order, and nothing else:
- *   1. the flag, named — `needsActionFlag`, one fixed sentence per enum
- *      case. Absent when nothing is flagged; "nothing is flagged" is not
- *      news and it used to take a line at the top of every stock.
- *   2. the newest note an analyst wrote on this stock — the first of the
- *      notes every run is handed (`recentAnswers`). This is the block: it is
- *      the only part of the page that says what the situation is today.
- *   3. who wrote it and when, plus how old that is once it is stale.
- *
- * What this replaced (2026-09-30): "LATEST · Updated · 1h" over the frozen
- * core belief. Dave: "I like that I show the Core Belief. That is a
- * paragraph. It is helpful. The issue is it is not point in time." The
- * belief still renders — below the trade, labelled as the standing claim.
- *
- * The paragraph is only as good as what the run wrote; the header cannot
- * fix unreadable text, and the writing standard is tracked separately.
+ * The work flag over the stock's Activity: why a run will pick it up today,
+ * named (`needsActionFlag`), with the other situations it is in. Absent when
+ * nothing is flagged. The analysts' notes are the Activity rows below it.
  */
-function LatestNoteBlock({
+function WorkFlagLine({
   status,
-  note: latest,
   needsAction,
   situations,
   quoteLoading,
   quoteFailed,
-  analystName,
 }: {
   status: string;
-  /** The newest analyst note when it has words; null otherwise. */
-  note: ThesisNote | null;
   needsAction: NeedsAction | null;
   /** Every situation the stock is in, lead first; the ones the lead didn't put it in follow the flag. */
   situations: Array<{ name: string; lead: boolean }>;
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
-  analystName: string | null;
 }) {
-  const text = latest?.rationale?.trim() || null;
 
   // ONE flag line. `planSanity` used to stack under it — a second, unrelated
   // system (is this PLAN coherent?) painting the same amber as the work flag
@@ -498,7 +456,7 @@ function LatestNoteBlock({
   const also = situations.filter((x) => !x.lead).map((x) => x.name);
   const view = latestNoteView({
     status,
-    hasNote: text != null,
+    hasNote: false,
     hasReasons: flag != null || also.length > 0,
     quoteLoading,
     quoteFailed,
@@ -528,39 +486,7 @@ function LatestNoteBlock({
           Couldn&apos;t reach the live price, so the work flags couldn&apos;t be checked.
         </p>
       ) : null}
-
-      {view.showNote && text ? (
-        <>
-          <ClampedParagraph text={text} />
-          <WrittenByLine note={latest} analystName={analystName} />
-        </>
-      ) : null}
     </div>
-  );
-}
-
-/**
- * Who wrote the newest note and when — one line, directly under that note.
- * Past a fortnight it says how old it is: a month-old paragraph reads as
- * current otherwise.
- */
-function WrittenByLine({
-  note,
-  analystName,
-}: {
-  note: ThesisNote | null;
-  analystName: string | null;
-}) {
-  if (!note) return null;
-  const writtenAt = new Date(note.timestamp);
-  if (!Number.isFinite(writtenAt.getTime())) return null;
-  const daysOld = Math.floor((Date.now() - writtenAt.getTime()) / 86_400_000);
-  return (
-    <p className="text-xs text-muted-foreground">
-      {analystName ? `${analystName} · ` : ""}
-      written {writtenAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-      {daysOld >= 14 ? ` · ${daysOld} days ago` : ""}
-    </p>
   );
 }
 
@@ -1236,10 +1162,8 @@ export function ThesisBody({
   // right. Each tab opens its own pair under the tab bar — on Overview under
   // the price row too — so the cards start level with the chart. Only the
   // open tab is mounted, so the cards render once.
-  // The analysts' notes the agents are handed: the first large when it has
-  // words, the rest small (a line with only a title is a row).
+  // The analysts' notes the agents are handed, as Activity rows.
   const notes = state.notes ?? [];
-  const lead = notes[0]?.rationale?.trim() ? notes[0] : null;
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
   const sideColumn =
@@ -1320,20 +1244,17 @@ export function ThesisBody({
         />
       ) : null}
 
-      {/* ── What just happened, and whether it needs work (DAV-304) ── */}
-      {/* Under the chart it comments on, above the triggers it leads to. */}
-      <LatestNoteBlock
+      {/* ── Whether it needs work today (DAV-304) ── */}
+      <WorkFlagLine
         status={state.status}
-        note={lead}
         needsAction={quote?.needsAction ?? null}
         situations={quote?.situations ?? []}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
-        analystName={state.analystName}
       />
 
-      {/* The rest of the notes the agents are handed, small, in the Activity tab's own design. */}
-      <RecentNotes notes={lead ? notes.slice(1) : notes} onViewAll={() => setTab(2)} />
+      {/* The analysts' notes the agents are handed, in the Activity tab's own design. */}
+      <RecentNotes notes={notes} onViewAll={() => setTab(2)} />
 
       {surface === "sheet" ? stockCards : null}
       </div>

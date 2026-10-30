@@ -187,7 +187,7 @@ export interface ThesisDossier {
   /**
    * The analysts' newest notes on the stock, newest first: the same list every
    * run is handed (`recentAnswers`, lib/agent/stock-context.ts). The Overview
-   * shows the first large and the rest small.
+   * shows them as Activity rows, words showing.
    */
   notes: ThesisNote[];
   triggers: Trigger[];
