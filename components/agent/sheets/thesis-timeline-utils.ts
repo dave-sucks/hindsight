@@ -705,7 +705,7 @@ export function isPlainReview(u: TimelineUpdate): boolean {
 /**
  * Each priced row's move from the previous priced row in time (the list is
  * newest first, so the one after it). Fold rows carry no price and are skipped. The oldest priced row has no
- * move to show.
+ * move to show, and neither does a row at the same price as the one before it.
  */
 export function withPriceChanges(rows: TimelineRow[]): TimelineRow[] {
   const out = rows.map((r) => ({ ...r, priceChange: null as TimelineRow["priceChange"] }));
@@ -713,7 +713,7 @@ export function withPriceChanges(rows: TimelineRow[]): TimelineRow[] {
   for (let i = out.length - 1; i >= 0; i--) {
     const r = out[i];
     if (r.price == null) continue;
-    if (prev != null && prev > 0) out[i] = { ...r, priceChange: { dollars: r.price - prev, pct: ((r.price - prev) / prev) * 100 } };
+    if (prev != null && prev > 0 && r.price !== prev) out[i] = { ...r, priceChange: { dollars: r.price - prev, pct: ((r.price - prev) / prev) * 100 } };
     prev = r.price;
   }
   return out;

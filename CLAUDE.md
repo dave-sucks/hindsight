@@ -86,6 +86,26 @@ situation goes into the table, never into `system-prompt.ts` or
 `intraday-tactical.ts`. Nothing is stored: a situation is derived at read time.
 The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 
+## Activity (shipped 2026-10-30 — one list, one paragraph per trade)
+A stock's Activity is one list (`lib/thesis/activity-feed.ts`): its saved
+lines (`ThesisUpdate`) plus each proposal's steps built from its `Order`
+(Proposed / Approved / Declined / Expired; the Order is the truth, the
+PROPOSAL_* rows are never trusted). The Activity tab shows the whole list,
+the Overview shows the newest 8 (`RECENT_ITEMS`), and the next run on the
+stock reads the same 8 exactly as they read in the feed
+(`saidBlock` in `lib/agent/stock-context.ts`). If it is on the Overview the
+agent read it; if not, the agent didn't either. A waiting proposal is pinned
+to the top of the Overview as the card. The app gives every line it makes a
+title and never a paragraph (guarded by the scan in `lib/agent/voice.test.ts`);
+every paragraph is an analyst's words or the owner's. One paragraph per
+trade: inside a run the trade tools have no reason field (`schemaFor`), and
+at the end of the run the note the run wrote on the stock becomes the
+proposal's reason and the note row is stamped with the order
+(`putNotesOnRunProposals`, `lib/proposals/auto-writeup.ts`), so the feed
+shows the proposal and its note as one line. Only the owner's chat gives a
+trade its reason at once. A rule's note reaches an agent only when a person
+or an analyst wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
+
 ## Where to put what (doc navigation)
 | You want to... | File |
 |---|---|
@@ -160,7 +180,7 @@ pulls mid-run — see `docs/plans/LANES.md` §2.
 - Redirects to /runs/[id] → renders AgentChat (components/agent/AgentChat.tsx)
 - AgentChat wraps ChatRuntime (DefaultChatTransport + useChatRuntime) →
   POST /api/agent/research-run
-- GPT-5.5 (maxSteps 65, temperature 0.2) + the full tool catalog
+- GPT-5.4 (maxSteps 65, temperature 0.2) + the full tool catalog
   autonomously researches, updates theses, manages positions, and
   places trades via Alpaca
 - Tools render via ToolCallGroup → ToolCallRow dispatching on result.ui
@@ -326,10 +346,10 @@ plus `get_stock_data`.
 
 ## API Routes
 - /api/agent/[mode] — unified agent route. Modes:
-  - research-run: GPT-5.5, temperature 0.2, maxSteps 65 (the daily-run agent)
+  - research-run: GPT-5.4, temperature 0.2, maxSteps 65 (the daily-run agent)
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
-  - tactical: GPT-5.5, maxSteps 15 (single-thesis, single-decision)
+  - tactical: GPT-5.4, maxSteps 15 (single-thesis, single-decision)
   - podcast-builder / podcast-segment-run / podcast-editor
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
@@ -578,7 +598,9 @@ it with a ticker chip as if it were a traded security.
 - Live prices come from `lib/market-data/live-quote.ts` (Alpaca, Finnhub
   behind it) — never a new direct vendor call
 - Model strategy (post-2026-05-15):
-  - **research-run + tactical**: GPT-5.5 (provider: openai).
+  - **research-run + tactical**: GPT-5.4 (provider: openai; gpt-5.5 from
+    2026-05-15, swapped to gpt-5.4 on 2026-06-15 for cost,
+    `docs/plans/OPENAI_COST_REDUCTION.md`; `lib/agent/modes.ts` is the truth).
     research-run uses temperature 0.2 + maxSteps 65; tactical maxSteps 15.
     Vercel Pro plan required — the 800s function
     timeout headroom is needed because gpt-5.5 with implicit reasoning
@@ -601,7 +623,7 @@ it with a ticker chip as if it were a traded security.
 3. AgentChat → ChatRuntime → POST /api/agent/research-run
 4. Route loads config + historical context (portfolio, watchlist,
    briefs, trades, accuracy, intelligence policy)
-5. GPT-5.5 (temperature 0.2) follows the per-thesis review flow with
+5. GPT-5.4 (temperature 0.2) follows the per-thesis review flow with
    Phase-0 check-in:
    Phase 0: Portfolio check-in (injected context, no tools)
    Stage 1 — Orient: get_theses(include_history: true),
