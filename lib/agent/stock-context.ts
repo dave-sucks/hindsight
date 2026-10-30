@@ -19,6 +19,7 @@
  */
 import {
   eventKind,
+  isPlainReview,
   ladderChangeLines,
   notAppliedLines,
   proposalUserMessage,
@@ -186,7 +187,8 @@ export function saidLine(item: FeedItem): string {
   const tu = asTimelineUpdate(item);
   const kind = eventKind(tu);
   const t = titleSegments(tu);
-  const title = kind === "note" ? "Your note" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
+  // A plain review reads "Review" on screen too; everything that happened keeps its title.
+  const title = kind === "note" ? "Your note" : isPlainReview(tu) ? "Review" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
   const chips = [...ladderChangeLines(tu), ...notAppliedLines(tu)].map((c) => c.text);
   const comment = proposalUserMessage(tu);
   const paragraph = comment ?? (item.rationale?.trim() ? item.rationale.replace(/^\[USER\]\s*/, "").trim() : null);

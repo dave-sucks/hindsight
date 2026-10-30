@@ -89,7 +89,7 @@ describe("the newest 8: what the Overview shows and the next run reads", () => {
     expect(lines[0]).toBe("WHAT'S BEEN SAID ON $GEV — its newest 8 Activity lines, newest first, as the owner sees them:");
     expect(lines).toHaveLength(10);
     expect(lines[1]).toMatch(/^ {2}10-29 09:55 · \$889\.0[56] · Trigger: Review if below 15% from the high since we bought$/);
-    expect(lines[2]).toBe('  10-29 09:45 · $881.14 · Reviewed no changes — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter"');
+    expect(lines[2]).toBe('  10-29 09:45 · $881.14 · Review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter"');
     expect(lines[3]).toBe('  10-29 09:45 · Proposed sell 9 shares — awaiting your review — "GE Vernova is trading around $883 on Oct. 29 after third-quarter results beat expectations"');
     expect(lines[4]).toBe("  10-29 09:45 · $882.71 · Trigger: Sell if below 6% from the high since we bought");
     expect(lines[5]).toBe("  10-29 09:40 · Expired sell 9 shares — no decision");
