@@ -575,6 +575,12 @@ export function rationaleFor(
   return `Target ${p}: when it gets there, I take it, trim, or raise the target.`;
 }
 
+/** Every note `rationaleFor` writes; a level set with no note of its own carries one (note.ts). */
+export const levelNotes = (): string[] =>
+  (["ENTRY", "FLOOR", "TARGET"] as const).flatMap((slot) =>
+    ["LONG", "SHORT"].flatMap((d) => [true, false].flatMap((held) => [true, false].map((above) => rationaleFor(slot, 1, d, held, above)))),
+  );
+
 /**
  * A floor that has been raised past an upside level. Returns the pair when
  * the two overlap so that something fires no matter where price sits.

@@ -588,6 +588,15 @@ function defaultTriggersForHorizonInner(
   }
 }
 
+/** Every note the templates in this file write. Older rows carry them with no source, so note.ts matches the words. */
+export function templateNotes(): string[] {
+  const levels = { entryPrice: 1, targetPrice: 1, stopLoss: 1 };
+  const minted = (["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const).flatMap((h) =>
+    (["HELD", "WATCHING"] as const).flatMap((s) => (["LONG", "SHORT", "PASS"] as const).flatMap((direction) => defaultTriggersForHorizon(h, { ...levels, direction }, s))),
+  );
+  return [...minted, ...accountStandingRules(), scaleInOnPullbackTrigger(), reviewCadenceTrigger(1), reviewCadenceTrigger(2)].map((t) => t.rationale ?? "");
+}
+
 // ── Cooldown defaults ──────────────────────────────────────────────────
 //
 // Triggers without a `cooldownDays` value used to fire forever — the

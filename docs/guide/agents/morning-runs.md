@@ -92,7 +92,7 @@ Everything the morning run can call, read from `lib/agent/modes.ts`.
 `lib/agent/system-prompt.ts`, with the analyst brief and the house rules. Situation texts come from `SITUATIONS` in `lib/agent/situations.ts`, never the prompt.
 
 #### The read
-`get_theses` builds each row with `lib/agent/row-for-model.ts` at one of three sizes.
+`get_theses` builds each row with `lib/agent/row-for-model.ts` at one of three sizes. A trigger's note is on the row only when someone wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 
 #### Close-out
 `complete_run` credits a sale from the `Order` table, not the run's words (`lib/agent/summary-action-check.ts`).

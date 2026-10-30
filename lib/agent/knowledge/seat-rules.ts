@@ -105,6 +105,22 @@ export const SETUP_STANDING_RULES: Partial<Record<SetupId, SeatRule[]>> = {
   COMPOUNDER_ACCUMULATION: COMPOUNDER_RULES,
 };
 
+/** These rules' earlier words, which the analysts' rows still carry, most stored as set by hand. */
+const EARLIER_WORDS = [
+  "Up 10% from entry — re-underwrite: raise the floor under real structure and arm the next milestone.",
+  "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us.",
+  "10 days before the event date on the thesis: decide the size into the event — hold, trim, or step aside (DAV-279 ruling).",
+  "30 days after the event date on the thesis: the catalyst has played; is there a reason to still own it? (DAV-279 ruling)",
+  "An 'other events' or press-release filing — where FDA outcomes and trial readouts land. Read it before the market finishes pricing it.",
+  "Gave back 15% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.",
+  "Below the 200-day — the long trend is in question. Review the business, not the chart.",
+  "Up 15% from entry — re-underwrite at the new price and raise the floor under real structure (DAV-279 ruling).",
+  "Down 15% from entry — decide hold-vs-cut deliberately, before the stop decides (DAV-279 ruling).",
+];
+
+/** Every note a seat rule writes or once wrote: a template's, never an analyst's (lib/agent/triggers/note.ts). */
+export const SEAT_RULE_NOTES: readonly string[] = [...Object.values(SETUP_STANDING_RULES).flatMap((rules) => (rules ?? []).map((r) => r.rationale)), ...EARLIER_WORDS];
+
 /** The analyst's signature setup: the first of its setups. */
 export function signatureSetup(setupIds: readonly string[] | null | undefined): SetupId | null {
   const first = (setupIds ?? []).find(isNamedSetup);
