@@ -19,7 +19,7 @@ A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no ag
 
 ## What a proposal carries
 
-It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the reason in the analyst's words, what caused it (the trigger that fired or the run that decided it), and when it expires.
+It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the analyst's note, what caused it (the trigger that fired or the run that decided it), and when it expires. One paragraph per trade: the note the run writes on the stock is the proposal's reason, on the card, in the email, on the trade page and in Activity, where the proposal and its note are one line. Until the run writes it the card says the analyst is writing it up, and the email waits for it.
 
 A trade made by a trigger set to Auto is written up by the analyst a minute or two after it's made: what's going on with the company and why, what it means for why we own it, the trade, and whether the analyst agrees, and if not, what it would do instead. Until the note lands the card says the analyst is writing it up, and the email waits for it. Activity calls it an Auto-sell (or Auto-buy, Auto-add, Auto-trim).
 

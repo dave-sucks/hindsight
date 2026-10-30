@@ -56,7 +56,7 @@ It also reads the analyst's brief: your strategy, word for word, its rules on di
 
 It works the list one stock at a time and takes exactly one action on each. One `update_thesis` answers all of a stock's situations at once. Before any trade it calls `get_stock_data` for the news and a fresh quote, and before any note on a stock it searches the web once for that stock's latest news. The note leads with what happened to the stock and why, then what it means for your position ([what you read](../concepts/theses.md#what-you-read)).
 
-- **Sell or trim:** `close_position` or `manage_position`, as a proposal with its reason. A sale you declined or let lapse, with the price still past the line, is proposed again with today's reasons, or the note says why the analyst holds.
+- **Sell or trim:** `close_position` or `manage_position`, as a proposal; the run's note on the stock is its reason. A sale you declined or let lapse, with the price still past the line, is proposed again with today's reasons, or the note says why the analyst holds.
 - **Buy or add:** `place_trade` or `manage_position`. The size is worked out by risk, inside the analyst's band; the run never picks it.
 - **Redraw the plan:** `update_thesis`, one trigger at a time. It can raise a floor; it can never lower one on a stock we hold.
 - **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md).

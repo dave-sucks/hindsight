@@ -94,7 +94,7 @@ const updateSchema = z.object({
     .string()
     .min(10)
     .describe(
-      "Required. The note the owner reads at the top of the stock's page and on its Activity (every update writes one line): what happened to the company and the stock and why, whether it touches the reason we own it, then what you did and what it means for the position. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
+      "Required. The note the owner reads on the stock's page and on its Activity (every update writes one line), and, after a trade you proposed this run, the proposal's reason on the card and in the approval email: what happened to the company and the stock and why, whether it touches the reason we own it, then what you proposed or did and what it means for the position. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
     ),
   trigger_id: z
     .string()

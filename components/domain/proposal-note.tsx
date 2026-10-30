@@ -2,15 +2,16 @@
 
 /**
  * A proposal's note: the analyst's reason, three lines, a click for the
- * rest. An Auto trade's note is written by the analyst just after the trade
- * (lib/proposals/auto-writeup.ts); until it lands the card shows one
- * shimmering line in its place and reads the reason again every few seconds.
+ * rest. A run's note lands on its proposal at the end of the run
+ * (lib/proposals/auto-writeup.ts); until then the card shows one shimmering
+ * line in its place and reads the reason again every few seconds, for up to
+ * a quarter of an hour (a morning run's length).
  */
 
 import { useEffect, useState } from "react";
 
 const POLL_MS = 8_000;
-const MAX_POLLS = 45;
+const MAX_POLLS = 120;
 
 export const WRITING_LABEL = "Writing a summary for this proposal";
 

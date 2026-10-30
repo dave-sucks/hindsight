@@ -263,8 +263,9 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
 
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
-   - Always EXACTLY one update_thesis call documenting what you did and why.
-     Pass trigger_id="${trigger.id}" so the timeline carries the link.
+   - Always EXACTLY one update_thesis call documenting what you did and why;
+     after a trade you proposed, that note is the proposal's reason the
+     principal reads. Pass trigger_id="${trigger.id}" so the timeline carries the link.
    - When the row's \`said\` lists the principal's decisions or other triggers
      fired since the last answer, your note answers what each asks (an
      earnings date coming, a gain to reassess, a drop to explain) inside the

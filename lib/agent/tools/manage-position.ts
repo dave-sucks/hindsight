@@ -120,11 +120,15 @@ const schema = z.object({
     "partial_close",
     "add_to_position",
   ]).describe("What to do with this position. A stop or target moves through update_thesis (stop_loss, target_price)."),
+  // Your chat's own words on the add or trim. Inside a run this field is not
+  // in the schema: the run's note on the stock (update_thesis) is the
+  // proposal's reason and the Activity line (lib/proposals/auto-writeup.ts).
   reason: z
     .string()
     .min(20)
+    .optional()
     .describe(
-      "Required: the reason the owner reads on the Activity line and, for an add or a trim, on the proposal and in the approval email. What is happening to the company and the stock and why, then the add or trim: the price and what it does to the position. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
+      "Why, in your words: the reason the owner reads on the Activity line and, for an add or a trim, on the proposal and in the approval email. What is happening to the company and the stock and why, then the add or trim: the price and what it does to the position. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
     ),
 
   // partial_close
@@ -156,8 +160,8 @@ export const managePosition = defineTool({
     "Manage an existing open position short of a full exit: a partial exit, or adding to a winning position. " +
     "A stop or target moves through update_thesis. Every action is audit-logged with your reason.",
   schema,
-  // A run's model never sees a size field (DAV-317).
-  schemaFor: (ctx) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : schema.omit({ add_notional: true })),
+  // A run's model never sees a size field (DAV-317), nor a reason field: its note on the stock is the reason.
+  schemaFor: (ctx) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : schema.omit({ add_notional: true, reason: true })),
   ui: "tool-ui" as const,
   gateLog: "manage_position",
   groupId: "Executing",
@@ -314,7 +318,7 @@ export const managePosition = defineTool({
               orderId: order.id,
               positionId: position.id,
               expiresAt,
-              rationale: args.reason,
+              rationale: args.reason ?? null,
             };
             await recordProposalRunEvent({
               runId: ctx.runId,
@@ -482,7 +486,7 @@ export const managePosition = defineTool({
                 source: "agent",
                 prevQty: held,
                 newQty,
-                reason: args.reason,
+                reason: args.reason ?? "",
                 alpacaOrderId,
                 fillPrice: fillPrice!,
                 fillQty: closeQty,
@@ -744,7 +748,7 @@ export const managePosition = defineTool({
               orderId: order.id,
               intent: "ADD",
               environment: position.environment as "PAPER" | "LIVE",
-              rationale: args.reason,
+              rationale: args.reason ?? null,
             });
             if (awaiting?.state === "awaiting_approval") {
               await recordProposalRunEvent({
@@ -918,7 +922,7 @@ export const managePosition = defineTool({
                 source: "agent",
                 prevQty: position.quantity,
                 newQty: newTotalQty,
-                reason: args.reason,
+                reason: args.reason ?? "",
                 alpacaOrderId,
                 fillPrice: fillPrice!,
                 fillQty: fillQty!,

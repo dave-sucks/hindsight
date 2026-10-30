@@ -67,7 +67,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
     jest.doMock("@/lib/actions/closeTrade.actions", () => ({
       closeOpenPosition: jest.fn(async (...a: unknown[]) => {
         closes.push(a);
-        await create("order", { id: "ord_iot", positionId: a[0], symbol: "IOT", rationale: a[4], status: "AWAITING_APPROVAL", createdAt: new Date() });
+        await create("order", { id: "ord_iot", positionId: a[0], symbol: "IOT", thesisId: data.thesisId, rationale: a[4], status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: data.analystId, symbol: "IOT" } });
         return { kind: "proposed", proposal: { orderId: "ord_iot" } };
       }),
     }));
@@ -79,12 +79,12 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
           execute: jest.fn(async (args: { entry_rationale?: string }) => {
             toolCalls.push({ tool: name, args, ctx });
             if (name === "place_trade") {
-              await create("order", { id: "ord_trv", positionId: "pos_trv", symbol: "TRV", intent: "OPEN", rationale: args.entry_rationale, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: SECULAR, symbol: "TRV" } });
+              await create("order", { id: "ord_trv", positionId: "pos_trv", symbol: "TRV", thesisId: "trv", intent: "OPEN", rationale: args.entry_rationale, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: SECULAR, symbol: "TRV" } });
             }
             // A trim waiting for approval: manage_position writes no decision row until it fills.
             if (name === "manage_position") {
               const a = args as { reason?: string };
-              await create("order", { id: "ord_iot_trim", positionId: "pos_iot", symbol: "IOT", intent: "PARTIAL_CLOSE", rationale: a.reason, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: PEAD, symbol: "IOT" } });
+              await create("order", { id: "ord_iot_trim", positionId: "pos_iot", symbol: "IOT", thesisId: "iot", intent: "PARTIAL_CLOSE", rationale: a.reason, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: PEAD, symbol: "IOT" } });
             }
             return { ok: true, summary: name === "place_trade" ? "Proposed: LONG 27 $TRV" : "Partial close proposed: IOT (-30%)" };
           }),
@@ -156,7 +156,7 @@ describe("the trigger run, by fire mode", () => {
     expect(r.asked[0].system).toContain('its note: "Using $52 as the objective."');
   });
 
-  it("TRV's Auto-buy calls place_trade with the trigger's arguments, paid from cash; the write-up's note replaces the line", async () => {
+  it("TRV's Auto-buy calls place_trade with the trigger's arguments, paid from cash; the write-up's note is the proposal's whole reason", async () => {
     const r = await fire({ thesisId: "trv", triggerId: TRV_BUY.id, analystId: SECULAR, ticker: "TRV", action: "ENTER", firedPrice: 398.95 });
     expect(r.toolCalls).toHaveLength(1);
     expect(r.toolCalls[0]).toMatchObject({ tool: "place_trade", args: { ticker: "TRV", direction: "LONG", entry_price: 398.95, thesis_id: "trv" }, ctx: { payFromCash: 50_000, runMode: "INTRADAY_TACTICAL", analystId: SECULAR } });
@@ -164,6 +164,8 @@ describe("the trigger run, by fire mode", () => {
     expect(r.asked).toHaveLength(1);
     expect(r.asked[0].prompt).toContain("Proposed: LONG 27 $TRV.");
     expect(r.orders.find((o) => o.id === "ord_trv")?.rationale).toBe(NOTE);
+    // The note row is stamped with the order it wrote up, so the feed shows them as one line.
+    expect(r.updates.find((u) => u.rationale === NOTE)?.tradeId).toBe("ord_trv");
     expect(r.runs[0]).toMatchObject({ status: "COMPLETE" });
   });
 });
