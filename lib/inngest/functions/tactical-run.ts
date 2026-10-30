@@ -39,7 +39,7 @@ import { autoSellCloseReason, protectiveExitCloseReason } from "@/lib/agent/trig
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { doItTrade, trimPctOf } from "@/lib/agent/triggers/fire-mode";
 import { autoTradeLine, doItCall } from "@/lib/agent/triggers/do-it";
-import { putNoteOnOrder, sendNoteWritten } from "@/lib/proposals/auto-writeup";
+import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { guidanceFor } from "@/lib/agent/situations";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
@@ -992,15 +992,17 @@ export const tacticalRun = inngest.createFunction(
         );
 
         await recordTokenUsage(run.id, tokenUsage, MODES["tactical"].model);
-        // An Auto trade's write-up goes on its order before the run reads
-        // finished, so the card and the email never see the run done with the
-        // order still carrying its plain line.
-        if (auto?.orderId) {
-          try {
-            await putNoteOnOrder({ runId: run.id, thesisId: thesis.id, orderId: auto.orderId, since: new Date(t0) });
-          } catch (err) {
-            console.error(`[tactical-run] could not put the note on order ${auto.orderId}:`, err instanceof Error ? err.message : err);
-          }
+        // The run's note is its proposal's reason (an Auto trade's, or one it
+        // decided itself). It goes on the order before the run reads finished,
+        // so the card and the email never see the run done with the order
+        // still carrying its plain line or nothing.
+        let noted: string[] = [];
+        try {
+          // The run row's start (a string after the step), else a minute before the model started.
+          const started = new Date(run.createdAt as unknown as string);
+          noted = await putNotesOnRunProposals({ runId: run.id, analystId: agentConfig.id, since: Number.isFinite(started.getTime()) ? started : new Date(t0 - 60_000) });
+        } catch (err) {
+          console.error(`[tactical-run] could not put the note on the run's proposals:`, err instanceof Error ? err.message : err);
         }
         await prisma.researchRun.update({
           where: { id: run.id },
@@ -1034,6 +1036,7 @@ export const tacticalRun = inngest.createFunction(
           toolCalls,
           elapsed,
           closedOut,
+          noted,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : "unknown";
@@ -1073,10 +1076,9 @@ export const tacticalRun = inngest.createFunction(
     });
 
     // ── The approval email stops waiting ──────────────────────────────
-    // The note went on the order inside the run (or the run ended without one).
-    if (auto?.orderId) {
-      const orderId = auto.orderId;
-      await step.run("note-written", () => sendNoteWritten(orderId));
+    // The note went on each proposal inside the run (or the run ended without one).
+    for (const orderId of (outcome as { noted?: string[] }).noted ?? (auto?.orderId ? [auto.orderId] : [])) {
+      await step.run(`note-written-${orderId}`, () => sendNoteWritten(orderId));
     }
 
     // ── A pass on a wobble doesn't spend the buy (DAV-343) ─────────────

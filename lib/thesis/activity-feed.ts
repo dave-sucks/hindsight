@@ -136,18 +136,33 @@ export function toFeedItem(u: StoredLine): FeedItem {
 
 /**
  * The feed: the saved lines and the proposals' steps, newest first. A saved
- * PROPOSAL_* copy of an order the steps cover is dropped. `limit` cuts the
- * merged list; a caller that wants the newest N loads at least N of each.
+ * PROPOSAL_* copy of an order the steps cover is dropped. A run's note on a
+ * proposal it made (the note row stamped with the order as its `tradeId`,
+ * lib/proposals/auto-writeup.ts) is one line with the proposal: the
+ * "Proposed" step carries the note, the run and the trigger it answered.
+ * `limit` cuts the merged list; a caller that wants the newest N loads at
+ * least N of each.
  */
 export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrder[]; limit?: number }): FeedItem[] {
-  const steps = args.orders.flatMap(proposalSteps);
   const covered = new Set(args.orders.map((o) => o.id));
-  const kept = args.updates.filter((u) => {
-    if (!u.type.startsWith("PROPOSAL_")) return true;
-    const oid = proposalOrderId(u.fieldChanges);
-    return oid == null || !covered.has(oid);
+  const noteFor = new Map<string, FeedItem>();
+  const kept: FeedItem[] = [];
+  for (const u of args.updates) {
+    const item = toFeedItem(u);
+    if (u.type.startsWith("PROPOSAL_")) {
+      const oid = proposalOrderId(u.fieldChanges);
+      if (oid != null && covered.has(oid)) continue;
+    } else if ((u.type === "UPDATED" || u.type === "REVIEWED") && item.tradeId && covered.has(item.tradeId) && !noteFor.has(item.tradeId)) {
+      noteFor.set(item.tradeId, item);
+      continue;
+    }
+    kept.push(item);
+  }
+  const steps = args.orders.flatMap(proposalSteps).map((s) => {
+    const note = s.type === "PROPOSAL_PROPOSED" ? noteFor.get(s.tradeId === null ? "" : proposalOrderId(s.fieldChanges) ?? "") : undefined;
+    return note ? { ...s, rationale: note.rationale, runId: note.runId, runMode: note.runMode, triggerId: note.triggerId, priceAtTime: note.priceAtTime } : s;
   });
-  const merged = [...kept.map(toFeedItem), ...steps].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  const merged = [...kept, ...steps].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   return args.limit != null ? merged.slice(0, args.limit) : merged;
 }
 

@@ -20,12 +20,9 @@ import {
   eventKind,
   ladderChangeLines,
   buildTimeline,
-  outcomePhrase,
-  groupTitle,
   proposalSpanSegments,
   toRow,
   dropRepeatedProse,
-  episodeMembers,
   relativeTimestamp,
   notAppliedLines,
   type TimelineItem,
@@ -288,7 +285,7 @@ describe("one kind per row, then one table each", () => {
 });
 
 
-describe("buildTimeline", () => {
+describe("buildTimeline — each line itself, identical neighbours folded", () => {
   // Newest-first, like the API returns.
   const fire = row({
     id: "f1",
@@ -304,180 +301,17 @@ describe("buildTimeline", () => {
     timestamp: "2026-08-18T11:10:30Z",
   });
 
-  it("nests an adjacent fire + its response into one group", () => {
+  it("a fire and the review after it are two lines, as the agent reads them", () => {
     const items = buildTimeline([answer, fire], "all");
-    expect(items).toHaveLength(1);
-    expect(items[0].kind).toBe("group");
+    expect(items.map((i) => i.kind)).toEqual(["event", "event"]);
   });
 
-  it("pairs across an interleaved Proposed row, keeping it as its own step", () => {
-    // Tactical fires → proposes the sell (Proposed lands between) → writes
-    // its close-out update. The fire pairs with the update and READS the
-    // proposal for its verb ("— proposed sell", never "— passed"), but the
-    // Proposed row stays visible: staging an order is its own moment
-    // (principal, 2026-08-21).
-    const proposed = row({
-      id: "order:o9:proposed",
-      type: "PROPOSAL_PROPOSED",
-      fieldChanges: proposalFc("CLOSE", 100),
-      timestamp: "2026-08-19T11:16:00Z",
-    });
-    const items = buildTimeline([answer, proposed, fire], "all");
-    expect(items.map((i) => i.kind)).toEqual(["group", "event"]);
-    const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
-    expect(g.fires[0].id).toBe("f1");
-    expect(g.response.id).toBe("r1");
-    expect(g.proposal?.id).toBe("order:o9:proposed");
-    expect(outcomePhrase(g.response, g.proposal)).toBe("proposed sell");
-    expect(
-      groupTitle(g.fires[0], g.response, g.proposal).outcome,
-    ).toBe("— proposed sell");
-  });
-
-  it("strings the dashed span from the Proposed step to its outcome", () => {
-    const sold = row({ id: "order:o9:approved", type: "PROPOSAL_APPROVED" });
-    const proposed = row({
-      id: "order:o9:proposed",
-      type: "PROPOSAL_PROPOSED",
-      fieldChanges: proposalFc("CLOSE", 100),
-    });
-    const items = buildTimeline([sold, answer, proposed, fire], "all");
-    // [Sold event, trigger episode, Proposed event]
-    expect(items.map((i) => i.kind)).toEqual(["event", "group", "event"]);
-    // Segments under rows 0 and 1 connect Sold ← … ← Proposed.
-    expect(proposalSpanSegments(items)).toEqual(new Set([0, 1]));
-  });
-
-  // The rule used to be "same triggerId or runId", which split the feed in
-  // two. A REVIEW fire is deferred to the next daily review, and that run
-  // writes its answer carrying neither id — ISRG's "price below the 200-day"
-  // fired 9× between Sep 15 and Sep 25 and not one joined the 5 reviews that
-  // answered it. One rule now: the next review answers it, ids or not.
-  it("pairs a fire with the next review even when it shares no ids", () => {
-    const other = { ...answer, triggerId: "t-other", runId: null };
-    const items = buildTimeline([other, fire], "all");
-    expect(items.map((i) => i.kind)).toEqual(["group"]);
-  });
-
-  // ISRG Sep 16 + Sep 17 fires, both answered by the Sep 18 morning review.
-  it("one review answers every fire since the last one", () => {
-    const r = (id: string, type: string, ts: string, summary = "") =>
-      row({ id, type, timestamp: ts, summary });
-    const items = buildTimeline(
-      [
-        r("resp", "UPDATED", "2026-09-18T12:06:00Z"),
-        r("f2", "TRIGGER_FIRED", "2026-09-17T13:35:00Z", "Price below the 200-day — review"),
-        r("f1", "TRIGGER_FIRED", "2026-09-16T13:35:00Z", "Price below the 200-day — review"),
-      ],
-      "all",
-    );
-    expect(items).toHaveLength(1);
-    const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
-    expect(g.kind).toBe("group");
-    expect(g.fires.map((f) => f.id)).toEqual(["f2", "f1"]);
-    expect(toRow(g).title.secondary).toBe("Price below the 200-day ×2");
-    // One date per row, and it is the answer's — the last thing that
-    // happened. "fired X · answered Y" was clutter at a glance; the fires
-    // are there when you open the row.
-    expect(toRow(g).when).toBe("Sep 18");
-    expect(episodeMembers(g).map((m) => m.key)).toEqual(["m:f2", "m:f1", "m:resp"]);
-    expect(episodeMembers(g).every((m) => m.child)).toBe(true);
-  });
-
-  it("folds ≥2 consecutive identical check-ins; real fires stay visible", () => {
-    const quiet1 = row({
-      id: "q1",
-      type: "REVIEWED",
-      timestamp: "2026-08-17T12:00:00Z",
-    });
-    const quiet2 = row({
-      id: "q2",
-      type: "TRIGGER_FIRED",
-      summary: "Scheduled review due on CYTK (HOLDING)",
-      timestamp: "2026-08-16T12:00:00Z",
-    });
-    const quiet3 = row({
-      id: "q3",
-      type: "REVIEWED",
-      timestamp: "2026-08-15T12:00:00Z",
-    });
-    const quiet4 = row({
-      id: "q4",
-      type: "TRIGGER_FIRED",
-      summary: "Scheduled review due on CYTK (HOLDING)",
-      timestamp: "2026-08-14T12:00:00Z",
-    });
-    // quiet1+quiet2 and quiet3+quiet4 each pair into a quiet episode; two
-    // quiet items in a row is what a cluster is made of.
-    const items = buildTimeline(
-      [answer, fire, quiet1, quiet2, quiet3, quiet4],
-      "all",
-    );
-    // One rule folds them: two rows that print the same sentence. The
-    // folded row keeps that sentence rather than a separate "N quiet
-    // check-ins" vocabulary — it says which check-in repeated.
-    expect(items.map((i) => i.kind)).toEqual(["group", "fold"]);
-    const folded = toRow(items[1]);
-    expect(folded.title.secondary).toBe("Scheduled review due ×2");
-    expect(folded.title.outcome).toBe("— no change");
-  });
-
-  it("folds consecutive identical episodes into one ×N row (the CEG wall)", () => {
-    // Same ENTER rung re-fires daily, same "passed" outcome each time.
-    const mk = (day: number, trig: string, resp: string) => [
-      row({
-        id: resp,
-        type: "UPDATED",
-        triggerId: "t-enter",
-        fieldChanges: {},
-        timestamp: `2026-08-0${day}T09:45:00Z`,
-      }),
-      row({
-        id: trig,
-        type: "TRIGGER_FIRED",
-        triggerId: "t-enter",
-        summary: "Price above $255 — consider entry",
-        timestamp: `2026-08-0${day}T09:40:00Z`,
-      }),
-    ];
-    const rows = [...mk(7, "f3", "r3"), ...mk(6, "f2", "r2"), ...mk(5, "f1", "r1")];
-    const items = buildTimeline(rows, "all");
-    expect(items).toHaveLength(1);
-    expect(items[0].kind).toBe("fold");
-    const rep = items[0] as Extract<TimelineItem, { kind: "fold" }>;
-    expect(rep.items).toHaveLength(3);
-    expect(toRow(rep).title.secondary).toBe("Price above $255 ×3");
-  });
-
-  it("does not fold episodes whose decision differs", () => {
-    const fired = (id: string, day: number) =>
-      row({
-        id,
-        type: "TRIGGER_FIRED",
-        triggerId: "t-enter",
-        summary: "Price above $255 — consider entry",
-        timestamp: `2026-08-0${day}T09:40:00Z`,
-      });
-    const rows = [
-      row({
-        id: "r-raise",
-        type: "UPDATED",
-        triggerId: "t-enter",
-        fieldChanges: { stopLoss: { from: 54, to: 62 } },
-        timestamp: "2026-08-07T09:45:00Z",
-      }),
-      fired("f-b", 7),
-      row({
-        id: "r-pass",
-        type: "UPDATED",
-        triggerId: "t-enter",
-        fieldChanges: {},
-        timestamp: "2026-08-06T09:45:00Z",
-      }),
-      fired("f-a", 6),
-    ];
-    const items = buildTimeline(rows, "all");
-    expect(items.map((i) => i.kind)).toEqual(["group", "group"]);
+  it("folds ≥2 consecutive rows that print the same sentence; a row with prose never folds", () => {
+    const due = (id: string, day: number) =>
+      row({ id, type: "TRIGGER_FIRED", summary: "Scheduled review due on CYTK (HOLDING)", timestamp: `2026-08-${day}T12:00:00Z` });
+    const items = buildTimeline([answer, due("q1", 17), due("q2", 16), fire], "all");
+    expect(items.map((i) => i.kind)).toEqual(["event", "fold", "event"]);
+    expect(toRow(items[1]).title.secondary).toBe("Scheduled review due ×2");
   });
 
   it("money filter keeps only proposal/lifecycle rows", () => {
@@ -489,78 +323,6 @@ describe("buildTimeline", () => {
     const items = buildTimeline([answer, fire, bought], "money");
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe("event");
-  });
-});
-
-describe("trigger episodes — one sentence, fire + decision", () => {
-  const exitFire = row({
-    type: "TRIGGER_FIRED",
-    summary: "Trailing 12% from high — exit position",
-  });
-  const entryFire = row({
-    type: "TRIGGER_FIRED",
-    summary: "Price above $255 — consider entry",
-  });
-
-  // One table, read top to bottom, keyed only on what the REVIEW did. The
-  // kind of fire never enters into it — "passed" vs "held" was two words
-  // for the one fact that nothing changed.
-  it("no change — the review looked and left it alone", () => {
-    expect(outcomePhrase(row({ type: "REVIEWED" }))).toBe("no change");
-    expect(outcomePhrase(row({ type: "UPDATED", fieldChanges: {} }))).toBe(
-      "no change",
-    );
-  });
-
-  it("the same words whether an entry fire or an exit fire asked", () => {
-    const review = row({ type: "REVIEWED" });
-    expect(groupTitle(entryFire, review).outcome).toBe(
-      groupTitle(exitFire, review).outcome,
-    );
-  });
-
-  it("updated when a price level changed", () => {
-    expect(
-      outcomePhrase(
-        row({ type: "UPDATED", fieldChanges: { stopLoss: { from: 54, to: 62 } } }),
-      ),
-    ).toBe("updated");
-  });
-
-  // ISRG Sep 23 removed the buy, the floor AND the target — the month's
-  // biggest decision on the name, and it used to render "held".
-  it("plan set down when the review removed rungs", () => {
-    expect(
-      outcomePhrase(
-        row({
-          type: "UPDATED",
-          fieldChanges: {
-            triggerOps: {
-              to: [
-                { op: "remove", text: "Removed: buy above $383" },
-                { op: "remove", text: "Removed: sell below $325" },
-              ],
-            },
-          },
-        }),
-      ),
-    ).toBe("plan set down");
-  });
-
-  it("archived when the stock left the book", () => {
-    expect(
-      outcomePhrase(
-        row({ type: "UPDATED", fieldChanges: { status: { to: "PASSED" } } }),
-      ),
-    ).toBe("archived");
-  });
-
-  it("groupTitle composes the full sentence with the decision medium-weight", () => {
-    expect(groupTitle(entryFire, row({ type: "REVIEWED" }))).toEqual({
-      primary: "Trigger:",
-      secondary: "Price above $255",
-      outcome: "— no change",
-    });
   });
 });
 
@@ -797,28 +559,6 @@ describe("price on the row model", () => {
   });
 });
 
-describe("triggers filter keeps episodes intact", () => {
-  it("retains the response rows so decisions survive the filter", () => {
-    const fire = row({
-      id: "f1",
-      type: "TRIGGER_FIRED",
-      triggerId: "t1",
-      summary: "Price above $255 — consider entry",
-      timestamp: "2026-08-18T11:10:00Z",
-    });
-    const answer = row({
-      id: "r1",
-      type: "UPDATED",
-      triggerId: "t1",
-      fieldChanges: {},
-      timestamp: "2026-08-18T11:10:30Z",
-    });
-    const unrelated = row({ id: "x", type: "REVIEWED", triggerId: null });
-    const items = buildTimeline([answer, fire, unrelated], "triggers");
-    expect(items.map((i) => i.kind)).toEqual(["group"]);
-  });
-});
-
 // ── The sheet header leads with the latest note (DAV-304) ────────────────────
 // The header does not get its own grammar: it calls `titleSegments` on the one
 // most recent ThesisUpdate row, exactly as the timeline does for every row.
@@ -857,62 +597,6 @@ describe("the most recent durable event, worded once", () => {
       fieldChanges: {},
     });
     expect(titleSegments(etn).primary).toBe("Updated");
-  });
-});
-
-describe("the outcome names what the review actually changed", () => {
-  const resp = (fieldChanges: unknown) =>
-    row({ type: "UPDATED", fieldChanges: fieldChanges as never });
-  const ops = (...o: Array<{ op: string; text: string }>) => ({ triggerOps: { to: o } });
-
-  // HPE 2026-09-09: the buy flipped from a breakout ABOVE $54.75 to a
-  // pullback BELOW it, stored as a `triggers` from/to diff. 97 episodes
-  // across the book carried one of these and read "no change".
-  it("a trigger change that moves no price is an update, not nothing", () => {
-    expect(
-      outcomePhrase(resp({ triggers: { from: "ENTER price above 54.75", to: "ENTER price below 54.75" } })),
-    ).toBe("updated");
-    expect(outcomePhrase(resp(ops({ op: "add", text: "Added: review every 10 days" })))).toBe(
-      "updated",
-    );
-    expect(outcomePhrase(resp(ops({ op: "edit", text: "Review cadence: wording updated" })))).toBe(
-      "updated",
-    );
-  });
-
-  // A moved price and a changed cadence are the same event to a reader —
-  // the chips say which fields moved. Two words were one too many.
-  it("a price level moving is the same word as any other plan change", () => {
-    expect(outcomePhrase(resp({ stopLoss: { from: 54, to: 62 } }))).toBe("updated");
-    expect(outcomePhrase(resp(ops({ op: "edit", text: "Entry $148 → $162.91" })))).toBe("updated");
-  });
-
-  // CEG: you removed two earnings-review rungs. The buy, floor and target
-  // were untouched — the plan was not set down, it just gets looked at less.
-  it("dropping review rungs is not setting the plan down", () => {
-    expect(
-      outcomePhrase(
-        resp(
-          ops(
-            { op: "remove", text: "Removed: Any earnings beat → review" },
-            { op: "remove", text: "Removed: Earnings miss ≥3% → review" },
-          ),
-        ),
-      ),
-    ).toBe("updated");
-    expect(
-      outcomePhrase(resp(ops({ op: "remove", text: "Removed: buy above $383" }))),
-    ).toBe("plan set down");
-  });
-
-  it("a rewritten argument with the plan untouched is a thesis refresh", () => {
-    expect(outcomePhrase(resp({ bullCase: { from: "a", to: "b" }, snapshot: { from: 1, to: 2 } }))).toBe(
-      "thesis refreshed",
-    );
-  });
-
-  it("no change means the row carries nothing", () => {
-    expect(outcomePhrase(resp({}))).toBe("no change");
   });
 });
 
@@ -978,20 +662,7 @@ describe("a review that changed nothing still shows its note", () => {
     ).toBe(true);
   });
 
-  // The Proposed row right below carries the write-up; the episode would
-  // print the same reasoning twice.
-  it("an episode that staged a proposal shows its note too", () => {
-    const items = buildTimeline(
-      [
-        row({ id: "resp", type: "UPDATED", fieldChanges: {}, rationale: "I am buying here because…", timestamp: "2026-09-28T20:20:42Z" }),
-        row({ id: "prop", type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("OPEN", 16), timestamp: "2026-09-28T20:20:30Z" }),
-        row({ id: "f", type: "TRIGGER_FIRED", summary: "Closes above $406 — consider entry", timestamp: "2026-09-28T20:20:17Z" }),
-      ],
-      "all",
-    );
-    const episode = items.find((i) => i.kind === "group")!;
-    expect(toRow(episode).title.outcome).toBe("— proposed buy");
-    expect(toRow(episode).showDescription).toBe(true);
+  it("a proposal shows its note", () => {
     expect(show(row({ type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("OPEN", 16), rationale: "I am buying here because…" }))).toBe(true);
   });
 });
@@ -1011,10 +682,10 @@ describe("what a call asked for and did not get", () => {
     ]);
   });
 
-  it("sits under the row, and a review that changed nothing still reads no change", () => {
+  it("sits under the row, and the review is still a plain review", () => {
     const reviewed = row({ type: "REVIEWED", fieldChanges: notApplied });
     expect(toRow({ kind: "event", row: reviewed }).chips).toEqual([{ kind: "not-applied", text: "Not applied: back to watching — the position is still open" }]);
-    expect(outcomePhrase(reviewed)).toBe("no change");
+    expect(isPlainReview(reviewed)).toBe(true);
   });
 });
 
@@ -1049,10 +720,4 @@ describe("each priced row carries its move from the row before it in time", () =
     expect(rows[3].priceChange).toBeNull();
   });
 
-  it("a member row under an open episode is not in the chain", () => {
-    const child = { ...at(900, "m"), child: true };
-    const rows = withPriceChanges([at(881.14, "a"), child, at(848.6, "c")]);
-    expect(rows[0].priceChange).toEqual({ dollars: expect.closeTo(32.54, 2), pct: expect.closeTo(3.83, 2) });
-    expect(rows[1].priceChange).toBeNull();
-  });
 });

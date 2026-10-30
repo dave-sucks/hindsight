@@ -111,3 +111,16 @@ describe("the newest 8: what the Overview shows and the next run reads", () => {
     expect(saidBlock("GEV", one)).toContain("its newest 1 Activity lines");
   });
 });
+
+describe("one paragraph per trade: a run's note on a proposal and the proposal are one line", () => {
+  it("GEV 10-29: the 9:45 note, stamped with the sale it wrote up, rides on the Proposed step; the note row is gone", () => {
+    const stamped = UPDATES.map((u) => (u.id === "cmvtljbyt000u07jtwe1op938" ? { ...u, tradeId: "cmvtlj7h8000o07jtr5hif67i" } : u));
+    const merged = activityFeed({ updates: stamped, orders: ORDERS });
+    expect(merged).toHaveLength(feed.length - 1);
+    expect(merged.some((i) => i.id === "cmvtljbyt000u07jtwe1op938")).toBe(false);
+    const proposed = merged.find((i) => i.id === "order:cmvtlj7h8000o07jtr5hif67i:proposed")!;
+    expect(proposed).toMatchObject({ type: "PROPOSAL_PROPOSED", runId: "cmvtlisse000k07jtcm2d5e72", runMode: "INTRADAY_TACTICAL", triggerId: TRAIL, priceAtTime: 881.14, rationale: "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" });
+    const line = saidBlock("GEV", merged)!.split("\n")[2];
+    expect(line).toBe('  10-29 09:45 · $881.14 · Proposed sell 9 shares — awaiting your review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter"');
+  });
+});

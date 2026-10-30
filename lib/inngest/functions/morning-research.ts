@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
@@ -1021,6 +1022,13 @@ export const morningResearch = inngest.createFunction(
             { opening: [{ role: "user", content: [{ type: "text", text: userPrompt }] }], messages: response?.messages, steps },
             "morning-research",
           );
+
+          // The run's notes become its proposals' reasons (lib/proposals/auto-writeup.ts).
+          try {
+            for (const orderId of await putNotesOnRunProposals({ runId: run.id, analystId: config.id, since: run.startedAt })) await sendNoteWritten(orderId);
+          } catch (err) {
+            console.error(`[morning-research] could not put the notes on ${config.name}'s proposals:`, err instanceof Error ? err.message : err);
+          }
 
           // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
           // continuity now comes from the account-level PortfolioDigest, read

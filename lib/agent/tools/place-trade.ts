@@ -113,7 +113,8 @@ export const placeTrade = defineTool({
   schema: placeTradeSchema,
   // A run's model never sees a size field. The analyst's rules size the
   // buy; there is one way to size a buy (DAV-317).
-  schemaFor: (ctx) => (isPrincipalChat(ctx) ? placeTradeSchema : placeTradeSchema.omit({ notional: true, shares: true })),
+  // A run's note on the stock (update_thesis, after the buy) is the proposal's reason; only your chat gives the buy its own words.
+  schemaFor: (ctx) => (isPrincipalChat(ctx) ? placeTradeSchema : placeTradeSchema.omit({ notional: true, shares: true, entry_rationale: true })),
   ui: "tool-ui" as const,
   gateLog: "place_trade",
   groupId: "Executing",
@@ -717,28 +718,13 @@ export const placeTrade = defineTool({
       // null and the rest of the tool runs exactly as today.
       // See docs/plans/TRADE_AS_PROPOSAL.md.
       {
-        // Order.rationale source — see GAPS "Stale Order.rationale on OPEN
-        // proposals only" (2026-06-04 NVTS surfacing). The thesis.snapshot
-        // text is the writer's WATCHING-side overview ("X is a watch-only
-        // candidate, the current setup is not actionable, wait for $N
-        // reclaim") — exactly the wrong thing to surface as "why are we
-        // buying NOW" on the proposal. Prefer the tactical agent's
-        // live entry-decision rationale supplied via args.entry_rationale.
-        // Fall back to the snapshot text only when the agent didn't pass
-        // one (principal-chat one-shot entries, where the thesis snapshot
-        // IS the entry rationale).
-        let proposalRationale: string | null = null;
-        if (args.entry_rationale && args.entry_rationale.trim().length > 0) {
-          proposalRationale = args.entry_rationale.trim();
-        } else {
-          const thesisForRationale = await prisma.thesis.findUnique({
-            where: { id: args.thesis_id },
-            select: { snapshot: true },
-          });
-          proposalRationale = thesisForRationale
-            ? getThesisSnapshotText(thesisForRationale)
-            : null;
-        }
+        // The proposal's reason: your chat's words when it gave them; a run's
+        // note on the stock lands here at the end of the run
+        // (lib/proposals/auto-writeup.ts). Never the thesis snapshot: that is
+        // the writer's overview, not why we are buying now (NVTS, 2026-06-04).
+        // The sizing lines go to the agent's reply and the run's event, never
+        // on the proposal.
+        const proposalRationale: string | null = args.entry_rationale?.trim() || null;
         const awaiting = await maybeAwaitApproval({
           accountId: ctx.accountId,
           positionId: position.id,

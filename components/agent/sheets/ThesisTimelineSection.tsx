@@ -38,7 +38,6 @@ import {
   proposalSpanSegments,
   dropRepeatedProse,
   toRow,
-  episodeMembers,
   isPlainReview,
   withPriceChanges,
   type LadderChange,
@@ -175,7 +174,6 @@ interface Props {
 /** Every Activity line an item covers, so a row can be matched against the Overview's 8. */
 function itemIds(item: TimelineItem): string[] {
   if (item.kind === "event") return [item.row.id];
-  if (item.kind === "group") return [...item.fires.map((f) => f.id), item.response.id, ...(item.proposal ? [item.proposal.id] : [])];
   return item.items.flatMap(itemIds);
 }
 
@@ -191,19 +189,12 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
     if (item.kind === "fold" && open.has(toRow(item).key)) return [item, ...item.items];
     return [item];
   });
-  // An open episode also reveals the fires it answered, small, under it.
-  const expanded = items.flatMap<TimelineItem | TimelineRow>((item) =>
-    item.kind === "group" && open.has(toRow(item).key) ? [item, ...episodeMembers(item)] : [item],
-  );
-  // A child row never starts a month: it belongs to the row above it.
-  const months = expanded.map((item, i) => {
-    if (!("kind" in item)) return null;
+  const months = items.map((item, i) => {
     const label = monthLabel(itemTimestamp(item));
-    const prev = expanded.slice(0, i).reverse().find((p) => "kind" in p);
-    return prev == null || label !== monthLabel(itemTimestamp(prev as TimelineItem)) ? label : null;
+    return i === 0 || label !== monthLabel(itemTimestamp(items[i - 1])) ? label : null;
   });
   const rows = withPriceChanges(
-    dropRepeatedProse(expanded.map((item) => ("kind" in item ? toRow(item) : item))).map((r) => {
+    dropRepeatedProse(items.map(toRow)).map((r) => {
       if (r.type !== "CREATED" || !provenance) return r;
       const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
       const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
@@ -211,8 +202,8 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
     }),
   );
   // Which rows are plain reviews: no title, the paragraph is the row.
-  const plain = expanded.map((item) => "kind" in item && item.kind === "event" && isPlainReview(item.row));
-  const ids = expanded.map((item) => ("kind" in item ? itemIds(item) : []));
+  const plain = items.map((item) => item.kind === "event" && isPlainReview(item.row));
+  const ids = items.map(itemIds);
   return { rows: rows.map((r, i) => ({ ...r, plain: plain[i] })), spans: proposalSpanSegments(items), months, ids };
 }
 
@@ -388,8 +379,8 @@ function Row({
   onToggle: () => void;
 }) {
   // A row opens when it has more to show: the rest of its paragraph, what
-  // changed, a roll-up, or the member events behind an episode.
-  const interactive = row.fold || row.description != null || row.members || row.chips.length > 0;
+  // changed, or a roll-up.
+  const interactive = row.fold || row.description != null || row.chips.length > 0;
   const plain = !!row.plain && row.description != null;
   const showDescription = !plain && row.description != null && (open || row.showDescription);
 
@@ -408,7 +399,7 @@ function Row({
         ) : null}
       </div>
 
-      <div className={cn("flex-1 min-w-0", !isLast && (row.child ? "pb-2" : "pb-4"))}>
+      <div className={cn("flex-1 min-w-0", !isLast && "pb-4")}>
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3">
           {plain ? (
             <p
@@ -425,9 +416,8 @@ function Row({
           ) : (
             <p
               className={cn(
-                "font-normal leading-snug min-w-0",
-                row.child ? "text-xs text-muted-foreground" : "text-sm",
-                row.fold ? "text-muted-foreground" : !row.child && "text-foreground",
+                "font-normal leading-snug min-w-0 text-sm",
+                row.fold ? "text-muted-foreground" : "text-foreground",
                 interactive && "cursor-pointer",
               )}
               onClick={interactive ? onToggle : undefined}

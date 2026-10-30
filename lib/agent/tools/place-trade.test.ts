@@ -433,11 +433,11 @@ describe("place_trade — analyst enabled gate (trading-paused)", () => {
  * approving a tactical-triggered entry, would read "the current setup is
  * not actionable" while clicking Approve on a real-money buy.
  *
- * Post-fix: place_trade accepts `entry_rationale` as an optional arg.
- * When the tactical agent passes it, that text is used. When it isn't
- * (principal-chat one-shot entries where the snapshot IS the entry
- * rationale), it falls back to the snapshot path. CLOSE proposals are
- * unchanged.
+ * Post-fix: place_trade accepts `entry_rationale` as an optional arg from
+ * your chat. When it passes one, that text is used. When it doesn't, the
+ * reason is empty until the run's note lands on it
+ * (lib/proposals/auto-writeup.ts); the thesis snapshot is never used. CLOSE
+ * proposals are unchanged.
  *
  * These tests pin the OPEN-side rationale source so the bug can't quietly
  * regress.
@@ -562,7 +562,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 
-  it("falls back to thesis.snapshot when entry_rationale is absent (principal-chat one-shot path)", async () => {
+  it("never falls back to thesis.snapshot when entry_rationale is absent: the run's note is the reason", async () => {
     const fallbackSnapshot =
       "$NTNX is a watching candidate with a clean catalyst setup ahead of the print.";
     setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 80, plan: { entry: 80, target: 95, stop: 74 } });
@@ -580,11 +580,12 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    // No reason at all: the run's note lands at the end of the run. Never the snapshot, never a sizing line.
+    expect(callArgs.rationale).toBeNull();
     expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 
-  it("falls back to snapshot when entry_rationale is an empty string", async () => {
+  it("an empty entry_rationale is no reason either", async () => {
     const fallbackSnapshot = "watching candidate, snapshot text";
     setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200, plan: { entry: 200, target: 240, stop: 184 } });
 
@@ -601,11 +602,11 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    expect(callArgs.rationale).toBeNull();
     expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 
-  it("falls back to snapshot when entry_rationale is whitespace-only", async () => {
+  it("a whitespace-only entry_rationale is no reason either", async () => {
     const fallbackSnapshot = "snapshot text";
     setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200, plan: { entry: 200, target: 240, stop: 184 } });
 
@@ -622,7 +623,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    expect(callArgs.rationale).toBeNull();
     expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 });

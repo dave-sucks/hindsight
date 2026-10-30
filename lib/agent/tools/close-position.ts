@@ -43,7 +43,7 @@ export const closePosition = defineTool({
       .string()
       .optional()
       .describe(
-        "Why you're selling, always supplied: the reason the owner reads on the sale proposal and in the approval email. What happened to the company and the stock and why, whether it breaks the reason we own it, then the sale: the price and the profit or loss. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
+        "Why you're selling, in your own words: the reason the owner reads on the sale proposal and in the approval email. What happened to the company and the stock and why, whether it breaks the reason we own it, then the sale: the price and the profit or loss. Its first sentence is about the company and the stock, with no price level, line or rule in it. Write it by How you write.",
       ),
     belief_survived: z
       .boolean()
@@ -55,6 +55,10 @@ export const closePosition = defineTool({
           "Left out, the thesis retires as with false; leave it out only when you genuinely cannot tell. Ignored on reason=TARGET, which always keeps the name on watch.",
       ),
   }),
+  // A run writes one note on the stock with update_thesis after the sale, and
+  // that note is the proposal's reason (lib/proposals/auto-writeup.ts); only
+  // your chat gives the sale its own words.
+  schemaFor: (ctx, schema) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : schema.omit({ notes: true })),
   ui: "tool-ui" as const,
   gateLog: "close_position",
   groupId: "Executing",
@@ -265,7 +269,11 @@ export const closePosition = defineTool({
             expiresAt: outcome.proposal.expiresAt.toISOString(),
             rationale: outcome.proposal.rationale,
             ...label,
-            message: [`Proposed close of ${position.direction} ${position.quantity} shares of ${ticker}. Awaiting your approval (expires in 24h).`, enforced.auditNote].filter(Boolean).join(" "),
+            message: [
+              `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker}. Awaiting your approval (expires in 24h).`,
+              ctx.runMode === "PRINCIPAL_CHAT" ? "" : "Your note on this stock, through update_thesis, is what the owner reads on the proposal.",
+              enforced.auditNote,
+            ].filter(Boolean).join(" "),
             items: [
               {
                 kind: "proposal" as const,
