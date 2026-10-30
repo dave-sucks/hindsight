@@ -20,6 +20,7 @@ import {
   normalizeThemes,
 } from "@/lib/universe/canonical";
 import { getAccountId } from "@/lib/auth/account";
+import { getHeldOrWatchedSymbols } from "@/lib/agent/watchlist-symbols";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -1263,14 +1264,7 @@ export async function updateAnalystFromBuilder(
     // Adds → null-direction WATCHING under a fresh EDITOR_SEED ResearchRun.
     // A name left out is kept: a watch is dropped from its own page or by a run.
     if (structuredItems.length > 0 || watchlistSymbols.length > 0) {
-      const existingWatching = await prisma.thesis.findMany({
-        where: {
-          status: "WATCHING",
-          researchRun: { agentConfigId: id },
-        },
-        select: { ticker: true },
-      });
-      const existingSymbolSet = new Set(existingWatching.map((t) => t.ticker));
+      const existingSymbolSet = new Set(await getHeldOrWatchedSymbols(id));
       const toCreate = (
         structuredItems.length > 0
           ? structuredItems

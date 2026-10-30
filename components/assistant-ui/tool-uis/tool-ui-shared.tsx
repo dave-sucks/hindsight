@@ -16,6 +16,8 @@ export type ToolUICallbacks = {
   confirmingLabel?: string;
   /** Editor mode: apply diff against existing config */
   currentConfig?: Record<string, unknown>;
+  /** Editor mode: what the analyst holds or watches; Apply adds no watch beside these. */
+  heldOrWatched?: string[];
   onApplyConfig?: (config: AgentConfigData) => void;
   isApplying?: boolean;
   applied?: boolean;

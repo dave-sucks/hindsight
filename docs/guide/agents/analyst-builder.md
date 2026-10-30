@@ -64,7 +64,7 @@ When you accept, the analyst is created in one step:
 - Its watchlist lands as **seeds**: stocks with no view yet, each due its first research. The next [morning run](morning-runs.md) sends them to [the Writer](writer.md).
 - Its signature setup's reviews are written onto its Triggers tab, where every stock it holds inherits them. You can edit them there. A PEAD, catalyst or compounder signature has reviews; any other has none, so its tab starts blank. None of them sells: the account's own sell rules cover every holding.
 
-The editor's proposal saves the same fields. A field it leaves out keeps its value, and changing the setups later leaves the Triggers tab as it is (its re-seed shows what the new signature setup would add). Its watchlist only adds: each new name lands as a seed, and a stock left out stays watched. A watch is dropped from its own page, or by a run.
+The editor's proposal saves the same fields. A field it leaves out keeps its value, and changing the setups later leaves the Triggers tab as it is (its re-seed shows what the new signature setup would add). Its watchlist only adds: each new name lands as a seed, a stock the analyst already holds or watches gets nothing beside it, and a stock left out stays watched. Its change list shows only the names Apply adds. A watch is dropped from its own page, or by a run.
 
 From then on the analyst runs on its run days like any other.
 

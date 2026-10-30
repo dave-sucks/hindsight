@@ -11,6 +11,7 @@ import {
   type AgentConfigData,
 } from "@/components/domain/agent-config-card";
 import { useToolUICallbacks } from "@/components/assistant-ui/tool-uis/tool-ui-shared";
+import { watchlistAdds } from "@/components/analysts/builder-config";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { cn } from "@/lib/utils";
 
@@ -81,14 +82,6 @@ function formatValue(key: FieldKey, val: unknown): string {
   // Specialized array/object cases — MUST come before the generic
   // Array.isArray handler, otherwise arrays of objects render as
   // "[object Object], [object Object], …".
-  if (key === "watchlist" && Array.isArray(val)) {
-    if (val.length === 0) return "—";
-    return val
-      .map((t) =>
-        typeof t === "string" ? t : (t as { symbol: string }).symbol,
-      )
-      .join(", ");
-  }
   if (key === "intelligencePolicy" && val && typeof val === "object") {
     const p = val as Record<string, number | boolean | undefined>;
     const parts: string[] = [];
@@ -151,11 +144,18 @@ function diffsFor(
   group: GroupId,
   before: Record<string, unknown>,
   after: AgentConfigData,
+  heldOrWatched?: string[],
 ): FieldDiff[] {
   const out: FieldDiff[] = [];
   for (const spec of GROUPS[group].fields) {
     const bVal = before[spec.key as string];
     const aVal = (after as Record<string, unknown>)[spec.key as string];
+    // Apply only adds watches, so the row is the names it adds.
+    if (spec.key === "watchlist") {
+      const adds = watchlistAdds(after.watchlist, heldOrWatched ?? ((bVal as string[] | undefined) ?? []));
+      if (adds.length > 0) out.push({ key: spec.key, label: spec.label, before: "", after: adds.map((s) => `+ ${s}`).join(", ") });
+      continue;
+    }
     if (deepEq(bVal, aVal)) continue;
     const beforeStr = formatValue(spec.key, bVal);
     const afterStr = formatValue(spec.key, aVal);
@@ -191,6 +191,7 @@ export function ConfigPreviewRenderer({ result, loading }: Props) {
     confirmLabel,
     confirmingLabel,
     currentConfig,
+    heldOrWatched,
   } = useToolUICallbacks();
 
   const configSuggestedRef = useRef(onConfigSuggested);
@@ -209,6 +210,7 @@ export function ConfigPreviewRenderer({ result, loading }: Props) {
     return (
       <EditorDiff
         currentConfig={currentConfig}
+        heldOrWatched={heldOrWatched}
         proposed={config}
         onConfirmConfig={onConfirmConfig}
         isApplying={!!isCreating}
@@ -263,6 +265,7 @@ export function ConfigPreviewRenderer({ result, loading }: Props) {
 
 function EditorDiff({
   currentConfig,
+  heldOrWatched,
   proposed,
   onConfirmConfig,
   isApplying,
@@ -270,6 +273,7 @@ function EditorDiff({
   confirmingLabel,
 }: {
   currentConfig: Record<string, unknown>;
+  heldOrWatched?: string[];
   proposed: AgentConfigData;
   onConfirmConfig: ((config: AgentConfigData) => void) | undefined;
   isApplying: boolean;
@@ -280,10 +284,10 @@ function EditorDiff({
   const groupDiffs = useMemo(
     () => ({
       trading: diffsFor("trading", currentConfig, proposed),
-      universe: diffsFor("universe", currentConfig, proposed),
+      universe: diffsFor("universe", currentConfig, proposed, heldOrWatched),
       prompt: diffsFor("prompt", currentConfig, proposed),
     }),
-    [currentConfig, proposed],
+    [currentConfig, proposed, heldOrWatched],
   );
 
   const totalChanges =
@@ -474,7 +478,9 @@ function DiffRow({
       />
       <div className="flex-1 min-w-0 text-sm">
         <span className="text-xs text-muted-foreground">{diff.label}</span>
-        {shouldStack ? (
+        {!diff.before ? (
+          <div className="mt-1 text-foreground font-medium break-words">{diff.after}</div>
+        ) : shouldStack ? (
           <div className="mt-1 flex flex-col gap-1.5">
             <span className="line-through text-muted-foreground/60 break-words">
               {diff.before}

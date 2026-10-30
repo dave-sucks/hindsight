@@ -13,6 +13,7 @@ import {
 } from "@/lib/agent/triggers/defaults";
 import { horizonFor } from "@/lib/agent/triggers/load-levels";
 import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
+import { HELD_OR_WATCHED } from "@/lib/agent/watchlist-symbols";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -386,7 +387,7 @@ export async function addWatchlistItem(
   const existing = await prisma.thesis.findFirst({
     where: {
       ticker: upper,
-      status: { in: ["HOLDING", "WATCHING"] },
+      status: { in: [...HELD_OR_WATCHED] },
       researchRun: { agentConfigId: analystId },
     },
     select: {

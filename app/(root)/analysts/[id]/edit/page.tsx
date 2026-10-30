@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { AnalystEditClient } from "@/components/analysts/AnalystEditClient";
-import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { getHeldOrWatchedSymbols, getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { getAccountId } from "@/lib/auth/account";
 
 type Params = { id: string };
@@ -32,7 +32,10 @@ export default async function AnalystEditPage({
 
   if (!config) return notFound();
 
-  const watchlistSymbols = await getWatchlistSymbols(id);
+  const [watchlistSymbols, heldOrWatched] = await Promise.all([
+    getWatchlistSymbols(id),
+    getHeldOrWatchedSymbols(id),
+  ]);
 
   // Build config object matching AgentConfigData shape (including intelligence)
   const currentConfig: Record<string, unknown> = {
@@ -67,6 +70,7 @@ export default async function AnalystEditPage({
     <AnalystEditClient
       analystId={id}
       currentConfig={currentConfig}
+      heldOrWatched={heldOrWatched}
       initialMessage={message}
     />
   );

@@ -92,6 +92,13 @@ export function editorPanelStart(
 
 // ─── Create and Apply ───────────────────────────────────────────────────────
 
+/** What Apply adds to the watchlist: the proposal's names the analyst doesn't already hold or watch. */
+export function watchlistAdds(proposed: AgentConfigData["watchlist"], heldOrWatched: string[]): string[] {
+  const have = new Set(heldOrWatched);
+  const names = (proposed ?? []).map((w) => (typeof w === "string" ? w : w.symbol).toUpperCase());
+  return Array.from(new Set(names)).filter((s) => !have.has(s));
+}
+
 /** Create: the builder's proposal as edited on the panel. */
 export function toCreateInput(config: AgentConfigData): BuilderConfig {
   return {

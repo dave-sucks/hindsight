@@ -146,6 +146,8 @@ interface AgentChatProps {
 
   // builder / editor
   currentConfig?: Record<string, unknown>;
+  /** Editor: what the analyst holds or watches, for the change list. */
+  heldOrWatched?: string[];
 
   /** Pre-loaded messages for replay (historical runs) */
   messages?: UIMessage[];
@@ -205,6 +207,7 @@ export function AgentChat({
   theses = [],
   transcript = null,
   currentConfig,
+  heldOrWatched,
   messages,
   composerSlot,
   principalScope,
@@ -285,6 +288,7 @@ export function AgentChat({
         theses={theses}
         transcript={transcript}
         currentConfig={currentConfig}
+        heldOrWatched={heldOrWatched}
         composerSlot={composerSlot}
         principalScope={principalScope}
         initialPrompt={recovered ? undefined : initialPrompt}
@@ -313,6 +317,7 @@ interface InnerProps {
   theses: ThesisRowData[];
   transcript: TranscriptRowData | null;
   currentConfig?: Record<string, unknown>;
+  heldOrWatched?: string[];
   composerSlot?: ReactNode;
   principalScope?: AgentChatProps["principalScope"];
   initialPrompt?: string;
@@ -339,6 +344,7 @@ function AgentChatInner({
   theses,
   transcript,
   currentConfig,
+  heldOrWatched,
   composerSlot,
   principalScope,
   initialPrompt,
@@ -411,8 +417,9 @@ function AgentChatInner({
       confirmLabel: mode === "builder" ? "Create Analyst" : "Apply Changes",
       confirmingLabel: mode === "builder" ? "Creating..." : "Applying...",
       currentConfig: mode === "editor" ? currentConfig : undefined,
+      heldOrWatched: mode === "editor" ? heldOrWatched : undefined,
     }),
-    [handleConfirmConfig, handleConfigSuggested, onConfigSuggested, onPodcastConfigSuggested, isMutating, mode, currentConfig],
+    [handleConfirmConfig, handleConfigSuggested, onConfigSuggested, onPodcastConfigSuggested, isMutating, mode, currentConfig, heldOrWatched],
   );
 
   // ── research-run: tabbed layout ───────────────────────────────────────────
