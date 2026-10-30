@@ -4,8 +4,9 @@
  * (Secular Compounder): three sale proposals, three trigger-run notes, four
  * fires and the expiry job's lines, as stored. Text cut to its opening.
  */
-import { activityFeed, proposalSteps, recentItems, RECENT_ITEMS, type ProposalOrder, type StoredLine } from "./activity-feed";
+import { activityFeed, proposalSteps, recentItems, serializeFeedItem, RECENT_ITEMS, type ProposalOrder, type StoredLine } from "./activity-feed";
 import { saidBlock, unansweredWord } from "@/lib/agent/stock-context";
+import { toRow, withPriceChanges, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
 
 const at = (iso: string) => new Date(iso);
 const run = (id: string, mode = "INTRADAY_TACTICAL") => ({ runId: id, run: { mode } });
@@ -122,5 +123,65 @@ describe("one paragraph per trade: a run's note on a proposal and the proposal a
     expect(proposed).toMatchObject({ type: "PROPOSAL_PROPOSED", runId: "cmvtlisse000k07jtcm2d5e72", runMode: "INTRADAY_TACTICAL", triggerId: TRAIL, priceAtTime: 881.14, rationale: "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" });
     const line = saidBlock("GEV", merged)!.split("\n")[2];
     expect(line).toBe('  10-29 09:45 · $881.14 · Proposed sell 9 shares — awaiting your review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter"');
+  });
+});
+
+/**
+ * The price on a Declined or Expired step, from the line its writer saved then.
+ * PLTR (Secular Compounder): its sale of 38 shares, proposed 10-29 10:15 ET,
+ * lapsed 10-30; the job flipped it at 10:30 ET, at $187.07. ASML: its sale of
+ * 5 shares, declined 10-08 12:59 ET, at $1,782.07. Production stored neither
+ * price (the writers record it now); free text is cut, and PLTR's note is
+ * stamped with its sale, as notes are now.
+ */
+describe("a declined or expired proposal shows the price then", () => {
+  const PLTR = "cmvtmlg0p000708l5i68zo9w0";
+  const ASML = "cmuyg481u000i04l7atzmlo64";
+  const SELL = "21976408-e091-49d6-9411-649feba59fdf";
+  const pltr: ProposalOrder = { id: PLTR, status: "EXPIRED", intent: "CLOSE", side: "SELL", quantity: 38, symbol: "PLTR", rationale: "(the reason)", rejectionMessage: null, expiresAt: at("2026-10-30T14:15:33.698Z"), alpacaConfirmedAt: null, filledPrice: null, createdAt: at("2026-10-29T14:15:33.698Z"), updatedAt: at("2026-10-30T14:30:50.982Z"), positionId: "cmur09ux8000004kwtc96y54i" };
+  const asml: ProposalOrder = { id: ASML, status: "REJECTED", intent: "CLOSE", side: "SELL", quantity: 5, symbol: "ASML", rationale: "(the reason)", rejectionMessage: "(your comment)", expiresAt: at("2026-10-08T18:33:20.725Z"), alpacaConfirmedAt: at("2026-10-08T16:59:50.488Z"), filledPrice: null, createdAt: at("2026-10-07T18:33:20.725Z"), updatedAt: at("2026-10-08T16:59:50.559Z"), positionId: "cmtn0hpa6000304juujs868k7" };
+  const copy = (orderId: string, status: string) => ({ proposal: { from: { orderId, status: "AWAITING_APPROVAL" }, to: { orderId, status } } });
+  const lapse: StoredLine = { id: "cmvv2kygv000z08l2l6gy5txh", type: "PROPOSAL_EXPIRED", timestamp: at("2026-10-30T14:30:51.007Z"), summary: "CLOSE proposal on PLTR expired without user decision", priceAtTime: 187.07, fieldChanges: copy(PLTR, "EXPIRED") };
+  const decline: StoredLine = { id: "cmuzs7twn000106js6z0075a2", type: "PROPOSAL_REJECTED", timestamp: at("2026-10-08T16:59:50.951Z"), summary: "Rejected CLOSE proposal on ASML", priceAtTime: 1782.07, fieldChanges: copy(ASML, "REJECTED") };
+  const pltrDay: StoredLine[] = [
+    { id: "cmvtmlt2r000908l5839rw9tl", type: "REVIEWED", timestamp: at("2026-10-29T14:15:50.643Z"), triggerId: SELL, priceAtTime: 195.22, summary: "Reviewed PLTR thesis — no changes", rationale: "(the analyst's note)", tradeId: PLTR, ...run("cmvtmleo5000408l5qmvb66bz") },
+    { id: "cmvtmlfkm000608l58n4y11pm", type: "TRIGGER_FIRED", timestamp: at("2026-10-29T14:15:33.142Z"), triggerId: SELL, priceAtTime: 195.39, summary: "Sell if below $196", ...run("cmvtmleo5000408l5qmvb66bz") },
+  ];
+  const step = (feed: ReturnType<typeof activityFeed>, type: string) => feed.find((i) => i.type === type && i.id.startsWith("order:"))!;
+
+  it("PLTR: the expiry line's price lands on the Expired step; the saved line is still dropped; the note stays on Proposed", () => {
+    const feed = activityFeed({ updates: [lapse, ...pltrDay], orders: [pltr] });
+    expect(feed.map((i) => [i.id, i.priceAtTime])).toEqual([
+      [`order:${PLTR}:expired`, 187.07],
+      [`order:${PLTR}:proposed`, 195.22],
+      ["cmvtmlfkm000608l58n4y11pm", 195.39],
+    ]);
+    expect(step(feed, "PROPOSAL_PROPOSED")).toMatchObject({ rationale: "(the analyst's note)", runId: "cmvtmleo5000408l5qmvb66bz", triggerId: SELL });
+    expect(step(feed, "PROPOSAL_EXPIRED").rationale).toBeNull();
+  });
+
+  it("ASML: the decline line's price lands on the Declined step, with your comment", () => {
+    expect(step(activityFeed({ updates: [decline], orders: [asml] }), "PROPOSAL_REJECTED")).toMatchObject({ priceAtTime: 1782.07, rationale: "(your comment)" });
+  });
+
+  it("no saved line, or one saved without a price (every row before this change): no price", () => {
+    expect(step(activityFeed({ updates: [], orders: [pltr] }), "PROPOSAL_EXPIRED").priceAtTime).toBeNull();
+    expect(step(activityFeed({ updates: [{ ...lapse, priceAtTime: null }], orders: [pltr] }), "PROPOSAL_EXPIRED").priceAtTime).toBeNull();
+    // An expiry copy never prices a Declined step.
+    expect(step(activityFeed({ updates: [{ ...lapse, fieldChanges: copy(ASML, "EXPIRED") }], orders: [asml] }), "PROPOSAL_REJECTED").priceAtTime).toBeNull();
+  });
+
+  it("the agent reads the price on the line", () => {
+    const lines = saidBlock("PLTR", activityFeed({ updates: [lapse, ...pltrDay], orders: [pltr] }))!.split("\n");
+    expect(lines[1]).toBe("  10-30 10:15 · $187.07 · Expired sell 38 shares — no decision");
+    const declined = saidBlock("ASML", activityFeed({ updates: [decline], orders: [asml] }))!.split("\n");
+    expect(declined[1]).toBe('  10-08 12:59 · $1782.07 · Declined sell 5 shares — "(your comment)"');
+  });
+
+  it("the timeline draws the move from the previous priced row: $195.22 → $187.07", () => {
+    const rows = withPriceChanges(activityFeed({ updates: [lapse, ...pltrDay], orders: [pltr] }).map((i) => toRow({ kind: "event", row: serializeFeedItem(i) as unknown as TimelineUpdate })));
+    expect(rows[0]).toMatchObject({ type: "PROPOSAL_EXPIRED", price: 187.07 });
+    expect(rows[0].priceChange?.dollars).toBeCloseTo(-8.15, 2);
+    expect(rows[0].priceChange?.pct).toBeCloseTo(-4.17, 2);
   });
 });

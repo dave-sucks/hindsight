@@ -7,7 +7,8 @@
  * the stock's saved Activity lines (`ThesisUpdate`) plus each proposal's
  * steps, built from its order (the Order table is the source of truth for
  * proposed / approved / declined / expired; its ThesisUpdate copies were
- * dropped ~78% of the time by a fire-and-forget bug and are never trusted).
+ * dropped ~78% of the time by a fire-and-forget bug, so only the price a
+ * Declined or Expired copy recorded is read from them).
  *
  * A paragraph lives in one place: the proposal's reason on its "Proposed"
  * step, your comment on a "Declined" step. An "Approved" or "Expired" step is
@@ -140,18 +141,24 @@ export function toFeedItem(u: StoredLine): FeedItem {
  * proposal it made (the note row stamped with the order as its `tradeId`,
  * lib/proposals/auto-writeup.ts) is one line with the proposal: the
  * "Proposed" step carries the note, the run and the trigger it answered.
+ * A dropped Declined or Expired copy gives its step the price it recorded.
  * `limit` cuts the merged list; a caller that wants the newest N loads at
  * least N of each.
  */
 export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrder[]; limit?: number }): FeedItem[] {
   const covered = new Set(args.orders.map((o) => o.id));
   const noteFor = new Map<string, FeedItem>();
+  const priceFor = new Map<string, number>();
   const kept: FeedItem[] = [];
   for (const u of args.updates) {
     const item = toFeedItem(u);
     if (u.type.startsWith("PROPOSAL_")) {
       const oid = proposalOrderId(u.fieldChanges);
-      if (oid != null && covered.has(oid)) continue;
+      if (oid != null && covered.has(oid)) {
+        const key = `${oid}:${u.type}`;
+        if ((u.type === "PROPOSAL_REJECTED" || u.type === "PROPOSAL_EXPIRED") && item.priceAtTime != null && !priceFor.has(key)) priceFor.set(key, item.priceAtTime);
+        continue;
+      }
     } else if ((u.type === "UPDATED" || u.type === "REVIEWED") && item.tradeId && covered.has(item.tradeId) && !noteFor.has(item.tradeId)) {
       noteFor.set(item.tradeId, item);
       continue;
@@ -159,8 +166,11 @@ export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrde
     kept.push(item);
   }
   const steps = args.orders.flatMap(proposalSteps).map((s) => {
-    const note = s.type === "PROPOSAL_PROPOSED" ? noteFor.get(proposalOrderId(s.fieldChanges) ?? "") : undefined;
-    return note ? { ...s, rationale: note.rationale, runId: note.runId, runMode: note.runMode, triggerId: note.triggerId, priceAtTime: note.priceAtTime } : s;
+    const oid = proposalOrderId(s.fieldChanges) ?? "";
+    const note = s.type === "PROPOSAL_PROPOSED" ? noteFor.get(oid) : undefined;
+    if (note) return { ...s, rationale: note.rationale, runId: note.runId, runMode: note.runMode, triggerId: note.triggerId, priceAtTime: note.priceAtTime };
+    const price = priceFor.get(`${oid}:${s.type}`);
+    return price != null ? { ...s, priceAtTime: price } : s;
   });
   const merged = [...kept, ...steps].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   return args.limit != null ? merged.slice(0, args.limit) : merged;

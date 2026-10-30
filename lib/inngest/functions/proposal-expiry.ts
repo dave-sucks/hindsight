@@ -7,8 +7,8 @@
  *   - for OPEN intent: flip Position(PENDING_APPROVAL → CANCELLED) so the
  *     portfolio stops carrying the phantom (no real Alpaca holding ever
  *     existed for it)
- *   - write ThesisUpdate(type='PROPOSAL_EXPIRED') so the agent reads the
- *     expiry on its next run and can choose to re-propose
+ *   - write ThesisUpdate(type='PROPOSAL_EXPIRED') with the stock's price
+ *     then, so the agent reads the expiry on its next run and can re-propose
  *
  * The cron mirrors reconcile-orders' cadence pattern. 30 min is the right
  * granularity: 24h default expiry × 48 cron ticks per day means we never
@@ -21,6 +21,8 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
+import { getLiveQuotes } from "@/lib/market-data/live-quote";
+import { readPrice } from "@/lib/market-data/quote-age";
 
 // Mon-Fri 4 AM-8 PM ET, every 30 min — covers any proposal expiring during
 // the trading day. Off-hours expiries roll over to the next ET open.
@@ -66,6 +68,12 @@ export const proposalExpiry = inngest.createFunction(
     if (expired.length === 0) {
       return { checked: 0, expired: 0 };
     }
+
+    // Each stock's price as its proposals lapse, in one quote call; none without a quote.
+    const prices = await step.run("price-expired", async () => {
+      const quotes = await getLiveQuotes(expired.map((o) => o.symbol), { caller: "other", now });
+      return Object.fromEntries(expired.map((o) => [o.symbol, readPrice({ ticker: o.symbol, quote: quotes[o.symbol.toUpperCase()]?.quote, now }).price]));
+    });
 
     let flippedOrders = 0;
     let cancelledPositions = 0;
@@ -135,6 +143,7 @@ export const proposalExpiry = inngest.createFunction(
             thesisId,
             type: "PROPOSAL_EXPIRED",
             summary: `${intent} proposal on ${order.symbol} expired without user decision`,
+            priceAtTime: prices[order.symbol] ?? null,
             fieldChanges: {
               proposal: {
                 from: { orderId: order.id, status: "AWAITING_APPROVAL" },
