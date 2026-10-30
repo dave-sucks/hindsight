@@ -111,3 +111,14 @@ it("Create and Apply save the fence from the top-level fields, with no cap tier 
   expect(applied).toMatchObject({ industries: CATALYST_FENCE.industries, marketCapMin: BigInt(1_000_000_000) });
   expect(applied).not.toHaveProperty("minMarketCapTier");
 });
+
+// The Compounder's 11 sectors with no industries: the fill used to write all
+// 71 GICS industries in them, a second filter that can disagree with the
+// vendor's industry names and mark a stock outside the fence.
+it("a proposal with sectors and no industries saves no industry filter", async () => {
+  const sectors = ["Information Technology", "Health Care", "Industrials", "Utilities", "Communication Services", "Energy", "Materials", "Consumer Discretionary", "Consumer Staples", "Financials", "Real Estate"];
+  const proposal = configSchema.parse({ ...CALL, ...{ sectors, industries: undefined, marketCapMin: undefined, marketCapMax: undefined } }) as AgentConfigData;
+  expect(proposal.industries ?? []).toEqual([]);
+  await createAnalystFromBuilder(toCreateInput(proposal));
+  expect(create.mock.calls[0][0].data).toMatchObject({ sectors, industries: [] });
+});

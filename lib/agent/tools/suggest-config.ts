@@ -9,24 +9,15 @@ import { tool } from "ai";
 import { z } from "zod";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
-import { GICS_INDUSTRIES_BY_SECTOR, type GicsSector } from "@/lib/universe/gics";
 
 // z.enum needs a non-empty tuple literal; derive one from the canonical lists.
 const SECTOR_VALUES = [...SECTORS] as [string, ...string[]];
 const INDUSTRY_VALUES = [...INDUSTRIES] as [string, ...string[]];
 
 // ── Normalizer: strips common agent mistakes before Zod validation ──────────
-// Every trip-wire below was being hit by real editor/builder runs and
-// producing a Zod wall of red in the UI. We now heal the config silently:
-// strip sentinel zeros, clamp oversized market-cap ceilings, and back-fill
-// `industries` from the chosen `sectors` when the agent forgets to narrow.
-// Auto-fill defaults to ALL GICS industries inside the chosen sectors — the
-// same semantics as "cross-industry sector-wide exposure" the strict refine
-// used to demand the user ask for. Wider fence is recoverable; a hard error
-// mid-edit is not.
-//
-// Kept strict: unknown sector/industry enum values, market-cap sentinels
-// above $5T (still caught by the belt-and-suspenders refine below).
+// Strips sentinel zeros and oversized market-cap ceilings, which real
+// editor/builder runs sent and which used to fail the whole call. Empty
+// industries stay empty: a sector already means every industry in it.
 function normalizeSuggestConfig(input: unknown): unknown {
   if (!input || typeof input !== "object") return input;
   const cfg: Record<string, unknown> = { ...(input as Record<string, unknown>) };
@@ -36,16 +27,6 @@ function normalizeSuggestConfig(input: unknown): unknown {
   if (cfg.marketCapMax === 0) delete cfg.marketCapMax;
   if (typeof cfg.marketCapMax === "number" && cfg.marketCapMax >= 5e12) {
     delete cfg.marketCapMax;
-  }
-
-  // Auto-fill top-level industries from sectors when missing/empty.
-  if (Array.isArray(cfg.sectors) && cfg.sectors.length > 0) {
-    const industries = cfg.industries;
-    if (!Array.isArray(industries) || industries.length === 0) {
-      cfg.industries = (cfg.sectors as string[]).flatMap(
-        (s) => GICS_INDUSTRIES_BY_SECTOR[s as GicsSector] ?? [],
-      );
-    }
   }
 
   return cfg;
