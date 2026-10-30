@@ -43,7 +43,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
-import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
+import { RecentNotes, ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { latestNoteView } from "@/lib/thesis/latest-note";
@@ -238,27 +238,6 @@ function VariantViewBlock({ variantView }: { variantView: string | null }) {
 // trade this is and where the exits are. Renders only when we have
 // horizon/target/stop info to show.
 
-// ── ClampedParagraph ──
-// The newest written note at the top of the sheet. Clamped to four lines;
-// the whole paragraph is the hit area, hover darkens, click toggles. Same as
-// the Activity feed's rows.
-function ClampedParagraph({ text, className }: { text: string; className?: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <p
-      className={cn(
-        "text-xl font-normal leading-relaxed cursor-pointer transition-colors",
-        !open && "line-clamp-4",
-        className,
-      )}
-      onClick={() => setOpen((v) => !v)}
-      title={open ? "Collapse" : "Expand"}
-    >
-      {text}
-    </p>
-  );
-}
-
 // WatchingRow ("Watching for entry above $X") was deleted in this redesign.
 // The headline is now coreBelief — the standing opinion — and the actual
 // entry condition is read from the ENTER trigger below it. The derived
@@ -449,56 +428,25 @@ function FilingsBlock({ data }: { data: FilingsResponse }) {
 // could name. Nothing here had a reader.
 
 /**
- * The top of the sheet: what is going on with this stock, right now.
- *
- * Three lines, in this order, and nothing else:
- *   1. the flag, named — `needsActionFlag`, one fixed sentence per enum
- *      case. Absent when nothing is flagged; "nothing is flagged" is not
- *      news and it used to take a line at the top of every stock.
- *   2. the newest thing an analyst WROTE about this stock — the rationale
- *      off the latest run-authored update. This is the block: it is the
- *      only part of the page that says what the situation is today.
- *   3. who wrote it and when, plus how old that is once it is stale.
- *
- * What this replaced (2026-09-30): "LATEST · Updated · 1h" over the frozen
- * core belief. Dave: "I like that I show the Core Belief. That is a
- * paragraph. It is helpful. The issue is it is not point in time." The
- * belief still renders — below the trade, labelled as the standing claim.
- *
- * The paragraph is only as good as what the run wrote; the header cannot
- * fix unreadable text, and the writing standard is tracked separately.
+ * The work flag over the stock's Activity: why a run will pick it up today,
+ * named (`needsActionFlag`), with the other situations it is in. Absent when
+ * nothing is flagged. The analysts' notes are the Activity rows below it.
  */
-function LatestNoteBlock({
+function WorkFlagLine({
   status,
-  latestUpdate,
   needsAction,
   situations,
   quoteLoading,
   quoteFailed,
-  analystName,
-  /** Text already shown verbatim in the trade block — never repeated here. */
-  suppressText,
 }: {
   status: string;
-  latestUpdate: ThesisDossier["latestUpdate"];
   needsAction: NeedsAction | null;
   /** Every situation the stock is in, lead first; the ones the lead didn't put it in follow the flag. */
   situations: Array<{ name: string; lead: boolean }>;
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
-  analystName: string | null;
-  suppressText: string | null;
 }) {
-  const note = latestUpdate?.rationale?.trim() || latestUpdate?.summary?.trim() || null;
-  // A pending proposal prints its own rationale in the trade block right
-  // below. When the newest written note IS that rationale, showing it twice
-  // made the sheet read as two agents saying the same thing.
-  const sameAsTrade =
-    note != null &&
-    suppressText != null &&
-    note.replace(/\s+/g, " ") === suppressText.replace(/\s+/g, " ");
-  const text = sameAsTrade ? null : note;
 
   // ONE flag line. `planSanity` used to stack under it — a second, unrelated
   // system (is this PLAN coherent?) painting the same amber as the work flag
@@ -508,7 +456,7 @@ function LatestNoteBlock({
   const also = situations.filter((x) => !x.lead).map((x) => x.name);
   const view = latestNoteView({
     status,
-    hasNote: text != null,
+    hasNote: false,
     hasReasons: flag != null || also.length > 0,
     quoteLoading,
     quoteFailed,
@@ -538,39 +486,7 @@ function LatestNoteBlock({
           Couldn&apos;t reach the live price, so the work flags couldn&apos;t be checked.
         </p>
       ) : null}
-
-      {view.showNote && text ? (
-        <>
-          <ClampedParagraph text={text} />
-          <WrittenByLine latestUpdate={latestUpdate} analystName={analystName} />
-        </>
-      ) : null}
     </div>
-  );
-}
-
-/**
- * Who wrote the newest note and when — one line, directly under that note.
- * Past a fortnight it says how old it is: a month-old paragraph reads as
- * current otherwise.
- */
-function WrittenByLine({
-  latestUpdate,
-  analystName,
-}: {
-  latestUpdate: ThesisDossier["latestUpdate"];
-  analystName: string | null;
-}) {
-  if (!latestUpdate) return null;
-  const writtenAt = new Date(latestUpdate.timestamp);
-  if (!Number.isFinite(writtenAt.getTime())) return null;
-  const daysOld = Math.floor((Date.now() - writtenAt.getTime()) / 86_400_000);
-  return (
-    <p className="text-xs text-muted-foreground">
-      {analystName ? `${analystName} · ` : ""}
-      written {writtenAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-      {daysOld >= 14 ? ` · ${daysOld} days ago` : ""}
-    </p>
   );
 }
 
@@ -1246,6 +1162,9 @@ export function ThesisBody({
   // right. Each tab opens its own pair under the tab bar — on Overview under
   // the price row too — so the cards start level with the chart. Only the
   // open tab is mounted, so the cards render once.
+  // The analysts' notes the agents are handed, as Activity rows.
+  const notes = state.notes ?? [];
+
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
   const sideColumn =
     surface === "page" ? (
@@ -1325,31 +1244,17 @@ export function ThesisBody({
         />
       ) : null}
 
-      {/* ── What just happened, and whether it needs work (DAV-304) ── */}
-      {/* Under the chart it comments on, above the triggers it leads to. */}
-      <LatestNoteBlock
+      {/* ── Whether it needs work today (DAV-304) ── */}
+      <WorkFlagLine
         status={state.status}
-        latestUpdate={state.latestUpdate}
         needsAction={quote?.needsAction ?? null}
         situations={quote?.situations ?? []}
         quoteLoading={quoteLoading}
         quoteFailed={!quoteLoading && quote == null}
-        analystName={state.analystName}
-        suppressText={tradeBanner ? (pendingProposal?.rationale ?? null) : null}
       />
 
-      {/* The last few Activity rows with something written, in the Activity tab's own design. */}
-      {thesis_id ? (
-        <ThesisTimelineSection
-          thesisId={thesis_id}
-          provenance={null}
-          recent={{
-            limit: 3,
-            skipTexts: [state.latestUpdate?.rationale ?? null, pendingProposal?.rationale ?? null],
-            onViewAll: () => setTab(2),
-          }}
-        />
-      ) : null}
+      {/* The analysts' notes the agents are handed, in the Activity tab's own design. */}
+      <RecentNotes notes={notes} onViewAll={() => setTab(2)} />
 
       {surface === "sheet" ? stockCards : null}
       </div>

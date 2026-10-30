@@ -802,17 +802,6 @@ export function proposalUserMessage(u: TimelineUpdate): string | null {
 //                whether it's visible before any click, per type.
 //   fold         true for the roll-up rows whose whole surface is a control
 
-/**
- * The Overview's Recent activity: the newest `limit` rows that have words,
- * leaving out proposals (the trade card shows the open one; the rest are
- * expiries) and any text already on the page above it.
- */
-export function recentRows(rows: TimelineRow[], skipTexts: Array<string | null>, limit: number): TimelineRow[] {
-  const same = (t: string) => t.replace(/\s+/g, " ").trim();
-  const shown = new Set(skipTexts.filter((t): t is string => !!t?.trim()).map(same));
-  return rows.filter((r) => !r.fold && r.description != null && !r.type.startsWith("PROPOSAL_") && !shown.has(same(r.description))).slice(0, limit);
-}
-
 export interface TimelineRow {
   key: string;
   /** Underlying ThesisUpdate type ("" for fold rows) — lets the caller
@@ -852,40 +841,6 @@ export interface TimelineRow {
   members?: boolean;
 }
 
-/**
- * Kinds whose prose earns its place without a click. Everything else is
- * title-only until asked. One set, keyed the same way as the title and the
- * dot — see `eventKind`.
- */
-const PROSE_VISIBLE = new Set<EventKind>([
-  // Your own note on the stock — it is the row.
-  "note",
-  "created",
-  "updated",
-  "edited-by-you",
-  "invalidated",
-  // Every transaction shows its reasoning — proposals included
-  // (principal, 2026-08-21). Only bare triggers and reviews stay
-  // title-only until asked.
-  "closed",
-  "opened",
-  "sold",
-  "dropped",
-  "back-to-watching",
-  "status",
-  "proposed",
-  "bought",
-  "sold-fill",
-  "approved",
-  "declined",
-  "expired",
-]);
-
-/** A review row that recorded nothing — same "no change" as an episode's. */
-const REVIEW_KINDS = new Set<EventKind>(["updated", "edited-by-you", "reviewed"]);
-function isSilentReview(u: TimelineUpdate): boolean {
-  return REVIEW_KINDS.has(eventKind(u)) && outcomePhrase(u) === "no change";
-}
 
 /** An edit you made by hand: the trigger popover marks it in fieldChanges; older rows carry a [USER] tag on the note. */
 export function isYourEdit(u: { rationale?: string | null; fieldChanges?: unknown }): boolean {
@@ -922,7 +877,8 @@ export function toRow(item: TimelineItem): TimelineRow {
       // changed nothing, its paragraph is the agent restating the thesis and
       // stays collapsed. A transaction row is never collapsed this way — its
       // write-up is the only place that reasoning appears.
-      showDescription: PROSE_VISIBLE.has(eventKind(u)) && !isSilentReview(u),
+      // Every line shows its words: two lines, a click for the rest.
+      showDescription: true,
       when: relativeTimestamp(u.timestamp),
       runId: u.runId,
       orderId: proposalOrderId(u),
@@ -949,14 +905,9 @@ export function toRow(item: TimelineItem): TimelineRow {
       price: lead.priceAtTime ?? item.response.priceAtTime,
       description: text,
       quoted,
-      // Prose shows when the review changed something AND nothing else on
-      // screen is already saying it. Two cases stay collapsed (one click
-      // away either way):
-      //   • "no change" — the paragraph is the agent restating the thesis.
-      //   • a staged proposal — the Proposed row right below carries the
-      //     write-up, so the episode would print it twice.
-      showDescription:
-        outcome !== "no change" && !outcome.startsWith("proposed "),
+      // The answer's words show, "no change" included: it is the analyst's
+      // note. The same words twice on screen are left to dropRepeatedProse.
+      showDescription: true,
       members: true,
       // An episode spans two moments. Showing only the fire is what made the
       // sheet header ("written Sep 28") disagree with the feed ("Fri") on the

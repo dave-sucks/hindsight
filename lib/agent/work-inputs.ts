@@ -31,7 +31,7 @@ import {
   type DeclineRow,
   type DeclineSummary,
 } from "@/lib/agent/declined-sale";
-import { ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
+import { ACTIVITY_LINES, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
 import { COPIED_RULE_CLEANUP, type ActivityRow } from "@/lib/agent/stock-context";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
@@ -343,7 +343,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     const scan = await prisma.thesisUpdate.findMany({
       where: { thesisId: { in: liveIds } },
       orderBy: { timestamp: "desc" },
-      take: Math.min(40 * liveIds.length, 1200),
+      take: Math.min(ACTIVITY_LINES * liveIds.length, 1200),
       select: ACTIVITY_SELECT,
     });
     const notes = await prisma.thesisUpdate.findMany({ where: { thesisId: { in: liveIds }, type: "NOTE" }, select: ACTIVITY_SELECT });

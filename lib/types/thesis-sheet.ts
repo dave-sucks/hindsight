@@ -121,11 +121,11 @@ export interface ThesisScoring {
 }
 
 /**
- * One ThesisUpdate row, in the shape the Activity tab's `TimelineUpdate`
- * expects, so the header line and the timeline are worded by the same
- * function. The fields the header never needs are sent as null/[].
+ * One analyst note (a ThesisUpdate row a run wrote), in the shape the
+ * Activity tab's `TimelineUpdate` expects, so the Overview and the Activity
+ * tab word it the same way. The fields it never needs are sent as null/[].
  */
-export interface ThesisLatestUpdate {
+export interface ThesisNote {
   id: string;
   timestamp: string;
   type: string;
@@ -185,12 +185,11 @@ export interface ThesisDossier {
    */
   lastReviewedAt: string | null;
   /**
-   * The most recent durable event — a review, a trigger fire, a sale, a level
-   * change. Leads the sheet so the page says what just happened, not only what
-   * the long-term belief is (DAV-304). Worded by the Activity tab's own
-   * `titleSegments`, so there is one grammar for both.
+   * The analysts' newest notes on the stock, newest first: the same list every
+   * run is handed (`recentAnswers`, lib/agent/stock-context.ts). The Overview
+   * shows them as Activity rows, words showing.
    */
-  latestUpdate: ThesisLatestUpdate | null;
+  notes: ThesisNote[];
   triggers: Trigger[];
   /**
    * The analyst that owns this thesis. Lets the trigger section deep-link

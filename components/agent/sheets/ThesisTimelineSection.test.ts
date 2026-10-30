@@ -653,13 +653,13 @@ describe("toRow — one shape for every item", () => {
     expect(bought.dot).toBe("buy");
   });
 
-  it("quiet types keep their prose until asked", () => {
+  it("a review shows its note without a click", () => {
     const reviewed = toRow({
       kind: "event",
       row: row({ type: "REVIEWED", rationale: "Nothing moved." }),
     });
-    expect(reviewed.showDescription).toBe(false);
-    expect(reviewed.description).toBe("Nothing moved."); // available on click
+    expect(reviewed.showDescription).toBe(true);
+    expect(reviewed.description).toBe("Nothing moved.");
   });
 
   it("every transaction shows its reasoning, proposals included", () => {
@@ -952,15 +952,15 @@ function baseRow() {
   };
 }
 
-describe("a row that changed nothing stays collapsed", () => {
+describe("a review that changed nothing still shows its note", () => {
   const show = (r: ReturnType<typeof row>) =>
     toRow({ kind: "event", row: r }).showDescription;
 
-  it("a review that recorded nothing hides its paragraph — trigger or no trigger", () => {
+  it("a review that recorded nothing shows its paragraph — trigger or no trigger", () => {
     // Standalone: the review clock came round and the run wrote a
     // re-attestation.
-    expect(show(row({ type: "REVIEWED", rationale: "Still holds." }))).toBe(false);
-    expect(show(row({ type: "UPDATED", fieldChanges: {}, rationale: "Still holds." }))).toBe(false);
+    expect(show(row({ type: "REVIEWED", rationale: "Still holds." }))).toBe(true);
+    expect(show(row({ type: "UPDATED", fieldChanges: {}, rationale: "Still holds." }))).toBe(true);
     // Answering a fire: same rule, via the episode's outcome.
     const items = buildTimeline(
       [
@@ -969,7 +969,7 @@ describe("a row that changed nothing stays collapsed", () => {
       ],
       "all",
     );
-    expect(toRow(items[0]).showDescription).toBe(false);
+    expect(toRow(items[0]).showDescription).toBe(true);
   });
 
   it("a review that changed something still shows it", () => {
@@ -980,7 +980,7 @@ describe("a row that changed nothing stays collapsed", () => {
 
   // The Proposed row right below carries the write-up; the episode would
   // print the same reasoning twice.
-  it("an episode that staged a proposal leaves the words to the proposal row", () => {
+  it("an episode that staged a proposal shows its note too", () => {
     const items = buildTimeline(
       [
         row({ id: "resp", type: "UPDATED", fieldChanges: {}, rationale: "I am buying here because…", timestamp: "2026-09-28T20:20:42Z" }),
@@ -991,7 +991,7 @@ describe("a row that changed nothing stays collapsed", () => {
     );
     const episode = items.find((i) => i.kind === "group")!;
     expect(toRow(episode).title.outcome).toBe("— proposed buy");
-    expect(toRow(episode).showDescription).toBe(false);
+    expect(toRow(episode).showDescription).toBe(true);
     expect(show(row({ type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("OPEN", 16), rationale: "I am buying here because…" }))).toBe(true);
   });
 });

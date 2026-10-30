@@ -533,11 +533,6 @@ async function restampThesisEntryOnFill(
       thesisId: thesis.id,
       type: "UPDATED",
       summary: `${thesis.ticker} buy price set to what was paid — $${paidPrice.toFixed(2)}`,
-      rationale:
-        (thesis.entryPrice != null
-          ? `Filled at $${paidPrice.toFixed(2)} against the $${thesis.entryPrice.toFixed(2)} on the thesis. Now that we own it, the buy price on the thesis is what we paid.`
-          : `Filled at $${paidPrice.toFixed(2)}; the thesis had no buy price, so it is now what we paid.`) +
-        (moved ? ` The automatic stop moves with it, to $${stopLoss?.toFixed(2)}.` : ""),
       fieldChanges: {
         entryPrice: { from: thesis.entryPrice, to: paidPrice },
         ...(moved ? { triggerOps: { from: null, to: acceptedOps(moved.results) } } : {}),

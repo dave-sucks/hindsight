@@ -495,8 +495,6 @@ async function transitionThesisToPromoted(input: {
     thesisId: thesis.id,
     type: "STATUS_CHANGED",
     summary,
-    rationale:
-      "Administrative transition, not a thesis decision. First live run is expected to call place_trade (re-enter) or update_thesis(WATCHING) (defer). Killing a PROMOTED thesis directly is forbidden by update_thesis.",
     // Structured diff — the timeline UI reads `status.to === "PROMOTED"`
     // to identify these rows; the conviction-context numbers give the
     // user a quick read on what was held without re-deriving from
@@ -750,8 +748,6 @@ async function revertPromotedThesesToWatching(analystId: string): Promise<number
       thesisId: t.id,
       type: "STATUS_CHANGED",
       summary: `Thesis PROMOTED→WATCHING because the analyst was demoted to PAPER before this thesis re-entered live. Conviction preserved; the analyst will re-evaluate on its next paper run.`,
-      rationale:
-        "Demote-while-PROMOTED downgrade. Paper tenure + P&L + review count remain on the row for context.",
       fieldChanges: { status: { from: "PROMOTED", to: "WATCHING" } },
       runId: null,
     });

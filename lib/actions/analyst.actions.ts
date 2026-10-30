@@ -967,7 +967,6 @@ export async function createAnalystFromBuilder(
           thesisId: t.id,
           type: "CREATED",
           summary: `Builder-seeded ${t.ticker} on analyst creation (awaiting first research)`,
-          rationale: "Analyst was created with this ticker on the suggested watchlist. The first daily run will research it.",
           fieldChanges: {},
           runId: builderRun.id,
         })),
@@ -1299,7 +1298,6 @@ export async function updateAnalystFromBuilder(
               thesisId: t.id,
               type: "STATUS_CHANGED",
               summary: `Removed ${t.ticker} from watchlist via editor chat`,
-              rationale: "Editor removed this ticker from the analyst's watchlist.",
               fieldChanges: {
                 status: { from: t.status, to: "RETIRED" },
                 retiredReason: { from: null, to: "DROPPED" },

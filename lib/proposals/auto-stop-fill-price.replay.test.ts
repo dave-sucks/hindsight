@@ -71,7 +71,8 @@ describe("IOT 2026-10-15, stop when buying on at 6%", () => {
     expect(thesis()).toMatchObject({ status: "HOLDING", entryPrice: PAID, stopLoss: 40.13 });
     expect(position()).toMatchObject({ avgCost: PAID, stopLoss: 40.13 });
     expect(fillLine()?.fieldChanges.triggerOps?.to.map((o) => o.text)).toEqual(["Changed: Sell if below $40.19 → Sell if below $40.13"]);
-    expect(fillLine()?.rationale).toMatch(/The automatic stop moves with it, to \$40\.13\./);
+    // The change is the line; no paragraph is written for it.
+    expect(fillLine()?.rationale ?? null).toBeNull();
   });
 
   it("made up, to show the gap: approved after it fell to $38, the floor is $35.72 under the price then, not $39.68 above it", async () => {
