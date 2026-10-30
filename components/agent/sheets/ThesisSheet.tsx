@@ -1024,12 +1024,28 @@ export function useThesisSheetData(
 //   surface "page":  the page's right-hand card carries the position, so the
 //                    banner shows only while a proposal waits on you; the
 //                    Price Targets block is the sidebar's too.
+/**
+ * What a page hosting the body adds to it: content at the foot of a tab's
+ * left column, and whole tabs after Activity. The stock page puts its
+ * history under Overview and Activity, its financials under Research, and
+ * adds News.
+ */
+export type ThesisBodySlots = {
+  overview?: ReactNode;
+  research?: ReactNode;
+  activity?: ReactNode;
+  tabs?: { label: string; content: ReactNode }[];
+};
+
+export const THESIS_BODY_TABS = { overview: 0, research: 1, activity: 2 } as const;
+
 export function ThesisBody({
   data,
   thesis_id,
   ticker,
   surface,
   aside,
+  slots,
 }: {
   data: ThesisSheetData & { state: ThesisDossier };
   thesis_id?: string;
@@ -1040,12 +1056,15 @@ export function ThesisBody({
    * tab row, so they start level with the chart instead of with the price.
    */
   aside?: ReactNode;
+  /** Built with the body's tab switch, so a slot's "View all" can open Activity. */
+  slots?: (nav: { show: (tab: number) => void }) => ThesisBodySlots;
 }) {
   const { state, quote, quoteLoading, earnings, filings, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
   // What the chart's selected range shows; the price row prints it.
   const [move, setMove] = useState<RangeMove | null>(null);
   // The open tab: Overview's "View all" opens Activity.
   const [tab, setTab] = useState(0);
+  const hosted = slots?.({ show: setTab });
 
   // ── Derived — durable from `state`, live from the hydration states ────────
   const liveStatus = state.status as ThesisStatus;
@@ -1181,6 +1200,11 @@ export function ThesisBody({
         <TabsTrigger value={0}>Overview</TabsTrigger>
         <TabsTrigger value={1}>Research</TabsTrigger>
         <TabsTrigger value={2}>Activity</TabsTrigger>
+        {hosted?.tabs?.map((t, i) => (
+          <TabsTrigger key={t.label} value={3 + i}>
+            {t.label}
+          </TabsTrigger>
+        ))}
       </TabsList>
 
       {/* ── Overview: price → the trade → chart → triggers → the latest note ── */}
@@ -1257,6 +1281,7 @@ export function ThesisBody({
       <RecentActivity items={recent} onViewAll={() => setTab(2)} />
 
       {surface === "sheet" ? stockCards : null}
+      {hosted?.overview}
       </div>
       {sideColumn}
       </div>
@@ -1357,6 +1382,7 @@ export function ThesisBody({
         }}
         updatedAt={state.writtenUp?.at ?? state.researchUpdatedAt}
       />
+      {hosted?.research}
       </div>
       {sideColumn}
       </div>
@@ -1384,10 +1410,20 @@ export function ThesisBody({
               No activity yet — this thesis hasn&apos;t been persisted.
             </p>
           )}
+          {hosted?.activity}
       </div>
       {sideColumn}
       </div>
       </TabsContent>
+
+      {hosted?.tabs?.map((t, i) => (
+        <TabsContent key={t.label} value={3 + i} className="space-y-5">
+          <div className={columns}>
+            <div className="min-w-0 space-y-5">{t.content}</div>
+            {sideColumn}
+          </div>
+        </TabsContent>
+      ))}
     </Tabs>
   );
 }
