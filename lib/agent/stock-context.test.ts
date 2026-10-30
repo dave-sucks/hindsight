@@ -138,7 +138,7 @@ describe("the block: the newest 8 lines of the feed, as the owner sees them, who
     // The same 8 the Overview shows, in the same order.
     expect(lines.slice(1, 9).map((l) => l.slice(2, 13))).toEqual(recentItems(feed).map((i) => saidLine(i).slice(2, 13)));
     // The 09-28 morning note, whole; the 15% review that fired after it, as the tab titles it.
-    expect(text).toContain('09-28 08:04 · $261.23 · Updated — "CEG\'s repeated 200-day review');
+    expect(text).toContain('09-28 08:04 · $261.23 · Review — "CEG\'s repeated 200-day review');
     expect(text).toContain("09-28 11:20 · $257.63 · Trigger: Trailing 15% from high — review");
     // Older than the 8: the 09-14 decline and the 09-15 removal are not here; the full history is one call away.
     expect(text).not.toContain(DECLINE_ENDS);

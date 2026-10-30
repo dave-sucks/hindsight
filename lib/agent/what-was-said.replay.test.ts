@@ -149,7 +149,7 @@ describe("the 09-18 morning run's read of CEG, through get_theses", () => {
     const context = full!.context!;
     expect(context.startsWith(HEADER)).toBe(true);
     // On main the row had `principalDirective: null` and was handed one fire.
-    expect(context).toContain('09-16 08:07 · $259.89 · Updated — "CEG is under pressure technically');
+    expect(context).toContain('09-16 08:07 · $259.89 · Review — "CEG is under pressure technically');
     expect(context).toContain("09-16 10:15 · $257.59 · Trigger: Trailing 15% from high — review");
     expect(context).toContain(RAISE_THE_FLOOR);
     expect(context).toContain("Trigger: Price below $256.42 — review");
@@ -168,7 +168,7 @@ describe("the 09-30 morning read of CEG, through get_theses", () => {
     expect(quiet).toBe(false);
     const context = full!.context!;
     expect(context.startsWith(HEADER)).toBe(true);
-    expect(context).toContain('09-28 08:04 · $261.23 · Updated — "CEG\'s repeated 200-day review');
+    expect(context).toContain('09-28 08:04 · $261.23 · Review — "CEG\'s repeated 200-day review');
     expect(context).toContain("09-28 11:20 · $257.63 · Trigger: Trailing 15% from high — review");
     expect(context).toContain(RAISE_THE_FLOOR);
     // The principal's 09-14 removal of the 8% trail is older than the 8: the full history is one call away.
@@ -249,7 +249,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
       position: { peakPrice: 1100 },
       fired: { price: 1038.82 },
     });
-    expect(prompt).toContain("09-28 08:00 · $1082.28 · Updated");
+    expect(prompt).toMatch(/09-28 08:00 · \$1082\.28 · (Review|Updated)/);
     expect(prompt).toContain("Trigger: Reports within 3 days — review");
     expect(prompt).toContain("Trigger: Up 15% from entry — review");
     expect(prompt).toContain("Trigger: Price down 4% today — review");

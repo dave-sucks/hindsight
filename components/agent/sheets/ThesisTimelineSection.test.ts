@@ -1017,3 +1017,42 @@ describe("what a call asked for and did not get", () => {
     expect(outcomePhrase(reviewed)).toBe("no change");
   });
 });
+
+// ── The owner's row design, 2026-10-30 ───────────────────────────────────────
+
+import { isPlainReview, withPriceChanges } from "./thesis-timeline-utils";
+
+describe("a plain review has no title; everything that happened keeps one", () => {
+  it("a review, or an update that changed nothing, is plain", () => {
+    expect(isPlainReview(row({ type: "REVIEWED", rationale: "Holding." }))).toBe(true);
+    expect(isPlainReview(row({ type: "UPDATED", fieldChanges: {}, rationale: "Holding." }))).toBe(true);
+  });
+
+  it("a plan change, a fire, a proposal, your edit and your note are not", () => {
+    expect(isPlainReview(row({ type: "UPDATED", fieldChanges: { triggerOps: { to: [{ op: "edit", text: "Stop $220 → $248" }] } } }))).toBe(false);
+    expect(isPlainReview(row({ type: "UPDATED", fieldChanges: { targetPrice: { from: 80, to: 95 } } }))).toBe(false);
+    expect(isPlainReview(row({ type: "TRIGGER_FIRED", summary: "Sell if below $868" }))).toBe(false);
+    expect(isPlainReview(row({ type: "PROPOSAL_PROPOSED", fieldChanges: proposalFc("CLOSE", 9) }))).toBe(false);
+    expect(isPlainReview(row({ type: "UPDATED", fieldChanges: { source: { to: "USER" }, triggerOps: { to: [{ op: "remove", text: "Removed: Review if above $52" }] } } }))).toBe(false);
+    expect(isPlainReview(row({ type: "NOTE", rationale: "Holding into the report." }))).toBe(false);
+  });
+});
+
+describe("each priced row carries its move from the row before it in time", () => {
+  const at = (price: number | null, id: string) => toRow({ kind: "event", row: row({ id, type: "TRIGGER_FIRED", summary: "Sell if below $868", priceAtTime: price }) });
+
+  it("newest first: the move is measured against the next older priced row; the oldest has none", () => {
+    const rows = withPriceChanges([at(881.14, "a"), at(null, "b"), at(848.6, "c"), at(855.12, "d")]);
+    expect(rows[0].priceChange).toEqual({ dollars: expect.closeTo(32.54, 2), pct: expect.closeTo(3.83, 2) });
+    expect(rows[1].priceChange).toBeNull();
+    expect(rows[2].priceChange).toEqual({ dollars: expect.closeTo(-6.52, 2), pct: expect.closeTo(-0.76, 2) });
+    expect(rows[3].priceChange).toBeNull();
+  });
+
+  it("a member row under an open episode is not in the chain", () => {
+    const child = { ...at(900, "m"), child: true };
+    const rows = withPriceChanges([at(881.14, "a"), child, at(848.6, "c")]);
+    expect(rows[0].priceChange).toEqual({ dollars: expect.closeTo(32.54, 2), pct: expect.closeTo(3.83, 2) });
+    expect(rows[1].priceChange).toBeNull();
+  });
+});

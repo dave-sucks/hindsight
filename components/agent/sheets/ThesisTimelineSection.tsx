@@ -30,6 +30,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PriceChange } from "@/components/ui/price-change";
 import {
   buildTimeline,
   itemTimestamp,
@@ -38,6 +39,8 @@ import {
   dropRepeatedProse,
   toRow,
   episodeMembers,
+  isPlainReview,
+  withPriceChanges,
   type LadderChange,
   type DotKind,
   type TimelineFilter,
@@ -199,15 +202,22 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
     const prev = expanded.slice(0, i).reverse().find((p) => "kind" in p);
     return prev == null || label !== monthLabel(itemTimestamp(prev as TimelineItem)) ? label : null;
   });
-  const rows = dropRepeatedProse(expanded.map((item) => ("kind" in item ? toRow(item) : item))).map((r) => {
-    if (r.type !== "CREATED" || !provenance) return r;
-    const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
-    const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
-    return { ...r, description: r.description ? `${r.description} ${sourced}` : sourced };
-  });
+  const rows = withPriceChanges(
+    dropRepeatedProse(expanded.map((item) => ("kind" in item ? toRow(item) : item))).map((r) => {
+      if (r.type !== "CREATED" || !provenance) return r;
+      const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
+      const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
+      return { ...r, description: r.description ? `${r.description} ${sourced}` : sourced };
+    }),
+  );
+  // Which rows are plain reviews: no title, the paragraph is the row.
+  const plain = expanded.map((item) => "kind" in item && item.kind === "event" && isPlainReview(item.row));
   const ids = expanded.map((item) => ("kind" in item ? itemIds(item) : []));
-  return { rows, spans: proposalSpanSegments(items), months, ids };
+  return { rows: rows.map((r, i) => ({ ...r, plain: plain[i] })), spans: proposalSpanSegments(items), months, ids };
 }
+
+/** A row as drawn: the view-model plus whether it reads as a plain review. */
+type DrawnRow = TimelineRow & { plain?: boolean };
 
 /**
  * The Overview's Recent activity: the stock's newest 8 Activity lines, the
@@ -351,6 +361,17 @@ export function ThesisTimelineSection({ thesisId, provenance, recentIds }: Props
   );
 }
 
+/**
+ * One row, drawn one way (the owner's design, 2026-10-30):
+ *   - line one: the title when something happened (a fire, a proposal, a
+ *     trade, your edit, your note, a plan change); a plain review has no
+ *     title and its paragraph is line one, prefixed "Review:";
+ *   - the right of line one, always: the price then, with its move from the
+ *     row before it in the same arrow and colours as the page header, and
+ *     the time;
+ *   - under a titled row, its paragraph, two lines until opened;
+ *   - opened: the whole paragraph, then what changed (the trigger chips).
+ */
 function Row({
   row,
   isLast,
@@ -359,19 +380,18 @@ function Row({
   open,
   onToggle,
 }: {
-  row: TimelineRow;
+  row: DrawnRow;
   isLast: boolean;
   span: boolean;
   pulse: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
-  // A row is interactive when it has something more to show: prose to
-  // expand, or a fold to unpack. Everything else is plain text.
-  // A row opens when it has more to show: prose, a roll-up, or the member
-  // events behind an episode.
-  const interactive = row.fold || row.description != null || row.members;
-  const showDescription = row.description != null && (open || row.showDescription);
+  // A row opens when it has more to show: the rest of its paragraph, what
+  // changed, a roll-up, or the member events behind an episode.
+  const interactive = row.fold || row.description != null || row.members || row.chips.length > 0;
+  const plain = !!row.plain && row.description != null;
+  const showDescription = !plain && row.description != null && (open || row.showDescription);
 
   return (
     <div className="group/row flex gap-3">
@@ -390,27 +410,41 @@ function Row({
 
       <div className={cn("flex-1 min-w-0", !isLast && (row.child ? "pb-2" : "pb-4"))}>
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3">
-          <p
-            className={cn(
-              "font-normal leading-snug min-w-0",
-              row.child ? "text-xs text-muted-foreground" : "text-sm",
-              row.fold ? "text-muted-foreground" : !row.child && "text-foreground",
-              interactive && "cursor-pointer",
-            )}
-            onClick={interactive ? onToggle : undefined}
-          >
-            {row.title.primary ? (
-              <span className="font-semibold">{row.title.primary} </span>
-            ) : null}
-            {row.title.secondary}
-            {row.title.outcome ? (
-              <span className="font-semibold"> {row.title.outcome}</span>
-            ) : null}
-          </p>
+          {plain ? (
+            <p
+              className={cn(
+                "text-sm font-light text-muted-foreground leading-relaxed min-w-0 cursor-pointer",
+                row.quoted && "border-l-2 border-border pl-2",
+                !open && "line-clamp-2",
+              )}
+              onClick={onToggle}
+            >
+              <span className="font-semibold text-foreground">Review: </span>
+              {row.quoted ? `“${row.description}”` : row.description}
+            </p>
+          ) : (
+            <p
+              className={cn(
+                "font-normal leading-snug min-w-0",
+                row.child ? "text-xs text-muted-foreground" : "text-sm",
+                row.fold ? "text-muted-foreground" : !row.child && "text-foreground",
+                interactive && "cursor-pointer",
+              )}
+              onClick={interactive ? onToggle : undefined}
+            >
+              {row.title.primary ? (
+                <span className="font-semibold">{row.title.primary} </span>
+              ) : null}
+              {row.title.secondary}
+              {row.title.outcome ? (
+                <span className="font-semibold"> {row.title.outcome}</span>
+              ) : null}
+            </p>
+          )}
 
-          {/* Right rail: the timestamp swaps for actions on row hover —
-              run link + expand/collapse. No underline affordance on the
-              title (principal, 2026-08-21). */}
+          {/* Right rail: the price then with its move from the row before,
+              and the time; on hover they swap for the actions (run link,
+              expand). No underline affordance on the title (principal, 2026-08-21). */}
           <span className="relative flex items-center shrink-0 h-5 gap-2">
             <span
               className={cn(
@@ -419,8 +453,13 @@ function Row({
               )}
             >
               {row.price != null ? (
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  ${row.price.toFixed(2)}
+                <span className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium tabular-nums text-foreground">
+                    ${row.price.toFixed(2)}
+                  </span>
+                  {row.priceChange ? (
+                    <PriceChange dollarChange={row.priceChange.dollars} percentChange={row.priceChange.pct} size="sm" percentOnly />
+                  ) : null}
                 </span>
               ) : null}
               <span className="text-xs tabular-nums text-muted-foreground">
@@ -453,8 +492,6 @@ function Row({
           </span>
         </div>
 
-        {row.chips.length > 0 ? <LadderBadges changes={row.chips} /> : null}
-
         {showDescription ? (
           <p
             className={cn(
@@ -467,6 +504,9 @@ function Row({
             {row.quoted ? `“${row.description}”` : row.description}
           </p>
         ) : null}
+
+        {/* What changed, under the paragraph, only once the row is open. */}
+        {open && row.chips.length > 0 ? <LadderBadges changes={row.chips} /> : null}
       </div>
     </div>
   );

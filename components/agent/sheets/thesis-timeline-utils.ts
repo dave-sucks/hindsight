@@ -813,6 +813,8 @@ export interface TimelineRow {
   /** Quote at the moment of the event. Null when unknown, and null on
    * trade rows whose title already carries the fill price. */
   price: number | null;
+  /** The move from the previous priced row (the one before it in time), set by `withPriceChanges`. */
+  priceChange?: { dollars: number; pct: number } | null;
   description: string | null;
   /** Description is the principal's own words → quote styling. */
   quoted: boolean;
@@ -944,6 +946,36 @@ export function toRow(item: TimelineItem): TimelineRow {
     orderId: null,
     fold: true,
   };
+}
+
+/**
+ * A plain review: a run looked and left the plan alone. It gets no title;
+ * its paragraph is the row, prefixed "Review:". Everything that happened
+ * (a fire, a proposal, a trade, your edit, your note, a plan change) keeps
+ * its title. (The owner's design, 2026-10-30.)
+ */
+export function isPlainReview(u: TimelineUpdate): boolean {
+  const kind = eventKind(u);
+  if (kind === "reviewed") return true;
+  return kind === "updated" && updatedSecondary(u) == null && ladderChangeLines(u).length === 0 && notAppliedLines(u).length === 0;
+}
+
+/**
+ * Each priced row's move from the previous priced row in time (the list is
+ * newest first, so the one after it). Child rows under an open episode and
+ * fold rows carry no price and are skipped. The oldest priced row has no
+ * move to show.
+ */
+export function withPriceChanges(rows: TimelineRow[]): TimelineRow[] {
+  const out = rows.map((r) => ({ ...r, priceChange: null as TimelineRow["priceChange"] }));
+  let prev: number | null = null;
+  for (let i = out.length - 1; i >= 0; i--) {
+    const r = out[i];
+    if (r.child || r.price == null) continue;
+    if (prev != null && prev > 0) out[i] = { ...r, priceChange: { dollars: r.price - prev, pct: ((r.price - prev) / prev) * 100 } };
+    prev = r.price;
+  }
+  return out;
 }
 
 /**
