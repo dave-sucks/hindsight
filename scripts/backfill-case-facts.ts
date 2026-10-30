@@ -235,7 +235,7 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
     // the recording's own `researchAge` (as of the day) decides that one.
     const freshThen = (row.researchAge as { freshness?: string } | null)?.freshness === "fresh";
     const needs = computeNeedsAction(input).filter((n) => !(freshThen && n.kind === "RESEARCH_STALE"));
-    const unanswered = stockContextFor({ ticker, rows: rowsThen, triggers: ladder, now: at, currentPrice: price }).unansweredDecision != null;
+    const unanswered = stockContextFor({ ticker, rows: rowsThen }).unansweredDecision != null;
     const sources: SituationSources = {
       needs, triggers: ladder, status, direction,
       planSanity: (resolved?.planSanity as Array<{ kind: string }> | null) ?? null,

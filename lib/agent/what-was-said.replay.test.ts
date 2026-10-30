@@ -1,7 +1,8 @@
 /**
  * what-was-said.replay.test.ts — every agent that decides on a stock reads
- * what has been said on it first, and a fired trigger stays open until an
- * agent answers it (docs/plans/AGENT_CONTEXT.md §3.2, §3.3).
+ * the stock's newest 8 Activity lines first, exactly as the owner sees them
+ * (lib/thesis/activity-feed.ts), and a fired trigger stays open until an
+ * agent answers it.
  *
  * CEG, Secular Compounder, September 2026, from its stored rows
  * (lib/agent/__fixtures__/ceg-what-was-said-2026-09.json; the position and the
@@ -9,15 +10,12 @@
  *
  *  - 09-14 11:43 ET the principal declined a sale in 709 characters, ending
  *    "Hard reject. If anything, today is a setup for the Secular Compounder
- *    to add, not exit." It was the newest line for four hours. No morning
- *    run from 09-16 to 09-30 was shown it; the trigger runs that afternoon
- *    got it cut at 120 characters, and from 15:55 not at all.
- *  - 09-16 the analyst's "15% off the high" review fired (its rule: "hold and
- *    raise the floor under real structure"). The 09-18 morning run was
- *    handed only the newest fire, "below the 200-day".
- *  - 09-28 11:20 the same review fired again; the principal's cleanup of
- *    copied rules at 11:56 counted as its answer. On 09-30 the morning run
- *    filed CEG as quiet.
+ *    to add, not exit." Before 2026-09-30 the trigger runs that afternoon
+ *    got it cut at 120 characters; before 2026-10-30 a run got it only until
+ *    the next answer. Now it is one of the 8 lines, whole, for as long as it
+ *    is among the newest 8.
+ *  - 09-16 the analyst's "15% off the high" review fired. The 09-18 morning
+ *    run was handed only the newest fire; now every fire is a line.
  */
 import raw from "@/lib/agent/__fixtures__/ceg-what-was-said-2026-09.json";
 import floorRaw from "@/lib/agent/__fixtures__/ceg-floor-too-far-2026-09-30.json";
@@ -32,6 +30,7 @@ import {
   REPLAY_ANALYST_ID,
 } from "@/lib/replay";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
+import { activityFeed, recentItems } from "@/lib/thesis/activity-feed";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -52,11 +51,13 @@ const fl = floorRaw as unknown as {
   equity: Record<string, number>;
 };
 
+const DECLINE = "cmu1ex281000104jq0w42txms";
 const DECLINE_ENDS = "Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.";
 const RAISE_THE_FLOOR = "hold and raise the floor under real structure (the 20-day low, the breakout level)";
+const HEADER = "WHAT'S BEEN SAID ON $CEG — its newest 8 Activity lines, newest first, as the owner sees them:";
 
 /** CEG's Activity lines before `at`, stored the way the database holds them (the run joined inline). */
-function linesBefore(at: string): Row[] {
+function linesBefore(at: string) {
   const cut = new Date(at).getTime();
   return fx.updates
     .filter((u) => new Date(u.timestamp).getTime() < cut)
@@ -72,7 +73,7 @@ function linesBefore(at: string): Row[] {
       runId: u.runId,
       priceAtTime: u.priceAtTime,
       tradeId: null,
-      signalIds: [],
+      signalIds: [] as string[],
       positionAtTime: null,
       run: u.runMode ? { mode: u.runMode } : null,
     }));
@@ -142,16 +143,18 @@ describe("the fixture is the production case", () => {
 });
 
 describe("the 09-18 morning run's read of CEG, through get_theses", () => {
-  it("opens with the 09-16 answer and all three fires since it — not the 09-14 decline, which the trigger runs answered", async () => {
+  it("the 8 newest lines: the 09-16 answer, every fire since it, and the principal's 09-14 removal", async () => {
     const { full } = await morningRead(fx.thesis0918, fx.runs.morning0918.readAt, fx.runs.morning0918.price);
     expect(full).not.toBeNull();
     const context = full!.context!;
+    expect(context.startsWith(HEADER)).toBe(true);
     // On main the row had `principalDirective: null` and was handed one fire.
-    expect(context).toContain("Last look: morning run, 09-16 08:07");
-    expect(context).toContain("Since then, not yet answered:");
-    expect(context).toContain(RAISE_THE_FLOOR); // the 15% review main never handed over
-    expect(context).toContain("Review if below $256.42 — 09-16 10:30");
-    expect(context).toMatch(/Review if below the 200-day average — fired 2×/);
+    expect(context).toContain('09-16 08:07 · $259.89 · Updated — "CEG is under pressure technically');
+    expect(context).toContain("09-16 10:15 · $257.59 · Trigger: Trailing 15% from high — review");
+    expect(context).toContain(RAISE_THE_FLOOR);
+    expect(context).toContain("Trigger: Price below $256.42 — review");
+    expect(context).toContain("Edited by you [Removed: Trailing 8% from high → exit]");
+    // The 09-14 decline is older than the 8.
     expect(context).not.toContain(DECLINE_ENDS);
     expect(Object.keys(full!)[0]).toBe("context");
     expect(full).not.toHaveProperty("principalDirective");
@@ -159,33 +162,28 @@ describe("the 09-18 morning run's read of CEG, through get_theses", () => {
 });
 
 describe("the 09-30 morning read of CEG, through get_theses", () => {
-  it("the 09-28 15%-off-the-high review is still open: the principal's cleanup is not an agent's answer, and is not shown", async () => {
-    const { full } = await morningRead(fl.thesisBefore, fx.runs.morning0930.readAt, fx.runs.morning0930.price);
+  it("the 09-28 15%-off-the-high review is still open: the principal's cleanup is not an agent's answer", async () => {
+    const { full, quiet } = await morningRead(fl.thesisBefore, fx.runs.morning0930.readAt, fx.runs.morning0930.price);
     expect(full).not.toBeNull();
+    expect(quiet).toBe(false);
     const context = full!.context!;
-    expect(context).toContain("Last look: morning run, 09-28 08:04");
-    expect(context).toContain("09-28 11:20 at $257.63");
+    expect(context.startsWith(HEADER)).toBe(true);
+    expect(context).toContain('09-28 08:04 · $261.23 · Updated — "CEG\'s repeated 200-day review');
+    expect(context).toContain("09-28 11:20 · $257.63 · Trigger: Trailing 15% from high — review");
     expect(context).toContain(RAISE_THE_FLOOR);
-    // The principal's own removal of the 8% trail, 09-14 22:29 ET, six run answers back.
-    expect(context).toContain("Removed by the principal (don't add these back unless the thesis changes):\n  09-14 22:29: Trailing 8% from high → exit\nLast look:");
-    expect(context).not.toContain("copied rule");
-    expect(context).not.toContain(DECLINE_ENDS);
+    // The principal's 09-14 removal of the 8% trail is older than the 8: the full history is one call away.
+    expect(context).not.toContain("Trailing 8% from high");
+    expect(context).toContain('Full history: get_theses(tickers: ["CEG"], include_history: true)');
   });
 });
 
 describe("the 09-14 trigger runs", () => {
   const promptAt = (loadedAt: string, firedPrice: number) => {
-    const rows = linesBefore(loadedAt).map((r) => ({ ...r, runMode: (r.run as { mode?: string } | null)?.mode ?? null })) as never;
-    const context = stockContextFor({
-      ticker: "CEG",
-      rows,
-      triggers: [...fx.thesis0918.triggers, ...fl.analyst.triggers],
-      now: new Date(loadedAt),
-      currentPrice: firedPrice,
-    }).text;
+    const rows = linesBefore(loadedAt);
+    const context = stockContextFor({ ticker: "CEG", rows }).text;
     const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, rationale: "Gave back 8% from the high." } as Trigger;
     // Since step 10 the trigger run reads the stock as get_theses's short row with the setup's lines; what's been said is its `said`.
-    return buildTacticalSystemPrompt({
+    const prompt = buildTacticalSystemPrompt({
       analyst: { name: fl.analyst.name, analystPrompt: null },
       stock: {
         ticker: "CEG",
@@ -196,31 +194,32 @@ describe("the 09-14 trigger runs", () => {
       position: { peakPrice: 303.4 },
       fired: { price: firedPrice },
     });
+    return { prompt, inTheEight: recentItems(activityFeed({ updates: rows, orders: [] })).some((i) => i.id === DECLINE) };
   };
 
-  it("15:30, the first run after the decline: the whole decline, the price then and now, and the rule to answer what it asks", () => {
-    const prompt = promptAt(fx.runs.trigger0914_1530.loadedAt, 264.6);
-    expect(prompt).toContain("WHAT'S BEEN SAID ON $CEG");
-    expect(prompt).toContain("The principal, 09-14 11:43: Declined the sale (30 shares) at $273.98, now $264.60 (−3.4%)");
+  it("15:30, the first run after the decline: the whole decline, titled as the tab titles it, and the rule to answer what it asks", () => {
+    const { prompt, inTheEight } = promptAt(fx.runs.trigger0914_1530.loadedAt, 264.6);
+    expect(inTheEight).toBe(true);
+    // CEG had seven lines by then, so the block says seven.
+    expect(prompt).toContain("WHAT'S BEEN SAID ON $CEG — its newest 7 Activity lines, newest first, as the owner sees them:");
+    expect(prompt).toContain("Declined sell 30 shares");
     expect(prompt).toContain(DECLINE_ENDS);
     expect(prompt).toContain("The principal's words outrank everything else about a stock.");
     expect(prompt).toContain("When the row's `said` lists the principal's decisions or other triggers");
     expect(prompt).not.toContain("RECENT THESIS ACTIVITY");
   });
 
-  it("15:55: the 15:30 run answered it, so it is no longer handed over", () => {
-    expect(promptAt(fx.runs.trigger0914_1555.loadedAt, 264.99)).not.toContain(DECLINE_ENDS);
+  it("15:55: the decline is still read while it is among the newest 8, and not once it isn't", () => {
+    const { prompt, inTheEight } = promptAt(fx.runs.trigger0914_1555.loadedAt, 264.99);
+    expect(prompt.includes(DECLINE_ENDS)).toBe(inTheEight);
   });
 });
 
 /**
  * MU, PEAD Specialist, 2026-09-28 (mu-trigger-run-open-reviews-2026-09-28.json).
- * CEG never had a trigger run while a review sat open — every CEG fire after
- * 09-15 was a review held for the morning run — so this is the real case of
- * the same gap: at 10:45 ET a trigger run handled the $1,041 floor sale while
- * three reviews from that morning were open (reports within 3 days, up 15%
- * from entry, down 4% today). Its one update_thesis answered all three and
- * named none but the report in passing.
+ * At 10:45 ET a trigger run handled the $1,041 floor sale while three reviews
+ * from that morning were open (reports within 3 days, up 15% from entry, down
+ * 4% today). Its one update_thesis answered all three.
  */
 describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
   type Line = Omit<ActivityRow, "timestamp"> & { timestamp: string };
@@ -237,8 +236,8 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
     expect(mu.closeout.rationale).not.toMatch(/15%|4%/);
   });
 
-  it("the prompt lists the three open reviews and tells the run its note answers what each asks", () => {
-    const context = stockContextFor({ ticker: "MU", rows: loaded, triggers: mu.triggers, now: new Date(mu.loadedAt) }).text!;
+  it("the run reads the morning's note and the three fires as lines, and is told its note answers what each asks", () => {
+    const context = stockContextFor({ ticker: "MU", rows: loaded }).text!;
     const prompt = buildTacticalSystemPrompt({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
       stock: {
@@ -250,11 +249,10 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
       position: { peakPrice: 1100 },
       fired: { price: 1038.82 },
     });
-    expect(prompt).toContain("Last look: morning run, 09-28 08:00");
-    expect(prompt).toContain("Since then, not yet answered:");
-    expect(prompt).toContain("Reports within 3 days — decide before the print");
-    expect(prompt).toContain("At +15% from entry, reassess");
-    expect(prompt).toContain("A sharp 1-day drop could be either normal volatility");
+    expect(prompt).toContain("09-28 08:00 · $1082.28 · Updated");
+    expect(prompt).toContain("Trigger: Reports within 3 days — review");
+    expect(prompt).toContain("Trigger: Up 15% from entry — review");
+    expect(prompt).toContain("Trigger: Price down 4% today — review");
     expect(prompt).toContain(
       "When the row's `said` lists the principal's decisions or other triggers\n     fired since the last answer, your note answers what each asks (an\n     earnings date coming, a gain to reassess, a drop to explain) inside the\n     story of the stock, not as a list of the triggers.",
     );

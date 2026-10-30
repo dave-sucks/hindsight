@@ -50,7 +50,7 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
     expect(Object.keys(notes[0].fieldChanges ?? {})).toEqual([]); // information only: nothing to replace or resolve
   });
 
-  it("Friday's morning read opens DOCU with the note, the price then and now, and puts it on the full list", async () => {
+  it("Friday's morning read gives DOCU's note as one of its newest lines, whole, with the price then, and puts it on the full list", async () => {
     const written = await replayTool("write-note", "writeNoteTool", {
       seed: seed(stored) as never,
       args: { thesis_id: fx.thesis.id, text: fx.note },
@@ -68,9 +68,11 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
       });
       const docu = (result as unknown as { data: { theses: Array<{ ticker: string; context: string }> } }).data.theses.find((t) => t.ticker === "DOCU");
       expect(docu).toBeDefined();
-      expect(docu!.context).toMatch(/^WHAT'S BEEN SAID ON \$DOCU\nThe principal's notes:\n  09-30 13:05 at \$67\.90, now \$69\.10 \(\+1\.8%\): "Bought a starter/);
+      expect(docu!.context.startsWith("WHAT'S BEEN SAID ON $DOCU — its newest ")).toBe(true);
+      expect(docu!.context).toContain('09-30 13:05 · $67.90 · Your note — "Bought a starter');
       expect(docu!.context).toContain("IAM stalls under 17% of ARR");
-      expect(docu!.context).toContain("Approved the buy, cut from 162 to 120 shares");
+      // The resized approval, as the Activity tab titles it.
+      expect(docu!.context).toContain("Bought 120 shares");
     } finally {
       jest.useRealTimers();
     }

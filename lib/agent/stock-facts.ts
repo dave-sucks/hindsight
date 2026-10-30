@@ -134,10 +134,7 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
       stockContextFor({
         ticker: t.ticker,
         rows: input.activity ?? [],
-        removals: load.removedByHand.get(t.id),
-        triggers: input.thesis.triggers,
-        now: input.now,
-        currentPrice: input.latestQuote?.price ?? null,
+        orders: load.proposalHistory.get(t.id) ?? [],
       }),
     );
     needs.set(t.id, computeNeedsAction(input));

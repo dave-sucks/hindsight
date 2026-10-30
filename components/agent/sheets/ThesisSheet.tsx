@@ -43,7 +43,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
-import { RecentNotes, ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
+import { RecentActivity, ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { latestNoteView } from "@/lib/thesis/latest-note";
@@ -1162,8 +1162,8 @@ export function ThesisBody({
   // right. Each tab opens its own pair under the tab bar — on Overview under
   // the price row too — so the cards start level with the chart. Only the
   // open tab is mounted, so the cards render once.
-  // The analysts' notes the agents are handed, as Activity rows.
-  const notes = state.notes ?? [];
+  // The stock's newest 8 Activity lines: what the agents are handed, as Activity rows.
+  const recent = state.recent ?? [];
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
   const sideColumn =
@@ -1253,8 +1253,8 @@ export function ThesisBody({
         quoteFailed={!quoteLoading && quote == null}
       />
 
-      {/* The analysts' notes the agents are handed, in the Activity tab's own design. */}
-      <RecentNotes notes={notes} onViewAll={() => setTab(2)} />
+      {/* The newest 8 Activity lines, the ones the agents are handed, in the Activity tab's own design. */}
+      <RecentActivity items={recent} onViewAll={() => setTab(2)} />
 
       {surface === "sheet" ? stockCards : null}
       </div>
@@ -1369,6 +1369,7 @@ export function ThesisBody({
           {thesis_id ? (
             <ThesisTimelineSection
               thesisId={thesis_id}
+              recentIds={recent.map((r) => r.id)}
               provenance={
                 state.sourceKind
                   ? {

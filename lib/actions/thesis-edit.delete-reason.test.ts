@@ -9,7 +9,7 @@
  * file as a finding.
  */
 import { prismaDouble, thesisRow, positionRow, REPLAY_ACCOUNT_ID, REPLAY_USER_ID } from "@/lib/replay";
-import { principalDecision, type ActivityRow } from "@/lib/agent/stock-context";
+import { wantsAnswer, type ActivityRow } from "@/lib/agent/stock-context";
 
 const trail = {
   id: "trail-25",
@@ -62,9 +62,9 @@ describe("applyTriggerDelete — the line says what it was when it is not a clic
     expect(row.rationale ?? null).toBeNull();
   });
 
-  it("what the next run reads from each: the cleanup's line nothing, the click its removal", async () => {
-    const read = async (why?: string) => principalDecision({ ...(await remove(why)).row, timestamp: new Date(0) } as unknown as ActivityRow);
-    expect(await read("the analyst's rule governs from here")).toBeNull();
-    expect(await read()).toMatchObject({ wantsAnswer: true, line: "Set by hand: Removed: Sell if below 25% from the high since we bought" });
+  it("whether each asks the next run for an answer: the cleanup's line no, the click yes", async () => {
+    const asks = async (why?: string) => wantsAnswer({ ...(await remove(why)).row, timestamp: new Date(0) } as unknown as ActivityRow);
+    expect(await asks("the analyst's rule governs from here")).toBe(false);
+    expect(await asks()).toBe(true);
   });
 });
