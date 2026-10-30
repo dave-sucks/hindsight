@@ -19,7 +19,7 @@ Each analyst is one way of trading, run by the agents. It has its own book of [t
 - **Setups:** the kinds of trade it takes, chosen from the playbook below.
 - **Sizing:** its smallest trade, its largest, and the most it will hold in one stock. No agent picks a size: a buy risks 1% of the account by default, scaled by conviction (half at low, 1.25× at strong), halved again for an all-or-nothing event or a cautious market, and sized by the distance to its floor inside this band. An add risks half the first buy. A tight, honest floor is what earns a bigger position.
 - **Slots:** how many stocks it may hold at once, 5 by default. When every slot is held or waiting for approval, a new buy is refused until one frees up. Adding to a stock it already holds needs no slot.
-- **Minimum score:** the lowest score a stock needs before the analyst may buy it. Scores are out of 10 and the setting is out of 100, so 70 means 7 out of 10. In chat a lower score is a line on the proposal, not a refusal.
+- **Minimum score:** the lowest score a stock needs before the analyst may buy it. Scores are out of 10 and the setting is out of 100, so 70 means 7 out of 10. In chat a lower score is a line the chat is told, not a refusal.
 - **Its rules:** its own [triggers](triggers.md), inherited by every stock it holds, like a review when a stock closes below its 200-day average.
 - **Run days:** which mornings it reviews its book. Every weekday by default.
 

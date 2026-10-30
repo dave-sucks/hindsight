@@ -263,6 +263,8 @@ export async function recordProposalRunEvent(opts: {
   ticker: string;
   orderId: string;
   title: string;
+  /** What the tool told the agent (sizing, a corrected sale label), kept off the proposal's reason. */
+  payload?: Record<string, unknown>;
 }): Promise<void> {
   if (!opts.runId) return;
   try {
@@ -271,7 +273,7 @@ export async function recordProposalRunEvent(opts: {
         runId: opts.runId,
         type: opts.type,
         title: opts.title,
-        payload: { ticker: opts.ticker, orderId: opts.orderId },
+        payload: { ...opts.payload, ticker: opts.ticker, orderId: opts.orderId } as object,
       },
     });
   } catch (err) {

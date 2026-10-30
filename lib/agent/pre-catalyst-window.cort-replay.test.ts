@@ -11,7 +11,8 @@
  * edge ("well outside the last 21 days").
  *
  * The window is information, not a gate (QB ruling 2026-09-29): the run is
- * told, it decides, and the proposal carries the same line. Both halves run
+ * told, it decides, and its trade reply carries the same line (never the
+ * proposal's reason, which is the run's own words). Both halves run
  * through their real entry points here — the trigger run's own handler (the
  * model call captured, not made) and place_trade — against CORT's rows
  * (lib/agent/__fixtures__/cort-pre-catalyst-buy-2026-09-29.json).
@@ -167,7 +168,7 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tailNow}`);
   });
 
-  it("the proposal it makes carries the same line, and is still a proposal", async () => {
+  it("the buy's reply carries the same line, the proposal's reason is the run's words alone, and it is still a proposal", async () => {
     const { refused, result, db } = await at(fx.proposal.createdAt, () =>
       replayTool("place-trade", "placeTrade", {
         seed: seed(),
@@ -197,10 +198,10 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     expect(result.data?.status).toBe("PROPOSED");
     const order = (db.store.order as Array<Record<string, unknown>>)[0];
     expect(order.status).toBe("AWAITING_APPROVAL");
-    expect(order.rationale as string).toContain(LINE);
-    // What production's proposal carried, and still does: the run's own
-    // words first, the sizing after.
+    expect((result.data?.sizing as string[]).join(" ")).toContain(LINE);
+    // Production's proposal carried the run's words, then the sizing; now the words alone.
+    expect(order.rationale).toBe(fx.placeTrade.entry_rationale);
     expect(order.rationale as string).toContain("I am buying $CORT here because the pre-FDA setup is still intact");
-    expect(fx.proposal.rationale).not.toContain(LINE);
+    expect(fx.proposal.rationale.startsWith(order.rationale as string)).toBe(true);
   });
 });

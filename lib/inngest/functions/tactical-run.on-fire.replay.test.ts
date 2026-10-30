@@ -4,7 +4,7 @@
  * same run writes it up with no trade tools and its note replaces the sale's line (2026-10-28: PLTR's
  * Auto-sell card read a template stitched from the trigger's old note and "Third ask… move the line").
  * V's floor (Send to Agent) asks the analyst; a review set to Send to Agent starts a run; TRV's
- * Auto-buy calls place_trade with the trigger's arguments, then the write-up keeps the buy's sizing lines.
+ * Auto-buy calls place_trade with the trigger's arguments, then the write-up's note is the buy's whole reason.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
 
@@ -18,7 +18,6 @@ const TRV_BUY = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", f
 
 const IOT_LINE = 'Your "Sell if below $41.42" came true. It\'s set to Auto-sell.';
 const NOTE = "Samsara fell 4% on Oct 22 with software stocks after a weak guide from a peer; nothing in its own news. You own 300 shares at $42.70. Your Auto-sell at $41.42 was hit, so the sale is waiting for you; I'd hold, since nothing that would break the case has happened.";
-const SIZING = "\n\n27 shares, $10,771, sized by risk.";
 
 const stocks = (target: Record<string, unknown> = IOT_TARGET) => ({
   thesis: [
@@ -75,12 +74,12 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
     jest.doMock("@/lib/trading/manual-order", () => ({ accountCash: async () => 50_000 }));
     jest.doMock("@/lib/agent/tools", () => ({
       createResearchTools: (ctx: Record<string, unknown>) => {
-        // A buy stages its order with the reason it was given and its sizing after it, and a decision row.
+        // A buy stages its order with the reason it was given (its sizing goes to the reply, never the reason).
         const tool = (name: string) => ({
           execute: jest.fn(async (args: { entry_rationale?: string }) => {
             toolCalls.push({ tool: name, args, ctx });
             if (name === "place_trade") {
-              await create("order", { id: "ord_trv", positionId: "pos_trv", symbol: "TRV", intent: "OPEN", rationale: `${args.entry_rationale}${SIZING}`, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: SECULAR, symbol: "TRV" } });
+              await create("order", { id: "ord_trv", positionId: "pos_trv", symbol: "TRV", intent: "OPEN", rationale: args.entry_rationale, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: SECULAR, symbol: "TRV" } });
             }
             // A trim waiting for approval: manage_position writes no decision row until it fills.
             if (name === "manage_position") {
@@ -157,14 +156,14 @@ describe("the trigger run, by fire mode", () => {
     expect(r.asked[0].system).toContain('its note: "Using $52 as the objective."');
   });
 
-  it("TRV's Auto-buy calls place_trade with the trigger's arguments, paid from cash; the write-up's note replaces the line and keeps the sizing", async () => {
+  it("TRV's Auto-buy calls place_trade with the trigger's arguments, paid from cash; the write-up's note replaces the line", async () => {
     const r = await fire({ thesisId: "trv", triggerId: TRV_BUY.id, analystId: SECULAR, ticker: "TRV", action: "ENTER", firedPrice: 398.95 });
     expect(r.toolCalls).toHaveLength(1);
     expect(r.toolCalls[0]).toMatchObject({ tool: "place_trade", args: { ticker: "TRV", direction: "LONG", entry_price: 398.95, thesis_id: "trv" }, ctx: { payFromCash: 50_000, runMode: "INTRADAY_TACTICAL", analystId: SECULAR } });
     expect((r.toolCalls[0].args as { entry_rationale: string }).entry_rationale).toMatch(/^Your ".+" came true\. It's set to Auto-buy\.$/);
     expect(r.asked).toHaveLength(1);
     expect(r.asked[0].prompt).toContain("Proposed: LONG 27 $TRV.");
-    expect(r.orders.find((o) => o.id === "ord_trv")?.rationale).toBe(NOTE + SIZING);
+    expect(r.orders.find((o) => o.id === "ord_trv")?.rationale).toBe(NOTE);
     expect(r.runs[0]).toMatchObject({ status: "COMPLETE" });
   });
 });

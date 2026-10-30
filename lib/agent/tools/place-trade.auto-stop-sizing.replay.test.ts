@@ -69,7 +69,7 @@ describe("TRV — a 4.1% plan floor with an 8% setting is sized like an 8% stop"
 
 describe("the add path — MU held, 11 shares at $911.415, floor $850, an add at the 10-21 close of $913.67", () => {
   async function add(autoStop: { on: boolean; pct: number }) {
-    const { refused, result } = await replayTool("manage-position", "managePosition", {
+    const { refused, result, db } = await replayTool("manage-position", "managePosition", {
       seed: {
         thesis: [thesisRow({ id: "thesis_MU", ticker: "MU", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER", setupId: "MA_PULLBACK", conviction: "HIGH", entryPrice: 911.415, targetPrice: 1500, stopLoss: 850, analystId: REPLAY_ANALYST_ID })],
         position: [positionRow({ id: "position_MU", symbol: "MU", analystId: REPLAY_ANALYST_ID, quantity: 11, avgCost: 911.415, stopLoss: 850, targetPrice: 1500, thesisId: "thesis_MU" })],
@@ -81,6 +81,9 @@ describe("the add path — MU held, 11 shares at $911.415, floor $850, an add at
       quotes: { MU: 913.67 },
     });
     expect(refused).toBe(false);
+    // The add's sizing goes to the agent; the proposal's reason is the analyst's words alone.
+    expect((db.store.order as Array<{ rationale: string }>)[0].rationale).toBe("Adding on the hold of the 50-day, per the seat's add rule.");
+    expect((db.store.runEvent as Array<{ payload: { sizing?: string[] } }>)[0].payload.sizing).toEqual(result.data?.sizing);
     return JSON.stringify(result.data);
   }
 
