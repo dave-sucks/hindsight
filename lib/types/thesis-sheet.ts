@@ -13,7 +13,6 @@
 
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { When } from "@/lib/agent/triggers/condition";
-import type { ResearchBriefView } from "@/lib/research/brief-types";
 import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 
 export interface Trigger {
@@ -106,8 +105,8 @@ export interface ThesisPendingProposal {
    * was — there is nothing left to decide. Clears itself on the fill.
    */
   executing?: boolean;
-  /** The research brief built for this order; null until it lands. */
-  brief?: ResearchBriefView | null;
+  /** An Auto trade the analyst is still writing up (lib/proposals/auto-writeup.ts); the card reads the reason again until it lands. */
+  writing?: boolean;
 }
 
 export interface ThesisScoringDim {
@@ -122,11 +121,11 @@ export interface ThesisScoring {
 }
 
 /**
- * One ThesisUpdate row, in the shape the Activity tab's `TimelineUpdate`
- * expects, so the header line and the timeline are worded by the same
- * function. The fields the header never needs are sent as null/[].
+ * One Activity line (a saved line or a proposal's step), in the shape the
+ * Activity tab's `TimelineUpdate` expects, so the Overview and the Activity
+ * tab word it the same way.
  */
-export interface ThesisLatestUpdate {
+export interface ActivityItem {
   id: string;
   timestamp: string;
   type: string;
@@ -186,12 +185,11 @@ export interface ThesisDossier {
    */
   lastReviewedAt: string | null;
   /**
-   * The most recent durable event — a review, a trigger fire, a sale, a level
-   * change. Leads the sheet so the page says what just happened, not only what
-   * the long-term belief is (DAV-304). Worded by the Activity tab's own
-   * `titleSegments`, so there is one grammar for both.
+   * The stock's newest 8 Activity lines, newest first: the same 8 every run
+   * is handed (lib/thesis/activity-feed.ts). The Overview shows them as
+   * Activity rows, and the Activity tab marks where they end.
    */
-  latestUpdate: ThesisLatestUpdate | null;
+  recent: ActivityItem[];
   triggers: Trigger[];
   /**
    * The analyst that owns this thesis. Lets the trigger section deep-link

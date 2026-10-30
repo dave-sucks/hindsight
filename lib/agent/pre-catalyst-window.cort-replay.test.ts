@@ -11,7 +11,8 @@
  * edge ("well outside the last 21 days").
  *
  * The window is information, not a gate (QB ruling 2026-09-29): the run is
- * told, it decides, and the proposal carries the same line. Both halves run
+ * told, it decides, and its trade reply carries the same line (never the
+ * proposal's reason, which is the run's own words). Both halves run
  * through their real entry points here — the trigger run's own handler (the
  * model call captured, not made) and place_trade — against CORT's rows
  * (lib/agent/__fixtures__/cort-pre-catalyst-buy-2026-09-29.json).
@@ -162,24 +163,12 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     const [head, tail] = production.split(` ${FIRED_CONTEXT} `);
     // The trigger reads as the pill says it now; the rest is production's, word for word.
     const said = head.replace("Within 3% of the 50-day — consider entry.", "Buy if within 3% of the 50-day average.");
-    expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tail}`);
+    // 2026-10-28: the run is told to find out what is going on, not to validate the fire.
+    const tailNow = tail.replace("Validate, decide, act if warranted, then close out via update_thesis.", "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis.");
+    expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tailNow}`);
   });
 
-  it("the kickoff carries the stock's research brief when one is on file", async () => {
-    const builtAt = new Date(new Date(fx.run.startedAt).getTime() - 60 * 60_000);
-    const payload = {
-      ticker: "CORT", synthesis: "The stock rose with healthcare; no company news found.", whyItMoved: [],
-      failures: [{ part: "x", message: "no xAI key is configured (XAI_API_KEY)" }],
-    };
-    const kickoff = await at(fx.run.startedAt, () =>
-      triggerRunKickoff({ researchBrief: [{ id: "b1", ticker: "CORT", kind: "PROPOSAL", orderId: "o1", payload, createdAt: builtAt }] }),
-    );
-    expect(kickoff).toContain("Research brief on $CORT");
-    expect(kickoff).toContain("The stock rose with healthcare; no company news found.");
-    expect(kickoff).toContain("(X search failed: no xAI key is configured (XAI_API_KEY).)");
-  });
-
-  it("the proposal it makes carries the same line, and is still a proposal", async () => {
+  it("the buy's reply carries the same line, the proposal's reason is the run's words alone, and it is still a proposal", async () => {
     const { refused, result, db } = await at(fx.proposal.createdAt, () =>
       replayTool("place-trade", "placeTrade", {
         seed: seed(),
@@ -209,10 +198,10 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     expect(result.data?.status).toBe("PROPOSED");
     const order = (db.store.order as Array<Record<string, unknown>>)[0];
     expect(order.status).toBe("AWAITING_APPROVAL");
-    expect(order.rationale as string).toContain(LINE);
-    // What production's proposal carried, and still does: the run's own
-    // words first, the sizing after.
+    expect((result.data?.sizing as string[]).join(" ")).toContain(LINE);
+    // Production's proposal carried the run's words, then the sizing; now the words alone.
+    expect(order.rationale).toBe(fx.placeTrade.entry_rationale);
     expect(order.rationale as string).toContain("I am buying $CORT here because the pre-FDA setup is still intact");
-    expect(fx.proposal.rationale).not.toContain(LINE);
+    expect(fx.proposal.rationale.startsWith(order.rationale as string)).toBe(true);
   });
 });

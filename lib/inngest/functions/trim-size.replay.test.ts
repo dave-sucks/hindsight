@@ -78,10 +78,11 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe("NVDA's trim, sized 30%, in every mode", () => {
-  it("Auto sells 30%, with no analyst run", async () => {
+  it("Auto sells 30% with no analyst deciding; the analyst is then asked to write it up, not to decide", async () => {
     const r = await fire("DO_IT");
     expect(r.toolCalls).toEqual([{ tool: "manage_position", args: expect.objectContaining({ symbol: "NVDA", action: "partial_close", close_pct: 30 }) }]);
-    expect(r.told).toBe("");
+    expect(r.told).toContain("THE WRITE-UP");
+    expect(r.told).not.toContain("DECISION FRAMEWORK");
   });
 
   it("Send to Agent tells the analyst \"Trim 30%\", and its tools carry the size", async () => {

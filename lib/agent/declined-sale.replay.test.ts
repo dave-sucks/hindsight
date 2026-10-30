@@ -186,7 +186,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
     expect(storedStop(result)).toBe(FLOOR);
   });
 
-  it("4. a review that changes nothing leaves the run unfinished — the row written by update_thesis itself", async () => {
+  it("4. a note saying why the analyst holds answers it; a run that writes nothing on IOT is still refused", async () => {
     const seed = {
       researchRun: [runRow()],
       thesis: [iotThesis()],
@@ -221,9 +221,12 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
       args: {},
       quotes: { IOT: PRICE_NEXT_DAY },
     });
-
     expect(crashed).toBe(false);
-    expect(result.summary).toMatch(/refused/i);
-    expect(JSON.stringify(result)).toContain("IOT");
+    expect(result.summary).not.toMatch(/refused/i);
+
+    // The flag still puts IOT on the run's list: no row on it, no finish.
+    const silent = await replayTool("complete-run", "completeRun", { seed, args: {}, quotes: { IOT: PRICE_NEXT_DAY } });
+    expect(silent.result.summary).toMatch(/refused/i);
+    expect(JSON.stringify(silent.result)).toContain("IOT (t_iot): You declined this sale");
   });
 });

@@ -18,7 +18,7 @@ export default async function PlaybookSettingsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/sign-in");
   const accountId = await getAccountId(user.id);
-  if (!accountId) redirect("/settings/profile");
+  if (!accountId) redirect("/settings");
 
   const settings = await getPlaybookSettings();
   const changed = settings.setups.filter((s) => s.overridden.length > 0).length;

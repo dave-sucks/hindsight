@@ -19,6 +19,7 @@ export const GUIDE_ASSETS = [
   "system-layers",
   "request-grid",
   "situation-flow",
+  "fire-loop",
 ] as const;
 export type GuideAsset = (typeof GUIDE_ASSETS)[number];
 

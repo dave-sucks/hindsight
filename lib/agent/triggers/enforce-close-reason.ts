@@ -211,11 +211,8 @@ export function enforceCloseReason(
 }
 
 /**
- * Append the audit note to the agent's own close rationale. Returns the
- * rationale unchanged when nothing was corrected. This string becomes
- * `Order.rationale` (what the principal reads on the approval card) and the
- * close's `PositionEvent` / `ThesisUpdate` text, so the correction is visible
- * exactly where someone would go looking for why the position ended.
+ * Append the audit note to the close's decision record (`TradeDecision.reasoning`).
+ * Never the sale's reason: the owner reads that, and it is the analyst's words alone.
  */
 export function withCloseAuditNote(
   rationale: string,

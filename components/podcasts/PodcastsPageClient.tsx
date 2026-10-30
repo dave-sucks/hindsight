@@ -45,40 +45,16 @@ function PodcastCard({
 }) {
   const router = useRouter();
   return (
-    <Link href={`/podcasts/${podcast.id}`} className="block group min-w-0">
-      <Card className="group-hover:bg-muted/20 transition-colors gap-0 h-full overflow-hidden shadow-none py-0">
+    <Card className="relative gap-0 h-full overflow-hidden shadow-none py-0 min-w-0">
+      {/* The card body is a link; the kebab is a sibling control beside it,
+          never a button inside the link. */}
+      <Link href={`/podcasts/${podcast.id}`} className="block h-full hover:bg-muted/20 transition-colors">
         <div className="p-3 flex flex-col gap-2 min-w-0">
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <Mic className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {podcast.segmentCount} seg · {podcast.episodeCount} ep
-              </span>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground shrink-0"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem
-                  onClick={() => router.push(`/podcasts/${podcast.id}`)}
-                >
-                  View detail
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => onDelete(podcast.id)}
-                >
-                  Delete podcast
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="flex items-center gap-2 min-w-0 min-h-6 pr-8">
+            <Mic className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {podcast.segmentCount} seg · {podcast.episodeCount} ep
+            </span>
           </div>
           <h2 className="text-sm font-medium leading-tight truncate">
             {podcast.name}
@@ -91,8 +67,31 @@ function PodcastCard({
           <span>{podcast.cadence ?? "On demand"}</span>
           <span>{formatRelativeDays(podcast.lastRunAt)}</span>
         </div>
-      </Card>
-    </Link>
+      </Link>
+
+      <div className="absolute right-3 top-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="icon-xs" aria-label={`${podcast.name} actions`} />}
+          >
+            <MoreHorizontal />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem
+              onClick={() => router.push(`/podcasts/${podcast.id}`)}
+            >
+              View detail
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => onDelete(podcast.id)}
+            >
+              Delete podcast
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </Card>
   );
 }
 
@@ -130,6 +129,7 @@ function PodcastsEmptyState() {
           variant="default"
           size="default"
           className="mt-2"
+          nativeButton={false}
           render={<Link href="/podcasts/new" />}
         >
           <Plus className="h-4 w-4" />

@@ -1,31 +1,32 @@
 /**
  * stock-context.ts — what an agent is handed about one stock before it
- * decides (docs/plans/AGENT_CONTEXT.md §3.2, §3.3). Everything counts from
- * the analyst's LAST ANSWER, the newest line a run wrote on the stock:
+ * decides: the stock's newest 8 Activity lines, exactly as they read in the
+ * feed (lib/thesis/activity-feed.ts). The Overview shows the same 8, so the
+ * owner always sees what the agent read. One list, one number, no cutting.
  *
- *  - that answer, a sentence or two;
- *  - the principal's decisions since it, word for word, with the price then
- *    and now (once answered, a decision is done);
- *  - every trigger fired since it, collapsed, with its rule.
+ * Until 2026-10-30 this file built six lists, each a patch for one bad day
+ * (the last three notes cut to 900 and 500 characters, the principal's three
+ * newest notes, three removals by hand, the fires since the last answer, the
+ * decisions since it, a waiting sale as shares and a time), and nobody could
+ * say in a sentence what the agent read. Now it reads the feed.
  *
- * Nothing else. The first version also carried answered decisions, two of
- * the run's own answers and bookkeeping — ~650 tokens for CEG on 09-30, when
- * the run needed one line: the 15%-off-the-high review nobody had answered.
+ * Two facts the situations read off the WHOLE feed, not the 8, stay here:
+ * the fires no run has answered (`openFires`) and the principal's newest
+ * word no run has answered (`unansweredWord`). Those decide whether the
+ * stock is on a run's list; the 8 lines are what the run then reads.
  *
- * A fire stays open until an agent answers it. A later fire, the principal's
- * edit or the app's bookkeeping does not close it: CEG's 15% review fired
- * twice and was never handed to a run (09-16 a later fire took its place;
- * 09-28 the principal's cleanup counted as its answer). get_theses, the
- * trigger run, complete_run and the thesis sheet all use this rule.
- *
- * The principal's newest notes (notes.ts) come first. A note is information:
- * never an answer, never a plan change, and nothing closes it. Under them,
- * the triggers the principal removed by hand, at any age, under one header
- * that says what they ask: an answer does not close a removal either
- * (ABT 10-07: a run never read the removal and set the buy again).
- *
- * Pure: needs-action.ts imports it; trigger labels come from the caller.
+ * Pure: needs-action.ts imports it.
  */
+import {
+  eventKind,
+  isPlainReview,
+  ladderChangeLines,
+  notAppliedLines,
+  proposalUserMessage,
+  titleSegments,
+  type TimelineUpdate,
+} from "@/components/agent/sheets/thesis-timeline-utils";
+import { recentItems, RECENT_ITEMS, type FeedItem } from "@/lib/thesis/activity-feed";
 
 /** One Activity line, as the callers load it. Any order. */
 export interface ActivityRow {
@@ -53,31 +54,18 @@ export interface OpenFire {
   summary: string | null;
 }
 
-export interface PrincipalDecision {
+/** The principal's newest word no run has answered: a note, a decline with a comment, a resized approval, a hand edit. */
+export interface UnansweredWord {
   at: Date;
-  line: string;
-  /** Unanswered, it puts the stock on the morning run's full list. A bare decline doesn't. */
-  wantsAnswer: boolean;
-}
-
-export interface TriggerLabel {
-  label: string;
-  rationale?: string | null;
+  summary: string;
 }
 
 export interface StockContext {
-  /** The block, ready to print; null when there is nothing on record. */
+  /** The block, ready to print; null when the feed is empty. */
   text: string | null;
   openFires: OpenFire[];
-  unansweredDecision: PrincipalDecision | null;
-  /** The principal's newest note, one line — what a quiet row carries. */
-  principalNote: string | null;
+  unansweredDecision: UnansweredWord | null;
 }
-
-/** ~400 tokens. Past it, alerts fold into a count; the principal's words are never cut. */
-export const CONTEXT_CHAR_CAP = 1_600;
-/** Answers and rules: whole sentences up to this many characters. */
-const SENTENCE_CHARS = 220;
 
 type Changes = {
   source?: { to?: unknown };
@@ -86,11 +74,11 @@ type Changes = {
 };
 const changesOf = (r: ActivityRow): Changes =>
   r.fieldChanges && typeof r.fieldChanges === "object" ? (r.fieldChanges as Changes) : {};
-const newestFirst = (rows: ActivityRow[]) => [...rows].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+const newestFirst = <T extends ActivityRow>(rows: T[]): T[] => [...rows].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const money = (n: number) => `$${n.toFixed(2)}`;
 
-/** A proposal decision, or an edit made by hand. */
+/** A proposal step, or an edit made by hand. */
 export function isPrincipalRow(r: ActivityRow): boolean {
   if (r.type.startsWith("PROPOSAL_")) return true;
   if (r.runId) return false;
@@ -99,64 +87,53 @@ export function isPrincipalRow(r: ActivityRow): boolean {
 
 /**
  * A line a run wrote: a review, an update, a status move, a close. Not a fire,
- * a proposal decision, the principal's edit, or the app's bookkeeping (those
+ * a proposal step, the principal's edit, or the app's bookkeeping (those
  * carry no run).
  */
 export function isAgentAnswer(r: ActivityRow): boolean {
   return !!r.runId && r.type !== "TRIGGER_FIRED" && r.type !== "NOTE" && !isPrincipalRow(r);
 }
 
-/** How many of the principal's notes an agent is shown: the newest. */
-export const NOTES_SHOWN = 3;
-
-/** The principal's newest notes on the stock (lib/agent/notes.ts), newest first. */
-export function newestNotes(rows: ActivityRow[]): ActivityRow[] {
-  return newestFirst(rows).filter((r) => r.type === "NOTE").slice(0, NOTES_SHOWN);
-}
-
-/** What a removal by hand asks of the analysts; the app writes it on the row (thesis-edit.ts). */
-export const KEEP_IT_REMOVED = "Don't add it back unless the thesis changes.";
-
-/** The same ask, said once over the removals block. */
-const REMOVALS_HEADER = "Removed by the principal (don't add these back unless the thesis changes):";
-
 /**
  * How a removal in the cleanup of copied rules (scripts/sweep-frozen-copies.ts)
  * begins its summary; thesis-edit.ts writes it from here. Those removals took
- * template lines off stocks and decided nothing about a stock, so the read
- * leaves them out. The rows carry no other marker.
+ * template lines off stocks and decided nothing about a stock, so they never
+ * ask a run for an answer.
  */
 export const COPIED_RULE_CLEANUP = "Removed a copied rule from ";
 
 const isCopiedRuleCleanup = (r: ActivityRow) => (r.summary ?? "").startsWith(COPIED_RULE_CLEANUP);
 
-/** How many of the principal's removals an agent is shown: the newest. */
-export const REMOVALS_SHOWN = 3;
-
-export interface RemovedTrigger {
-  at: Date;
-  /** The trigger as it read when it was removed: "Buy if below 6% from the close 5 days ago". */
-  sentence: string;
+/**
+ * The principal's word that asks a run for an answer: a note, a decline with
+ * a comment, an approval at a changed size, or an edit by hand (a removal
+ * included: ABT 10-07, a run never read the removal and set the buy again).
+ * A bare decline and a plain approval decide nothing further; the cleanup of
+ * copied rules decided nothing about the stock.
+ */
+export function wantsAnswer(r: ActivityRow): boolean {
+  if (r.type === "NOTE") return true;
+  if (!isPrincipalRow(r)) return false;
+  const to = changesOf(r).proposal?.to;
+  if (r.type === "PROPOSAL_REJECTED") {
+    const raw = to?.userMessage ?? r.rationale ?? "";
+    // A no-message decline stored a "[REJECTED:USER] …" line until 2026-10-29; it stores none now.
+    return !!raw && !raw.startsWith("[REJECTED:USER]");
+  }
+  if (r.type === "PROPOSAL_APPROVED") return to?.edited === true;
+  if (r.type.startsWith("PROPOSAL_")) return false;
+  if (isCopiedRuleCleanup(r)) return false;
+  const ops = changesOf(r).triggerOps?.to ?? [];
+  return ops.some((o) => o?.text) || !!oneLine(r.summary ?? "");
 }
 
-/**
- * Every trigger the principal removed by hand, newest first, each sentence
- * once (its newest removal). The cleanup of copied rules is left out.
- */
-export function removedByHand(rows: ActivityRow[]): RemovedTrigger[] {
-  const out: RemovedTrigger[] = [];
-  const seen = new Set<string>();
+/** The principal's newest word, newer than the newest agent answer, that asks for one. */
+export function unansweredWord(rows: ActivityRow[]): UnansweredWord | null {
   for (const r of newestFirst(rows)) {
-    if (!isPrincipalRow(r) || r.type.startsWith("PROPOSAL_") || isCopiedRuleCleanup(r)) continue;
-    for (const o of changesOf(r).triggerOps?.to ?? []) {
-      if (o?.op !== "remove") continue;
-      const sentence = oneLine(o.text ?? "").replace(/^Removed:\s*/, "").replace(/\.$/, "");
-      if (!sentence || seen.has(sentence.toLowerCase())) continue;
-      seen.add(sentence.toLowerCase());
-      out.push({ at: r.timestamp, sentence });
-    }
+    if (isAgentAnswer(r)) return null;
+    if (wantsAnswer(r)) return { at: r.timestamp, summary: oneLine(r.summary ?? r.type) };
   }
-  return out;
+  return null;
 }
 
 /** Every trigger fired after the newest agent answer, newest first. */
@@ -183,74 +160,6 @@ export function openFires(rows: ActivityRow[]): OpenFire[] {
   return [...byTrigger.values()];
 }
 
-/** Whole sentences up to `n` characters; a first sentence longer than that is cut at a word. */
-function sentences(text: string, n = SENTENCE_CHARS): string {
-  const parts = oneLine(text).split(/(?<=[.!?])\s+/);
-  let out = "";
-  for (const p of parts) {
-    if ((out ? out.length + 1 : 0) + p.length > n) break;
-    out = out ? `${out} ${p}` : p;
-  }
-  if (out) return out;
-  const cut = parts[0].slice(0, n - 1);
-  return `${cut.slice(0, cut.lastIndexOf(" ") > n * 0.6 ? cut.lastIndexOf(" ") : cut.length)}…`;
-}
-
-/** " at $273.98, now $264.60 (−3.4%)" — as much as the prices allow. */
-function thenNow(then: number | null, now: number | null): string {
-  if (then == null) return "";
-  if (now == null || now <= 0) return ` at ${money(then)}`;
-  const pct = ((now - then) / then) * 100;
-  return ` at ${money(then)}, now ${money(now)} (${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}%)`;
-}
-
-const INTENT: Record<string, string> = { CLOSE: "the sale", PARTIAL_CLOSE: "the partial sale", OPEN: "the buy", ADD: "the add" };
-
-/**
- * The principal's decision on one line, or null when there is nothing to
- * decide: a plain approval (the position shows it), an expiry, the cleanup
- * of copied rules.
- */
-export function principalDecision(r: ActivityRow, priceThen: number | null = null, priceNow: number | null = null): PrincipalDecision | null {
-  if (!isPrincipalRow(r)) return null;
-  const at = thenNow(priceThen, priceNow);
-  const to = changesOf(r).proposal?.to;
-  const what = (to?.intent && INTENT[to.intent]) ?? "the proposal";
-  const qty = to?.quantity != null ? ` (${to.quantity} shares)` : "";
-
-  if (r.type === "PROPOSAL_REJECTED") {
-    const raw = to?.userMessage ?? r.rationale ?? "";
-    // A no-message decline stores a "[REJECTED:USER] …" sentinel.
-    const message = raw && !raw.startsWith("[REJECTED:USER]") ? oneLine(raw) : null;
-    return message
-      ? { at: r.timestamp, line: `Declined ${what}${qty}${at}: "${message}"`, wantsAnswer: true }
-      : { at: r.timestamp, line: `Declined ${what}${qty}${at}, no reason given`, wantsAnswer: false };
-  }
-  if (r.type === "PROPOSAL_APPROVED" && to?.edited) {
-    const size =
-      to.quantity != null && to.proposedQuantity != null
-        ? `, ${to.quantity < to.proposedQuantity ? "cut" : "raised"} from ${to.proposedQuantity} to ${to.quantity} shares`
-        : " with edits";
-    return { at: r.timestamp, line: `Approved ${what}${size}${at}`, wantsAnswer: true };
-  }
-  if (r.type.startsWith("PROPOSAL_")) return null;
-
-  // A hand edit: only the change, a removal included (ABT 10-07: a run read
-  // the principal's added buy and never its removal, and set the buy again).
-  // The rationale on these lines is the app's sentence, not the principal's words.
-  if (isCopiedRuleCleanup(r)) return null;
-  const ops = changesOf(r).triggerOps?.to ?? [];
-  const change = ops.map((o) => o?.text).filter(Boolean).join("; ") || oneLine(r.summary ?? "");
-  return change ? { at: r.timestamp, line: `Set by hand: ${change}${at}`, wantsAnswer: true } : null;
-}
-
-const RUN_WORDS: Record<string, string> = {
-  MORNING_PLAN: "morning run",
-  INTRADAY_TACTICAL: "trigger run",
-  THESIS_WRITER: "writer",
-  PRINCIPAL_CHAT: "chat",
-  DISCOVERY: "discovery",
-};
 const ET = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 /** "09-14 11:43", Eastern. */
@@ -259,83 +168,54 @@ export function etStamp(d: Date): string {
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
-/** The block every agent reads first on a stock. */
-export function buildStockContext(args: {
-  ticker: string;
-  rows: ActivityRow[];
-  /**
-   * The principal's removals by hand at any age, loaded on their own like the
-   * notes (work-inputs.ts), so the activity window does not decide whether a
-   * run is told. Read together with `rows`; a row in both counts once.
-   */
-  removals?: ActivityRow[];
-  /** The stock's resolved triggers, by id: what the fire was, and its rule. */
-  labelFor: (triggerId: string) => TriggerLabel | null;
-  /** Whether a trigger reading as this sentence is on the stock now: a removal it came back from is not shown. */
-  onStock?: (sentence: string) => boolean;
-  now: Date;
-  /** The live price, for "now" beside the principal's price then. */
-  currentPrice?: number | null;
-}): StockContext {
-  const rows = newestFirst(args.rows);
-  const last = rows.find(isAgentAnswer) ?? null;
-  const since = last ? rows.slice(0, rows.indexOf(last)) : rows;
-  const fires = openFires(rows);
-  // The price when a decision was made: its own line's, or the newest before it.
-  const priceBefore = (r: ActivityRow) => rows.slice(rows.indexOf(r)).find((x) => typeof x.priceAtTime === "number")?.priceAtTime ?? null;
-  const decisions = since
-    .map((r) => principalDecision(r, priceBefore(r), args.currentPrice ?? null))
-    .filter((d): d is PrincipalDecision => d != null);
-  const notes = newestNotes(rows);
-  // A note written after the last answer puts the stock on the list once, so a run reads it in full.
-  const newNote = notes.find((n) => !last || n.timestamp > last.timestamp);
-  const unansweredDecision =
-    decisions.find((d) => d.wantsAnswer) ??
-    (newNote ? { at: newNote.timestamp, line: `Note: ${oneLine(newNote.rationale ?? "")}`, wantsAnswer: true } : null);
-  // What the principal took off the stock stays said after a run answers it;
-  // not once a trigger reading the same is back on the stock.
-  const removed = removedByHand([...rows, ...(args.removals ?? [])])
-    .filter((x) => !args.onStock?.(x.sentence))
-    .slice(0, REMOVALS_SHOWN);
-  if (!last && decisions.length === 0 && fires.length === 0 && !notes.length && !removed.length) {
-    return { text: null, openFires: fires, unansweredDecision, principalNote: null };
-  }
+/** The feed item in the shape the Activity tab's title grammar reads. */
+function asTimelineUpdate(item: FeedItem): TimelineUpdate {
+  return {
+    ...item,
+    timestamp: item.timestamp.toISOString(),
+    fieldChanges: (item.fieldChanges ?? null) as TimelineUpdate["fieldChanges"],
+    positionAtTime: (item.positionAtTime ?? null) as TimelineUpdate["positionAtTime"],
+  };
+}
 
-  const T = args.ticker.toUpperCase();
-  const lines = [`WHAT'S BEEN SAID ON $${T}`];
-  if (notes.length) lines.push("The principal's notes:");
-  for (const n of notes) {
-    const then = thenNow(n.priceAtTime ?? null, args.currentPrice ?? null);
-    lines.push(`  ${etStamp(n.timestamp)}${then}: "${oneLine(n.rationale ?? "")}"`);
-  }
-  // Counted against the cap with the notes, and like them never cut.
-  if (removed.length) lines.push(REMOVALS_HEADER);
-  for (const x of removed) lines.push(`  ${etStamp(x.at)}: ${x.sentence}`);
-  const said = last?.rationale?.trim() ? ` — "${sentences(last.rationale.split(/\n\s*\n\s*\[/)[0])}"` : "";
-  lines.push(last ? `Last look: ${(last.runMode && RUN_WORDS[last.runMode]) ?? "a run"}, ${etStamp(last.timestamp)}${said}` : "Last look: none on record.");
-  const tail = `Full history: get_theses(tickers: ["${T}"], include_history: true)`;
+/**
+ * One Activity line as the agent reads it: the time, the price then, the
+ * title the owner sees, what changed, and the paragraph if someone wrote one.
+ * The same title grammar as the Activity tab, so the two never differ.
+ */
+export function saidLine(item: FeedItem): string {
+  const tu = asTimelineUpdate(item);
+  const kind = eventKind(tu);
+  const t = titleSegments(tu);
+  // A plain review reads "Review" on screen too; everything that happened keeps its title.
+  const title = kind === "note" ? "Your note" : isPlainReview(tu) ? "Review" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
+  const chips = [...ladderChangeLines(tu), ...notAppliedLines(tu)].map((c) => c.text);
+  const comment = proposalUserMessage(tu);
+  const paragraph = comment ?? (item.rationale?.trim() ? item.rationale.replace(/^\[USER\]\s*/, "").trim() : null);
+  const parts = [etStamp(item.timestamp), item.priceAtTime != null ? money(item.priceAtTime) : null, title].filter(Boolean);
+  let line = `  ${parts.join(" · ")}`;
+  if (chips.length) line += ` [${chips.join("; ")}]`;
+  if (paragraph) line += ` — "${oneLine(paragraph)}"`;
+  return line;
+}
 
-  if (decisions.length === 0 && fires.length === 0) {
-    lines.push("Nothing since.");
-  } else {
-    lines.push("Since then, not yet answered:");
-    for (const d of decisions) lines.push(`  The principal, ${etStamp(d.at)}: ${d.line}`);
-    const label = (f: OpenFire) => args.labelFor(f.triggerId)?.label ?? oneLine(f.summary ?? "a trigger since removed");
-    const folded: OpenFire[] = [];
-    let used = [...lines, tail].join("\n").length;
-    for (const f of fires) {
-      const rule = args.labelFor(f.triggerId)?.rationale;
-      const when = f.count === 1 ? etStamp(f.lastAt) : `fired ${f.count}×, ${etStamp(f.firstAt)} to ${etStamp(f.lastAt)}, last`;
-      const line = `  ${label(f)} — ${when}${f.lastPrice != null ? ` at ${money(f.lastPrice)}` : ""}.${rule ? ` The rule: "${sentences(rule)}"` : ""}`;
-      if (folded.length === 0 && used + line.length + 1 <= CONTEXT_CHAR_CAP) {
-        lines.push(line);
-        used += line.length + 1;
-      } else folded.push(f);
-    }
-    if (folded.length) lines.push(`  and ${folded.length} more fired since: ${folded.map((f) => `${label(f)}${f.count > 1 ? ` (${f.count}×)` : ""}`).join("; ")}.`);
-  }
-  lines.push(tail);
-  const p0 = notes[0];
-  const principalNote = p0 ? `${etStamp(p0.timestamp)}: ${sentences(p0.rationale ?? "", 120)}` : null;
-  return { text: lines.join("\n"), openFires: fires, unansweredDecision, principalNote };
+/** The block every agent reads first on a stock: the newest 8 lines of its feed. */
+export function saidBlock(ticker: string, feed: FeedItem[]): string | null {
+  const items = recentItems(feed);
+  if (items.length === 0) return null;
+  const T = ticker.toUpperCase();
+  return [
+    `WHAT'S BEEN SAID ON $${T} — its newest ${items.length === RECENT_ITEMS ? RECENT_ITEMS : items.length} Activity lines, newest first, as the owner sees them:`,
+    ...items.map(saidLine),
+    `Full history: get_theses(tickers: ["${T}"], include_history: true)`,
+  ].join("\n");
+}
+
+/** What a run is handed on a stock, and the two facts the situations read off the whole feed. */
+export function buildStockContext(args: { ticker: string; feed: FeedItem[] }): StockContext {
+  return {
+    text: saidBlock(args.ticker, args.feed),
+    openFires: openFires(args.feed),
+    unansweredDecision: unansweredWord(args.feed),
+  };
 }

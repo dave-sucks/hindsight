@@ -28,15 +28,11 @@ import {
   formatTickerHistory,
   formatTickerHistoryShort,
 } from "@/lib/agent/context-bundle";
-import { latestBriefs } from "@/lib/research/brief-read";
-import { briefForModel, whyItMovedLine } from "@/lib/research/brief-types";
 import { lastSessionsFrom } from "@/lib/market-hours";
 
 /** News from the last three sessions, at most six items, each with its whole summary. */
 const NEWS_SESSIONS = 3;
 const NEWS_MAX = 6;
-/** The research brief rides the snapshot when one was built in the last day. */
-const BRIEF_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 
 export const getStockData = defineTool({
@@ -106,7 +102,7 @@ export const getStockData = defineTool({
     // is gone (2026-09-08).
     const newsFromDay = lastSessionsFrom(NEWS_SESSIONS);
     const newsFrom = new Date(`${newsFromDay}T04:00:00Z`);
-    const [quoteResult, profileResult, financialsResult, newsResult, recsResult, priceTargetResult, briefs] =
+    const [quoteResult, profileResult, financialsResult, newsResult, recsResult, priceTargetResult] =
       await Promise.all([
         getLiveQuote(ticker, { caller: "other", creds: ctx.alpacaCreds }),
         finnhub(`/stock/profile2?symbol=${ticker}`, 2),
@@ -120,10 +116,7 @@ export const getStockData = defineTool({
         // 2026-09-08; Finnhub gates /stock/price-target). Kept as a null
         // slot so the snapshot shape is unchanged.
         Promise.resolve({ data: null as unknown, error: undefined as string | undefined }),
-        latestBriefs([ticker], BRIEF_MAX_AGE_MS),
       ]);
-    const brief = briefs.get(ticker.toUpperCase()) ?? null;
-    const briefWhy = brief ? (whyItMovedLine(brief.payload) ?? "no clear reason in the news") : null;
 
     const quote = quoteResult.quote;
     const profile = profileResult.data as Record<string, unknown> | null;
@@ -285,14 +278,12 @@ export const getStockData = defineTool({
       if (techParts.length > 0) sParts.push(techParts.join(", "));
     }
     if (recentNews.length > 0) sParts.push(`${recentNews.length} news`);
-    if (brief) sParts.push(`Research brief ${briefForModel(brief).builtAt}: ${briefWhy}`);
 
     const tickerSummaryParts: string[] = [];
     if (priceReading.warningShort) tickerSummaryParts.push(`⚠ ${priceReading.warningShort}`);
     if (companyData?.name) tickerSummaryParts.push(companyData.name);
     if (metaParts.length > 0) tickerSummaryParts.push(metaParts.join(" · "));
     if (techData?.verdict) tickerSummaryParts.push(techData.verdict);
-    if (briefWhy) tickerSummaryParts.push(`Why it moved: ${briefWhy}`);
     // The chart numbers the agent was handed, on the row — the same object it
     // reads, so the row is proof of what it saw.
     if (techData) {
@@ -370,7 +361,6 @@ export const getStockData = defineTool({
         analystConsensus: consensusData,
         priceTargets: targetsData,
         news: recentNews,
-        researchBrief: brief ? briefForModel(brief) : "No research brief on this stock from the last 24 hours.",
         ...(universeCheck ? { universeCheck } : {}),
         ...(errors.length > 0 ? { apiErrors: errors } : {}),
         tickers: [

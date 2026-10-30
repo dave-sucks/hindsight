@@ -9,7 +9,7 @@
  *
  * The fired-buy bar is deleted rather than revived: a buy a run passes on
  * comes back on the next morning run as a plan flag or a live match, and
- * re-arms on its next crossing. The declined-sale bar stays (see
+ * re-arms on its next crossing. The declined-sale bar went too (2026-10-30;
  * declined-sale.replay.test.ts, case 4).
  *
  * Production: ETN 2026-09-18 09:45 ET. Its buy ("Price above $418") fired at

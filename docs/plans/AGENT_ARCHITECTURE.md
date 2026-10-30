@@ -593,7 +593,8 @@ What the reviews raised, and where each point is handled:
 9. **The review stamp and the two strong bars.** A review that changes
    nothing lands REVIEWED again; the fired-buy bar in `complete_run` is
    deleted (a buy left as a note comes back on the next morning run); the
-   declined-sale bar stays (#789, 2026-10-07).
+   declined-sale bar stayed (#789, 2026-10-07) until 2026-10-30: a note
+   saying why the analyst holds now answers a declined sale too.
 
 ---
 

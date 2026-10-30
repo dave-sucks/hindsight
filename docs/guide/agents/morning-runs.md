@@ -56,7 +56,7 @@ It also reads the analyst's brief: your strategy, word for word, its rules on di
 
 It works the list one stock at a time and takes exactly one action on each. One `update_thesis` answers all of a stock's situations at once. Before any trade it calls `get_stock_data` for the news and a fresh quote, and before any note on a stock it searches the web once for that stock's latest news. The note leads with what happened to the stock and why, then what it means for your position ([what you read](../concepts/theses.md#what-you-read)).
 
-- **Sell or trim:** `close_position` or `manage_position`, as a proposal with its reason. A sale you declined or let lapse, with the price still past the line, is proposed again with today's reasons.
+- **Sell or trim:** `close_position` or `manage_position`, as a proposal; the run's note on the stock is its reason. A sale you declined or let lapse, with the price still past the line, is proposed again with today's reasons, or the note says why the analyst holds.
 - **Buy or add:** `place_trade` or `manage_position`. The size is worked out by risk, inside the analyst's band; the run never picks it.
 - **Redraw the plan:** `update_thesis`, one trigger at a time. It can raise a floor; it can never lower one on a stock we hold.
 - **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md).
@@ -92,7 +92,7 @@ Everything the morning run can call, read from `lib/agent/modes.ts`.
 `lib/agent/system-prompt.ts`, with the analyst brief and the house rules. Situation texts come from `SITUATIONS` in `lib/agent/situations.ts`, never the prompt.
 
 #### The read
-`get_theses` builds each row with `lib/agent/row-for-model.ts` at one of three sizes.
+`get_theses` builds each row with `lib/agent/row-for-model.ts` at one of three sizes. A trigger's note is on the row only when someone wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 
 #### Close-out
 `complete_run` credits a sale from the `Order` table, not the run's words (`lib/agent/summary-action-check.ts`).

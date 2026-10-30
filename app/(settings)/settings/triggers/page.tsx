@@ -21,10 +21,10 @@ export default async function TriggerSettingsPage() {
   if (!user) redirect("/sign-in");
 
   const accountId = await getAccountId(user.id);
-  if (!accountId) redirect("/settings/profile");
+  if (!accountId) redirect("/settings");
 
   const role = await getUserRole(user.id, accountId);
-  if (!role) redirect("/settings/profile");
+  if (!role) redirect("/settings");
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">

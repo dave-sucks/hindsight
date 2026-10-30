@@ -1,0 +1,11 @@
+{
+  "_note": "SRRK's close_position call of 2026-09-14 12:00:31 UTC (morning run cmu16y3f8000004ia2k1ywieg, Catalyst Event PM), verbatim from the run's saved thread: reason TARGET at $55.41 with the target at $65 and the stop at $56.40, so the label is corrected to MANUAL (DAV-263, shipped after this call). The position and the plan as they stood (order cmu16ygim000304iave8dy28w, LIVE, proposed).",
+  "call": {
+    "ticker": "SRRK",
+    "reason": "TARGET",
+    "notes": "I’m exiting SRRK because the catalyst we owned has already happened: the FDA approved apitegromab on September 11, so the pre-decision trade is complete. The stock is around $55.41, below our old $56.40 protective floor and still well short of the $65 target, which tells me the approval-day reaction did not deliver the upside we expected; for a catalyst trade, that is the moment to step aside rather than invent a new hold."
+  },
+  "price": 55.41,
+  "position": { "id": "cmsrgx5hs000a04jl2os74btk", "symbol": "SRRK", "direction": "LONG", "quantity": 93, "avgCost": 53.895, "targetPrice": 65, "stopLoss": 56.4, "environment": "LIVE" },
+  "thesis": { "ticker": "SRRK", "status": "HOLDING", "direction": "LONG", "targetPrice": 65, "stopLoss": 56.4 }
+}

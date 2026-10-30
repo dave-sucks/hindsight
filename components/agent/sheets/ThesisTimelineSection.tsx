@@ -2,13 +2,16 @@
 
 /**
  * ThesisTimelineSection — the thesis audit log, rendered inside the
- * ThesisSheet Activity tab (P1-33 slice 1).
+ * ThesisSheet Activity tab (P1-33 slice 1). `RecentActivity` below is the
+ * Overview's list: the stock's newest 8 Activity lines, the same 8 the
+ * agents are handed, in the same row design, and a View all that opens the
+ * tab. The tab marks where those 8 end.
  *
- * Lazy-fetches /api/theses/:id/updates; that endpoint merges ThesisUpdate
- * rows with proposal lifecycles read from the Order table. Everything
- * decision-shaped is pure and lives in thesis-timeline-utils: buildTimeline
- * assembles the list, toRow() maps every item into ONE shape, and this file
- * renders that shape a single way. No per-type branches here.
+ * Lazy-fetches /api/theses/:id/updates: the stock's feed, the saved lines
+ * plus each proposal's steps from its order (lib/thesis/activity-feed.ts).
+ * Everything decision-shaped is pure and lives in thesis-timeline-utils:
+ * buildTimeline assembles the list, toRow() maps every item into ONE shape,
+ * and this file renders that shape a single way. No per-type branches here.
  *
  * The contract (principal spec, 2026-08-21):
  *   - Rows are text, not links. Clickable: the run arrow, and the title /
@@ -27,6 +30,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PriceChange } from "@/components/ui/price-change";
 import {
   buildTimeline,
   itemTimestamp,
@@ -34,7 +38,8 @@ import {
   proposalSpanSegments,
   dropRepeatedProse,
   toRow,
-  episodeMembers,
+  isPlainReview,
+  withPriceChanges,
   type LadderChange,
   type DotKind,
   type TimelineFilter,
@@ -162,9 +167,97 @@ interface Props {
   /** Where this thesis came from. Folded into the Created row rather than
    * rendered as its own differently-styled footer (principal, 2026-08-21). */
   provenance?: { sourceKind: string; rationale: string | null } | null;
+  /** The ids of the newest 8 lines, the ones on the Overview: the tab marks where they end. */
+  recentIds?: string[];
 }
 
-export function ThesisTimelineSection({ thesisId, provenance }: Props) {
+/** Every Activity line an item covers, so a row can be matched against the Overview's 8. */
+function itemIds(item: TimelineItem): string[] {
+  if (item.kind === "event") return [item.row.id];
+  return item.items.flatMap(itemIds);
+}
+
+/**
+ * Assemble → unfold what the principal opened → map to row shapes. One
+ * pipeline for the tab and the Overview's Recent activity, so the same line
+ * reads the same way in both.
+ */
+function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: Set<string>, provenance: Props["provenance"]) {
+  const built = buildTimeline(updates, filter);
+  const items = built.flatMap((item) => {
+    // Keep the fold row itself when expanded: the only control that can collapse the group again.
+    if (item.kind === "fold" && open.has(toRow(item).key)) return [item, ...item.items];
+    return [item];
+  });
+  const months = items.map((item, i) => {
+    const label = monthLabel(itemTimestamp(item));
+    return i === 0 || label !== monthLabel(itemTimestamp(items[i - 1])) ? label : null;
+  });
+  const rows = withPriceChanges(
+    dropRepeatedProse(items.map(toRow)).map((r) => {
+      if (r.type !== "CREATED" || !provenance) return r;
+      const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
+      const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
+      return { ...r, description: r.description ? `${r.description} ${sourced}` : sourced };
+    }),
+  );
+  // A plain review (a run looked and left the plan alone) is titled "Review";
+  // everything that happened keeps its own title. Every row has a title line,
+  // so the paragraph always sits under it, never beside the price and the actions.
+  const titled = rows.map((r, i) => {
+    const item = items[i];
+    return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: { primary: "Review", secondary: "" } } : r;
+  });
+  const ids = items.map(itemIds);
+  return { rows: titled, spans: proposalSpanSegments(items), months, ids };
+}
+
+/**
+ * The Overview's Recent activity: the stock's newest 8 Activity lines, the
+ * same 8 every run is handed (lib/thesis/activity-feed.ts), assembled and
+ * drawn exactly as the Activity tab draws them.
+ */
+export function RecentActivity({ items, onViewAll }: { items: TimelineUpdate[]; onViewAll: () => void }) {
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const currentRunId = useCurrentRunId();
+  const { rows, spans } = useMemo(() => assembleRows(items, "all", open, null), [items, open]);
+  if (items.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>
+        <Button size="xs" variant="ghost" onClick={onViewAll}>
+          View all
+        </Button>
+      </div>
+      <div>
+        {rows.map((row, idx) => (
+          <Row
+            key={row.key}
+            row={row}
+            isLast={idx === rows.length - 1}
+            span={spans.has(idx)}
+            pulse={currentRunId != null && row.runId === currentRunId}
+            open={open.has(row.key)}
+            onToggle={() =>
+              setOpen((prev) => {
+                const next = new Set(prev);
+                if (next.has(row.key)) next.delete(row.key);
+                else next.add(row.key);
+                return next;
+              })
+            }
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The line the tab draws under the newest 8, where the Overview's list and the agent's read end. */
+export const RECENT_END_LABEL = "The newest 8 end here: they are on the Overview and in the agent's read.";
+
+export function ThesisTimelineSection({ thesisId, provenance, recentIds }: Props) {
   const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<TimelineFilter>("all");
@@ -195,49 +288,18 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
       return next;
     });
 
-  // Assemble → unfold anything the principal opened → map to row shapes.
-  const { rows, spans, months } = useMemo(() => {
-    if (!updates) return { rows: [], spans: new Set<number>(), months: [] as (string | null)[] };
-    const built = buildTimeline(updates, filter);
-    const items = built.flatMap((item) => {
-      // Keep the fold row itself when expanded — it is the only control
-      // that can collapse the group again.
-      if (item.kind === "fold" && open.has(toRow(item).key))
-        return [item, ...item.items];
-      return [item];
+  // Assemble → unfold anything the principal opened → map to row shapes,
+  // and find the last row that carries one of the Overview's 8.
+  const { rows, spans, months, recentEnd } = useMemo(() => {
+    if (!updates) return { rows: [], spans: new Set<number>(), months: [] as (string | null)[], recentEnd: -1 };
+    const { rows, spans, months, ids } = assembleRows(updates, filter, open, provenance);
+    const recent = new Set(recentIds ?? []);
+    let recentEnd = -1;
+    ids.forEach((list, i) => {
+      if (list.some((id) => recent.has(id))) recentEnd = i;
     });
-    // An open episode also reveals the fires it answered, small, under it.
-    const expanded = items.flatMap<TimelineItem | TimelineRow>((item) =>
-      item.kind === "group" && open.has(toRow(item).key)
-        ? [item, ...episodeMembers(item)]
-        : [item],
-    );
-    // A child row never starts a month — it belongs to the row above it.
-    const monthAt = expanded.map((item, i) => {
-      if (!("kind" in item)) return null;
-      const label = monthLabel(itemTimestamp(item));
-      const prev = expanded.slice(0, i).reverse().find((p) => "kind" in p);
-      return prev == null || label !== monthLabel(itemTimestamp(prev as TimelineItem))
-        ? label
-        : null;
-    });
-    const mapped = dropRepeatedProse(
-      expanded.map((item) => ("kind" in item ? toRow(item) : item)),
-    ).map((r) => {
-      if (r.type !== "CREATED" || !provenance) return r;
-      const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
-      const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
-      return {
-        ...r,
-        description: r.description ? `${r.description} ${sourced}` : sourced,
-      };
-    });
-    return {
-      rows: mapped,
-      spans: proposalSpanSegments(items),
-      months: monthAt,
-    };
-  }, [updates, filter, open, provenance]);
+    return { rows, spans, months, recentEnd };
+  }, [updates, filter, open, provenance, recentIds]);
 
   return (
     <div className="space-y-3">
@@ -281,6 +343,9 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
                 open={open.has(row.key)}
                 onToggle={() => toggle(row.key)}
               />
+              {idx === recentEnd && idx < rows.length - 1 ? (
+                <p className="text-xs text-muted-foreground pb-4 pl-[19px]">{RECENT_END_LABEL}</p>
+              ) : null}
             </Fragment>
           ))}
         </div>
@@ -289,6 +354,17 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
   );
 }
 
+/**
+ * One row, drawn one way (the owner's design, 2026-10-30):
+ *   - line one, always a title: what happened (a fire, a proposal, a trade,
+ *     your edit, your note, a plan change), or "Review" for a run that
+ *     looked and left the plan alone;
+ *   - the right of line one, always: the price then, with its move from the
+ *     row before it in the same arrow and colours as the page header, and
+ *     the time;
+ *   - under it, the paragraph, two lines until opened;
+ *   - opened: the whole paragraph, then what changed (the trigger chips).
+ */
 function Row({
   row,
   isLast,
@@ -304,11 +380,9 @@ function Row({
   open: boolean;
   onToggle: () => void;
 }) {
-  // A row is interactive when it has something more to show: prose to
-  // expand, or a fold to unpack. Everything else is plain text.
-  // A row opens when it has more to show: prose, a roll-up, or the member
-  // events behind an episode.
-  const interactive = row.fold || row.description != null || row.members;
+  // A row opens when it has more to show: the rest of its paragraph, what
+  // changed, or a roll-up.
+  const interactive = row.fold || row.description != null || row.chips.length > 0;
   const showDescription = row.description != null && (open || row.showDescription);
 
   return (
@@ -326,13 +400,12 @@ function Row({
         ) : null}
       </div>
 
-      <div className={cn("flex-1 min-w-0", !isLast && (row.child ? "pb-2" : "pb-4"))}>
+      <div className={cn("flex-1 min-w-0", !isLast && "pb-4")}>
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3">
           <p
             className={cn(
-              "font-normal leading-snug min-w-0",
-              row.child ? "text-xs text-muted-foreground" : "text-sm",
-              row.fold ? "text-muted-foreground" : !row.child && "text-foreground",
+              "font-normal leading-snug min-w-0 text-sm",
+              row.fold ? "text-muted-foreground" : "text-foreground",
               interactive && "cursor-pointer",
             )}
             onClick={interactive ? onToggle : undefined}
@@ -346,9 +419,9 @@ function Row({
             ) : null}
           </p>
 
-          {/* Right rail: the timestamp swaps for actions on row hover —
-              run link + expand/collapse. No underline affordance on the
-              title (principal, 2026-08-21). */}
+          {/* Right rail: the price then with its move from the row before,
+              and the time; on hover they swap for the actions (run link,
+              expand). No underline affordance on the title (principal, 2026-08-21). */}
           <span className="relative flex items-center shrink-0 h-5 gap-2">
             <span
               className={cn(
@@ -357,8 +430,13 @@ function Row({
               )}
             >
               {row.price != null ? (
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  ${row.price.toFixed(2)}
+                <span className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium tabular-nums text-foreground">
+                    ${row.price.toFixed(2)}
+                  </span>
+                  {row.priceChange ? (
+                    <PriceChange dollarChange={row.priceChange.dollars} percentChange={row.priceChange.pct} size="sm" percentOnly />
+                  ) : null}
                 </span>
               ) : null}
               <span className="text-xs tabular-nums text-muted-foreground">
@@ -370,6 +448,7 @@ function Row({
                 <Button
                   size="icon-xs"
                   variant="ghost"
+                  nativeButton={false}
                   render={<Link href={`/runs/${row.runId}`} />}
                   title="View run"
                 >
@@ -390,8 +469,6 @@ function Row({
           </span>
         </div>
 
-        {row.chips.length > 0 ? <LadderBadges changes={row.chips} /> : null}
-
         {showDescription ? (
           <p
             className={cn(
@@ -404,6 +481,9 @@ function Row({
             {row.quoted ? `“${row.description}”` : row.description}
           </p>
         ) : null}
+
+        {/* What changed, under the paragraph, only once the row is open. */}
+        {open && row.chips.length > 0 ? <LadderBadges changes={row.chips} /> : null}
       </div>
     </div>
   );

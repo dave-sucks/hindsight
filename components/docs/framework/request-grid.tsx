@@ -11,7 +11,7 @@
 import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUpRight } from "lucide-react";
-import { ChipTabs } from "@/components/ui/chip-tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DOOR_COPY, MEASURED_REQUEST, type FrameworkData, type FrameworkDoorId } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
 import { Mono } from "../primitives";
@@ -115,7 +115,13 @@ export function RequestGrid({ data, linkBase = "" }: { data: FrameworkData; link
         style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <ChipTabs variant="tray" clearable={false} value={agent} onChange={(v) => v && setAgent(v)} options={AGENTS.map((a) => ({ value: a.id, label: a.label }))} />
+          <Tabs value={agent} onValueChange={(v) => setAgent(v as typeof agent)}>
+            <TabsList size="sm">
+              {AGENTS.map((a) => (
+                <TabsTrigger key={a.id} value={a.id}>{a.label}</TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
           <Mono className="text-xs text-muted-foreground tabular-nums">{cells.length} squares</Mono>
         </div>
         <div className="grid grid-cols-12 gap-1 sm:grid-cols-16 sm:gap-1.5" aria-hidden>

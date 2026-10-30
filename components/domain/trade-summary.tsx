@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceChange } from "@/components/ui/price-change";
-import { ResearchBrief } from "@/components/domain/research-brief";
+import { ProposalNote } from "@/components/domain/proposal-note";
 import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -206,8 +206,11 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
           right), never squeezed by an action control. */}
       {review ? <div className="flex justify-start">{review}</div> : null}
       <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
-      {note ? <TradeNote text={note} /> : null}
-      {pp && !pp.executing ? <ResearchBrief orderId={pp.orderId} initial={pp.brief ?? null} /> : null}
+      {pp && !pp.executing ? (
+        <ProposalNote orderId={pp.orderId} reason={note} writing={pp.writing ?? false} />
+      ) : note ? (
+        <TradeNote text={note} />
+      ) : null}
       {/* Meta line doubles as the path to the trade detail page. */}
       {meta || position.id ? (
         <p className="text-xs text-muted-foreground">

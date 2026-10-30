@@ -18,12 +18,13 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import type { MoverEntry, MoverKind, MoversView } from "@/lib/market-data/movers";
 
-const TABS: { key: MoverKind; label: string }[] = [
-  { key: "gainers", label: "Gainers" },
-  { key: "losers", label: "Losers" },
-  { key: "active", label: "Active" },
+const TABS: { value: MoverKind; label: string }[] = [
+  { value: "gainers", label: "Gainers" },
+  { value: "losers", label: "Losers" },
+  { value: "active", label: "Active" },
 ];
 
 type SortKey = "changePct" | "price" | "volume" | "move5d" | "move1m" | "move6m";
@@ -92,22 +93,13 @@ export function MoversTable({
 
   return (
     <div className="space-y-3">
-      <div className="flex w-fit items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => switchTab(t.key)}
-            className={cn(
-              "px-2.5 py-1 text-xs rounded transition-colors",
-              kind === t.key
-                ? "bg-background text-foreground font-medium shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Which movers list — a slice, so chips */}
+      <ChipTabs<MoverKind>
+        options={TABS}
+        value={kind}
+        onChange={(v) => v && switchTab(v)}
+        clearable={false}
+      />
 
       {failed ? (
         <div className="rounded-lg border bg-card p-8 text-center">

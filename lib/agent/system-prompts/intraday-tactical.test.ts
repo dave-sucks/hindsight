@@ -143,7 +143,7 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
     expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + SITUATIONS.PROTECTIVE_SALE.guidance);
     expect(prompt).toContain("Two sales fired together: one decision covers both");
     expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("YOUR_WORD_UNANSWERED — "));
-    expect(prompt.indexOf("YOUR_WORD_UNANSWERED — ")).toBeLessThan(prompt.indexOf("3. If the check FAILS"));
+    expect(prompt.indexOf("YOUR_WORD_UNANSWERED — ")).toBeLessThan(prompt.indexOf("3. If it no longer holds"));
   });
 
   it("ASML 10-07: a declined sale's facts are on the row under the morning row's name, so PROTECTIVE_SALE's pointer is true here too", () => {
@@ -206,7 +206,7 @@ describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () =>
 });
 
 // A declined protective sale is a standing order (the 2026-08-16 ruling):
-// it is proposed again every day its condition holds. A sentence added
+// it asks the run again every day its condition holds. A sentence added
 // 2026-09-30 told every trigger run to "say so and pass" after a decline,
 // whatever fired. On the NVDA case (scripts/hero-cases/nvda-declined-sale)
 // twelve runs each, same hour: with it 1 of 12 proposed the sale and 8 tried

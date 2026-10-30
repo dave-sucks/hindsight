@@ -136,9 +136,6 @@ export interface TradeCardData {
 
   /** Destination of the Open button. Required. */
   hindsightUrl: string;
-
-  /** The research brief block (lib/emails/research-brief.ts), under the stats card. */
-  briefHtml?: string | null;
 }
 
 // ─── URL helpers ─────────────────────────────────────────────────────────────
@@ -411,7 +408,6 @@ export function renderTradeCard(d: TradeCardData): string {
       </table>
     </div>
 
-    ${d.briefHtml ?? ""}
 
     ${ctaBlock}
 

@@ -2,7 +2,8 @@
 module.exports = {
   testEnvironment: "node",
   transform: {
-    "^.+\\.tsx?$": ["ts-jest", { tsconfig: { module: "commonjs" } }],
+    // jsx: a test can render a component to HTML (react-dom/server); Next's own build keeps "preserve".
+    "^.+\\.tsx?$": ["ts-jest", { tsconfig: { module: "commonjs", jsx: "react-jsx" } }],
   },
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",

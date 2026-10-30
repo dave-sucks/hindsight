@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const TABS = [
   { href: "/how-it-works", label: "How it works" },
@@ -18,24 +18,16 @@ export function DocsNav() {
   const pathname = usePathname();
   return (
     <div className="flex items-center justify-between gap-3">
-      <nav aria-label="How it works" className="inline-flex items-center gap-0.5 rounded-lg border bg-muted/50 p-0.5">
-        {TABS.map((t) => {
-          const active = pathname === t.href;
-          return (
-            <Link
-              key={t.href}
-              href={t.href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "rounded-md px-3 py-1 text-sm transition-colors",
-                active ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
+      {/* Page tabs — the shared Tabs; each tab is a link, so the URL picks the active one. */}
+      <Tabs value={pathname}>
+        <TabsList aria-label="How it works">
+          {TABS.map((t) => (
+            <TabsTrigger key={t.href} value={t.href} nativeButton={false} render={<Link href={t.href} />}>
               {t.label}
-            </Link>
-          );
-        })}
-      </nav>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
       <Link href="/docs" className={buttonVariants({ variant: "ghost", size: "sm" })}>
         Docs
         <HugeiconsIcon icon={ArrowUpRight01Icon} data-icon="inline-end" />

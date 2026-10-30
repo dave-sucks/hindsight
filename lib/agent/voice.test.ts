@@ -20,7 +20,7 @@ import { VOICE_RULES } from "@/lib/agent/voice";
 import { sizeByRisk } from "@/lib/agent/position-sizing";
 import { heatLine, type OpenRisk } from "@/lib/agent/portfolio-risk";
 import { computeRegime } from "@/lib/agent/regime";
-import { buildHeldThroughNote } from "@/lib/proposals/held-through-context";
+import { autoTradeLine } from "@/lib/agent/triggers/do-it";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 
 /** Words the rules forbid, in the forms the old text used them. */
@@ -87,13 +87,11 @@ describe("the lines the app writes under a buy", () => {
   });
 });
 
-describe("Samsara, 2026-09-25: the automatic floor sale, asked a third time", () => {
-  it("says which ask this is, and how to keep holding", () => {
-    const note = buildHeldThroughNote({ declineCount: 2, rejectMessage: null, recentExtreme: 37.77, direction: "LONG" })!;
-    expect(note).toBe(
-      "Third ask: you declined it or let it expire twice in the last 7 days, and it's still below the line. " +
-        "The recent low is $37.77; to keep holding, decline and move the line just under it.",
-    );
+describe("Samsara, 2026-09-25: the automatic floor sale", () => {
+  it("the app writes one plain line until the analyst's write-up replaces it; no ask count, no line to move", () => {
+    const line = autoTradeLine({ action: "EXIT", predicate: { watch: "price", is: "below", value: 41.42 } } as never);
+    expect(line).toBe('Your "Sell if below $41.42" came true. It\'s set to Auto-sell.');
+    expect(line).not.toMatch(/ask|move the line|no analyst|recent low/i);
   });
 });
 
@@ -106,6 +104,24 @@ describe("the old wording is gone from every line the app writes for the owner",
     ["lib/inngest/functions/proposal-expiry.ts", ["no approve / reject within the expiry window", "Original rationale:"]],
     ["lib/inngest/functions/reconcile-orders.ts", ["Once the stock is owned the buy price is what was paid, not the plan."]],
     ["lib/agent/system-prompts/intraday-tactical.ts", ["ladder intact:", "level no longer holds at\n           execution time", "False fire."]],
+    // 2026-10-29: no Activity line carries a paragraph the app wrote. These
+    // led the sheet (GEV's expiry) or reached the agents as an analyst's note.
+    ["lib/inngest/functions/proposal-expiry.ts", ["expired without an answer", "Its reason:"]],
+    ["lib/proposals/execute.ts", ["You approved the", "User rejected the ${intent} proposal without a written reason"]],
+    ["lib/proposals/thesis-flips.ts", ["Bought on your approval", "Profit-take. Position closed", "Protective exit on price", "Position closed. Reason:", "Close proposal approved. Reason:"]],
+    ["lib/inngest/functions/reconcile-orders.ts", ["Now that we own it, the buy price on the thesis is what we paid", "The automatic stop moves with it"]],
+    ["lib/agent/record-buy-blocked.ts", ["Nothing is wrong with the plan; the analyst has no room"]],
+    ["lib/agent/triggers/use-once.ts", ["is a one-time order: it came off the stock"]],
+    ["lib/agent/triggers/demote.ts", ["was removed: ", "re-price it if the setup comes back"]],
+    ["lib/trading/after-buy.ts", ["the next run will set it"]],
+    ["lib/actions/thesis-edit.ts", ["You added this trigger:", "You changed this trigger to:", "You removed this trigger:", "Removed in the cleanup of copied rules:"]],
+    ["lib/actions/promote-analyst.actions.ts", ["Administrative transition, not a thesis decision", "Demote-while-PROMOTED downgrade"]],
+    ["lib/actions/analyst.actions.ts", ["Analyst was created with this ticker on the suggested watchlist", "Editor removed this ticker from the analyst's watchlist."]],
+    // 2026-10-30: a proposal's reason is the analyst's words alone. The sizing and a corrected sale label go to the agent.
+    ["lib/agent/tools/close-position.ts", ["closed by agent — reason:"]],
+    ["lib/actions/closeTrade.actions.ts", ["Automated ${reason} exit"]],
+    ["lib/agent/tools/place-trade.ts", ["[proposalRationale, sizingNotes"]],
+    ["lib/agent/tools/manage-position.ts", ["${args.reason}\\n\\n${addSizingLine}"]],
   ];
   for (const [path, phrases] of cases) {
     it(path, () => {
@@ -151,14 +167,19 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   ];
 
   it("the voice rules state the standard and name the shorthand they ban", () => {
-    // A note: what happened and why, whether it touches the reason we own it, this position in dollars, the call.
-    expect(VOICE_RULES).toContain(`answers "what's going on with this stock, and what should I do?": what happened, today or since the last look, and why, with dates`);
-    expect(VOICE_RULES).toContain("whether that touches the reason we own it; what it means for this position (the shares, the dollars, the profit or loss, the stop and the target); then the call.");
+    // A note, in three parts: what is going on and why, what it means, then one closing sentence of what we did.
+    expect(VOICE_RULES).toContain(`answers "what's going on with this stock, and what should I do?", in three parts, in this order:`);
+    expect(VOICE_RULES).toContain("- What is going on with the company and the stock, and why: what happened, today or since the last look, with dates (its own news, its sector, the market).");
+    expect(VOICE_RULES).toContain("- What it means: whether that touches the reason we own it (or watch it), and for this position the shares, the dollars, the profit or loss.");
+    // GEV and ABBV replays, 10-28: the note listed every break that had not happened.
+    expect(VOICE_RULES).toContain("when nothing that would break the case has happened, say so in a few words, never as a list of each thing that hasn't");
+    expect(VOICE_RULES).toContain("- What you did, in one closing sentence of plain words, and what would change it");
+    expect(VOICE_RULES).toContain("A stop or target goes in this last sentence, and only when the call turns on it.");
     // The standing description: a company page.
     expect(VOICE_RULES).toContain("reads like a research site's company page: what the company does; what it has done lately, with dates; the numbers that matter (growth, profits, valuation); what Wall Street thinks; what has to stay true. Sourced, never a trade formula.");
     expect(VOICE_RULES).toMatch(/never the reason by itself: "the stop at \$41\.42", not "the floor fired"/);
-    // Always look it up, one search per stock, unless the day's research brief is already read.
-    expect(VOICE_RULES).toContain("Before a decision note on a stock, run one web_search for its latest news, unless today's research brief on it is already in what you read. One per stock per run.");
+    // Always look it up, one search per stock.
+    expect(VOICE_RULES).toContain("Before a decision note on a stock, run one web_search for its latest news. One per stock per run.");
     for (const term of ["PEAD", "drift", "time-hold", "Trend Template", "setup names", "R/R", "ATR", "ladder", "rung", "fire mode", "slot", "ids"]) expect(VOICE_RULES).toContain(term);
     expect(VOICE_RULES).not.toMatch(/Open with the call/);
   });

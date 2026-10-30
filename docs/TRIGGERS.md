@@ -257,7 +257,7 @@ names are:
 
 | `fireMode` | The name | On fire |
 |---|---|---|
-| **`DO_IT`** | Auto-sell / Auto-buy / Auto-add / Auto-trim | The trade, with no agent run. A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
+| **`DO_IT`** | Auto-sell / Auto-buy / Auto-add / Auto-trim | The trade, with no agent deciding; the same trigger run then writes it up with no trade tools, and its note becomes the trade's reason (`lib/proposals/auto-writeup.ts`). A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
 | **`ASK_NOW`** | Send to Agent | `app/thesis.trigger.fired` → a trigger run (the tactical run) starts now and decides. |
 | **`NEXT_MORNING`** | Flag for Review | The `TRIGGER_FIRED` row is written and no run starts; the next morning run answers it. |
 
@@ -317,8 +317,8 @@ model's chosen `reason` through `enforceCloseReason`
 protective/price EXIT trigger, the stored `Position.closeReason` /
 `Order.closeReason` is that trigger's STOP/TARGET tag, whatever the model
 called it. The sale is **auto-corrected, never refused** — a mismatch writes a
-plain-English note onto the close's rationale (so it shows on the approval card
-and in the run feed) naming what the agent originally declared. This matters
+plain-English note into the tool's reply and the run's event (`label_note`,
+`declared_reason`), never onto the sale's reason, which is the analyst's words. This matters
 because the label is what several rules read: the held-through-floor context in
 `get_theses` counts only `closeReason=STOP` declines, and `shouldRecycleToWatching`
 reads it to decide whether a sold name stays on the re-entry radar. In July,

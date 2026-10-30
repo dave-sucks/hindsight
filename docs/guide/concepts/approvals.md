@@ -12,22 +12,22 @@ No agent places a trade by itself. A trade becomes a proposal the moment an agen
 
 - **A [trigger run](../agents/trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
 - **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its target.
-- **An Auto trigger** (Auto-sell, Auto-trim, Auto-buy, Auto-add), with no agent at all.
+- **An Auto trigger** (Auto-sell, Auto-trim, Auto-buy, Auto-add), with no agent deciding. The analyst writes it up right after.
 - **[Chat](../agents/chat.md)**, when you ask for a trade.
 
 A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no agent picks a size. Only chat may name one, at your word.
 
 ## What a proposal carries
 
-It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the reason in the analyst's words, what caused it (the trigger that fired or the run that decided it), and when it expires.
+It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the analyst's note, what caused it (the trigger that fired or the run that decided it), and when it expires. One paragraph per trade: the note the run writes on the stock is the proposal's reason, on the card, in the email, on the trade page and in Activity, where the proposal and its note are one line. Until the run writes it the card says the analyst is writing it up, and the email waits for it.
 
-A sale made by a trigger set to Auto-sell names that trigger first ("Sell if below $41.42" fired, with no agent run), then the trigger's own reason, and Activity calls it an Auto-sell.
+A trade made by a trigger set to Auto is written up by the analyst a minute or two after it's made: what's going on with the company and why, what it means for why we own it, the trade, and whether the analyst agrees, and if not, what it would do instead. Until the note lands the card says the analyst is writing it up, and the email waits for it. Activity calls it an Auto-sell (or Auto-buy, Auto-add, Auto-trim).
 
 ## What your answer does
 
 - **Approve:** the order goes to the broker. Once the broker takes a buy, the [thesis](theses.md) turns from Watching to Holding and its sell side is armed; once it takes a sale, the thesis is retired as sold, or sent back to Watching after a sale at the target.
 - **Approve at a different size:** your size is used, and the next run reads it as caution or conviction. If the position or the analyst's room has shrunk since, the order is cut to what's left.
-- **Decline:** recorded on the stock and read by every run after it. A declined buy or add isn't proposed again unless something you named has changed. A declined sale is different: while the price stays past the line it's proposed again every day, because [floors only go up](triggers.md).
+- **Decline:** recorded on the stock and read by every run after it. A declined buy or add isn't proposed again unless something you named has changed. A declined sale is different: while the price stays past the line its trigger asks the analyst again every day, because [floors only go up](triggers.md), and the analyst proposes the sale again or says why it holds. A sale you want proposed every day, whatever the analyst thinks, is an Auto-sell.
 - **Let it expire:** after 24 hours a proposal lapses (one that runs out overnight is marked at the next market-day check). A lapse means "not now, ask me again", never a decline.
 
 ## Live and paper

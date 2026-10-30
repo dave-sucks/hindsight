@@ -664,6 +664,7 @@ export default function AnalystDetailClient({
               <Button
                 variant="outline"
                 size="sm"
+                nativeButton={false}
                 render={<Link href={`/chat?analyst=${config.id}`} />}
               >
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -811,22 +812,13 @@ export default function AnalystDetailClient({
                 </div>
                 {/* Range tabs */}
                 <div className="absolute bottom-2 left-2 right-2 z-10 flex items-center justify-between">
-                  <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-0.5 py-0.5">
-                    {RANGES.map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => setRange(r)}
-                        className={cn(
-                          "px-1.5 py-0.5 text-[9px] rounded transition-colors",
-                          range === r
-                            ? "bg-muted text-foreground font-medium"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
+                  <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
+                    <TabsList size="sm">
+                      {RANGES.map((r) => (
+                        <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
                 </div>
 
                 <ChartContainer

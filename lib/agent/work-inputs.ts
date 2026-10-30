@@ -31,8 +31,10 @@ import {
   type DeclineRow,
   type DeclineSummary,
 } from "@/lib/agent/declined-sale";
-import { ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
-import { COPIED_RULE_CLEANUP, type ActivityRow } from "@/lib/agent/stock-context";
+import { ACTIVITY_LINES, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
+import type { ActivityRow } from "@/lib/agent/stock-context";
+import { FEED_ORDER_SELECT } from "@/lib/thesis/activity-feed.server";
+import type { ProposalOrder } from "@/lib/thesis/activity-feed";
 import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
 import type { NeedsActionInput } from "@/lib/agent/needs-action";
@@ -100,8 +102,8 @@ export interface WorkLoad {
   equity: number | null;
   /** The activity read failed: open fires fall back to each stock's newest line. A caller that owes on fires fails loud. */
   activityFailed: boolean;
-  /** Each live stock's removals by the principal's hand, at any age, newest first: what's been said shows them. */
-  removedByHand: Map<string, ActivityRow[]>;
+  /** Each live stock's proposals, newest first: their steps join the stock's feed (lib/thesis/activity-feed.ts). */
+  proposalHistory: Map<string, ProposalOrder[]>;
 }
 
 const LIVE = new Set(["HOLDING", "WATCHING", "PROMOTED"]);
@@ -127,7 +129,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   const load: WorkLoad = {
     inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, priceFetchFailed: false,
     indicators: new Map(), positions: new Map(), proposals: new Map(), unapprovedExitCount: new Map(), declines: new Map(), recentLow: new Map(),
-    lastLadderEditAt: new Map(), ladderEditRows: new Map(), equity: null, activityFailed: false, removedByHand: new Map(),
+    lastLadderEditAt: new Map(), ladderEditRows: new Map(), equity: null, activityFailed: false, proposalHistory: new Map(),
   };
 
   // The live price, once, from the one place it comes from (live-quote): the
@@ -323,9 +325,9 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   }
   if (live.length === 0) return load;
 
-  // The activity: one capped scan (40 lines a stock covers a month), the
-  // principal's notes at any age, and the newest line alone for a stock the
-  // scan truncated away.
+  // The activity: one capped scan (40 lines a stock covers a month), and the
+  // newest line alone for a stock the scan truncated away. The agent reads
+  // the newest 8 of the feed; the situations read the whole scan.
   const liveIds = live.map((t) => t.id);
   const latest = new Map(
     (
@@ -343,12 +345,9 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     const scan = await prisma.thesisUpdate.findMany({
       where: { thesisId: { in: liveIds } },
       orderBy: { timestamp: "desc" },
-      take: Math.min(40 * liveIds.length, 1200),
+      take: Math.min(ACTIVITY_LINES * liveIds.length, 1200),
       select: ACTIVITY_SELECT,
     });
-    const notes = await prisma.thesisUpdate.findMany({ where: { thesisId: { in: liveIds }, type: "NOTE" }, select: ACTIVITY_SELECT });
-    const seen = new Set(scan.map((r) => r.id));
-    scan.push(...notes.filter((n) => !seen.has(n.id)));
     for (const row of scan) {
       streak.set(row.thesisId, [...(streak.get(row.thesisId) ?? []), row]);
       activity.set(row.thesisId, [...(activity.get(row.thesisId) ?? []), { ...row, runMode: row.run?.mode ?? null }]);
@@ -358,28 +357,23 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     console.warn("[work-inputs] activity scan failed; open fires read from the newest line only:", err);
   }
 
-  // The principal's removals by hand at any age, by their own query like the
-  // notes: a run is told what not to add back after the window has moved on.
-  // The cleanup of copied rules was not a decision about the stock.
+  // Each stock's proposals (every order that went through the approval seam
+  // carries its thesis since 2026-08-18): their steps join the stock's feed,
+  // so the agent reads a proposed, declined or expired sale as the owner
+  // sees it. Newest first; a dozen a stock covers the window the scan does.
   try {
-    const removals = await prisma.thesisUpdate.findMany({
-      where: {
-        thesisId: { in: liveIds },
-        runId: null,
-        AND: [
-          { fieldChanges: { path: ["triggerOps", "to"], array_contains: [{ op: "remove" }] } },
-          { OR: [{ fieldChanges: { path: ["source", "to"], equals: "USER" } }, { rationale: { startsWith: "[USER]" } }] },
-        ],
-        NOT: { summary: { startsWith: COPIED_RULE_CLEANUP } },
-      },
-      orderBy: { timestamp: "desc" },
-      select: ACTIVITY_SELECT,
+    const orders = await prisma.order.findMany({
+      where: { thesisId: { in: liveIds }, expiresAt: { not: null } },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(12 * liveIds.length, 600),
+      select: { ...FEED_ORDER_SELECT, thesisId: true },
     });
-    for (const row of removals) {
-      load.removedByHand.set(row.thesisId, [...(load.removedByHand.get(row.thesisId) ?? []), { ...row, runMode: row.run?.mode ?? null }]);
+    for (const o of orders) {
+      if (!o.thesisId) continue;
+      load.proposalHistory.set(o.thesisId, [...(load.proposalHistory.get(o.thesisId) ?? []), o as unknown as ProposalOrder]);
     }
   } catch (err) {
-    console.warn("[work-inputs] removals-by-hand lookup failed; the read goes without them:", err);
+    console.warn("[work-inputs] proposal-history lookup failed; the feed goes without the proposals' steps:", err);
   }
 
   const pending = new Map(await Promise.all(analystIds.map(async (id) => [id, await getPendingEntryTickers(id)] as const)));

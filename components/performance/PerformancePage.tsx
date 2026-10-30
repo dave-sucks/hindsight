@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -445,22 +446,13 @@ export default function PerformancePage({ data, scorecard = [] }: Props) {
         <Card className="border-border">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-lg font-medium">Equity Curve</CardTitle>
-            <div className="flex gap-1">
-              {TIME_RANGES.map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setActiveRange(r)}
-                  className={cn(
-                    'px-2.5 py-1 text-xs font-medium rounded transition-colors',
-                    activeRange === r
-                      ? 'bg-secondary text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
+            <Tabs value={activeRange} onValueChange={(v) => setActiveRange(v as TimeRange)}>
+              <TabsList size="sm">
+                {TIME_RANGES.map((r) => (
+                  <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           </CardHeader>
           <CardContent>
             {equityCurve.length < 2 ? (

@@ -31,6 +31,7 @@ import { StockLogo } from '@/components/StockLogo';
 import { PriceChange } from '@/components/ui/price-change';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { ChipTabs } from '@/components/ui/chip-tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PriceGauge } from '@/components/ui/gauge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -244,19 +245,20 @@ export default function TradesPage({
           the top bar. Fixed at the top; doesn't scroll. */}
       <div className="px-4 sm:px-6 pt-6 pb-4 flex items-center justify-between gap-4 shrink-0">
         <ChipTabs<FilterTab>
-          variant="tray"
           clearable={false}
           options={tabs}
           value={tab}
           onChange={(v) => v && setTab(v)}
         />
-        <ChipTabs<Window>
-          variant="tray"
-          clearable={false}
-          options={windows}
-          value={range}
-          onChange={(v) => v && setRange(v)}
-        />
+        <Tabs value={range} onValueChange={(v) => setRange(v as Window)}>
+          <TabsList size="sm">
+            {windows.map((w) => (
+              <TabsTrigger key={w.value} value={w.value} title={w.title}>
+                {w.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* Table container — takes remaining vertical space, scrolls both axes.

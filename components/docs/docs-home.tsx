@@ -15,6 +15,7 @@ import { Sheet, SheetClose, SheetContent } from "@/components/ui/sheet";
 import type { CatalogTool, DocsSetup } from "@/lib/docs/tools";
 import { ConceptCards } from "./concept-cards";
 import { LoopCanvas } from "./loop-canvas";
+import { FireCanvas } from "./fire-canvas";
 import { Eyebrow, TwoTone } from "./primitives";
 import { DocCrumbs } from "./doc-crumbs";
 import { DocsNav } from "./docs-nav";
@@ -66,6 +67,14 @@ export function DocsHome({ tools, setups, guide }: { tools: readonly CatalogTool
             <TwoTone id="flow-h" lead="How the pieces connect." rest="Discovery and the Writer fill the book with theses. Three agents read them, and what they decide comes out as buys, sales and holds." />
           </div>
           <LoopCanvas onOpen={setDoc} />
+        </section>
+
+        <section className="flex flex-col gap-8" aria-labelledby="fire-h">
+          <div className="flex flex-col gap-2.5">
+            <Eyebrow>When a trigger fires</Eyebrow>
+            <TwoTone id="fire-h" lead="From a trigger to a trade, and back." rest="Each trigger says what to do when it comes true. The fire reaches the agent that fits it, with the stock's situation, and whatever that agent writes comes back to the stock, where the next run reads it first." />
+          </div>
+          <FireCanvas onOpen={setDoc} />
         </section>
 
         <section id="tools" className="flex scroll-mt-20 flex-col gap-8" aria-labelledby="tools-h">

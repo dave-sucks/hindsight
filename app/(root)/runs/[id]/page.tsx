@@ -173,7 +173,7 @@ export default async function RunPage({
             theses={isPodcastSegmentRun ? [] : theses}
             transcript={transcriptForChat}
             headerAction={
-              <Button variant="ghost" size="icon" aria-label="How this run works" render={<Link href={`/docs/${docForRunMode(run.mode)}`} />}>
+              <Button variant="ghost" size="icon" aria-label="How this run works" nativeButton={false} render={<Link href={`/docs/${docForRunMode(run.mode)}`} />}>
                 <ScanSearch className="h-4 w-4" />
               </Button>
             }

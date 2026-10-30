@@ -53,6 +53,7 @@ import {
   type Condition,
 } from "./condition";
 import { applyTriggerDefaults } from "./defaults";
+import { defaultNote } from "./note";
 import { stampWrittenPrice } from "./written-price";
 import { validateEnterTriggerRequired } from "./enter-guard";
 import {
@@ -175,9 +176,9 @@ export function describeTrigger(t: Trigger, sells = true): string {
   return sentenceOf(t, sells);
 }
 
-/** A note for a trigger the owner set without one: the trigger in words. */
+/** A note for a trigger the owner set without one: the trigger in words (note.ts). */
 export function addedTriggerRationale(action: TriggerAction, predicate: When): string {
-  return `${sentenceOf({ action, predicate })}. You set this.`;
+  return defaultNote(action, predicate);
 }
 
 /** How a condition's number reads and moves in a sentence: a price, a %, or days (the measure's own unit). */

@@ -4,12 +4,14 @@
  * Lightweight read of a pending proposal's current values — used by the
  * "Edit & Approve" dialog to seed its inputs (proposed shares, target, stop)
  * regardless of which surface opened it, so we don't thread that data through
- * every ProposalActions call site.
+ * every ProposalActions call site — and by the proposal's card, which reads
+ * the reason again while the analyst is still writing up an Auto trade.
  */
 
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountId } from "@/lib/auth/account";
+import { writeupComing } from "@/lib/proposals/auto-writeup";
 
 export async function GET(
   _req: Request,
@@ -35,6 +37,7 @@ export async function GET(
       symbol: true,
       quantity: true,
       status: true,
+      rationale: true,
       position: {
         select: {
           accountId: true,
@@ -87,5 +90,8 @@ export async function GET(
     // For the reject dialog's inline trigger editor.
     thesisId: thesis?.id ?? null,
     thesisDirection: thesis?.direction ?? order.position.direction ?? null,
+    // For the card: the reason, and whether the analyst is still writing it.
+    rationale: order.rationale,
+    writing: await writeupComing(order.id),
   });
 }

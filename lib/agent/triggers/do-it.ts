@@ -1,11 +1,17 @@
 /**
- * An Auto trigger, with no agent: the trade tool call the agent would have made, from the trigger
- * alone. The tool sizes and gates it, and the approval switch decides whether it waits. Pure.
+ * An Auto trigger, with no agent deciding: the trade tool call the agent would have made, from the
+ * trigger alone. The tool sizes and gates it, and the approval switch decides whether it waits. The
+ * trigger run then writes the trade up (tactical-run.ts). Pure.
  */
 
 import { sentenceOf } from "./condition/describe";
 import { fireModeWords, trimPctOf, type DoIt } from "./fire-mode";
 import type { Trigger } from "./types";
+
+/** An Auto trade's reason until the analyst's write-up replaces it (lib/proposals/auto-writeup.ts): what fired, and that it is set to Auto. */
+export function autoTradeLine(trigger: Pick<Trigger, "action" | "predicate" | "trimPct">): string {
+  return `Your "${sentenceOf(trigger)}" came true. It's set to ${fireModeWords({ ...trigger, fireMode: "DO_IT" })}.`;
+}
 
 export type DoItCall =
   | { tool: "place_trade"; args: { ticker: string; direction: "LONG" | "SHORT"; entry_price: number; thesis_id: string; entry_rationale: string } }
@@ -19,7 +25,7 @@ export function doItCall(opts: {
   price: number;
 }): DoItCall {
   const { trade, trigger, thesis } = opts;
-  const why = `"${sentenceOf(trigger)}" fired (${fireModeWords({ ...trigger, fireMode: "DO_IT" })}), with no agent run. ${trigger.rationale}`.trim();
+  const why = autoTradeLine(trigger);
   if (trade === "BUY") {
     return {
       tool: "place_trade",

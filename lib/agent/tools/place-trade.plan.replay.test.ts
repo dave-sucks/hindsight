@@ -108,6 +108,17 @@ describe("ANET 08-20: the trigger run's buy", () => {
     expect(buy.db.store.order ?? []).toHaveLength(0);
   });
 
+  it("a trigger run's buy has no reason of its own: the run's note lands on the proposal at the end of the run; the sizing lines go to the agent and the run's event", async () => {
+    const { buy } = await sentVerbatim(175.99);
+    const order = (buy.db.store.order as Array<Record<string, unknown>>)[0];
+    // 08-20's call carried an entry_rationale; inside a run that field no longer exists (the note is the reason, lib/proposals/auto-writeup.ts).
+    expect(order).toMatchObject({ status: "AWAITING_APPROVAL", rationale: null });
+    const sizing = buy.result.data?.sizing as string[];
+    expect(sizing.join(" ")).toMatch(/sized by risk|capped at this analyst's largest trade/);
+    const placed = (buy.db.store.runEvent as Array<{ type: string; payload: { sizing?: string[] } }>).find((e) => e.type === "trade_placed");
+    expect(placed?.payload.sizing).toEqual(sizing);
+  });
+
   it("the fixture is small", () => {
     expect(statSync(FIXTURE).size).toBeLessThan(40 * 1024);
   });

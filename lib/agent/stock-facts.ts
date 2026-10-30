@@ -22,11 +22,7 @@ import { getSetup } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { SituationSources } from "@/lib/agent/situations";
-import { latestBriefs } from "@/lib/research/brief-read";
-import { whyItMovedLine } from "@/lib/research/brief-types";
 
-/** The row's "why it moved" comes from a research brief no older than this. */
-const WHY_IT_MOVED_MAX_AGE_MS = 7 * 86_400_000;
 
 /** The thesis columns the facts read. */
 export interface FactsRow {
@@ -85,8 +81,6 @@ export interface StockFacts {
   /** What situationsFor and listsTheStock read, per stock. */
   sources: Map<string, SituationSources>;
   heldThroughFloor: Map<string, HeldThroughFloor>;
-  /** Per ticker: the newest research brief's dated reason for the move, or that it found none. */
-  whyItMoved: Map<string, string>;
 }
 
 /**
@@ -140,10 +134,7 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
       stockContextFor({
         ticker: t.ticker,
         rows: input.activity ?? [],
-        removals: load.removedByHand.get(t.id),
-        triggers: input.thesis.triggers,
-        now: input.now,
-        currentPrice: input.latestQuote?.price ?? null,
+        orders: load.proposalHistory.get(t.id) ?? [],
       }),
     );
     needs.set(t.id, computeNeedsAction(input));
@@ -326,10 +317,5 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
     heldThroughFloor.set(t.id, { floorPrice, declined: ht.declineCount, lapsed: ht.lapseCount, rejectMessage: ht.rejectMessage, recentLow: load.recentLow.get(t.id) ?? null });
   }
 
-  const whyItMoved = new Map<string, string>();
-  for (const [ticker, b] of await latestBriefs(tickers, WHY_IT_MOVED_MAX_AGE_MS, now)) {
-    whyItMoved.set(ticker, whyItMovedLine(b.payload) ?? `no clear reason in the news (brief of ${b.createdAt.slice(0, 10)})`);
-  }
-
-  return { load, now, setupOverrides, needs, context, resolved, blocked, sources, heldThroughFloor, whyItMoved };
+  return { load, now, setupOverrides, needs, context, resolved, blocked, sources, heldThroughFloor };
 }

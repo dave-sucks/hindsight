@@ -64,7 +64,6 @@ export async function sendWriterAfterBuy(opts: {
       thesisId: opts.thesisId,
       type: "ACTED",
       summary: `Bought ${opts.ticker} by hand; the write-up didn't start`,
-      rationale: `Bought by hand with no ${owed.missing} — the write-up didn't start; the next run will set it.`,
     });
     return false;
   }

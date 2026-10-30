@@ -81,6 +81,7 @@ import { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { describeTrigger } from "@/lib/agent/triggers/ops";
+import { writtenNote } from "@/lib/agent/triggers/note";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 
@@ -356,10 +357,10 @@ export function buildWriterResearchPrompt(opts: WriterResearchPromptOpts): strin
 ${
   opts.existingThesis.triggers.length
     ? opts.existingThesis.triggers
-        .map(
-          (t) =>
-            `      - ${t.id}: ${describeTrigger(t, opts.existingThesis!.status === "HOLDING")} — "${t.rationale.slice(0, 90)}"`,
-        )
+        .map((t) => {
+          const note = writtenNote(t);
+          return `      - ${t.id}: ${describeTrigger(t, opts.existingThesis!.status === "HOLDING")}${note ? ` — "${note.slice(0, 90)}"` : ""}`;
+        })
         .join("\n")
     : "      (none)"
 }

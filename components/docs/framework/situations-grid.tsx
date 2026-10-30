@@ -80,7 +80,7 @@ export function SituationsGrid({ situations }: { situations: readonly FrameworkS
           <Stat label="Instructions sent" value={`${sent.toLocaleString("en-US")} chars`} />
         </div>
         <p className="text-sm text-muted-foreground">
-          All sixteen texts together are {all.toLocaleString("en-US")} characters. A read carries only the ones a stock on it is in, once each, however many stocks share one. A quiet stock is one line and carries nothing.
+          All seventeen texts together are {all.toLocaleString("en-US")} characters. A read carries only the ones a stock on it is in, once each, however many stocks share one. A quiet stock is one line and carries nothing.
         </p>
       </div>
 

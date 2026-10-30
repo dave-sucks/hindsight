@@ -24,7 +24,6 @@ import {
   lockPositionSales,
 } from "@/lib/proposals/position-lock";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
-import { requestSaleBrief } from "@/lib/research/brief-events";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
@@ -218,7 +217,8 @@ export async function closeOpenPosition(
         intent: "CLOSE",
         environment: positionEnvironment,
       })));
-  const rationale = auditReason ?? `Automated ${reason} exit — ${position.symbol}`;
+  // The caller's words or none: a sale with no reason given has none.
+  const rationale = auditReason ?? null;
   const expiresAt = new Date(placedAt.getTime() + PROPOSAL_TTL_MS);
 
   // 1. DB tx — one full close at a time per position. The position row is
@@ -344,8 +344,6 @@ export async function closeOpenPosition(
         alpacaConfirmedAt: new Date(),
       },
     });
-    // A sale sent without asking still gets its research brief on file.
-    if (source !== "user") requestSaleBrief(order.id, position.symbol);
   } catch (submitErr) {
     const outcome = classifyAlpacaError(submitErr);
     const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
@@ -547,16 +545,8 @@ export async function closeOpenPosition(
   //     position isn't CLOSED yet; reconcile-orders flips on actual fill.
   if (position.analystId) {
     const { closeThesisForPosition } = await import("@/lib/proposals/thesis-flips");
-    const flipRationale =
-      auditReason ??
-      buildCloseReason(
-        source,
-        reason,
-        position.symbol,
-        closePrice,
-        position.stopLoss,
-        position.targetPrice,
-      );
+    // The analyst's words on the sale, or none: the title says what sold.
+    const flipRationale = auditReason ?? null;
     await closeThesisForPosition({
       analystId: position.analystId,
       ticker: position.symbol,

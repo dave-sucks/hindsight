@@ -19,7 +19,6 @@
  * FMP + Finnhub all resolving.
  */
 
-import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -33,8 +32,9 @@ import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
-import { HERO_UPDATE_TYPES } from "@/lib/thesis/latest-note";
-import { briefForOrderView } from "@/lib/research/brief-read";
+import { RECENT_ITEMS, serializeFeedItem } from "@/lib/thesis/activity-feed";
+import { loadActivityFeed } from "@/lib/thesis/activity-feed.server";
+import { writeupComing } from "@/lib/proposals/auto-writeup";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
 
 export async function GET(
@@ -159,42 +159,14 @@ export async function GET(
     pendingProposal: ThesisPendingProposal | null;
   };
 
-  // The most recent durable event on this thesis, so the sheet can lead with
-  // what just happened instead of a belief written three weeks ago (DAV-304).
-  // The Activity tab's own fetch is lazy and only runs when you open the tab;
-  // this one row rides the first paint. Shaped as the timeline's own row type
-  // so `titleSegments` words it — one grammar, not a second one here.
-  const latestUpdateRow = await prisma.thesisUpdate
-    .findMany({
-      // Not simply the newest row: TRIGGER_FIRED is templated machine text
-      // and PROPOSAL_APPROVED is an order receipt, and between them they win
-      // the recency race on most stocks. See lib/thesis/latest-note.ts.
-      // Your own edit from the trigger popover is a real audit row, but it
-      // is your note to the agent, not the analyst's read on the stock —
-      // leading the sheet with it answered "what is going on with this
-      // stock?" with "you moved a stop." Skipped below (it is marked in
-      // fieldChanges; older rows by a [USER] tag) so the headline is always
-      // something a run wrote.
-      where: {
-        thesisId: thesis.id,
-        type: { in: [...HERO_UPDATE_TYPES] },
-      },
-      orderBy: { timestamp: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        timestamp: true,
-        type: true,
-        summary: true,
-        rationale: true,
-        fieldChanges: true,
-        priceAtTime: true,
-        triggerId: true,
-        runId: true,
-      },
-    })
-    .then((rows) => rows.find((r) => !isYourEdit(r)) ?? null)
-    .catch(() => null);
+  // The stock's newest 8 Activity lines: the same 8 every run is handed
+  // (lib/thesis/activity-feed.ts), so what the Overview shows is what the
+  // agents read. Newest first.
+  const recent = await loadActivityFeed(
+    { id: thesis.id, ticker: thesis.ticker, createdAt: thesis.createdAt, closedAt: thesis.closedAt, invalidatedAt: thesis.invalidatedAt, analystId: thesis.researchRun?.agentConfigId ?? null },
+    RECENT_ITEMS,
+  ).catch(() => []);
+
 
   // The write-up's own date: the newest row a research-writer run saved, never
   // a later run's edit. Its price is the writer's own pull ("Data pulled").
@@ -276,7 +248,7 @@ export async function GET(
         ),
       );
       const picked = pickProposalOrder(pos.orders ?? []);
-      const brief = picked ? await briefForOrderView(picked.order.id) : null;
+      const writing = picked ? await writeupComing(picked.order.id) : false;
       const cost = Number(pos.avgCost) * Number(pos.quantity);
       position = {
         id: pos.id,
@@ -303,7 +275,7 @@ export async function GET(
               expiresAt: picked.order.expiresAt?.toISOString() ?? null,
               rationale: picked.order.rationale,
               executing: picked.executing,
-              brief,
+              writing,
             }
           : null,
       };
@@ -366,25 +338,7 @@ export async function GET(
     // DAV-304, never sent to the sheet — so "is this being reviewed?" was
     // only answerable by querying the database.
     lastReviewedAt: thesis.lastReviewedAt,
-    latestUpdate: latestUpdateRow
-      ? {
-          id: latestUpdateRow.id,
-          timestamp: latestUpdateRow.timestamp.toISOString(),
-          type: latestUpdateRow.type,
-          summary: latestUpdateRow.summary ?? "",
-          rationale: latestUpdateRow.rationale,
-          fieldChanges: (latestUpdateRow.fieldChanges ?? null) as Record<
-            string,
-            { from: unknown; to: unknown }
-          > | null,
-          priceAtTime: latestUpdateRow.priceAtTime,
-          positionAtTime: null,
-          triggerId: latestUpdateRow.triggerId,
-          signalIds: [],
-          runId: latestUpdateRow.runId,
-          tradeId: null,
-        }
-      : null,
+    recent: recent.map(serializeFeedItem),
     // Derived at read time from the last actual look + the cadence on the
     // resolved ladder (DAV-221). Null = no scheduled review.
     reviewDueAt: derivedNextReviewAt({

@@ -3,8 +3,11 @@
  *
  * Spawned when a structured trigger fires (the 5-min cron in
  * trigger-evaluator.ts). Single-thesis, single-decision scope. The
- * agent's job: validate the trigger fired correctly, then either do
- * the declared action, override with reasoning, or pass.
+ * agent's job: find out what is going on with the company and the stock,
+ * decide (the declared action, another, or nothing), and write the review
+ * the owner and the next run read. When the trigger was set to Auto, the
+ * trade is already made and the job is the write-up alone (`autoTrade`):
+ * the same stock, the same read, no trade tools.
  *
  * Why a separate prompt: the daily run prompt is about walking the
  * book and deciding per-thesis. The tactical prompt is about ONE
@@ -19,6 +22,10 @@ import { conditionSentence, isGroup, shapeOf, trimPctOf } from "@/lib/agent/trig
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/lib/agent/situations";
 import { rowForModel } from "@/lib/agent/row-for-model";
+import { writtenNote } from "@/lib/agent/triggers/note";
+
+/** The tools a write-up of an Auto trade is not given: the trade is made, and this run only writes. */
+export const NOT_IN_A_WRITEUP: ReadonlySet<string> = new Set(["place_trade", "close_position", "manage_position", "dispatch_thesis_research", "wait_for_thesis_refresh"]);
 
 interface TacticalPromptArgs {
   /** The analyst's row and the account's setup numbers (lib/agent/analyst-brief.ts). */
@@ -55,6 +62,8 @@ interface TacticalPromptArgs {
    * guidance in rank order.
    */
   situations?: { codes: SituationCode[]; guidance: Partial<Record<SituationCode, string>> } | null;
+  /** The trigger was set to Auto and the trade is made: what it was, in one sentence. The run writes it up. */
+  autoTrade?: { line: string } | null;
 }
 
 /**
@@ -91,6 +100,7 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
     : "";
 
   const predicateSummary = conditionSentence(trigger.predicate);
+  const auto = args.autoTrade ?? null;
 
   // DAV-186: a fell-from-peak fire is validated against the system's tracked
   // watermark, never a chart-derived high. On 2026-08-18 a genuine HPE trail
@@ -100,7 +110,8 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   // when Position.peakPrice exists, so a missing peak here means OUR context
   // lookup failed — not that the fire was wrong.
   const trailingPeakBlock = (() => {
-    // A give-back off the high since we bought.
+    // A give-back off the high since we bought. An Auto trade is made: there is no fire to check.
+    if (auto) return "";
     const w = shapeOf(trigger.predicate);
     if (!w || isGroup(w) || w.variable !== "peak" || w.value == null) return "";
     const pct = w.value;
@@ -143,7 +154,11 @@ PATH: the predicate fired on the 5-minute check.${
 
   return `${analystBrief(analyst, args.capacity)}
 
-A trigger you set on your $${stock.ticker} thesis just fired. Your job is to decide what to do about it — fast, focused, one decision.
+${
+    auto
+      ? `Your $${stock.ticker} trigger "${predicateSummary}" fired. It is set to Auto, so no analyst decided: ${auto.line} Find out what is going on with the company and the stock today and write the note the principal reads with this trade.`
+      : `A trigger on your $${stock.ticker} thesis just fired. Find out what is going on with the company and the stock today, decide what to do, and write the review the principal reads: one decision.`
+  }
 
 ═══════════════════════════════════════════════════════════════════
 TOOL-CALL DISCIPLINE — read first
@@ -153,9 +168,9 @@ Every assistant turn between this prompt and complete_run MUST include
 at least one tool call. Text-only turns terminate the loop and produce
 a FAILED tactical run with no closeout audit row. Act, don't summarize.
 
-After get_stock_data returns, the next turn is the action call (or
-the update_thesis closeout if the check failed). NOT a markdown
-"now I'll evaluate this" paragraph. The decision framework below is
+After get_stock_data returns, the next turn is ${auto ? "the update_thesis call with your note." : `the action call (or
+the update_thesis closeout if the check failed).`} NOT a markdown
+"now I'll evaluate this" paragraph. ${auto ? "The write-up" : "The decision framework"} below is
 short — read once, then execute.
 
 Forbidden assistant-turn endings (each = run failure):
@@ -169,29 +184,48 @@ $${stock.ticker}, its row (get_theses)
 ═══════════════════════════════════════════════════════════════════
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}
 
-**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action. If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
+**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — ${auto ? "and say in the note whether the trade fits it." : "and act through the trigger's declared action."} If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
 
 **Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
-${trigger.action === "ENTER" || trigger.action === "ADD" ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
+${!auto && (trigger.action === "ENTER" || trigger.action === "ADD") ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
 
 ═══════════════════════════════════════════════════════════════════
 TRIGGER THAT FIRED (id: ${trigger.id})
 ═══════════════════════════════════════════════════════════════════
   predicate: ${predicateSummary}
-  declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}
-  rationale you wrote when you set it: "${trigger.rationale}"${trailingPeakBlock}
+  declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}${writtenNote(trigger) ? `\n  ${trigger.source === "PRINCIPAL" ? "the principal's note on it" : "its note"}: "${writtenNote(trigger)}"` : ""}${trailingPeakBlock}
 ${pathSection}
+${
+  auto
+    ? `═══════════════════════════════════════════════════════════════════
+THE WRITE-UP
 ═══════════════════════════════════════════════════════════════════
+
+1. Find out what is going on.
+   - get_stock_data($${stock.ticker}): the live price and the company's news.
+   - One web_search: why $${stock.ticker} is moving and the latest on the
+     company.
+
+2. Write EXACTLY one update_thesis call with trigger_id="${trigger.id}".
+   Its rationale is your note: the principal reads it on the trade.
+${situationsBlock}   - This run has no trade tools. If you would do something different,
+     say so in the note and why.
+
+3. Then complete_run.
+
+`
+    : `═══════════════════════════════════════════════════════════════════
 DECISION FRAMEWORK
 ═══════════════════════════════════════════════════════════════════
 
-1. Check the trigger fired correctly.
-   - Pull fresh data with get_stock_data($${stock.ticker}).
-   - Confirm the price level / move / reported figure actually holds right
-     now, not just at the moment the cron sampled.
+1. Find out what is going on.
+   - get_stock_data($${stock.ticker}): the live price and the company's news.
+   - One web_search: why $${stock.ticker} is moving and the latest on the
+     company.
+   - Confirm the condition still holds now, not just when the check sampled it.
 
-2. If the check HOLDS:
+2. If it still holds:
    - Default: execute the declared action (${trigger.action}). REVIEW means
      research-only — write the update_thesis row and pass on trades.
      EXIT means close_position. ENTER means place_trade once the buy's
@@ -201,7 +235,7 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). Say in the note what you did and why.
 
-3. If the check FAILS:
+3. If it no longer holds:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
      patch) and a note on what is happening to the stock and why you are
      not acting.
@@ -229,14 +263,17 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
 
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
-   - Always EXACTLY one update_thesis call documenting what you did and why.
-     Pass trigger_id="${trigger.id}" so the timeline carries the link.
+   - Always EXACTLY one update_thesis call documenting what you did and why;
+     after a trade you proposed, that note is the proposal's reason the
+     principal reads. Pass trigger_id="${trigger.id}" so the timeline carries the link.
    - When the row's \`said\` lists the principal's decisions or other triggers
-     fired since the last answer, your update_thesis answers them too: say
-     what you decided on each, by name.
+     fired since the last answer, your note answers what each asks (an
+     earnings date coming, a gain to reassess, a drop to explain) inside the
+     story of the stock, not as a list of the triggers.
    - Then complete_run.
 
-═══════════════════════════════════════════════════════════════════
+`
+}═══════════════════════════════════════════════════════════════════
 HARD CONSTRAINTS
 ═══════════════════════════════════════════════════════════════════
 

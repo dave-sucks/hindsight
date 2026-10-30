@@ -36,7 +36,7 @@ import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { MODES, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
-import { buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { NOT_IN_A_WRITEUP, buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -105,7 +105,9 @@ function describedTools(c: HeroCase): ToolSet {
   const all = createResearchTools({
     runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
   } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
-  const allowed = MODES[c.mode].toolAllowlist ?? Object.keys(all);
+  // A write-up of an Auto trade (promptArgs.autoTrade) gets no trade tools, as the live run does.
+  const writeUp = c.mode === "tactical" && (c.promptArgs as { autoTrade?: unknown }).autoTrade != null;
+  const allowed = (MODES[c.mode].toolAllowlist ?? Object.keys(all)).filter((name) => !writeUp || !NOT_IN_A_WRITEUP.has(name));
   const scoped = c.mode !== "principal" || c.toolCtx.analystId != null;
   return Object.fromEntries(
     allowed
@@ -157,6 +159,7 @@ function systemFor(c: HeroCase): string {
         // A case that names its situations takes their text from today's
         // table, so a recorded case prints the guidance a live run prints.
         situations: p.situations?.guidance ? p.situations : stock?.situations ?? null,
+        autoTrade: p.autoTrade ?? null,
       });
     }
     case "thesis-writer": {

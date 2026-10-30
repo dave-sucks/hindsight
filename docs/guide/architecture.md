@@ -73,7 +73,7 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 | [Discovery](agents/discovery.md) | When you ask in chat | The tickers its analyst already covers, to skip them | A pass or a watch; new stocks go to the Writer | Never |
 | [The Writer](agents/writer.md) | When an agent or you ask | Its own pull of one stock's data, and the web | The whole thesis | Never |
 | [Morning run](agents/morning-runs.md) | 8:00 AM ET on run days | Its whole book, each stock at the size today needs | The plan, its verdict and a note | Proposes |
-| [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires | The one stock it woke for, with the fire | The plan and a note | Proposes |
+| [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires; right after an Auto trade, to write it up | The one stock it woke for, with the fire | The plan and a note; an Auto trade's reason | Proposes (an Auto trade is made before it reads) |
 | [Chat](agents/chat.md) | When you type | Stocks by name, when the conversation needs them | Also the belief and the direction | Proposes, at your word |
 | [Analyst builder](agents/analyst-builder.md) | When you build or edit one | Your answers, the playbook, today's market | A whole analyst, on your yes | Never |
 

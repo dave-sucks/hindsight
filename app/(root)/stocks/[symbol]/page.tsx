@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { StockPriceChart } from "@/components/stocks/StockPriceChart";
+import { ThesisChart } from "@/components/domain/thesis-chart";
 import { StockThesesList } from "@/components/stocks/StockThesesList";
 import type { ThesisRowData } from "@/components/ui/thesis-row";
 import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
@@ -341,7 +341,17 @@ export default async function StockDetailPage({ params }: Props) {
               )}
 
               {/* Chart */}
-              <StockPriceChart candles={candles} />
+              {/* The thesis chart with no levels: same chart, and it opens on 1D. */}
+              <ThesisChart
+                ticker={upperSymbol}
+                candles={candles}
+                direction={null}
+                entryPrice={null}
+                targetPrice={null}
+                stopLoss={null}
+                current={price}
+                variant="full"
+              />
 
               {/* Stats grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-2 py-3 border-y">

@@ -1,39 +1,8 @@
 /**
- * Replays of what the sheet actually showed on 2026-09-23, from production rows.
+ * Whether the Overview's flag line shows at all (2026-09-23). Which lines the
+ * Overview shows is the feed's rule, tested in activity-feed.test.ts.
  */
-import {
-  HERO_UPDATE_TYPES,
-  isHeroUpdateType,
-  isLiveStatus,
-  latestNoteView,
-} from "./latest-note";
-
-describe("which note leads the sheet", () => {
-  it("skips the templated trigger event — FIVE and IOT both led with one", () => {
-    // FIVE: "Trigger: Down 12% from entry", 3h old, while the analyst's sell
-    // argument ("I'm selling $FIVE because it has broken the price support…")
-    // sat one row below. IOT: "Trigger: Price below $41.4".
-    expect(isHeroUpdateType("TRIGGER_FIRED")).toBe(false);
-  });
-
-  it("skips the order receipt — SMMT's newest note is an idempotency key", () => {
-    // "Approved CLOSE on SMMT — submitted to Alpaca (idem=63d4c566)".
-    // 22 PROPOSAL_APPROVED rows in 45 days, none with a write-up.
-    expect(isHeroUpdateType("PROPOSAL_APPROVED")).toBe(false);
-  });
-
-  it("keeps every type an analyst actually writes prose into", () => {
-    // 45-day production averages: UPDATED 663 chars (98% unique), CREATED 811,
-    // SUPERSEDED 781, INVALIDATED 597, CLOSED 493, REVIEWED 414.
-    for (const t of ["UPDATED", "REVIEWED", "CREATED", "CLOSED", "INVALIDATED", "SUPERSEDED"]) {
-      expect(isHeroUpdateType(t)).toBe(true);
-    }
-  });
-
-  it("the eligible set carries no duplicates", () => {
-    expect(new Set(HERO_UPDATE_TYPES).size).toBe(HERO_UPDATE_TYPES.length);
-  });
-});
+import { isLiveStatus, latestNoteView } from "./latest-note";
 
 describe("whether the note shows at all", () => {
   const base = { hasNote: true, hasReasons: false, quoteLoading: false, quoteFailed: false };

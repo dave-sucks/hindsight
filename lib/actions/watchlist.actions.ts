@@ -479,7 +479,6 @@ export async function addWatchlistItem(
       reviewCadenceDays != null
         ? `Added ${upper} to watchlist (reviewed every ${reviewCadenceDays}d)`
         : `Added ${upper} to watchlist (no review schedule)`,
-    rationale: reason,
     runId,
   });
 
@@ -515,7 +514,8 @@ export async function addWatchlistItem(
 export async function removeWatchlistItem(
   analystId: string,
   symbol: string,
-  removeReason: string = "Removed manually",
+  /** Your reason, when you gave one. */
+  removeReason?: string,
 ): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
@@ -543,7 +543,7 @@ export async function removeWatchlistItem(
       status: "RETIRED",
       retiredReason: "DROPPED",
       closedAt: new Date(),
-      closeReason: removeReason,
+      closeReason: removeReason ?? "Removed manually",
     },
   });
 
@@ -551,7 +551,7 @@ export async function removeWatchlistItem(
     thesisId: target.id,
     type: "STATUS_CHANGED",
     summary: `Removed ${upper} from watchlist`,
-    rationale: removeReason,
+    ...(removeReason ? { rationale: removeReason } : {}),
     fieldChanges: {
       status: { from: target.status, to: "RETIRED" },
       retiredReason: { from: null, to: "DROPPED" },

@@ -25,7 +25,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { TickBar, type Tick } from '@/components/ui/gauge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -57,7 +57,6 @@ import { Badge } from '@/components/ui/badge';
 import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
-import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import type { LatestDigest } from '@/lib/actions/digest.actions';
 import { DigestMarkdown } from '@/components/ui/ticker-markdown';
@@ -271,6 +270,15 @@ const THESIS_STATUS_ORDER: ThesisStatus[] = [
 ];
 const THESIS_PAGE_SIZE = 10;
 type ActivityTabFilter = 'all' | 'opens' | 'closes' | 'updates';
+
+// A dropdown filter starts on a real "All …" item, and `items` gives the
+// closed trigger the label (otherwise it shows the raw value, "all").
+const ACTIVITY_FILTERS: { value: ActivityTabFilter; label: string }[] = [
+  { value: 'all', label: 'All activity' },
+  { value: 'opens', label: 'Opens' },
+  { value: 'closes', label: 'Closes' },
+  { value: 'updates', label: 'Updates' },
+];
 // The server sends the newest 80 lines — the blocked / passed / failed
 // attempts need the room (getDashboardData). The first 40 show until
 // "Show more".
@@ -416,8 +424,8 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   // An attempt says what it was ("Buy passed", "Sale blocked", "Thesis edit
   // blocked") — the server names it; the generic word is the fallback.
   const status = isAttempt(item) && item.label ? { ...meta, label: item.label } : meta;
-  // Trade-as-Proposal — render inline [Approve][Reject] when this row is
-  // awaiting the user's decision. See docs/plans/TRADE_AS_PROPOSAL.md.
+  // Trade-as-Proposal — a row awaiting the user's decision. It's decided on
+  // the trade page the row opens. See docs/plans/TRADE_AS_PROPOSAL.md.
   const isProposed = item.type === 'PROPOSED' && item.orderId != null;
 
   // The middle text + right side, built per event type. Trade events
@@ -482,33 +490,30 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
                   : `/stocks/${item.symbol}`
                 : `/trades/${item.positionId}`
             }
-            className="flex items-center gap-1.5 rounded-md p-2 hover:bg-muted/70 transition-colors"
+            // Fixed columns so every row lines up: ticker, status, sentence,
+            // gain. On a phone the status column sizes to its badge.
+            className="grid grid-cols-[4.75rem_auto_minmax(0,1fr)_auto] sm:grid-cols-[5.5rem_9.5rem_minmax(0,1fr)_auto] items-center gap-2 rounded-md p-2 hover:bg-muted/70 transition-colors"
           />
         }
       >
-        <StockLogo ticker={item.symbol} size="sm" />
-        <span className="text-sm font-semibold font-brand shrink-0 mr-1">{item.symbol}</span>
-        <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
-          <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
-          {status.label}
-        </Badge>
-        {middle ? (
-          <span className="flex-1 min-w-0 text-xs text-muted-foreground tabular-nums truncate">
-            {middle}
-          </span>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2 shrink-0">
+        <span className="flex items-center gap-1.5 min-w-0">
+          <StockLogo ticker={item.symbol} size="sm" />
+          <span className="text-sm font-semibold font-brand truncate">{item.symbol}</span>
+        </span>
+        <span className="min-w-0 overflow-hidden">
+          <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
+            {status.label}
+          </Badge>
+        </span>
+        <span className="min-w-0 text-xs text-muted-foreground tabular-nums truncate">
+          {middle}
+        </span>
+        {/* A proposal has no Review button here: the amber badge marks it
+            and the row opens the trade page, where it's approved. */}
+        <span className="justify-self-end">
           {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
-          {isProposed && (
-            // Phones: the amber "Proposal" badge already says it; the row
-            // opens where it's approved, and the button ate the sentence.
-            <ProposalActions
-              orderId={item.orderId!}
-              expiresAt={item.expiresAt}
-              className="hidden sm:inline-flex"
-            />
-          )}
-        </div>
+        </span>
       </HoverCardTrigger>
       <HoverCardContent side="top" align="start" className="w-72">
         <div className="flex flex-col gap-2">
@@ -579,15 +584,18 @@ function HomeBottomSection({ activity, loading, coverage, mobileDigest }: {
       <div>
         <div className="flex items-center justify-between pb-3">
           <p className="text-sm font-medium">Activity</p>
-          <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
-            <SelectTrigger className="h-8 w-32 text-xs">
+          <Select
+            items={ACTIVITY_FILTERS}
+            value={activityFilter}
+            onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}
+          >
+            <SelectTrigger size="sm" aria-label="Filter activity">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="opens">Opens</SelectItem>
-              <SelectItem value="closes">Closes</SelectItem>
-              <SelectItem value="updates">Updates</SelectItem>
+              {ACTIVITY_FILTERS.map((f) => (
+                <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -884,7 +892,7 @@ interface DashboardClientProps {
 
 export default function DashboardClient({ data, userId, digest, coverage, pinned }: DashboardClientProps) {
   const router = useRouter();
-  const [range, setRange] = useState<Range>('1M');
+  const [range, setRange] = useState<Range>('1D');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('dollar');
   const [showMode, setShowMode] = useState<ShowMode>('equity');
@@ -1243,23 +1251,14 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             >
               {/* Controls: range tabs (left) + settings dropdown (right) */}
               <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
-                {/* Range tabs */}
-                <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
-                  {RANGES.map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setRange(r)}
-                      className={cn(
-                        'px-2.5 py-1 text-xs rounded transition-colors',
-                        range === r
-                          ? 'bg-background text-foreground font-medium shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
+                {/* Range — a view setting, so small Tabs */}
+                <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
+                  <TabsList size="sm">
+                    {RANGES.map((r) => (
+                      <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
 
                 {/* Settings dropdown */}
                 {!loading && (
@@ -1568,10 +1567,10 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             {/* Pending proposals sit above the digest — they're the most
                 time-sensitive thing on the page. Renders nothing when empty. */}
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
-            <DigestPreviewCard digest={digest} winRate={portfolio.winRate} />
             {/* Pinned shortlist — the hand-picked names you want in view.
-                Last in the rail: proposals and the digest come first. */}
+                Below proposals (time-sensitive), above the digest. */}
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
+            <DigestPreviewCard digest={digest} winRate={portfolio.winRate} />
           </div>
 
         </div>

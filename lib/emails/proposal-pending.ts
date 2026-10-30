@@ -18,8 +18,6 @@ import { sendEmail } from "@/lib/email";
 import { getEmailRecipients } from "@/lib/emails/recipients";
 import { proposalHeadline } from "@/lib/emails/proposal-headline";
 import { getLiveExitPrice } from "@/lib/proposals/exit-quote";
-import { briefEmailHtml } from "@/lib/emails/research-brief";
-import type { ResearchBriefPayload } from "@/lib/research/brief-types";
 import {
   renderTradeCard,
   tradeDetailUrl,
@@ -55,8 +53,6 @@ export interface ProposalPendingData {
   /** Position id — drives the CTA deep link. */
   positionId?: string | null;
   openedAt?: Date | null;
-  /** The research brief on file for this order, if it was ready in time. */
-  brief?: ResearchBriefPayload | null;
 }
 
 export function proposalPendingHtml(d: ProposalPendingData): string {
@@ -103,7 +99,6 @@ export function proposalPendingHtml(d: ProposalPendingData): string {
     reasoning: d.rationale,
     expiresAt: d.expiresAt,
     hindsightUrl: d.positionId ? tradeDetailUrl(d.positionId) : tradesIndexUrl(),
-    briefHtml: d.brief ? briefEmailHtml(d.brief) : null,
   });
 }
 
@@ -171,11 +166,6 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
     // the exitPriceKnown=false path → card shows "—" + no P&L, never a stale
     // or false number. In-app views are untouched; they stay live per render.
     const liveExit = isClose ? await getLiveExitPrice(order.symbol) : null;
-    // Whatever brief is on file — the email waited up to 30s for it. Never blocks the send.
-    const brief = await Promise.resolve()
-      .then(() => prisma.researchBrief.findUnique({ where: { orderId }, select: { payload: true } }))
-      .then((r) => (r?.payload ?? null) as ResearchBriefPayload | null)
-      .catch(() => null);
     const estimatedPrice = isClose
       ? liveExit ?? order.position.avgCost
       : order.position.avgCost;
@@ -218,7 +208,6 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
       rationale: order.rationale,
       environment,
       positionId: order.position.id,
-      brief,
     });
 
     await Promise.all(

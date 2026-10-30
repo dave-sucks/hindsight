@@ -18,6 +18,7 @@
  * saved row or a recorded one (scripts/hero-cases) builds the same way.
  */
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import { writtenNote } from "@/lib/agent/triggers/note";
 
 export type RowSize = "line" | "short" | "full";
 
@@ -141,7 +142,6 @@ function line(row: Row): string {
     noClaim ? (failedOn ? `write-up failed ${etDay(failedOn)}` : "no write-up yet") : null,
     str(row.setupId) ?? str(row.horizon),
     price != null ? money(price) : null,
-    str(row.whyItMoved) ? `moved: ${row.whyItMoved}` : null,
     entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noPlan(row) ? "no plan" : null,
     target != null ? `target ${money(target)}` : null,
     floor != null ? `floor ${money(floor)}` : null,
@@ -170,8 +170,9 @@ function whoSet(setBy: string | undefined): string | null {
 }
 
 /**
- * Every rule on the stock as a sentence: the stock's own, each with its
- * reason and its id, then the ones it inherits, marked. An inherited rule's
+ * Every rule on the stock as a sentence: the stock's own, each with its id
+ * and the reason someone wrote (`writtenNote`; a template's is left off),
+ * then the ones it inherits, marked. An inherited rule's
  * reason is the analyst's or the account's standing text and would repeat on
  * every stock of theirs, so it travels only on a rung that fired; so does its
  * id, which a run answering the fire names as trigger_id. An inherited rule
@@ -179,15 +180,19 @@ function whoSet(setBy: string | undefined): string | null {
  * (PBH 09-23, no rules of its own, two runs named the account's for removal).
  */
 function triggerLines(row: Row): string[] {
+  const note = (t: TriggerLine) => {
+    const written = writtenNote({ rationale: t.rationale, source: t.setBy });
+    return written ? `"${stripSourceTags(written)}"` : null;
+  };
   const own = list<TriggerLine>(row.triggers).map((t) => {
     const fired = date(t.lastFiredAt);
-    return [t.says ?? "", fired ? `fired ${etStamp(fired)}` : null, whoSet(t.setBy), t.rationale ? `"${stripSourceTags(t.rationale)}"` : null]
+    return [t.says ?? "", fired ? `fired ${etStamp(fired)}` : null, whoSet(t.setBy), note(t)]
       .filter(Boolean)
       .join(" · ") + ` [id ${t.id}]`;
   });
   const inherited = list<TriggerLine>(row.inheritedTriggers).map((t) => {
     const fired = date(t.lastFiredAt);
-    return [t.says ?? "", "inherited", fired ? `fired ${etStamp(fired)}` : null, fired && t.rationale ? `"${stripSourceTags(t.rationale)}"` : null]
+    return [t.says ?? "", "inherited", fired ? `fired ${etStamp(fired)}` : null, fired ? note(t) : null]
       .filter(Boolean)
       .join(" · ") + (fired ? ` [id ${t.id}]` : "");
   });
@@ -367,7 +372,6 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("position", positionLine(row, price));
   put("proposal_waiting", proposalLine(row));
   put("price", priceLine(row));
-  put("why_it_moved", str(row.whyItMoved));
   put("plan", planLine(row));
   put("plan_checks", list<{ text?: string }>(resolved?.planSanity).map((f) => f.text).filter(Boolean));
   put("protection", protectionLine(row, price));
