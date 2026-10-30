@@ -26,7 +26,7 @@ The folders match the sidebar:
 3. **The trigger check** watches the plan every five minutes. When the buy fires, a **[trigger run](agents/trigger-runs.md)** looks at that one stock and proposes the buy.
 4. **You approve** the **[proposal](concepts/approvals.md)** (on paper, approval is off by default and the buy goes straight through). The buy goes to the broker, the thesis turns to Holding, and its floor, trail and target guard it.
 5. **[Morning runs](agents/morning-runs.md)** read the analyst's whole book every run day and answer each stock in a **[situation](concepts/situations.md)**: a review that came due, a floor to raise, earnings, stale research, your notes.
-6. **A sale fires**, or a run decides to sell: another proposal. Declined or left to expire, it's proposed again each day the price stays past the line, and only you can lower the floor.
+6. **A sale fires**, or a run decides to sell: another proposal. Declined or left to expire, it asks the analyst again each day the price stays past the line: the analyst proposes the sale again or says why it holds. Only you can lower the floor.
 7. **The sale goes through** and the thesis is retired as sold, or goes back to Watching after a sale at the target. A retired stock gets one look back within two weeks: watch it again, or let it go.
 
 [Chat](agents/chat.md) is where you ask about any of it, change a plan, or start research yourself, at any step.

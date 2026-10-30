@@ -172,11 +172,11 @@ Answer, in order:
 
 What you can do:
 - Sell: close_position with reason STOP, answering belief_survived as its description says, or trim with manage_position partial_close; then one update_thesis.
-- After a decline or lapse, propose the sale again with today's reasons: what is going on with the company and the stock today. A sale asks every day its condition holds. Quote their note, and offer the recent low as a level for the line.
+- After a decline or lapse: if you still would sell, propose it again with today's reasons; if you would hold, say why. Quote their note, and offer the recent low as a level for the line.
 - Or tighten the line: update_thesis with edit_triggers on the fired trigger's id (the \`triggers\` lines give each id).
 - Two sales fired together: one decision covers both (all, some or none).
 
-Answered: a sale or trim, or the line tightened. A note that changes nothing leaves the sale asking again tomorrow; after a decline or lapse, complete_run takes no note.
+Answered: a sale or trim, the line tightened, or a note saying why you hold. It asks again tomorrow while the price is past the line.
 
 The note: why the stock fell, from what you found, and whether that changes why we own it; then the sale, the trim or why you hold, in one sentence. Not which day of the drop it is, nor a recount of the line.
 

@@ -547,40 +547,18 @@ async function runCompleteRunPreflight(
   })) as ThesisRow[];
   if (theses.length === 0) return null;
 
-  // Two bars, because they are not the same obligation.
-  //
-  //   addressed   — ANY audit row this run except TRIGGER_FIRED. A
-  //                 rationale-only REVIEW counts. Right for "did you look
-  //                 at this holding": looking IS the work.
-  //   substantive — the same, minus REVIEWED. Something actually changed:
-  //                 a patch (UPDATED), a status move, a trade. Only a
-  //                 declined sale asks for it.
-  //
-  // A fired buy no longer does (it did from 2026-08 until 2026-10-07). A buy
-  // a run passes on is not lost: it comes back the next morning as a plan
-  // flag or a live match, and it re-arms on the next crossing. The bar it
-  // had needed exceptions where buying was not an answer at all — a price
-  // back under the level, an analyst at its limit.
+  // Any audit row this run except TRIGGER_FIRED answers a flag, a note-only
+  // REVIEW included: the analyst's call stands, a declined sale's too.
   const runUpdates = await prisma.thesisUpdate.findMany({
     where: {
       runId,
       thesisId: { in: theses.map((t: ThesisRow) => t.id) },
       NOT: { type: "TRIGGER_FIRED" },
     },
-    select: { thesisId: true, type: true },
+    select: { thesisId: true },
   });
   const addressedThesisIds = new Set<string>(
     runUpdates.map((u: { thesisId: string }) => u.thesisId),
-  );
-  // REVIEWED is what update_thesis writes for a rationale-only or
-  // narrative-only call (see its `isNarrativeOnly` branch). Keying off the
-  // TYPE rather than `fieldChanges` is deliberate: the diff builder is
-  // known to drop changes (GAPS — target/stop/trigger edits landing with
-  // an empty diff), so a fieldChanges-based test would refuse real work.
-  const substantivelyAddressedThesisIds = new Set<string>(
-    runUpdates
-      .filter((u: { type: string }) => u.type !== "REVIEWED")
-      .map((u: { thesisId: string }) => u.thesisId),
   );
 
   // What the read showed, from the same loader and inputs (work-inputs.ts):
@@ -626,17 +604,7 @@ async function runCompleteRunPreflight(
           !(f.kind === "REVIEW_DUE" && !ownClock),
       ) ?? null;
     if (needsAction == null) continue;
-
-    // A declined or lapsed sale takes the strong bar (DAV-315): the ticket's
-    // words are "a note-only REVIEWED row does not clear it." Answering means
-    // proposing the sale again or tightening the line — both write a
-    // non-REVIEWED row. IOT's 09-21 run wrote exactly
-    // the weak kind. A lapse is "ask me again" (2026-10-13), so it keeps it.
-    const needsSubstantiveAnswer = needsAction.kind === "SALE_DECLINED";
-    const resolved = needsSubstantiveAnswer
-      ? substantivelyAddressedThesisIds.has(t.id)
-      : addressedThesisIds.has(t.id);
-    if (resolved) continue;
+    if (addressedThesisIds.has(t.id)) continue;
 
     let detail: string;
     if (needsAction.kind === "PROMOTED_AWAITING_RESOLUTION") {
