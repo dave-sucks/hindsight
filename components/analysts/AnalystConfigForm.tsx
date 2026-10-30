@@ -140,6 +140,8 @@ export interface AnalystConfigFormProps {
   livePrices?: Record<string, number>;
   /** When true, expose a Watchlist tab. Sheet hides it; builder/editor shows it. */
   showWatchlist?: boolean;
+  /** Stocks the analyst already watches: dropped from their own page, so no Remove here. */
+  watched?: string[];
 }
 
 export function AnalystConfigForm({
@@ -150,6 +152,7 @@ export function AnalystConfigForm({
   defaultTab = "brief",
   livePrices,
   showWatchlist = false,
+  watched,
 }: AnalystConfigFormProps) {
   return (
     <TooltipProvider>
@@ -172,7 +175,7 @@ export function AnalystConfigForm({
         {showWatchlist && (
           <TabsContent value="watchlist" className="flex-1 min-h-0 mt-0">
             <ScrollArea className="h-full">
-              <WatchlistTab values={values} onChange={onChange} livePrices={livePrices} />
+              <WatchlistTab values={values} onChange={onChange} livePrices={livePrices} watched={watched} />
             </ScrollArea>
           </TabsContent>
         )}
@@ -329,10 +332,12 @@ function WatchlistTab({
   values,
   onChange,
   livePrices,
+  watched,
 }: {
   values: FormValues;
   onChange: FormChangeHandler;
   livePrices?: Record<string, number>;
+  watched?: string[];
 }) {
   return (
     <div className="flex flex-col">
@@ -346,11 +351,10 @@ function WatchlistTab({
               key={symbol}
               ticker={symbol}
               currentPrice={livePrices?.[symbol]}
-              onRemove={() =>
-                onChange(
-                  "watchlist",
-                  values.watchlist.filter((s) => s !== symbol),
-                )
+              onRemove={
+                watched?.includes(symbol)
+                  ? undefined
+                  : () => onChange("watchlist", values.watchlist.filter((s) => s !== symbol))
               }
             />
           ))}

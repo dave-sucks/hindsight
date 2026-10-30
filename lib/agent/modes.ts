@@ -819,7 +819,7 @@ Write a DETAILED, opinionated strategy prompt (3–5+ paragraphs) covering:
 4. Risk management — position size, max open, stop philosophy.
 5. What makes a trade worth taking vs. skipping.
 
-Then call **suggest_config** with EVERY required field filled, including all four Universe fields (sectors, industries, themes, marketCapMin/Max) that came out of the interview — leave a field empty only if the user actively chose "no filter on that axis".
+Then call **suggest_config** with EVERY required field filled. A universe field left empty means no filter on that axis.
 
 
 ### Step 6 — Refine
@@ -1017,8 +1017,6 @@ The \`promptSkeleton\` is your STARTING POINT — adapt it into the analystPromp
 ### Step 5 — suggest_config with the COMPLETE updated config
 Call **suggest_config** with EVERY required field filled, including all four Universe fields (sectors, industries, themes, marketCapMin/Max).
 
-**Sectors + industries are always proposed together.** When you include a sector (lanes c or d), you must also propose the specific GICS industries inside it that match the strategy. Sector alone is a loose fence — "Information Technology" covers everything from IT Services to Semiconductors to Software, and routing in signals from all of those dilutes the feed. Narrow to the 2–4 industries the strategy actually trades. The only exception is if the user explicitly asked for cross-industry breadth ("I want all of tech, not just chips") — and in that case, say so in your summary sentence so the decision is visible.
-
 **marketCapMin/Max: omit the field entirely for no bound.** Do NOT send Number.MAX_SAFE_INTEGER, 0, or any other sentinel. An undefined field means "no filter on that axis". The tool schema rejects values above $10T.
 
 
@@ -1044,9 +1042,7 @@ For optional fields (intelligencePolicy): only include them when actually changi
 
 5. **Lane (d): archetype skeleton required.** \`read_knowledge_library\` with topic:"archetype" and a specific id MUST be called BEFORE writing the new analystPrompt. Do not write a new strategy from memory.
 
-6. **Watchlist: preserve + extend, don't replace.** Start from the CURRENT watchlist in currentConfig and KEEP every ticker unless the user explicitly asks to remove one OR the ticker directly contradicts the new strategy (e.g. a small-cap on a large-cap-only analyst). **Additions** are either names the user named or names that came back from \`get_market_movers\` / \`get_earnings_calendar\` and that you checked with \`get_stock_data\` — never from the model's training data. Default behavior on a rebuild is: send back the existing watchlist plus any new tickers the tools surfaced. Silently dropping the user's existing picks because they didn't come back from a tool call is a BUG.
-
-6a. **Sectors → industries: narrow on purpose.** When \`sectors\` is populated, you SHOULD also populate \`industries\` with 2-4 specific GICS industries inside those sectors — that's what makes the discovery fence tight. The schema auto-fills \`industries\` from the full sector list when you forget, so your tool call won't die, but a wide fence means the analyst looks at everything. Same applies to \`universe.sectors\` and \`universe.industries\`. Only intentionally leave \`industries\` empty if the user explicitly asked for cross-industry sector-wide exposure — and say so in your summary sentence.
+6. **Watchlist: add only.** Send back the CURRENT watchlist from currentConfig plus any new tickers. Apply adds each new ticker as a seed and removes nothing: a watched stock is dropped from its own page, or by a run, with a reason. If the user asks to drop one, say where to do it. **Additions** are either names the user named or names that came back from \`get_market_movers\` / \`get_earnings_calendar\` and that you checked with \`get_stock_data\` — never from the model's training data.
 
 6b. **marketCap / price omission.** PREFER to omit \`marketCapMin\` / \`marketCapMax\` / \`priceMin\` / \`priceMax\` entirely when you mean "no bound." The schema silently strips sentinel values (0, or >$5T ceilings), so sending them won't fail, but omission is clearer and doesn't risk future strictness bringing the hard-error back.
 

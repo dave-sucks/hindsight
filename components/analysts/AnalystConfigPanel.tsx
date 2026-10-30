@@ -23,6 +23,8 @@ interface AnalystConfigPanelProps {
   isCreating: boolean;
   confirmLabel?: string;
   confirmingLabel?: string;
+  /** The editor: stocks the analyst already watches (no Remove for them). */
+  watched?: string[];
 }
 
 // Panel wrapper — used by the analyst Builder/Editor split layout. Adapts the
@@ -36,6 +38,7 @@ export function AnalystConfigPanel({
   isCreating,
   confirmLabel = "Create Analyst",
   confirmingLabel = "Creating...",
+  watched,
 }: AnalystConfigPanelProps) {
   const [silkActive, setSilkActive] = useState(true);
   useEffect(() => {
@@ -90,6 +93,7 @@ export function AnalystConfigPanel({
           hideName
           defaultTab="brief"
           showWatchlist
+          watched={watched}
         />
       </div>
 
