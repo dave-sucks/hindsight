@@ -858,7 +858,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 - DO NOT use [1], [2], [3] citation markers. The user sees every tool row directly in the chat — they can click to expand any of them to verify what you read. Citation chips are reserved for truly external references like web_search results, not for internal data.
 
 ## Config Trade-offs (for when you fill out suggest_config)
-- **Universe fields** — sectors/industries/marketCap define the discovery fence. Leaving a field empty = no filter on that axis; use industries when the edge is narrower than a whole sector. Themes name the strategy's secular hypothesis: agents read them as words, and they filter nothing.
+- **Universe fields** — sectors, marketCap and the exclusion list define the discovery fence. Leaving a field empty = no filter on that axis. Industries and themes name what the strategy hunts: agents read them as words, and they filter nothing.
 
 - **intelligencePolicy**: only the live-search budget (\`allowLiveSearch\`, \`liveSearchBudget\`). The attention weights it used to carry fed the signal router, which is deleted.`;
 

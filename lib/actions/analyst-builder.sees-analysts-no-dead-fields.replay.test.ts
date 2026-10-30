@@ -54,7 +54,7 @@ import { listAnalysts } from "@/lib/agent/tools/list-analysts";
 import { BUILDER_SYSTEM_PROMPT, MODES } from "@/lib/agent/modes";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
-// The Catalyst Event PM's live fence, as a builder proposal.
+// The Catalyst Event PM's live universe, as a builder proposal.
 const CATALYST_FENCE = {
   sectors: ["Health Care", "Information Technology"],
   industries: ["Biotechnology", "Pharmaceuticals", "Health Care Equipment & Supplies", "Life Sciences Tools & Services", "Semiconductors", "Software"],
@@ -85,11 +85,12 @@ it("the builder lists the analysts already there, with their setups", async () =
   ]);
 });
 
-it("suggest_config offers no cap tier, policy limits or nested universe, and says themes filter nothing", () => {
+it("suggest_config offers no cap tier, policy limits or nested universe, and says industries and themes filter nothing", () => {
   const props = (zodSchema(configSchema as never).jsonSchema as { properties: Record<string, { properties?: object; description?: string }> }).properties;
   for (const gone of ["minMarketCapTier", "universe"]) expect({ gone, present: gone in props }).toMatchObject({ present: false });
   expect(Object.keys(props.intelligencePolicy.properties ?? {})).toEqual(["allowLiveSearch", "liveSearchBudget"]);
   expect(props.themes.description).toContain("filter nothing");
+  expect(props.industries.description).toContain("filter nothing");
   expect(() => configSchema.parse(CALL)).not.toThrow(); // no cap tier needed
 });
 
@@ -98,7 +99,7 @@ it("suggest_config refuses nothing off a hard-coded table of market caps", async
   await expect(suggestConfigTool.execute!(proposal as never, { toolCallId: "t", messages: [] })).resolves.toMatchObject({ name: "Catalyst Event PM" });
 });
 
-it("Create and Apply save the fence from the top-level fields, with no cap tier or policy limits", async () => {
+it("Create and Apply save the universe from the top-level fields, with no cap tier or policy limits", async () => {
   const proposal = configSchema.parse(CALL) as AgentConfigData;
   await createAnalystFromBuilder(toCreateInput(proposal));
   const created = create.mock.calls[0][0].data;
@@ -113,9 +114,9 @@ it("Create and Apply save the fence from the top-level fields, with no cap tier 
 });
 
 // The Compounder's 11 sectors with no industries: the fill used to write all
-// 71 GICS industries in them, a second filter that can disagree with the
-// vendor's industry names and mark a stock outside the fence.
-it("a proposal with sectors and no industries saves no industry filter", async () => {
+// 71 GICS industries in them. Nothing filters on industries (get_stock_data
+// checks the fence with no industry), so they were 71 names the agents read.
+it("a proposal with sectors and no industries saves no industries", async () => {
   const sectors = ["Information Technology", "Health Care", "Industrials", "Utilities", "Communication Services", "Energy", "Materials", "Consumer Discretionary", "Consumer Staples", "Financials", "Real Estate"];
   const proposal = configSchema.parse({ ...CALL, ...{ sectors, industries: undefined, marketCapMin: undefined, marketCapMax: undefined } }) as AgentConfigData;
   expect(proposal.industries ?? []).toEqual([]);

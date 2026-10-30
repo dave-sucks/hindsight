@@ -73,21 +73,19 @@ const rawConfigSchema = z.object({
         SECTORS.join(", ") +
         ". Empty = all sectors.",
     ),
-  // ── Universe (B1) — narrower discovery fence ─────────────────────────────
   industries: z
     .array(z.enum(INDUSTRY_VALUES))
     .optional()
     .describe(
-      "Canonical GICS industries (Title Case) — narrower than sector. " +
-        "Pick from the canonical list; the tool call will be rejected if you " +
-        "propose a value not in the list. Empty = no filter on industry.",
+      "Canonical GICS industries (Title Case), narrower than a sector; a value not in the list is rejected. " +
+        "Agents read them as words; they filter nothing (sectors, market cap and the exclusion list are the fence).",
     ),
   themes: z
     .array(z.string())
     .optional()
     .describe(
       "Themes the strategy hunts, e.g. 'AI infrastructure', 'GLP-1', 'datacenter capex'. 3-6 is typical. " +
-      "Agents read them as words; they filter nothing (sectors, industries and market cap are the fence).",
+      "Agents read them as words; they filter nothing (sectors, market cap and the exclusion list are the fence).",
     ),
   // $10T ceiling — no company approaches this, and models like to send
   // Number.MAX_SAFE_INTEGER when they interpret "no upper bound" as a

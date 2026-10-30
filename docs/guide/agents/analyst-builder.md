@@ -51,7 +51,7 @@ When you start one. The builder runs at **New analyst**; the editor runs from **
 One proposal, through `suggest_config`, shown beside the chat as a side-by-side change you can read before accepting:
 
 - **The strategy:** three to five paragraphs on the edge, what it buys, how it enters and what it never does. Every agent reads it word for word. It names no stops, targets or sizes: the setups, the settings and the account's rules own those, and a number written into the strategy would go stale the day one of them changed.
-- **The universe:** sectors, industries, a market-cap band and an exclusion list. Themes ride along as words every agent reads; they filter nothing.
+- **The universe:** sectors, a market-cap band and an exclusion list. Industries and themes ride along as words every agent reads; they filter nothing.
 - **The setups:** the playbook patterns it will write plans on. The first is its **signature setup**, and that setup's reviews start on the analyst's Triggers tab. None chosen means the whole playbook.
 - **Sizing and slots:** its smallest trade, its largest, and how many stocks it may hold at once. Also how long it holds. A new analyst is long-only unless you ask for shorts. Risk per trade and most in one stock aren't in the proposal: you set them on the panel, or they start at 1% and twice the largest trade.
 - **A starting watchlist:** names it checked against the universe, never tickers recalled from memory.
