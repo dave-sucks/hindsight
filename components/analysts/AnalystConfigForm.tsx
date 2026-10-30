@@ -63,7 +63,6 @@ import { setupIndex } from "@/lib/agent/knowledge/setups";
 // (DB save vs. local state).
 
 export type FormPolicy = {
-  maxSignalsPerRun?: number;
   allowLiveSearch?: boolean;
 };
 

@@ -173,12 +173,8 @@ export const SONAR_SIGNAL_SCHEMA = {
 // Stored as JSON on AgentConfig.intelligencePolicy.
 
 export interface IntelligencePolicy {
-  // Discovery budget — caps how much the agent reads per run.
-  // 30 was too low (TMT had 165 routes, agent saw 20), 100 was over-generous.
-  // 50 balances "see the full useful slice of your day" with context budget.
-  // Nothing reads it since the signal-inbox tools were deleted.
-  maxSignalsPerRun: number;        // default 50
-  maxArtifactReads: number;        // default 5 — full article reads per run
+  // (maxSignalsPerRun / maxArtifactReads capped the signal inbox and article
+  // reads, both deleted. Old rows may still carry the keys; nothing reads them.)
 
   // Source category preferences — steer what types of intelligence get priority
   preferredSourceCategories: SourceCategory[];  // e.g. ["SECTOR", "COMPANY"] — boost these
@@ -199,8 +195,6 @@ export interface IntelligencePolicy {
 
 /** Sensible defaults for new analysts — moderate budgets. */
 export const DEFAULT_INTELLIGENCE_POLICY: IntelligencePolicy = {
-  maxSignalsPerRun: 50,
-  maxArtifactReads: 5,
   preferredSourceCategories: [],
   excludedSourceCategories: [],
   allowLiveSearch: true,

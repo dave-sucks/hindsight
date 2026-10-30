@@ -116,34 +116,18 @@ export function toCreateInput(config: AgentConfigData): BuilderConfig {
     maxPositionSize: config.maxPositionSize ?? 5000,
     maxPositionTotal: config.maxPositionTotal,
     maxOpenPositions: config.maxOpenPositions ?? 5,
-    minMarketCapTier: (config.minMarketCapTier ?? "LARGE") as BuilderConfig["minMarketCapTier"],
     watchlist: (config.watchlist ?? []) as string[],
     exclusionList: (config.exclusionList ?? []) as string[],
     intelligencePolicy: config.intelligencePolicy,
-    universe: {
-      sectors: config.sectors,
-      industries: config.industries,
-      themes: config.themes,
-      marketCapMin: config.marketCapMin ?? undefined,
-      marketCapMax: config.marketCapMax ?? undefined,
-    },
+    industries: config.industries,
+    themes: config.themes,
+    marketCapMin: config.marketCapMin ?? undefined,
+    marketCapMax: config.marketCapMax ?? undefined,
   };
 }
 
-const UNIVERSE_KEYS = ["sectors", "industries", "themes", "marketCapMin", "marketCapMax"] as const;
-
 /** Apply: the editor's proposal. A field left undefined leaves the analyst's value alone. */
 export function toApplyInput(config: AgentConfigData): Partial<BuilderConfig> {
-  const universe = UNIVERSE_KEYS.some((k) => config[k] !== undefined)
-    ? {
-        sectors: config.sectors,
-        industries: config.industries,
-        themes: config.themes,
-        marketCapMin: config.marketCapMin ?? undefined,
-        marketCapMax: config.marketCapMax ?? undefined,
-      }
-    : undefined;
-
   return {
     name: config.name,
     description: config.description,
@@ -159,10 +143,12 @@ export function toApplyInput(config: AgentConfigData): Partial<BuilderConfig> {
     maxPositionSize: config.maxPositionSize,
     maxPositionTotal: config.maxPositionTotal,
     maxOpenPositions: config.maxOpenPositions,
-    minMarketCapTier: config.minMarketCapTier as BuilderConfig["minMarketCapTier"] | undefined,
     watchlist: config.watchlist as string[] | undefined,
     exclusionList: config.exclusionList as string[] | undefined,
     intelligencePolicy: config.intelligencePolicy,
-    universe,
+    industries: config.industries,
+    themes: config.themes,
+    marketCapMin: config.marketCapMin ?? undefined,
+    marketCapMax: config.marketCapMax ?? undefined,
   };
 }

@@ -41,12 +41,9 @@ export type AgentConfigData = {
   maxPositionTotal?: number;
   riskPct?: number;
   maxOpenPositions?: number;
-  minMarketCapTier?: string;
   watchlist?: (string | { symbol: string; reason?: string; priority?: string })[];
   exclusionList?: string[];
   intelligencePolicy?: {
-    maxSignalsPerRun?: number;
-    maxArtifactReads?: number;
     allowLiveSearch?: boolean;
     liveSearchBudget?: number;
   };

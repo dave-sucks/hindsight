@@ -48,28 +48,6 @@ function normalizeSuggestConfig(input: unknown): unknown {
     }
   }
 
-  // Same normalizations inside the universe sub-object.
-  if (cfg.universe && typeof cfg.universe === "object") {
-    const u: Record<string, unknown> = { ...(cfg.universe as Record<string, unknown>) };
-    if (u.marketCapMin === 0) delete u.marketCapMin;
-    if (u.marketCapMax === 0) delete u.marketCapMax;
-    if (typeof u.marketCapMax === "number" && u.marketCapMax >= 5e12) {
-      delete u.marketCapMax;
-    }
-    if (u.priceMin === 0) delete u.priceMin;
-    if (u.priceMax === 0) delete u.priceMax;
-
-    if (Array.isArray(u.sectors) && u.sectors.length > 0) {
-      const industries = u.industries;
-      if (!Array.isArray(industries) || industries.length === 0) {
-        u.industries = (u.sectors as string[]).flatMap(
-          (s) => GICS_INDUSTRIES_BY_SECTOR[s as GicsSector] ?? [],
-        );
-      }
-    }
-    cfg.universe = u;
-  }
-
   return cfg;
 }
 
@@ -127,8 +105,8 @@ const rawConfigSchema = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "Analyst-defined themes the strategy hunts. E.g. 'AI infrastructure', 'EV transition', 'GLP-1', 'datacenter capex'. " +
-      "These route theme-tagged signals into the inbox. 3-6 themes is typical. Empty = no theme filter.",
+      "Themes the strategy hunts, e.g. 'AI infrastructure', 'GLP-1', 'datacenter capex'. 3-6 is typical. " +
+      "Agents read them as words; they filter nothing (sectors, industries and market cap are the fence).",
     ),
   // $10T ceiling — no company approaches this, and models like to send
   // Number.MAX_SAFE_INTEGER when they interpret "no upper bound" as a
@@ -190,9 +168,6 @@ const rawConfigSchema = z.object({
     .min(1)
     .max(20)
     .describe("Maximum simultaneous open trades. Default 5."),
-  minMarketCapTier: z
-    .enum(["LARGE", "MID", "SMALL"])
-    .describe("Minimum market cap. LARGE = $10B+, MID = $2-10B, SMALL = <$2B"),
   watchlist: z
     .array(
       z.object({
@@ -211,64 +186,11 @@ const rawConfigSchema = z.object({
   // with the signal router they fed (2026-09-15).
   intelligencePolicy: z
     .object({
-      maxSignalsPerRun: z.number().min(10).max(100).optional(),
-      maxArtifactReads: z.number().min(2).max(20).optional(),
       allowLiveSearch: z.boolean().optional(),
       liveSearchBudget: z.number().min(0).max(20).optional(),
     })
     .optional()
     .describe("Intelligence policy — the live-search budget for this analyst's runs."),
-  // Session 3: Universe — the fence for discovery routing. Tickers/signals
-  // matching this Universe surface as new-ticker candidates in the morning
-  // brief even when they're not in watchlist/positions. Distinct from the
-  // DIRECTED-mode tickerUniverse allowlist.
-  universe: z
-    .object({
-      sectors: z
-        .array(z.enum(SECTOR_VALUES))
-        .describe(
-          "Canonical GICS sectors (Title Case). Pick from: " +
-            SECTORS.join(", "),
-        ),
-      industries: z
-        .array(z.enum(INDUSTRY_VALUES))
-        .describe(
-          "Canonical GICS industries (Title Case). Pick from the canonical list.",
-        ),
-      themes: z
-        .array(z.string())
-        .describe("Thematic tags, e.g. AI_INFRASTRUCTURE, EV_ADOPTION."),
-      exchanges: z
-        .array(z.string())
-        .optional()
-        .describe("Exchange filter, e.g. NASDAQ, NYSE. Empty = all."),
-      marketCapMin: z
-        .number()
-        .optional()
-        .describe("Minimum market cap in USD. Omit for no floor."),
-      marketCapMax: z
-        .number()
-        .optional()
-        .describe("Maximum market cap in USD. Omit for no ceiling."),
-      priceMin: z
-        .number()
-        .optional()
-        .describe("Minimum share price. Omit for no floor."),
-      priceMax: z
-        .number()
-        .optional()
-        .describe("Maximum share price. Omit for no ceiling."),
-      exclusions: z
-        .array(z.string())
-        .optional()
-        .describe("Tickers explicitly off-limits for discovery."),
-    })
-    .optional()
-    .describe(
-      "The analyst's discovery universe. Populate with sectors/industries/themes " +
-      "relevant to the strategy — this is the fence for new-ticker discovery. " +
-      "Keep it focused (5-10 items total); too broad makes discovery noise."
-    ),
 });
 
 // Final exported schema: preprocess heals the common agent mistakes before
@@ -277,88 +199,10 @@ export const configSchema = z.preprocess(normalizeSuggestConfig, rawConfigSchema
 
 export type ConfigSchema = z.infer<typeof configSchema>;
 
-// ── Fence vs watchlist validation (Session 4) ───────────────────────────────
-// Same data as scripts/audit-analyst-configs.ts. Kept inline here so the
-// builder can catch contradictions at propose-time — a config shipped with
-// NVDA in the watchlist and marketCapMax=$10B produces an analyst that can
-// never discover peers of its own holdings.
-const TICKER_CAP_USD: Record<string, number> = {
-  AAPL: 3_400_000_000_000,
-  MSFT: 3_100_000_000_000,
-  NVDA: 3_000_000_000_000,
-  GOOGL: 2_100_000_000_000,
-  GOOG: 2_100_000_000_000,
-  AMZN: 2_000_000_000_000,
-  META: 1_300_000_000_000,
-  TSLA: 800_000_000_000,
-  BRKB: 900_000_000_000,
-  AVGO: 700_000_000_000,
-  TSM: 700_000_000_000,
-  LLY: 700_000_000_000,
-  V: 550_000_000_000,
-  JPM: 550_000_000_000,
-  WMT: 550_000_000_000,
-  XOM: 500_000_000_000,
-  UNH: 500_000_000_000,
-  MA: 450_000_000_000,
-  ORCL: 400_000_000_000,
-  COST: 380_000_000_000,
-  HD: 370_000_000_000,
-  PG: 370_000_000_000,
-  ASML: 350_000_000_000,
-  NFLX: 300_000_000_000,
-  BAC: 280_000_000_000,
-  AMD: 260_000_000_000,
-  CRM: 260_000_000_000,
-  ADBE: 240_000_000_000,
-  KO: 270_000_000_000,
-  PEP: 230_000_000_000,
-  QCOM: 180_000_000_000,
-  INTC: 150_000_000_000,
-  MU: 100_000_000_000,
-  SHOP: 100_000_000_000,
-};
-
-function formatUsd(n: number): string {
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  return `$${n}`;
-}
-
-function validateFenceVsWatchlist(cfg: ConfigSchema): string | null {
-  const wl = cfg.watchlist ?? [];
-  const capMin = cfg.marketCapMin ?? cfg.universe?.marketCapMin ?? null;
-  const capMax = cfg.marketCapMax ?? cfg.universe?.marketCapMax ?? null;
-  if (!wl.length) return null;
-  if (capMin == null && capMax == null) return null;
-
-  for (const item of wl) {
-    const sym = item.symbol?.toUpperCase().replace(/[^A-Z]/g, "") ?? "";
-    const cap = TICKER_CAP_USD[sym];
-    if (cap == null) continue;
-    if (capMax != null && cap > capMax) {
-      return `Watchlist includes $${sym} (~${formatUsd(cap)}) but marketCapMax is set to ${formatUsd(capMax)}. Either widen the fence or remove oversized tickers from the watchlist.`;
-    }
-    if (capMin != null && cap < capMin) {
-      return `Watchlist includes $${sym} (~${formatUsd(cap)}) but marketCapMin is set to ${formatUsd(capMin)}. Either narrow the fence or remove undersized tickers from the watchlist.`;
-    }
-  }
-  return null;
-}
-
 /** The suggest_config tool — same in builder and editor modes. */
 export const suggestConfigTool = tool({
   description:
     "Suggest a complete analyst configuration. Call this when you have enough information to build a thorough config with a detailed strategy prompt. In editor mode, call this with the full updated config (all fields).",
   inputSchema: configSchema,
-  execute: async (config) => {
-    const fenceError = validateFenceVsWatchlist(config);
-    if (fenceError) {
-      // Throw so the AI SDK surfaces the error back to the model (and the UI
-      // renders it via ToolCallRow's error path) — same shape Zod uses.
-      throw new Error(fenceError);
-    }
-    return config;
-  },
+  execute: async (config) => config,
 });
