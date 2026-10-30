@@ -29,8 +29,9 @@ interface PriceChangeProps {
    *   "xl"  → matches text-xl font-semibold header (dashboard, trade detail)
    *   "base" → one size down; used for the mobile-collapsed row
    *   "sm"  → inline cell / subheader
+   *   "xs"  → a timeline row's right rail, beside a text-xs price
    */
-  size?: "xl" | "base" | "sm";
+  size?: "xl" | "base" | "sm" | "xs";
   /** Hide the dollar prefix and show only the percentage. Rare. */
   percentOnly?: boolean;
   /**
@@ -55,9 +56,9 @@ export function PriceChange({
 
   // Size mapping — text size for the whole element; arrow size tracks it.
   const sizeCls =
-    size === "xl" ? "text-xl" : size === "base" ? "text-base" : "text-sm";
+    size === "xl" ? "text-xl" : size === "base" ? "text-base" : size === "sm" ? "text-sm" : "text-xs";
   const iconCls =
-    size === "xl" ? "h-5 w-5" : size === "base" ? "h-4 w-4" : "h-3.5 w-3.5";
+    size === "xl" ? "h-5 w-5" : size === "base" ? "h-4 w-4" : size === "sm" ? "h-3.5 w-3.5" : "h-3 w-3";
 
   const Arrow = isUp ? ArrowUpRight : ArrowDownRight;
 

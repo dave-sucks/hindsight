@@ -34,7 +34,7 @@ import { PriceChange } from "@/components/ui/price-change";
 import {
   buildTimeline,
   itemTimestamp,
-  monthLabel,
+  groupLabels,
   proposalSpanSegments,
   dropRepeatedProse,
   toRow,
@@ -189,10 +189,8 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
     if (item.kind === "fold" && open.has(toRow(item).key)) return [item, ...item.items];
     return [item];
   });
-  const months = items.map((item, i) => {
-    const label = monthLabel(itemTimestamp(item));
-    return i === 0 || label !== monthLabel(itemTimestamp(items[i - 1])) ? label : null;
-  });
+  // Today / Yesterday / This week / the month, where the period changes.
+  const labels = groupLabels(items.map(itemTimestamp));
   const rows = withPriceChanges(
     dropRepeatedProse(items.map(toRow)).map((r) => {
       if (r.type !== "CREATED" || !provenance) return r;
@@ -209,7 +207,66 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
     return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: { primary: "Review", secondary: "" } } : r;
   });
   const ids = items.map(itemIds);
-  return { rows: titled, spans: proposalSpanSegments(items), months, ids };
+  return { rows: titled, spans: proposalSpanSegments(items), labels, ids };
+}
+
+/**
+ * A label inside the rail (a period, or where the newest 8 end), so the
+ * line runs through it from the row above to the row below.
+ */
+function RailLabel({ text, connected, span, pad }: { text: string; connected: boolean; span: boolean; pad: string }) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center shrink-0 w-1.5">
+        {connected ? (
+          span ? (
+            <div className="w-0 flex-1 border-l border-dashed border-foreground/40" />
+          ) : (
+            <div className="w-px flex-1 bg-foreground/15" />
+          )
+        ) : null}
+      </div>
+      <p className={cn("text-xs text-muted-foreground", pad)}>{text}</p>
+    </div>
+  );
+}
+
+/** The list, drawn one way for the tab and the Overview: the period labels and the newest-8 mark sit inside the rail. */
+function TimelineList({
+  rows,
+  spans,
+  labels,
+  recentEnd = -1,
+  currentRunId,
+  open,
+  onToggle,
+}: {
+  rows: TimelineRow[];
+  spans: Set<number>;
+  labels: (string | null)[];
+  recentEnd?: number;
+  currentRunId: string | null;
+  open: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  return (
+    <div>
+      {rows.map((row, idx) => (
+        <Fragment key={row.key}>
+          {labels[idx] ? <RailLabel text={labels[idx]} connected={idx > 0} span={spans.has(idx - 1)} pad="pb-2" /> : null}
+          <Row
+            row={row}
+            isLast={idx === rows.length - 1}
+            span={spans.has(idx)}
+            pulse={currentRunId != null && row.runId === currentRunId}
+            open={open.has(row.key)}
+            onToggle={() => onToggle(row.key)}
+          />
+          {idx === recentEnd && idx < rows.length - 1 ? <RailLabel text={RECENT_END_LABEL} connected span={spans.has(idx)} pad="pb-4" /> : null}
+        </Fragment>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -220,7 +277,7 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
 export function RecentActivity({ items, onViewAll }: { items: TimelineUpdate[]; onViewAll: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
-  const { rows, spans } = useMemo(() => assembleRows(items, "all", open, null), [items, open]);
+  const { rows, spans, labels } = useMemo(() => assembleRows(items, "all", open, null), [items, open]);
   if (items.length === 0) return null;
   return (
     <div className="space-y-3">
@@ -230,26 +287,21 @@ export function RecentActivity({ items, onViewAll }: { items: TimelineUpdate[]; 
           View all
         </Button>
       </div>
-      <div>
-        {rows.map((row, idx) => (
-          <Row
-            key={row.key}
-            row={row}
-            isLast={idx === rows.length - 1}
-            span={spans.has(idx)}
-            pulse={currentRunId != null && row.runId === currentRunId}
-            open={open.has(row.key)}
-            onToggle={() =>
-              setOpen((prev) => {
-                const next = new Set(prev);
-                if (next.has(row.key)) next.delete(row.key);
-                else next.add(row.key);
-                return next;
-              })
-            }
-          />
-        ))}
-      </div>
+      <TimelineList
+        rows={rows}
+        spans={spans}
+        labels={labels}
+        currentRunId={currentRunId}
+        open={open}
+        onToggle={(key) =>
+          setOpen((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+          })
+        }
+      />
     </div>
   );
 }
@@ -290,15 +342,15 @@ export function ThesisTimelineSection({ thesisId, provenance, recentIds }: Props
 
   // Assemble → unfold anything the principal opened → map to row shapes,
   // and find the last row that carries one of the Overview's 8.
-  const { rows, spans, months, recentEnd } = useMemo(() => {
-    if (!updates) return { rows: [], spans: new Set<number>(), months: [] as (string | null)[], recentEnd: -1 };
-    const { rows, spans, months, ids } = assembleRows(updates, filter, open, provenance);
+  const { rows, spans, labels, recentEnd } = useMemo(() => {
+    if (!updates) return { rows: [], spans: new Set<number>(), labels: [] as (string | null)[], recentEnd: -1 };
+    const { rows, spans, labels, ids } = assembleRows(updates, filter, open, provenance);
     const recent = new Set(recentIds ?? []);
     let recentEnd = -1;
     ids.forEach((list, i) => {
       if (list.some((id) => recent.has(id))) recentEnd = i;
     });
-    return { rows, spans, months, recentEnd };
+    return { rows, spans, labels, recentEnd };
   }, [updates, filter, open, provenance, recentIds]);
 
   return (
@@ -327,28 +379,7 @@ export function ThesisTimelineSection({ thesisId, provenance, recentIds }: Props
       ) : rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">No activity yet.</p>
       ) : (
-        <div>
-          {rows.map((row, idx) => (
-            <Fragment key={row.key}>
-              {months[idx] ? (
-                <p className="text-xs text-muted-foreground pb-2 pl-[19px]">
-                  {months[idx]}
-                </p>
-              ) : null}
-              <Row
-                row={row}
-                isLast={idx === rows.length - 1}
-                span={spans.has(idx)}
-                pulse={currentRunId != null && row.runId === currentRunId}
-                open={open.has(row.key)}
-                onToggle={() => toggle(row.key)}
-              />
-              {idx === recentEnd && idx < rows.length - 1 ? (
-                <p className="text-xs text-muted-foreground pb-4 pl-[19px]">{RECENT_END_LABEL}</p>
-              ) : null}
-            </Fragment>
-          ))}
-        </div>
+        <TimelineList rows={rows} spans={spans} labels={labels} recentEnd={recentEnd} currentRunId={currentRunId} open={open} onToggle={toggle} />
       )}
     </div>
   );
@@ -358,10 +389,12 @@ export function ThesisTimelineSection({ thesisId, provenance, recentIds }: Props
  * One row, drawn one way (the owner's design, 2026-10-30):
  *   - line one, always a title: what happened (a fire, a proposal, a trade,
  *     your edit, your note, a plan change), or "Review" for a run that
- *     looked and left the plan alone;
- *   - the right of line one, always: the price then, with its move from the
- *     row before it in the same arrow and colours as the page header, and
- *     the time;
+ *     looked and left the plan alone; a row with no paragraph under it is
+ *     drawn light, in the paragraph's colour, so the rows with words stand out;
+ *   - the right of line one: the price then, with its move from the row
+ *     before it in the page header's arrow and colours, at the timestamp's
+ *     size; on hover the time, the run link and the expand control take its
+ *     place (the period labels carry the time the rest of the way);
  *   - under it, the paragraph, two lines until opened;
  *   - opened: the whole paragraph, then what changed (the trigger chips).
  */
@@ -384,6 +417,8 @@ function Row({
   // changed, or a roll-up.
   const interactive = row.fold || row.description != null || row.chips.length > 0;
   const showDescription = row.description != null && (open || row.showDescription);
+  // No paragraph under it: a fire, an expiry, a hand edit with no note.
+  const quiet = !row.fold && row.description == null;
 
   return (
     <div className="group/row flex gap-3">
@@ -404,46 +439,36 @@ function Row({
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3">
           <p
             className={cn(
-              "font-normal leading-snug min-w-0 text-sm",
-              row.fold ? "text-muted-foreground" : "text-foreground",
+              "leading-snug min-w-0 text-sm",
+              quiet ? "font-light text-muted-foreground" : row.fold ? "font-normal text-muted-foreground" : "font-normal text-foreground",
               interactive && "cursor-pointer",
             )}
             onClick={interactive ? onToggle : undefined}
           >
             {row.title.primary ? (
-              <span className="font-semibold">{row.title.primary} </span>
+              <span className={cn(!quiet && "font-semibold")}>{row.title.primary} </span>
             ) : null}
             {row.title.secondary}
             {row.title.outcome ? (
-              <span className="font-semibold"> {row.title.outcome}</span>
+              <span className={cn(!quiet && "font-semibold")}> {row.title.outcome}</span>
             ) : null}
           </p>
 
-          {/* Right rail: the price then with its move from the row before,
-              and the time; on hover they swap for the actions (run link,
-              expand). No underline affordance on the title (principal, 2026-08-21). */}
-          <span className="relative flex items-center shrink-0 h-5 gap-2">
-            <span
-              className={cn(
-                "flex items-center gap-2 transition-opacity",
-                (row.runId || interactive) && "group-hover/row:opacity-0",
-              )}
-            >
-              {row.price != null ? (
-                <span className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium tabular-nums text-foreground">
-                    ${row.price.toFixed(2)}
-                  </span>
-                  {row.priceChange ? (
-                    <PriceChange dollarChange={row.priceChange.dollars} percentChange={row.priceChange.pct} size="sm" percentOnly />
-                  ) : null}
-                </span>
-              ) : null}
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {row.when}
+          {/* Right rail: the price then with its move from the row before;
+              on hover it yields to the time and the actions (run link,
+              expand). Room is kept for them so nothing is covered.
+              No underline affordance on the title (principal, 2026-08-21). */}
+          <span className="relative flex items-center shrink-0 h-5 sm:min-w-[11rem] sm:justify-end">
+            {row.price != null ? (
+              <span className="flex items-center gap-1.5 transition-opacity group-hover/row:opacity-0">
+                <span className="text-xs tabular-nums text-muted-foreground">${row.price.toFixed(2)}</span>
+                {row.priceChange ? (
+                  <PriceChange dollarChange={row.priceChange.dollars} percentChange={row.priceChange.pct} size="xs" percentOnly />
+                ) : null}
               </span>
-            </span>
+            ) : null}
             <span className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+              <span className="text-xs tabular-nums text-muted-foreground px-1">{row.when}</span>
               {row.runId ? (
                 <Button
                   size="icon-xs"

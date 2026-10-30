@@ -24,6 +24,8 @@ import {
   toRow,
   dropRepeatedProse,
   relativeTimestamp,
+  periodLabel,
+  groupLabels,
   notAppliedLines,
   type TimelineItem,
 } from "./thesis-timeline-utils";
@@ -726,4 +728,32 @@ describe("each priced row carries its move from the row before it in time", () =
     expect(rows[1].priceChange).toEqual({ dollars: expect.closeTo(-1.4, 2), pct: expect.closeTo(-0.16, 2) });
   });
 
+});
+
+describe("period labels — Today, Yesterday, This week, then the month", () => {
+  // A Friday afternoon; the rows' own times show only on hover, so the labels carry the time.
+  const now = new Date("2026-10-30T18:00:00Z");
+  const at = (iso: string) => periodLabel(iso, now);
+
+  it("names the period a row falls in", () => {
+    expect(at("2026-10-30T14:20:00Z")).toBe("Today");
+    expect(at("2026-10-29T14:15:00Z")).toBe("Yesterday");
+    expect(at("2026-10-26T14:00:00Z")).toBe("This week");
+    expect(at("2026-10-20T14:00:00Z")).toBe("October");
+    expect(at("2026-09-28T14:00:00Z")).toBe("September");
+    expect(at("2025-11-03T14:00:00Z")).toBe("November 2025");
+  });
+
+  it("labels only where the period changes, newest first", () => {
+    expect(
+      groupLabels(
+        ["2026-10-30T14:20:00Z", "2026-10-30T14:15:00Z", "2026-10-29T14:15:00Z", "2026-10-29T13:55:00Z", "2026-10-26T14:00:00Z", "2026-10-20T14:00:00Z", "2026-10-02T14:00:00Z", "2026-09-28T14:00:00Z"],
+        now,
+      ),
+    ).toEqual(["Today", null, "Yesterday", null, "This week", "October", null, "September"]);
+  });
+
+  it("starts at whatever period the first row is in when nothing is recent", () => {
+    expect(groupLabels(["2026-09-28T14:00:00Z", "2026-09-02T14:00:00Z", "2026-08-14T14:00:00Z"], now)).toEqual(["September", null, "August"]);
+  });
 });
