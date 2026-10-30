@@ -104,7 +104,7 @@ Otherwise the stock is now in a [situation](situations.md), which tells the agen
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent, or from Send to Agent to Flag for Review); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch, the floor is free to change. A sale you decline or let expire is proposed again each day the price stays past the line. An agent that thinks the line is wrong names the level in its note, and only you move it down.
+On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent, or from Send to Agent to Flag for Review); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch, the floor is free to change. A sale you decline or let expire asks the analyst again each day the price stays past the line, and the analyst proposes the sale again or says why it holds. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>

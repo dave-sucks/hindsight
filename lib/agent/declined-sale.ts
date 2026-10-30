@@ -240,11 +240,7 @@ export function declinedSaleLine(w: DeclinedSaleWork): string {
   if (w.recentLow != null && w.recentLow > 0) {
     parts.push(`Recent low $${w.recentLow.toFixed(2)}.`);
   }
-  parts.push(
-    w.declineCount > 0
-      ? "Answer it: propose it again with today's reasons; if you think the line is wrong, name the level in your note: only the principal lowers it. A review that changes nothing does not answer it."
-      : "While the price is still past the floor, propose it again with today's reasons. A review that changes nothing does not answer it.",
-  );
+  parts.push("Answer it: propose the sale again with today's reasons, or say why you hold; it asks again tomorrow while the price is past the line.");
   return parts.join(" ");
 }
 

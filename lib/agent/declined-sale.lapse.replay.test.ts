@@ -192,7 +192,7 @@ describe("MU 10-13 before 08:00 ET: the read says lapses, not declines", () => {
     // The replay serves no daily bars, so the recent low ($978.50 that morning) is absent here.
     const line = lineOf(row);
     expect(line).toBe(
-      "Proposed 2× and left to lapse: not a decline. Most recently 2026-10-09, and the price is still past the $1005.00 line, with no new plan since. While the price is still past the floor, propose it again with today's reasons. A review that changes nothing does not answer it.",
+      "Proposed 2× and left to lapse: not a decline. Most recently 2026-10-09, and the price is still past the $1005.00 line, with no new plan since. Answer it: propose the sale again with today's reasons, or say why you hold; it asks again tomorrow while the price is past the line.",
     );
     expect(line).not.toMatch(/declined/i);
     expect(needsActionFlag(row.needsAction!)).toEqual({ name: "Sale lapsed", detail: "2×, last 2026-10-09" });
@@ -249,7 +249,7 @@ describe("a real decline still reads as one", () => {
     expect(row.heldThroughFloor).toMatchObject({ floorPrice: 1835, declined: 1, lapsed: 1 });
     const line = lineOf(row);
     expect(line).toMatch(/^You declined this sale\. Proposed once more and left to lapse: not a decline\. Most recently 2026-10-08, and the price is still past the \$1835\.00 line/);
-    expect(line).toMatch(/Answer it: propose it again with today's reasons; if you think the line is wrong, name the level in your note: only the principal lowers it\. A review that changes nothing does not answer it\.$/);
+    expect(line).toMatch(/Answer it: propose the sale again with today's reasons, or say why you hold; it asks again tomorrow while the price is past the line\.$/);
     expect(needsActionFlag(row.needsAction!)).toEqual({ name: "Sale declined", detail: "1 declined, 1 lapsed, last 2026-10-08" });
   });
 });
