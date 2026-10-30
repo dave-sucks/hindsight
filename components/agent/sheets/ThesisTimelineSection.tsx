@@ -201,14 +201,16 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
       return { ...r, description: r.description ? `${r.description} ${sourced}` : sourced };
     }),
   );
-  // Which rows are plain reviews: no title, the paragraph is the row.
-  const plain = items.map((item) => item.kind === "event" && isPlainReview(item.row));
+  // A plain review (a run looked and left the plan alone) is titled "Review";
+  // everything that happened keeps its own title. Every row has a title line,
+  // so the paragraph always sits under it, never beside the price and the actions.
+  const titled = rows.map((r, i) => {
+    const item = items[i];
+    return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: { primary: "Review", secondary: "" } } : r;
+  });
   const ids = items.map(itemIds);
-  return { rows: rows.map((r, i) => ({ ...r, plain: plain[i] })), spans: proposalSpanSegments(items), months, ids };
+  return { rows: titled, spans: proposalSpanSegments(items), months, ids };
 }
-
-/** A row as drawn: the view-model plus whether it reads as a plain review. */
-type DrawnRow = TimelineRow & { plain?: boolean };
 
 /**
  * The Overview's Recent activity: the stock's newest 8 Activity lines, the
@@ -354,13 +356,13 @@ export function ThesisTimelineSection({ thesisId, provenance, recentIds }: Props
 
 /**
  * One row, drawn one way (the owner's design, 2026-10-30):
- *   - line one: the title when something happened (a fire, a proposal, a
- *     trade, your edit, your note, a plan change); a plain review has no
- *     title and its paragraph is line one, prefixed "Review:";
+ *   - line one, always a title: what happened (a fire, a proposal, a trade,
+ *     your edit, your note, a plan change), or "Review" for a run that
+ *     looked and left the plan alone;
  *   - the right of line one, always: the price then, with its move from the
  *     row before it in the same arrow and colours as the page header, and
  *     the time;
- *   - under a titled row, its paragraph, two lines until opened;
+ *   - under it, the paragraph, two lines until opened;
  *   - opened: the whole paragraph, then what changed (the trigger chips).
  */
 function Row({
@@ -371,7 +373,7 @@ function Row({
   open,
   onToggle,
 }: {
-  row: DrawnRow;
+  row: TimelineRow;
   isLast: boolean;
   span: boolean;
   pulse: boolean;
@@ -381,8 +383,7 @@ function Row({
   // A row opens when it has more to show: the rest of its paragraph, what
   // changed, or a roll-up.
   const interactive = row.fold || row.description != null || row.chips.length > 0;
-  const plain = !!row.plain && row.description != null;
-  const showDescription = !plain && row.description != null && (open || row.showDescription);
+  const showDescription = row.description != null && (open || row.showDescription);
 
   return (
     <div className="group/row flex gap-3">
@@ -401,36 +402,22 @@ function Row({
 
       <div className={cn("flex-1 min-w-0", !isLast && "pb-4")}>
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3">
-          {plain ? (
-            <p
-              className={cn(
-                "text-sm font-light text-muted-foreground leading-relaxed min-w-0 cursor-pointer",
-                row.quoted && "border-l-2 border-border pl-2",
-                !open && "line-clamp-2",
-              )}
-              onClick={onToggle}
-            >
-              <span className="font-semibold text-foreground">Review: </span>
-              {row.quoted ? `“${row.description}”` : row.description}
-            </p>
-          ) : (
-            <p
-              className={cn(
-                "font-normal leading-snug min-w-0 text-sm",
-                row.fold ? "text-muted-foreground" : "text-foreground",
-                interactive && "cursor-pointer",
-              )}
-              onClick={interactive ? onToggle : undefined}
-            >
-              {row.title.primary ? (
-                <span className="font-semibold">{row.title.primary} </span>
-              ) : null}
-              {row.title.secondary}
-              {row.title.outcome ? (
-                <span className="font-semibold"> {row.title.outcome}</span>
-              ) : null}
-            </p>
-          )}
+          <p
+            className={cn(
+              "font-normal leading-snug min-w-0 text-sm",
+              row.fold ? "text-muted-foreground" : "text-foreground",
+              interactive && "cursor-pointer",
+            )}
+            onClick={interactive ? onToggle : undefined}
+          >
+            {row.title.primary ? (
+              <span className="font-semibold">{row.title.primary} </span>
+            ) : null}
+            {row.title.secondary}
+            {row.title.outcome ? (
+              <span className="font-semibold"> {row.title.outcome}</span>
+            ) : null}
+          </p>
 
           {/* Right rail: the price then with its move from the row before,
               and the time; on hover they swap for the actions (run link,

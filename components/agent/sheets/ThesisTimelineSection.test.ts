@@ -693,7 +693,7 @@ describe("what a call asked for and did not get", () => {
 
 import { isPlainReview, withPriceChanges } from "./thesis-timeline-utils";
 
-describe("a plain review has no title; everything that happened keeps one", () => {
+describe("a plain review is titled Review; everything that happened keeps its own title", () => {
   it("a review, or an update that changed nothing, is plain", () => {
     expect(isPlainReview(row({ type: "REVIEWED", rationale: "Holding." }))).toBe(true);
     expect(isPlainReview(row({ type: "UPDATED", fieldChanges: {}, rationale: "Holding." }))).toBe(true);

@@ -691,10 +691,11 @@ export function toRow(item: TimelineItem): TimelineRow {
 }
 
 /**
- * A plain review: a run looked and left the plan alone. It gets no title;
- * its paragraph is the row, prefixed "Review:". Everything that happened
+ * A plain review: a run looked and left the plan alone. Its title is the one
+ * word "Review", on screen and in the agent's read. Everything that happened
  * (a fire, a proposal, a trade, your edit, your note, a plan change) keeps
- * its title. (The owner's design, 2026-10-30.)
+ * its own title. Every row has a title line (the owner, 2026-10-30: the
+ * paragraph never sits beside the price and the actions).
  */
 export function isPlainReview(u: TimelineUpdate): boolean {
   const kind = eventKind(u);
