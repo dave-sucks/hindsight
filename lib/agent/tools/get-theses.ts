@@ -81,7 +81,7 @@ const schema = z.object({
     .boolean()
     .optional()
     .describe(
-      "The raw activity log, returned for a read of named stocks (tickers or ids). Each full row's `context` already sums up what's been said since your last answer.",
+      "The raw activity log, returned for a read of named stocks (tickers or ids). Each row's `said` already carries the stock's newest 8 Activity lines as the owner sees them.",
     ),
   include_research: z
     .boolean()
@@ -113,7 +113,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses`: its situations, what's been said, the position and any proposal waiting, the price, the plan, the protection, every trigger with its id, the belief, the setup, the snapshot's first paragraph, the score, the chart numbers and when the research was written; `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: the bull and bear cases, the conviction rationale, the variant view, the score notes, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses`: its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, the plan, the protection, every trigger with its id, the belief, the setup, the snapshot's first paragraph, the score, the chart numbers and when the research was written; `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: the bull and bear cases, the conviction rationale, the variant view, the score notes, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
   schema,
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
@@ -162,7 +162,7 @@ export const getTheses = defineTool({
         theses,
         ...(Array.isArray(quiet) ? { quiet_theses: quiet } : {}),
         ...(!named && input?.include_history
-          ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `context` already sums up what's been said." }
+          ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `said` already carries the newest 8 lines of it." }
           : {}),
         // The last line of the read, when its cap left stocks out.
         ...(leftOut ? { left_out: leftOut } : {}),
@@ -549,18 +549,15 @@ export const getTheses = defineTool({
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
       situations: situationsOf(t.id),
-      // The principal's newest note, one line (docs/plans/AGENT_CONTEXT.md §3.2).
-      ...(contextByThesisId.get(t.id)?.principalNote ? { principalNote: contextByThesisId.get(t.id)!.principalNote } : {}),
     }));
 
     const enriched = fullTheses.map((t) => {
       // Resolved ladder, not the stored column — see quietRows above.
       const triggerCount = (ladderByThesisId.get(t.id) ?? []).length;
       return {
-        // What's been said on the stock, first — the principal's decisions,
-        // the last two answers, the fires no agent has answered. Read before
-        // the numbers (docs/plans/AGENT_CONTEXT.md §3.2). Null when nothing
-        // has been said in the lines this read reached.
+        // What's been said on the stock, first: its newest 8 Activity lines,
+        // as the owner sees them on the Overview (lib/agent/stock-context.ts).
+        // Null when the feed is empty.
         context: contextByThesisId.get(t.id)?.text ?? null,
         ...t,
         ...analystOf(t),

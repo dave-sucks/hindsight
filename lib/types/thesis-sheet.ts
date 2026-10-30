@@ -121,11 +121,11 @@ export interface ThesisScoring {
 }
 
 /**
- * One analyst note (a ThesisUpdate row a run wrote), in the shape the
+ * One Activity line (a saved line or a proposal's step), in the shape the
  * Activity tab's `TimelineUpdate` expects, so the Overview and the Activity
- * tab word it the same way. The fields it never needs are sent as null/[].
+ * tab word it the same way.
  */
-export interface ThesisNote {
+export interface ActivityItem {
   id: string;
   timestamp: string;
   type: string;
@@ -185,11 +185,11 @@ export interface ThesisDossier {
    */
   lastReviewedAt: string | null;
   /**
-   * The analysts' newest notes on the stock, newest first: the same list every
-   * run is handed (`recentAnswers`, lib/agent/stock-context.ts). The Overview
-   * shows them as Activity rows, words showing.
+   * The stock's newest 8 Activity lines, newest first: the same 8 every run
+   * is handed (lib/thesis/activity-feed.ts). The Overview shows them as
+   * Activity rows, and the Activity tab marks where they end.
    */
-  notes: ThesisNote[];
+  recent: ActivityItem[];
   triggers: Trigger[];
   /**
    * The analyst that owns this thesis. Lets the trigger section deep-link

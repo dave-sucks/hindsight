@@ -32,8 +32,8 @@ import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
-import { recentAnswers } from "@/lib/agent/stock-context";
-import { ACTIVITY_LINES, ACTIVITY_SELECT } from "@/lib/agent/stock-context-for";
+import { RECENT_ITEMS, serializeFeedItem } from "@/lib/thesis/activity-feed";
+import { loadActivityFeed } from "@/lib/thesis/activity-feed.server";
 import { writeupComing } from "@/lib/proposals/auto-writeup";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
 
@@ -159,18 +159,13 @@ export async function GET(
     pendingProposal: ThesisPendingProposal | null;
   };
 
-  // The analysts' notes on this stock: the list every run is handed
-  // (recentAnswers over the same newest Activity lines, stock-context.ts), so
-  // what the Overview shows is what the agents read. Newest first.
-  const notes = await prisma.thesisUpdate
-    .findMany({
-      where: { thesisId: thesis.id },
-      orderBy: { timestamp: "desc" },
-      take: ACTIVITY_LINES,
-      select: ACTIVITY_SELECT,
-    })
-    .then((rows) => recentAnswers(rows.map((r) => ({ ...r, runMode: r.run?.mode ?? null }))))
-    .catch(() => []);
+  // The stock's newest 8 Activity lines: the same 8 every run is handed
+  // (lib/thesis/activity-feed.ts), so what the Overview shows is what the
+  // agents read. Newest first.
+  const recent = await loadActivityFeed(
+    { id: thesis.id, ticker: thesis.ticker, createdAt: thesis.createdAt, closedAt: thesis.closedAt, invalidatedAt: thesis.invalidatedAt, analystId: thesis.researchRun?.agentConfigId ?? null },
+    RECENT_ITEMS,
+  ).catch(() => []);
 
 
   // The write-up's own date: the newest row a research-writer run saved, never
@@ -343,20 +338,7 @@ export async function GET(
     // DAV-304, never sent to the sheet — so "is this being reviewed?" was
     // only answerable by querying the database.
     lastReviewedAt: thesis.lastReviewedAt,
-    notes: notes.map((n) => ({
-      id: n.id ?? "",
-      timestamp: n.timestamp.toISOString(),
-      type: n.type,
-      summary: n.summary ?? "",
-      rationale: n.rationale ?? null,
-      fieldChanges: (n.fieldChanges ?? null) as Record<string, { from: unknown; to: unknown }> | null,
-      priceAtTime: n.priceAtTime ?? null,
-      positionAtTime: null,
-      triggerId: n.triggerId ?? null,
-      signalIds: [],
-      runId: n.runId ?? null,
-      tradeId: null,
-    })),
+    recent: recent.map(serializeFeedItem),
     // Derived at read time from the last actual look + the cadence on the
     // resolved ladder (DAV-221). Null = no scheduled review.
     reviewDueAt: derivedNextReviewAt({
