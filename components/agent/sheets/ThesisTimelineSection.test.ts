@@ -720,4 +720,10 @@ describe("each priced row carries its move from the row before it in time", () =
     expect(rows[3].priceChange).toBeNull();
   });
 
+  it("a row at the same price as the one before it shows no move, not a 0.00% up arrow", () => {
+    const rows = withPriceChanges([at(848.6, "a"), at(848.6, "b"), at(850, "c")]);
+    expect(rows[0].priceChange).toBeNull();
+    expect(rows[1].priceChange).toEqual({ dollars: expect.closeTo(-1.4, 2), pct: expect.closeTo(-0.16, 2) });
+  });
+
 });

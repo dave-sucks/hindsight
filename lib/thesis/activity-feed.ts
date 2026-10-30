@@ -159,7 +159,7 @@ export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrde
     kept.push(item);
   }
   const steps = args.orders.flatMap(proposalSteps).map((s) => {
-    const note = s.type === "PROPOSAL_PROPOSED" ? noteFor.get(s.tradeId === null ? "" : proposalOrderId(s.fieldChanges) ?? "") : undefined;
+    const note = s.type === "PROPOSAL_PROPOSED" ? noteFor.get(proposalOrderId(s.fieldChanges) ?? "") : undefined;
     return note ? { ...s, rationale: note.rationale, runId: note.runId, runMode: note.runMode, triggerId: note.triggerId, priceAtTime: note.priceAtTime } : s;
   });
   const merged = [...kept, ...steps].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
