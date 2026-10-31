@@ -456,9 +456,8 @@ export async function addWatchlistItem(
       status: "WATCHING",
       holdDuration: "SWING",
       // PR-9 flat schema: legacy plain-string narrative columns replaced
-      // by JSONB snapshot/bullCase/bearCase. confidenceScore / signalTypes
-      // / sourcesUsed dropped — composite lives in scoring (null until
-      // first research).
+      // by JSONB snapshot/bullCase/bearCase; the composite lives in
+      // scoring (null until first research).
       snapshot: {
         text: reason || "Added manually — awaiting first research",
         citations: [],

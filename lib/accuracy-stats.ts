@@ -107,8 +107,8 @@ export async function getAccuracyStats(
         include: {
           thesis: {
             // PR-9: confidenceScore (Int) → scoring.composite (/10).
-            // signalTypes (String[]) dropped — signal-type rollup below
-            // now joins through sourceSignalIds → Signal.aggregateType.
+            // The signal-type rollup below joins through
+            // sourceSignalIds → Signal.aggregateType.
             select: { scoring: true, sourceSignalIds: true },
           },
         },
@@ -167,13 +167,11 @@ export async function getAccuracyStats(
   });
 
   // ── Signal-type accuracy ──────────────────────────────────────────────────
-  // PR-9 rebuild: the legacy `Thesis.signalTypes` String[] column is gone.
-  // The same rollup now joins through `Thesis.sourceSignalIds[]` →
+  // PR-9 rebuild: the rollup joins through `Thesis.sourceSignalIds[]` →
   // `Signal[].aggregateType`. Each closed Position whose thesis cited a
   // routed signal contributes the signal's aggregateType into the bucket.
   // Theses without source signals (WEB_SEARCH / WATCHLIST_REVIEW provenance)
-  // don't contribute — same behavior as the old code path when the agent
-  // omitted signalTypes.
+  // don't contribute.
   const allSignalIds = new Set<string>();
   for (const p of positions) {
     const ids = getThesis(p)?.sourceSignalIds ?? [];

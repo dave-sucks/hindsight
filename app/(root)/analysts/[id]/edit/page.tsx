@@ -37,7 +37,7 @@ export default async function AnalystEditPage({
     getHeldOrWatchedSymbols(id),
   ]);
 
-  // Build config object matching AgentConfigData shape (including intelligence)
+  // The analyst as the editor reads it (AgentConfigData shape).
   const currentConfig: Record<string, unknown> = {
     name: config.name,
     description: config.description,
@@ -46,12 +46,8 @@ export default async function AnalystEditPage({
     holdDurations: config.holdDurations,
     setupIds: config.setupIds,
     sectors: config.sectors,
-    // ── Universe (B1) — narrower discovery fence ─────────────────
-    industries: config.industries,
-    themes: config.themes,
     marketCapMin: config.marketCapMin != null ? Number(config.marketCapMin) : null,
     marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
-    signalTypes: config.signalTypes,
     minConfidence: config.minConfidence,
     riskPct: config.riskPct,
     minPositionSize: config.minPositionSize,
@@ -60,9 +56,6 @@ export default async function AnalystEditPage({
     maxOpenPositions: config.maxOpenPositions,
     watchlist: watchlistSymbols,
     exclusionList: config.exclusionList,
-    intelligencePolicy: config.intelligencePolicy
-      ? (config.intelligencePolicy as Record<string, unknown>)
-      : undefined,
   };
 
   return (

@@ -18,10 +18,9 @@ import { searchX, type XaiPost } from "@/lib/intelligence/xai-live-search";
 // Separate from web_search's budget because the costs and use cases differ.
 const twitterSearchCounts = new Map<string, number>();
 
-// Default budget when intelligencePolicy doesn't specify one. Lower than
-// web_search because twitter_search is meant for sharp investigative
-// probes during conversation, not bulk scanning.
-const DEFAULT_TWITTER_SEARCH_BUDGET = 5;
+// Searches per run, the same for every run: twitter_search is meant for
+// sharp investigative probes during conversation, not bulk scanning.
+const TWITTER_SEARCH_BUDGET = 5;
 
 export const twitterSearch = defineTool({
   description:
@@ -66,29 +65,7 @@ export const twitterSearch = defineTool({
   },
 
   execute: async ({ query, recency = "week", max_posts, handles }, ctx) => {
-    const policy = ctx.intelligencePolicy;
-
-    // Respect the same allowLiveSearch flag as web_search — if the analyst
-    // has live search disabled entirely, twitter_search is also disabled.
-    if (policy && !policy.allowLiveSearch) {
-      return {
-        summary: "Live search disabled by intelligence policy.",
-        data: {
-          query,
-          source: "xai_live_search" as const,
-          resultCount: 0,
-          budgetUsed: 0,
-          budgetMax: 0,
-          posts: [],
-          allowed: false,
-          items: [],
-        },
-        sources: [],
-      };
-    }
-
-    const budget =
-      policy?.liveSearchBudget ?? DEFAULT_TWITTER_SEARCH_BUDGET;
+    const budget = TWITTER_SEARCH_BUDGET;
     const count = twitterSearchCounts.get(ctx.runId) ?? 0;
 
     if (count >= budget) {

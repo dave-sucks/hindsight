@@ -75,8 +75,6 @@ const analystRow = {
   name: "PEAD Specialist",
   analystPrompt: null,
   sectors: [],
-  industries: [],
-  themes: [],
   exclusionList: [],
   minConfidence: 60,
   tradingEnvironment: "PAPER",

@@ -61,7 +61,7 @@ beforeEach(() => {
 const propose = (watchlist: unknown[]) =>
   configSchema.parse({
     name: "Secular Compounder", analystPrompt: "x", directionBias: "LONG", holdDurations: ["POSITION"],
-    sectors: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 10, minMarketCapTier: "LARGE",
+    sectors: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 10,
     watchlist,
   }) as AgentConfigData;
 const VRT = { symbol: "VRT", reason: "Datacenter power; checked with get_stock_data." };

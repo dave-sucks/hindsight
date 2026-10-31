@@ -49,25 +49,14 @@ jest.mock("@/lib/prisma", () => {
 import { zodSchema } from "ai";
 import { createAnalystFromBuilder, updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
 import { toApplyInput, toCreateInput } from "@/components/analysts/builder-config";
-import { builderConfigSchema as configSchema, editorConfigSchema, suggestConfigFor } from "@/lib/agent/tools/suggest-config";
+import { builderConfigSchema as configSchema, suggestConfigFor } from "@/lib/agent/tools/suggest-config";
 const suggestConfigTool = suggestConfigFor("builder");
 import { listAnalysts } from "@/lib/agent/tools/list-analysts";
 import { BUILDER_SYSTEM_PROMPT, MODES } from "@/lib/agent/modes";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
-// The Catalyst Event PM's live universe, as a builder proposal.
-const CATALYST_FENCE = {
-  sectors: ["Health Care", "Information Technology"],
-  industries: ["Biotechnology", "Pharmaceuticals", "Health Care Equipment & Supplies", "Life Sciences Tools & Services", "Semiconductors", "Software"],
-  themes: [],
-  marketCapMin: 500_000_000,
-  marketCapMax: 20_000_000_000,
-};
-const CALL = {
-  playbook: "CATALYST_EVENT", name: "Catalyst Event PM", analystPrompt: "x", directionBias: "LONG", holdDurations: ["SWING", "POSITION"],
-  minConfidence: 50, maxPositionSize: 8000, maxOpenPositions: 5, ...CATALYST_FENCE,
-  intelligencePolicy: { allowLiveSearch: true, liveSearchBudget: 5 },
-};
+// The Catalyst Event PM, as a builder proposal: a playbook and words.
+const CALL = { playbook: "CATALYST_EVENT", name: "Catalyst Event PM", analystPrompt: "x" };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -86,13 +75,10 @@ it("the builder lists the analysts already there, with their setups", async () =
   ]);
 });
 
-it("suggest_config offers no cap tier, policy limits or nested universe, and says industries and themes filter nothing", () => {
-  const props = (zodSchema(configSchema as never).jsonSchema as { properties: Record<string, { properties?: object; description?: string }> }).properties;
-  for (const gone of ["minMarketCapTier", "universe"]) expect({ gone, present: gone in props }).toMatchObject({ present: false });
-  expect(Object.keys(props.intelligencePolicy.properties ?? {})).toEqual(["allowLiveSearch", "liveSearchBudget"]);
-  expect(props.themes.description).toContain("filter nothing");
-  expect(props.industries.description).toContain("filter nothing");
-  expect(() => configSchema.parse(CALL)).not.toThrow(); // no cap tier needed
+it("suggest_config offers no nested universe", () => {
+  const props = (zodSchema(configSchema as never).jsonSchema as { properties: Record<string, unknown> }).properties;
+  expect("universe" in props).toBe(false);
+  expect(() => configSchema.parse(CALL)).not.toThrow();
 });
 
 it("suggest_config refuses nothing off a hard-coded table of market caps", async () => {
@@ -100,28 +86,12 @@ it("suggest_config refuses nothing off a hard-coded table of market caps", async
   await expect(suggestConfigTool.execute!(proposal as never, { toolCallId: "t", messages: [] })).resolves.toMatchObject({ name: "Catalyst Event PM" });
 });
 
-it("Create and Apply save the universe from the top-level fields, with no cap tier or policy limits", async () => {
-  // The builder names the playbook; the tool fills in its fence.
+it("Create and Apply save the market-cap band from the top-level fields", async () => {
+  // The builder names the playbook; the tool fills in its band.
   const proposal = (await suggestConfigTool.execute!(configSchema.parse(CALL) as never, { toolCallId: "t", messages: [] })) as AgentConfigData;
   await createAnalystFromBuilder(toCreateInput(proposal));
-  const created = create.mock.calls[0][0].data;
-  expect(created).toMatchObject({ industries: CATALYST_FENCE.industries, marketCapMin: BigInt(500_000_000), marketCapMax: BigInt(20_000_000_000), exchanges: ["NASDAQ", "NYSE"] });
-  expect(created).not.toHaveProperty("minMarketCapTier");
-  expect(created.intelligencePolicy).not.toHaveProperty("maxSignalsPerRun");
+  expect(create.mock.calls[0][0].data).toMatchObject({ marketCapMin: BigInt(500_000_000), marketCapMax: BigInt(20_000_000_000) });
 
   await updateAnalystFromBuilder("catalyst", toApplyInput({ ...proposal, marketCapMin: 1_000_000_000 }));
-  const applied = update.mock.calls.at(-1)![0].data;
-  expect(applied).toMatchObject({ industries: CATALYST_FENCE.industries, marketCapMin: BigInt(1_000_000_000) });
-  expect(applied).not.toHaveProperty("minMarketCapTier");
-});
-
-// The Compounder's 11 sectors with no industries: the fill used to write all
-// 71 GICS industries in them. Nothing filters on industries (get_stock_data
-// checks the fence with no industry), so they were 71 names the agents read.
-it("a proposal with sectors and no industries saves no industries", async () => {
-  const sectors = ["Information Technology", "Health Care", "Industrials", "Utilities", "Communication Services", "Energy", "Materials", "Consumer Discretionary", "Consumer Staples", "Financials", "Real Estate"];
-  const proposal = editorConfigSchema.parse({ ...CALL, ...{ sectors, industries: undefined, marketCapMin: undefined, marketCapMax: undefined } }) as AgentConfigData;
-  expect(proposal.industries ?? []).toEqual([]);
-  await createAnalystFromBuilder(toCreateInput(proposal));
-  expect(create.mock.calls[0][0].data).toMatchObject({ sectors, industries: [] });
+  expect(update.mock.calls.at(-1)![0].data).toMatchObject({ marketCapMin: BigInt(1_000_000_000) });
 });

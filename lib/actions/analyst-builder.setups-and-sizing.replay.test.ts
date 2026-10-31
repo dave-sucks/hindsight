@@ -52,16 +52,12 @@ const PEAD_CALL = {
   holdDurations: ["SWING", "POSITION"],
   setupIds: SETUPS,
   sectors: [],
-  industries: [],
-  themes: [],
   marketCapMin: 200_000_000,
   minConfidence: 60,
   minPositionSize: 3000,
   maxPositionSize: 14000,
   maxOpenPositions: 6,
-  minMarketCapTier: "MID",
   exclusionList: [],
-  intelligencePolicy: { allowLiveSearch: true, liveSearchBudget: 10 },
 };
 
 // The same row as the edit page hands the editor.

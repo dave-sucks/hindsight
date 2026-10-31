@@ -28,12 +28,8 @@ export type AgentConfigData = {
   /** The setups this analyst runs (DAV-280); the first is its signature setup. */
   setupIds?: string[];
   sectors?: string[];
-  // ── Universe (B1) — mirror of AgentConfig shape ───────────────────
-  industries?: string[];
-  themes?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
-  signalTypes?: string[];
   minConfidence?: number;
   /** Per-entry floor; 0 = none. Pairs with maxPositionSize as a band. */
   minPositionSize?: number;
@@ -44,10 +40,6 @@ export type AgentConfigData = {
   maxOpenPositions?: number;
   watchlist?: (string | { symbol: string; reason?: string; priority?: string })[];
   exclusionList?: string[];
-  intelligencePolicy?: {
-    allowLiveSearch?: boolean;
-    liveSearchBudget?: number;
-  };
 };
 
 export type AgentConfigCardProps = ComponentProps<typeof Card> &
@@ -77,11 +69,8 @@ export function AgentConfigCard({
   holdDurations = D.holdDurations,
   setupIds = [],
   sectors = [],
-  industries = [],
-  themes = [],
   marketCapMin,
   marketCapMax,
-  signalTypes = [],
   minConfidence = D.minConfidence,
   minPositionSize = D.minPositionSize,
   maxPositionSize = D.maxPositionSize,
@@ -156,22 +145,14 @@ export function AgentConfigCard({
         <InfoRow label="Setups" value={setupIds.length ? setupIds.join(", ") : "Whole playbook"} border={false} />
       </div>
 
-      {/* ── Universe (sectors / industries / themes / market cap) ────────── */}
+      {/* ── Universe (sectors / market cap) ────────── */}
       {(sectors.length > 0 ||
-        industries.length > 0 ||
-        themes.length > 0 ||
         marketCapMin != null ||
         marketCapMax != null) && (
         <div className="p-3 border-b space-y-2">
           <p className="text-sm font-medium">Universe</p>
           {sectors.length > 0 && (
             <UniverseRow label="Sectors" values={sectors} />
-          )}
-          {industries.length > 0 && (
-            <UniverseRow label="Industries" values={industries} />
-          )}
-          {themes.length > 0 && (
-            <UniverseRow label="Themes" values={themes} />
           )}
           {(marketCapMin != null || marketCapMax != null) && (
             <div className="flex items-start gap-3">
@@ -183,20 +164,6 @@ export function AgentConfigCard({
               </span>
             </div>
           )}
-        </div>
-      )}
-
-      {/* ── Signal Types ───────────────────────────────────────────── */}
-      {signalTypes.length > 0 && (
-        <div className="p-3 border-b">
-          <p className="text-sm font-medium mb-1.5">Signals</p>
-          <div className="flex flex-wrap gap-1.5">
-            {signalTypes.map((s) => (
-              <Badge key={s} variant="outline">
-                {s.replace(/_/g, " ")}
-              </Badge>
-            ))}
-          </div>
         </div>
       )}
 

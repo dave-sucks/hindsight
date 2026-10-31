@@ -174,7 +174,7 @@ type UpdatePatch = Partial<{
   coreBelief: string | null;
   keyAssumptions: string[];
   invalidationConds: string[];
-  // PR-9 dropped confidenceScore / signalTypes columns. Conviction lives
+  // PR-9 dropped the old score columns. Conviction lives
   // in scoring.composite (set via the scoring arg, not patched directly).
   scoring: object;
   targetPrice: number | null;
@@ -1985,7 +1985,7 @@ function thesisToCardData(t: Record<string, unknown>): {
       typeof t.horizon === "string" && t.horizon.length > 0
         ? holdDurationFromHorizon(t.horizon)
         : ((t.holdDuration as string) ?? undefined),
-    signal_types: (t.signalTypes as string[]) ?? [],
+    signal_types: [],
     status: (t.status as
       | "HOLDING"
       | "WATCHING"

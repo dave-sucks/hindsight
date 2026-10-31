@@ -352,11 +352,9 @@ export default function AnalystDetailClient({
   const config = useMemo(() => ({
     ...rawConfig,
     sectors: rawConfig.sectors ?? [],
-    signalTypes: rawConfig.signalTypes ?? [],
     holdDurations: rawConfig.holdDurations ?? [],
     watchlist: rawConfig.watchlist ?? [],
     exclusionList: rawConfig.exclusionList ?? [],
-    dailyLossLimit: rawConfig.dailyLossLimit ?? 0,
   }), [rawConfig]);
 
   const router = useRouter();

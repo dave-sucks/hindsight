@@ -8,7 +8,7 @@ import { prismaDouble, positionRow, agentConfigRow, REPLAY_ACCOUNT_ID } from "@/
 import book from "@/lib/agent/__fixtures__/master-chat-writes-2026-10-14.json";
 
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
-const secularBrief = { id: SECULAR, name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 8 };
+const secularBrief = { id: SECULAR, name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 8 };
 
 async function withBook<T>(fn: (scope: typeof import("@/lib/agent/analyst-scope"), modes: typeof import("@/lib/agent/modes")) => Promise<T>): Promise<T> {
   const db = prismaDouble({

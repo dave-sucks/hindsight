@@ -49,7 +49,7 @@ interface PositionDetail {
   priceAsOf: string | null;
   /** Plain words when `currentPrice` is missing or old; absent when it is live. */
   priceWarning?: string;
-  thesis: { id: string; reasoning: string; confidence: number; signalTypes: string[]; status: string } | null;
+  thesis: { id: string; reasoning: string; confidence: number; status: string } | null;
 }
 
 interface CapitalSummary {
@@ -190,7 +190,6 @@ export const getPortfolioContext = defineTool({
                 id: thesis.id,
                 reasoning: getThesisSnapshotText(thesis as never),
                 confidence: composite != null ? composite * 10 : 0,
-                signalTypes: [],
                 status: thesis.status,
               }
             : null,

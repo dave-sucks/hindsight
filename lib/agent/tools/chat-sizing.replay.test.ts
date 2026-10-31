@@ -20,7 +20,7 @@ import { replayTool, thesisRow, positionRow, agentConfigRow, accountRow, REPLAY_
 import { analystToolSettings } from "@/lib/agent/tool-context";
 
 const ROW = {
-  sectors: [], industries: [], themes: [], exclusionList: [], marketCapMin: null, marketCapMax: null,
+  sectors: [], exclusionList: [], marketCapMin: null, marketCapMax: null,
   minConfidence: 60, maxOpenPositions: 5,
   minPositionSize: 3000, maxPositionSize: 8000, maxPositionTotal: 12000,
 };

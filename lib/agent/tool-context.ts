@@ -6,7 +6,6 @@
  */
 
 import type { AlpacaCredentials } from "@/lib/alpaca";
-import type { IntelligencePolicy } from "@/lib/intelligence/types";
 
 export interface ToolContext {
   runId: string;
@@ -60,9 +59,6 @@ export interface ToolContext {
   positionTickers?: string[];
   exclusionList?: string[];
   sectors?: string[];
-  // ── Universe (B1) ──────────────────────────────────────────────────────
-  industries?: string[];
-  themes?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
   /**
@@ -87,7 +83,6 @@ export interface ToolContext {
    * to 60 when undefined.
    */
   minConfidence?: number;
-  intelligencePolicy?: IntelligencePolicy;
 
   /**
    * Chat-dispatched thesis-writer mints clamp to WATCHING. P1-24: a
@@ -167,7 +162,7 @@ export interface ToolContext {
 /** The analyst's fence and limits, as the tools read them off ToolContext. */
 export type AnalystToolSettings = Pick<
   ToolContext,
-  "watchlist" | "exclusionList" | "sectors" | "industries" | "themes" | "marketCapMin" | "marketCapMax" | "minConfidence" | "minPositionSize" | "maxPositionSize" | "maxPositionTotal" | "maxOpenPositions"
+  "watchlist" | "exclusionList" | "sectors" | "marketCapMin" | "marketCapMax" | "minConfidence" | "minPositionSize" | "maxPositionSize" | "maxPositionTotal" | "maxOpenPositions"
 >;
 
 /**
@@ -178,7 +173,7 @@ export type AnalystToolSettings = Pick<
  */
 export function analystToolSettings(
   row: {
-    exclusionList: string[]; sectors: string[]; industries: string[]; themes: string[];
+    exclusionList: string[]; sectors: string[];
     marketCapMin: bigint | number | null; marketCapMax: bigint | number | null;
     minConfidence: number; maxOpenPositions: number;
     minPositionSize: unknown; maxPositionSize: unknown; maxPositionTotal: unknown;
@@ -190,8 +185,6 @@ export function analystToolSettings(
     watchlist,
     exclusionList: row.exclusionList,
     sectors: row.sectors,
-    industries: row.industries,
-    themes: row.themes,
     marketCapMin: row.marketCapMin != null ? Number(row.marketCapMin) : null,
     marketCapMax: row.marketCapMax != null ? Number(row.marketCapMax) : null,
     minConfidence: row.minConfidence,

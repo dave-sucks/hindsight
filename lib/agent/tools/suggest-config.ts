@@ -14,7 +14,7 @@
 
 import { tool } from "ai";
 import { z } from "zod";
-import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
+import { SECTORS } from "@/lib/universe/canonical";
 import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
 import { NEW_ANALYST_NUMBERS } from "@/lib/analyst-settings";
 import { STRATEGY_ARCHETYPES, playbookFields } from "@/lib/agent/knowledge/strategy-archetypes";
@@ -23,7 +23,6 @@ export type SuggestConfigMode = "builder" | "editor";
 
 // z.enum needs a non-empty tuple literal; derive one from the canonical lists.
 const SECTOR_VALUES = [...SECTORS] as [string, ...string[]];
-const INDUSTRY_VALUES = [...INDUSTRIES] as [string, ...string[]];
 const PLAYBOOK_IDS = STRATEGY_ARCHETYPES.map((a) => a.id) as [string, ...string[]];
 
 // ── Normalizer: the editor's market-cap sentinels, before Zod runs ──────────
@@ -50,20 +49,6 @@ const wordsShape = {
     .string()
     .optional()
     .describe("One line for display, in the shape 'Buys … long-only. Holds …; sells when …'. E.g. 'Buys clean beat-and-raise earnings prints long-only. Holds weeks for the drift; sells when the drift fades or before the next print.'"),
-  industries: z
-    .array(z.enum(INDUSTRY_VALUES))
-    .optional()
-    .describe(
-      "Canonical GICS industries (Title Case), narrower than a sector; a value not in the list is rejected. " +
-        "The chat pinned to this analyst reads them as words when it looks for new stocks; they filter nothing (sectors, market cap and the exclusion list are the fence).",
-    ),
-  themes: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Themes the strategy hunts, e.g. 'AI infrastructure', 'GLP-1', 'datacenter capex'. 3-6 is typical. " +
-      "The chat pinned to this analyst reads them as words when it looks for new stocks; they filter nothing (sectors, market cap and the exclusion list are the fence).",
-    ),
   watchlist: z
     .array(
       z.object({
@@ -78,15 +63,6 @@ const wordsShape = {
     .array(z.string())
     .optional()
     .describe("Tickers to never trade."),
-  // The holdings / watchlist / discovery attention weights left this object
-  // with the signal router they fed (2026-09-15).
-  intelligencePolicy: z
-    .object({
-      allowLiveSearch: z.boolean().optional(),
-      liveSearchBudget: z.number().min(0).max(20).optional(),
-    })
-    .optional()
-    .describe("Intelligence policy — the live-search budget for this analyst's runs."),
 };
 
 // The style: the builder takes these from the playbook; the editor changes them on the owner's word.
@@ -114,11 +90,6 @@ const styleShape = {
         SECTORS.join(", ") +
         ". Empty = all sectors.",
     ),
-  // NOTE: signalTypes was removed here because it doesn't filter anything
-  // at runtime — it was a cosmetic badge field. Builder/Editor should NOT
-  // propose it. The signal router cares about sectors / industries /
-  // themes instead. If we ever want event-type preferences, we'll add a
-  // dedicated router feature, not this orphaned field.
   minConfidence: z
     .number()
     .min(40)

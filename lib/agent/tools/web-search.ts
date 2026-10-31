@@ -1,9 +1,8 @@
 /**
  * web_search — migrated to defineTool().
  *
- * Live Perplexity Sonar search. Respects intelligence policy's
- * allowLiveSearch and liveSearchBudget. Per-run budget tracked
- * via a module-level Map keyed by runId.
+ * Live Perplexity Sonar search, LIVE_SEARCH_BUDGET searches a run (the
+ * same for every run), tracked via a module-level Map keyed by runId.
  */
 
 import { z } from "zod";
@@ -14,6 +13,8 @@ import type { SignalItem, WebSearchToolData } from "@/lib/agent/tool-types";
 
 // Per-run search count — keyed by runId to scope budget to the current run.
 const liveSearchCounts = new Map<string, number>();
+/** Searches per run (a first search on a stock doesn't count against it). */
+export const LIVE_SEARCH_BUDGET = 5;
 // The stocks whose one news search this run has spent (voice.ts: look it up before a decision note).
 const stockSearches = new Map<string, Set<string>>();
 /** The reply budget a search asks Sonar for. */
@@ -42,24 +43,8 @@ export const webSearch = defineTool({
   },
 
   execute: async ({ query, recency = "day", ticker }, ctx) => {
-    const policy = ctx.intelligencePolicy;
-
-    if (policy && !policy.allowLiveSearch) {
-      return {
-        summary: "Live search disabled by intelligence policy.",
-        data: {
-          query,
-          resultCount: 0,
-          budgetUsed: 0,
-          budgetMax: 0,
-          results: [],
-          allowed: false,
-        } as WebSearchToolData & { allowed: boolean },
-        sources: [],
-      };
-    }
-
-    const budget = policy?.liveSearchBudget ?? 5;
+    // Every run gets the same budget; there is no per-analyst setting.
+    const budget = LIVE_SEARCH_BUDGET;
     const count = liveSearchCounts.get(ctx.runId) ?? 0;
     const searched = stockSearches.get(ctx.runId) ?? new Set<string>();
     const stock = ticker?.trim().toUpperCase().replace(/^\$/, "") || null;

@@ -690,9 +690,6 @@ export async function POST(
       positionTickers,
       exclusionList: (agentConfig.exclusionList as string[]) ?? [],
       sectors: (agentConfig.sectors as string[]) ?? [],
-      // ── Universe (B1) ─────────────────────────────────────────────
-      industries: (agentConfig.industries as string[]) ?? [],
-      themes: (agentConfig.themes as string[]) ?? [],
       marketCapMin: (agentConfig.marketCapMin as number | null) ?? null,
       marketCapMax: (agentConfig.marketCapMax as number | null) ?? null,
       minPositionSize: (agentConfig.minPositionSize as number) ?? undefined,

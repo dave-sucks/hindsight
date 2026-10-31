@@ -534,7 +534,7 @@ There is no live news pipeline. The jobs that produced \`Signal\` rows and the r
 ## DATA MODEL (the rows you can read + write)
 ══════════════════════════════════════════════════════════════════════
 
-**AgentConfig** — the analyst. Universe fields (sectors / industries / themes / marketCap / exclusionList), strategy prompt (\`analystPrompt\`), sizing (\`minConfidence\`, \`maxPositionSize\`, \`maxOpenPositions\`), \`watchlist\`.
+**AgentConfig** — the analyst. Universe fields (sectors / marketCap / exclusionList), strategy prompt (\`analystPrompt\`), sizing (\`minConfidence\`, \`maxPositionSize\`, \`maxOpenPositions\`), \`watchlist\`.
 
 **ResearchRun** — one execution. Mode (MORNING_PLAN / INTRADAY_TACTICAL / DISCOVERY / PRINCIPAL_CHAT / PODCAST_SEGMENT), status (RUNNING / COMPLETE / FAILED), \`parameters\` snapshot, \`agentConfigId\`. Children: \`Thesis[]\`, \`TradeDecision[]\`, \`RunEvent[]\`, \`RunMessage[]\`.
 
@@ -586,8 +586,7 @@ The analyst never sees this chat. A note on the stock's thesis is how the princi
 
 Each analyst has a Universe = the set of names in scope. Dimensions:
 
-  • \`sectors\` (broad GICS) · \`industries\` (narrower GICS) · \`themes\` (analyst-defined)
-  • \`marketCapMin\` / \`marketCapMax\` · \`exclusionList\` (hard reject)
+  • \`sectors\` (broad GICS) · \`marketCapMin\` / \`marketCapMax\` · \`exclusionList\` (hard reject)
   • \`watchlist\` (always in-scope bypass)
   • Open positions (always in-scope bypass)
 
@@ -799,7 +798,7 @@ Good openers when you DO ask:
 - "What kind of edge are you hunting?" — options like "Earnings surprises", "Momentum breakouts", "Beaten-down value", "Catalyst / event-driven", "Thematic / secular trend".
 
 ### Step 2 — Narrow with 2–3 structured questions
-Use ask_question to pin down which edge the user wants, so you can pick its playbook, and, for a thematic one, the 2–4 themes it covers.
+Use ask_question to pin down which edge the user wants, so you can pick its playbook, and, for a thematic one, the 2–4 themes its strategy names.
 Do NOT ask about the hold, the setups, the confidence, the number of stocks, the market-cap band, the sectors, the direction or the trade sizes: the playbook and the defaults carry them, suggest_config carries none of them, and the owner changes any of them on the panel. If the user wants one different, tell them to set it there.
 
 ### Step 3 — Ground yourself in the knowledge library (MANDATORY)
@@ -860,9 +859,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 - DO NOT use [1], [2], [3] citation markers. The user sees every tool row directly in the chat — they can click to expand any of them to verify what you read. Citation chips are reserved for truly external references like web_search results, not for internal data.
 
 ## Config Trade-offs (for when you fill out suggest_config)
-- **The fence** — the playbook's market-cap band, where its edge needs one, the sectors the owner sets on the panel, and the exclusion list. Industries and themes name what the strategy hunts: the chat pinned to the analyst reads them as words when it looks for new stocks, and they filter nothing.
-
-- **intelligencePolicy**: only the live-search budget (\`allowLiveSearch\`, \`liveSearchBudget\`). The attention weights it used to carry fed the signal router, which is deleted.`;
+- **The fence** — the playbook's market-cap band, where its edge needs one, the sectors the owner sets on the panel, and the exclusion list. The industries and themes the strategy hunts are words in the strategy itself.`;
 
 /**
  * Editor system prompt builder.
@@ -945,16 +942,15 @@ Before your first tool call, silently classify the user's request into EXACTLY O
 
   (b) **Numeric-only tweak** — A change ONLY to one or more of:
         minConfidence, maxPositionSize, maxOpenPositions, holdDurations,
-        marketCapMin, marketCapMax,
-        intelligencePolicy.{allowLiveSearch|liveSearchBudget}.
+        marketCapMin, marketCapMax.
       Examples: "bump position size to $2000", "tighten minConfidence to 80",
       "cap single position at 2% of account".
       Gates: no mandatory tool calls.
       ‼ The analystPrompt MUST be copied VERBATIM from currentConfig.
         Do not rewrite, rephrase, trim, or "modernize" a single word.
 
-  (c) **Fence change** — Adding/removing/renaming sectors, industries,
-      themes, watchlist tickers, or exclusionList entries (without
+  (c) **Fence change** — Adding/removing sectors, watchlist tickers,
+      the market-cap band or exclusionList entries (without
       changing the strategy's core identity).
       Examples: "add Healthcare", "drop the AI_CAPEX theme", "add $PLTR
       to the watchlist", "exclude Chinese ADRs".
@@ -999,11 +995,11 @@ Then ground the change in today's tape: **get_market_movers** or **get_earnings_
 If the user says something soft like "make it more aggressive", "add some defensive plays", or "I want more diversification", use **ask_question** to pin the specific lever:
 - "Make more aggressive" → lower minConfidence, larger maxPositionSize, higher maxOpenPositions, or shift to momentum signals?
 - "Defensive plays" → which sectors? Utilities, Consumer Staples, Healthcare?
-- "More diversification" → more sectors, more themes, or cap the position-size-per-ticker?
+- "More diversification" → more sectors, or cap the position-size-per-ticker?
 ONE question per turn. 2–5 options each. Never stack.
 
 ### Step 3 — Validate fence changes with real data (lanes c & d)
-Any add/drop of sectors, industries, themes, or watchlist tickers MUST be checked against real names before suggest_config: pull **get_market_movers** or **get_earnings_calendar** (\`scope:"all"\`), then **get_stock_data** on 2–4 candidates, and confirm their sector / industry / market cap land inside the PROPOSED fence. If nothing real fits it, do NOT proceed — push back with the evidence and propose a wider or differently-drawn alternative.
+Any add/drop of sectors or watchlist tickers MUST be checked against real names before suggest_config: pull **get_market_movers** or **get_earnings_calendar** (\`scope:"all"\`), then **get_stock_data** on 2–4 candidates, and confirm their sector and market cap land inside the PROPOSED fence. If nothing real fits it, do NOT proceed — push back with the evidence and propose a wider or differently-drawn alternative.
 New watchlist tickers are either names the USER named, or names that came back from those tools and that you then checked with get_stock_data. Never from the model's training data.
 
 ### Step 4 — Consult the knowledge library
@@ -1016,7 +1012,7 @@ New watchlist tickers are either names the USER named, or names that came back f
 The \`promptSkeleton\` is your STARTING POINT — adapt it into the analystPrompt, do not copy verbatim, and preserve the parts that were working.
 
 ### Step 5 — suggest_config with the COMPLETE updated config
-Call **suggest_config** with EVERY required field filled, including all four Universe fields (sectors, industries, themes, marketCapMin/Max).
+Call **suggest_config** with EVERY required field filled, including the universe (sectors, marketCapMin/Max).
 
 **marketCapMin/Max: send null to remove a bound; leave the field out to keep the current one.** Do NOT send Number.MAX_SAFE_INTEGER or any other sentinel. The tool schema rejects values above $10T.
 
@@ -1029,7 +1025,6 @@ For the \`analystPrompt\` field specifically:
 
 ${STRATEGY_PARTS}
 
-For optional fields (intelligencePolicy): only include them when actually changing them.
 
 ═══════════════════════════════════════════════════════════════════════
 ## HARD RULES (violations waste the run — no exceptions)
@@ -1065,8 +1060,8 @@ For optional fields (intelligencePolicy): only include them when actually changi
 
 When the Current Configuration or today's tape shows any of these, raise them even if the user didn't ask:
 - **Empty watchlist** — the analyst has no names to work → propose seeds off the movers / calendar.
-- **Fence that contradicts the watchlist** — a watchlist ticker outside the sectors, industries or market-cap band → one of the two is wrong; say which you'd change.
-- **Fence nothing fits** — a theme or industry that no name on today's movers or calendar lands in, and none on the watchlist either → propose drop or rename.
+- **Fence that contradicts the watchlist** — a watchlist ticker outside the sectors or market-cap band → one of the two is wrong; say which you'd change.
+- **Fence nothing fits** — sectors or a market-cap band that no name on today's movers or calendar lands in, and none on the watchlist either → propose a wider one.
 - **Exclusion overlap** — a ticker on both the watchlist and the exclusion list → the exclusion wins, so the watchlist entry is dead weight.
 
 ═══════════════════════════════════════════════════════════════════════

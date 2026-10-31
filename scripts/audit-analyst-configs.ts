@@ -9,9 +9,7 @@
  *      sits outside the configured [marketCapMin, marketCapMax] fence.
  *      (Uses a small hardcoded ticker→cap lookup — no Finnhub calls, so
  *      the script runs offline. Unknown tickers are skipped silently.)
- *   2. Missing themes:  sectors/industries populated but themes empty,
- *      while the analyst name contains a theme-flavoured keyword.
- *   3. High confidence:  minConfidence > 80.
+ *   2. High confidence:  minConfidence > 80.
  *
  * Run with:
  *   npx tsx scripts/audit-analyst-configs.ts
@@ -64,19 +62,6 @@ const TICKER_CAP_USD: Record<string, number> = {
   LCID: 6_000_000_000,
 };
 
-const THEMEY_KEYWORDS = [
-  "momentum",
-  "ai",
-  "ev",
-  "biotech",
-  "crypto",
-  "semiconductor",
-  "energy",
-  "weed",
-  "cannabis",
-  "quantum",
-];
-
 type Finding = {
   severity: "warn" | "info";
   analyst: string;
@@ -125,30 +110,6 @@ function auditFenceVsWatchlist(
   return findings;
 }
 
-function auditMissingThemes(
-  name: string,
-  sectors: string[],
-  industries: string[],
-  themes: string[],
-): Finding[] {
-  const anyDimension = (sectors?.length ?? 0) + (industries?.length ?? 0) > 0;
-  if (!anyDimension) return [];
-  if ((themes?.length ?? 0) > 0) return [];
-
-  const lowered = name.toLowerCase();
-  const hit = THEMEY_KEYWORDS.find((k) => lowered.includes(k));
-  if (!hit) return [];
-
-  return [
-    {
-      severity: "warn",
-      analyst: name,
-      rule: "missing-themes",
-      message: `Sector/industry fence is populated but themes is empty, and the name hints at a theme ("${hit}"). Likely missing themes.`,
-    },
-  ];
-}
-
 function auditHighConfidence(name: string, minConfidence: number): Finding[] {
   if (minConfidence > 80) {
     return [
@@ -171,9 +132,6 @@ async function main() {
       name: true,
       marketCapMin: true,
       marketCapMax: true,
-      sectors: true,
-      industries: true,
-      themes: true,
       minConfidence: true,
     },
   });
@@ -203,12 +161,6 @@ async function main() {
 
     findings.push(
       ...auditFenceVsWatchlist(a.name, watchlistByAnalyst.get(a.id) ?? [], capMin, capMax),
-      ...auditMissingThemes(
-        a.name,
-        a.sectors ?? [],
-        a.industries ?? [],
-        a.themes ?? [],
-      ),
       ...auditHighConfidence(a.name, a.minConfidence ?? 70),
     );
   }

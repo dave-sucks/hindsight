@@ -9,7 +9,6 @@
  */
 
 import type { AlpacaCredentials } from "@/lib/alpaca";
-import type { IntelligencePolicy } from "@/lib/intelligence/types";
 
 import { getMarketContext } from "./get-market-context";
 import { getStockData } from "./get-stock-data";
@@ -71,9 +70,6 @@ interface ToolCtx {
   positionTickers?: string[];
   exclusionList?: string[];
   sectors?: string[];
-  // ── Universe (B1) ──────────────────────────────────────────────────
-  industries?: string[];
-  themes?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
   /** Per-entry floor — see ToolContext.minPositionSize. 0/undefined = off. */
@@ -87,7 +83,6 @@ interface ToolCtx {
   alpacaCreds?: AlpacaCredentials;
   /** Snapshot of ResearchRun.environment — see ToolContext.runEnvironment. */
   runEnvironment?: "PAPER" | "LIVE";
-  intelligencePolicy?: IntelligencePolicy;
   /**
    * Chat-dispatched thesis-writer marker. P1-24: a record_thesis mint is
    * always WATCHING regardless (HOLDING is execution-owned, set by

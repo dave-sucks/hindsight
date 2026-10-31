@@ -281,10 +281,8 @@ export const morningResearch = inngest.createFunction(
             status: "RUNNING",
             environment: runEnvironment,
             parameters: {
-              markets: config.markets,
               sectors: config.sectors,
               minConfidence: config.minConfidence,
-              signalTypes: config.signalTypes,
               tickers: watchlistSymbols,
               triggeredBy: "morning-cron",
               agentMode: true,
