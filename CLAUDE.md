@@ -193,19 +193,19 @@ analyst will look at — which discovery candidates are in scope, and which
 names the builder/editor may put on a watchlist. (The signal router also
 filtered on it until it was deleted 2026-09-15.)
 
-Universe fields on AgentConfig:
-- `markets` — ["US_EQUITIES", "CRYPTO", "ETFS"]
-- `exchanges` — ["NASDAQ", "NYSE"]
-- `sectors` — broad GICS-style ["Technology", "Energy", ...]
-- `industries` — narrower GICS ["Semiconductors", "Auto Manufacturers", ...]
-- `themes` — analyst-defined ["AI infrastructure", "EV transition", "GLP-1", ...]
+Universe fields on AgentConfig (checked by `checkUniverse` in `lib/agent/universe.ts`):
+- `sectors` — canonical GICS sectors ["Information Technology", "Energy", ...]
 - `marketCapMin` / `marketCapMax` — BigInt? in dollars; null = no bound
-- `exclusionList` — tickers/industries always skipped (hard reject)
-- `tickerUniverse` — DIRECTED-mode seed list (separate concept, kept as-is)
+- `exclusionList` — tickers always skipped (hard reject)
 
 Match semantics: empty array / null numeric = no filter
-on that dimension. AND across dimensions, OR within. exclusionList wins.
-See docs/AGENT_OVERHAUL_PLAN.md → Workstream B for the full spec.
+on that dimension. AND across dimensions, OR within. exclusionList wins;
+held and watched stocks bypass the rest. The industries and themes an
+analyst hunts are words in its strategy text (`analystPrompt`), not
+fields: `industries`, `themes`, `markets`, `exchanges` and `tickerUniverse`
+filtered nothing and were removed 2026-10-31. A new analyst's playbook
+(`lib/agent/knowledge/strategy-archetypes.ts`) supplies a market-cap band
+only where its edge needs one; the sectors are the owner's choice.
 
 Routing output on AnalystSignalRoute (history — the router that wrote these
 rows is deleted; `/intelligence` still labels them):
@@ -273,9 +273,12 @@ plus `get_stock_data`.
 ## Data Model (Prisma)
 ### Core
 - AgentConfig — analyst persona config (name, analystPrompt,
-  sectors, signals, confidence threshold, direction bias,
-  hold durations, position sizing, watchlist, exclusionList,
-  intelligencePolicy). **Position sizing is three plain settings:**
+  setups, sectors, market-cap band, confidence threshold, direction
+  bias, hold durations, position sizing, exclusionList; the watchlist
+  is its WATCHING theses). A new row's defaults are a new analyst's
+  (`NEW_ANALYST_DEFAULTS`, `lib/analyst-settings.ts`), and Create, Apply
+  and Settings all save through `normalizeAnalystPatch` there.
+  **Position sizing is three plain settings:**
   `minPositionSize` (smallest trade — a normal buy), `maxPositionSize`
   (largest trade — a STRONG/HIGH conviction buy), `maxPositionTotal` (most
   in one stock — where adding to a winner stops; 0 = twice the largest
@@ -493,7 +496,10 @@ a list here goes stale.
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
-- weekly-digest.ts — Sunday 9 AM ET digest email
+- daily-run-digest.ts — 10 AM ET Mon–Fri, one email per owner on what
+  the 8 AM morning runs did
+- portfolio-digest.ts — 8 PM ET Mon–Fri, the Daily Portfolio Digest
+  (one per account per trading day)
 - accuracy-scorer.ts — Sunday 10 AM, weekly AccuracyReport
 
 ## AI Elements Components (components/ai-elements/)
@@ -622,7 +628,7 @@ it with a ticker chip as if it were a traded security.
 2. Redirect to /runs/[id] → AgentChat renders with autoStart
 3. AgentChat → ChatRuntime → POST /api/agent/research-run
 4. Route loads config + historical context (portfolio, watchlist,
-   briefs, trades, accuracy, intelligence policy)
+   briefs, trades, accuracy)
 5. GPT-5.4 (temperature 0.2) follows the per-thesis review flow with
    Phase-0 check-in:
    Phase 0: Portfolio check-in (injected context, no tools)
@@ -713,8 +719,6 @@ it with a ticker chip as if it were a traded security.
 
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)
-- Old analysts created before V3 may need V3 infra backfill
-  (source packs, intelligence queries, intelligence policy)
 - Morning brief tool UI shows counts but not full briefing content
 
 (Most other items previously here are now tracked in
@@ -778,8 +782,10 @@ When you spot something new, file it there — not here.)
 
 ### What's left of the intelligence code
 - lib/intelligence/sonar.ts — Perplexity Sonar client (behind `web_search`)
-- lib/intelligence/types.ts — shared types, incl. IntelligencePolicy (the
-  router's attention weights were removed from it 2026-09-15)
+- lib/intelligence/types.ts — shared signal types (the per-analyst
+  IntelligencePolicy was deleted 2026-10-31: no run ever read it; every
+  run gets the fixed five web searches, `LIVE_SEARCH_BUDGET` in
+  `lib/agent/tools/web-search.ts`)
 - app/(root)/intelligence/page.tsx — read-only signal history
 - (firecrawl.ts, signals.ts, data-payload-extractor.ts, trading-day.ts,
   email-signal-extractor.ts, urgent-trigger.ts and the four pipeline
