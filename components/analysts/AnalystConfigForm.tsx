@@ -830,7 +830,7 @@ function PositionBandNote({
   maxPositionTotal?: number;
   riskPct?: number;
 }) {
-  const band = positionBand({ minPositionSize, maxPositionSize });
+  const band = positionBand({ minPositionSize, maxPositionSize, maxPositionTotal });
   const total = positionTotalCap({ maxPositionSize, maxPositionTotal });
   const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
 

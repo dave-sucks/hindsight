@@ -11,7 +11,7 @@
 
 import { replayTool } from "@/lib/replay";
 import { BUILDER_SYSTEM_PROMPT } from "@/lib/agent/modes";
-import { configSchema } from "@/lib/agent/tools/suggest-config";
+import { builderConfigSchema as configSchema } from "@/lib/agent/tools/suggest-config";
 
 const LIVE_PEAD_STOP = "Stop at -8% from entry or a reversal candle with volume.";
 

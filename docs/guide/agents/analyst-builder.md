@@ -53,7 +53,7 @@ One proposal, through `suggest_config`, shown beside the chat as a side-by-side 
 - **The strategy:** three to five paragraphs on the edge, what it buys, how it enters and what it never does. Every agent reads it word for word. It names no stops, targets or sizes: the setups, the settings and the account's rules own those, and a number written into the strategy would go stale the day one of them changed.
 - **The universe:** sectors, a market-cap band and an exclusion list. Industries and themes are words: [chat](chat.md), with the analyst selected, reads them when it looks for new stocks, and they filter nothing.
 - **The setups:** the playbook patterns it will write plans on. The first is its **signature setup**, and that setup's reviews start on the analyst's Triggers tab. None chosen means the whole playbook.
-- **Sizing and slots:** its smallest trade, its largest, and how many stocks it may hold at once. Also how long it holds. A new analyst is long-only unless you ask for shorts. Risk per trade and most in one stock aren't in the proposal: you set them on the panel, or they start at 1% and twice the largest trade.
+- **Slots and holds:** how many stocks it may hold at once, the confidence a buy needs, and how long it holds. The money and the direction aren't in the proposal: a new analyst starts long-only, buying $3,000 to $8,000 a trade at 1% risk, with most in one stock twice its largest trade, read live. You change any of them on the panel.
 - **A starting watchlist:** names it checked against the universe, never tickers recalled from memory.
 
 If you ask for changes, it proposes again. The editor first sorts each request into one of four kinds (a question, a change to the numbers, a change to the universe, a new strategy) and grounds the bigger two in real names before proposing anything.
@@ -65,7 +65,9 @@ When you accept, the analyst is created in one step:
 - Its watchlist lands as **seeds**: stocks with no view yet, each due its first research. The next [morning run](morning-runs.md) sends them to [the Writer](writer.md).
 - Its signature setup's reviews are written onto its Triggers tab, where every stock it holds inherits them. You can edit them there. A PEAD, catalyst or compounder signature has reviews; any other has none, so its tab starts blank. None of them sells: the account's own sell rules cover every holding.
 
-The editor's proposal saves the same fields. A field it leaves out keeps its value, and changing the setups later leaves the Triggers tab as it is (its re-seed shows what the new signature setup would add). Its watchlist only adds: each new name lands as a seed, a stock the analyst already holds or watches gets nothing beside it, and a stock left out stays watched. Its change list shows only the names Apply adds. A watch is dropped from its own page, or by a run.
+The editor's proposal saves the same fields, with no direction and the money only when you name an amount; it can remove a market-cap bound. A field it leaves out keeps its value, and changing the setups later leaves the Triggers tab as it is (its re-seed shows what the new signature setup would add). Its watchlist only adds: each new name lands as a seed, a stock the analyst already holds or watches gets nothing beside it, and a stock left out stays watched. Its change list shows only the names Apply adds, and no row for a field it leaves out. A watch is dropped from its own page, or by a run.
+
+Every save goes through one check, whether it comes from Create, the editor or Settings. The smallest trade stays at or under the largest. The largest is at least $100. Most in one stock is at least the largest, or 0 for twice it. A $0 market cap means no bound. Tickers are cleaned and saved once. An empty strategy keeps the one you have. When two money settings disagree, the one you just changed stands and the other moves to fit it.
 
 From then on the analyst runs on its run days like any other.
 
@@ -85,8 +87,8 @@ Everything the builder and the editor can call, read from `lib/agent/modes.ts`.
 `BUILDER_SYSTEM_PROMPT` and `buildEditorSystemPrompt` in `lib/agent/modes.ts`.
 
 #### Saving
-`createAnalystFromBuilder` in `lib/actions/analyst.actions.ts`: the `AgentConfig` and one seed thesis per watchlist ticker (`direction: null`, `status: WATCHING`, `source: BUILDER`) in one transaction, then `seedAnalystTriggers` (`lib/agent/triggers/seed-analyst.ts`) for the signature setup's reviews. The editor saves through `updateAnalystFromBuilder`. Both take the panel's values through `components/analysts/builder-config.ts`, so a field the panel shows is a field that saves.
+`createAnalystFromBuilder` in `lib/actions/analyst.actions.ts`: the `AgentConfig` and one seed thesis per watchlist ticker (`direction: null`, `status: WATCHING`, `source: BUILDER`) in one transaction, then `seedAnalystTriggers` (`lib/agent/triggers/seed-analyst.ts`) for the signature setup's reviews. The editor saves through `updateAnalystFromBuilder`, Settings through `updateAnalystField`. All three go through `normalizeAnalystPatch`, and a new analyst starts from `NEW_ANALYST_DEFAULTS` (both in `lib/analyst-settings.ts`). Create and Apply take the panel's values through `components/analysts/builder-config.ts`, so a field the panel shows is a field that saves.
 
 #### Pages
-`/analysts/new` and the editor at `/analysts/[id]/edit`, both through `/api/agent/[mode]` with mode `builder` or `editor`. The proposal's fields are the `suggest_config` schema in `lib/agent/tools/suggest-config.ts`.
+`/analysts/new` and the editor at `/analysts/[id]/edit`, both through `/api/agent/[mode]` with mode `builder` or `editor`. The proposal's fields are the `suggest_config` schema in `lib/agent/tools/suggest-config.ts`, one per mode (`suggestConfigFor`): the builder's has no money or direction, and the editor's (also the chat's) has the money as optional and a market-cap bound that `null` removes. Each field has a row in `lib/agent/tools/field-contract.ts`.
 </details>

@@ -494,7 +494,7 @@ This chat is pinned to one analyst. Every write tool (place_trade, close_positio
 
   • Analyst ID: \`${scope.id}\`
 ${universeLines(scope).map((l) => `  • ${l}`).join("\n")}
-  The market cap band is a HARD fence. A name outside it cannot be traded by this seat, so it is not a candidate however good the setup reads. Nothing downstream rejects an out-of-band thesis for you: record_thesis has no market-cap check, so an out-of-band name minted here becomes a watchlist item that can never be acted on.
+  The market cap band is this analyst's range, and you keep to it: a name outside it is not a candidate however good the setup reads. Nothing in the code stops a trade outside it (place_trade checks only the exclusion list, and record_thesis checks neither), so the check is yours.
   • Watchlist: ${scope.watchlist.join(", ") || "(empty)"}
   • Sizing: omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
 
@@ -792,7 +792,7 @@ Use ask_question (single- or multi-select) to pin down the discriminators:
 - **hold duration** — SWING / POSITION (multi-select allowed).
 - **themes** (multi-select) — if the strategy is thematic, get 2–4 concrete themes.
 - **risk appetite** — "high conviction few trades" vs "frequent small trades".
-Do NOT ask about things you can reasonably default (direction, position sizing, maxOpenPositions). A new analyst is LONG unless the user asks for shorts. Use ask_question only when the answer materially changes the config.
+Do NOT ask about things you can reasonably default (direction, position sizing, maxOpenPositions). A new analyst is long and starts with the default trade sizes; suggest_config carries neither, so if the user wants shorts or other sizes, tell them to set them on the panel. Use ask_question only when the answer materially changes the config.
 
 ### Step 3 — Ground yourself in the knowledge library (MANDATORY)
 First call \`list_analysts\` and say in a sentence how the new analyst differs from each one the user already has.
@@ -943,10 +943,10 @@ Before your first tool call, silently classify the user's request into EXACTLY O
 
   (b) **Numeric-only tweak** — A change ONLY to one or more of:
         minConfidence, maxPositionSize, maxOpenPositions, holdDurations,
-        marketCapMin, marketCapMax, directionBias,
+        marketCapMin, marketCapMax,
         intelligencePolicy.{allowLiveSearch|liveSearchBudget}.
       Examples: "bump position size to $2000", "tighten minConfidence to 80",
-      "allow shorting too", "cap single position at 2% of account".
+      "cap single position at 2% of account".
       Gates: no mandatory tool calls.
       ‼ The analystPrompt MUST be copied VERBATIM from currentConfig.
         Do not rewrite, rephrase, trim, or "modernize" a single word.
@@ -1017,7 +1017,7 @@ The \`promptSkeleton\` is your STARTING POINT — adapt it into the analystPromp
 ### Step 5 — suggest_config with the COMPLETE updated config
 Call **suggest_config** with EVERY required field filled, including all four Universe fields (sectors, industries, themes, marketCapMin/Max).
 
-**marketCapMin/Max: omit the field entirely for no bound.** Do NOT send Number.MAX_SAFE_INTEGER, 0, or any other sentinel. An undefined field means "no filter on that axis". The tool schema rejects values above $10T.
+**marketCapMin/Max: send null to remove a bound; leave the field out to keep the current one.** Do NOT send Number.MAX_SAFE_INTEGER or any other sentinel. The tool schema rejects values above $10T.
 
 
 For the \`analystPrompt\` field specifically:
@@ -1043,8 +1043,6 @@ For optional fields (intelligencePolicy): only include them when actually changi
 5. **Lane (d): archetype skeleton required.** \`read_knowledge_library\` with topic:"archetype" and a specific id MUST be called BEFORE writing the new analystPrompt. Do not write a new strategy from memory.
 
 6. **Watchlist: add only.** Send back the CURRENT watchlist from currentConfig plus any new tickers. Apply adds each new ticker as a seed and removes nothing: a watched stock is dropped from its own page, or by a run, with a reason. If the user asks to drop one, say where to do it. **Additions** are either names the user named or names that came back from \`get_market_movers\` / \`get_earnings_calendar\` and that you checked with \`get_stock_data\` — never from the model's training data.
-
-6b. **marketCap / price omission.** PREFER to omit \`marketCapMin\` / \`marketCapMax\` / \`priceMin\` / \`priceMax\` entirely when you mean "no bound." The schema silently strips sentinel values (0, or >$5T ceilings), so sending them won't fail, but omission is clearer and doesn't risk future strictness bringing the hard-error back.
 
 7. **NO citation markers, NO markdown headings.** Do NOT write [1], [2], [3] bracket citations in your prose. Do NOT use #, ##, ### markdown headings. The user sees every tool call directly in the chat as an expandable row — they can click to read exactly what you read. Citations and headings belong in documents, not in a chat conversation. Use **bold** for emphasis when you need it.
 

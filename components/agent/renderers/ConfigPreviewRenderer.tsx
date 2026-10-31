@@ -11,7 +11,7 @@ import {
   type AgentConfigData,
 } from "@/components/domain/agent-config-card";
 import { useToolUICallbacks } from "@/components/assistant-ui/tool-uis/tool-ui-shared";
-import { watchlistAdds } from "@/components/analysts/builder-config";
+import { watchlistAdds } from "@/lib/analyst-settings";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { cn } from "@/lib/utils";
 
@@ -147,6 +147,8 @@ function diffsFor(
   for (const spec of GROUPS[group].fields) {
     const bVal = before[spec.key as string];
     const aVal = (after as Record<string, unknown>)[spec.key as string];
+    // A field the proposal leaves out keeps its value: no row.
+    if (aVal === undefined) continue;
     // Apply only adds watches, so the row is the names it adds.
     if (spec.key === "watchlist") {
       const adds = watchlistAdds(after.watchlist, heldOrWatched ?? ((bVal as string[] | undefined) ?? []));
