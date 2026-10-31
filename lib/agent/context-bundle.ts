@@ -40,6 +40,7 @@ export async function getMoneyContext(analyst: {
   // columns type as unknown; Number() normalizes all of them at runtime.
   minPositionSize: unknown;
   maxPositionSize: unknown;
+  maxPositionTotal: unknown;
 }): Promise<MoneyContext> {
   const environment =
     (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
@@ -47,6 +48,7 @@ export async function getMoneyContext(analyst: {
   const band = positionBand({
     minPositionSize: Number(analyst.minPositionSize) || undefined,
     maxPositionSize: Number(analyst.maxPositionSize) || undefined,
+    maxPositionTotal: Number(analyst.maxPositionTotal) || undefined,
   });
 
   let equityUSD: number | null = null;

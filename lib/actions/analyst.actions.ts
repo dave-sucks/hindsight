@@ -2,8 +2,6 @@
 
 import { prisma } from "@/lib/prisma";
 import { seedAnalystTriggers } from "@/lib/agent/triggers/seed-analyst";
-import { isNamedSetup } from "@/lib/agent/knowledge/setups";
-import { boundRiskPct } from "@/lib/agent/position-sizing";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -14,13 +12,9 @@ import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import type { IntelligencePolicy } from "@/lib/intelligence/types";
-import {
-  normalizeSectors,
-  normalizeIndustries,
-  normalizeThemes,
-} from "@/lib/universe/canonical";
 import { getAccountId } from "@/lib/auth/account";
 import { getHeldOrWatchedSymbols } from "@/lib/agent/watchlist-symbols";
+import { NEW_ANALYST_DEFAULTS, normalizeAnalystPatch, watchlistAdds, watchlistReasons } from "@/lib/analyst-settings";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -727,9 +721,24 @@ export interface BuilderConfig {
   // The rest of the fence; sectors is above.
   industries?: string[];
   themes?: string[];
-  marketCapMin?: number;
-  marketCapMax?: number;
+  marketCapMin?: number | null;
+  marketCapMax?: number | null;
 }
+
+/** A new analyst before the proposal: what Create checks the proposal against. */
+const NEW_ANALYST_ROW = {
+  ...NEW_ANALYST_DEFAULTS,
+  name: "Untitled Analyst",
+  analystPrompt: "General market research analyst",
+  description: "",
+  setupIds: [] as string[],
+  sectors: [] as string[],
+  industries: [] as string[],
+  themes: [] as string[],
+  marketCapMin: null as bigint | null,
+  marketCapMax: null as bigint | null,
+  exclusionList: [] as string[],
+};
 
 export async function createAnalystFromBuilder(
   data: BuilderConfig
@@ -739,42 +748,19 @@ export async function createAnalystFromBuilder(
   const accountId = await getAccountId(userId);
   if (!accountId) throw new Error("No account");
 
-  // Coerce all values to their expected types — AI tool output can be unpredictable
-  const name = String(data.name || "Untitled Analyst");
-  const prompt = String(data.analystPrompt || "General market research analyst");
-  const posSize = Number(data.maxPositionSize) || 5000;
-  // Floor is optional and clamped to the ceiling — a builder that proposes a
-  // floor above the ceiling would otherwise mint an analyst that can't trade.
-  const posFloor = Math.min(Math.max(Number(data.minPositionSize) || 0, 0), posSize);
-  const maxPos = Math.round(Number(data.maxOpenPositions) || 5);
-  const minConf = Math.round(Number(data.minConfidence) || 70);
-  const bias = (["LONG", "SHORT", "BOTH"] as const).includes(data.directionBias as "LONG" | "SHORT" | "BOTH")
-    ? data.directionBias
-    : "LONG";
-  const holdDurs = Array.isArray(data.holdDurations) ? data.holdDurations : ["SWING"];
-  const setupIds = Array.from(new Set((data.setupIds ?? []).filter(isNamedSetup)));
-  const sectors = Array.isArray(data.sectors) ? data.sectors : [];
+  // One normalizer for Create, Apply and Settings (lib/analyst-settings.ts):
+  // the proposal on top of a new analyst's defaults.
+  const fields = { ...NEW_ANALYST_ROW, ...normalizeAnalystPatch(NEW_ANALYST_ROW, data as unknown as Record<string, unknown>) };
   const signals = Array.isArray(data.signalTypes) ? data.signalTypes : [];
 
-  console.log(`[analyst] Creating analyst: name="${name}" sectors=${sectors.join(",") || "all"} bias=${bias} posSize=${posSize} minConf=${minConf}`);
+  console.log(`[analyst] Creating analyst: name="${fields.name}" sectors=${fields.sectors.join(",") || "all"} bias=${fields.directionBias} posSize=${fields.maxPositionSize} minConf=${fields.minConfidence}`);
 
-  // Parse watchlist: supports both old format (string[]) and new format ({symbol, reason, priority}[])
-  const rawWatchlist = Array.isArray(data.watchlist) ? data.watchlist : [];
-  const watchlistSymbols: string[] = [];
-  const structuredWatchlist: { symbol: string; reason: string; priority: string }[] = [];
-  for (const item of rawWatchlist) {
-    if (typeof item === "string") {
-      watchlistSymbols.push(item.toUpperCase());
-    } else if (item && typeof item === "object" && "symbol" in item) {
-      const sym = String((item as { symbol: string }).symbol).toUpperCase();
-      watchlistSymbols.push(sym);
-      structuredWatchlist.push({
-        symbol: sym,
-        reason: String((item as { reason?: string }).reason ?? "Added during analyst creation"),
-        priority: String((item as { priority?: string }).priority ?? "NORMAL"),
-      });
-    }
-  }
+  // The watchlist seeds: each name cleaned and once (watchlistAdds), with its reason.
+  const reasons = watchlistReasons(data.watchlist);
+  const seedItems = watchlistAdds(data.watchlist, []).map((symbol) => ({
+    symbol,
+    reason: reasons.get(symbol) ?? "Added during analyst creation",
+  }));
 
   // Build intelligence policy from builder proposal, merging with defaults
   const policyInput = data.intelligencePolicy;
@@ -786,23 +772,6 @@ export async function createAnalystFromBuilder(
     } : {}),
   };
 
-  // The fence, normalized at the write boundary so AgentConfig only stores
-  // canonical GICS sectors / industries and canonical themes.
-  const universeSectors = normalizeSectors(sectors);
-  const combinedExclusions = Array.from(
-    new Set((Array.isArray(data.exclusionList) ? data.exclusionList : []).map((s) => s.toUpperCase())),
-  );
-  const industries = normalizeIndustries(Array.isArray(data.industries) ? data.industries : []);
-  const themes = normalizeThemes(Array.isArray(data.themes) ? data.themes : []);
-  const marketCapMin =
-    typeof data.marketCapMin === "number" && Number.isFinite(data.marketCapMin)
-      ? BigInt(Math.round(data.marketCapMin))
-      : null;
-  const marketCapMax =
-    typeof data.marketCapMax === "number" && Number.isFinite(data.marketCapMax)
-      ? BigInt(Math.round(data.marketCapMax))
-      : null;
-
   // ── Transactional creation: analyst + watchlist ──
   const analyst = await prisma.$transaction(async (tx) => {
     // 1. Create the analyst config (core record)
@@ -810,28 +779,13 @@ export async function createAnalystFromBuilder(
       data: {
         userId,
         accountId,
-        name,
-        description: data.description ?? "",
+        ...fields,
         enabled: true,
-        analystPrompt: prompt,
         markets: ["US_EQUITIES"],
         exchanges: ["NASDAQ", "NYSE"],
-        sectors: universeSectors,
-        industries,
-        themes,
-        marketCapMin,
-        marketCapMax,
         // Watchlist removed from AgentConfig — Thesis(status=WATCHING) is
         // the single store now. Seed theses are minted below.
-        exclusionList: combinedExclusions,
-        minPositionSize: posFloor,
-        maxPositionSize: posSize,
-        maxOpenPositions: maxPos,
-        minConfidence: minConf,
-          dailyLossLimit: 300,
-        holdDurations: holdDurs,
-        setupIds,
-        directionBias: bias,
+        dailyLossLimit: 300,
         signalTypes: signals,
         scheduleTime: "08:00",
         priceCheckFreq: "HOURLY",
@@ -839,10 +793,6 @@ export async function createAnalystFromBuilder(
         graduationWinRate: 0.65,
         graduationMinTrades: 50,
         graduationProfitFactor: 1.5,
-        tradingEnvironment: "PAPER",
-        maxPositionTotal: Number(data.maxPositionTotal) > 0 ? Number(data.maxPositionTotal) : posSize * 2,
-        riskPct: boundRiskPct(data.riskPct),
-        emailAlerts: true,
         weeklyDigestEnabled: true,
         intelligencePolicy: intelligencePolicy as unknown as object,
       },
@@ -851,17 +801,6 @@ export async function createAnalystFromBuilder(
     // 2. Watchlist-collapse: builder seeds as Thesis(direction=null/WATCHING,
     //    source_kind='BUILDER_SEED') under a fresh BUILDER_SEED ResearchRun.
     //    Thesis is the single store; AnalystWatchlistItem is gone.
-    const seedItems: Array<{ symbol: string; reason: string }> =
-      structuredWatchlist.length > 0
-        ? structuredWatchlist.map((w) => ({
-            symbol: w.symbol,
-            reason: w.reason,
-          }))
-        : watchlistSymbols.map((sym) => ({
-            symbol: sym,
-            reason: "Added during analyst creation",
-          }));
-
     if (seedItems.length > 0) {
       const builderRun = await tx.researchRun.create({
         data: {
@@ -940,7 +879,7 @@ export async function createAnalystFromBuilder(
   // The seat's rules from the playbook, on its Triggers tab from day one (DAV-280).
   await seedAnalystTriggers(analyst.id);
 
-  console.log(`[analyst] Created analyst id=${analyst.id} name="${name}" policy.liveSearchBudget=${intelligencePolicy.liveSearchBudget}`);
+  console.log(`[analyst] Created analyst id=${analyst.id} name="${fields.name}" policy.liveSearchBudget=${intelligencePolicy.liveSearchBudget}`);
   revalidatePath("/analysts");
   return { id: analyst.id };
 }
@@ -985,11 +924,8 @@ type UpdatableField =
   // place-trade open-email, closeTrade close-email, maybe-await-approval).
   | "emailAlerts";
 
-/** Fields whose server payload must be coerced to BigInt for the BigInt? columns. */
-const BIGINT_FIELDS: ReadonlySet<UpdatableField> = new Set<UpdatableField>([
-  "marketCapMin",
-  "marketCapMax",
-]);
+/** The stored values a Settings or editor change is checked against. */
+const STORED_FOR_PATCH = { name: true, analystPrompt: true, minPositionSize: true, maxPositionSize: true, maxPositionTotal: true } as const;
 
 export async function updateAnalystField(
   id: string,
@@ -1000,62 +936,18 @@ export async function updateAnalystField(
   if (!userId) throw new Error("Not authenticated");
   const accountId = await getAccountId(userId);
   if (!accountId) throw new Error("No account");
-  const owned = await prisma.agentConfig.findFirst({
+  const stored = await prisma.agentConfig.findFirst({
     where: { id, accountId },
-    select: { id: true },
+    select: { id: true, ...STORED_FOR_PATCH },
   });
-  if (!owned) throw new Error("Analyst not found");
+  if (!stored) throw new Error("Analyst not found");
 
-  // Normalize BigInt-backed Universe fields. UI sends number | null; Prisma
-  // wants BigInt | null.
-  let storedValue: unknown = value;
-  if (BIGINT_FIELDS.has(field)) {
-    if (value === null || value === undefined || value === "") {
-      storedValue = null;
-    } else if (typeof value === "number" && Number.isFinite(value)) {
-      storedValue = BigInt(Math.trunc(value));
-    } else if (typeof value === "string" && value.trim() !== "") {
-      const n = Number(value);
-      storedValue = Number.isFinite(n) ? BigInt(Math.trunc(n)) : null;
-    } else {
-      storedValue = null;
-    }
+  // The same normalizer as Create and Apply. It can move a second money
+  // setting to fit the one just set (lib/analyst-settings.ts).
+  const data = normalizeAnalystPatch(stored, { [field]: value });
+  if (Object.keys(data).length > 0) {
+    await prisma.agentConfig.update({ where: { id }, data });
   }
-
-  // Session A: route universe arrays through the canonical normalizers so
-  // inline chip edits can't re-seed the table with non-canonical values.
-  // The combobox already emits canonical Title Case, but defensive
-  // normalization protects against programmatic callers.
-  if (field === "sectors" && Array.isArray(value)) {
-    storedValue = normalizeSectors(value as string[]);
-  } else if (field === "industries" && Array.isArray(value)) {
-    storedValue = normalizeIndustries(value as string[]);
-  } else if (field === "themes" && Array.isArray(value)) {
-    storedValue = normalizeThemes(value as string[]);
-  } else if (field === "runDaysOfWeek" && Array.isArray(value)) {
-    // ISO weekdays, Mon–Fri only (1..5). Dedupe + sort so the stored array is
-    // canonical regardless of click order. Weekends are out of scope (the cron
-    // is Mon–Fri). Empty is allowed — the cron reads empty as "all weekdays".
-    const days = Array.from(
-      new Set(
-        (value as unknown[])
-          .map((d) => Math.trunc(Number(d)))
-          .filter((d) => Number.isInteger(d) && d >= 1 && d <= 5),
-      ),
-    ).sort((a, b) => a - b);
-    storedValue = days;
-  } else if (field === "setupIds" && Array.isArray(value)) {
-    // Catalog ids only, in the order chosen (the first is the signature
-    // setup whose rules seed the Triggers tab). Empty = the whole catalog.
-    storedValue = Array.from(new Set((value as unknown[]).filter((v): v is string => typeof v === "string" && isNamedSetup(v))));
-  } else if (field === "riskPct") {
-    storedValue = boundRiskPct(value);
-  }
-
-  await prisma.agentConfig.update({
-    where: { id },
-    data: { [field]: storedValue },
-  });
 
   revalidatePath(`/analysts/${id}`);
   revalidatePath("/analysts");
@@ -1135,137 +1027,92 @@ export async function updateAnalystFromBuilder(
   if (!userId) throw new Error("Not authenticated");
   const accountId = await getAccountId(userId);
   if (!accountId) throw new Error("No account");
-  const owned = await prisma.agentConfig.findFirst({
+  const stored = await prisma.agentConfig.findFirst({
     where: { id, accountId },
-    select: { id: true },
+    select: { id: true, ...STORED_FOR_PATCH },
   });
-  if (!owned) throw new Error("Analyst not found");
+  if (!stored) throw new Error("Analyst not found");
 
-  const updateData: Record<string, unknown> = {};
-  if (data.name !== undefined) updateData.name = data.name;
-  if (data.description !== undefined) updateData.description = data.description;
-  if (data.analystPrompt !== undefined) updateData.analystPrompt = data.analystPrompt;
-  if (data.directionBias !== undefined) updateData.directionBias = data.directionBias;
-  if (data.holdDurations !== undefined) updateData.holdDurations = data.holdDurations;
-  if (data.sectors !== undefined) updateData.sectors = normalizeSectors(data.sectors);
+  // One normalizer for Create, Apply and Settings (lib/analyst-settings.ts).
+  const updateData: Record<string, unknown> = normalizeAnalystPatch(stored, data as unknown as Record<string, unknown>);
   if (data.signalTypes !== undefined) updateData.signalTypes = data.signalTypes;
-  if (data.minConfidence !== undefined) updateData.minConfidence = data.minConfidence;
-  if (data.minPositionSize !== undefined) updateData.minPositionSize = data.minPositionSize;
-  if (data.maxPositionSize !== undefined) updateData.maxPositionSize = data.maxPositionSize;
-  if (data.maxPositionTotal !== undefined) updateData.maxPositionTotal = data.maxPositionTotal;
-  if (data.riskPct !== undefined) updateData.riskPct = boundRiskPct(data.riskPct);
-  if (data.setupIds !== undefined) updateData.setupIds = Array.from(new Set(data.setupIds.filter(isNamedSetup)));
-  if (data.maxOpenPositions !== undefined) updateData.maxOpenPositions = data.maxOpenPositions;
-  if (data.exclusionList !== undefined) updateData.exclusionList = data.exclusionList;
 
-  // The rest of the fence. Arrays go through the canonical normalizers. A
-  // market cap of 0 or $5T+ is a "no bound" sentinel the model slipped through.
-  if (Array.isArray(data.industries)) updateData.industries = normalizeIndustries(data.industries);
-  if (Array.isArray(data.themes)) updateData.themes = normalizeThemes(data.themes);
-  const CAP_CEILING = 5e12;
-  if (typeof data.marketCapMin === "number" && Number.isFinite(data.marketCapMin)) {
-    updateData.marketCapMin =
-      data.marketCapMin === 0 || data.marketCapMin >= CAP_CEILING ? null : BigInt(Math.round(data.marketCapMin));
-  }
-  if (typeof data.marketCapMax === "number" && Number.isFinite(data.marketCapMax)) {
-    updateData.marketCapMax = data.marketCapMax >= CAP_CEILING ? null : BigInt(Math.round(data.marketCapMax));
-  }
-
-  // Handle structured watchlist updates
+  // Adds → null-direction WATCHING under a fresh EDITOR_SEED ResearchRun, the
+  // names the change list showed (watchlistAdds). A name left out is kept: a
+  // watch is dropped from its own page or by a run.
   if (data.watchlist !== undefined) {
-    const rawWatchlist = Array.isArray(data.watchlist) ? data.watchlist : [];
-    const watchlistSymbols: string[] = [];
-    const structuredItems: { symbol: string; reason: string; priority: string }[] = [];
-    for (const item of rawWatchlist) {
-      if (typeof item === "string") {
-        watchlistSymbols.push(item.toUpperCase());
-      } else if (item && typeof item === "object" && "symbol" in item) {
-        const sym = String((item as { symbol: string }).symbol).toUpperCase();
-        watchlistSymbols.push(sym);
-        structuredItems.push({
-          symbol: sym,
-          reason: String((item as { reason?: string }).reason ?? "Updated via editor"),
-          priority: String((item as { priority?: string }).priority ?? "NORMAL"),
-        });
-      }
-    }
-    // Adds → null-direction WATCHING under a fresh EDITOR_SEED ResearchRun.
-    // A name left out is kept: a watch is dropped from its own page or by a run.
-    if (structuredItems.length > 0 || watchlistSymbols.length > 0) {
-      const existingSymbolSet = new Set(await getHeldOrWatchedSymbols(id));
-      const toCreate = (
-        structuredItems.length > 0
-          ? structuredItems
-          : watchlistSymbols.map((s) => ({ symbol: s, reason: "Updated via editor" }))
-      ).filter((w) => !existingSymbolSet.has(w.symbol));
+    const reasons = watchlistReasons(data.watchlist);
+    const toCreate = watchlistAdds(data.watchlist, await getHeldOrWatchedSymbols(id)).map((symbol) => ({
+      symbol,
+      reason: reasons.get(symbol) ?? "Updated via editor",
+    }));
 
-      // Create newly-added names.
-      if (toCreate.length > 0) {
-        try {
-          const editorRun = await prisma.researchRun.create({
+    // Create newly-added names.
+    if (toCreate.length > 0) {
+      try {
+        const editorRun = await prisma.researchRun.create({
+          data: {
+            userId,
+            accountId,
+            agentConfigId: id,
+            source: "EDITOR",
+            status: "COMPLETE",
+            mode: "EDITOR_SEED",
+            environment: "PAPER",
+            parameters: {
+              note: "Editor analyst-update watchlist additions; one null-direction WATCHING thesis per ticker.",
+              addCount: toCreate.length,
+            },
+            completedAt: new Date(),
+          },
+          select: { id: true },
+        });
+
+        for (const w of toCreate) {
+          const thesis = await prisma.thesis.create({
             data: {
+              researchRunId: editorRun.id,
               userId,
               accountId,
-              agentConfigId: id,
+              ticker: w.symbol,
               source: "EDITOR",
-              status: "COMPLETE",
-              mode: "EDITOR_SEED",
-              environment: "PAPER",
-              parameters: {
-                note: "Editor analyst-update watchlist additions; one null-direction WATCHING thesis per ticker.",
-                addCount: toCreate.length,
+              // P1-24 B4: unresearched watchlist seed → direction=null, status
+              // stays WATCHING. Agent promotes null → LONG/SHORT on first review.
+              direction: null,
+              status: "WATCHING",
+              holdDuration: "SWING",
+              // PR-9 flat schema seed (see builder-seed block above).
+              snapshot: {
+                text: w.reason || "Editor-seeded — awaiting first research",
+                citations: [],
               },
-              completedAt: new Date(),
+              modelUsed: "editor",
+              // Seed clock — same W1 rule as the builder seed above.
+              triggers: [
+                { ...reviewCadenceTrigger(7), source: "DEFAULT" },
+              ] as object[],
+              sourceKind: "EDITOR_SEED",
+              sourceRationale: w.reason || "Editor-seeded via analyst-edit chat",
             },
             select: { id: true },
           });
 
-          for (const w of toCreate) {
-            const thesis = await prisma.thesis.create({
-              data: {
-                researchRunId: editorRun.id,
-                userId,
-                accountId,
-                ticker: w.symbol,
-                source: "EDITOR",
-                // P1-24 B4: unresearched watchlist seed → direction=null, status
-                // stays WATCHING. Agent promotes null → LONG/SHORT on first review.
-                direction: null,
-                status: "WATCHING",
-                holdDuration: "SWING",
-                // PR-9 flat schema seed (see builder-seed block above).
-                snapshot: {
-                  text: w.reason || "Editor-seeded — awaiting first research",
-                  citations: [],
-                },
-                modelUsed: "editor",
-                // Seed clock — same W1 rule as the builder seed above.
-                triggers: [
-                  { ...reviewCadenceTrigger(7), source: "DEFAULT" },
-                ] as object[],
-                sourceKind: "EDITOR_SEED",
-                sourceRationale: w.reason || "Editor-seeded via analyst-edit chat",
-              },
-              select: { id: true },
-            });
-
-            await prisma.thesisUpdate.create({
-              data: {
-                thesisId: thesis.id,
-                type: "CREATED",
-                summary: `Editor added ${w.symbol} to watchlist (awaiting first research)`,
-                rationale: w.reason,
-                fieldChanges: {},
-                runId: editorRun.id,
-              },
-            });
-          }
-        } catch (err) {
-          console.error(
-            `[analyst:editor-update] watchlist-seed create FAILED for analyst ${id}:`,
-            err,
-          );
+          await prisma.thesisUpdate.create({
+            data: {
+              thesisId: thesis.id,
+              type: "CREATED",
+              summary: `Editor added ${w.symbol} to watchlist (awaiting first research)`,
+              rationale: w.reason,
+              fieldChanges: {},
+              runId: editorRun.id,
+            },
+          });
         }
+      } catch (err) {
+        console.error(
+          `[analyst:editor-update] watchlist-seed create FAILED for analyst ${id}:`,
+          err,
+        );
       }
     }
   }

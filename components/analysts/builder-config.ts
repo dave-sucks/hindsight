@@ -7,6 +7,7 @@
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 import type { FormValues } from "@/components/analysts/AnalystConfigForm";
 import type { BuilderConfig } from "@/lib/actions/analyst.actions";
+import { NEW_ANALYST_DEFAULTS as D } from "@/lib/analyst-settings";
 
 // ─── The panel: AgentConfigData ↔ FormValues ────────────────────────────────
 
@@ -20,15 +21,15 @@ export function toFormValues(config: AgentConfigData): FormValues {
     description: config.description ?? null,
     analystPrompt: config.analystPrompt ?? null,
     watchlist,
-    directionBias: config.directionBias ?? "LONG",
-    holdDurations: config.holdDurations ?? ["SWING"],
+    directionBias: config.directionBias ?? D.directionBias,
+    holdDurations: config.holdDurations ?? D.holdDurations,
     setupIds: config.setupIds ?? [],
-    minConfidence: config.minConfidence ?? 65,
-    maxOpenPositions: config.maxOpenPositions ?? 5,
-    riskPct: config.riskPct,
-    minPositionSize: config.minPositionSize ?? 0,
-    maxPositionSize: config.maxPositionSize ?? 5000,
-    maxPositionTotal: config.maxPositionTotal,
+    minConfidence: config.minConfidence ?? D.minConfidence,
+    maxOpenPositions: config.maxOpenPositions ?? D.maxOpenPositions,
+    riskPct: config.riskPct ?? D.riskPct,
+    minPositionSize: config.minPositionSize ?? D.minPositionSize,
+    maxPositionSize: config.maxPositionSize ?? D.maxPositionSize,
+    maxPositionTotal: config.maxPositionTotal ?? D.maxPositionTotal,
     intelligencePolicy: config.intelligencePolicy ?? null,
     sectors: config.sectors ?? [],
     industries: config.industries ?? [],
@@ -76,28 +77,20 @@ export function applyChange<K extends keyof FormValues>(
 }
 
 /**
- * The editor panel's starting point. suggest_config carries no risk per trade
- * or most in one stock, so those start from the analyst's own.
+ * The editor panel's starting point: the analyst as it is, with the proposal
+ * on top. A field the proposal leaves out (the money, unless the owner named
+ * an amount; risk per trade; most in one stock; the direction) starts from
+ * the analyst's own, never from a new analyst's default.
  */
 export function editorPanelStart(
   currentConfig: Record<string, unknown>,
   proposed: AgentConfigData,
 ): AgentConfigData {
-  return {
-    riskPct: currentConfig.riskPct as number | undefined,
-    maxPositionTotal: currentConfig.maxPositionTotal as number | undefined,
-    ...proposed,
-  };
+  const named = Object.fromEntries(Object.entries(proposed).filter(([, v]) => v !== undefined));
+  return { ...(currentConfig as AgentConfigData), ...named };
 }
 
 // ─── Create and Apply ───────────────────────────────────────────────────────
-
-/** What Apply adds to the watchlist: the proposal's names the analyst doesn't already hold or watch. */
-export function watchlistAdds(proposed: AgentConfigData["watchlist"], heldOrWatched: string[]): string[] {
-  const have = new Set(heldOrWatched);
-  const names = (proposed ?? []).map((w) => (typeof w === "string" ? w : w.symbol).toUpperCase());
-  return Array.from(new Set(names)).filter((s) => !have.has(s));
-}
 
 /** Create: the builder's proposal as edited on the panel. */
 export function toCreateInput(config: AgentConfigData): BuilderConfig {
@@ -105,17 +98,17 @@ export function toCreateInput(config: AgentConfigData): BuilderConfig {
     name: config.name ?? "Untitled Analyst",
     analystPrompt: config.analystPrompt ?? "General market research analyst",
     description: config.description,
-    directionBias: config.directionBias ?? "LONG",
-    holdDurations: (config.holdDurations ?? ["SWING"]) as BuilderConfig["holdDurations"],
+    directionBias: config.directionBias ?? D.directionBias,
+    holdDurations: (config.holdDurations ?? D.holdDurations) as BuilderConfig["holdDurations"],
     setupIds: config.setupIds,
     sectors: config.sectors ?? [],
     signalTypes: config.signalTypes ?? [],
-    minConfidence: config.minConfidence ?? 65,
+    minConfidence: config.minConfidence ?? D.minConfidence,
     riskPct: config.riskPct,
     minPositionSize: config.minPositionSize,
-    maxPositionSize: config.maxPositionSize ?? 5000,
+    maxPositionSize: config.maxPositionSize ?? D.maxPositionSize,
     maxPositionTotal: config.maxPositionTotal,
-    maxOpenPositions: config.maxOpenPositions ?? 5,
+    maxOpenPositions: config.maxOpenPositions ?? D.maxOpenPositions,
     watchlist: (config.watchlist ?? []) as string[],
     exclusionList: (config.exclusionList ?? []) as string[],
     intelligencePolicy: config.intelligencePolicy,
@@ -148,7 +141,8 @@ export function toApplyInput(config: AgentConfigData): Partial<BuilderConfig> {
     intelligencePolicy: config.intelligencePolicy,
     industries: config.industries,
     themes: config.themes,
-    marketCapMin: config.marketCapMin ?? undefined,
-    marketCapMax: config.marketCapMax ?? undefined,
+    // null removes a bound; undefined keeps it.
+    marketCapMin: config.marketCapMin,
+    marketCapMax: config.marketCapMax,
   };
 }

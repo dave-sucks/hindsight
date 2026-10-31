@@ -15,6 +15,7 @@ import {
   User,
 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
+import { NEW_ANALYST_DEFAULTS as D } from "@/lib/analyst-settings";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,8 +73,8 @@ export function AgentConfigCard({
   name,
   description,
   analystPrompt,
-  directionBias = "LONG",
-  holdDurations = [],
+  directionBias = D.directionBias,
+  holdDurations = D.holdDurations,
   setupIds = [],
   sectors = [],
   industries = [],
@@ -81,10 +82,10 @@ export function AgentConfigCard({
   marketCapMin,
   marketCapMax,
   signalTypes = [],
-  minConfidence = 0,
-  minPositionSize = 0,
-  maxPositionSize = 0,
-  maxOpenPositions = 0,
+  minConfidence = D.minConfidence,
+  minPositionSize = D.minPositionSize,
+  maxPositionSize = D.maxPositionSize,
+  maxOpenPositions = D.maxOpenPositions,
   watchlist = [],
   exclusionList = [],
   onConfirm,

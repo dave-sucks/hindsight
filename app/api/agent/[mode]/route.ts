@@ -38,7 +38,7 @@ import {
   formatMoneyContextBlock,
   formatBookContextBlock,
 } from "@/lib/agent/context-bundle";
-import { suggestConfigTool } from "@/lib/agent/tools/suggest-config";
+import { suggestConfigFor } from "@/lib/agent/tools/suggest-config";
 import { suggestPodcastConfigTool } from "@/lib/agent/tools/suggest-podcast-config";
 import { PODCAST_BUILDER_SYSTEM_PROMPT } from "@/lib/podcast/builder-prompt";
 import { buildPodcastSegmentRunPrompt } from "@/lib/podcast/segment-run-prompt";
@@ -313,6 +313,7 @@ export async function POST(
               tradingEnvironment: ac.tradingEnvironment,
               minPositionSize: ac.minPositionSize,
               maxPositionSize: ac.maxPositionSize,
+              maxPositionTotal: ac.maxPositionTotal,
             }),
             getBookContext({
               analystId: ac.id,
@@ -728,7 +729,8 @@ export async function POST(
     // defineTool factories — they don't need ToolContext).
     const tools: Record<string, unknown> = { ...filteredTools };
     if (modeConfig.hasSuggestConfig) {
-      tools.suggest_config = suggestConfigTool;
+      // The builder makes an analyst; the editor and the chat change one.
+      tools.suggest_config = suggestConfigFor(agentMode === "builder" ? "builder" : "editor");
     }
     if (agentMode === "podcast-builder" || agentMode === "podcast-editor") {
       tools.suggest_podcast_config = suggestPodcastConfigTool;

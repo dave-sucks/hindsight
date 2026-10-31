@@ -4,7 +4,7 @@
  * Create sent no setups and no smallest trade, Apply dropped both, and the
  * panel ignored edits to risk per trade and most in one stock, so a new
  * analyst started with the whole playbook, a blank Triggers tab and a $0
- * floor. The input is the live PEAD Specialist (production, 2026-10-27)
+ * floor. The builder now types no money: the owner sets it on the panel. The input is the live PEAD Specialist (production, 2026-10-27)
  * written as the suggest_config call that would make it, run through the
  * tool's schema, the panel and the two save actions.
  */
@@ -37,7 +37,7 @@ jest.mock("@/lib/prisma", () => {
 
 import { createAnalystFromBuilder, updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
 import { applyChange, editorPanelStart, toApplyInput, toCreateInput, toFormValues } from "@/components/analysts/builder-config";
-import { configSchema } from "@/lib/agent/tools/suggest-config";
+import { builderConfigSchema, editorConfigSchema } from "@/lib/agent/tools/suggest-config";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 const SETUPS = ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"];
@@ -73,11 +73,13 @@ beforeEach(() => {
 });
 
 it("Create saves the setups and all four sizing fields, and seeds the signature setup's reviews", async () => {
-  const proposal = configSchema.parse(PEAD_CALL) as AgentConfigData;
+  const proposal = builderConfigSchema.parse(PEAD_CALL) as AgentConfigData;
   expect(toFormValues(proposal).setupIds).toEqual(SETUPS); // the panel shows the Setups row
-
-  // The owner sets the two fields suggest_config doesn't carry, on the panel.
-  const edited = applyChange(applyChange(proposal, "riskPct", 0.75), "maxPositionTotal", 21000);
+  // The builder types no money or direction; the owner sets the sizes on the panel.
+  expect(proposal).not.toHaveProperty("maxPositionSize");
+  expect(proposal).not.toHaveProperty("directionBias");
+  const sized = applyChange(applyChange(proposal, "minPositionSize", 3000), "maxPositionSize", 14000);
+  const edited = applyChange(applyChange(sized, "riskPct", 0.75), "maxPositionTotal", 21000);
   await createAnalystFromBuilder(toCreateInput(edited));
 
   expect(create.mock.calls[0][0].data).toMatchObject({
@@ -96,7 +98,7 @@ it("Create saves the setups and all four sizing fields, and seeds the signature 
 
 it("Apply saves the editor's setups and floor, and the owner's risk edit on the panel", async () => {
   // The owner asked the editor to raise the smallest trade to $4,000.
-  const proposal = configSchema.parse({ ...PEAD_CALL, minPositionSize: 4000 }) as AgentConfigData;
+  const proposal = editorConfigSchema.parse({ ...PEAD_CALL, minPositionSize: 4000 }) as AgentConfigData;
   const panel = editorPanelStart(PEAD_NOW, proposal);
   expect(toFormValues(panel)).toMatchObject({ setupIds: SETUPS, riskPct: 1, maxPositionTotal: 28000 });
 

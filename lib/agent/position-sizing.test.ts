@@ -15,6 +15,7 @@ describe("positionBand — smallest trade to largest trade", () => {
       floor: 7000,
       ceiling: 14000,
       floorClampedByCeiling: false,
+      ceilingIsTotal: false,
     });
   });
 

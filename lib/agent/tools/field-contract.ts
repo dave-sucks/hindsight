@@ -103,7 +103,7 @@ export interface FieldContract {
   kind: FieldKind;
   /** JUDGED only: the rule the tools enforce on it. */
   rule?: RuleId;
-  /** COMPUTED only: the principal's chat may still carry it. */
+  /** COMPUTED only: the principal's chat may still carry it (for suggest_config: the editor, on the owner's words). */
   principalOnly?: boolean;
   /** Why it is what it is, or what should change. */
   note?: string;
@@ -238,6 +238,27 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("remove_trigger_ids", "IDENTITY"),
   ],
   write_note: [f("thesis_id", "IDENTITY"), f("text", "TEXT")],
+  /** The builder's and the editor's proposal (suggest-config.ts), one schema per mode. */
+  suggest_config: [
+    f("name", "TEXT"),
+    f("analystPrompt", "TEXT"),
+    f("description", "TEXT"),
+    f("holdDurations", "CHOSEN"),
+    f("setupIds", "CHOSEN"),
+    f("sectors", "CHOSEN"),
+    f("industries", "CHOSEN"),
+    f("themes", "TEXT"),
+    f("marketCapMin", "JUDGED", { note: "0, a negative or the $5T sentinel means no bound; the editor's null removes one (normalizeAnalystPatch)." }),
+    f("marketCapMax", "JUDGED", { note: "As the floor." }),
+    f("minConfidence", "JUDGED", { note: "0–100, rounded on save." }),
+    f("maxOpenPositions", "JUDGED", { note: "1–20, rounded on save." }),
+    f("watchlist", "IDENTITY", { note: "Tickers cleaned and each once; Apply adds only what the analyst doesn't hold or watch (watchlistAdds)." }),
+    f("exclusionList", "IDENTITY"),
+    f("intelligencePolicy", "CARRIED", { note: "Deletion candidate: no run reads it." }),
+    f("directionBias", "COMPUTED", { note: "A new analyst is long (NEW_ANALYST_DEFAULTS); the owner changes it in Settings." }),
+    f("minPositionSize", "COMPUTED", { principalOnly: true, note: "A new analyst's comes from NEW_ANALYST_DEFAULTS; the editor carries one only when the owner names an amount." }),
+    f("maxPositionSize", "COMPUTED", { principalOnly: true, note: "As the smallest trade." }),
+  ],
 };
 
 /** The tool factories, by registered name, and the modes' run-mode strings. */

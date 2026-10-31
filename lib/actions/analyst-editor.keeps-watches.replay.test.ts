@@ -49,7 +49,7 @@ import { updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
 import { ConfigPreviewRenderer } from "@/components/agent/renderers/ConfigPreviewRenderer";
 import { ToolUICallbacksProvider } from "@/components/assistant-ui/tool-uis/tool-ui-shared";
 import { toApplyInput } from "@/components/analysts/builder-config";
-import { configSchema } from "@/lib/agent/tools/suggest-config";
+import { editorConfigSchema as configSchema } from "@/lib/agent/tools/suggest-config";
 import { buildEditorSystemPrompt, BUILDER_SYSTEM_PROMPT } from "@/lib/agent/modes";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 

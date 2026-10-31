@@ -86,7 +86,7 @@ export function AnalystEditClient({
                 isCreating={isApplying}
                 confirmLabel="Apply Changes"
                 confirmingLabel="Applying..."
-                watched={currentConfig.watchlist as string[] | undefined}
+                watched={heldOrWatched}
               />
             )}
           </div>
