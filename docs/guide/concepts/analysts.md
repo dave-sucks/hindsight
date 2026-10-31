@@ -15,7 +15,7 @@ Each analyst is one way of trading, run by the agents. It has its own book of [t
 ## What makes one
 
 - **Strategy:** its edge in your words: what it buys, what it filters out, what it never does. Every agent reads it word for word.
-- **Universe:** the sectors and market-cap band it looks in. Its exclusion list always wins. Its industries and themes are words the agents read; they filter nothing.
+- **Universe:** the sectors and market-cap band it looks in. Its exclusion list always wins. Its industries and themes are words: [chat](../agents/chat.md), with the analyst selected, reads them when it looks for new stocks, and they filter nothing.
 - **Setups:** the kinds of trade it takes, chosen from the playbook below.
 - **Sizing:** its smallest trade, its largest, and the most it will hold in one stock. No agent picks a size: a buy risks 1% of the account by default, scaled by conviction (half at low, 1.25× at strong), halved again for an all-or-nothing event or a cautious market, and sized by the distance to its floor inside this band. An add risks half the first buy. A tight, honest floor is what earns a bigger position.
 - **Slots:** how many stocks it may hold at once, 5 by default. When every slot is held or waiting for approval, a new buy is refused until one frees up. Adding to a stock it already holds needs no slot.
