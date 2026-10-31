@@ -27,6 +27,7 @@ const HOLDS = ["CEG", "GEV", "MSFT", "MU", "PLTR", "V", "WST"];
 const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: "new-analyst", ...data }));
 const update = jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => ({ id: where.id, ...data }));
 const thesisCreate = jest.fn(async ({ data }: { data: { ticker: string } }) => ({ id: `t-${data.ticker}`, ticker: data.ticker }));
+const activityLine = jest.fn(async (a: { data: Record<string, unknown> }) => a.data);
 jest.mock("@/lib/prisma", () => {
   const agentConfig = {
     create: (a: never) => create(a),
@@ -38,7 +39,7 @@ jest.mock("@/lib/prisma", () => {
       where.researchRun?.agentConfigId === COMPOUNDER.id ? [...WATCHES, ...HOLDS].map((ticker) => ({ ticker })) : [],
     create: (a: never) => thesisCreate(a),
   };
-  const tx = { agentConfig, thesis, researchRun: { create: async () => ({ id: "seed-run" }) }, thesisUpdate: { create: async () => ({}), createMany: async () => ({}) } };
+  const tx = { agentConfig, thesis, researchRun: { create: async () => ({ id: "seed-run" }) }, thesisUpdate: { create: (a: never) => activityLine(a), createMany: async () => ({}) } };
   return { prisma: { ...tx, $transaction: async (fn: (t: unknown) => unknown) => fn(tx) } };
 });
 
@@ -76,8 +77,11 @@ describe("a new analyst starts from one set of defaults", () => {
 });
 
 describe("the money settings stay in order, at every door", () => {
-  it("a largest trade of 0 is never stored (0 read as no ceiling)", async () => {
-    expect(await settings(CATALYST, "maxPositionSize", 0)).toMatchObject({ maxPositionSize: 100, minPositionSize: 100 });
+  it("a largest trade under $100 (a fat-fingered 0) or a negative smallest is dropped: $3,000 → $8,000 → $16,000 stay", async () => {
+    for (const [field, value] of [["maxPositionSize", 0], ["maxPositionSize", 50], ["minPositionSize", -500], ["maxPositionTotal", -1]] as const) {
+      await updateAnalystField(CATALYST.id, field, value);
+      expect({ field, value, wrote: update.mock.calls.length }).toEqual({ field, value, wrote: 0 });
+    }
   });
 
   it("a smallest trade set above the largest raises the largest to it", async () => {
@@ -117,6 +121,14 @@ describe("tickers are cleaned and each saved once", () => {
     const watchlist = [{ symbol: "$vrt", reason: "Datacenter power." }, { symbol: " VRT ", reason: "again" }, { symbol: "anet", reason: "Networking." }, { symbol: "MSFT", reason: "held" }];
     await updateAnalystFromBuilder(COMPOUNDER.id, toApplyInput({ watchlist } as AgentConfigData));
     expect(thesisCreate.mock.calls.map((c) => c[0].data.ticker)).toEqual(["VRT", "ANET"]);
+  });
+  it("the editor's seed line in Activity is a title, never a paragraph", async () => {
+    await updateAnalystFromBuilder(COMPOUNDER.id, toApplyInput({ watchlist: [{ symbol: "VRT", reason: "Datacenter power." }] } as AgentConfigData));
+    const line = activityLine.mock.calls[0][0].data;
+    expect(line).toMatchObject({ type: "CREATED", summary: "Editor added VRT to watchlist (awaiting first research)" });
+    expect(line).not.toHaveProperty("rationale");
+    // The reason stays on the seed itself.
+    expect(thesisCreate.mock.calls[0][0].data).toMatchObject({ sourceRationale: "Datacenter power.", snapshot: { text: "Datacenter power." } });
   });
   it("Settings stores exclusions upper case, each once", async () => {
     expect(await settings(CATALYST, "exclusionList", ["tsla", "$nvda", "TSLA"])).toEqual({ exclusionList: ["TSLA", "NVDA"] });

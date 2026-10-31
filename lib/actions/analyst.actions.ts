@@ -759,7 +759,7 @@ export async function createAnalystFromBuilder(
   const reasons = watchlistReasons(data.watchlist);
   const seedItems = watchlistAdds(data.watchlist, []).map((symbol) => ({
     symbol,
-    reason: reasons.get(symbol) ?? "Added during analyst creation",
+    reason: reasons.get(symbol),
   }));
 
   // Build intelligence policy from builder proposal, merging with defaults
@@ -1044,7 +1044,7 @@ export async function updateAnalystFromBuilder(
     const reasons = watchlistReasons(data.watchlist);
     const toCreate = watchlistAdds(data.watchlist, await getHeldOrWatchedSymbols(id)).map((symbol) => ({
       symbol,
-      reason: reasons.get(symbol) ?? "Updated via editor",
+      reason: reasons.get(symbol),
     }));
 
     // Create newly-added names.
@@ -1101,8 +1101,8 @@ export async function updateAnalystFromBuilder(
             data: {
               thesisId: thesis.id,
               type: "CREATED",
+              // A title, never a paragraph: the reason is the seed's snapshot.
               summary: `Editor added ${w.symbol} to watchlist (awaiting first research)`,
-              rationale: w.reason,
               fieldChanges: {},
               runId: editorRun.id,
             },

@@ -116,7 +116,7 @@ describe("the old wording is gone from every line the app writes for the owner",
     ["lib/trading/after-buy.ts", ["the next run will set it"]],
     ["lib/actions/thesis-edit.ts", ["You added this trigger:", "You changed this trigger to:", "You removed this trigger:", "Removed in the cleanup of copied rules:"]],
     ["lib/actions/promote-analyst.actions.ts", ["Administrative transition, not a thesis decision", "Demote-while-PROMOTED downgrade"]],
-    ["lib/actions/analyst.actions.ts", ["Analyst was created with this ticker on the suggested watchlist", "Editor removed this ticker from the analyst's watchlist."]],
+    ["lib/actions/analyst.actions.ts", ["Analyst was created with this ticker on the suggested watchlist", "Editor removed this ticker from the analyst's watchlist.", "Updated via editor"]],
     // 2026-10-30: a proposal's reason is the analyst's words alone. The sizing and a corrected sale label go to the agent.
     ["lib/agent/tools/close-position.ts", ["closed by agent — reason:"]],
     ["lib/actions/closeTrade.actions.ts", ["Automated ${reason} exit"]],

@@ -92,13 +92,20 @@ function capBound(v: unknown): bigint | null | undefined {
  */
 function moneyFields(stored: StoredAnalyst, patch: Record<string, unknown>): Record<string, number> {
   const was = { min: num(stored.minPositionSize) ?? 0, max: num(stored.maxPositionSize) ?? 0, total: num(stored.maxPositionTotal) ?? 0 };
-  const sent = { min: num(patch.minPositionSize), max: num(patch.maxPositionSize), total: num(patch.maxPositionTotal) };
+  // A value no column can hold is not sent: a largest trade under $100 (a
+  // fat-fingered 0 would make every buy $100), a negative smallest or total.
+  const atLeast = (v: number | undefined, floor: number) => (v !== undefined && v >= floor ? v : undefined);
+  const sent = {
+    min: atLeast(num(patch.minPositionSize), 0),
+    max: atLeast(num(patch.maxPositionSize), MIN_LARGEST_TRADE),
+    total: atLeast(num(patch.maxPositionTotal), 0),
+  };
   if (sent.min === undefined && sent.max === undefined && sent.total === undefined) return {};
   const changed = (k: keyof typeof was) => sent[k] !== undefined && sent[k] !== was[k];
 
-  let min = Math.max(0, sent.min ?? was.min);
+  let min = sent.min ?? was.min;
   let max = sent.max ?? was.max;
-  let total = Math.max(0, sent.total ?? was.total);
+  let total = sent.total ?? was.total;
   if (changed("min") && !changed("max") && min > max) max = min;
   if (changed("total") && !changed("max") && total > 0 && total < max) max = total;
   max = Math.max(MIN_LARGEST_TRADE, max);
