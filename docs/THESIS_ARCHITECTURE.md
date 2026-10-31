@@ -124,7 +124,7 @@ In the code, these four parts are encoded across **structured triggers** (the ac
 | `PROMOTED`     | Conviction-pause. ACTIVE+held → user promoted analyst PAPER→LIVE → paper position force-closed → awaiting first-live-run resolution. Set only by the promote-analyst action; rejected by `record_thesis` / `update_thesis` at the Zod layer. | Surfaces as "Awaiting live entry" |
 | `CLOSED`       | Position was opened and closed.                                         | No            |
 | `INVALIDATED`  | Held a view; evidence disproved it.                                     | No            |
-| `ARCHIVED`     | Terminal without trade or view-invalidation. PASS at write, manual remove, editor remove, walk-away. | No |
+| `ARCHIVED`     | Terminal without trade or view-invalidation. PASS at write, manual remove, walk-away. | No |
 | `SUPERSEDED`   | Replaced by a newer thesis on the same ticker (direction flip).         | No            |
 
 ### Legal `(direction, status)` pairs
@@ -158,7 +158,7 @@ LONG/SHORT + WATCHING   (on the watchlist; has triggers)
   │
   ├─→ LONG/SHORT + ACTIVE        (place_trade fires)
   ├─→ LONG/SHORT + INVALIDATED   (view disproven — miss, breakdown)  [terminal]
-  ├─→ LONG/SHORT + ARCHIVED      (manually removed via UI/editor)    [terminal]
+  ├─→ LONG/SHORT + ARCHIVED      (manually removed in the UI)    [terminal]
   └─→ LONG/SHORT + SUPERSEDED    (direction flip; new thesis chains) [terminal]
 
 
@@ -288,7 +288,7 @@ There are four terminal statuses (CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED).
 - **CLOSED** — tied to position lifecycle (1:1 with `close_position` firing). Distinct from "view broke" because closing happens for many reasons (target, stop, time exit, manual). Useful for analytics.
 - **SUPERSEDED** — structural pointer paired with `parentThesisId`. Means "there's a newer thesis chained from this one — look at the child." Pairs with the cardinality rule (one ACTIVE-or-WATCHING per analyst+ticker+direction).
 - **INVALIDATED** — "evidence broke the view" (uses `invalidReason` field). Specific narrative.
-- **ARCHIVED** — "walked away without evidence-driven view-break" (uses `closeReason` field). Used for PASS at write, manual removes, editor removes, and agent walk-aways.
+- **ARCHIVED** — "walked away without evidence-driven view-break" (uses `closeReason` field). Used for PASS at write, manual removes, and agent walk-aways.
 
 **The INVALIDATED vs ARCHIVED distinction is the weakest.** Both mean "terminal without a clean trade outcome"; both should be guarded the same way against zombie positions (which is what the F2 extension in PR #270 does). They might warrant collapsing into a single status with the narrative living in the rationale field. Tracked as tech-debt in GAPS; not a blocker.
 
@@ -355,14 +355,12 @@ These are the canonical flows. If your code path doesn't fit one of these, it's 
 4. Thesis WATCHING → INVALIDATED. `ThesisUpdate(type='INVALIDATED')`. Off the watchlist.
 5. Run summary bucket: **Removed (invalidated)**.
 
-### Scenario G — User removes $INTC from watchlist via editor chat.
+### Scenario G — User wants $INTC off the watchlist while editing an analyst.
 
-1. User edits analyst via editor chat, removes INTC from the suggested watchlist.
-2. Editor analyst-update path runs:
-   - `update_thesis({ thesis_id, change_status: 'ARCHIVED', rationale: 'Removed via editor chat' })`.
-3. Thesis WATCHING → ARCHIVED. `ThesisUpdate(type='STATUS_CHANGED', fieldChanges: { status: { from: 'WATCHING', to: 'ARCHIVED' } })`. Off the watchlist.
-4. Run summary bucket: **Removed (archived)**.
-5. The prior INTC thesis stays visible on `/stocks/INTC` for history.
+1. The editor chat can't drop it: its Apply only adds seeds, and a name left out of its proposal stays watched. The editor says where to drop it.
+2. The user removes INTC on its own page (`removeWatchlistItem`).
+3. Thesis WATCHING → RETIRED (`retiredReason: DROPPED`), with a `STATUS_CHANGED` audit row. Off the watchlist.
+4. The prior INTC thesis stays visible on `/stocks/INTC` for history.
 
 ### Scenario H — Direction flip on a live name ($NVDA was LONG, view breaks; later a fresh SHORT view emerges).
 

@@ -12,10 +12,13 @@ import type { AgentConfigData } from "@/components/domain/agent-config-card";
 export function AnalystEditClient({
   analystId,
   currentConfig,
+  heldOrWatched,
   initialMessage,
 }: {
   analystId: string;
   currentConfig: Record<string, unknown>;
+  /** What the analyst holds or watches; Apply adds no watch beside these. */
+  heldOrWatched: string[];
   initialMessage?: string;
 }) {
   // Panel hidden until AI suggests changes (same behavior as builder)
@@ -59,6 +62,7 @@ export function AnalystEditClient({
             mode="editor"
             analystId={analystId}
             currentConfig={currentConfig}
+            heldOrWatched={heldOrWatched}
             initialPrompt={initialMessage}
             onConfigSuggested={handleConfigSuggested}
             onMutatingChange={handleApplyingChange}
@@ -82,6 +86,7 @@ export function AnalystEditClient({
                 isCreating={isApplying}
                 confirmLabel="Apply Changes"
                 confirmingLabel="Applying..."
+                watched={currentConfig.watchlist as string[] | undefined}
               />
             )}
           </div>

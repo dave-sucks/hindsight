@@ -20,6 +20,7 @@ import {
   normalizeThemes,
 } from "@/lib/universe/canonical";
 import { getAccountId } from "@/lib/auth/account";
+import { getHeldOrWatchedSymbols } from "@/lib/agent/watchlist-symbols";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -1260,57 +1261,15 @@ export async function updateAnalystFromBuilder(
         });
       }
     }
-    // Editor watchlist diff against current WATCHING theses.
     // Adds → null-direction WATCHING under a fresh EDITOR_SEED ResearchRun.
-    // Removes → status='ARCHIVED' on the paired thesis.
+    // A name left out is kept: a watch is dropped from its own page or by a run.
     if (structuredItems.length > 0 || watchlistSymbols.length > 0) {
-      const existingWatching = await prisma.thesis.findMany({
-        where: {
-          status: "WATCHING",
-          researchRun: { agentConfigId: id },
-        },
-        select: { id: true, ticker: true, status: true },
-      });
-      const newSymbolSet = new Set(watchlistSymbols);
-      const toArchive = existingWatching.filter((t) => !newSymbolSet.has(t.ticker));
-      const existingSymbolSet = new Set(existingWatching.map((t) => t.ticker));
+      const existingSymbolSet = new Set(await getHeldOrWatchedSymbols(id));
       const toCreate = (
         structuredItems.length > 0
           ? structuredItems
           : watchlistSymbols.map((s) => ({ symbol: s, reason: "Updated via editor" }))
       ).filter((w) => !existingSymbolSet.has(w.symbol));
-
-      // Archive removed names.
-      for (const t of toArchive) {
-        try {
-          await prisma.thesis.update({
-            where: { id: t.id },
-            data: {
-              // P1-24 B3: walk-away removal retires with reason DROPPED.
-              status: "RETIRED",
-              retiredReason: "DROPPED",
-              closedAt: new Date(),
-              closeReason: "Removed via editor chat",
-            },
-          });
-          await prisma.thesisUpdate.create({
-            data: {
-              thesisId: t.id,
-              type: "STATUS_CHANGED",
-              summary: `Removed ${t.ticker} from watchlist via editor chat`,
-              fieldChanges: {
-                status: { from: t.status, to: "RETIRED" },
-                retiredReason: { from: null, to: "DROPPED" },
-              },
-            },
-          });
-        } catch (err) {
-          console.error(
-            `[analyst:editor-update] ARCHIVED FAILED for ${t.ticker} (analyst ${id}):`,
-            err,
-          );
-        }
-      }
 
       // Create newly-added names.
       if (toCreate.length > 0) {

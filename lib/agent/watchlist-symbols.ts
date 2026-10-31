@@ -28,3 +28,14 @@ export async function getWatchlistSymbols(
   return Array.from(new Set(theses.map((t) => t.ticker)));
 }
 
+/** Held or watched: the stock is already the analyst's, so nothing seeds a watch beside it. */
+export const HELD_OR_WATCHED = ["HOLDING", "WATCHING"] as const;
+
+/** What the page's add and the editor's Apply check before seeding a watch. */
+export async function getHeldOrWatchedSymbols(analystId: string): Promise<string[]> {
+  const theses = await prisma.thesis.findMany({
+    where: { status: { in: [...HELD_OR_WATCHED] }, researchRun: { agentConfigId: analystId } },
+    select: { ticker: true },
+  });
+  return Array.from(new Set(theses.map((t) => t.ticker)));
+}
