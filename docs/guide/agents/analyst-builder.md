@@ -8,7 +8,7 @@ It sets up the analysts the other agents work for. It never researches a stock i
 Model: gpt-4o
 Starts: When you build or edit one
 Steps: Up to 25
-Tools: 11
+Tools: 12
 Saves: A whole analyst, on your yes
 ```
 
@@ -43,6 +43,7 @@ When you start one. The builder runs at **New analyst**; the editor runs from **
 - **Your answers.** `ask_question` asks one question at a time as a card of two to five choices, so you pick rather than type.
 - **The playbook.** `read_knowledge_library` gives the strategy archetypes and the [setups](../reference/setups.md) it can choose from.
 - **Today's market.** `get_market_context` first, then real candidates from `get_market_movers` or `get_earnings_calendar`, checked with `get_stock_data` for sector, industry and size. `get_catalyst_calendar`, `get_sec_filings` and `web_search` fill in the rest.
+- **Your other analysts.** `list_analysts`, so the builder can say how the new one differs from each analyst you already have.
 - **The analyst itself,** for the editor: its whole current configuration comes with every request.
 
 ## What it decides
@@ -50,7 +51,7 @@ When you start one. The builder runs at **New analyst**; the editor runs from **
 One proposal, through `suggest_config`, shown beside the chat as a side-by-side change you can read before accepting:
 
 - **The strategy:** three to five paragraphs on the edge, what it buys, how it enters and what it never does. Every agent reads it word for word. It names no stops, targets or sizes: the setups, the settings and the account's rules own those, and a number written into the strategy would go stale the day one of them changed.
-- **The universe:** markets, sectors, industries, themes, a market-cap band and an exclusion list.
+- **The universe:** sectors, a market-cap band and an exclusion list. Industries and themes are words: [chat](chat.md), with the analyst selected, reads them when it looks for new stocks, and they filter nothing.
 - **The setups:** the playbook patterns it will write plans on. The first is its **signature setup**, and that setup's reviews start on the analyst's Triggers tab. None chosen means the whole playbook.
 - **Sizing and slots:** its smallest trade, its largest, and how many stocks it may hold at once. Also how long it holds. A new analyst is long-only unless you ask for shorts. Risk per trade and most in one stock aren't in the proposal: you set them on the panel, or they start at 1% and twice the largest trade.
 - **A starting watchlist:** names it checked against the universe, never tickers recalled from memory.
@@ -78,7 +79,7 @@ Everything the builder and the editor can call, read from `lib/agent/modes.ts`.
 <summary>Technical details</summary>
 
 #### Modes
-`builder` and `editor` in `lib/agent/modes.ts`: `gpt-4o`, up to 25 and 20 steps. Both add `suggest_config`. The editor has no `get_sec_filings` or `get_catalyst_calendar`.
+`builder` and `editor` in `lib/agent/modes.ts`: `gpt-4o`, up to 25 and 20 steps. Both add `suggest_config`. Only the builder has `list_analysts`; the editor has no `get_sec_filings` or `get_catalyst_calendar`.
 
 #### Prompts
 `BUILDER_SYSTEM_PROMPT` and `buildEditorSystemPrompt` in `lib/agent/modes.ts`.

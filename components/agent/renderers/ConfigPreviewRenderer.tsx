@@ -45,7 +45,6 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
       { key: "minPositionSize", label: "Min Position Size" },
       { key: "maxPositionSize", label: "Max Position Size" },
       { key: "maxOpenPositions", label: "Max Positions" },
-      { key: "minMarketCapTier", label: "Market Cap Tier" },
       // signalTypes intentionally omitted — deprecated field, dropped from
       // suggest_config's schema. Without this, every rebuild showed a false-
       // positive diff: "NEWS_CATALYST, TECHNICAL, … → —" because the DB still
@@ -85,8 +84,6 @@ function formatValue(key: FieldKey, val: unknown): string {
   if (key === "intelligencePolicy" && val && typeof val === "object") {
     const p = val as Record<string, number | boolean | undefined>;
     const parts: string[] = [];
-    if (p.maxSignalsPerRun != null) parts.push(`max ${p.maxSignalsPerRun} signals`);
-    if (p.maxArtifactReads != null) parts.push(`${p.maxArtifactReads} artifacts`);
     if (p.allowLiveSearch != null) parts.push(p.allowLiveSearch ? "live-search on" : "live-search off");
     if (p.liveSearchBudget != null) parts.push(`live-search ${p.liveSearchBudget}`);
     return parts.length === 0 ? "—" : parts.join(" · ");

@@ -58,7 +58,6 @@ export default async function AnalystEditPage({
     maxPositionSize: config.maxPositionSize ? Number(config.maxPositionSize) : undefined,
     maxPositionTotal: config.maxPositionTotal,
     maxOpenPositions: config.maxOpenPositions,
-    minMarketCapTier: config.minMarketCapTier,
     watchlist: watchlistSymbols,
     exclusionList: config.exclusionList,
     intelligencePolicy: config.intelligencePolicy

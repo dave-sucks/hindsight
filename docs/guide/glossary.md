@@ -9,7 +9,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Analyst:** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one. See [Analysts](concepts/analysts.md).
 - **Book:** every stock an analyst holds or watches.
 - **Strategy:** the analyst's edge in your words, read word for word by every agent.
-- **Universe:** the markets, sectors, industries, themes and market-cap band an analyst looks in. Its **exclusion list** always wins.
+- **Universe:** the sectors and market-cap band an analyst looks in. Its **exclusion list** always wins. Its industries and themes are words: [chat](agents/chat.md), with the analyst selected, reads them when it looks for new stocks, and they filter nothing.
 - **Run days:** the weekdays an analyst's morning run happens. Every weekday by default.
 - **Live and paper:** the real-money account and the practice one. Approvals are on by default for live and off for paper, set separately for buys and sales.
 

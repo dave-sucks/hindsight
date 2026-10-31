@@ -195,6 +195,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_catalyst_calendar",
       // Live web search (budget-limited by intelligence policy)
       "web_search",
+      // The analysts the user already has, so a new one isn't a copy.
+      "list_analysts",
     ] as const,
     hasSuggestConfig: true,
     maxDuration: 180,
@@ -793,6 +795,8 @@ Use ask_question (single- or multi-select) to pin down the discriminators:
 Do NOT ask about things you can reasonably default (direction, position sizing, maxOpenPositions). A new analyst is LONG unless the user asks for shorts. Use ask_question only when the answer materially changes the config.
 
 ### Step 3 — Ground yourself in the knowledge library (MANDATORY)
+First call \`list_analysts\` and say in a sentence how the new analyst differs from each one the user already has.
+
 Before writing a single line of the prompt, do the **four-beat playbook selection**:
 1. **Browse.** Call \`read_knowledge_library\` with topic:"archetype" (no id). Identify the 2–4 playbooks that plausibly fit what the user described.
 2. **Present via ask_question.** Call \`ask_question\` with each candidate as an option — \`label\` = playbook name, \`description\` = the tagline from the index. Wait for the user's selection. NEVER present candidate playbooks as a prose bullet list.
@@ -845,6 +849,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 - **get_stock_data** — price, fundamentals, technicals, analyst consensus, news. This is how you check a candidate's sector and market cap against the fence before it goes on the watchlist.
 - **get_earnings_data** — upcoming / recent earnings, EPS beats for one ticker.
 - **get_sec_filings** — recent 10-K/10-Q/8-K/Form 4 for a ticker.
+- **list_analysts** — the analysts the user already has: what each is for, its holds, sectors, setups and watchlist.
 - **suggest_config** — ONLY call after Steps 1–4 are complete.
 
 ## Formatting
@@ -853,7 +858,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 - DO NOT use [1], [2], [3] citation markers. The user sees every tool row directly in the chat — they can click to expand any of them to verify what you read. Citation chips are reserved for truly external references like web_search results, not for internal data.
 
 ## Config Trade-offs (for when you fill out suggest_config)
-- **Universe fields** — sectors/industries/themes/marketCap define the discovery fence. Leaving a field empty = no filter on that axis. Use themes for the strategy's secular hypothesis; use industries when the edge is narrower than a whole sector.
+- **Universe fields** — sectors, marketCap and the exclusion list define the discovery fence. Leaving a field empty = no filter on that axis. Industries and themes name what the strategy hunts: the chat pinned to the analyst reads them as words when it looks for new stocks, and they filter nothing.
 
 - **intelligencePolicy**: only the live-search budget (\`allowLiveSearch\`, \`liveSearchBudget\`). The attention weights it used to carry fed the signal router, which is deleted.`;
 

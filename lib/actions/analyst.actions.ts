@@ -50,7 +50,6 @@ export interface AnalystConfig {
   /** Per-entry floor; 0 = no floor. Enforced in place_trade. */
   minPositionSize: number;
   maxPositionSize: number;
-  minMarketCapTier: string | null;
   exchanges: string[];
   watchlist: string[];
   exclusionList: string[];
@@ -474,7 +473,6 @@ export async function getAnalystDetail(
     maxOpenPositions: config.maxOpenPositions,
     minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize,
-    minMarketCapTier: config.minMarketCapTier,
     exchanges: (config.exchanges as string[]) ?? [],
     watchlist: watchlistTheses.map((t) => t.ticker),
     exclusionList: (config.exclusionList as string[]) ?? [],
@@ -681,7 +679,6 @@ export async function createAnalystFromWizard(
       holdDurations: data.holdDurations,
       directionBias: data.directionBias,
       signalTypes: [],
-      minMarketCapTier: "LARGE",
       scheduleTime: "08:00",
       priceCheckFreq: "HOURLY",
       weekendMode: false,
@@ -721,28 +718,17 @@ export interface BuilderConfig {
   /** Risk per trade, % of equity; omit for the default. */
   riskPct?: number;
   maxOpenPositions: number;
-  minMarketCapTier: "LARGE" | "MID" | "SMALL";
   watchlist?: string[];
   exclusionList?: string[];
-  // V3: Intelligence layer proposals from the builder
   intelligencePolicy?: {
-    maxSignalsPerRun?: number;
-    maxArtifactReads?: number;
     allowLiveSearch?: boolean;
     liveSearchBudget?: number;
   };
-  // Session 3: Universe payload from builder/editor `suggest_config`.
-  universe?: {
-    sectors?: string[];
-    industries?: string[];
-    themes?: string[];
-    exchanges?: string[];
-    marketCapMin?: number;
-    marketCapMax?: number;
-    priceMin?: number;
-    priceMax?: number;
-    exclusions?: string[];
-  };
+  // The rest of the fence; sectors is above.
+  industries?: string[];
+  themes?: string[];
+  marketCapMin?: number;
+  marketCapMax?: number;
 }
 
 export async function createAnalystFromBuilder(
@@ -769,9 +755,6 @@ export async function createAnalystFromBuilder(
   const setupIds = Array.from(new Set((data.setupIds ?? []).filter(isNamedSetup)));
   const sectors = Array.isArray(data.sectors) ? data.sectors : [];
   const signals = Array.isArray(data.signalTypes) ? data.signalTypes : [];
-  const capTier = (["LARGE", "MID", "SMALL"] as const).includes(data.minMarketCapTier as "LARGE" | "MID" | "SMALL")
-    ? data.minMarketCapTier
-    : "LARGE";
 
   console.log(`[analyst] Creating analyst: name="${name}" sectors=${sectors.join(",") || "all"} bias=${bias} posSize=${posSize} minConf=${minConf}`);
 
@@ -798,52 +781,26 @@ export async function createAnalystFromBuilder(
   const intelligencePolicy: IntelligencePolicy = {
     ...DEFAULT_INTELLIGENCE_POLICY,
     ...(policyInput ? {
-      ...(policyInput.maxSignalsPerRun != null ? { maxSignalsPerRun: policyInput.maxSignalsPerRun } : {}),
-      ...(policyInput.maxArtifactReads != null ? { maxArtifactReads: policyInput.maxArtifactReads } : {}),
       ...(policyInput.allowLiveSearch != null ? { allowLiveSearch: policyInput.allowLiveSearch } : {}),
       ...(policyInput.liveSearchBudget != null ? { liveSearchBudget: policyInput.liveSearchBudget } : {}),
     } : {}),
   };
 
-  // ── Universe payload — maps to AgentConfig fields per B contract ──
-  // `universe.sectors/exchanges/exclusions` collapse into the existing
-  // `sectors/exchanges/exclusionList` columns. `industries`, `themes`, and
-  // `marketCapMin/Max` have dedicated columns. priceMin/priceMax are NOT
-  // currently persisted — they're treated as hints for future filtering.
-  const universe = data.universe;
-  const rawUniverseSectors =
-    Array.isArray(universe?.sectors) && universe!.sectors!.length > 0
-      ? universe!.sectors!
-      : sectors; // fall back to the non-universe sectors field if builder didn't set universe
-  // Session A: normalize universe fields at the write boundary so the
-  // AgentConfig table only ever stores canonical GICS Title Case sectors /
-  // industries and uppercase snake_case themes. Anything the normalizer can't
-  // map is dropped silently — same policy as Signal ingestion.
-  const universeSectors = normalizeSectors(rawUniverseSectors);
-  const universeExchanges = Array.isArray(universe?.exchanges) && universe!.exchanges!.length > 0
-    ? universe!.exchanges!
-    : ["NASDAQ", "NYSE"];
-  const universeExclusions = Array.isArray(universe?.exclusions) ? universe!.exclusions! : [];
-  // Combine builder's general exclusionList with universe.exclusions (dedup).
+  // The fence, normalized at the write boundary so AgentConfig only stores
+  // canonical GICS sectors / industries and canonical themes.
+  const universeSectors = normalizeSectors(sectors);
   const combinedExclusions = Array.from(
-    new Set([
-      ...(Array.isArray(data.exclusionList) ? data.exclusionList : []),
-      ...universeExclusions,
-    ].map((s) => s.toUpperCase())),
+    new Set((Array.isArray(data.exclusionList) ? data.exclusionList : []).map((s) => s.toUpperCase())),
   );
-  const industries = normalizeIndustries(
-    Array.isArray(universe?.industries) ? universe!.industries! : [],
-  );
-  const themes = normalizeThemes(
-    Array.isArray(universe?.themes) ? universe!.themes! : [],
-  );
+  const industries = normalizeIndustries(Array.isArray(data.industries) ? data.industries : []);
+  const themes = normalizeThemes(Array.isArray(data.themes) ? data.themes : []);
   const marketCapMin =
-    typeof universe?.marketCapMin === "number" && Number.isFinite(universe.marketCapMin)
-      ? BigInt(Math.round(universe.marketCapMin))
+    typeof data.marketCapMin === "number" && Number.isFinite(data.marketCapMin)
+      ? BigInt(Math.round(data.marketCapMin))
       : null;
   const marketCapMax =
-    typeof universe?.marketCapMax === "number" && Number.isFinite(universe.marketCapMax)
-      ? BigInt(Math.round(universe.marketCapMax))
+    typeof data.marketCapMax === "number" && Number.isFinite(data.marketCapMax)
+      ? BigInt(Math.round(data.marketCapMax))
       : null;
 
   // ── Transactional creation: analyst + watchlist ──
@@ -858,7 +815,7 @@ export async function createAnalystFromBuilder(
         enabled: true,
         analystPrompt: prompt,
         markets: ["US_EQUITIES"],
-        exchanges: universeExchanges,
+        exchanges: ["NASDAQ", "NYSE"],
         sectors: universeSectors,
         industries,
         themes,
@@ -876,7 +833,6 @@ export async function createAnalystFromBuilder(
         setupIds,
         directionBias: bias,
         signalTypes: signals,
-        minMarketCapTier: capTier,
         scheduleTime: "08:00",
         priceCheckFreq: "HOURLY",
         weekendMode: false,
@@ -1200,47 +1156,19 @@ export async function updateAnalystFromBuilder(
   if (data.riskPct !== undefined) updateData.riskPct = boundRiskPct(data.riskPct);
   if (data.setupIds !== undefined) updateData.setupIds = Array.from(new Set(data.setupIds.filter(isNamedSetup)));
   if (data.maxOpenPositions !== undefined) updateData.maxOpenPositions = data.maxOpenPositions;
-  if (data.minMarketCapTier !== undefined) updateData.minMarketCapTier = data.minMarketCapTier;
   if (data.exclusionList !== undefined) updateData.exclusionList = data.exclusionList;
 
-  // Session 3: Universe payload — writes directly to AgentConfig columns per
-  // the Workstream B contract. Any omitted key leaves the existing value
-  // untouched. `universe.exclusions` is merged into `exclusionList` (dedup).
-  // Session A: sector/industry/theme arrays are run through the canonical
-  // normalizers so AgentConfig never stores legacy SCREAMING_SNAKE or Sonar
-  // title casing next to a GICS Title Case value.
-  if (data.universe !== undefined) {
-    const u = data.universe;
-    if (Array.isArray(u.sectors)) updateData.sectors = normalizeSectors(u.sectors);
-    if (Array.isArray(u.exchanges)) updateData.exchanges = u.exchanges;
-    if (Array.isArray(u.industries)) updateData.industries = normalizeIndustries(u.industries);
-    if (Array.isArray(u.themes)) updateData.themes = normalizeThemes(u.themes);
-    // $5T ceiling — no real company approaches this, so anything above
-    // is definitely a "no bound" sentinel the model slipped through. Cap
-    // matches the Zod refine in suggest_config.ts.
-    const CAP_CEILING = 5e12;
-    if (typeof u.marketCapMin === "number" && Number.isFinite(u.marketCapMin)) {
-      // 0 is a sentinel "no floor" the model sometimes sends despite the
-      // schema instruction to omit. Treat as null.
-      updateData.marketCapMin =
-        u.marketCapMin === 0 || u.marketCapMin >= CAP_CEILING
-          ? null
-          : BigInt(Math.round(u.marketCapMin));
-    } else if (u.marketCapMin === null) {
-      updateData.marketCapMin = null;
-    }
-    if (typeof u.marketCapMax === "number" && Number.isFinite(u.marketCapMax)) {
-      updateData.marketCapMax =
-        u.marketCapMax >= CAP_CEILING ? null : BigInt(Math.round(u.marketCapMax));
-    } else if (u.marketCapMax === null) {
-      updateData.marketCapMax = null;
-    }
-    if (Array.isArray(u.exclusions) && u.exclusions.length > 0) {
-      const base = Array.isArray(data.exclusionList) ? data.exclusionList : [];
-      updateData.exclusionList = Array.from(
-        new Set([...base, ...u.exclusions].map((s) => s.toUpperCase())),
-      );
-    }
+  // The rest of the fence. Arrays go through the canonical normalizers. A
+  // market cap of 0 or $5T+ is a "no bound" sentinel the model slipped through.
+  if (Array.isArray(data.industries)) updateData.industries = normalizeIndustries(data.industries);
+  if (Array.isArray(data.themes)) updateData.themes = normalizeThemes(data.themes);
+  const CAP_CEILING = 5e12;
+  if (typeof data.marketCapMin === "number" && Number.isFinite(data.marketCapMin)) {
+    updateData.marketCapMin =
+      data.marketCapMin === 0 || data.marketCapMin >= CAP_CEILING ? null : BigInt(Math.round(data.marketCapMin));
+  }
+  if (typeof data.marketCapMax === "number" && Number.isFinite(data.marketCapMax)) {
+    updateData.marketCapMax = data.marketCapMax >= CAP_CEILING ? null : BigInt(Math.round(data.marketCapMax));
   }
 
   // Handle structured watchlist updates
@@ -1347,8 +1275,6 @@ export async function updateAnalystFromBuilder(
     const policyInput = data.intelligencePolicy;
     updateData.intelligencePolicy = {
       ...DEFAULT_INTELLIGENCE_POLICY,
-      ...(policyInput.maxSignalsPerRun != null ? { maxSignalsPerRun: policyInput.maxSignalsPerRun } : {}),
-      ...(policyInput.maxArtifactReads != null ? { maxArtifactReads: policyInput.maxArtifactReads } : {}),
       ...(policyInput.allowLiveSearch != null ? { allowLiveSearch: policyInput.allowLiveSearch } : {}),
       ...(policyInput.liveSearchBudget != null ? { liveSearchBudget: policyInput.liveSearchBudget } : {}),
     };
