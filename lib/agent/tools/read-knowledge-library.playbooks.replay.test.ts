@@ -31,7 +31,7 @@ it("a playbook says what it comes with: the setups, confidence, slots and fence 
   const { content } = await read({ topic: "archetype", id: "EARNINGS_DRIFT" });
   expect(content).toContain("setups: PEAD, EPISODIC_PIVOT, MA_PULLBACK (the first is the signature setup)");
   expect(content).toContain("confidence a buy needs: 60; stocks held at once: 6");
-  expect(content).toContain("sectors: any; market cap: $200,000,000–any");
+  expect(content).toContain("market cap: $200,000,000–any (the sectors are the owner's choice)");
   expect(content).not.toContain("Universe hints");
 });
 

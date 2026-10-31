@@ -163,7 +163,7 @@ const editorShape = {
 const builderShape = {
   playbook: z
     .enum(PLAYBOOK_IDS)
-    .describe("The playbook this analyst is built from (read_knowledge_library topic:'archetype'). Its setups, hold, confidence, slots and any fence its edge needs come with it."),
+    .describe("The playbook this analyst is built from (read_knowledge_library topic:'archetype'). Its setups, hold, confidence, slots and any market-cap band its edge needs come with it."),
   ...wordsShape,
 };
 
@@ -175,7 +175,7 @@ export function suggestConfigFor(mode: SuggestConfigMode) {
   return mode === "builder"
     ? tool({
         description:
-          "Propose the new analyst: name the playbook and write the name, description, strategy and watchlist. The playbook's setups, hold, confidence, slots and fence come with it, and the money and direction start from the defaults; the owner changes any of them on the panel.",
+          "Propose the new analyst: name the playbook and write the name, description, strategy and watchlist. The playbook's setups, hold, confidence, slots and any market-cap band come with it, and the money and direction start from the defaults; the owner sets the sectors and changes any of them on the panel.",
         inputSchema: builderConfigSchema,
         // The proposal the panel shows and Create saves: the model's words with the playbook's style.
         execute: async (config) => ({ ...config, ...playbookFields(config.playbook) }),

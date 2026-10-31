@@ -3,17 +3,16 @@
  *
  * A playbook carries the style as data: the setups an analyst on it runs
  * (signature first), how long it holds, the confidence a buy needs, how many
- * stocks it holds at once, and the fence its edge needs, if any. The builder
+ * stocks it holds at once, and the market-cap band its edge needs, if any. The builder
  * names a playbook in suggest_config and the tool fills those fields in, so
  * the model never types them (playbookFields). Its promptSkeleton is the
  * strategy text in seven parts, with no number a setting, setup or account
  * rule owns.
  *
  * Three are tested: the live analysts were built on them, and
- * playbooks.replay.test.ts holds them to those analysts' settings.
+ * playbooks.replay.test.ts holds them to those analysts' style.
  */
 
-import type { Sector } from "@/lib/universe/canonical";
 import type { SetupId } from "./setups";
 
 export type HoldDuration = "DAY" | "SWING" | "POSITION";
@@ -37,10 +36,11 @@ export interface StrategyArchetype {
   minConfidence: number;
   /** How many stocks it holds at once. */
   maxOpenPositions: number;
-  /** The fence its edge needs, if any. Left out = no filter on that axis. */
-  fence?: { sectors?: Sector[]; marketCapMin?: number; marketCapMax?: number };
-  /** A live analyst was built on it. */
-  tested?: boolean;
+  /**
+   * The market-cap band its edge needs, if any. Never sectors: the sectors an
+   * analyst covers are its owner's choice, set on the panel.
+   */
+  fence?: { marketCapMin?: number; marketCapMax?: number };
   /** Signal type IDs (from signal-type-catalog) that feed this archetype */
   primarySignals: string[];
   /** Source catalog IDs that matter most — narrows domain monitors */
@@ -63,7 +63,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     minConfidence: 60,
     maxOpenPositions: 6,
     fence: { marketCapMin: 200_000_000 },
-    tested: true,
     primarySignals: ["EARNINGS_BEAT", "ANALYST_REVISION", "INSTITUTIONAL_FLOW"],
     keySources: ["SEEKING_ALPHA", "FMP_EARNINGS", "FINNHUB_RECOMMENDATIONS", "STREET_INSIDER"],
     promptSkeleton: `**The edge.** You trade post-earnings drift, long only. A clean beat-and-raise keeps drifting for weeks after the print as analysts raise their numbers and funds rebalance. You buy the drift, not the gap-day reaction.
@@ -158,8 +157,8 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     setupIds: ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"],
     minConfidence: 50,
     maxOpenPositions: 5,
-    fence: { sectors: ["Health Care", "Information Technology"], marketCapMin: 500_000_000, marketCapMax: 20_000_000_000 },
-    tested: true,
+    // A dated binary moves a small or mid cap; a mega cap doesn't gap on one event.
+    fence: { marketCapMin: 500_000_000, marketCapMax: 20_000_000_000 },
     primarySignals: ["FDA_CATALYST", "MA_RUMOR", "TRIAL_READOUT", "GUIDANCE"],
     keySources: ["SEC_EDGAR", "FDA_CALENDAR", "BIO_PHARMA_CATALYSTS", "BENZINGA"],
     promptSkeleton: `**The edge.** You trade known, dated binary events, long only: FDA decisions, trial readouts, M&A targets, court rulings, guidance raises. The edge is pricing the probability right, not predicting the outcome.
@@ -218,7 +217,7 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     edge: "Multiple insiders buying within weeks signals strong internal conviction. Individual insider buys are noise; clusters are signal.",
     directionBias: "LONG",
     holdDurations: ["POSITION"],
-    setupIds: ["INSIDER_CLUSTER"],
+    setupIds: ["INSIDER_CLUSTER", "BASE_BREAKOUT", "MA_PULLBACK"],
     minConfidence: 60,
     maxOpenPositions: 5,
     primarySignals: ["INSIDER_BUYING", "FORM_4_CLUSTER"],
@@ -284,7 +283,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     setupIds: ["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"],
     minConfidence: 70,
     maxOpenPositions: 10,
-    tested: true,
     primarySignals: ["THEME_MOMENTUM", "EARNINGS_GROWTH", "CAPEX_TREND"],
     keySources: ["BARRONS", "BLOOMBERG", "STRATECHERY", "THE_INFORMATION"],
     promptSkeleton: `**The edge.** You own businesses that will be structurally more valuable in a few years, and hold them through volatility, long only. Everyone knows the theme; the edge is the operator that compounds it into value.
@@ -309,7 +307,7 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
 
 /**
  * What the builder's suggest_config fills in from a playbook: its setups,
- * hold, confidence and slots, and the sectors or cap band its edge needs.
+ * hold, confidence and slots, and the cap band its edge needs.
  * Create saves them through normalizeAnalystPatch like any other field.
  */
 export function playbookFields(id: string) {
@@ -320,7 +318,6 @@ export function playbookFields(id: string) {
     holdDurations: [...p.holdDurations],
     minConfidence: p.minConfidence,
     maxOpenPositions: p.maxOpenPositions,
-    ...(p.fence?.sectors ? { sectors: [...p.fence.sectors] } : {}),
     ...(p.fence?.marketCapMin != null ? { marketCapMin: p.fence.marketCapMin } : {}),
     ...(p.fence?.marketCapMax != null ? { marketCapMax: p.fence.marketCapMax } : {}),
   };

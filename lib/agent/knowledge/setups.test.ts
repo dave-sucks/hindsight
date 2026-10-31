@@ -103,6 +103,14 @@ describe("the setup catalog", () => {
     }
   });
 
+  it("every screen a playbook lists has a setup it enters through in the same list", () => {
+    const byId = new Map(SETUPS.map((s) => [s.id, s]));
+    for (const a of STRATEGY_ARCHETYPES) {
+      const stranded = a.setupIds.filter((id) => byId.get(id)?.role === "SCREEN" && !byId.get(id)!.entry.entryVia?.some((via) => a.setupIds.includes(via)));
+      expect({ playbook: a.id, stranded }).toEqual({ playbook: a.id, stranded: [] });
+    }
+  });
+
   it("every playbook's setups are real setups, each once", () => {
     const ids = new Set(SETUPS.map((s) => s.id));
     for (const a of STRATEGY_ARCHETYPES) {

@@ -357,7 +357,7 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
   lines.push("Comes with (suggest_config fills these in):");
   lines.push(`  setups: ${entry.setupIds.length ? entry.setupIds.join(", ") : "the whole catalog"} (the first is the signature setup)`);
   lines.push(`  confidence a buy needs: ${entry.minConfidence}; stocks held at once: ${entry.maxOpenPositions}`);
-  lines.push(`  sectors: ${entry.fence?.sectors?.join(", ") ?? "any"}; market cap: ${cap(entry.fence?.marketCapMin)}–${cap(entry.fence?.marketCapMax)}`);
+  lines.push(`  market cap: ${cap(entry.fence?.marketCapMin)}–${cap(entry.fence?.marketCapMax)} (the sectors are the owner's choice)`);
   lines.push("");
   if (entry.promptSkeleton) {
     lines.push("Strategy, in seven parts:");

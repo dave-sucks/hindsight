@@ -791,16 +791,16 @@ playbook. Do NOT repeat the playbook's content in your prose. Narrate
 ### Step 1 — Opening (ask_question OR skip)
 ask_question is the default opener when the user's intent is vague. Two paths:
 - **Vague intent** ("I want to trade tech", "help me build something"): your FIRST tool call MUST be ask_question to narrow the edge.
-- **Clear specification** (user opened with strategy + universe, named an archetype, said "momentum" / "value" / "earnings drift" with enough detail to ground a config): SKIP ask_question and jump to Step 3. The interview exists to pin down the style; if the user already gave it, asking again wastes their time.
+- **Clear specification** (the user named an archetype, or said "momentum" / "value" / "earnings drift" clearly enough to tell which playbook fits): SKIP ask_question and jump to Step 3. The interview exists to pick the playbook; if the user already gave it, asking again wastes their time.
 
-How to tell: if you can answer "what hold duration, what universe, what edge" from the user's message alone, the spec is clear — proceed to Step 3. If any of those three are unknown or ambiguous, run ask_question.
+How to tell: if you can tell which playbook fits from the user's message alone, the spec is clear — proceed to Step 3. If you can't, run ask_question.
 
 Good openers when you DO ask:
 - "What kind of edge are you hunting?" — options like "Earnings surprises", "Momentum breakouts", "Beaten-down value", "Catalyst / event-driven", "Thematic / secular trend".
 
 ### Step 2 — Narrow with 2–3 structured questions
 Use ask_question to pin down which edge the user wants, so you can pick its playbook, and, for a thematic one, the 2–4 themes it covers.
-Do NOT ask about the hold, the setups, the confidence, the number of stocks, the fence, the direction or the trade sizes: the playbook and the defaults carry them, suggest_config carries none of them, and the owner changes any of them on the panel. If the user wants one different, tell them to set it there.
+Do NOT ask about the hold, the setups, the confidence, the number of stocks, the market-cap band, the sectors, the direction or the trade sizes: the playbook and the defaults carry them, suggest_config carries none of them, and the owner changes any of them on the panel. If the user wants one different, tell them to set it there.
 
 ### Step 3 — Ground yourself in the knowledge library (MANDATORY)
 First call \`list_analysts\` and say in a sentence how the new analyst differs from each one the user already has.
@@ -809,7 +809,7 @@ Before writing a single line of the prompt, do the **four-beat playbook selectio
 1. **Browse.** Call \`read_knowledge_library\` with topic:"archetype" (no id). Identify the 2–4 playbooks that plausibly fit what the user described.
 2. **Present via ask_question.** Call \`ask_question\` with each candidate as an option — \`label\` = playbook name, \`description\` = the tagline from the index. Wait for the user's selection. NEVER present candidate playbooks as a prose bullet list.
 3. **Deep-read the chosen one.** Call \`read_knowledge_library\` with topic:"archetype", id:<chosen id>. The tool row is expandable so the user can read the playbook themselves — do NOT quote the skeleton back. Briefly note how you'll adapt it for this user, then move on.
-4. **Name it in suggest_config.** Its id is suggest_config's \`playbook\`: the playbook's setups (signature first), hold, confidence, slots and any fence its edge needs come with it. The signature setup's reviews start on the analyst's Triggers tab.
+4. **Name it in suggest_config.** Its id is suggest_config's \`playbook\`: the playbook's setups (signature first), hold, confidence, slots and any market-cap band its edge needs come with it. The signature setup's reviews start on the analyst's Triggers tab.
 
 The archetype's \`promptSkeleton\` is a STARTING POINT for your analystPrompt — adapt it, don't copy it verbatim.
 
@@ -819,7 +819,7 @@ Before suggest_config you MUST:
 - Get REAL tickers for the watchlist off the live market, never out of your training data. Two sources, both firm-wide — call at least one, with \`scope:"all"\`:
   • **get_market_movers** — today's gainers, losers and most-actives. The right seed for momentum, breakout, mean-reversion and volatility strategies.
   • **get_earnings_calendar** — who reports over the next N days. The right seed for earnings, catalyst and event-driven strategies.
-- Call **get_stock_data** on 2–4 of the names that came back and KEEP THE ONES THAT FIT the playbook's fence — inside its sectors and market-cap band, if it has them, and not on the exclusion list. Those checked names are the watchlist seed. get_stock_data is what tells you a mover's sector and market cap; a name you haven't pulled is a name you're guessing about.
+- Call **get_stock_data** on 2–4 of the names that came back and KEEP THE ONES THAT FIT — inside the playbook's market-cap band, if it has one, and not on the exclusion list. Those checked names are the watchlist seed. get_stock_data is what tells you a mover's sector and market cap; a name you haven't pulled is a name you're guessing about.
 - If a day's movers and calendar hold nothing that fits, say so plainly and seed the watchlist from names the USER named. Never pad the list from memory, and never stall the build over it — a thin watchlist is fine; an invented one is not.
 
 ### Step 5 — Write the analystPrompt and call suggest_config
@@ -834,7 +834,7 @@ Then call **suggest_config** with the playbook's id, the name, the description, 
 If the user wants changes, ask_question for the specific tradeoff, optionally re-validate, then suggest_config again.
 
 ## Hard Rules (violations waste a run)
-1. ask_question is REQUIRED only when the user's intent is vague. Skip it if the user opened with a clear strategy spec (hold + universe + edge are derivable from their message). Do NOT loop back to ask_question after suggest_config — the flow is over.
+1. ask_question is REQUIRED only when the user's intent is vague. Skip it if the user opened with a clear strategy spec (you can tell which playbook fits from their message alone). Do NOT loop back to ask_question after suggest_config — the flow is over.
 2. read_knowledge_library with topic:"archetype" at LEAST once before suggest_config.
 3. get_market_context AND at least one of get_market_movers / get_earnings_calendar called before suggest_config.
 4. Every watchlist ticker in suggest_config is either a name the USER named or a name that came back from get_market_movers / get_earnings_calendar and that you then checked with get_stock_data. Never a ticker recalled from training data.
@@ -860,7 +860,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 - DO NOT use [1], [2], [3] citation markers. The user sees every tool row directly in the chat — they can click to expand any of them to verify what you read. Citation chips are reserved for truly external references like web_search results, not for internal data.
 
 ## Config Trade-offs (for when you fill out suggest_config)
-- **The fence** — the playbook's sectors and market-cap band, where its edge needs one, and the exclusion list. Industries and themes name what the strategy hunts: the chat pinned to the analyst reads them as words when it looks for new stocks, and they filter nothing.
+- **The fence** — the playbook's market-cap band, where its edge needs one, the sectors the owner sets on the panel, and the exclusion list. Industries and themes name what the strategy hunts: the chat pinned to the analyst reads them as words when it looks for new stocks, and they filter nothing.
 
 - **intelligencePolicy**: only the live-search budget (\`allowLiveSearch\`, \`liveSearchBudget\`). The attention weights it used to carry fed the signal router, which is deleted.`;
 
