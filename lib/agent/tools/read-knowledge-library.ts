@@ -352,24 +352,15 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
     lines.push(entry.keySources.map(humanizeToken).join(", "));
     lines.push("");
   }
-  if (entry.universeHints) {
-    const bits: string[] = [];
-    if (entry.universeHints.sectors?.length) bits.push(`sectors: ${entry.universeHints.sectors.join(", ")}`);
-    if (entry.universeHints.industries?.length) bits.push(`industries: ${entry.universeHints.industries.join(", ")}`);
-    if (entry.universeHints.themes?.length) bits.push(`themes: ${entry.universeHints.themes.join(", ")}`);
-    if (entry.universeHints.marketCapMinUSD != null || entry.universeHints.marketCapMaxUSD != null) {
-      const lo = entry.universeHints.marketCapMinUSD;
-      const hi = entry.universeHints.marketCapMaxUSD;
-      bits.push(`market cap: ${lo != null ? "$" + lo.toLocaleString() : "any"}–${hi != null ? "$" + hi.toLocaleString() : "any"}`);
-    }
-    if (bits.length) {
-      lines.push("Universe hints:");
-      bits.forEach((b) => lines.push(`  ${b}`));
-      lines.push("");
-    }
-  }
+  // What suggest_config fills in when the builder names this playbook.
+  const cap = (n?: number) => (n != null ? `$${n.toLocaleString()}` : "any");
+  lines.push("Comes with (suggest_config fills these in):");
+  lines.push(`  setups: ${entry.setupIds.length ? entry.setupIds.join(", ") : "the whole catalog"} (the first is the signature setup)`);
+  lines.push(`  confidence a buy needs: ${entry.minConfidence}; stocks held at once: ${entry.maxOpenPositions}`);
+  lines.push(`  sectors: ${entry.fence?.sectors?.join(", ") ?? "any"}; market cap: ${cap(entry.fence?.marketCapMin)}–${cap(entry.fence?.marketCapMax)}`);
+  lines.push("");
   if (entry.promptSkeleton) {
-    lines.push("Prompt skeleton:");
+    lines.push("Strategy, in seven parts:");
     lines.push(entry.promptSkeleton);
     lines.push("");
   }

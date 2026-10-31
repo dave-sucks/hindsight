@@ -11,7 +11,7 @@
 
 import { replayTool } from "@/lib/replay";
 import { BUILDER_SYSTEM_PROMPT } from "@/lib/agent/modes";
-import { builderConfigSchema as configSchema } from "@/lib/agent/tools/suggest-config";
+import { editorConfigSchema as configSchema } from "@/lib/agent/tools/suggest-config";
 
 const LIVE_PEAD_STOP = "Stop at -8% from entry or a reversal candle with volume.";
 
@@ -25,6 +25,14 @@ it("the earnings-drift playbook no longer hands out the stop the live PEAD copie
   expect(content).not.toContain(LIVE_PEAD_STOP);
   expect(content).toContain("Direction: Long");
   expect(content).toContain("long only");
+});
+
+it("a playbook says what it comes with: the setups, confidence, slots and fence suggest_config fills in", async () => {
+  const { content } = await read({ topic: "archetype", id: "EARNINGS_DRIFT" });
+  expect(content).toContain("setups: PEAD, EPISODIC_PIVOT, MA_PULLBACK (the first is the signature setup)");
+  expect(content).toContain("confidence a buy needs: 60; stocks held at once: 6");
+  expect(content).toContain("sectors: any; market cap: $200,000,000–any");
+  expect(content).not.toContain("Universe hints");
 });
 
 it("no playbook restates a stop, target, size or short, and none needs options data or a same-day close", async () => {

@@ -240,6 +240,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
   write_note: [f("thesis_id", "IDENTITY"), f("text", "TEXT")],
   /** The builder's and the editor's proposal (suggest-config.ts), one schema per mode. */
   suggest_config: [
+    f("playbook", "CHOSEN", { note: "The builder's only: its setups, hold, confidence, slots and fence are filled in from the playbook (playbookFields)." }),
     f("name", "TEXT"),
     f("analystPrompt", "TEXT"),
     f("description", "TEXT"),

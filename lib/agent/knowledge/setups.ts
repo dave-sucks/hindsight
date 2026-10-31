@@ -110,8 +110,6 @@ export interface Setup {
    */
   role: "ENTRY" | "SCREEN";
   horizons: Horizon[];
-  /** Strategy-archetype ids (strategy-archetypes.ts) this pattern serves. */
-  archetypes: string[];
   /** What must be true before the pattern applies (trend, regime, fundamentals). */
   preconditions: string[];
   entry: {
@@ -310,7 +308,6 @@ export const SETUPS: Setup[] = [
     name: "Base breakout (VCP / cup-with-handle / flat base)",
     role: "ENTRY",
     horizons: ["TRADE", "TARGET", "COMPOUNDER"],
-    archetypes: ["MOMENTUM_BREAKOUT", "THEMATIC_SECULAR", "CATALYST_EVENT"],
     preconditions: [
       trendTemplate,
       "A base of 20+ sessions (chart.base), 15–25% deep at most, the last contraction tighter than the base (≤ 5–8%)",
@@ -363,7 +360,6 @@ export const SETUPS: Setup[] = [
     name: "Momentum-leader flag",
     role: "ENTRY",
     horizons: ["TRADE"],
-    archetypes: ["MOMENTUM_BREAKOUT"],
     preconditions: [
       "Already moved 30–100%+ in 1–3 months (top 1–2% by 1/3/6-month return)",
       "Average daily range (chart.adr20Pct) ≥ 3–5%",
@@ -401,7 +397,6 @@ export const SETUPS: Setup[] = [
     name: "Episodic pivot / earnings gap",
     role: "ENTRY",
     horizons: ["TRADE", "TARGET"],
-    archetypes: ["EARNINGS_DRIFT", "CATALYST_EVENT"],
     preconditions: [
       "Neglected before the news: flat or down for 3–6 months, not already up 30%+ in 3 months",
       `Gap ≥ ${EP_GAP_MIN_PCT}% at the open on a real catalyst (blow-out earnings, approval, contract)`,
@@ -438,7 +433,6 @@ export const SETUPS: Setup[] = [
     name: "Post-earnings drift",
     role: "ENTRY",
     horizons: ["TARGET", "TRADE"],
-    archetypes: ["EARNINGS_DRIFT"],
     preconditions: [
       `Reported in the last ${PEAD_ENTRY_WINDOW[0]}–${PEAD_ENTRY_WINDOW[1]} sessions`,
       `EPS surprise ≥ ${PEAD_MIN_SURPRISE_PCT}% and a revenue beat; guidance raised`,
@@ -489,7 +483,6 @@ export const SETUPS: Setup[] = [
     name: "Pullback to a rising moving average",
     role: "ENTRY",
     horizons: ["TARGET", "COMPOUNDER", "CATALYST"],
-    archetypes: ["THEMATIC_SECULAR", "EARNINGS_DRIFT", "CATALYST_EVENT", "SECTOR_ROTATION"],
     preconditions: [
       trendTemplate,
       "Relative strength vs SPY positive over 3 months (chart.relativeStrength.vsSpy.m3 > 0)",
@@ -536,7 +529,6 @@ export const SETUPS: Setup[] = [
     name: "Mean-reversion bounce in an uptrend (RSI-2)",
     role: "ENTRY",
     horizons: ["TRADE"],
-    archetypes: ["MEAN_REVERSION_OVERSOLD"],
     preconditions: ["Price above the 200-day", "A sharp 2–5 day flush"],
     entry: {
       template: { match: "all", conditions: [{ watch: "price", is: "above", variable: "sma200" }, { watch: "rsi", is: "below", value: RSI2_ENTRY_BELOW, settings: { period: 2 } }] },
@@ -569,7 +561,6 @@ export const SETUPS: Setup[] = [
     name: "52-week-high / relative-strength momentum",
     role: "SCREEN",
     horizons: ["TRADE", "TARGET", "COMPOUNDER"],
-    archetypes: ["MOMENTUM_BREAKOUT", "THEMATIC_SECULAR", "SECTOR_ROTATION"],
     preconditions: [
       "Within 5% of the 52-week high (chart.range.pctBelow52wHigh ≤ 5)",
       "Beating SPY over 3–12 months; momentum is negative under 1 month — the window matters",
@@ -598,7 +589,6 @@ export const SETUPS: Setup[] = [
     name: "Pre-catalyst run-up (PDUFA and dated binaries)",
     role: "ENTRY",
     horizons: ["CATALYST"],
-    archetypes: ["CATALYST_EVENT"],
     preconditions: [
       `A dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out (Thesis.catalystDate) — the analyst's own event-date review already wakes the run before the date; do NOT write a copy of it on the thesis, a trigger on the thesis overrides the analyst's and freezes its number`,
       "A positive advisory-committee vote if one happened",
@@ -660,7 +650,6 @@ export const SETUPS: Setup[] = [
     name: "Insider cluster buying",
     role: "SCREEN",
     horizons: ["TARGET", "COMPOUNDER"],
-    archetypes: ["INSIDER_ACTIVITY"],
     preconditions: [
       `${INSIDER_MIN_BUYERS}+ insiders buying on the open market within ${INSIDER_WINDOW_DAYS} days, ideally including independent directors`,
       "Stronger in small and mid caps",
@@ -694,7 +683,6 @@ export const SETUPS: Setup[] = [
     name: "Estimate-revision momentum",
     role: "SCREEN",
     horizons: ["TARGET"],
-    archetypes: ["EARNINGS_DRIFT"],
     preconditions: ["Consensus EPS estimates rose in the last 30 days, especially right after a print"],
     entry: {
       template: null,
@@ -719,7 +707,6 @@ export const SETUPS: Setup[] = [
     name: "Compounder accumulation",
     role: "ENTRY",
     horizons: ["COMPOUNDER"],
-    archetypes: ["THEMATIC_SECULAR"],
     preconditions: [
       "Quality: ROIC > 20% for years, high stable gross margin for its industry, FCF margin ≥ 15%, high reinvestment at high returns, aligned management",
       "A business that will be structurally more valuable in 3–5 years",
@@ -753,7 +740,6 @@ export const SETUPS: Setup[] = [
     name: "Sector and theme rotation",
     role: "SCREEN",
     horizons: ["TARGET", "TRADE"],
-    archetypes: ["SECTOR_ROTATION"],
     preconditions: [
       "The stock's group is Leading or Improving by relative strength vs SPY and its slope",
       "Buy the leader in a leading group; skip the best chart in a lagging group",

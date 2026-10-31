@@ -43,7 +43,6 @@ describe("the setup catalog", () => {
     expect(s.name.length).toBeGreaterThan(0);
     expect(s.summary.length).toBeGreaterThan(20);
     expect(s.horizons.length).toBeGreaterThan(0);
-    expect(s.archetypes.length).toBeGreaterThan(0);
     expect(s.preconditions.length).toBeGreaterThan(0);
     expect(s.entry.text.length).toBeGreaterThan(0);
     expect(s.stop.text.length).toBeGreaterThan(0);
@@ -104,9 +103,11 @@ describe("the setup catalog", () => {
     }
   });
 
-  it("every archetype id is a real strategy archetype", () => {
-    const ids = new Set(STRATEGY_ARCHETYPES.map((a) => a.id));
-    for (const s of SETUPS) for (const a of s.archetypes) expect({ setup: s.id, a, real: ids.has(a) }).toMatchObject({ real: true });
+  it("every playbook's setups are real setups, each once", () => {
+    const ids = new Set(SETUPS.map((s) => s.id));
+    for (const a of STRATEGY_ARCHETYPES) {
+      expect({ playbook: a.id, unknown: a.setupIds.filter((id) => !ids.has(id)), once: new Set(a.setupIds).size === a.setupIds.length }).toEqual({ playbook: a.id, unknown: [], once: true });
+    }
   });
 
   it("binary catalysts risk half (DAV-245 ruling 2)", () => {
