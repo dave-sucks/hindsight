@@ -49,7 +49,8 @@ jest.mock("@/lib/prisma", () => {
 import { zodSchema } from "ai";
 import { createAnalystFromBuilder, updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
 import { toApplyInput, toCreateInput } from "@/components/analysts/builder-config";
-import { configSchema, suggestConfigTool } from "@/lib/agent/tools/suggest-config";
+import { builderConfigSchema as configSchema, suggestConfigFor } from "@/lib/agent/tools/suggest-config";
+const suggestConfigTool = suggestConfigFor("builder");
 import { listAnalysts } from "@/lib/agent/tools/list-analysts";
 import { BUILDER_SYSTEM_PROMPT, MODES } from "@/lib/agent/modes";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";

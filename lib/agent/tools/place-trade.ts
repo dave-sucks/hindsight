@@ -478,14 +478,15 @@ export const placeTrade = defineTool({
         );
       }
 
-      // The analyst's dollar limits: smallest trade to largest trade, both
-      // settings on the analyst (positionBand, lib/agent/position-sizing.ts).
+      // The analyst's dollar limits: smallest trade to largest trade, and no
+      // more than most in one stock (positionBand, lib/agent/position-sizing.ts).
       // Nothing is refused for size any more: a run's model can't send one
       // (the field isn't in its schema), and the principal's own number is
       // honored with a line when it sits outside the band.
       const band = positionBand({
         minPositionSize: ctx.minPositionSize,
         maxPositionSize: ctx.maxPositionSize,
+        maxPositionTotal: ctx.maxPositionTotal,
       });
 
       // 1. Resolve qty — prefer notional (dollar amount), fall back to shares.

@@ -19,6 +19,7 @@ import * as tools from "@/lib/agent/tools";
 import { MODES } from "@/lib/agent/modes";
 import { SAMPLE_PROMPTS as PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
 import { FIELD_CONTRACT, MODE_PROMPTS, RULES, WRITE_TOOL_EXPORTS, type FieldContract } from "./field-contract";
+import { suggestConfigFor } from "./suggest-config";
 
 type JsonSchema = { properties?: Record<string, Record<string, unknown>>; required?: string[] };
 
@@ -95,6 +96,37 @@ describe("the field contract — every field on every write tool, in every mode"
         .filter(({ marker }) => marker != null && !text.includes(marker))
         .map(({ field, marker }) => `${field}: the writer prompt does not say "${marker}"`);
       expect(unstated).toEqual([]);
+    });
+  });
+
+  // The builder makes an analyst and the editor changes one; neither types
+  // the direction, and only the editor carries the money, on the owner's words.
+  describe("suggest_config in the builder and the editor", () => {
+    const rows = new Map(FIELD_CONTRACT.suggest_config.map((r) => [r.field, r]));
+    for (const mode of ["builder", "editor"] as const) {
+      const props = (zodSchema(suggestConfigFor(mode).inputSchema as never).jsonSchema as JsonSchema).properties ?? {};
+
+      it(`${mode}: every field the model can pass has a row in the registry`, () => {
+        expect(Object.keys(props).filter((f) => !rows.has(f))).toEqual([]);
+      });
+
+      it(`${mode}: a COMPUTED field is not in its schema${mode === "editor" ? ", but the owner's money" : ""}`, () => {
+        const leaked = [...rows.values()].filter((r) => r.kind === "COMPUTED" && k(props, r.field) && !(r.principalOnly && mode === "editor"));
+        expect(leaked.map((r) => r.field)).toEqual([]);
+      });
+
+      it(`${mode}: a CHOSEN field is a closed set on the wire`, () => {
+        const closed = (p: Record<string, unknown>) => isClosedSet(p) || (p.type === "array" && isClosedSet(p.items as Record<string, unknown>));
+        expect(Object.keys(props).filter((f) => rows.get(f)?.kind === "CHOSEN" && !closed(props[f]))).toEqual([]);
+      });
+    }
+
+    it("the editor can remove a market-cap bound: null is on the wire, as anyOf", () => {
+      const props = (zodSchema(suggestConfigFor("editor").inputSchema as never).jsonSchema as JsonSchema).properties ?? {};
+      for (const f of ["marketCapMin", "marketCapMax"]) {
+        expect(props[f]).not.toHaveProperty("oneOf");
+        expect(props[f].anyOf).toContainEqual({ type: "null" });
+      }
     });
   });
 

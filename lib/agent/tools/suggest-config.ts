@@ -1,5 +1,10 @@
 /**
- * suggest_config tool — used in builder and editor modes.
+ * suggest_config tool — one schema per mode. The builder's carries no money
+ * and no direction: a new analyst starts from NEW_ANALYST_DEFAULTS
+ * (lib/analyst-settings.ts) and the owner changes them on the panel. The
+ * editor's (and the chat's) carries the money only when the owner names an
+ * amount, and a market-cap bound it can clear with null. The field rows are
+ * in field-contract.ts.
  *
  * Returns the config object as-is. The UI side reads the tool call args
  * (via the ToolCallRow config-preview renderer) to render a preview card.
@@ -9,30 +14,28 @@ import { tool } from "ai";
 import { z } from "zod";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
+import { NEW_ANALYST_NUMBERS } from "@/lib/analyst-settings";
+
+export type SuggestConfigMode = "builder" | "editor";
 
 // z.enum needs a non-empty tuple literal; derive one from the canonical lists.
 const SECTOR_VALUES = [...SECTORS] as [string, ...string[]];
 const INDUSTRY_VALUES = [...INDUSTRIES] as [string, ...string[]];
 
 // ── Normalizer: strips common agent mistakes before Zod validation ──────────
-// Strips sentinel zeros and oversized market-cap ceilings, which real
-// editor/builder runs sent and which used to fail the whole call. Empty
-// industries stay empty: a sector already means every industry in it.
-function normalizeSuggestConfig(input: unknown): unknown {
+// A market cap of 0, or a ceiling of $5T or more, is the model saying "no
+// bound": the builder leaves the field out, the editor clears it (null).
+// Empty industries stay empty: a sector already means every industry in it.
+const normalizeSuggestConfig = (mode: SuggestConfigMode) => (input: unknown): unknown => {
   if (!input || typeof input !== "object") return input;
   const cfg: Record<string, unknown> = { ...(input as Record<string, unknown>) };
-
-  // Strip sentinel 0s on market cap — agents send 0 when they mean "no floor".
-  if (cfg.marketCapMin === 0) delete cfg.marketCapMin;
-  if (cfg.marketCapMax === 0) delete cfg.marketCapMax;
-  if (typeof cfg.marketCapMax === "number" && cfg.marketCapMax >= 5e12) {
-    delete cfg.marketCapMax;
-  }
-
+  const noBound = (k: string) => (mode === "editor" ? (cfg[k] = null) : delete cfg[k]);
+  if (cfg.marketCapMin === 0) noBound("marketCapMin");
+  if (cfg.marketCapMax === 0 || (typeof cfg.marketCapMax === "number" && cfg.marketCapMax >= 5e12)) noBound("marketCapMax");
   return cfg;
-}
+};
 
-const rawConfigSchema = z.object({
+const sharedShape = {
   name: z.string().describe("Short analyst name (2-4 words). E.g. 'EV Momentum Trader'"),
   analystPrompt: z
     .string()
@@ -47,9 +50,6 @@ const rawConfigSchema = z.object({
     .string()
     .optional()
     .describe("One-line description for display. E.g. 'Aggressive day trader focused on EV catalysts'"),
-  directionBias: z
-    .enum(["LONG", "SHORT", "BOTH"])
-    .describe("LONG = only buy, SHORT = only short-sell, BOTH = either direction"),
   holdDurations: z
     .array(z.enum(["DAY", "SWING", "POSITION"]))
     .min(1)
@@ -121,32 +121,12 @@ const rawConfigSchema = z.object({
     .number()
     .min(40)
     .max(95)
-    .describe("Minimum confidence score (0-100) to auto-place a paper trade. Default 70"),
-  // Position sizing is a BAND, not a single ceiling. The floor is what stops an
-  // analyst from opening a position too small to matter (a $14k-ceiling seat
-  // proposing $3.5k); place_trade rejects below-floor entries outright.
-  minPositionSize: z
-    .number()
-    .min(0)
-    .max(50000)
-    .optional()
-    .describe(
-      "Minimum dollar amount per trade — the floor of the position band. An entry below it is " +
-      "REJECTED, not resized, so set it to the smallest size that still moves this analyst's book " +
-      "(a common choice is ~half the ceiling). Omit or 0 for no floor.",
-    ),
-  maxPositionSize: z
-    .number()
-    .min(100)
-    // 50000, not the old 10000: live conviction seats already run $15k
-    // ceilings, and the old bound silently clamped any config restating one.
-    .max(50000)
-    .describe("Maximum dollar amount per trade — the ceiling of the position band."),
+    .describe("The confidence (0-100) a buy needs."),
   maxOpenPositions: z
     .number()
     .min(1)
     .max(20)
-    .describe("Maximum simultaneous open trades. Default 5."),
+    .describe(`Maximum simultaneous open trades. Default ${NEW_ANALYST_NUMBERS.maxOpenPositions}.`),
   watchlist: z
     .array(
       z.object({
@@ -170,18 +150,52 @@ const rawConfigSchema = z.object({
     })
     .optional()
     .describe("Intelligence policy — the live-search budget for this analyst's runs."),
-});
+};
 
-// Final exported schema: preprocess heals the common agent mistakes before
-// rawConfigSchema runs. Order matters — normalization first, then Zod.
-export const configSchema = z.preprocess(normalizeSuggestConfig, rawConfigSchema);
+const ownerAmount = (what: string, min: number) =>
+  z
+    .number()
+    .min(min)
+    .max(50000)
+    .optional()
+    .describe(`${what}, in dollars. Only when the owner names an amount; leave it out otherwise.`);
+const clearableCap = (what: string) =>
+  z
+    .number()
+    .int()
+    .nonnegative()
+    .max(1e13)
+    .nullable()
+    .optional()
+    .describe(`${what} in dollars (integer). null removes the bound; leave it out to keep the current one.`);
 
-export type ConfigSchema = z.infer<typeof configSchema>;
+// The editor and the chat change an analyst the owner already has: the money
+// is theirs to name, and a bound can be removed.
+const editorShape = {
+  ...sharedShape,
+  marketCapMin: clearableCap("Minimum market cap"),
+  marketCapMax: clearableCap("Maximum market cap"),
+  minPositionSize: ownerAmount("The smallest trade", 0),
+  maxPositionSize: ownerAmount("The largest trade", 100),
+};
 
-/** The suggest_config tool — same in builder and editor modes. */
-export const suggestConfigTool = tool({
-  description:
-    "Suggest a complete analyst configuration. Call this when you have enough information to build a thorough config with a detailed strategy prompt. In editor mode, call this with the full updated config (all fields).",
-  inputSchema: configSchema,
-  execute: async (config) => config,
-});
+// preprocess heals the common agent mistakes before the object runs.
+export const builderConfigSchema = z.preprocess(normalizeSuggestConfig("builder"), z.object(sharedShape));
+export const editorConfigSchema = z.preprocess(normalizeSuggestConfig("editor"), z.object(editorShape));
+
+/** The suggest_config tool for a mode: the builder's makes an analyst, the editor's changes one. */
+export function suggestConfigFor(mode: SuggestConfigMode) {
+  return mode === "builder"
+    ? tool({
+        description:
+          "Suggest a complete analyst configuration. Call this when you have enough information to build a thorough config with a detailed strategy prompt. It carries no money or direction: a new analyst starts long with the default trade sizes, and the owner changes them on the panel.",
+        inputSchema: builderConfigSchema,
+        execute: async (config) => config,
+      })
+    : tool({
+        description:
+          "Suggest the analyst's updated configuration: call this with the full updated config (all fields), and the money only when the owner names an amount.",
+        inputSchema: editorConfigSchema,
+        execute: async (config) => config,
+      });
+}

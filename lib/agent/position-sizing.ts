@@ -51,12 +51,14 @@ export interface PositionBandInput {
   minPositionSize?: number;
   /** AgentConfig.maxPositionSize — the largest trade. */
   maxPositionSize?: number;
+  /** AgentConfig.maxPositionTotal — most in one stock; an entry never exceeds it. */
+  maxPositionTotal?: number;
 }
 
 export interface PositionBand {
   /** Smallest notional a single entry may be. 0 = no floor. */
   floor: number;
-  /** Largest notional a single entry may be. null = none configured. */
+  /** Largest notional a single entry may be: the largest trade, or most in one stock when that is lower. */
   ceiling: number | null;
   /**
    * True when the configured smallest trade sits above the largest — a
@@ -64,14 +66,19 @@ export interface PositionBand {
    * refusing every buy as both too small and too big.
    */
   floorClampedByCeiling: boolean;
+  /** True when most in one stock, not the largest trade, is the ceiling. */
+  ceilingIsTotal?: boolean;
 }
 
+const positive = (n: number | undefined): number | null => (n != null && Number.isFinite(n) && n > 0 ? n : null);
+
 export function positionBand(input: PositionBandInput): PositionBand {
-  const { minPositionSize, maxPositionSize } = input;
-  const ceiling =
-    maxPositionSize != null && Number.isFinite(maxPositionSize) && maxPositionSize > 0
-      ? maxPositionSize
-      : null;
+  const { minPositionSize } = input;
+  // An entry never exceeds most in one stock: a first buy above it would
+  // refuse every add after it.
+  const largest = positive(input.maxPositionSize);
+  const total = positive(input.maxPositionTotal);
+  const ceiling = largest != null && total != null ? Math.min(largest, total) : (largest ?? total);
   const rawFloor =
     minPositionSize != null && Number.isFinite(minPositionSize) && minPositionSize > 0
       ? minPositionSize
@@ -81,6 +88,7 @@ export function positionBand(input: PositionBandInput): PositionBand {
     floor: floorClampedByCeiling ? (ceiling as number) : rawFloor,
     ceiling,
     floorClampedByCeiling,
+    ceilingIsTotal: total != null && (largest == null || total < largest),
   };
 }
 
@@ -94,15 +102,7 @@ export function positionTotalCap(opts: {
   maxPositionSize?: number;
   maxPositionTotal?: number;
 }): number {
-  if (
-    opts.maxPositionTotal != null &&
-    Number.isFinite(opts.maxPositionTotal) &&
-    opts.maxPositionTotal > 0
-  ) {
-    return opts.maxPositionTotal;
-  }
-  const { ceiling } = positionBand(opts);
-  return (ceiling ?? DEFAULT_POSITION_CAP) * DEFAULT_TOTAL_MULTIPLE;
+  return positive(opts.maxPositionTotal) ?? (positive(opts.maxPositionSize) ?? DEFAULT_POSITION_CAP) * DEFAULT_TOTAL_MULTIPLE;
 }
 
 // ─── Entry size from the analyst's settings ─────────────────────────────────
@@ -271,7 +271,7 @@ export function sizeByRisk(input: RiskSizingInput): RiskSizing | null {
   let line: string;
   if (clampedBy === "LARGEST_TRADE") {
     line =
-      `${shares} shares, ${$(notional)}, capped at this analyst's largest trade. ` +
+      `${shares} shares, ${$(notional)}, capped at ${band.ceilingIsTotal ? "the most this analyst may hold in one stock" : "this analyst's largest trade"}. ` +
       `Risk alone said ${formulaShares} shares (${$(formulaNotional)}): ${math}. ${atStop}.`;
   } else if (clampedBy === "SMALLEST_TRADE") {
     const targetPct = (targetRisk / equity) * 100;
