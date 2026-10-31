@@ -41,20 +41,22 @@ When you start one. The builder runs at **New analyst**; the editor runs from **
 ## What it reads
 
 - **Your answers.** `ask_question` asks one question at a time as a card of two to five choices, so you pick rather than type.
-- **The playbook.** `read_knowledge_library` gives the strategy archetypes and the [setups](../reference/setups.md) it can choose from.
+- **The playbook.** `read_knowledge_library` gives the strategy archetypes: each one's strategy and what it comes with, its [setups](../reference/setups.md), hold, confidence, slots and any market-cap band its edge needs.
 - **Today's market.** `get_market_context` first, then real candidates from `get_market_movers` or `get_earnings_calendar`, checked with `get_stock_data` for sector, industry and size. `get_catalyst_calendar`, `get_sec_filings` and `web_search` fill in the rest.
 - **Your other analysts.** `list_analysts`, so the builder can say how the new one differs from each analyst you already have.
 - **The analyst itself,** for the editor: its whole current configuration comes with every request.
 
 ## What it decides
 
-One proposal, through `suggest_config`, shown beside the chat as a side-by-side change you can read before accepting:
+One proposal, through `suggest_config`, shown beside the chat as a side-by-side change you can read before accepting. The builder names a playbook and writes the words; the style comes with the playbook, so the model types no numbers:
 
-- **The strategy:** three to five paragraphs on the edge, what it buys, how it enters and what it never does. Every agent reads it word for word. It names no stops, targets or sizes: the setups, the settings and the account's rules own those, and a number written into the strategy would go stale the day one of them changed.
-- **The universe:** sectors, a market-cap band and an exclusion list. Industries and themes are words: [chat](chat.md), with the analyst selected, reads them when it looks for new stocks, and they filter nothing.
-- **The setups:** the playbook patterns it will write plans on. The first is its **signature setup**, and that setup's reviews start on the analyst's Triggers tab. None chosen means the whole playbook.
-- **Slots and holds:** how many stocks it may hold at once, the confidence a buy needs, and how long it holds. The money and the direction aren't in the proposal: a new analyst starts long-only, buying $3,000 to $8,000 a trade at 1% risk, with most in one stock twice its largest trade, read live. You change any of them on the panel.
+- **The strategy:** seven short parts: the edge, what counts, what it skips, when it buys, when it's done, how it sizes in words, and what it never does. Every agent reads it word for word. It names no number a setting, setup or account rule owns (no stop or target percent, confidence, slot count or trade size), because a number written into the strategy goes stale the day one of them changes.
+- **From the playbook:** the setups it writes plans on, signature first (that setup's reviews start on the analyst's Triggers tab); how long it holds; the confidence a buy needs; how many stocks it holds at once; and a market-cap band only where its edge needs one. The three live analysts were built on three of the playbooks, and each playbook gives its analyst's style exactly; the sectors an analyst covers are the owner's choice on the panel.
+- **The universe:** the playbook's market-cap band where its edge needs one, the sectors you choose on the panel, and an exclusion list. Industries and themes are words: [chat](chat.md), with the analyst selected, reads them when it looks for new stocks, and they filter nothing.
+- **The money and the direction** aren't in the proposal: a new analyst starts long-only, buying $3,000 to $8,000 a trade at 1% risk, with most in one stock twice its largest trade, read live.
 - **A starting watchlist:** names it checked against the universe, never tickers recalled from memory.
+
+You change any of it on the panel before you accept.
 
 If you ask for changes, it proposes again. The editor first sorts each request into one of four kinds (a question, a change to the numbers, a change to the universe, a new strategy) and grounds the bigger two in real names before proposing anything.
 
@@ -90,5 +92,5 @@ Everything the builder and the editor can call, read from `lib/agent/modes.ts`.
 `createAnalystFromBuilder` in `lib/actions/analyst.actions.ts`: the `AgentConfig` and one seed thesis per watchlist ticker (`direction: null`, `status: WATCHING`, `source: BUILDER`) in one transaction, then `seedAnalystTriggers` (`lib/agent/triggers/seed-analyst.ts`) for the signature setup's reviews. The editor saves through `updateAnalystFromBuilder`, Settings through `updateAnalystField`. All three go through `normalizeAnalystPatch`, and a new analyst starts from `NEW_ANALYST_DEFAULTS` (both in `lib/analyst-settings.ts`). Create and Apply take the panel's values through `components/analysts/builder-config.ts`, so a field the panel shows is a field that saves.
 
 #### Pages
-`/analysts/new` and the editor at `/analysts/[id]/edit`, both through `/api/agent/[mode]` with mode `builder` or `editor`. The proposal's fields are the `suggest_config` schema in `lib/agent/tools/suggest-config.ts`, one per mode (`suggestConfigFor`): the builder's has no money or direction, and the editor's (also the chat's) has the money as optional and a market-cap bound that `null` removes. Each field has a row in `lib/agent/tools/field-contract.ts`.
+`/analysts/new` and the editor at `/analysts/[id]/edit`, both through `/api/agent/[mode]` with mode `builder` or `editor`. The proposal's fields are the `suggest_config` schema in `lib/agent/tools/suggest-config.ts`, one per mode (`suggestConfigFor`): the builder's names a `playbook` and carries the words and the watchlist, and its result fills in the playbook's style (`playbookFields` in `lib/agent/knowledge/strategy-archetypes.ts`); and the editor's (also the chat's) has the money as optional and a market-cap bound that `null` removes. Each field has a row in `lib/agent/tools/field-contract.ts`.
 </details>

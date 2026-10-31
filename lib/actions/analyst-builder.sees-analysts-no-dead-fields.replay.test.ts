@@ -49,7 +49,7 @@ jest.mock("@/lib/prisma", () => {
 import { zodSchema } from "ai";
 import { createAnalystFromBuilder, updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
 import { toApplyInput, toCreateInput } from "@/components/analysts/builder-config";
-import { builderConfigSchema as configSchema, suggestConfigFor } from "@/lib/agent/tools/suggest-config";
+import { builderConfigSchema as configSchema, editorConfigSchema, suggestConfigFor } from "@/lib/agent/tools/suggest-config";
 const suggestConfigTool = suggestConfigFor("builder");
 import { listAnalysts } from "@/lib/agent/tools/list-analysts";
 import { BUILDER_SYSTEM_PROMPT, MODES } from "@/lib/agent/modes";
@@ -64,7 +64,7 @@ const CATALYST_FENCE = {
   marketCapMax: 20_000_000_000,
 };
 const CALL = {
-  name: "Catalyst Event PM", analystPrompt: "x", directionBias: "LONG", holdDurations: ["SWING", "POSITION"],
+  playbook: "CATALYST_EVENT", name: "Catalyst Event PM", analystPrompt: "x", directionBias: "LONG", holdDurations: ["SWING", "POSITION"],
   minConfidence: 50, maxPositionSize: 8000, maxOpenPositions: 5, ...CATALYST_FENCE,
   intelligencePolicy: { allowLiveSearch: true, liveSearchBudget: 5 },
 };
@@ -101,7 +101,8 @@ it("suggest_config refuses nothing off a hard-coded table of market caps", async
 });
 
 it("Create and Apply save the universe from the top-level fields, with no cap tier or policy limits", async () => {
-  const proposal = configSchema.parse(CALL) as AgentConfigData;
+  // The builder names the playbook; the tool fills in its fence.
+  const proposal = (await suggestConfigTool.execute!(configSchema.parse(CALL) as never, { toolCallId: "t", messages: [] })) as AgentConfigData;
   await createAnalystFromBuilder(toCreateInput(proposal));
   const created = create.mock.calls[0][0].data;
   expect(created).toMatchObject({ industries: CATALYST_FENCE.industries, marketCapMin: BigInt(500_000_000), marketCapMax: BigInt(20_000_000_000), exchanges: ["NASDAQ", "NYSE"] });
@@ -119,7 +120,7 @@ it("Create and Apply save the universe from the top-level fields, with no cap ti
 // checks the fence with no industry), so they were 71 names the agents read.
 it("a proposal with sectors and no industries saves no industries", async () => {
   const sectors = ["Information Technology", "Health Care", "Industrials", "Utilities", "Communication Services", "Energy", "Materials", "Consumer Discretionary", "Consumer Staples", "Financials", "Real Estate"];
-  const proposal = configSchema.parse({ ...CALL, ...{ sectors, industries: undefined, marketCapMin: undefined, marketCapMax: undefined } }) as AgentConfigData;
+  const proposal = editorConfigSchema.parse({ ...CALL, ...{ sectors, industries: undefined, marketCapMin: undefined, marketCapMax: undefined } }) as AgentConfigData;
   expect(proposal.industries ?? []).toEqual([]);
   await createAnalystFromBuilder(toCreateInput(proposal));
   expect(create.mock.calls[0][0].data).toMatchObject({ sectors, industries: [] });

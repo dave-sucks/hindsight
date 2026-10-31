@@ -42,7 +42,7 @@ Every [proposal](approvals.md) names the analyst behind it, so you always know w
 
 ## The playbook
 
-Every analyst trades from the same playbook of setups, each with its checklist for the buy, the floor, the target and the time limit. An analyst picks the ones that fit its style. The setups are defined in `lib/agent/knowledge/setups.ts`.
+Every analyst trades from the same playbook of setups, each with its checklist for the buy, the floor, the target and the time limit. A new analyst starts with the ones its strategy's playbook lists, signature first (`lib/agent/knowledge/strategy-archetypes.ts`), and you can change them in Settings. The setups are defined in `lib/agent/knowledge/setups.ts`.
 
 <!-- asset: playbook -->
 

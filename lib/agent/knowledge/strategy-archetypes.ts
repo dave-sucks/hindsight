@@ -1,24 +1,22 @@
 /**
- * Strategy archetypes — the curated taxonomy of trading styles the
- * Analyst Builder and Editor can ground their suggestions in.
+ * Strategy archetypes — the playbooks a new analyst is built from.
  *
- * Each archetype is a "recipe": what the edge is, who it suits, what
- * signals fire it, what sources matter, and what a reasonable prompt
- * skeleton looks like. The builder agent reads these via
- * read_strategy_archetypes and uses them when proposing a config so
- * suggestions are grounded in a real trading discipline rather than
- * free-form LLM output.
+ * A playbook carries the style as data: the setups an analyst on it runs
+ * (signature first), how long it holds, the confidence a buy needs, how many
+ * stocks it holds at once, and the market-cap band its edge needs, if any. The builder
+ * names a playbook in suggest_config and the tool fills those fields in, so
+ * the model never types them (playbookFields). Its promptSkeleton is the
+ * strategy text in seven parts, with no number a setting, setup or account
+ * rule owns.
  *
- * Adding one: pick an ID (SCREAMING_SNAKE_CASE, unique), fill every
- * field, keep prompts under ~400 words — they are starter skeletons,
- * the agent expands them during config synthesis.
+ * Three are tested: the live analysts were built on them, and
+ * playbooks.replay.test.ts holds them to those analysts' style.
  */
 
-import { CATALYST_WINDOW_DAYS, PRE_CATALYST_ENTRY_CUTOFF_DAYS } from "./setups";
+import type { SetupId } from "./setups";
 
 export type HoldDuration = "DAY" | "SWING" | "POSITION";
 export type DirectionBias = "LONG" | "SHORT" | "BOTH";
-
 export interface StrategyArchetype {
   /** SCREAMING_SNAKE_CASE unique ID */
   id: string;
@@ -30,28 +28,24 @@ export interface StrategyArchetype {
   edge: string;
   /** Best-fit direction bias for this archetype */
   directionBias: DirectionBias;
-  /** Typical hold durations for this archetype */
+  /** How long an analyst on this playbook holds. */
   holdDurations: HoldDuration[];
+  /** The setups it runs, signature first. Empty = the whole catalog. */
+  setupIds: SetupId[];
+  /** The confidence a buy needs. */
+  minConfidence: number;
+  /** How many stocks it holds at once. */
+  maxOpenPositions: number;
+  /**
+   * The market-cap band its edge needs, if any. Never sectors: the sectors an
+   * analyst covers are its owner's choice, set on the panel.
+   */
+  fence?: { marketCapMin?: number; marketCapMax?: number };
   /** Signal type IDs (from signal-type-catalog) that feed this archetype */
   primarySignals: string[];
   /** Source catalog IDs that matter most — narrows domain monitors */
   keySources: string[];
-  /**
-   * Universe hints — narrower than sectors. Builder uses these as a
-   * starting point, not a hard rule.
-   */
-  universeHints?: {
-    sectors?: string[];
-    industries?: string[];
-    themes?: string[];
-    marketCapMinUSD?: number;
-    marketCapMaxUSD?: number;
-  };
-  /**
-   * Prompt skeleton — a ~300-400 word starting point the builder can
-   * expand into a full analystPrompt. Do not include phase structure —
-   * that's in system-prompt.ts. Only the analyst's edge + rules.
-   */
+  /** The strategy text in seven parts, the starting point for analystPrompt. */
   promptSkeleton: string;
   /** Common pitfalls / anti-patterns for this style */
   watchOutFor: string[];
@@ -62,32 +56,28 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     id: "EARNINGS_DRIFT",
     name: "Post-Earnings Announcement Drift",
     tagline: "Ride confirmed beat-and-raise prints into the drift window.",
-    edge: "Stocks that beat earnings and guide higher tend to drift upward for 30-60 days as analysts update models and institutions rebalance. The edge is persistence — not the gap day itself.",
+    edge: "Stocks that beat earnings and guide higher tend to drift upward for weeks as analysts update models and institutions rebalance. The edge is persistence — not the gap day itself.",
     directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
+    setupIds: ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"],
+    minConfidence: 60,
+    maxOpenPositions: 6,
+    fence: { marketCapMin: 200_000_000 },
     primarySignals: ["EARNINGS_BEAT", "ANALYST_REVISION", "INSTITUTIONAL_FLOW"],
     keySources: ["SEEKING_ALPHA", "FMP_EARNINGS", "FINNHUB_RECOMMENDATIONS", "STREET_INSIDER"],
-    universeHints: {
-      marketCapMinUSD: 2_000_000_000,
-      marketCapMaxUSD: 200_000_000_000,
-    },
-    promptSkeleton: `You trade Post-Earnings Announcement Drift (PEAD), long only. The edge is the 30-60 day drift after a clean beat-and-raise, not the gap day reaction.
+    promptSkeleton: `**The edge.** You trade post-earnings drift, long only. A clean beat-and-raise keeps drifting for weeks after the print as analysts raise their numbers and funds rebalance. You buy the drift, not the gap-day reaction.
 
-What counts as a clean signal:
-- EPS beat ≥ 5% AND revenue beat AND guidance raised
-- Volume on the gap day > 1.5x the 20-day average
-- Analyst estimate revisions up within 72 hours
+**What counts.** A beat on earnings and revenue with guidance raised, heavy volume on the gap day, a gap that holds, and estimate revisions that follow within days. Confirm the surprise and the guide from the release, the 8-K and the transcript, and read the sell-side notes in the days after the print for where estimates are going. The drift works in every sector: don't narrow to the one that won last quarter.
 
-What you filter out:
-- One-time items driving the beat (buybacks, tax benefits, insurance recoveries)
-- Beats where guidance went sideways or down — no drift without a guide
-- Stocks that already gapped 10%+ on the print — most of the edge is gone
+**What it skips.** A beat driven by one-time items (buybacks, tax benefits, insurance recoveries). A beat where guidance went sideways or down: there is no drift without a guide. A stock that has already run far past the gap. A beat the market sold.
 
-Entry: 1-3 days after the print, not on it. You're buying the drift, not the reaction. Target a 60-day drift window.
+**When it buys.** In the days after the print, once the gap has held and the guide is confirmed. Never on the print itself.
 
-Sources you respect: FactSet/Zacks consensus revisions, SEC 8-Ks for the actual guide, company transcripts for tone shift, sell-side notes within 48 hours of the print for estimate direction.
+**When it's done.** The gap-day low breaks, the revisions don't follow, the drift has run its course, or the next print is close. You don't hold into the next report.
 
-You do not trade earnings lotteries. You don't hold into the next print. You don't chase day-of gap ups. You wait for confirmation, take the drift, and exit before the next cycle.`,
+**How it sizes, in words.** The cleanest prints, where every signal lines up, earn the larger size; a marginal one takes the smaller. If the conviction doesn't justify a real position, the stock waits on the watchlist rather than taking a token one.
+
+**What it never does.** Short a miss: a miss is a pass, written down. Chase a day-of gap. Trade an earnings lottery.`,
     watchOutFor: [
       "Sector-wide moves can fake the drift — check relative strength vs sector ETF.",
       "Revisions lag by a few days — don't enter before the first sell-side note.",
@@ -101,29 +91,25 @@ You do not trade earnings lotteries. You don't hold into the next print. You don
     edge: "Stocks making new highs with broadening volume and sector strength keep trending. The edge is the statistical anomaly of persistent strength vs mean reversion.",
     directionBias: "LONG",
     holdDurations: ["SWING"],
+    setupIds: ["BASE_BREAKOUT", "MOMENTUM_FLAG", "RS_52W_HIGH"],
+    minConfidence: 60,
+    maxOpenPositions: 5,
+    fence: { marketCapMin: 500_000_000 },
     primarySignals: ["PRICE_BREAKOUT", "VOLUME_SPIKE", "SECTOR_ROTATION"],
-    // Movers gainers + most-actives ARE the discovery firehose for momentum.
-    // Earnings calendar is risk-context (avoid breakouts into earnings week).
     keySources: ["FINVIZ", "STOCKCHARTS", "CNBC", "BARRONS"],
-    promptSkeleton: `You trade relative strength momentum breakouts. The edge is persistence — stocks that are strong stay strong longer than mean reversion theory predicts.
+    promptSkeleton: `**The edge.** You trade relative-strength breakouts, long only. Strong stocks stay strong longer than mean reversion predicts.
 
-What you look for:
-- New 52-week high or breakout from a multi-week base
-- Volume on the breakout day ≥ 1.5x 20-day average
-- Relative strength vs SPY in the top quartile (RS rating ≥ 80)
-- Sector ETF also trending up (no fighting sector weakness)
-- Clean chart — no prior distribution, no earnings within 5 days
+**What counts.** A new 52-week high or a breakout from a multi-week base, on heavy volume, with relative strength against the S&P near the top of the market and the stock's own sector trending up. A clean chart: no distribution before it.
 
-Entry: on the breakout day or the first pullback to the breakout level.
+**What it skips.** Low-float speculative names. Stocks with recent heavy insider selling. A breakout into earnings week. A breakout against a weak sector.
 
-You filter aggressively:
-- No low-float speculative names (< $500M market cap)
-- No stocks with recent heavy insider selling
-- No breakouts into earnings week
+**When it buys.** On the breakout, or on the first pullback to the breakout level.
 
-Sources you respect: Finviz screeners for RS + volume, StockCharts for base pattern quality, sector ETF strength via SPDR composition, news flow for the catalyst.
+**When it's done.** The trend breaks: the breakout fails back into the base, or the stock loses its trend line. A broken trend is a broken thesis.
 
-You do not hold through earnings. You do not average down on momentum — if the trend breaks, the thesis is invalidated.`,
+**How it sizes, in words.** The breakouts with the strongest volume and leadership earn the larger size; a borderline one takes the smaller, or waits.
+
+**What it never does.** Hold through earnings. Average down on a momentum name.`,
     watchOutFor: [
       "Breakouts late in a bull cycle fail more often — check SPY regime.",
       "Low-volume breakouts are traps — demand the volume confirmation.",
@@ -137,28 +123,24 @@ You do not hold through earnings. You do not average down on momentum — if the
     edge: "High-quality stocks pulled down with a sector during fear events tend to revert when panic clears, even if the fundamental story is unchanged.",
     directionBias: "LONG",
     holdDurations: ["SWING"],
+    setupIds: ["RSI2_BOUNCE"],
+    minConfidence: 60,
+    maxOpenPositions: 5,
     primarySignals: ["RSI_OVERSOLD", "VOLATILITY_SPIKE", "FEAR_INDICATOR"],
-    // Today's losers are tomorrow's bounce candidates — the firehose IS the
-    // setup. Most-actives surfaces stocks with the volume needed for a
-    // tradeable bounce.
     keySources: ["FINVIZ", "STOCKCHARTS", "MARKETWATCH", "CNBC"],
-    promptSkeleton: `You trade oversold bounces on quality names. The edge is behavioral — fear sells quality indiscriminately, and quality reverts once the fear clears.
+    promptSkeleton: `**The edge.** You buy quality names washed out in a sector-wide panic, long only. Fear sells quality without looking, and quality comes back once the fear clears.
 
-What counts as a setup:
-- RSI(14) under 30 on daily
-- Stock down 8%+ on a sector-wide event (not company-specific)
-- Balance sheet: investment grade or better
-- No recent earnings miss, no pending regulatory action, no recent guidance cut
-- VIX spike confirming broad fear (not idiosyncratic selling)
+**What counts.** A deeply oversold quality stock, pulled down with its sector on a broad fear event rather than its own news. An investment-grade balance sheet, no recent earnings miss, no guidance cut, no pending regulatory action.
 
-Entry: intraday reversal candle with volume, or next-day open after a fear-driven close.
+**What it skips.** Fresh bad news: a miss, fraud, an executive leaving. A broken weekly trend, where oversold stays oversold. A weak balance sheet: those don't revert, they collapse.
 
-You do NOT touch:
-- Stocks with fresh bad news (earnings miss, fraud, executive departure)
-- Broken trends — if the weekly chart is down, oversold stays oversold
-- Low-quality balance sheets — they don't revert, they collapse
+**When it buys.** On the reversal: an intraday reversal on volume, or the next open after a fear-driven close.
 
-This is not a "buy and hope" strategy. If the bounce doesn't start within 2 sessions, the thesis is wrong.`,
+**When it's done.** The bounce has come, or it hasn't started quickly. This is not buy-and-hope.
+
+**How it sizes, in words.** The strongest balance sheets in the broadest panics earn the larger size; a name with any question about its own story takes the smaller, or waits.
+
+**What it never does.** Catch a falling knife on its own news. Fight a real bear market.`,
     watchOutFor: [
       "Oversold can get more oversold in a real bear market — check regime.",
       "Sector-specific weakness (bank runs, biotech trial fails) is not mean reversion.",
@@ -172,27 +154,26 @@ This is not a "buy and hope" strategy. If the bounce doesn't start within 2 sess
     edge: "Markets systematically underprice binary catalysts (FDA, M&A, trial readouts). The edge is pricing the probability of known-date events.",
     directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
+    setupIds: ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"],
+    minConfidence: 50,
+    maxOpenPositions: 5,
+    // A dated binary moves a small or mid cap; a mega cap doesn't gap on one event.
+    fence: { marketCapMin: 500_000_000, marketCapMax: 20_000_000_000 },
     primarySignals: ["FDA_CATALYST", "MA_RUMOR", "TRIAL_READOUT", "GUIDANCE"],
-    // Earnings is one of the cleanest pre-scheduled binaries. FDA / trial
-    // calendars don't have a firm-aggregate feed yet (TODO: add when producer
-    // exists).
     keySources: ["SEC_EDGAR", "FDA_CALENDAR", "BIO_PHARMA_CATALYSTS", "BENZINGA"],
-    promptSkeleton: `You trade known binary catalysts, long only. The edge is not predicting the outcome — it is correctly pricing the probability of the asymmetric payoff.
+    promptSkeleton: `**The edge.** You trade known, dated binary events, long only: FDA decisions, trial readouts, M&A targets, court rulings, guidance raises. The edge is pricing the probability right, not predicting the outcome.
 
-What you hunt:
-- FDA PDUFA dates with a clear approval/rejection binary
-- Trial readouts with pre-specified primary endpoints
-- M&A rumors with corroborating insider filings
-- Pre-announced guidance or capital markets days
-- SEC Form 4 clusters (multiple insider buys within 30 days)
+**What counts.** A dated event with a clear binary: a PDUFA date, a readout with a pre-specified primary endpoint, an M&A target with corroborating insider filings or a 13D, a pre-announced guidance raise or capital markets day, a patent or antitrust ruling. Confirm it from the primary document: the FDA calendar, the SEC filing, the court docket, not a rumor.
 
-Entry: inside the pre-catalyst setup's buying window (D8, ${CATALYST_WINDOW_DAYS[1]} to ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days before the event), after the setup is confirmed. If the company pulls the PDUFA or a competitor prints bad data, the thesis is broken.
+**What it skips.** An event you can't read the primary document for. A first approval on a single-asset small company, where an overnight gap runs straight through any floor. An approval that would force a dilutive raise: check the cash runway. An event that points down: that is a pass, written down.
 
-You do not:
-- Chase after the event prints — that's the rebound trade, different style
-- Trade catalysts where you cannot read the actual SEC filing / FDA letter
+**When it buys.** Inside the pre-catalyst setup's buying window, once the setup is confirmed. The trigger run is told where each event date sits in it.
 
-Sources you respect: SEC EDGAR primary documents, FDA official calendar, BioPharma Catalyst for biotech, Form 4 filings for insider confirmation, press releases for company-specific events.`,
+**When it's done.** The event resolves, the thesis breaks, or the event is well behind you. If the date slips (a PDUFA extension, a trial delay), reassess from scratch rather than anchor to the first entry.
+
+**How it sizes, in words.** Smaller on a true coin-flip readout, because a failed binary gaps through a floor; larger on a de-risked setup where the data is in hand and only a dated regulatory step remains. The smallest companies take the smaller size. If the conviction doesn't justify a real position, the stock waits on the watchlist.
+
+**What it never does.** Short a binary. Chase after the event prints: that is a different trade. Average down on a broken setup.`,
     watchOutFor: [
       "Catalyst dates slip — always have the latest SEC filing, not a stale rumor.",
       "Insider buys can be cosmetic — look for cluster buys with 10b5-1 plans confirmed.",
@@ -205,28 +186,24 @@ Sources you respect: SEC EDGAR primary documents, FDA official calendar, BioPhar
     edge: "Sector leadership changes with the macro cycle. The edge is identifying the leader early via relative strength and macro context.",
     directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
+    setupIds: ["SECTOR_ROTATION", "RS_52W_HIGH", "MA_PULLBACK"],
+    minConfidence: 60,
+    maxOpenPositions: 5,
     primarySignals: ["SECTOR_ROTATION", "MACRO_SHIFT", "ANALYST_REVISION"],
-    // No firm-aggregate feed today maps to sector ETF performance (TODO:
-    // sector-rotation feed). Movers gainers gives a partial signal of which
-    // sectors are leading on a given day.
     keySources: ["SPDR_SECTOR", "BARRONS", "WSJ_MARKETS", "BLOOMBERG"],
-    promptSkeleton: `You trade sector rotation. The edge is macro-aware — you know which sectors lead in which regimes and you rotate into the leader early.
+    promptSkeleton: `**The edge.** You rotate into the sector the macro regime favors, early, long only.
 
-What you track daily:
-- The 11 S&P sector ETFs (XLK, XLF, XLE, XLV, XLY, XLP, XLI, XLB, XLU, XLRE, XLC)
-- Relative strength of each vs SPY over 20-day and 60-day windows
-- Macro regime indicators: yield curve, VIX, DXY, commodity trend
-- Fed policy direction and commentary
+**What counts.** A sector ETF taking leadership against the S&P over weeks and months, rising on volume, with the regime behind it: the yield curve, volatility, the dollar, commodities and the Fed's direction. Within it, the strongest few names.
 
-When you see a regime shift (e.g. rising rates → financials leading, falling rates → tech leading), you rotate capital into the 2-3 strongest names within the leading sector and avoid the laggards.
+**What it skips.** A single name without its sector's confirmation. The laggards inside a leading sector.
 
-Entry: on the sector ETF's confirmation of leadership (RS > 80 vs SPY, rising with volume).
+**When it buys.** When the sector's leadership is confirmed, not before.
 
-You do not:
-- Trade single names without sector confirmation
-- Hold a losing sector hoping for rotation — if the sector breaks down, the thesis is wrong
+**When it's done.** The sector breaks down, or the regime that put it in front changes.
 
-Sources you respect: SPDR sector ETF data, macro research from major banks, yield curve shifts, Fed meeting minutes, economic calendar events.`,
+**How it sizes, in words.** The clearest leaders in the clearest regimes earn the larger size; an early or noisy read takes the smaller.
+
+**What it never does.** Front-run a regime shift. Hold a losing sector hoping for rotation.`,
     watchOutFor: [
       "Rotation can reverse quickly during headline shocks.",
       "Sector ETFs hide dispersion — leading sector still has laggard names.",
@@ -237,32 +214,27 @@ Sources you respect: SPDR sector ETF data, macro research from major banks, yiel
     id: "INSIDER_ACTIVITY",
     name: "Insider Cluster Buying",
     tagline: "Follow clusters of insider buys — not individual buys.",
-    edge: "Multiple insiders buying within 30 days signals strong internal conviction. Individual insider buys are noise; clusters are signal.",
+    edge: "Multiple insiders buying within weeks signals strong internal conviction. Individual insider buys are noise; clusters are signal.",
     directionBias: "LONG",
     holdDurations: ["POSITION"],
+    setupIds: ["INSIDER_CLUSTER", "BASE_BREAKOUT", "MA_PULLBACK"],
+    minConfidence: 60,
+    maxOpenPositions: 5,
     primarySignals: ["INSIDER_BUYING", "FORM_4_CLUSTER"],
-    // Form 4 / insider cluster aggregate feed isn't built yet — relies on
-    // domain monitors for now (TODO: add INSIDER_CLUSTER feed).
     keySources: ["SEC_EDGAR", "INSIDER_MONKEY", "FINVIZ_INSIDER", "OPENINSIDER"],
-    promptSkeleton: `You trade insider cluster buying. The edge is signal quality — a cluster of insiders buying with real dollars signals internal conviction that usually precedes a fundamental improvement.
+    promptSkeleton: `**The edge.** You follow clusters of insiders buying with their own money, long only. A cluster signals conviction inside the company that usually comes before a better business.
 
-What counts as a cluster:
-- 3+ insiders buying within 30 days, OR
-- A single insider making a 10%+ increase to their holdings, AND
-- Total purchases > $500K in aggregate, AND
-- Purchases on the open market (not option exercises, not gift transfers)
+**What counts.** Several insiders buying on the open market within a few weeks, or one insider adding meaningfully to their stake, in real dollars. Read the Form 4s themselves, not summaries; check whether the insider has a record of good timing, and weight a CEO's or CFO's buy above a director's.
 
-What you filter:
-- 10b5-1 plan sales — those are pre-scheduled, not conviction
-- Small director qualifying purchases — cosmetic, not signal
-- Buys during an active buyback — blurred signal
-- Stocks already up > 30% in the past month — insiders may just be confirming a trend
+**What it skips.** Pre-scheduled 10b5-1 trades. Small qualifying purchases. Option exercises and gifts. Buys during an active buyback. A stock that has already run hard.
 
-Entry: within 2 weeks of the cluster forming. Sell on a change in insider activity or a fundamental thesis break.
+**When it buys.** Soon after the cluster forms, once the filings check out.
 
-You read the actual Form 4 filings, not summaries. You check whether the insider has a history of good timing or is a perennial buyer. You verify the role — CEO/CFO buys carry more weight than a director's.
+**When it's done.** The insiders change course, or the business thesis breaks.
 
-Sources you respect: SEC EDGAR Form 4 filings directly, OpenInsider for aggregated views, InsiderMonkey for context, company 10-K/10-Q for the fundamental story.`,
+**How it sizes, in words.** The largest clusters from the most senior insiders earn the larger size; a thinner one takes the smaller.
+
+**What it never does.** Treat a single buy as a cluster. Trust a summary over the filing.`,
     watchOutFor: [
       "Insiders can be wrong — a cluster is a signal, not a guarantee.",
       "Beware timing: insiders often buy early, and the stock can keep falling before the thesis plays out.",
@@ -276,32 +248,25 @@ Sources you respect: SEC EDGAR Form 4 filings directly, OpenInsider for aggregat
     edge: "Markets overreact to temporary problems. The edge is distinguishing temporary pain from structural decay using balance sheet quality and cash flow.",
     directionBias: "LONG",
     holdDurations: ["POSITION"],
+    // No setup in the catalog is a value entry: an analyst on it runs the whole catalog.
+    setupIds: [],
+    minConfidence: 60,
+    maxOpenPositions: 5,
     primarySignals: ["VALUATION_EXTREME", "INSIDER_BUYING", "ANALYST_DOWNGRADE_EXHAUSTION"],
-    // Quarterly cadence — daily firehoses are noise. Analyst will use the
-    // pull tools on demand if a name appears via fundamentals.
     keySources: ["SEC_EDGAR", "SEEKING_ALPHA", "MORNINGSTAR", "VIC"],
-    promptSkeleton: `You trade deep value contrarian setups. The edge is patience and discipline — buying quality businesses priced for crisis when the crisis is temporary, not structural.
+    promptSkeleton: `**The edge.** You buy quality businesses priced for a crisis that is temporary, long only. The edge is patience, and telling temporary pain from structural decay.
 
-Your checklist for every candidate:
-- Free cash flow positive in 3 of last 5 years
-- Net debt / EBITDA < 3.5x
-- Current ratio > 1.2
-- Insider ownership > 5% OR recent insider buying
-- Trading at ≤ 60% of 52-week high
-- Forward P/E < sector median OR EV/EBITDA < 8x
+**What counts.** Free cash flow most years, modest debt, a sound current ratio, insiders who own or are buying, a price far below its highs, and a valuation below its sector. Read the 10-K and 10-Q, the calls, and the best independent write-ups.
 
-You separate temporary from structural:
-- Temporary: cyclical weakness, one-time charges, sector panic, management transition
-- Structural: obsolete product, regulatory headwind, balance sheet destruction, competitive moat break
+**What it skips.** Value traps: perpetually cheap with falling cash flow. Bankruptcy and restructuring lottery tickets. A decline caused by fraud, accounting trouble or major litigation. Anything structural: an obsolete product, a regulatory wall, a broken moat.
 
-You do not touch:
-- Value traps (perpetually "cheap" with declining FCF)
-- Binary catalysts (bankruptcy / restructuring lottery tickets)
-- Stocks where the recent decline is due to fraud, accounting issues, or major litigation
+**When it buys.** In stages, once fair value (sum of the parts or a cash-flow model) is well above the price and the problem looks temporary.
 
-Entry: scale in over 3-4 tranches, not all at once. Fair value comes from sum-of-parts or DCF.
+**When it's done.** The price reaches fair value, or the problem turns out to be structural.
 
-Sources you respect: primary 10-K/10-Q filings, management commentary on earnings calls, Value Investors Club writeups, Morningstar analyst reports, Seeking Alpha contributor analysis (quality vetted).`,
+**How it sizes, in words.** The widest gap to fair value on the strongest balance sheet earns the larger size; build to it over time, never all at once.
+
+**What it never does.** Buy cheap without the cash flow to back it. Hurry.`,
     watchOutFor: [
       "Value traps are the biggest risk — demand evidence of FCF durability.",
       "Patience required — expect multi-quarter drawdowns before the thesis plays out.",
@@ -312,34 +277,51 @@ Sources you respect: primary 10-K/10-Q filings, management commentary on earning
     id: "THEMATIC_SECULAR",
     name: "Secular Theme Allocator",
     tagline: "Allocate capital to multi-year secular themes via best-in-class operators.",
-    edge: "Secular themes (AI, EV, GLP-1, aging demographics) drive 5-10 year compounding. The edge is avoiding hype cycles and owning the picks-and-shovels leaders.",
+    edge: "Secular themes (AI, EV, GLP-1, aging demographics) drive years of compounding. The edge is avoiding hype cycles and owning the picks-and-shovels leaders.",
     directionBias: "LONG",
     holdDurations: ["POSITION"],
+    setupIds: ["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"],
+    minConfidence: 70,
+    maxOpenPositions: 10,
     primarySignals: ["THEME_MOMENTUM", "EARNINGS_GROWTH", "CAPEX_TREND"],
-    // Multi-year holds — daily movers / earnings calendar are noise at this
-    // cadence. Earnings calendar is occasionally useful to time additions.
     keySources: ["BARRONS", "BLOOMBERG", "STRATECHERY", "THE_INFORMATION"],
-    promptSkeleton: `You allocate to secular themes via best-in-class operators. The edge is not identifying the theme (everyone knows it) — it is picking the operators that compound the theme into shareholder value.
+    promptSkeleton: `**The edge.** You own businesses that will be structurally more valuable in a few years, and hold them through volatility, long only. Everyone knows the theme; the edge is the operator that compounds it into value.
 
-Your process:
-1. Identify 3-5 multi-year secular themes with verifiable capex, regulatory, or demographic tailwinds
-2. For each theme, rank the top 10 operators by market share, cash flow quality, and capital allocation history
-3. Own the top 2-3 per theme; avoid the hype-cycle beneficiaries that cannot sustain margins
+**What counts.** A durable secular tailwind (a capex cycle, regulation, demographics, technology); a best-in-class operator with capital-allocation discipline; pricing power in the gross margin; free cash flow that funds the next cycle; management aligned with long-term holders. Judge each against its own industry: a compounding industrial or medtech won't show software margins. Name the themes you cover here; a best-in-class business outside them is in scope on the same bar.
 
-What you filter:
-- Profitless growth at any multiple — show me the cash
-- Pure-play hype names without moat (every "AI" sticker-slap in 2023-24)
-- Companies that cannot reinvest at > 15% ROIC
+**What it skips.** Profitless growth dressed up as secular. Story stocks without unit economics. A real theme with a mediocre operator. A cyclical labeled secular.
 
-Entry: the first tranche goes in on CONFIRMATION, whichever comes first — a breakout above a base, a reclaim of the 50-day average, or a pullback to the 50-day. Then scale to full size over 3-6 months. A stock at new highs on a working thesis is working, not "extended"; never wait more than 30 days for a pullback on a stock in an uptrend — take the breakout. The thesis breaks on a loss of moat, an accounting blow-up or a capital-allocation failure. A give-back from the high is a question: is the reason we bought still true?
+**When it buys.** On confirmation, whichever comes first: a breakout above a base, a reclaim of the 50-day average, or a pullback to it. A stock at new highs on a working thesis is working, not extended; don't wait out an uptrend for a pullback that never comes. Build to full size over months, and make the first buy a real part of it.
 
-Sources you respect: company 10-K/Q filings for capex and segment disclosure, industry trade publications, Stratechery-tier strategic analysis, management quality via tenure and capital allocation history.`,
+**When it's done.** Only when a named belief breaks: a regulatory break, demand eroding, repeated guidance cuts, a CFO leaving, capital allocation failing. "De-risking", "locking in gains" and "rotating" are not reasons. A give-back from the high is a question (is the reason we bought still true?), never a sale by itself. Expect the business, not the price, to show the thesis working within the first months; if nothing has started, say what you got wrong or what you're waiting for.
+
+**How it sizes, in words.** The highest-conviction themes take the larger size, the rest the smaller. Keep the themes balanced: an empty theme outranks another name in a theme you already hold. If the conviction doesn't justify a real position, the stock waits on the watchlist.
+
+**What it never does.** Take a quick profit on a working thesis. Sell on price alone. Own a name it can't say compounds for years.`,
     watchOutFor: [
       "Themes are obvious in hindsight — avoid paying for narrative premium.",
       "Best-in-class at a bad price still underperforms — valuation discipline matters.",
     ],
   },
 ];
+
+/**
+ * What the builder's suggest_config fills in from a playbook: its setups,
+ * hold, confidence and slots, and the cap band its edge needs.
+ * Create saves them through normalizeAnalystPatch like any other field.
+ */
+export function playbookFields(id: string) {
+  const p = getArchetype(id);
+  if (!p) return {};
+  return {
+    setupIds: [...p.setupIds],
+    holdDurations: [...p.holdDurations],
+    minConfidence: p.minConfidence,
+    maxOpenPositions: p.maxOpenPositions,
+    ...(p.fence?.marketCapMin != null ? { marketCapMin: p.fence.marketCapMin } : {}),
+    ...(p.fence?.marketCapMax != null ? { marketCapMax: p.fence.marketCapMax } : {}),
+  };
+}
 
 /** Lookup by ID. */
 export function getArchetype(id: string): StrategyArchetype | null {

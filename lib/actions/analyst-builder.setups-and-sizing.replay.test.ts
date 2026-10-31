@@ -37,13 +37,14 @@ jest.mock("@/lib/prisma", () => {
 
 import { createAnalystFromBuilder, updateAnalystFromBuilder } from "@/lib/actions/analyst.actions";
 import { applyChange, editorPanelStart, toApplyInput, toCreateInput, toFormValues } from "@/components/analysts/builder-config";
-import { builderConfigSchema, editorConfigSchema } from "@/lib/agent/tools/suggest-config";
+import { builderConfigSchema, editorConfigSchema, suggestConfigFor } from "@/lib/agent/tools/suggest-config";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 const SETUPS = ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"];
 
 // The PEAD Specialist row, as the builder's suggest_config call.
 const PEAD_CALL = {
+  playbook: "EARNINGS_DRIFT",
   name: "PEAD Specialist",
   description: "Buys clean beat-and-raise earnings prints LONG-only across all sectors.",
   analystPrompt: "Post-earnings drift, long only.",
@@ -73,7 +74,8 @@ beforeEach(() => {
 });
 
 it("Create saves the setups and all four sizing fields, and seeds the signature setup's reviews", async () => {
-  const proposal = builderConfigSchema.parse(PEAD_CALL) as AgentConfigData;
+  // The builder names the playbook; the tool fills in its setups.
+  const proposal = (await suggestConfigFor("builder").execute!(builderConfigSchema.parse(PEAD_CALL) as never, { toolCallId: "t", messages: [] })) as AgentConfigData;
   expect(toFormValues(proposal).setupIds).toEqual(SETUPS); // the panel shows the Setups row
   // The builder types no money or direction; the owner sets the sizes on the panel.
   expect(proposal).not.toHaveProperty("maxPositionSize");
