@@ -494,7 +494,7 @@ This chat is pinned to one analyst. Every write tool (place_trade, close_positio
 
   • Analyst ID: \`${scope.id}\`
 ${universeLines(scope).map((l) => `  • ${l}`).join("\n")}
-  The market cap band is a HARD fence. A name outside it cannot be traded by this seat, so it is not a candidate however good the setup reads. Nothing downstream rejects an out-of-band thesis for you: record_thesis has no market-cap check, so an out-of-band name minted here becomes a watchlist item that can never be acted on.
+  The market cap band is this analyst's range, and you keep to it: a name outside it is not a candidate however good the setup reads. Nothing in the code stops a trade outside it (place_trade checks only the exclusion list, and record_thesis checks neither), so the check is yours.
   • Watchlist: ${scope.watchlist.join(", ") || "(empty)"}
   • Sizing: omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
 

@@ -25,7 +25,7 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   daily: 7_961,
   tactical: 13_480,
   writer: 14_133,
-  chat: 34_612,
+  chat: 34_566,
 };
 
 /**
