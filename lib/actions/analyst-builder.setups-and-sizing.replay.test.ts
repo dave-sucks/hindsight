@@ -116,3 +116,8 @@ it("Apply leaves a field the proposal doesn't name alone", async () => {
   const data = update.mock.calls[0][0].data;
   for (const k of ["setupIds", "riskPct", "minPositionSize", "maxPositionTotal"]) expect(data).not.toHaveProperty(k);
 });
+
+it("a proposal that names no direction is created long", async () => {
+  await createAnalystFromBuilder(toCreateInput({ name: "x", analystPrompt: "x" }));
+  expect(create.mock.calls[0][0].data).toMatchObject({ directionBias: "LONG" });
+});

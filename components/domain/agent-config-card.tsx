@@ -75,7 +75,7 @@ export function AgentConfigCard({
   name,
   description,
   analystPrompt,
-  directionBias = "BOTH",
+  directionBias = "LONG",
   holdDurations = [],
   setupIds = [],
   sectors = [],

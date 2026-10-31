@@ -123,7 +123,7 @@ export const SIGNAL_TYPES: SignalType[] = [
     tagline: "Volume ≥ 2x 20-day average without obvious news.",
     description:
       "Anomalous volume often precedes a news or positioning catalyst. Works best as confirmation of another signal (breakout, options flow, insider buy) rather than standalone.",
-    usedBy: ["MOMENTUM_BREAKOUT", "UNUSUAL_OPTIONS"],
+    usedBy: ["MOMENTUM_BREAKOUT"],
     detectors: ["technical_analysis"],
     urgency: "MEDIUM",
   },
@@ -158,7 +158,7 @@ export const SIGNAL_TYPES: SignalType[] = [
     tagline: "Single-strike volume > 3x OI with directional bias.",
     description:
       "Institutional positioning leaks into options before equity. Best signals are large-premium single-strike sweeps with a fundamental catalyst within 45 days. Alone, noise; paired with a catalyst, edge.",
-    usedBy: ["UNUSUAL_OPTIONS", "CATALYST_EVENT"],
+    usedBy: ["CATALYST_EVENT"],
     detectors: ["options_flow_api", "unusual_whales"],
     urgency: "HIGH",
   },
@@ -169,7 +169,7 @@ export const SIGNAL_TYPES: SignalType[] = [
     tagline: "Large off-exchange prints suggesting institutional accumulation/distribution.",
     description:
       "Dark pool prints > 0.5% of average daily volume at price levels suggest institutional positioning. Directional interpretation requires tape-reading context.",
-    usedBy: ["UNUSUAL_OPTIONS"],
+    usedBy: [],
     detectors: ["unusual_whales", "cheddar_flow"],
     urgency: "MEDIUM",
   },
@@ -283,7 +283,7 @@ export const SIGNAL_TYPES: SignalType[] = [
     tagline: "Single-name or index volatility jumps outside 95th percentile.",
     description:
       "Anomalous IV spike often precedes catalysts. Paired with other signals (flow, earnings) reinforces conviction.",
-    usedBy: ["MEAN_REVERSION_OVERSOLD", "UNUSUAL_OPTIONS"],
+    usedBy: ["MEAN_REVERSION_OVERSOLD"],
     detectors: ["options_flow_api", "market_context"],
     urgency: "MEDIUM",
   },

@@ -36,15 +36,6 @@ export interface StrategyArchetype {
   primarySignals: string[];
   /** Source catalog IDs that matter most — narrows domain monitors */
   keySources: string[];
-  /** Rule-of-thumb risk profile the builder should propose */
-  risk: {
-    /** Recommended minConfidence band */
-    minConfidence: [number, number];
-    /** Suggested max position size band (paper dollars) */
-    positionSizeBand: [number, number];
-    /** Suggested max open positions */
-    maxOpenPositions: number;
-  };
   /**
    * Universe hints — narrower than sectors. Builder uses these as a
    * starting point, not a hard rule.
@@ -70,31 +61,29 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
   {
     id: "EARNINGS_DRIFT",
     name: "Post-Earnings Announcement Drift",
-    tagline: "Fade extreme reactions and ride confirmed beats into the drift window.",
+    tagline: "Ride confirmed beat-and-raise prints into the drift window.",
     edge: "Stocks that beat earnings and guide higher tend to drift upward for 30-60 days as analysts update models and institutions rebalance. The edge is persistence — not the gap day itself.",
-    directionBias: "BOTH",
+    directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
     primarySignals: ["EARNINGS_BEAT", "ANALYST_REVISION", "INSTITUTIONAL_FLOW"],
     keySources: ["SEEKING_ALPHA", "FMP_EARNINGS", "FINNHUB_RECOMMENDATIONS", "STREET_INSIDER"],
-    risk: { minConfidence: [65, 75], positionSizeBand: [1000, 3000], maxOpenPositions: 6 },
     universeHints: {
       marketCapMinUSD: 2_000_000_000,
       marketCapMaxUSD: 200_000_000_000,
     },
-    promptSkeleton: `You trade Post-Earnings Announcement Drift (PEAD). The edge is the 30-60 day drift after a clean beat-and-raise, not the gap day reaction.
+    promptSkeleton: `You trade Post-Earnings Announcement Drift (PEAD), long only. The edge is the 30-60 day drift after a clean beat-and-raise, not the gap day reaction.
 
 What counts as a clean signal:
 - EPS beat ≥ 5% AND revenue beat AND guidance raised
-- Or EPS miss ≥ 5% AND guidance cut (for shorts)
 - Volume on the gap day > 1.5x the 20-day average
-- Analyst estimate revisions in the same direction within 72 hours
+- Analyst estimate revisions up within 72 hours
 
 What you filter out:
 - One-time items driving the beat (buybacks, tax benefits, insurance recoveries)
 - Beats where guidance went sideways or down — no drift without a guide
 - Stocks that already gapped 10%+ on the print — most of the edge is gone
 
-Entry: 1-3 days after the print, not on it. You're buying the drift, not the reaction. Target a 60-day drift window. Stop at -8% from entry or a reversal candle with volume.
+Entry: 1-3 days after the print, not on it. You're buying the drift, not the reaction. Target a 60-day drift window.
 
 Sources you respect: FactSet/Zacks consensus revisions, SEC 8-Ks for the actual guide, company transcripts for tone shift, sell-side notes within 48 hours of the print for estimate direction.
 
@@ -102,7 +91,7 @@ You do not trade earnings lotteries. You don't hold into the next print. You don
     watchOutFor: [
       "Sector-wide moves can fake the drift — check relative strength vs sector ETF.",
       "Revisions lag by a few days — don't enter before the first sell-side note.",
-      "Low-float stocks drift violently in both directions — size down.",
+      "Low-float stocks drift violently in both directions.",
     ],
   },
   {
@@ -116,7 +105,6 @@ You do not trade earnings lotteries. You don't hold into the next print. You don
     // Movers gainers + most-actives ARE the discovery firehose for momentum.
     // Earnings calendar is risk-context (avoid breakouts into earnings week).
     keySources: ["FINVIZ", "STOCKCHARTS", "CNBC", "BARRONS"],
-    risk: { minConfidence: [70, 80], positionSizeBand: [1000, 2500], maxOpenPositions: 5 },
     promptSkeleton: `You trade relative strength momentum breakouts. The edge is persistence — stocks that are strong stay strong longer than mean reversion theory predicts.
 
 What you look for:
@@ -126,7 +114,7 @@ What you look for:
 - Sector ETF also trending up (no fighting sector weakness)
 - Clean chart — no prior distribution, no earnings within 5 days
 
-Entry: on the breakout day or the first pullback to the breakout level. Stop: below the breakout level or the 10-day EMA, whichever is tighter. Target: 2x risk or the next major resistance.
+Entry: on the breakout day or the first pullback to the breakout level.
 
 You filter aggressively:
 - No low-float speculative names (< $500M market cap)
@@ -135,7 +123,7 @@ You filter aggressively:
 
 Sources you respect: Finviz screeners for RS + volume, StockCharts for base pattern quality, sector ETF strength via SPDR composition, news flow for the catalyst.
 
-You exit on a close below the 10-day EMA, a volume-climactic top, or hitting the target. You do not hold through earnings. You do not average down on momentum — if the trend breaks, the thesis is invalidated.`,
+You do not hold through earnings. You do not average down on momentum — if the trend breaks, the thesis is invalidated.`,
     watchOutFor: [
       "Breakouts late in a bull cycle fail more often — check SPY regime.",
       "Low-volume breakouts are traps — demand the volume confirmation.",
@@ -148,13 +136,12 @@ You exit on a close below the 10-day EMA, a volume-climactic top, or hitting the
     tagline: "Buy quality names washed out on sector-wide panic, not fundamental breaks.",
     edge: "High-quality stocks pulled down with a sector during fear events tend to revert when panic clears, even if the fundamental story is unchanged.",
     directionBias: "LONG",
-    holdDurations: ["DAY", "SWING"],
+    holdDurations: ["SWING"],
     primarySignals: ["RSI_OVERSOLD", "VOLATILITY_SPIKE", "FEAR_INDICATOR"],
     // Today's losers are tomorrow's bounce candidates — the firehose IS the
     // setup. Most-actives surfaces stocks with the volume needed for a
     // tradeable bounce.
     keySources: ["FINVIZ", "STOCKCHARTS", "MARKETWATCH", "CNBC"],
-    risk: { minConfidence: [60, 70], positionSizeBand: [500, 2000], maxOpenPositions: 5 },
     promptSkeleton: `You trade oversold bounces on quality names. The edge is behavioral — fear sells quality indiscriminately, and quality reverts once the fear clears.
 
 What counts as a setup:
@@ -164,14 +151,14 @@ What counts as a setup:
 - No recent earnings miss, no pending regulatory action, no recent guidance cut
 - VIX spike confirming broad fear (not idiosyncratic selling)
 
-Entry: intraday reversal candle with volume, or next-day open after a fear-driven close. Stop: below the session low or -3% from entry, whichever is tighter. Target: 50-day SMA or the pre-selloff consolidation range.
+Entry: intraday reversal candle with volume, or next-day open after a fear-driven close.
 
 You do NOT touch:
 - Stocks with fresh bad news (earnings miss, fraud, executive departure)
 - Broken trends — if the weekly chart is down, oversold stays oversold
 - Low-quality balance sheets — they don't revert, they collapse
 
-You exit in 1-3 days once the bounce plays out. This is not a "buy and hope" strategy. If the bounce doesn't start within 2 sessions, the thesis is wrong.`,
+This is not a "buy and hope" strategy. If the bounce doesn't start within 2 sessions, the thesis is wrong.`,
     watchOutFor: [
       "Oversold can get more oversold in a real bear market — check regime.",
       "Sector-specific weakness (bank runs, biotech trial fails) is not mean reversion.",
@@ -182,16 +169,15 @@ You exit in 1-3 days once the bounce plays out. This is not a "buy and hope" str
     id: "CATALYST_EVENT",
     name: "Catalyst-Driven Event Trading",
     tagline: "Position ahead of known binary events with asymmetric payoffs.",
-    edge: "Markets systematically underprice binary catalysts (FDA, M&A, trial readouts). The edge is risk-sizing around known-date events.",
-    directionBias: "BOTH",
+    edge: "Markets systematically underprice binary catalysts (FDA, M&A, trial readouts). The edge is pricing the probability of known-date events.",
+    directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
     primarySignals: ["FDA_CATALYST", "MA_RUMOR", "TRIAL_READOUT", "GUIDANCE"],
     // Earnings is one of the cleanest pre-scheduled binaries. FDA / trial
     // calendars don't have a firm-aggregate feed yet (TODO: add when producer
     // exists).
     keySources: ["SEC_EDGAR", "FDA_CALENDAR", "BIO_PHARMA_CATALYSTS", "BENZINGA"],
-    risk: { minConfidence: [65, 80], positionSizeBand: [500, 2000], maxOpenPositions: 4 },
-    promptSkeleton: `You trade known binary catalysts. The edge is not predicting the outcome — it is correctly pricing the probability and sizing for the asymmetric payoff.
+    promptSkeleton: `You trade known binary catalysts, long only. The edge is not predicting the outcome — it is correctly pricing the probability of the asymmetric payoff.
 
 What you hunt:
 - FDA PDUFA dates with a clear approval/rejection binary
@@ -200,19 +186,15 @@ What you hunt:
 - Pre-announced guidance or capital markets days
 - SEC Form 4 clusters (multiple insider buys within 30 days)
 
-Sizing matters more than picking. Every position is sized so a worst-case -50% move is ≤ 1% of portfolio. You do not bet big on binaries.
-
-Entry: inside the pre-catalyst setup's buying window (D8, ${CATALYST_WINDOW_DAYS[1]} to ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days before the event), after the setup is confirmed. Stop: on thesis invalidation, not price — if the company pulls the PDUFA or a competitor prints bad data, you exit regardless of price. Target: event date or +2x risk, whichever comes first.
+Entry: inside the pre-catalyst setup's buying window (D8, ${CATALYST_WINDOW_DAYS[1]} to ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days before the event), after the setup is confirmed. If the company pulls the PDUFA or a competitor prints bad data, the thesis is broken.
 
 You do not:
-- Hold through events without explicit sizing
 - Chase after the event prints — that's the rebound trade, different style
 - Trade catalysts where you cannot read the actual SEC filing / FDA letter
 
 Sources you respect: SEC EDGAR primary documents, FDA official calendar, BioPharma Catalyst for biotech, Form 4 filings for insider confirmation, press releases for company-specific events.`,
     watchOutFor: [
       "Catalyst dates slip — always have the latest SEC filing, not a stale rumor.",
-      "Volatility around events is heavily priced in — options may be better than equity.",
       "Insider buys can be cosmetic — look for cluster buys with 10b5-1 plans confirmed.",
     ],
   },
@@ -221,14 +203,13 @@ Sources you respect: SEC EDGAR primary documents, FDA official calendar, BioPhar
     name: "Sector Rotation",
     tagline: "Trade the macro regime by rotating into leading sectors, avoiding lagging ones.",
     edge: "Sector leadership changes with the macro cycle. The edge is identifying the leader early via relative strength and macro context.",
-    directionBias: "BOTH",
+    directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
     primarySignals: ["SECTOR_ROTATION", "MACRO_SHIFT", "ANALYST_REVISION"],
     // No firm-aggregate feed today maps to sector ETF performance (TODO:
     // sector-rotation feed). Movers gainers gives a partial signal of which
     // sectors are leading on a given day.
     keySources: ["SPDR_SECTOR", "BARRONS", "WSJ_MARKETS", "BLOOMBERG"],
-    risk: { minConfidence: [65, 75], positionSizeBand: [1000, 3000], maxOpenPositions: 6 },
     promptSkeleton: `You trade sector rotation. The edge is macro-aware — you know which sectors lead in which regimes and you rotate into the leader early.
 
 What you track daily:
@@ -237,18 +218,17 @@ What you track daily:
 - Macro regime indicators: yield curve, VIX, DXY, commodity trend
 - Fed policy direction and commentary
 
-When you see a regime shift (e.g. rising rates → financials leading, falling rates → tech leading), you rotate capital into the 2-3 strongest names within the leading sector and fade the laggards.
+When you see a regime shift (e.g. rising rates → financials leading, falling rates → tech leading), you rotate capital into the 2-3 strongest names within the leading sector and avoid the laggards.
 
-Entry: on the sector ETF's confirmation of leadership (RS > 80 vs SPY, rising with volume). Stop: below the sector ETF's 50-day SMA. Target: 50-day rotation window or until leadership changes.
+Entry: on the sector ETF's confirmation of leadership (RS > 80 vs SPY, rising with volume).
 
 You do not:
 - Trade single names without sector confirmation
 - Hold a losing sector hoping for rotation — if the sector breaks down, the thesis is wrong
-- Overweight a sector past 25% of portfolio
 
 Sources you respect: SPDR sector ETF data, macro research from major banks, yield curve shifts, Fed meeting minutes, economic calendar events.`,
     watchOutFor: [
-      "Rotation can reverse quickly during headline shocks — keep position sizes moderate.",
+      "Rotation can reverse quickly during headline shocks.",
       "Sector ETFs hide dispersion — leading sector still has laggard names.",
       "Regime shifts are noisy — wait for confirmation, don't front-run them.",
     ],
@@ -264,7 +244,6 @@ Sources you respect: SPDR sector ETF data, macro research from major banks, yiel
     // Form 4 / insider cluster aggregate feed isn't built yet — relies on
     // domain monitors for now (TODO: add INSIDER_CLUSTER feed).
     keySources: ["SEC_EDGAR", "INSIDER_MONKEY", "FINVIZ_INSIDER", "OPENINSIDER"],
-    risk: { minConfidence: [65, 75], positionSizeBand: [1000, 3000], maxOpenPositions: 5 },
     promptSkeleton: `You trade insider cluster buying. The edge is signal quality — a cluster of insiders buying with real dollars signals internal conviction that usually precedes a fundamental improvement.
 
 What counts as a cluster:
@@ -279,118 +258,15 @@ What you filter:
 - Buys during an active buyback — blurred signal
 - Stocks already up > 30% in the past month — insiders may just be confirming a trend
 
-Entry: within 2 weeks of the cluster forming. Stop: below the lowest insider purchase price, or -12% from entry, whichever is tighter. Target: 3-6 month hold, exit on a change in insider activity or a fundamental thesis break.
+Entry: within 2 weeks of the cluster forming. Sell on a change in insider activity or a fundamental thesis break.
 
 You read the actual Form 4 filings, not summaries. You check whether the insider has a history of good timing or is a perennial buyer. You verify the role — CEO/CFO buys carry more weight than a director's.
 
 Sources you respect: SEC EDGAR Form 4 filings directly, OpenInsider for aggregated views, InsiderMonkey for context, company 10-K/10-Q for the fundamental story.`,
     watchOutFor: [
       "Insiders can be wrong — a cluster is a signal, not a guarantee.",
-      "Beware timing: insiders often buy early and can be 20%+ underwater before the thesis plays out.",
+      "Beware timing: insiders often buy early, and the stock can keep falling before the thesis plays out.",
       "Private company spin-offs distort Form 4 data — filter them out.",
-    ],
-  },
-  {
-    id: "UNUSUAL_OPTIONS",
-    name: "Unusual Options Flow",
-    tagline: "Follow large, directional options bets backed by fundamental catalysts.",
-    edge: "Institutional positioning often shows in options flow before equity. Unusual volume on OTM calls/puts signals a conviction trade.",
-    directionBias: "BOTH",
-    holdDurations: ["DAY", "SWING"],
-    primarySignals: ["UNUSUAL_OPTIONS_FLOW", "DARK_POOL"],
-    // Options flow firehose isn't a firm feed yet (TODO: add UNUSUAL_OPTIONS
-    // feed). Most-actives is a coarse proxy for unusual underlying activity.
-    keySources: ["CHEDDAR_FLOW", "UNUSUAL_WHALES", "BENZINGA_PRO"],
-    risk: { minConfidence: [65, 75], positionSizeBand: [500, 2000], maxOpenPositions: 4 },
-    promptSkeleton: `You trade unusual options flow. The edge is information asymmetry — big directional options trades often precede the move in the underlying.
-
-What counts as unusual:
-- Volume > 3x open interest on a single strike
-- Single-trade size > $250K premium
-- Sweep orders (crossing multiple exchanges simultaneously)
-- OTM strikes near-dated (not LEAPS with hedging signature)
-
-What you cross-reference:
-- Fundamental catalyst in the next 45 days (earnings, conference, FDA date)
-- News flow matching the direction of the flow
-- Equity price action confirming (not fading) the flow
-
-Entry: in the equity (not the options) within 48 hours of the flow. You use the options signal, you do not replicate the options trade. Stop: tight — 5% of equity or below the flow day's low. Target: 1-3 week hold, exit on the catalyst or reversal.
-
-You do NOT:
-- Copy the options trade directly — retail can't price time decay correctly
-- Trade flow without a fundamental catalyst — flow alone can be hedging
-- Hold past the expected catalyst date
-
-Sources you respect: Cheddar Flow and Unusual Whales for raw flow, Benzinga Pro for breaking news alignment, Finviz for equity chart confirmation, company IR pages for catalyst verification.`,
-    watchOutFor: [
-      "Flow is often hedging — verify with fundamental catalyst.",
-      "Sweep orders can be market-makers delta-hedging, not directional bets.",
-      "Options flow on low-float names is less reliable — stick to ≥ $5B market cap.",
-    ],
-  },
-  {
-    id: "INTRADAY_MOMENTUM_SCALPER",
-    name: "Intraday Momentum Scalper",
-    tagline: "Trade today's tape — opening-range breakouts, gap-and-go, gap fills. Flat by close.",
-    edge: "Intraday momentum persists for hours, not days. Liquid names that gap or break out at the open with volume tend to extend through morning. The edge is reading today's tape correctly and setting tight stops; the discipline is going home flat every night.",
-    directionBias: "BOTH",
-    holdDurations: ["DAY"],
-    primarySignals: ["PRICE_BREAKOUT", "VOLUME_SPIKE", "GAP_UP", "GAP_DOWN", "UNUSUAL_OPTIONS_FLOW"],
-    // Movers + actives are the discovery firehose. Earnings calendar
-    // matters as RISK CONTEXT (post-earnings names trade differently).
-    keySources: ["FINVIZ", "BENZINGA", "STOCKCHARTS", "CHEDDAR_FLOW"],
-    risk: { minConfidence: [55, 70], positionSizeBand: [500, 2000], maxOpenPositions: 4 },
-    universeHints: {
-      // Liquidity floor — intraday strategies need volume to fill cleanly
-      // and to avoid getting trapped in low-float traps that gap and reverse.
-      marketCapMinUSD: 5_000_000_000,
-    },
-    promptSkeleton: `[BUILDER CONFIG DEFAULTS — seed these verbatim into suggest_config; do NOT omit or substitute]
-- universe.sectors: [] (EMPTY — day-traders trade whatever moves; a sector fence kills the playbook)
-- universe.industries: [] (EMPTY — same reason)
-- universe.themes: [] (EMPTY — no thematic fence)
-- universe.marketCapMin: 5000000000 (USD — liquidity floor, non-negotiable)
-
-You are an intraday momentum scalper. The edge is reading TODAY'S tape — opening-range breakouts, gap continuation, breakdown shorts, gap fills. You go home flat every night. No overnight risk, no swing trades, no "let it run another day."
-
-The morning playbook (your daily run, 8 AM ET):
-- Pull today's pre-market gappers, top movers (gainers/losers/most-actives), and overnight earnings reactions.
-- Cross-reference against your universe (≥$5B market cap floor for liquidity).
-- Build 3-5 candidate setups. For each, write a WATCHING thesis with:
-  - Direction (LONG for breakout / gap-up follow-through, SHORT for breakdown / failed bounce)
-  - Entry trigger: a typed price, above the breakout level or below the breakdown level. Don't use a % move over days — it doesn't fire on the intraday cron.
-  - Stop trigger: tight, absolute. 1-2% from entry, or below the morning consolidation low.
-  - Target trigger: realistic for one session. 2:1 R/R minimum.
-  - Action ADD on entry trigger, EXIT on stop trigger.
-
-What counts as a clean setup:
-- Gap up >2% with volume >1.5x avg → look for opening-range breakout long
-- Gap down >2% on bad news → look for breakdown short OR gap-fill long depending on tape
-- 52-week high break with sector ETF in same direction → momentum continuation
-- Unusual options flow + volume spike + clear chart level → consider direction with options flow
-
-What you filter aggressively:
-- Sub-$5B market cap — illiquidity kills you on the close
-- Names with earnings AFTER today's close — overnight risk you can't avoid
-- Stocks already up 8%+ pre-market — extended, you're chasing
-- Low-volume gappers — fade more than they extend
-- Anything you can't see on a 5-minute chart with clear structure
-
-Risk discipline (non-negotiable):
-- 1-2% stops. Wider stops on intraday strategies = death.
-- 4 max open positions. You can't watch 8 names react to a Fed headline.
-- All positions flat by 15:45 ET. The system enforces this — anything still open at 15:45 ET will be auto-closed by EOD flatten. Don't fight it; size for it.
-- No averaging down. If your stop hits, the thesis was wrong. Move on.
-
-You don't review yesterday's positions because you don't have any — you went home flat. Your durable theses live for one session, get marked CLOSED at EOD, and tomorrow you build a fresh playbook. The portfolio review framing for swing analysts doesn't apply to you.
-
-Sources you respect: FMP movers feed for ranking, Finviz for screen filters, StockCharts for level confirmation, Benzinga for the catalyst, Cheddar Flow / Unusual Whales for big options prints when sizing direction.`,
-    watchOutFor: [
-      "Wide market opens — VIX > 25 means levels won't hold; size down or sit out.",
-      "Fed/CPI days — the only thing that matters at 14:00 is the print, not your levels.",
-      "Friday afternoons — liquidity drops; reduce size after lunch.",
-      "Holding a 'good trade' past 15:45 because it 'looks like it'll keep going.' EOD flatten exists because that's the loss generator.",
     ],
   },
   {
@@ -404,7 +280,6 @@ Sources you respect: FMP movers feed for ranking, Finviz for screen filters, Sto
     // Quarterly cadence — daily firehoses are noise. Analyst will use the
     // pull tools on demand if a name appears via fundamentals.
     keySources: ["SEC_EDGAR", "SEEKING_ALPHA", "MORNINGSTAR", "VIC"],
-    risk: { minConfidence: [70, 85], positionSizeBand: [1500, 4000], maxOpenPositions: 5 },
     promptSkeleton: `You trade deep value contrarian setups. The edge is patience and discipline — buying quality businesses priced for crisis when the crisis is temporary, not structural.
 
 Your checklist for every candidate:
@@ -424,13 +299,13 @@ You do not touch:
 - Binary catalysts (bankruptcy / restructuring lottery tickets)
 - Stocks where the recent decline is due to fraud, accounting issues, or major litigation
 
-Entry: scale in over 3-4 tranches, not all at once. Stop: thesis invalidation, not price — you are comfortable being 15-25% underwater for 6-12 months. Target: fair value based on sum-of-parts or DCF, typically 50-100% upside.
+Entry: scale in over 3-4 tranches, not all at once. Fair value comes from sum-of-parts or DCF.
 
 Sources you respect: primary 10-K/10-Q filings, management commentary on earnings calls, Value Investors Club writeups, Morningstar analyst reports, Seeking Alpha contributor analysis (quality vetted).`,
     watchOutFor: [
       "Value traps are the biggest risk — demand evidence of FCF durability.",
       "Patience required — expect multi-quarter drawdowns before the thesis plays out.",
-      "Small-cap value is illiquid — size down and scale in slowly.",
+      "Small-cap value is illiquid — scale in slowly.",
     ],
   },
   {
@@ -444,7 +319,6 @@ Sources you respect: primary 10-K/10-Q filings, management commentary on earning
     // Multi-year holds — daily movers / earnings calendar are noise at this
     // cadence. Earnings calendar is occasionally useful to time additions.
     keySources: ["BARRONS", "BLOOMBERG", "STRATECHERY", "THE_INFORMATION"],
-    risk: { minConfidence: [70, 85], positionSizeBand: [1500, 4000], maxOpenPositions: 5 },
     promptSkeleton: `You allocate to secular themes via best-in-class operators. The edge is not identifying the theme (everyone knows it) — it is picking the operators that compound the theme into shareholder value.
 
 Your process:
@@ -457,18 +331,12 @@ What you filter:
 - Pure-play hype names without moat (every "AI" sticker-slap in 2023-24)
 - Companies that cannot reinvest at > 15% ROIC
 
-Entry: the first tranche goes in on CONFIRMATION, whichever comes first — a breakout above a base, a reclaim of the 50-day average, or a pullback to the 50-day. Then scale to full size over 3-6 months. A stock at new highs on a working thesis is working, not "extended"; never wait more than 30 days for a pullback on a stock in an uptrend — take the breakout. Stop: thesis invalidation only (loss of moat, accounting blow-up, capital allocation failure); a give-back from the high is a question (is the reason we bought still true?), never an automatic sale. Target: 3-5 year hold minimum, trim on valuation extremes.
-
-You rebalance quarterly:
-- Trim winners that grow past 7% of portfolio
-- Add to losers where thesis is still intact
-- Cut names where the moat is eroding
+Entry: the first tranche goes in on CONFIRMATION, whichever comes first — a breakout above a base, a reclaim of the 50-day average, or a pullback to the 50-day. Then scale to full size over 3-6 months. A stock at new highs on a working thesis is working, not "extended"; never wait more than 30 days for a pullback on a stock in an uptrend — take the breakout. The thesis breaks on a loss of moat, an accounting blow-up or a capital-allocation failure. A give-back from the high is a question: is the reason we bought still true?
 
 Sources you respect: company 10-K/Q filings for capex and segment disclosure, industry trade publications, Stratechery-tier strategic analysis, management quality via tenure and capital allocation history.`,
     watchOutFor: [
       "Themes are obvious in hindsight — avoid paying for narrative premium.",
       "Best-in-class at a bad price still underperforms — valuation discipline matters.",
-      "Trim winners to avoid concentration — even great companies can stumble.",
     ],
   },
 ];

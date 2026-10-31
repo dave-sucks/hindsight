@@ -70,25 +70,6 @@ function normalizeSuggestConfig(input: unknown): unknown {
     cfg.universe = u;
   }
 
-  // DAY-only analysts: structural defaults about the DAY workflow.
-  const holdDurations = cfg.holdDurations;
-  const isDayOnly =
-    Array.isArray(holdDurations) &&
-    holdDurations.length > 0 &&
-    holdDurations.every((h) => typeof h === "string" && h.toUpperCase() === "DAY");
-  if (isDayOnly) {
-    // Day-traders should ship with an EMPTY watchlist. The whole point of
-    // the strategy is "screen today's tape, find today's setups." A
-    // pre-seeded watchlist anchors the morning run: the agent's mental
-    // model converges on familiar names and the playbook ends up trading
-    // the same tickers other analysts already cover. Observed in production
-    // 2026-05-07 — the builder seeded MU+AMD on a day-trader's watchlist,
-    // the run came back 6/8 watchlist-matched, and the agent picked
-    // AMD/MU/SMCI (all already covered) over fresh movers like JOBY/IREN.
-    // Force-empty here regardless of what the builder agent passed.
-    cfg.watchlist = [];
-  }
-
   return cfg;
 }
 
@@ -99,8 +80,8 @@ const rawConfigSchema = z.object({
     .describe(
       "A detailed, thorough strategy prompt (at least 3-5 paragraphs) that will guide the agent during every research run. " +
       "Include: the core thesis/edge, what patterns to look for, what sources matter most, " +
-      "entry/exit criteria, risk management philosophy, what makes a trade worth taking, " +
-      "and any contrarian or unique angles. Write it as if you're briefing a brilliant junior analyst " +
+      "what makes a trade worth taking, and any contrarian or unique angles. " +
+      "Leave out stops, targets and position sizes: the setups, the settings and the account's rules own them. Write it as if you're briefing a brilliant junior analyst " +
       "who will execute this strategy autonomously every morning."
     ),
   description: z
