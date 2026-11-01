@@ -86,7 +86,7 @@ Everything the builder and the editor can call, read from `lib/agent/modes.ts`.
 `builder` and `editor` in `lib/agent/modes.ts`: `gpt-4o`, up to 25 and 20 steps. Both add `suggest_config`. Only the builder has `list_analysts`; the editor has no `get_sec_filings` or `get_catalyst_calendar`.
 
 #### Prompts
-`BUILDER_SYSTEM_PROMPT` and `buildEditorSystemPrompt` in `lib/agent/modes.ts`.
+`BUILDER_SYSTEM_PROMPT` and `buildEditorSystemPrompt` in `lib/agent/modes.ts`. Both print one shared block, `ANALYST_CHAT_RULES`: how to ask, how to pick a playbook, the fence, the watchlist, the seven-part strategy and the formatting. Each adds only its own steps.
 
 #### Saving
 `createAnalystFromBuilder` in `lib/actions/analyst.actions.ts`: the `AgentConfig` and one seed thesis per watchlist ticker (`direction: null`, `status: WATCHING`, `source: BUILDER`) in one transaction, then `seedAnalystTriggers` (`lib/agent/triggers/seed-analyst.ts`) for the signature setup's reviews. The editor saves through `updateAnalystFromBuilder`, Settings through `updateAnalystField`. All three go through `normalizeAnalystPatch`, and a new analyst starts from `NEW_ANALYST_DEFAULTS` (both in `lib/analyst-settings.ts`). Create and Apply take the panel's values through `components/analysts/builder-config.ts`, so a field the panel shows is a field that saves.
