@@ -5,7 +5,7 @@ import { thesisForTradeRow } from "@/lib/thesis/row-thesis";
 import { watchAnchorPrice } from "@/lib/thesis/watch-anchor";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
-import { getLatestPrices } from "@/lib/alpaca";
+import { getLatestPricesWithMeta } from "@/lib/alpaca";
 import { getStockCandles } from "@/lib/actions/finnhub.actions";
 import { NO_MOVES, todayEt, windowMoves, type WindowMoves } from "@/lib/portfolio/window-moves";
 import {
@@ -270,10 +270,17 @@ export async function getCoverageData(
       ...passedTheses.map((t) => t.ticker),
     ]),
   );
-  const prices = await getLatestPrices(tickers, alpacaCreds).catch(
-    () => ({}) as Record<string, number>,
-  );
-  const today = todayEt();
+  const lookup = await getLatestPricesWithMeta(tickers, alpacaCreds).catch(() => null);
+  const prices = lookup?.prices ?? ({} as Record<string, number>);
+  // The day a price belongs to: today during the session; outside it the
+  // last finished session's (Friday, on a weekend), since the price is that
+  // session's close. The 1D/5D/30D windows are measured from the closes
+  // before that day — measured from today, a Saturday read +0.00% on every
+  // row while the sheet header said −1.55%.
+  const priceDay = (tk: string) => {
+    const at = lookup?.asOf[tk];
+    return at ? todayEt(new Date(at)) : todayEt();
+  };
 
   // The day each watch opened — the Watching rows are measured from the price
   // on that day (lib/thesis/watch-anchor.ts). The same daily bars the 1D/5D/30D
@@ -351,7 +358,7 @@ export async function getCoverageData(
         }
         if (close != null && Number.isFinite(close) && close > 0) watchStartClose.set(tk, close);
       }
-      moves.set(tk, windowMoves(candles, current, today));
+      moves.set(tk, windowMoves(candles, current, priceDay(tk)));
     }),
   );
   const mv = (tk: string) => moves.get(tk) ?? NO_MOVES;
