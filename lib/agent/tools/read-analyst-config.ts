@@ -2,7 +2,7 @@
  * read_analyst_config — Principal-chat read tool.
  *
  * Returns the full configuration for one analyst (universe, prompt,
- * intelligence policy, watchlist, sizing rules, monitors). The principal
+ * watchlist, sizing rules, monitors). The principal
  * agent uses this when the user references an analyst by name and the
  * conversation needs more than the stats row from list_analysts.
  */
