@@ -192,3 +192,69 @@ describe("DOCU's 1D chart, 2026-09-30 — a quiet pre-market", () => {
     expect(points[0].close).not.toBe(66.62);
   });
 });
+
+/**
+ * MSFT, the weekend of 2026-10-31 — FINRA's test prints on the tape.
+ *
+ * From 11:00 PM Friday 2026-10-30, FINRA's extended-hours industry test
+ * (run over the production feed, Friday 11 PM to Saturday noon; again on
+ * Nov 6, Nov 20 and Dec 4) put thousands of fake prints on the consolidated
+ * tape — MSFT $417 to $627 against a $521.91 close, the newest a $445.05
+ * round lot at 00:59 ET Saturday — and 58 one-minute bars dated Saturday.
+ * On Saturday the sheet's 1D chart took Saturday as the day to show, found
+ * nothing in its 7:00–6:30 window, and said "No intraday data". The bars
+ * (Friday 3:00 PM to Saturday 1:00 AM ET) and the newest prints before
+ * Saturday 1:00 AM and before Friday 6:30 PM are the vendor's own replies.
+ */
+import msft from "@/lib/market-data/__fixtures__/alpaca-msft-1min-2026-10-30-31.json";
+
+describe("MSFT's 1D chart, the weekend of 2026-10-31 — fake overnight prints", () => {
+  type Print = [string, number, number, string, string];
+  const etDate = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const prints = () => (msft.tradesNewestFirst as Print[]).map(([t, p, s]) => ({ t, p, s }));
+  const vendor = () => {
+    asked = [];
+    global.fetch = jest.fn(async (url: string | URL) => {
+      const u = new URL(String(url));
+      asked.push(u);
+      const ms = (iso: string) => new Date(iso).getTime();
+      const start = ms(u.searchParams.get("start") ?? "2000-01-01T00:00:00Z");
+      const end = ms(u.searchParams.get("end") ?? "2100-01-01T00:00:00Z");
+      if (u.pathname.endsWith("/trades")) {
+        let rows = prints().filter((t) => ms(t.t) >= start && ms(t.t) < end);
+        if (u.searchParams.get("sort") !== "desc") rows = rows.reverse();
+        rows = rows.slice(0, Number(u.searchParams.get("limit") ?? 10000));
+        return new Response(JSON.stringify({ trades: rows, next_page_token: null }), { status: 200 });
+      }
+      const bars = toBars(msft.bars).filter((b) => ms(b.t) >= start && ms(b.t) <= end);
+      return new Response(JSON.stringify({ bars, next_page_token: null }), { status: 200 });
+    }) as unknown as typeof fetch;
+  };
+
+  it("the tape: 58 bars dated Saturday, the newest round lot a $445.05 print at 00:59 ET", () => {
+    expect(toBars(msft.bars).filter((b) => etDate(b.t) === "2026-10-31")).toHaveLength(58);
+    const newestRoundLot = prints().find((t) => t.s >= 100)!;
+    expect([etDate(newestRoundLot.t), newestRoundLot.p, newestRoundLot.s]).toEqual(["2026-10-31", 445.05, 2027]);
+  });
+
+  it("Saturday 10:00 AM: the chart shows Friday — nothing dated Saturday, no fake price on it", async () => {
+    jest.setSystemTime(new Date("2026-10-31T14:00:00Z"));
+    vendor();
+    const { getIntradayCandles } = await import("./finnhub.actions");
+    const points = await getIntradayCandles("MSFT");
+    expect(points.length).toBeGreaterThan(100);
+    expect(points.every((b) => etDate(b.date) === "2026-10-30")).toBe(true);
+    const lastDrawable = toBars(msft.bars).filter((b) => etDate(b.t) === "2026-10-30" && etMinutes(b.t) <= 18 * 60 + 30).at(-1)!;
+    expect(Date.parse(points[points.length - 1].date)).toBeGreaterThanOrEqual(Date.parse(lastDrawable.t));
+    expect(Math.min(...points.map((b) => b.low))).toBeGreaterThan(510);
+    expect(Math.max(...points.map((b) => b.high))).toBeLessThan(530);
+  });
+
+  it("Monday 7:01 AM, before the first pre-market bar: the line starts at Friday's last drawable round lot, $523, not Saturday's $445.05", async () => {
+    jest.setSystemTime(new Date("2026-11-02T12:01:00Z"));
+    vendor();
+    const { getIntradayCandles } = await import("./finnhub.actions");
+    const points = await getIntradayCandles("MSFT");
+    expect(points.map((b) => [b.date.slice(11, 16), b.close])).toEqual([["12:00", 523]]);
+  });
+});

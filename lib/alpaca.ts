@@ -412,45 +412,17 @@ export async function getSnapshots(
   return out;
 }
 
-/** The latest trade on the tape for each symbol — any hour, pre-market and after-hours prints included. */
-async function getLatestTrades(
-  symbols: string[],
-  creds?: AlpacaCredentials,
-): Promise<Record<string, { p?: number; t?: string }>> {
-  const out: Record<string, { p?: number; t?: string }> = {};
-  for (let i = 0; i < symbols.length; i += 100) {
-    const chunk = symbols.slice(i, i + 100);
-    const body = await marketDataGet<{ trades?: Record<string, { p?: number; t?: string }> }>(
-      "/trades/latest",
-      { symbols: chunk.join(",") },
-      { creds, label: `getLatestPrices(${chunk.length} symbols)` },
-    );
-    Object.assign(out, body.trades ?? {});
-  }
-  return out;
-}
-
-/** Returns the latest trade price for a US equity symbol. */
+/**
+ * The price for one symbol, in the shape the older callers take. Throws when
+ * no vendor has one. See `getLatestPricesWithMeta`.
+ */
 export async function getLatestPrice(symbol: string, creds?: AlpacaCredentials): Promise<number> {
-  const price = (await getLatestTrades([symbol.toUpperCase()], creds))[symbol.toUpperCase()]?.p;
+  const price = (await getLatestPricesWithMeta([symbol], creds)).prices[symbol];
   if (typeof price !== "number" || !(price > 0)) {
     throw new Error(`No price available for ${symbol}`);
   }
   return price;
 }
-
-/**
- * Returns latest prices for multiple symbols in one call.
- *
- *  1. Alpaca's latest trades for the whole list, one request.
- *  2. For any symbol that didn't get a price, `getStockQuote` — a different
- *     Alpaca endpoint first, then Finnhub `/quote`.
- *  3. Anything still missing is left unset — caller must handle.
- *
- * Returns a `PriceLookup`: the price map, where each price came from, and
- * when it printed (`asOf`) so a caller can say how old it is
- * (lib/market-data/quote-age).
- */
 
 export type PriceSource = "alpaca" | "finnhub" | "missing";
 
@@ -471,77 +443,55 @@ export async function getLatestPrices(
   return lookup.prices;
 }
 
+/**
+ * Prices for many symbols — the one quote path (lib/market-data/live-quote:
+ * one Alpaca snapshot call, Finnhub behind it) in the `PriceLookup` shape the
+ * pages, the portfolio read, trade sizing and proposal approval take. Keyed
+ * by the symbol as the caller spelled it. Never throws; a symbol no vendor
+ * priced is marked "missing".
+ *
+ * Until 2026-10-31 this read the tape's latest trade at any hour
+ * (`/trades/latest`). On the night of 2026-10-30 FINRA's extended-hours
+ * industry test put fake prints on the live tape — MSFT $445.05 at 00:59 ET
+ * Saturday against a $521.91 close, 17 of 31 names on the book 1% or more
+ * off — and every page reading this showed them, while the sheet header,
+ * reading the quote path, showed the close. The tests repeat on Nov 6,
+ * Nov 20 and Dec 4, and from Dec 6 the tape carries overnight prints every
+ * night. So nothing reads the raw print any more: between 9:30 and the bell
+ * the price is the latest trade with its own time; outside the session it is
+ * the last finished session's close, stamped at its bell.
+ */
 export async function getLatestPricesWithMeta(
   symbols: string[],
   creds?: AlpacaCredentials,
 ): Promise<PriceLookup> {
-  const result: Record<string, number> = {};
+  const prices: Record<string, number> = {};
   const sources: Record<string, PriceSource> = {};
   const asOf: Record<string, string> = {};
   const fetchedAt = new Date().toISOString();
+  if (symbols.length === 0) return { prices, sources, asOf, fetchedAt };
 
-  if (symbols.length === 0) {
-    return { prices: result, sources, asOf, fetchedAt };
-  }
-
-  // ── 1. Alpaca latest trades, the whole list ────────────────────────────────
-  try {
-    const trades = await getLatestTrades(symbols, creds);
-    for (const [symbol, trade] of Object.entries(trades)) {
-      if (typeof trade?.p === "number" && Number.isFinite(trade.p) && trade.p > 0) {
-        result[symbol] = trade.p;
-        sources[symbol] = "alpaca";
-        if (trade.t) asOf[symbol] = trade.t;
-      }
+  // Loaded here, not at the top: live-quote reads this file's snapshot call.
+  const { getLiveQuotes } = await import("@/lib/market-data/live-quote");
+  const quotes = await getLiveQuotes(symbols, { caller: "other", creds });
+  for (const symbol of symbols) {
+    const q = quotes[symbol.toUpperCase()]?.quote;
+    if (!q) {
+      sources[symbol] = "missing";
+      continue;
     }
-  } catch (err) {
-    console.warn(
-      `[alpaca] latest trades failed (${symbols.length} symbols), falling back to getStockQuote: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    prices[symbol] = q.c;
+    sources[symbol] = q.source;
+    if (q.t > 0) asOf[symbol] = new Date(q.t * 1000).toISOString();
   }
 
-  // ── 2. getStockQuote for anything the batch missed ─────────────────────────
-  const missing = symbols.filter((s) => result[s] === undefined);
+  const missing = symbols.filter((s) => sources[s] === "missing");
   if (missing.length > 0) {
-    try {
-      const { getStockQuote } = await import("@/lib/actions/finnhub.actions");
-      const quotes = await Promise.allSettled(
-        missing.map(async (sym) => ({ sym, quote: await getStockQuote(sym) })),
-      );
-      for (const r of quotes) {
-        if (r.status !== "fulfilled") continue;
-        const { sym, quote } = r.value;
-        const c = quote?.c;
-        if (typeof c === "number" && Number.isFinite(c) && c > 0) {
-          result[sym] = c;
-          sources[sym] = "finnhub";
-          if (typeof quote?.t === "number" && quote.t > 0) asOf[sym] = new Date(quote.t * 1000).toISOString();
-        }
-      }
-    } catch (err) {
-      console.warn(
-        `[alpaca] getStockQuote fallback failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
-  // Mark anything still missing
-  for (const sym of symbols) {
-    if (result[sym] === undefined) sources[sym] = "missing";
-  }
-
-  const okCount = Object.values(sources).filter((s) => s !== "missing").length;
-  if (okCount < symbols.length) {
     console.warn(
-      `[alpaca] getLatestPrices resolved ${okCount}/${symbols.length} symbols. Missing: ${symbols
-        .filter((s) => sources[s] === "missing")
-        .join(", ")}`,
+      `[alpaca] getLatestPrices resolved ${symbols.length - missing.length}/${symbols.length} symbols. Missing: ${missing.join(", ")}`,
     );
   }
-
-  return { prices: result, sources, asOf, fetchedAt };
+  return { prices, sources, asOf, fetchedAt };
 }
 
 // ─── Portfolio history ────────────────────────────────────────────────────────
@@ -924,9 +874,11 @@ export async function getDailyRangePcts(
 
   try {
     const res = await getSnapshots(symbols, { creds });
+    // The price is the session's, never a raw print (see getLatestPricesWithMeta).
+    const { quoteFromSnapshot } = await import("@/lib/market-data/live-quote");
+    const now = new Date();
     for (const [symbol, snap] of Object.entries(res)) {
-      const price =
-        snap?.latestTrade?.p ?? snap?.dailyBar?.c ?? snap?.prevDailyBar?.c;
+      const price = quoteFromSnapshot(snap, now)?.c;
       if (typeof price !== "number" || price <= 0) continue;
       const ranges = [snap?.dailyBar, snap?.prevDailyBar]
         .map((b) =>
