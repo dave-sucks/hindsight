@@ -4,7 +4,7 @@
  * each prompt says each of those once. Neither calls an industry or a theme
  * part of the fence: the fence is the cap band, the sectors and the exclusions.
  */
-import { ANALYST_CHAT_RULES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt } from "@/lib/agent/modes";
+import { ANALYST_CHAT_RULES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, MODES } from "@/lib/agent/modes";
 
 const PROMPTS = { builder: BUILDER_SYSTEM_PROMPT, editor: buildEditorSystemPrompt({ analystPrompt: "x" }) };
 const times = (text: string, said: RegExp) => text.match(new RegExp(said.source, "gi"))?.length ?? 0;
@@ -34,6 +34,21 @@ it("a watchlist ticker is one the user named or one checked, not only one off th
   // wrong one for its theme in another), and "from memory" was refused even when checked.
   for (const said of [/came back from get_market_movers \/ get_earnings_calendar and that you then checked/, /pad the list from memory/, /seed the watchlist from names the USER named/]) {
     expect({ said: said.source, found: said.test(PROMPTS.builder) }).toEqual({ said: said.source, found: false });
+  }
+});
+
+it("the builder names every seed source it has wherever it names one, and each prompt names only tools it has", () => {
+  // A catalyst build that seeded from get_catalyst_calendar broke a rule that named only the other two.
+  const SEEDS = ["get_market_movers", "get_earnings_calendar", "get_catalyst_calendar"];
+  expect(SEEDS.filter((t) => !(MODES.builder.toolAllowlist as readonly string[]).includes(t))).toEqual([]);
+  const naming = PROMPTS.builder.split("\n").filter((l) => l.includes("get_market_movers") && l.includes("get_earnings_calendar"));
+  expect(naming.length).toBeGreaterThan(0);
+  for (const line of naming) expect({ line, catalyst: line.includes("get_catalyst_calendar") }).toEqual({ line, catalyst: true });
+  expect(PROMPTS.builder).toContain("**get_catalyst_calendar**");
+  for (const [mode, prompt] of Object.entries(PROMPTS)) {
+    const has = new Set([...(MODES[mode as "builder" | "editor"].toolAllowlist ?? []), "suggest_config"]);
+    const named = [...new Set(prompt.match(/\b(get_[a-z_]+|list_analysts|read_knowledge_library|ask_question|web_search|run_screen)\b/g))];
+    expect({ mode, missing: named.filter((t) => !has.has(t)) }).toEqual({ mode, missing: [] });
   }
 });
 
