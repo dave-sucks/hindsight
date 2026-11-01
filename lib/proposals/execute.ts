@@ -34,6 +34,8 @@ import {
 } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { getLiveQuote } from "@/lib/market-data/live-quote";
+import { readPrice } from "@/lib/market-data/quote-age";
 import {
   promoteThesisOnApproval,
   closeThesisOnApproval,
@@ -612,6 +614,8 @@ export async function rejectProposal(
       order.position.analystId,
       order.position.symbol,
     );
+    // The price when you declined, as the trigger check reads one; none without a quote.
+    const { quote } = await getLiveQuote(order.symbol, { caller: "other", now: rejectedAt });
     // P1-29: a reject WITH a written comment reaches the agent through the
     // PROPOSAL_REJECTED audit row written below. Until a run answers it,
     // get_theses puts the row on the full work list, and for 30 days the
@@ -623,6 +627,7 @@ export async function rejectProposal(
       thesisId,
       type: "PROPOSAL_REJECTED",
       summary: `Rejected ${intent} proposal on ${order.symbol}${trimmedMessage ? ` — "${trimmedMessage.slice(0, 80)}"` : ""}`,
+      priceAtTime: readPrice({ ticker: order.symbol, quote, now: rejectedAt }).price,
       // Your words, or nothing: a decline with no comment is the title alone.
       ...(trimmedMessage ? { rationale: trimmedMessage } : {}),
       fieldChanges: {
