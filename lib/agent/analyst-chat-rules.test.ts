@@ -52,6 +52,17 @@ it("the builder names every seed source it has wherever it names one, and each p
   }
 });
 
+it("the playbook question is asked only when more than one playbook fits", () => {
+  // The builder skips ask_question on a clear spec (Step 1, rule 1), and its
+  // playbook step then asked anyway: 5 of 7 runs given a plainly named style.
+  for (const [mode, prompt] of Object.entries(PROMPTS)) {
+    const asks = prompt.split("\n").filter((l) => l.includes("each candidate as an option"));
+    expect(asks.length).toBeGreaterThan(0);
+    for (const line of asks) expect({ mode, line, conditional: /more than one fits/.test(line) }).toEqual({ mode, line, conditional: true });
+    expect(prompt).toContain("When one fits, deep-read it and go on.");
+  }
+});
+
 it("no sentence calls an industry or a theme part of the fence", () => {
   const sentences = (text: string) => text.replace(/\n[ \t]+/g, " ").split(/(?<=[.!?])\s+|\n/);
   for (const [mode, prompt] of Object.entries(PROMPTS)) {
