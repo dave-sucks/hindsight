@@ -476,13 +476,16 @@ export async function getLatestPricesWithMeta(
   const quotes = await getLiveQuotes(symbols, { caller: "other", creds });
   for (const symbol of symbols) {
     const q = quotes[symbol.toUpperCase()]?.quote;
-    if (!q) {
-      sources[symbol] = "missing";
-      continue;
+    // Under the caller's spelling and the ticker's own, so a lookup by either finds it.
+    for (const key of new Set([symbol, symbol.toUpperCase()])) {
+      if (!q) {
+        sources[key] = "missing";
+        continue;
+      }
+      prices[key] = q.c;
+      sources[key] = q.source;
+      if (q.t > 0) asOf[key] = new Date(q.t * 1000).toISOString();
     }
-    prices[symbol] = q.c;
-    sources[symbol] = q.source;
-    if (q.t > 0) asOf[symbol] = new Date(q.t * 1000).toISOString();
   }
 
   const missing = symbols.filter((s) => sources[s] === "missing");
