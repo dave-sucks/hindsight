@@ -5,7 +5,7 @@
  *
  * Pure and safe in the browser: the panel and the card read the defaults.
  */
-import { normalizeIndustries, normalizeSectors, normalizeThemes } from "@/lib/universe/canonical";
+import { normalizeSectors } from "@/lib/universe/canonical";
 import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { boundRiskPct, DEFAULT_RISK_PCT } from "@/lib/agent/position-sizing";
 
@@ -142,8 +142,6 @@ export function normalizeAnalystPatch(stored: StoredAnalyst, patch: Record<strin
   }
 
   if (Array.isArray(patch.sectors)) out.sectors = normalizeSectors(patch.sectors as string[]);
-  if (Array.isArray(patch.industries)) out.industries = normalizeIndustries(patch.industries as string[]);
-  if (Array.isArray(patch.themes)) out.themes = normalizeThemes(patch.themes as string[]);
   for (const k of ["marketCapMin", "marketCapMax"] as const) {
     const bound = capBound(patch[k]);
     if (bound !== undefined) out[k] = bound;

@@ -121,7 +121,7 @@ async function main() {
     promptArgs = {
       scopedAnalyst: {
         id: analyst.id, ...briefOf(analyst), watchlist: watch,
-        sectors: analyst.sectors, industries: analyst.industries, themes: analyst.themes, exclusionList: analyst.exclusionList,
+        sectors: analyst.sectors, exclusionList: analyst.exclusionList,
         marketCapMin: analyst.marketCapMin != null ? Number(analyst.marketCapMin) : null, marketCapMax: analyst.marketCapMax != null ? Number(analyst.marketCapMax) : null,
       },
     };

@@ -52,10 +52,7 @@ export function AnalystConfigSheet({
     runDaysOfWeek: config.runDaysOfWeek,
     setupIds: config.setupIds,
     emailAlerts: config.emailAlerts,
-    intelligencePolicy: (config.intelligencePolicy as FormValues["intelligencePolicy"]) ?? null,
     sectors: config.sectors,
-    industries: config.industries,
-    themes: config.themes,
     marketCapMin: config.marketCapMin,
     marketCapMax: config.marketCapMax,
     exclusionList: config.exclusionList,
@@ -63,15 +60,10 @@ export function AnalystConfigSheet({
 
   const handleChange: FormChangeHandler = (field, value) => {
     // The form's FormValues field names align 1:1 with UpdatableField for
-    // every persisted field. Fields the form surfaces but the server doesn't
-    // accept never call this: intelligencePolicy is display-only;
-    // tradingEnvironment is read-only context here (promotion/demotion runs
-    // through the Promote dialog, which force-closes positions — not a plain
-    // field write).
-    if (
-      field === "intelligencePolicy" ||
-      field === "tradingEnvironment"
-    ) {
+    // every persisted field. tradingEnvironment is read-only context here
+    // (promotion/demotion runs through the Promote dialog, which force-closes
+    // positions — not a plain field write).
+    if (field === "tradingEnvironment") {
       return;
     }
     startTransition(async () => {

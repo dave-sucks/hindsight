@@ -1,6 +1,6 @@
 /**
  * Universe helpers — shared by agent tools that need to check whether a
- * ticker / sector / industry / cap is in-scope for the analyst's fence.
+ * ticker's sector and market cap are in the analyst's fence.
  *
  * Match semantics (see docs/UNIVERSE_HANDOFF.md):
  *   - empty array / null numeric = no filter on that dimension
@@ -18,18 +18,15 @@
 
 import {
   normalizeTickerSector,
-  normalizeIndustry,
 } from "@/lib/universe/canonical";
 
 export interface UniverseFence {
   sectors?: string[];
-  industries?: string[];
-  themes?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
   exclusionList?: string[];
   /**
-   * Tickers the analyst already holds. Bypasses the sector / industry / cap
+   * Tickers the analyst already holds. Bypasses the sector / cap
    * checks — an existing position is always in-scope for analysis.
    */
   positionTickers?: string[];
@@ -43,7 +40,6 @@ export interface UniverseFence {
 export interface TickerFacts {
   ticker: string;
   sector?: string | null;
-  industry?: string | null;
   marketCap?: number | null; // dollars
 }
 
@@ -57,7 +53,6 @@ export interface UniverseCheck {
   /** dimension values that matched (for UI / narration) */
   matched: {
     sector?: string;
-    industry?: string;
     marketCapOk?: boolean;
     /** When the ticker bypassed the fence due to being held or watchlisted. */
     bypass?: "position" | "watchlist";
@@ -92,7 +87,7 @@ export function isExcluded(ticker: string, fence: UniverseFence): boolean {
  * Returns a structured result the tool can include in its data payload for
  * UI rendering + narration hints.
  *
- * When a dimension on the analyst side is empty (e.g. no industries set),
+ * When a dimension on the analyst side is empty (e.g. no sectors set),
  * that dimension is considered satisfied (no filter). If a dimension is set
  * but the ticker's facts don't include the corresponding field, the check
  * is inconclusive — we treat that as "satisfied" (don't block on missing
@@ -164,28 +159,7 @@ export function checkUniverse(facts: TickerFacts, fence: UniverseFence): Univers
     // If facts.sector is null, don't fail — data missing, treat as inconclusive.
   }
 
-  // 4. Industries (AND dimension)
-  // Same treatment as sectors — try canonical industry matching first, fall
-  // back to loose-norm compare so legacy values keep working.
-  if (fence.industries?.length) {
-    const normalizedFactsIndustry = normalizeIndustry(facts.industry);
-    const canonicalFence = fence.industries
-      .map((i) => normalizeIndustry(i))
-      .filter((i): i is NonNullable<typeof i> => i != null);
-
-    if (
-      normalizedFactsIndustry &&
-      canonicalFence.includes(normalizedFactsIndustry)
-    ) {
-      matched.industry = normalizedFactsIndustry;
-    } else if (facts.industry && includesNorm(fence.industries, facts.industry)) {
-      matched.industry = facts.industry;
-    } else if (facts.industry) {
-      failedReasons.push(`industry ${facts.industry} not in [${fence.industries.join(", ")}]`);
-    }
-  }
-
-  // 4. Market cap (AND dimension — value must fall inside [min, max])
+  // 3. Market cap (AND dimension — value must fall inside [min, max])
   if (fence.marketCapMin != null || fence.marketCapMax != null) {
     const cap = facts.marketCap;
     if (cap != null) {

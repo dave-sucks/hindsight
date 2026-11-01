@@ -112,8 +112,6 @@ export const podcastSegmentRun = inngest.createFunction(
         positionTickers: [],
         exclusionList: [],
         sectors: [],
-        industries: [],
-        themes: [],
         marketCapMin: null,
         marketCapMax: null,
       });

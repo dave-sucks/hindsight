@@ -30,10 +30,7 @@ export function toFormValues(config: AgentConfigData): FormValues {
     minPositionSize: config.minPositionSize ?? D.minPositionSize,
     maxPositionSize: config.maxPositionSize ?? D.maxPositionSize,
     maxPositionTotal: config.maxPositionTotal ?? D.maxPositionTotal,
-    intelligencePolicy: config.intelligencePolicy ?? null,
     sectors: config.sectors ?? [],
-    industries: config.industries ?? [],
-    themes: config.themes ?? [],
     marketCapMin: config.marketCapMin ?? null,
     marketCapMax: config.marketCapMax ?? null,
     exclusionList: config.exclusionList ?? [],
@@ -60,12 +57,9 @@ export function applyChange<K extends keyof FormValues>(
     case "maxPositionSize":
     case "maxPositionTotal":
     case "sectors":
-    case "industries":
-    case "themes":
     case "marketCapMin":
     case "marketCapMax":
     case "exclusionList":
-    case "intelligencePolicy":
       return { ...config, [field]: value } as AgentConfigData;
 
     case "watchlist":
@@ -102,7 +96,6 @@ export function toCreateInput(config: AgentConfigData): BuilderConfig {
     holdDurations: (config.holdDurations ?? D.holdDurations) as BuilderConfig["holdDurations"],
     setupIds: config.setupIds,
     sectors: config.sectors ?? [],
-    signalTypes: config.signalTypes ?? [],
     minConfidence: config.minConfidence ?? D.minConfidence,
     riskPct: config.riskPct,
     minPositionSize: config.minPositionSize,
@@ -111,9 +104,6 @@ export function toCreateInput(config: AgentConfigData): BuilderConfig {
     maxOpenPositions: config.maxOpenPositions ?? D.maxOpenPositions,
     watchlist: (config.watchlist ?? []) as string[],
     exclusionList: (config.exclusionList ?? []) as string[],
-    intelligencePolicy: config.intelligencePolicy,
-    industries: config.industries,
-    themes: config.themes,
     marketCapMin: config.marketCapMin ?? undefined,
     marketCapMax: config.marketCapMax ?? undefined,
   };
@@ -129,7 +119,6 @@ export function toApplyInput(config: AgentConfigData): Partial<BuilderConfig> {
     holdDurations: config.holdDurations as BuilderConfig["holdDurations"] | undefined,
     setupIds: config.setupIds,
     sectors: config.sectors,
-    signalTypes: config.signalTypes,
     minConfidence: config.minConfidence,
     riskPct: config.riskPct,
     minPositionSize: config.minPositionSize,
@@ -138,9 +127,6 @@ export function toApplyInput(config: AgentConfigData): Partial<BuilderConfig> {
     maxOpenPositions: config.maxOpenPositions,
     watchlist: config.watchlist as string[] | undefined,
     exclusionList: config.exclusionList as string[] | undefined,
-    intelligencePolicy: config.intelligencePolicy,
-    industries: config.industries,
-    themes: config.themes,
     // null removes a bound; undefined keeps it.
     marketCapMin: config.marketCapMin,
     marketCapMax: config.marketCapMax,

@@ -57,7 +57,7 @@ it("the builder asks no direction and offers no paper-era sizes or stops", () =>
 it("a same-day hold no longer throws away the watchlist", () => {
   const cfg = configSchema.parse({
     name: "x", analystPrompt: "x", directionBias: "LONG", holdDurations: ["DAY"], sectors: [],
-    minConfidence: 60, maxPositionSize: 5000, maxOpenPositions: 5, minMarketCapTier: "MID",
+    minConfidence: 60, maxPositionSize: 5000, maxOpenPositions: 5,
     watchlist: [{ symbol: "NVDA", reason: "named by the owner" }],
   });
   expect(cfg.watchlist).toEqual([{ symbol: "NVDA", reason: "named by the owner" }]);

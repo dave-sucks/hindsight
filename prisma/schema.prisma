@@ -554,58 +554,36 @@ model AgentConfig {
   enabled                Boolean              @default(false)
   // Analyst identity
   analystPrompt          String? // "Find me high-risk EV day trades every morning"
-  analystVoice           String? // "aggressive momentum day trader who focuses on catalysts"
   description            String? // short display description on analyst card
-  // Strategy configuration (from prior branch, already in DB)
-  strategyType           String               @default("DISCOVERY") // "DISCOVERY" | "WATCHLIST" | "DIRECTED"
-  strategyInstructions   String? // freeform prompt injection into Concept-CoT
-  tickerUniverse         String[]             @default([]) // for DIRECTED mode: always analyze these tickers
-  // V3 Session 3 / Workstream B — Universe fields.
-  // Universe = fence for discovery routing. Dimensions: existing `sectors`
-  // (broad GICS) + `industries` (narrower) + `themes` (analyst-defined) +
-  // `marketCapMin/Max` + existing `exchanges` + existing `exclusionList`.
-  // Match semantics (enforced in lib/inngest/functions/signal-router.ts):
-  //   - empty array or null numeric = no filter on that dimension
-  //   - AND across dimensions, OR within a dimension
-  //   - exclusionList hard-rejects
-  //   - watchlist + open positions bypass the fence entirely
-  industries             String[]             @default([])
-  themes                 String[]             @default([])
+  // The universe: `sectors`, the market-cap band and `exclusionList`
+  // (lib/agent/universe.ts checkUniverse). Empty or null = no filter on that
+  // axis; the exclusion list always wins; held and watched stocks bypass it.
   marketCapMin           BigInt?
   marketCapMax           BigInt?
-  tradePolicyAutoTrade   Boolean              @default(true) // true = auto-place paper trades
-  // Prompt customization
-  conceptPromptExtra     String? // extra instructions for concept system prompt
-  thesisPromptExtra      String? // extra instructions for thesis system prompt
   researchRuns           ResearchRun[]
   positions              Position[]
   decisions              TradeDecision[]
   // Watchlist collapse — `watchlist: String[]` and `watchlistItems: AnalystWatchlistItem[]`
   // were removed. The watchlist is now a query: `Thesis WHERE researchRun.agentConfigId = id
   // AND status = 'WATCHING'`. See docs/WATCHLIST_COLLAPSE_PLAN.md.
-  markets                String[] // ["US_EQUITIES", "CRYPTO", "ETFS"]
-  exchanges              String[] // ["NASDAQ", "NYSE"]
-  sectors                String[] // ["TECH", "FINANCE", ...]
+  sectors                String[] // canonical GICS sectors
   exclusionList          String[]
   // Sizing: smallest trade (a normal buy; 0 = no floor) and largest trade
   // (a STRONG/HIGH conviction buy). Both enforced in place_trade; the third
   // number, maxPositionTotal, sits below. See lib/agent/position-sizing.ts.
-  minPositionSize        Float                @default(0)
-  maxPositionSize        Float                @default(500)
+  // The defaults are a new analyst's: NEW_ANALYST_DEFAULTS in lib/analyst-settings.ts.
+  minPositionSize        Float                @default(3000)
+  maxPositionSize        Float                @default(8000)
   maxOpenPositions       Int                  @default(5)
-  minConfidence          Int                  @default(70)
+  minConfidence          Int                  @default(60)
   // Risk per trade, % of account equity (DAV-251). A buy with no explicit
   // size is shares = equity × riskPct × conviction multiplier ÷ the stop
   // distance, clamped inside the three dollar limits above.
   // lib/agent/position-sizing.ts sizeByRisk. The orphan maxRiskPct column
   // this replaces is dropped in the follow-up migration (two-PR rule).
   riskPct                Float                @default(1)
-  dailyLossLimit         Float                @default(200)
-  holdDurations          String[] // ["SWING"]
-  directionBias          String               @default("BOTH")
-  signalTypes            String[]
-  minMarketCapTier       String               @default("LARGE")
-  scheduleTime           String               @default("07:30")
+  holdDurations          String[]             @default(["SWING"])
+  directionBias          String               @default("LONG")
   // Per-analyst daily-run schedule (daily-run cost control). ISO weekdays,
   // 1=Mon..5=Fri. The morning-research cron only runs an analyst whose
   // runDaysOfWeek includes today's ET weekday. Default [1,2,3,4,5] (Mon–Fri)
@@ -630,11 +608,8 @@ model AgentConfig {
   // one of these; the first is the analyst's signature setup, whose rules
   // the template writes onto its Triggers tab. Empty = the whole catalog.
   setupIds               String[]             @default([])
-  priceCheckFreq         String               @default("HOURLY")
-  weekendMode            Boolean              @default(false)
   graduationWinRate      Float                @default(0.65)
   graduationMinTrades    Int                  @default(50)
-  graduationProfitFactor Float                @default(1.5)
   // Per-analyst trading environment. New analysts default to PAPER; the
   // "Promote to live" action flips to LIVE after force-closing any open
   // paper positions for the analyst (theses are preserved with no position,
@@ -646,10 +621,6 @@ model AgentConfig {
   // "promotion cap" on 2026-09-08 — see lib/agent/position-sizing.ts.
   maxPositionTotal       Float                @default(0)
   emailAlerts            Boolean              @default(true)
-  weeklyDigestEnabled    Boolean              @default(true)
-  digestEmail            String? // override email for digest; uses auth email when null
-  // V3: Intelligence layer
-  intelligencePolicy     Json? // IntelligencePolicy type — controls signal budget, attention weights, search limits
   signalRoutes           AnalystSignalRoute[]
   monitors               Monitor[]
 

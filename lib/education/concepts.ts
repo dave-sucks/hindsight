@@ -68,7 +68,7 @@ export const CONCEPTS: Record<ConceptKey, Concept> = {
     label: "Analyst",
     icon: Bot,
     tooltip: "An AI persona with its own strategy, universe, watchlist, and trading rules that researches stocks and places paper trades autonomously.",
-    description: "Analysts are AI personas you create through conversation. Each has a strategy document (its playbook), a universe (sectors + industries + themes + marketCap fence), risk parameters, a watchlist, and an intelligence policy. They run structured research sessions — reviewing holdings, discovering opportunities inside the universe, and placing paper trades — then a separate briefing agent writes memory that carries forward to the next session.",
+    description: "Analysts are AI personas you create through conversation. Each has a strategy document (its playbook), a universe (its sectors, market-cap band and exclusion list), risk parameters, and a watchlist. They run structured research sessions — reviewing holdings, discovering opportunities inside the universe, and placing paper trades — then a separate briefing agent writes memory that carries forward to the next session.",
     explanation: "Think of analysts as autonomous research associates at a trading desk. You describe the edge you're hunting, and the AI builder grounds every proposal in a strategy playbook and real signal discovery before writing the config. Each analyst manages its own portfolio independently, runs daily at 8 AM, and gets smarter over time through memory and post-trade evaluation.",
   },
   thesis: {

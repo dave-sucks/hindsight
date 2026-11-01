@@ -41,8 +41,6 @@ const CATALYST = {
   maxOpenPositions: 5,
   setupIds: ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"],
   sectors: ["Health Care", "Information Technology"],
-  industries: ["Biotechnology", "Pharmaceuticals", "Health Care Equipment & Supplies", "Life Sciences Tools & Services", "Semiconductors", "Software"],
-  themes: [],
   marketCapMin: BigInt(500_000_000),
   marketCapMax: BigInt(20_000_000_000),
   exclusionList: [],
@@ -171,8 +169,6 @@ describe("every door reads the same brief, once", () => {
     const fence = universeLines(CATALYST);
     expect(fence).toEqual([
       "Sectors: Health Care, Information Technology",
-      "Industries: Biotechnology, Pharmaceuticals, Health Care Equipment & Supplies, Life Sciences Tools & Services, Semiconductors, Software",
-      "Themes: (any)",
       "Market cap: $0.5B – $20B",
       "Exclusions: (none)",
     ]);

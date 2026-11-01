@@ -53,8 +53,6 @@ const analystRow = {
   setupIds: ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"],
   analystPrompt: null,
   sectors: [],
-  industries: [],
-  themes: [],
   exclusionList: [],
   minConfidence: 50,
   tradingEnvironment: "LIVE",

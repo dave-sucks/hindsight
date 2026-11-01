@@ -38,9 +38,6 @@ async function main() {
       directionBias: true,
       holdDurations: true,
       sectors: true,
-      industries: true,
-      themes: true,
-      signalTypes: true,
       marketCapMin: true,
       marketCapMax: true,
       exclusionList: true,
@@ -63,14 +60,11 @@ async function main() {
   console.log("═══════════════════════════════════════════════════");
   console.log("\nUNIVERSE");
   console.log(`  sectors:        ${fmtList(config.sectors)}`);
-  console.log(`  industries:     ${fmtList(config.industries)}`);
-  console.log(`  themes:         ${fmtList(config.themes)}`);
   console.log(`  market cap:     ${fmtCap(config.marketCapMin)} – ${fmtCap(config.marketCapMax)}`);
   console.log(`  exclusions:     ${fmtList(config.exclusionList)}`);
   console.log("\nEDGE");
   console.log(`  direction bias: ${config.directionBias ?? "BOTH"}`);
   console.log(`  hold duration:  ${fmtList(config.holdDurations)}`);
-  console.log(`  signal types:   ${fmtList(config.signalTypes)}`);
   console.log(`  min confidence: ${config.minConfidence ?? 70}%`);
   console.log(`  max positions:  ${config.maxOpenPositions ?? 5} slots`);
   console.log(`  pos size band:  $${config.minPositionSize ?? 0} \u2013 $${config.maxPositionSize ?? 500}`);

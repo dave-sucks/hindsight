@@ -46,8 +46,6 @@ export interface BriefAnalyst {
 /** The fence fields: what the analyst may cover. */
 export interface UniverseAnalyst {
   sectors?: readonly string[] | null;
-  industries?: readonly string[] | null;
-  themes?: readonly string[] | null;
   marketCapMin?: unknown;
   marketCapMax?: unknown;
   exclusionList?: readonly string[] | null;
@@ -151,8 +149,6 @@ export function universeLines(analyst: UniverseAnalyst): string[] {
   const hi = capText(analyst.marketCapMax);
   return [
     `Sectors: ${list(analyst.sectors)}`,
-    `Industries: ${list(analyst.industries)}`,
-    `Themes: ${list(analyst.themes)}`,
     `Market cap: ${lo == null && hi == null ? "no bound" : `${lo ?? "no floor"} – ${hi ?? "no ceiling"}`}`,
     `Exclusions: ${analyst.exclusionList?.length ? analyst.exclusionList.join(", ") : "(none)"}`,
   ];

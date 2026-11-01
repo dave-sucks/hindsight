@@ -164,15 +164,4 @@ describe("checkUniverse — Session A follow-up regression cases", () => {
     );
     expect(res.inUniverse).toBe(true);
   });
-
-  it("respects industry fence + parent-sector lookup on the ticker side", () => {
-    // Analyst fence is the narrower industry; ticker-side value is also the
-    // industry. Should match directly.
-    const res = checkUniverse(
-      { ticker: "NVDA", sector: null, industry: "Semiconductors" },
-      { industries: ["Semiconductors"] },
-    );
-    expect(res.inUniverse).toBe(true);
-    expect(res.matched.industry).toBe("Semiconductors");
-  });
 });

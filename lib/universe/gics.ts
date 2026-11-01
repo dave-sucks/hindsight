@@ -7,8 +7,8 @@
  * the user can drop in any subset and the signal router AND-joins
  * what's set.
  *
- * Naming conventions match what the agent writes into `sectors` /
- * `industries` arrays on AgentConfig. Keep labels short + human
+ * Naming conventions match what the agent writes into the `sectors`
+ * array on AgentConfig (and what signals carry as industries). Keep labels short + human
  * (never ALL_CAPS in the editable array — we normalize to "Title
  * Case" here, and the router string-matches against these values).
  *

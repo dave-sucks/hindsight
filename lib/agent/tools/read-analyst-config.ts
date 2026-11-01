@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 
 export const readAnalystConfig = defineTool({
   description:
-    "Read the full configuration for one analyst — analystPrompt, universe (sectors/industries/themes/marketCap), watchlist, exclusionList, position sizing rules and intelligence policy. Pass analyst_id (preferred) or analyst_name (case-insensitive). Use this when the user asks 'what does this analyst do' or before suggesting changes.",
+    "Read the full configuration for one analyst — analystPrompt, universe (sectors and market cap), watchlist, exclusionList and position sizing rules. Pass analyst_id (preferred) or analyst_name (case-insensitive). Use this when the user asks 'what does this analyst do' or before suggesting changes.",
   schema: z.object({
     analyst_id: z.string().optional().describe("AgentConfig.id"),
     analyst_name: z
@@ -73,7 +73,7 @@ export const readAnalystConfig = defineTool({
       },
       {
         kind: "generic" as const,
-        text: `Universe: ${analyst.sectors.length} sectors · ${analyst.industries.length} industries · ${analyst.themes.length} themes`,
+        text: `Universe: ${analyst.sectors.length ? analyst.sectors.join(", ") : "every sector"} · market cap ${analyst.marketCapMin != null || analyst.marketCapMax != null ? `${analyst.marketCapMin?.toString() ?? "any"}–${analyst.marketCapMax?.toString() ?? "any"}` : "any"}`,
       },
       {
         kind: "generic" as const,
@@ -95,22 +95,17 @@ export const readAnalystConfig = defineTool({
           description: analyst.description,
           enabled: analyst.enabled,
           analystPrompt: analyst.analystPrompt,
-          analystVoice: analyst.analystVoice,
           directionBias: analyst.directionBias,
           holdDurations: analyst.holdDurations,
           sectors: analyst.sectors,
-          industries: analyst.industries,
-          themes: analyst.themes,
           marketCapMin: analyst.marketCapMin?.toString() ?? null,
           marketCapMax: analyst.marketCapMax?.toString() ?? null,
           watchlist,
           exclusionList: analyst.exclusionList,
-          signalTypes: analyst.signalTypes,
           minConfidence: analyst.minConfidence,
           minPositionSize: analyst.minPositionSize,
           maxPositionSize: analyst.maxPositionSize,
           maxOpenPositions: analyst.maxOpenPositions,
-          intelligencePolicy: analyst.intelligencePolicy,
           openPositions: analyst._count.positions,
           watchlistItemCount: watchlist.length,
           createdAt: analyst.createdAt,

@@ -42,7 +42,7 @@ When you start one. The builder runs at **New analyst**; the editor runs from **
 
 - **Your answers.** `ask_question` asks one question at a time as a card of two to five choices, so you pick rather than type.
 - **The playbook.** `read_knowledge_library` gives the strategy archetypes: each one's strategy and what it comes with, its [setups](../reference/setups.md), hold, confidence, slots and any market-cap band its edge needs.
-- **Today's market.** `get_market_context` first, then real candidates from `get_market_movers` or `get_earnings_calendar`, checked with `get_stock_data` for sector, industry and size. `get_catalyst_calendar`, `get_sec_filings` and `web_search` fill in the rest.
+- **Today's market.** `get_market_context` first, then real candidates from `get_market_movers` or `get_earnings_calendar`, checked with `get_stock_data` for sector and size. `get_catalyst_calendar`, `get_sec_filings` and `web_search` fill in the rest.
 - **Your other analysts.** `list_analysts`, so the builder can say how the new one differs from each analyst you already have.
 - **The analyst itself,** for the editor: its whole current configuration comes with every request.
 
@@ -52,7 +52,7 @@ One proposal, through `suggest_config`, shown beside the chat as a side-by-side 
 
 - **The strategy:** seven short parts: the edge, what counts, what it skips, when it buys, when it's done, how it sizes in words, and what it never does. Every agent reads it word for word. It names no number a setting, setup or account rule owns (no stop or target percent, confidence, slot count or trade size), because a number written into the strategy goes stale the day one of them changes.
 - **From the playbook:** the setups it writes plans on, signature first (that setup's reviews start on the analyst's Triggers tab); how long it holds; the confidence a buy needs; how many stocks it holds at once; and a market-cap band only where its edge needs one. The three live analysts were built on three of the playbooks, and each playbook gives its analyst's style exactly; the sectors an analyst covers are the owner's choice on the panel.
-- **The universe:** the playbook's market-cap band where its edge needs one, the sectors you choose on the panel, and an exclusion list. Industries and themes are words: [chat](chat.md), with the analyst selected, reads them when it looks for new stocks, and they filter nothing.
+- **The universe:** the playbook's market-cap band where its edge needs one, the sectors you choose on the panel, and an exclusion list. The industries and themes it hunts are words in its strategy.
 - **The money and the direction** aren't in the proposal: a new analyst starts long-only, buying $3,000 to $8,000 a trade at 1% risk, with most in one stock twice its largest trade, read live.
 - **A starting watchlist:** names it checked against the universe, never tickers recalled from memory.
 

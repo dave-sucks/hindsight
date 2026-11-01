@@ -168,41 +168,6 @@ export const SONAR_SIGNAL_SCHEMA = {
   required: ["signals"],
 };
 
-// ── Intelligence Policy ─────────────────────────────────────────────────────
-// Per-analyst policy that controls how the intelligence layer feeds runtime.
-// Stored as JSON on AgentConfig.intelligencePolicy.
-
-export interface IntelligencePolicy {
-  // (maxSignalsPerRun / maxArtifactReads capped the signal inbox and article
-  // reads, both deleted. Old rows may still carry the keys; nothing reads them.)
-
-  // Source category preferences — steer what types of intelligence get priority
-  preferredSourceCategories: SourceCategory[];  // e.g. ["SECTOR", "COMPANY"] — boost these
-  excludedSourceCategories: SourceCategory[];   // e.g. ["SOCIAL"] — never surface these
-
-  // (holdings / watchlist / discovery attention weights fed the signal
-  // router's scoring. Removed with the router 2026-09-15; old rows may still
-  // carry the keys in their JSON, and this parser simply ignores them.)
-
-  // Live search permissions — controls whether the agent can do real-time searches
-  allowLiveSearch: boolean;        // default true — can the agent call live search tools?
-  liveSearchBudget: number;        // max live search calls per run, default 5
-
-  // Signal quality floor — minimum thresholds to surface a signal
-  minUrgency: SignalUrgency;       // default "LOW" — signals below this urgency are filtered
-  minSourceQuality: number;        // default 2 — minimum source quality score (1-5) to surface
-}
-
-/** Sensible defaults for new analysts — moderate budgets. */
-export const DEFAULT_INTELLIGENCE_POLICY: IntelligencePolicy = {
-  preferredSourceCategories: [],
-  excludedSourceCategories: [],
-  allowLiveSearch: true,
-  liveSearchBudget: 5,
-  minUrgency: "LOW",
-  minSourceQuality: 2,
-};
-
 // ── Dynamic Query Types ─────────────────────────────────────────────────────
 // Output from the briefing agent's dynamic_queries section.
 

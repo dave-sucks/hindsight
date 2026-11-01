@@ -53,7 +53,7 @@ import {
 
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
 import { AutoStopSetting } from "@/components/settings/AutoStopSetting";
-import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
+import { SECTORS } from "@/lib/universe/canonical";
 import { positionBand, positionTotalCap } from "@/lib/agent/position-sizing";
 import { setupIndex } from "@/lib/agent/knowledge/setups";
 
@@ -61,10 +61,6 @@ import { setupIndex } from "@/lib/agent/knowledge/setups";
 // Canonical shape both wrappers normalize into. The form is presentation-only
 // and emits onChange<K>(field, value) — wrappers decide where the value goes
 // (DB save vs. local state).
-
-export type FormPolicy = {
-  allowLiveSearch?: boolean;
-};
 
 export type FormValues = {
   name: string;
@@ -103,13 +99,8 @@ export type FormValues = {
   // Notifications — owner email opt-out, live across every email path.
   emailAlerts?: boolean;
 
-  // Intelligence policy (read-only — set by Builder)
-  intelligencePolicy?: FormPolicy | null;
-
   // Universe
   sectors: string[];
-  industries: string[];
-  themes: string[];
   marketCapMin: number | null;
   marketCapMax: number | null;
   exclusionList: string[];
@@ -399,8 +390,6 @@ function SettingsTab({
   values: FormValues;
   onChange: FormChangeHandler;
 }) {
-  const policy = values.intelligencePolicy;
-
   return (
     <div className="flex flex-col">
       {/* Trading rules ─────────────────────────────────────────── */}
@@ -607,15 +596,6 @@ function SettingsTab({
             }}
           />
 
-          {typeof policy?.allowLiveSearch === "boolean" && (
-            <>
-              <RowLabel
-                label="Live search"
-                tooltip="When on, the agent can call live Perplexity Sonar mid-run. Set by the AI."
-              />
-              <Switch checked={policy.allowLiveSearch} disabled />
-            </>
-          )}
         </div>
 
         {/* What the three numbers mean in practice, resolved by the same
@@ -634,36 +614,13 @@ function SettingsTab({
       <Section label="Universe">
         <FieldGroup
           label="Sectors"
-          tooltip="GICS top-level sectors. AND-joined with Industries and Themes."
+          tooltip="The GICS sectors this analyst covers. None means every sector."
         >
           <EnumChipsCombobox
             values={values.sectors}
             options={SECTORS}
             placeholder="Add a sector…"
             onChange={(next) => onChange("sectors", next)}
-          />
-        </FieldGroup>
-
-        <FieldGroup
-          label="Industries"
-          tooltip="Narrower than Sectors. AND-joined with Sectors and Themes."
-        >
-          <EnumChipsCombobox
-            values={values.industries}
-            options={INDUSTRIES}
-            placeholder="Add an industry…"
-            onChange={(next) => onChange("industries", next)}
-          />
-        </FieldGroup>
-
-        <FieldGroup
-          label="Themes"
-          tooltip="Analyst-defined narratives. Signals tagged with any enter the fence."
-        >
-          <FreeTextChipsCombobox
-            values={values.themes}
-            placeholder="Free text — e.g. AI infrastructure, GLP-1, EV transition"
-            onChange={(next) => onChange("themes", next)}
           />
         </FieldGroup>
 

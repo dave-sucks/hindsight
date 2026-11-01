@@ -45,18 +45,12 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
       { key: "minPositionSize", label: "Min Position Size" },
       { key: "maxPositionSize", label: "Max Position Size" },
       { key: "maxOpenPositions", label: "Max Positions" },
-      // signalTypes intentionally omitted — deprecated field, dropped from
-      // suggest_config's schema. Without this, every rebuild showed a false-
-      // positive diff: "NEWS_CATALYST, TECHNICAL, … → —" because the DB still
-      // has old values and the proposed config doesn't touch the key at all.
     ],
   },
   universe: {
     label: "Universe",
     fields: [
       { key: "sectors", label: "Sectors" },
-      { key: "industries", label: "Industries" },
-      { key: "themes", label: "Themes" },
       { key: "marketCapMin", label: "Market Cap Min" },
       { key: "marketCapMax", label: "Market Cap Max" },
       { key: "exclusionList", label: "Exclusion List" },
@@ -78,18 +72,7 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
 function formatValue(key: FieldKey, val: unknown): string {
   if (val == null || val === "") return "—";
 
-  // Specialized array/object cases — MUST come before the generic
-  // Array.isArray handler, otherwise arrays of objects render as
-  // "[object Object], [object Object], …".
-  if (key === "intelligencePolicy" && val && typeof val === "object") {
-    const p = val as Record<string, number | boolean | undefined>;
-    const parts: string[] = [];
-    if (p.allowLiveSearch != null) parts.push(p.allowLiveSearch ? "live-search on" : "live-search off");
-    if (p.liveSearchBudget != null) parts.push(`live-search ${p.liveSearchBudget}`);
-    return parts.length === 0 ? "—" : parts.join(" · ");
-  }
-
-  // Generic array of primitives (sectors, industries, themes, exclusionList)
+  // Generic array of primitives (sectors, exclusionList)
   if (Array.isArray(val)) return val.length === 0 ? "—" : val.join(", ");
 
   if (

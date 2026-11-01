@@ -310,7 +310,6 @@ export const getStockData = defineTool({
     let universeCheck: UniverseCheck | undefined;
     const hasFence =
       (ctx.sectors?.length ?? 0) > 0 ||
-      (ctx.industries?.length ?? 0) > 0 ||
       (ctx.exclusionList?.length ?? 0) > 0 ||
       ctx.marketCapMin != null ||
       ctx.marketCapMax != null;
@@ -326,12 +325,10 @@ export const getStockData = defineTool({
         {
           ticker,
           sector: companyData?.sector ?? null,
-          industry: null, // Finnhub doesn't separately expose GICS industry
           marketCap: companyData?.marketCap ?? null,
         },
         {
           sectors: ctx.sectors,
-          industries: ctx.industries,
           marketCapMin: ctx.marketCapMin ?? null,
           marketCapMax: ctx.marketCapMax ?? null,
           exclusionList: ctx.exclusionList,

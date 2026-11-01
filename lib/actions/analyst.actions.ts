@@ -10,8 +10,6 @@ import type { TradeStatus } from "@/lib/mock-data/trades";
 import { pickProposalOrder } from "@/lib/trade-status";
 import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
-import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
-import type { IntelligencePolicy } from "@/lib/intelligence/types";
 import { getAccountId } from "@/lib/auth/account";
 import { getHeldOrWatchedSymbols } from "@/lib/agent/watchlist-symbols";
 import { NEW_ANALYST_DEFAULTS, normalizeAnalystPatch, watchlistAdds, watchlistReasons } from "@/lib/analyst-settings";
@@ -36,7 +34,6 @@ export interface AnalystConfig {
   analystPrompt: string | null;
   description: string | null;
   sectors: string[];
-  signalTypes: string[];
   holdDurations: string[];
   directionBias: string;
   minConfidence: number;
@@ -44,16 +41,10 @@ export interface AnalystConfig {
   /** Per-entry floor; 0 = no floor. Enforced in place_trade. */
   minPositionSize: number;
   maxPositionSize: number;
-  exchanges: string[];
   watchlist: string[];
   exclusionList: string[];
-  // ── Universe (B1) — narrower discovery fence ─────────────────────
-  industries: string[];
-  themes: string[];
   marketCapMin: number | null;
   marketCapMax: number | null;
-  dailyLossLimit: number;
-  scheduleTime: string;
   /**
    * Per-analyst daily-run schedule. ISO weekdays (1=Mon..5=Fri) the morning
    * run executes on; [] / all-of-Mon–Fri = every weekday. The 5-min trigger
@@ -66,7 +57,6 @@ export interface AnalystConfig {
   emailAlerts: boolean;
   createdAt: Date;
   updatedAt: Date;
-  intelligencePolicy: Record<string, unknown> | null;
 }
 
 export interface AnalystOpenTrade {
@@ -91,7 +81,6 @@ export interface AnalystListItem {
   analystPrompt: string | null;
   description: string | null;
   sectors: string[];
-  signalTypes: string[];
   holdDurations: string[];
   directionBias: string;
   minConfidence: number;
@@ -305,7 +294,6 @@ export async function getAnalystList(
       analystPrompt: config.analystPrompt,
       description: config.description,
       sectors: config.sectors,
-      signalTypes: config.signalTypes,
       holdDurations: config.holdDurations,
       directionBias: config.directionBias,
       minConfidence: config.minConfidence,
@@ -460,28 +448,21 @@ export async function getAnalystDetail(
     analystPrompt: config.analystPrompt,
     description: config.description,
     sectors: config.sectors as string[],
-    signalTypes: config.signalTypes as string[],
     holdDurations: config.holdDurations as string[],
     directionBias: config.directionBias,
     minConfidence: config.minConfidence,
     maxOpenPositions: config.maxOpenPositions,
     minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize,
-    exchanges: (config.exchanges as string[]) ?? [],
     watchlist: watchlistTheses.map((t) => t.ticker),
     exclusionList: (config.exclusionList as string[]) ?? [],
-    industries: (config.industries as string[]) ?? [],
-    themes: (config.themes as string[]) ?? [],
     marketCapMin: config.marketCapMin != null ? Number(config.marketCapMin) : null,
     marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
-    dailyLossLimit: config.dailyLossLimit,
-    scheduleTime: config.scheduleTime,
     runDaysOfWeek: (config.runDaysOfWeek as number[] | undefined) ?? [1, 2, 3, 4, 5],
     setupIds: (config.setupIds as string[] | undefined) ?? [],
     emailAlerts: config.emailAlerts,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
-    intelligencePolicy: (config.intelligencePolicy as Record<string, unknown>) ?? null,
   };
 
   const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => {
@@ -609,88 +590,6 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
   }));
 }
 
-// ── updateAnalystPrompt ───────────────────────────────────────────────────────
-
-export async function updateAnalystPrompt(
-  id: string,
-  prompt: string
-): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
-
-  // accountId can't go in `update.where` (not a unique key) — verify
-  // ownership separately, then update by primary key.
-  const owned = await prisma.agentConfig.findFirst({
-    where: { id, accountId },
-    select: { id: true },
-  });
-  if (!owned) throw new Error("Analyst not found");
-
-  await prisma.agentConfig.update({
-    where: { id },
-    data: { analystPrompt: prompt },
-  });
-
-  revalidatePath(`/analysts/${id}`);
-}
-
-// ── createAnalystFromWizard ───────────────────────────────────────────────────
-
-export interface WizardConfig {
-  analystPrompt: string;
-  name: string;
-  holdDurations: ("DAY" | "SWING" | "POSITION")[];
-  directionBias: "LONG" | "SHORT" | "BOTH";
-  maxPositionSize: number;
-  minConfidence: number;
-}
-
-export async function createAnalystFromWizard(
-  data: WizardConfig
-): Promise<{ id: string }> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
-
-  const analyst = await prisma.agentConfig.create({
-    data: {
-      userId,
-      accountId,
-      name: data.name,
-      enabled: true,
-      analystPrompt: data.analystPrompt,
-      markets: ["US_EQUITIES"],
-      exchanges: ["NASDAQ", "NYSE"],
-      sectors: [],
-      exclusionList: [],
-      maxPositionSize: data.maxPositionSize,
-      maxOpenPositions: 5,
-      minConfidence: data.minConfidence,
-      dailyLossLimit: 300,
-      holdDurations: data.holdDurations,
-      directionBias: data.directionBias,
-      signalTypes: [],
-      scheduleTime: "08:00",
-      priceCheckFreq: "HOURLY",
-      weekendMode: false,
-      graduationWinRate: 0.65,
-      graduationMinTrades: 50,
-      graduationProfitFactor: 1.5,
-      tradingEnvironment: "PAPER",
-      maxPositionTotal: data.maxPositionSize * 2,
-      emailAlerts: true,
-      weeklyDigestEnabled: true,
-    },
-  });
-  // The seat's rules from the playbook, on its Triggers tab from day one (DAV-280).
-  await seedAnalystTriggers(analyst.id);
-
-  return { id: analyst.id };
-}
-
 // ── createAnalystFromBuilder (AI chat builder — richer config) ──────────────
 
 export interface BuilderConfig {
@@ -702,7 +601,6 @@ export interface BuilderConfig {
   /** The setups this analyst runs (DAV-280); the first is its signature setup. */
   setupIds?: string[];
   sectors: string[];
-  signalTypes: string[];
   minConfidence: number;
   /** Per-entry floor; omit or 0 for no floor. */
   minPositionSize?: number;
@@ -714,13 +612,7 @@ export interface BuilderConfig {
   maxOpenPositions: number;
   watchlist?: string[];
   exclusionList?: string[];
-  intelligencePolicy?: {
-    allowLiveSearch?: boolean;
-    liveSearchBudget?: number;
-  };
   // The rest of the fence; sectors is above.
-  industries?: string[];
-  themes?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
 }
@@ -733,8 +625,6 @@ const NEW_ANALYST_ROW = {
   description: "",
   setupIds: [] as string[],
   sectors: [] as string[],
-  industries: [] as string[],
-  themes: [] as string[],
   marketCapMin: null as bigint | null,
   marketCapMax: null as bigint | null,
   exclusionList: [] as string[],
@@ -751,7 +641,6 @@ export async function createAnalystFromBuilder(
   // One normalizer for Create, Apply and Settings (lib/analyst-settings.ts):
   // the proposal on top of a new analyst's defaults.
   const fields = { ...NEW_ANALYST_ROW, ...normalizeAnalystPatch(NEW_ANALYST_ROW, data as unknown as Record<string, unknown>) };
-  const signals = Array.isArray(data.signalTypes) ? data.signalTypes : [];
 
   console.log(`[analyst] Creating analyst: name="${fields.name}" sectors=${fields.sectors.join(",") || "all"} bias=${fields.directionBias} posSize=${fields.maxPositionSize} minConf=${fields.minConfidence}`);
 
@@ -762,16 +651,6 @@ export async function createAnalystFromBuilder(
     reason: reasons.get(symbol),
   }));
 
-  // Build intelligence policy from builder proposal, merging with defaults
-  const policyInput = data.intelligencePolicy;
-  const intelligencePolicy: IntelligencePolicy = {
-    ...DEFAULT_INTELLIGENCE_POLICY,
-    ...(policyInput ? {
-      ...(policyInput.allowLiveSearch != null ? { allowLiveSearch: policyInput.allowLiveSearch } : {}),
-      ...(policyInput.liveSearchBudget != null ? { liveSearchBudget: policyInput.liveSearchBudget } : {}),
-    } : {}),
-  };
-
   // ── Transactional creation: analyst + watchlist ──
   const analyst = await prisma.$transaction(async (tx) => {
     // 1. Create the analyst config (core record)
@@ -781,20 +660,10 @@ export async function createAnalystFromBuilder(
         accountId,
         ...fields,
         enabled: true,
-        markets: ["US_EQUITIES"],
-        exchanges: ["NASDAQ", "NYSE"],
         // Watchlist removed from AgentConfig — Thesis(status=WATCHING) is
         // the single store now. Seed theses are minted below.
-        dailyLossLimit: 300,
-        signalTypes: signals,
-        scheduleTime: "08:00",
-        priceCheckFreq: "HOURLY",
-        weekendMode: false,
         graduationWinRate: 0.65,
         graduationMinTrades: 50,
-        graduationProfitFactor: 1.5,
-        weeklyDigestEnabled: true,
-        intelligencePolicy: intelligencePolicy as unknown as object,
       },
     });
 
@@ -836,8 +705,7 @@ export async function createAnalystFromBuilder(
               holdDuration: "SWING",
               // PR-9 flat schema: legacy plain-string narrative columns
               // (reasoningSummary, thesisBullets, riskFlags) replaced by
-              // JSONB snapshot/bullCase/bearCase. confidenceScore /
-              // signalTypes / sourcesUsed dropped — composite lives in
+              // JSONB snapshot/bullCase/bearCase; the composite lives in
               // scoring (null until first research).
               snapshot: {
                 text: w.reason || "Builder-seeded — awaiting first research",
@@ -879,7 +747,7 @@ export async function createAnalystFromBuilder(
   // The seat's rules from the playbook, on its Triggers tab from day one (DAV-280).
   await seedAnalystTriggers(analyst.id);
 
-  console.log(`[analyst] Created analyst id=${analyst.id} name="${fields.name}" policy.liveSearchBudget=${intelligencePolicy.liveSearchBudget}`);
+  console.log(`[analyst] Created analyst id=${analyst.id} name="${fields.name}"`);
   revalidatePath("/analysts");
   return { id: analyst.id };
 }
@@ -901,16 +769,12 @@ type UpdatableField =
   // Risk per trade, % of equity — the one sizing setting (DAV-251).
   | "riskPct"
   | "maxOpenPositions"
-  // NOTE: scheduleTime is an orphan field (no code path reads it). If
-  // scheduling becomes per-analyst in the future, add it back.
   | "holdDurations"
   | "watchlist"
   | "exclusionList"
   | "analystPrompt"
   // ── Universe (B1) ─────────────────────────────────────────
   | "sectors"
-  | "industries"
-  | "themes"
   | "marketCapMin"
   | "marketCapMax"
   // ── Schedule ─────────────────────────────────────────────
@@ -1035,7 +899,6 @@ export async function updateAnalystFromBuilder(
 
   // One normalizer for Create, Apply and Settings (lib/analyst-settings.ts).
   const updateData: Record<string, unknown> = normalizeAnalystPatch(stored, data as unknown as Record<string, unknown>);
-  if (data.signalTypes !== undefined) updateData.signalTypes = data.signalTypes;
 
   // Adds → null-direction WATCHING under a fresh EDITOR_SEED ResearchRun, the
   // names the change list showed (watchlistAdds). A name left out is kept: a
@@ -1115,16 +978,6 @@ export async function updateAnalystFromBuilder(
         );
       }
     }
-  }
-
-  // Update intelligence policy on AgentConfig if provided
-  if (data.intelligencePolicy) {
-    const policyInput = data.intelligencePolicy;
-    updateData.intelligencePolicy = {
-      ...DEFAULT_INTELLIGENCE_POLICY,
-      ...(policyInput.allowLiveSearch != null ? { allowLiveSearch: policyInput.allowLiveSearch } : {}),
-      ...(policyInput.liveSearchBudget != null ? { liveSearchBudget: policyInput.liveSearchBudget } : {}),
-    };
   }
 
   await prisma.agentConfig.update({

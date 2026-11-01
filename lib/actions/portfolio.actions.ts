@@ -92,7 +92,6 @@ export interface AgentConfigSummary {
   id: string;
   name: string;
   enabled: boolean;
-  scheduleTime: string;
   lastRunAt: string | null; // ISO string
   tradesPlaced: number;
 }
@@ -112,7 +111,6 @@ export interface TodaysPick {
   ticker: string;
   direction: string | null;
   confidenceScore: number;
-  signalTypes: string[];
 }
 
 export interface RecentPick {
@@ -122,7 +120,6 @@ export interface RecentPick {
   /** Lifecycle status — drives the row's leading badge (Watching / Active / etc.). */
   status: string;
   confidenceScore: number;
-  signalTypes: string[];
   reasoningSummary: string;
   entryPrice: number | null;
   targetPrice: number | null;
@@ -479,9 +476,8 @@ export async function getDashboardData(
         researchRunId: true,
         direction: true,
         status: true,
-        // PR-9: dropped confidenceScore (Int) + signalTypes / sourcesUsed
-        // (String[] / Json). Conviction lives in scoring.composite;
-        // narrative lives in snapshot.
+        // PR-9: conviction lives in scoring.composite; narrative lives in
+        // snapshot.
         scoring: true,
         snapshot: true,
         entryPrice: true,
@@ -524,12 +520,11 @@ export async function getDashboardData(
       where: { accountId },
       orderBy: { createdAt: "asc" },
       // select only what AgentConfigSummary needs — skip the big JSON/string
-      // columns (analystPrompt, strategyInstructions, tickerUniverse, etc).
+      // columns (analystPrompt, triggers, etc).
       select: {
         id: true,
         name: true,
         enabled: true,
-        scheduleTime: true,
         researchRuns: {
           orderBy: { startedAt: "desc" },
           take: 1,
@@ -1021,7 +1016,6 @@ export async function getDashboardData(
     id: a.id,
     name: a.name,
     enabled: a.enabled,
-    scheduleTime: a.scheduleTime,
     lastRunAt: a.researchRuns[0]?.startedAt.toISOString() ?? null,
     tradesPlaced: tradeCountMap.get(a.id) ?? 0,
   }));
@@ -1042,8 +1036,7 @@ export async function getDashboardData(
   }));
 
   // ── 10. Today's picks (fetched in phase A) ───────────────────────────
-  // PR-9: legacy 0-100 confidence → composite × 10; signalTypes dropped
-  // (derivable from sourceSignalIds if needed).
+  // PR-9: legacy 0-100 confidence → composite × 10.
   const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => {
     const composite = getThesisComposite(t);
     return {
@@ -1051,7 +1044,6 @@ export async function getDashboardData(
       ticker: t.ticker,
       direction: t.direction,
       confidenceScore: composite != null ? composite * 10 : 0,
-      signalTypes: [],
     };
   });
 
@@ -1089,8 +1081,8 @@ export async function getDashboardData(
       };
     }
 
-    // PR-9: legacy 0-100 confidence → composite × 10; signalTypes /
-    // sourcesUsed dropped; reasoningSummary sourced from snapshot.
+    // PR-9: legacy 0-100 confidence → composite × 10; reasoningSummary
+    // sourced from snapshot.
     const composite = getThesisComposite(p);
     return {
       id: p.id,
@@ -1098,7 +1090,6 @@ export async function getDashboardData(
       direction: p.direction,
       status: p.status,
       confidenceScore: composite != null ? composite * 10 : 0,
-      signalTypes: [],
       reasoningSummary: getThesisSnapshotText(p),
       entryPrice: p.entryPrice,
       targetPrice: p.targetPrice,

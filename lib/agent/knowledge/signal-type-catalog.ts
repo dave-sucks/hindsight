@@ -2,8 +2,6 @@
  * Signal type catalog — the taxonomy of signals the analyst can subscribe to.
  *
  * Used by:
- *   - signal-router.ts (other session) to classify incoming intelligence
- *   - suggest_config tool for the signalTypes field
  *   - strategy-archetypes.primarySignals to link archetypes to signals
  *   - builder/editor agents via read_signal_types tool
  *

@@ -42,7 +42,7 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
     } as never),
   chat: () =>
     buildPrincipalSystemPrompt({
-      scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], industries: [], themes: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 8 },
+      scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 8 },
       // Its room on 2026-10-15: full (the holdings themselves are in the book block).
       room: { open: 8, max: 8, held: [], awaitingApproval: 0 },
     }),

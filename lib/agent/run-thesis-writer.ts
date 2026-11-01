@@ -164,8 +164,6 @@ interface WriterAnalyst {
   holdDurations: string[];
   maxOpenPositions: number;
   sectors: string[];
-  industries: string[];
-  themes: string[];
   exclusionList: string[];
   minConfidence: number;
   tradingEnvironment: string | null;
@@ -188,8 +186,6 @@ async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | nul
       holdDurations: true,
       maxOpenPositions: true,
       sectors: true,
-      industries: true,
-      themes: true,
       exclusionList: true,
       minConfidence: true,
       tradingEnvironment: true,
@@ -290,8 +286,6 @@ async function buildWriterToolCtx(
     watchlist,
     exclusionList: analyst.exclusionList ?? [],
     sectors: analyst.sectors ?? [],
-    industries: analyst.industries ?? [],
-    themes: analyst.themes ?? [],
     minConfidence: analyst.minConfidence,
     minPositionSize: Number(analyst.minPositionSize),
     maxPositionSize: Number(analyst.maxPositionSize),

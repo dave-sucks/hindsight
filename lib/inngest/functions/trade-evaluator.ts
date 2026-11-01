@@ -43,7 +43,7 @@ export const evaluateTrade = inngest.createFunction(
               thesis: {
                 select: {
                   // PR-9 flat schema: reasoningSummary → snapshot,
-                  // thesisBullets → bullCase, signalTypes dropped.
+                  // thesisBullets → bullCase.
                   snapshot: true,
                   bullCase: true,
                   sourceSignalIds: true,
@@ -123,8 +123,7 @@ Close reason: ${position.closeReason ?? "MANUAL"}
 Hold duration: ${holdDays} days
 ${thesis ? (() => {
   // PR-9: extract narrative from the new flat columns for the evaluator
-  // prompt. signalTypes was dropped (derivable from sourceSignalIds);
-  // omitted from the prompt entirely.
+  // prompt.
   const reasoning = getThesisSnapshotText(thesis);
   const bullets = getThesisBullCaseBullets(thesis);
   const parts: string[] = [];
