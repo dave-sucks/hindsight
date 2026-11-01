@@ -130,16 +130,12 @@ const editorShape = {
   maxPositionSize: ownerAmount("The largest trade", 100),
 };
 
-// The builder names a playbook and writes the words; the style comes from the playbook, and the sectors only from the user.
+// The builder names a playbook and writes the words; the style comes from the playbook.
 const builderShape = {
   playbook: z
     .enum(PLAYBOOK_IDS)
     .describe("The playbook this analyst is built from (read_knowledge_library topic:'archetype'). Its setups, hold, confidence, slots and any market-cap band its edge needs come with it."),
   ...wordsShape,
-  sectors: z
-    .array(z.enum(SECTOR_VALUES))
-    .optional()
-    .describe("Only the sectors the user named for this analyst (biotech → Health Care); leave it out when they named none."),
 };
 
 export const builderConfigSchema = z.object(builderShape);
@@ -150,7 +146,7 @@ export function suggestConfigFor(mode: SuggestConfigMode) {
   return mode === "builder"
     ? tool({
         description:
-          "Propose the new analyst: name the playbook and write the name, description, strategy and watchlist, with the sectors only if the user named them. The playbook's setups, hold, confidence, slots and any market-cap band come with it, and the money and direction start from the defaults; the owner changes any of them on the panel.",
+          "Propose the new analyst: name the playbook and write the name, description, strategy and watchlist. The playbook's setups, hold, confidence, slots and any market-cap band come with it, and the money and direction start from the defaults; the owner sets the sectors and changes any of them on the panel.",
         inputSchema: builderConfigSchema,
         // The proposal the panel shows and Create saves: the model's words with the playbook's style.
         execute: async (config) => ({ ...config, ...playbookFields(config.playbook) }),
