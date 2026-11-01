@@ -249,7 +249,7 @@ export async function POST(
       //     analyst. Route creates a ResearchRun(mode=PRINCIPAL_CHAT,
       //     agentConfigId=<id>) so every write tool's runId FK works the
       //     same way it does in the daily run. Analyst config + watchlist
-      //     + position tickers + intelligence policy flow through ctx.
+      //     + position tickers flow through ctx.
       resolvedAnalystId = analystId;
 
       let scopedAnalyst: Parameters<typeof buildPrincipalSystemPrompt>[0]["scopedAnalyst"] = null;

@@ -616,8 +616,6 @@ export async function buildRunInput(
   // 12b. Refused calls never redone — what the run is told to resolve.
   const openRefusals = await listOpenRefusalsForAnalyst(config.id, 7);
 
-  // 13. Intelligence policy
-
   // ── Structured load summary ────────────────────────────────────────
   console.log(
     `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
