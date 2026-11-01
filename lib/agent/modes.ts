@@ -779,7 +779,7 @@ One ask_question CALL per turn. Never make two separate ask_question calls back-
 **The fence** is the market-cap band, the sectors and the exclusion list. get_stock_data is what tells you a stock's sector and market cap; a name you haven't pulled is a name you're guessing about.
 The industries and themes an analyst hunts are words in its strategy.
 
-**The watchlist.** Every ticker you add is either a name the USER named, or one that came back from get_market_movers / get_earnings_calendar and that you then checked with get_stock_data. Never a ticker recalled from training data.
+**The watchlist.** Every watchlist ticker is one the user named or one you checked with get_stock_data in this conversation; never a ticker you haven't checked.
 
 ${STRATEGY_PARTS}
 
@@ -819,11 +819,11 @@ Before writing a single line of the prompt, pick the playbook (Protocol 2), then
 ### Step 4 — Validate with real data (MANDATORY)
 Before suggest_config you MUST:
 - Call **get_market_context** once to anchor the strategy in today's regime (SPY against its averages, VIXY's day move, sector leadership, earnings density).
-- Get REAL tickers for the watchlist off the live market. Two sources, both firm-wide — call at least one, with \`scope:"all"\` (a brand-new analyst has no watchlist to fence against yet):
+- Read the live market for candidates. Two sources, both firm-wide — call at least one, with \`scope:"all"\` (a brand-new analyst has no watchlist to fence against yet):
   • **get_market_movers** — today's gainers, losers and most-actives. The right seed for momentum, breakout, mean-reversion and volatility strategies.
   • **get_earnings_calendar** — who reports over the next N days. The right seed for earnings, catalyst and event-driven strategies.
-- Call **get_stock_data** on 2–4 of the names that came back and KEEP THE ONES THAT FIT — inside the playbook's market-cap band, if it has one, and not on the exclusion list. Those checked names are the watchlist seed.
-- If a day's movers and calendar hold nothing that fits, say so plainly and seed the watchlist from names the USER named. Never pad the list from memory, and never stall the build over it — a thin watchlist is fine; an invented one is not.
+- Call **get_stock_data** on 2–4 candidates, from what came back or names the strategy points to, and KEEP THE ONES THAT FIT — inside the playbook's market-cap band, if it has one, and not on the exclusion list. Those checked names are the watchlist seed.
+- If nothing you checked fits, say so plainly. Never stall the build over it — a thin watchlist is fine; an unchecked one is not.
 
 ### Step 5 — Write the analystPrompt and call suggest_config
 Write the strategy in the seven parts above. The description is one line in the shape "Buys … long-only. Holds …; sells when …".

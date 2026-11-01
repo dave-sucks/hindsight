@@ -22,10 +22,18 @@ it("each shared rule is said once in each prompt", () => {
     "no markdown headings": /markdown headings/,
     "one question a turn": /one (ask_question call|question) per turn/,
     "don't paste the playbook": /tool row is expandable/,
-    "no ticker from memory": /training data/,
+    "every watchlist ticker is checked": /one you checked with get_stock_data in this conversation/,
   };
   for (const [mode, prompt] of Object.entries(PROMPTS)) {
     for (const [rule, said] of Object.entries(RULES)) expect({ mode, rule, times: times(prompt, said) }).toEqual({ mode, rule, times: 1 });
+  }
+});
+
+it("a watchlist ticker is one the user named or one checked, not only one off the day's lists", () => {
+  // A compounder could only seed from the day's movers (one name in one run; a
+  // wrong one for its theme in another), and "from memory" was refused even when checked.
+  for (const said of [/came back from get_market_movers \/ get_earnings_calendar and that you then checked/, /pad the list from memory/, /seed the watchlist from names the USER named/]) {
+    expect({ said: said.source, found: said.test(PROMPTS.builder) }).toEqual({ said: said.source, found: false });
   }
 });
 
