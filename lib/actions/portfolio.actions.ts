@@ -797,6 +797,7 @@ export async function getDashboardData(
       orderStatus: fillOrder?.status,
       alpacaOrderId: fillOrder?.alpacaOrderId ?? undefined,
       priceSource,
+      priceAsOf: priceLookup.asOf[p.symbol],
       priceUpdatedAt: livePrice !== undefined ? priceLookup.fetchedAt : undefined,
       pendingProposal,
       thesisId: p.decisions?.[0]?.thesis?.id ?? undefined,

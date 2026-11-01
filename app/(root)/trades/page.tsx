@@ -35,15 +35,19 @@ export default async function Trades() {
   );
 
   // The 1D / 5D / 30D moves behind the window tabs — held names only; a sold
-  // position has no shares riding on today's move.
-  const today = todayEt();
-  const held = new Map<string, number>();
-  for (const t of initialOpenTrades) if (!held.has(t.ticker)) held.set(t.ticker, t.currentPrice);
+  // position has no shares riding on today's move. Each window is measured
+  // from the closes before the day the price belongs to: today during the
+  // session, the last finished session's (Friday, on a weekend) outside it.
+  const held = new Map<string, { current: number; day: string }>();
+  for (const t of initialOpenTrades) {
+    if (held.has(t.ticker)) continue;
+    held.set(t.ticker, { current: t.currentPrice, day: t.priceAsOf ? todayEt(new Date(t.priceAsOf)) : todayEt() });
+  }
   const moves: Record<string, WindowMoves> = {};
   await Promise.all(
-    [...held].map(async ([ticker, current]) => {
+    [...held].map(async ([ticker, { current, day }]) => {
       const candles = await getStockCandles(ticker, 45).catch(() => []);
-      moves[ticker] = current > 0 ? windowMoves(candles, current, today) : NO_MOVES;
+      moves[ticker] = current > 0 ? windowMoves(candles, current, day) : NO_MOVES;
     }),
   );
 

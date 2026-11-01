@@ -42,6 +42,8 @@ export interface MockTrade {
 
   // ── Price freshness metadata ──────────────────────────────────────────────
   priceSource?: PriceSource;
+  /** When the price printed (ISO): the day it belongs to, which the 1D/5D/30D windows measure from. */
+  priceAsOf?: string;
   priceUpdatedAt?: string;
 
   // ── Trade-as-Proposal — populated when there's an Order(AWAITING_APPROVAL)

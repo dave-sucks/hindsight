@@ -250,7 +250,14 @@ plus `get_stock_data`.
   Between 9:30 and the bell the price is the latest trade with its own
   timestamp; outside the session it is the last close stamped at the bell —
   pre-market and after-hours prints are on the tape and are not served as
-  the price. The feed is named once: `MARKET_DATA_FEED` in `lib/alpaca.ts`.
+  the price. The older helpers in `lib/alpaca.ts` (`getLatestPrice(s)`,
+  `getLatestPricesWithMeta`, `getDailyRangePcts`) wrap it since 2026-10-31:
+  they read the raw latest trade at any hour until FINRA's extended-hours
+  industry test (Fri 2026-10-30 11 PM on the production feed; again Nov 6,
+  Nov 20, Dec 4; the tape runs overnight every night from Dec 6) put fake
+  prints on the tape and every page showed MSFT at $445 against a $521.91
+  close while the sheet showed the close. Never read `/trades/latest`. The
+  feed is named once: `MARKET_DATA_FEED` in `lib/alpaca.ts`.
 - Finnhub: earnings calendar, company metrics, profile, news,
   recommendations, filed statements, insider transactions — and the quote
   fallback

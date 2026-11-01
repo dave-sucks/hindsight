@@ -612,13 +612,26 @@ async function getIntradayCandlesAlpaca(symbol: string, now: Date): Promise<Stoc
     };
     const stamped = (data.bars ?? []).map((bar) => ({ bar, etDate: etDateOf(bar.t), etMinutes: etMinutesOf(bar.t) }));
 
+    // A print the chart can draw: on a trading day, inside the clock window.
+    // The tape carries weekend prints — FINRA's extended-hours tests put
+    // thousands of fake ones on it from 11 PM Friday 2026-10-30 (and more
+    // Fridays after), and from 2026-12-06 it runs overnight every night —
+    // and a Saturday-dated bar must not make Saturday the day the chart
+    // shows, a day with nothing in its window.
+    const drawable = (iso: string) => {
+      const minutes = etMinutesOf(iso);
+      return isTradingDay(new Date(iso)) && minutes >= INTRADAY_WINDOW_ET.start && minutes <= INTRADAY_WINDOW_ET.end;
+    };
+
     // Which day the chart shows. On a trading day, once the window opens at
     // 7:00 AM ET, it is today — even before a single trade — so the morning
     // reads as today against yesterday's close. Otherwise the latest day with
-    // bars (Friday on a weekend).
+    // a drawable bar (Friday on a weekend).
     const todayEt = etDateOf(now);
     const showToday = isTradingDay(now) && etMinutesOf(now) >= INTRADAY_WINDOW_ET.start;
-    const latest = showToday ? todayEt : stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
+    const latest = showToday
+      ? todayEt
+      : stamped.filter((s) => drawable(s.bar.t)).reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
     if (!latest) return [];
     const windowStart = etInstant(latest, INTRADAY_WINDOW_ET.start);
     const windowEnd = etInstant(latest, INTRADAY_WINDOW_ET.end);
@@ -671,7 +684,9 @@ async function getIntradayCandlesAlpaca(symbol: string, now: Date): Promise<Stoc
         windowStart.toISOString(),
         { sort: 'desc', limit: 1000, pages: 1 },
       );
-      const p = roundLots(prior)[0]?.p;
+      // The newest round lot the chart could have drawn — never an overnight
+      // print, which on a test weekend is a fake.
+      const p = roundLots(prior).find((t) => drawable(t.t))?.p;
       if (typeof p === 'number' && p > 0) {
         points.unshift({ date: windowStart.toISOString(), open: p, high: p, low: p, close: p, volume: 0 });
       }

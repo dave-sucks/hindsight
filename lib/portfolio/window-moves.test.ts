@@ -30,3 +30,30 @@ describe("windowMoves", () => {
     });
   });
 });
+
+/**
+ * MSFT on Saturday 2026-10-31. Thursday closed at $530.14, Friday at $521.91,
+ * and outside the session the price is Friday's close, stamped at Friday's
+ * bell — so it belongs to Friday. Measured against Saturday, every row on the
+ * homepage read +0.00% while the sheet header said −1.55%.
+ */
+describe("a weekend: the price is Friday's close and belongs to Friday", () => {
+  const candles = [
+    bar("2026-10-23", 517.0),
+    bar("2026-10-26", 520.6),
+    bar("2026-10-27", 525.5),
+    bar("2026-10-28", 531.01),
+    bar("2026-10-29", 530.14),
+    bar("2026-10-30", 521.91),
+  ];
+
+  it("1D is Friday against Thursday, −1.55%, when the price's day is Friday", () => {
+    const m = windowMoves(candles, 521.91, "2026-10-30");
+    expect(m.oneDayPct).toBeCloseTo(((521.91 - 530.14) / 530.14) * 100, 6);
+    expect(m.fiveDayPct).toBeCloseTo(((521.91 - 517.0) / 517.0) * 100, 6);
+  });
+
+  it("measured against Saturday it would read 0.00% — the number nobody wants", () => {
+    expect(windowMoves(candles, 521.91, "2026-10-31").oneDayPct).toBe(0);
+  });
+});
