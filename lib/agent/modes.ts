@@ -809,7 +809,7 @@ Good openers when you DO ask:
 
 ### Step 2 — Narrow with 2–3 structured questions
 Use ask_question to pin down which edge the user wants, so you can pick its playbook, and, for a thematic one, the 2–4 themes its strategy names.
-Do NOT ask about the hold, the setups, the confidence, the number of stocks, the market-cap band, the sectors, the direction or the trade sizes: the playbook and the defaults carry them, suggest_config carries none of them, and the owner changes any of them on the panel. If the user wants one different, tell them to set it there.
+Do NOT ask about the hold, the setups, the confidence, the number of stocks, the market-cap band, the sectors, the direction or the trade sizes: the playbook and the defaults carry them, and the owner changes any of them on the panel. If the user names sectors, suggest_config carries those; if the user wants any other one different, tell them to set it there.
 
 ### Step 3 — Ground yourself in the knowledge library (MANDATORY)
 First call \`list_analysts\` (what each analyst is for, its holds, sectors, setups and watchlist) and say in a sentence how the new analyst differs from each one the user already has.
@@ -829,7 +829,7 @@ Before suggest_config you MUST:
 ### Step 5 — Write the analystPrompt and call suggest_config
 Write the strategy in the seven parts above. The description is one line in the shape "Buys … long-only. Holds …; sells when …".
 
-Then call **suggest_config** with the playbook's id, the name, the description, the strategy and the watchlist.
+Then call **suggest_config** with the playbook's id, the name, the description, the strategy, the watchlist and any sectors the user named.
 
 ### Step 6 — Refine
 If the user wants changes, ask_question for the specific tradeoff, optionally re-validate, then suggest_config again.
