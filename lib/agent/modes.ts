@@ -779,7 +779,7 @@ One ask_question CALL per turn. Never make two separate ask_question calls back-
 **The fence** is the market-cap band, the sectors and the exclusion list. get_stock_data is what tells you a stock's sector and market cap; a name you haven't pulled is a name you're guessing about.
 The industries and themes an analyst hunts are words in its strategy.
 
-**The watchlist.** Every watchlist ticker is one the user named or one you checked with get_stock_data in this conversation; never a ticker you haven't checked.
+**The watchlist.** Every ticker you put on a watchlist is one the user named or one you checked with get_stock_data in this conversation; never a ticker you haven't checked.
 
 ${STRATEGY_PARTS}
 
@@ -830,6 +830,7 @@ Before suggest_config you MUST:
 Write the strategy in the seven parts above. The description is one line in the shape "Buys … long-only. Holds …; sells when …".
 
 Then call **suggest_config** with the playbook's id, the name, the description, the strategy and the watchlist.
+Calling it is how the user sees the draft: it opens on the panel beside the chat, where they read and change any of it before Create. So never write the strategy, the description or the watchlist into the chat, and never ask whether to go ahead: call suggest_config.
 
 ### Step 6 — Refine
 If the user wants changes, ask_question for the specific tradeoff, optionally re-validate, then suggest_config again.

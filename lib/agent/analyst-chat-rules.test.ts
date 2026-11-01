@@ -72,3 +72,9 @@ it("no sentence calls an industry or a theme part of the fence", () => {
   const laneC = PROMPTS.editor.slice(PROMPTS.editor.indexOf("(c) **Fence change**"), PROMPTS.editor.indexOf("(d) **"));
   expect(laneC).not.toMatch(/industr|theme/i);
 });
+
+it("the builder shows its draft by calling suggest_config, never by writing it into the chat", () => {
+  // In 5 of 9 runs the builder wrote the whole draft into the chat and asked
+  // "Shall we proceed?", and the panel stayed empty.
+  expect(PROMPTS.builder).toContain("never write the strategy, the description or the watchlist into the chat, and never ask whether to go ahead: call suggest_config.");
+});
