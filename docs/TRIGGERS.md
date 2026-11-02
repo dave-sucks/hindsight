@@ -194,7 +194,7 @@ horizon.** For TARGET/COMPOUNDER/CATALYST holds, "above the target" is a
 REVIEW rung ("target hit — close, or trail higher with confidence intact"), so
 a winner isn't blindly dumped at the first number. Only the TRADE horizon maps
 it to a terminal EXIT (the trade plan is executed; close). The hard stop
-("sell if below the stop", cooldown 0) is universal across horizons.
+("sell if below the stop", asks once a day) is universal across horizons.
 
 > **History — the trail came back, on purpose.** An earlier trailing-stop
 > kind was **removed in #458**, which traded peak-trailing for the daily-%
@@ -341,10 +341,12 @@ fire when the switch for that side is on.
 move a protective sale down the order Auto-sell → Send to Agent → Flag for
 Review (`FIRE_MODE_SPEED`, `ratchet.ts`), the same as it may not lower the line.
 
-**A trade left for the morning asks at most once a day.** A morning run
-answers once a day, so a non-review set to `NEXT_MORNING` has a one-day floor
-on its cooldown (a floor stored at 0 would otherwise write a fire every pass;
-`flooredCooldownDays`).
+**A trade asks at most once a day, whatever its On fire.** A buy, add, trim
+or sale has a one-day floor on its cooldown (`flooredCooldownDays`); a wait
+stored at 0 reads as unset. Before 2026-11-02 only a `NEXT_MORNING` trade was
+floored and a sale at 0 was "ask on every check, a waiting sale drops the
+repeats": CEG's floor woke a run at 9:30, 9:35 and 9:40 while the analyst
+held, because a run may hold and then nothing is waiting.
 
 ## 5. From fire to trade (the pipeline)
 
@@ -402,12 +404,12 @@ a move, volume, RSI and a gap 1, the move from our entry 7 —
 the milestone latches, so 7d stops a same-week re-fire if the acting agent
 forgets to re-arm the next checkpoint (a sale on it is 1: a standing order
 asks daily); the trail 1, the review clock and a
-date its own day count. **`cooldownDays: 0` is reserved for terminal `EXIT`
-triggers only** — `0` on any other action causes a 5-min evaluator infinite
-loop the instant the condition latches true, so the write path overwrites it
-with the default (`applyTriggerDefaults`). The
-standing trail ratchet is stamped `cooldownDays: 0` at mint (terminal EXIT, same
-as the hard stop).
+date its own day count. **A wait of 0 is not a wait.** On any action it reads
+as unset: the write path overwrites it with the default (`applyTriggerDefaults`),
+the read path falls back to it (`effectiveCooldownDays`), and a trade is then
+floored at a day (§4). Until 2026-11-02 a 0 was allowed on an `EXIT`, on the
+theory that a waiting sale blocks the repeats; a run that holds leaves nothing
+waiting, and CEG's floor woke a run at 9:30, 9:35 and 9:40.
 
 **A review on a state asks once a week, whatever is stored.** "Below the
 200-day", "within X% of the 52-week high" and "beating SPY" describe where a

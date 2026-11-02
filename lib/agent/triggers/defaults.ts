@@ -250,7 +250,6 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}. If we hit it the thesis is broken; close and write up the lessons.`,
-      cooldownDays: 0, // explicit opt-out — a sale asks on every check; a waiting proposal drops the repeats.
     });
   }
 
@@ -284,7 +283,6 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}.`,
-      cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
   if (thesis.targetPrice != null) {
@@ -313,7 +311,6 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Tight stop at $${thesis.stopLoss}. Trade-horizon — get out fast on invalidation.`,
-      cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
   if (thesis.targetPrice != null) {
@@ -322,7 +319,6 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { watch: "price", is: "above", value: thesis.targetPrice },
       action: "EXIT",
       rationale: `Target $${thesis.targetPrice} hit. Trade plan executed; close.`,
-      cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
   // The "open long enough?" rung is gone, and nothing
@@ -342,7 +338,6 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
       predicate: { watch: "price", is: "below", value: thesis.stopLoss },
       action: "EXIT",
       rationale: `Hard stop at $${thesis.stopLoss}.`,
-      cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
   // DAV-322: no earnings review here. Every account is seeded with
@@ -641,30 +636,29 @@ export function defaultCooldownDaysForPredicate(
  * path (record_thesis / update_thesis) before persistence so disk state
  * always has cooldown bookkeeping.
  *
- * `cooldownDays: 0` is legitimate ONLY on EXIT triggers — those are
- * terminal (the position closes and the cron's `status:ACTIVE` filter
- * takes over), so re-firing isn't a runaway risk. On any other action
- * (REVIEW, ENTER, TRIM) `0` is structurally invalid against a sticky
- * predicate (price levels, vs-average, RSI, review-clock, AND/OR
- * composites of the same) — once the condition is true it stays true,
- * and a 5-min trigger-evaluator tick re-fires every cycle until
- * intervention. Treat `0` on non-EXIT as "needs default" and overwrite
- * with the per-predicate cooldown.
+ * `cooldownDays: 0` is not a wait, on any action. A sticky condition (a
+ * price level, vs-average, RSI, the review clock, AND/OR composites of
+ * the same) stays true once true, and a 5-min check re-fires it every
+ * pass until something intervenes. Treat `0` as "needs default" and
+ * overwrite with the per-predicate cooldown; `effectiveCooldownDays` then
+ * floors a trade at a day.
  *
  * Background: 2026-06-02 NVDA tactical runaway — agent-supplied
  * `update_thesis` triggers stamped `cooldownDays: 0` on a review
  * 14d REVIEW, the old `!= null` check walked past it, and the loop
- * fired 15 times in 70 min before manual hotfix. See `docs/GAPS.md`.
+ * fired 15 times in 70 min before manual hotfix. Until 2026-11-02 an
+ * EXIT at 0 was allowed, on the theory that a waiting sale drops the
+ * repeats; a run that holds leaves nothing waiting, and CEG's sale woke
+ * a run at 9:30, 9:35 and 9:40.
  */
 /**
  * The cooldown a rung actually fires on — the one number `shouldFire` uses.
  *
  * Three layers:
  *   1. What is written on the rung.
- *   2. The per-predicate default, when nothing is written (or when a 0 is
- *      written on something other than an EXIT, which is the historic bad
- *      value — a 0 there means "nag every five minutes").
- *   3. A FLOOR on state predicates that aren't buys.
+ *   2. The per-predicate default, when nothing is written, or when a 0 is
+ *      written (a 0 means "nag every five minutes").
+ *   3. A FLOOR: a week on a review of a state, a day on any trade.
  *
  * Layer 3 is the DAV-329 fix and it has to be a floor, not a default:
  * #719 set the default for vs-average to 7 and it changed nothing, because
@@ -683,7 +677,8 @@ export function defaultCooldownDaysForPredicate(
  * down to weekly would turn a declined sell into a silent one.
  */
 export function effectiveCooldownDays(trigger: Trigger): number {
-  const isInvalidZero = trigger.cooldownDays === 0 && trigger.action !== "EXIT";
+  // A wait of zero is not a wait: it reads as unset, and the floor below keeps a trade to once a day.
+  const isInvalidZero = trigger.cooldownDays === 0;
   const written =
     trigger.cooldownDays != null && !isInvalidZero
       ? trigger.cooldownDays
@@ -695,8 +690,7 @@ export function effectiveCooldownDays(trigger: Trigger): number {
 /** Also writes each trigger's fire mode down: the one it names, else its action's default (./fire-mode). */
 export function applyTriggerDefaults(triggers: Trigger[]): Trigger[] {
   return triggers.map((t) => {
-    const needsDefault =
-      t.cooldownDays == null || (t.cooldownDays === 0 && t.action !== "EXIT");
+    const needsDefault = t.cooldownDays == null || t.cooldownDays === 0;
     return withFireMode(needsDefault ? { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate, t.action) } : t);
   });
 }

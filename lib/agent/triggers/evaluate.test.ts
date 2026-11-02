@@ -744,10 +744,10 @@ describe("shouldFire", () => {
     });
   });
 
-  it("treats explicit cooldownDays=0 on EXIT as no rate limit (legitimate escape hatch)", () => {
-    // EXIT is terminal — the position closes and the cron's
-    // `status:ACTIVE` filter removes the row from future evaluation.
-    // No runaway risk; the 0 escape hatch is valid here.
+  it("EXIT + cooldownDays=0 + fired a minute ago → COOLDOWN: a sale asks once a day, never more", () => {
+    // Until 2026-11-02 this was an "escape hatch": a sale at 0 re-asked on
+    // every check, and a waiting sale was meant to drop the repeats. A run
+    // may hold instead, and then nothing is waiting (CEG, 9:30 / 9:35 / 9:40).
     const trigger: Trigger = {
       ...baseTrigger,
       action: "EXIT",
@@ -756,8 +756,8 @@ describe("shouldFire", () => {
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
     expect(shouldFire(trigger, ctx)).toMatchObject({
-      fires: true,
-      reason: "match",
+      fires: false,
+      reason: "cooldown",
     });
   });
 
@@ -835,22 +835,6 @@ describe("shouldFire", () => {
     });
   });
 
-  it("EXIT + cooldownDays=0 + recent lastFiredAt → MATCH (escape hatch preserved)", () => {
-    // Re-stating the EXIT carve-out alongside the non-EXIT block so the
-    // distinction is unmissable in the test file. EXIT 0 must keep
-    // working — that's how the stop fires every tick until position closes.
-    const trigger: Trigger = {
-      ...baseTrigger,
-      action: "EXIT",
-      cooldownDays: 0,
-      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
-    };
-    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toMatchObject({
-      fires: true,
-      reason: "match",
-    });
-  });
 });
 
 // ── Standing-order semantics (principal ruling 2026-08-16) ────────────

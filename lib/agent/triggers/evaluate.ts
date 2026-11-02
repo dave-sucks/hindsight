@@ -182,18 +182,15 @@ export interface Checker {
  *      rows from before the write-path default-filler shipped, plus
  *      anything that slips through.
  *
- *   2. `cooldownDays === 0` on a non-EXIT action — STRUCTURALLY INVALID,
- *      treat as "absent" and fall back to the per-kind default. This is
- *      the read-path mirror of the write-path fix in
- *      `applyTriggerDefaults`. Required because the write-path
- *      fix only stops *future* bad values from landing — existing on-disk
- *      rows with the bad shape would otherwise keep tick-firing until
- *      something rewrites them. Background: 2026-06-02 NVDA runaway.
- *
- *   3. `cooldownDays === 0` on an EXIT action — legitimate escape hatch.
- *      A sale asks again on every check while its condition holds; while
- *      one is waiting for approval, the trigger run drops the repeat fires
- *      (tactical-run's check-queued-close), so there is no runaway.
+ *   2. `cooldownDays === 0` — a wait of zero is not a wait. Treat it as
+ *      "absent", fall back to the per-kind default, then apply the floor
+ *      (`flooredCooldownDays`): a trade asks once a day, never more. The
+ *      read-path mirror of the write-path fix in `applyTriggerDefaults`,
+ *      because rows already on disk keep their shape. Background: the
+ *      2026-06-02 NVDA runaway (a review at 0), and CEG on 2026-11-02 (a
+ *      sale at 0 woke a run at 9:30, 9:35 and 9:40 while the analyst held:
+ *      "a waiting sale drops the repeats" guards nothing when the run
+ *      holds, which it may since #889).
  */
 export function shouldFire(
   trigger: Trigger,

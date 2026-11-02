@@ -125,9 +125,10 @@ describe("defaultTriggersForHorizon — WATCHING ENTER trigger (P1-3 fix)", () =
  * 2026-06-02 NVDA runaway — the agent stamped `cooldownDays: 0` on a
  * a 14d REVIEW rung via `update_thesis`. The old `!= null` check
  * walked past the 0 and the trigger evaluator fired 15 times in 70 min
- * before manual hotfix. These tests pin the new rule: on non-EXIT
- * actions, `cooldownDays: 0` is structurally invalid and the default
- * filler must overwrite it.
+ * before manual hotfix. These tests pin the rule: on any action,
+ * `cooldownDays: 0` is not a wait and the default filler overwrites it
+ * (an EXIT kept its 0 until 2026-11-02, when CEG's sale woke a run every
+ * five minutes while the analyst held).
  */
 describe("applyTriggerDefaults — cooldownDays:0 hardening", () => {
   function mkTrigger(
@@ -172,24 +173,24 @@ describe("applyTriggerDefaults — cooldownDays:0 hardening", () => {
     expect(out.cooldownDays).toBe(7);
   });
 
-  it("EXIT + cooldownDays:0 is PRESERVED — terminal-action opt-out is legitimate", () => {
+  it("EXIT + price below + cooldownDays:0 → overwrites with per-kind default 1 (a sale asks once a day)", () => {
     const t = mkTrigger({
       action: "EXIT",
       predicate: { watch: "price", is: "below", value: 213.87 },
       cooldownDays: 0,
     });
     const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(0);
+    expect(out.cooldownDays).toBe(1);
   });
 
-  it("EXIT + cooldownDays:0 on price above target is preserved", () => {
+  it("EXIT + cooldownDays:0 on price above target → overwrites with per-kind default 1", () => {
     const t = mkTrigger({
       action: "EXIT",
       predicate: { watch: "price", is: "above", value: 268 },
       cooldownDays: 0,
     });
     const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(0);
+    expect(out.cooldownDays).toBe(1);
   });
 
   it("non-zero cooldownDays on any action is preserved (no override)", () => {
