@@ -71,7 +71,7 @@
 | Double-fill events (>1 close `PositionEvent` per position) — Section H item 7 * | | | |
 | Ungated paths that went through proposal (`price_monitor` / `user`) — Section H item 4 * | | | |
 | Tool-envelope vs narration gap (agent narrated fill, actually awaiting) — Section H item 3 * | | | |
-| Proposal-expiry cron firings during market hours (~30 / day expected) | | | |
+| Proposal-expiry cron firings (48 / day expected, around the clock) | | | |
 
 \* Expected = 0. Any non-zero is a finding.
 

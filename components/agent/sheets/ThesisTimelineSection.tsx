@@ -417,9 +417,6 @@ function Row({
   // changed, or a roll-up.
   const interactive = row.fold || row.description != null || row.chips.length > 0;
   const showDescription = row.description != null && (open || row.showDescription);
-  // No paragraph under it: a fire, an expiry, a hand edit with no note.
-  const quiet = !row.fold && row.description == null;
-
   return (
     <div className="group/row flex gap-3">
       {/* Rail: dot + connector. Segments inside an open proposal span
@@ -440,17 +437,17 @@ function Row({
           <p
             className={cn(
               "leading-snug min-w-0 text-sm",
-              quiet ? "font-light text-muted-foreground" : row.fold ? "font-normal text-muted-foreground" : "font-normal text-foreground",
+              row.fold ? "text-muted-foreground" : "text-foreground",
               interactive && "cursor-pointer",
             )}
             onClick={interactive ? onToggle : undefined}
           >
             {row.title.primary ? (
-              <span className={cn(!quiet && "font-semibold")}>{row.title.primary} </span>
+              <span className="font-semibold">{row.title.primary} </span>
             ) : null}
             {row.title.secondary}
             {row.title.outcome ? (
-              <span className={cn(!quiet && "font-semibold")}> {row.title.outcome}</span>
+              <span className="font-semibold"> {row.title.outcome}</span>
             ) : null}
           </p>
 
