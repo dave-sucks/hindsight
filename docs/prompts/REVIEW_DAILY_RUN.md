@@ -293,7 +293,7 @@ Approve. Any deviation is a finding.**
      exposure with pending positions, the daily-run agent will be operating
      on wrong sizing math. Spot-check the `get_portfolio_context` tool result.
 9. **Proposal-expiry cron.** `lib/inngest/functions/proposal-expiry.ts` runs
-   every 30 min during market hours (4-19 ET on weekdays). Confirm via Inngest
+   every 30 min around the clock, every day. Confirm via Inngest
    event log that it ran ≥1x today. If any proposals from prior days expired
    today, confirm `ThesisUpdate(type='PROPOSAL_EXPIRED')` rows + Order/Position
    state transitions are clean.

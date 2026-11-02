@@ -1,7 +1,7 @@
 /**
  * Proposal expiry — terminal-state cleanup for Trade-as-Proposal.
  *
- * Every 30 min during US-market hours (Mon-Fri 4 AM-8 PM ET), find every
+ * Every 30 min, around the clock, find every
  * Order(AWAITING_APPROVAL, expiresAt < now) and:
  *   - flip Order.status → EXPIRED
  *   - for OPEN intent: flip Position(PENDING_APPROVAL → CANCELLED) so the
@@ -10,9 +10,13 @@
  *   - write ThesisUpdate(type='PROPOSAL_EXPIRED') with the stock's price
  *     then, so the agent reads the expiry on its next run and can re-propose
  *
- * The cron mirrors reconcile-orders' cadence pattern. 30 min is the right
- * granularity: 24h default expiry × 48 cron ticks per day means we never
- * leave an expired proposal more than 30 min past its deadline.
+ * 30 min is the right granularity: 24h default expiry × 48 cron ticks per
+ * day means we never leave an expired proposal more than 30 min past its
+ * deadline. It used to keep reconcile-orders' weekday 4 AM–8 PM hours; a
+ * proposal lapses by the clock, so a Friday-afternoon ask lapsed Saturday
+ * and stayed "waiting" in the record (and on the Proposals list) until
+ * Monday 4 AM, while the card had already dropped its Review button
+ * (2026-10-31: seven sales). Nights and weekends count.
  *
  * See docs/plans/TRADE_AS_PROPOSAL.md §5.8 + §8.4.
  */
@@ -24,9 +28,9 @@ import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { readPrice } from "@/lib/market-data/quote-age";
 
-// Mon-Fri 4 AM-8 PM ET, every 30 min — covers any proposal expiring during
-// the trading day. Off-hours expiries roll over to the next ET open.
-const THIRTY_MIN_CRON = "TZ=America/New_York */30 4-19 * * 1-5";
+// Every 30 min, every day — a proposal lapses 24 h after it is made, by the
+// clock, so nights and weekends count.
+const THIRTY_MIN_CRON = "TZ=America/New_York */30 * * * *";
 
 export const proposalExpiry = inngest.createFunction(
   {

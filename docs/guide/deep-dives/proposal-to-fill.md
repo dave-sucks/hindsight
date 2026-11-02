@@ -36,7 +36,7 @@ Only one click can win. The order goes to the broker with the same key. A defini
 
 `reconcile-orders` runs every five minutes, 4 AM to 8 PM ET on weekdays. It finds each pending order by broker ID, or by the key if the ID was never saved. A fill sets the real price and share count. A key the broker has never seen is marked rejected.
 
-`proposal-expiry` runs every thirty minutes in the same hours and lapses anything past its 24 hours. A lapse isn't a decline. A declined sale carries your note and the next run must answer it; a lapsed one is "not now".
+`proposal-expiry` runs every thirty minutes around the clock, weekends included, and lapses anything past its 24 hours; a Friday-afternoon proposal lapses on Saturday and the record says so within the half hour. A lapse isn't a decline. A declined sale carries your note and the next run must answer it; a lapsed one is "not now".
 
 ## What it does to the thesis
 
