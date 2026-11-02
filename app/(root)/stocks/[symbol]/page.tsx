@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card } from "@/components/ui/card";
@@ -7,14 +6,11 @@ import { StockPageTabs } from "@/components/stocks/StockPageTabs";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
-import { TradeSummary } from "@/components/domain/trade-summary";
+import { PositionCard } from "@/components/stocks/PositionCard";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
 import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
-import { ThesisHeader } from "@/components/domain/thesis-header";
-import { StockThesisBody } from "@/components/stocks/StockThesisBody";
-import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { thesisSheetStateSelect } from "@/lib/agent/thesis-sheet-state";
 import {
   getNews,
@@ -31,7 +27,7 @@ import { buildStockHistory } from "@/lib/stocks/stock-history";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
-import type { EarningsResponse, ThesisStatePosition } from "@/lib/types/thesis-sheet";
+import type { EarningsResponse } from "@/lib/types/thesis-sheet";
 import { ExternalLink } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -144,6 +140,7 @@ export default async function StockDetailPage({ params }: Props) {
               quantity: true,
               openedAt: true,
               closedAt: true,
+              closeReason: true,
             },
           })
         : Promise.resolve([]),
@@ -154,9 +151,8 @@ export default async function StockDetailPage({ params }: Props) {
             take: 100,
             select: {
               ...thesisSheetStateSelect,
-              id: true,
               createdAt: true,
-              researchRun: { select: { agentConfigId: true, agentConfig: { select: { name: true } } } },
+              researchRun: { select: { agentConfig: { select: { name: true } } } },
             },
           })
         : Promise.resolve([]),
@@ -181,40 +177,34 @@ export default async function StockDetailPage({ params }: Props) {
     theses,
   );
 
-  // The open position, in the shape the shared trade summary reads, with
-  // the live P&L off this page's quote — the same card the trade page shows.
+  // The open position, for the chart's entry line.
   const open = positions.find((p) => p.status === "OPEN") ?? null;
-  const held: ThesisStatePosition | null = open
-    ? {
-        id: open.id,
-        quantity: Number(open.quantity),
-        avgCost: Number(open.avgCost),
-        openedAt: open.openedAt.toISOString(),
-        daysHeld: Math.max(0, Math.floor((Date.now() - open.openedAt.getTime()) / 86_400_000)),
-        closed: false,
-        outcome: open.outcome,
-      }
-    : null;
-  const heldPnl =
-    held && price != null
-      ? {
-          currentPrice: price,
-          marketValue: price * held.quantity,
-          unrealizedPnl: (price - held.avgCost) * held.quantity * (open?.direction === "SHORT" ? -1 : 1),
-          unrealizedPnlPct: held.avgCost > 0 ? ((price - held.avgCost) / held.avgCost) * 100 * (open?.direction === "SHORT" ? -1 : 1) : null,
-        }
-      : null;
-
-  // The live thesis — what Hindsight thinks of this stock right now. A
-  // holding first, else the newest watch. With one, the page is the thesis
-  // page with the stock's own content in its slots; without, the stock alone.
-  const live = theses.find((t) => t.status === "HOLDING") ?? theses.find((t) => t.status === "WATCHING") ?? null;
 
   const website = profile?.weburl
     ? profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
     : null;
 
-  const stockDetails = (
+  const sidebar = (
+    <>
+      {positions.length > 0 ? (
+        <PositionCard
+          price={price}
+          trades={positions.map((p) => ({
+            id: p.id,
+            direction: p.direction,
+            status: p.status,
+            outcome: p.outcome,
+            avgCost: Number(p.avgCost),
+            closePrice: p.closePrice != null ? Number(p.closePrice) : null,
+            realizedPnl: p.realizedPnl != null ? Number(p.realizedPnl) : null,
+            quantity: Number(p.quantity),
+            closeReason: p.closeReason,
+            openedAt: p.openedAt.toISOString(),
+            closedAt: p.closedAt ? p.closedAt.toISOString() : null,
+          }))}
+        />
+      ) : null}
+
       <Card className="bg-muted/40 p-2 gap-1">
         <BlockLabel>Stock details</BlockLabel>
         <DetailRows
@@ -254,23 +244,6 @@ export default async function StockDetailPage({ params }: Props) {
           ]}
         />
       </Card>
-  );
-
-  const sidebar = (
-    <>
-      {held && heldPnl ? (
-        <Link href={`/trades/${held.id}`} className="block">
-          <TradeSummary
-            look="card"
-            position={held}
-            pnl={heldPnl}
-            pendingProposal={null}
-            direction={open?.direction === "SHORT" ? "SHORT" : "LONG"}
-          />
-        </Link>
-      ) : null}
-
-      {stockDetails}
 
       <AnalystConsensusWidget coverage={coverage} currentPrice={price} />
 
@@ -321,47 +294,21 @@ export default async function StockDetailPage({ params }: Props) {
         {/* The same header the trade page and the sheet render. href={null}:
             we're already on the stock page. */}
         <div className="mb-6">
-          {live ? (
-            <ThesisHeader
-              ticker={upperSymbol}
-              displayName={identity.companyName}
-              exchange={identity.exchange}
-              status={live.status}
-              agentWatchDays={agentWatchDays(live.triggers)}
-              conviction={(live.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
-              convictionRationale={live.convictionRationale ?? null}
-              analystId={live.researchRun?.agentConfigId ?? null}
-              thesisId={live.id}
-              extraActions={<WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />}
-            />
-          ) : (
-            <StockIdentityHeader
-              ticker={upperSymbol}
-              displayName={identity.companyName}
-              exchange={identity.exchange}
-              href={null}
-              actions={
-                <>
-                  <TradeButton ticker={upperSymbol} />
-                  <PinButton ticker={upperSymbol} />
-                  <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
-                </>
-              }
-            />
-          )}
+          <StockIdentityHeader
+            ticker={upperSymbol}
+            displayName={identity.companyName}
+            exchange={identity.exchange}
+            href={null}
+            actions={
+              <>
+                <TradeButton ticker={upperSymbol} />
+                <PinButton ticker={upperSymbol} />
+                <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
+              </>
+            }
+          />
         </div>
 
-        {live ? (
-          <StockThesisBody
-            thesisId={live.id}
-            positionId={open?.id}
-            ticker={upperSymbol}
-            history={history}
-            research={research}
-            news={news}
-            aside={stockDetails}
-          />
-        ) : (
         <StockPageTabs
           overview={{
             ticker: upperSymbol,
@@ -369,14 +316,15 @@ export default async function StockDetailPage({ params }: Props) {
             price,
             dayChange: quote?.d ?? null,
             dayChangePct: quote?.dp ?? null,
-            held: held && open ? { avgCost: held.avgCost, openedAt: held.openedAt, direction: open.direction === "SHORT" ? "SHORT" : "LONG" } : null,
+            held: open
+              ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
+              : null,
           }}
           history={history}
           research={research}
           news={news}
           sidebar={sidebar}
         />
-        )}
       </div>
     </div>
   );
