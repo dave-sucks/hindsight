@@ -1254,7 +1254,7 @@ export function ThesisBody({
       />
 
       {/* The newest 8 Activity lines, the ones the agents are handed, in the Activity tab's own design. */}
-      <RecentActivity items={recent} onViewAll={() => setTab(2)} />
+      <RecentActivity items={recent} triggers={state.triggers} onViewAll={() => setTab(2)} />
 
       {surface === "sheet" ? stockCards : null}
       </div>
@@ -1370,6 +1370,7 @@ export function ThesisBody({
             <ThesisTimelineSection
               thesisId={thesis_id}
               recentIds={recent.map((r) => r.id)}
+              triggers={state.triggers}
               provenance={
                 state.sourceKind
                   ? {

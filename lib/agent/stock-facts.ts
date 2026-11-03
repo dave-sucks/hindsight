@@ -135,6 +135,8 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
         ticker: t.ticker,
         rows: input.activity ?? [],
         orders: load.proposalHistory.get(t.id) ?? [],
+        // The resolved list, inherited rules included: a review's title names the trigger it answered.
+        triggers: input.thesis.triggers,
       }),
     );
     needs.set(t.id, computeNeedsAction(input));

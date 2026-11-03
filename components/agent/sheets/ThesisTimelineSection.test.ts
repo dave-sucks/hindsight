@@ -13,6 +13,7 @@
  */
 
 import {
+  reviewTitle,
   titleSegments,
   triggerPhrase,
   updatedSecondary,
@@ -125,6 +126,60 @@ describe("titleSegments — trade rows read like the thesis banners", () => {
         }),
       ),
     ).toEqual({ primary: "Proposed", secondary: "sell 75 shares" });
+  });
+});
+
+describe("reviewTitle — what kind of review it was, from the trigger that fired", () => {
+  // The resolved lists as the dossier serves them (inherited rules included), 2026-11-02.
+  const triggers = [
+    // CEG, its own: the morning run's 09:04 review answered it.
+    { id: "ceg-before", action: "REVIEW", predicate: { watch: "report", is: "before", value: 5 } },
+    // MSFT's own.
+    { id: "msft-beat", action: "REVIEW", predicate: { watch: "surprise", is: "beat", value: 0 } },
+    { id: "msft-30d", action: "REVIEW", predicate: { watch: "repeat", value: 30 } },
+    // WST's own: the Oct 21 60-day checkpoint.
+    { id: "wst-60d", action: "REVIEW", predicate: { watch: "from_date", is: "after", value: 60, variable: "buy" } },
+    // IOT's own, written by the Nov 2 morning run: a beat and a 3% drop in one rule.
+    { id: "iot-beat-drop", action: "REVIEW", predicate: { match: "all", conditions: [{ watch: "surprise", is: "beat", value: 0 }, { watch: "move", is: "below", value: 3, variable: "prev_close" }] } },
+    // The account's rules every holding inherits.
+    { id: "acct-filing", action: "REVIEW", predicate: { watch: "filing", variable: "tier:MATERIAL" } },
+    { id: "acct-trail", action: "EXIT", predicate: { watch: "move", is: "below", value: 6, variable: "peak" } },
+    // The analyst's 200-day rule, and IOT's own sale line.
+    { id: "sma200", action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma200" } },
+    { id: "iot-sale", action: "EXIT", predicate: { watch: "price", is: "below", value: 42.7 } },
+    { id: "abbv-close", action: "REVIEW", predicate: { watch: "price", is: "below", value: 283.43, settings: { close: true } } },
+  ];
+  const review = (triggerId: string | null, extra: Record<string, unknown> = {}) => row({ type: "REVIEWED", summary: "Reviewed thesis — no changes", triggerId, ...extra });
+
+  it("earnings: before the report, after the result (a beat and a drop in one rule counts as the result)", () => {
+    expect(reviewTitle(review("ceg-before"), triggers)).toEqual({ primary: "Pre-earnings review", secondary: "" });
+    expect(reviewTitle(review("msft-beat"), triggers)).toEqual({ primary: "Post-earnings review", secondary: "" });
+    expect(reviewTitle(review("iot-beat-drop"), triggers)).toEqual({ primary: "Post-earnings review", secondary: "" });
+    expect(reviewTitle(review("x"), [{ id: "x", action: "REVIEW", predicate: { watch: "report", is: "after", value: 1 } }])).toEqual({ primary: "Post-earnings review", secondary: "" });
+  });
+
+  it("the clock, a date after the buy, a filing", () => {
+    expect(reviewTitle(review("msft-30d"), triggers)).toEqual({ primary: "Scheduled review", secondary: "" });
+    expect(reviewTitle(review("wst-60d"), triggers)).toEqual({ primary: "Checkpoint review", secondary: "" });
+    expect(reviewTitle(review("acct-filing"), triggers)).toEqual({ primary: "Filing review", secondary: "" });
+  });
+
+  it("a price or move trigger: Review with the trigger's own condition, whatever its action", () => {
+    expect(reviewTitle(review("sma200"), triggers)).toEqual({ primary: "Review", secondary: "below the 200-day average" });
+    expect(reviewTitle(review("acct-trail"), triggers)).toEqual({ primary: "Review", secondary: "below 6% from the high since we bought" });
+    expect(reviewTitle(review("iot-sale"), triggers)).toEqual({ primary: "Review", secondary: "below $42.70" });
+    expect(reviewTitle(review("abbv-close"), triggers)).toEqual({ primary: "Review", secondary: "below $283.43 · only on the close" });
+  });
+
+  it("no trigger, a trigger since removed, or no list to look in: Review", () => {
+    expect(reviewTitle(review(null), triggers)).toEqual({ primary: "Review", secondary: "" });
+    expect(reviewTitle(review("8e790d37-gone"), triggers)).toEqual({ primary: "Review", secondary: "" });
+    expect(reviewTitle(review("ceg-before"))).toEqual({ primary: "Review", secondary: "" });
+  });
+
+  it("the verdict's word follows the title", () => {
+    expect(reviewTitle(review("ceg-before", { verdict: "WEAKER" }), triggers)).toEqual({ primary: "Pre-earnings review", secondary: "· weaker" });
+    expect(reviewTitle(review("sma200", { verdict: "UNCHANGED" }), triggers)).toEqual({ primary: "Review", secondary: "below the 200-day average · unchanged" });
   });
 });
 

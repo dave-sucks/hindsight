@@ -47,6 +47,7 @@ import {
   type TimelineItem,
   type TimelineRow,
   type TimelineUpdate,
+  type TitleTrigger,
 } from "@/components/agent/sheets/thesis-timeline-utils";
 
 // When the sheet opens from a run-detail page (/runs/[id]), entries whose
@@ -170,6 +171,8 @@ interface Props {
   provenance?: { sourceKind: string; rationale: string | null } | null;
   /** The ids of the newest 8 lines, the ones on the Overview: the tab marks where they end. */
   recentIds?: string[];
+  /** The thesis's triggers, inherited rules included: a review's title names the one it answered. */
+  triggers?: ReadonlyArray<TitleTrigger>;
 }
 
 /** Every Activity line an item covers, so a row can be matched against the Overview's 8. */
@@ -183,7 +186,7 @@ function itemIds(item: TimelineItem): string[] {
  * pipeline for the tab and the Overview's Recent activity, so the same line
  * reads the same way in both.
  */
-function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: Set<string>, provenance: Props["provenance"]) {
+function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: Set<string>, provenance: Props["provenance"], triggers?: ReadonlyArray<TitleTrigger>) {
   const built = buildTimeline(updates, filter);
   const items = built.flatMap((item) => {
     // Keep the fold row itself when expanded: the only control that can collapse the group again.
@@ -205,7 +208,7 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
   // so the paragraph always sits under it, never beside the price and the actions.
   const titled = rows.map((r, i) => {
     const item = items[i];
-    return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: reviewTitle(item.row) } : r;
+    return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: reviewTitle(item.row, triggers) } : r;
   });
   const ids = items.map(itemIds);
   return { rows: titled, spans: proposalSpanSegments(items), labels, ids };
@@ -275,10 +278,10 @@ function TimelineList({
  * same 8 every run is handed (lib/thesis/activity-feed.ts), assembled and
  * drawn exactly as the Activity tab draws them.
  */
-export function RecentActivity({ items, onViewAll }: { items: TimelineUpdate[]; onViewAll: () => void }) {
+export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; onViewAll: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
-  const { rows, spans, labels } = useMemo(() => assembleRows(items, "all", open, null), [items, open]);
+  const { rows, spans, labels } = useMemo(() => assembleRows(items, "all", open, null, triggers), [items, open, triggers]);
   if (items.length === 0) return null;
   return (
     <div className="space-y-3">
@@ -310,7 +313,7 @@ export function RecentActivity({ items, onViewAll }: { items: TimelineUpdate[]; 
 /** The line the tab draws under the newest 8, where the Overview's list and the agent's read end. */
 export const RECENT_END_LABEL = "The newest 8 end here: they are on the Overview and in the agent's read.";
 
-export function ThesisTimelineSection({ thesisId, provenance, recentIds }: Props) {
+export function ThesisTimelineSection({ thesisId, provenance, recentIds, triggers }: Props) {
   const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<TimelineFilter>("all");
@@ -345,14 +348,14 @@ export function ThesisTimelineSection({ thesisId, provenance, recentIds }: Props
   // and find the last row that carries one of the Overview's 8.
   const { rows, spans, labels, recentEnd } = useMemo(() => {
     if (!updates) return { rows: [], spans: new Set<number>(), labels: [] as (string | null)[], recentEnd: -1 };
-    const { rows, spans, labels, ids } = assembleRows(updates, filter, open, provenance);
+    const { rows, spans, labels, ids } = assembleRows(updates, filter, open, provenance, triggers);
     const recent = new Set(recentIds ?? []);
     let recentEnd = -1;
     ids.forEach((list, i) => {
       if (list.some((id) => recent.has(id))) recentEnd = i;
     });
     return { rows, spans, labels, recentEnd };
-  }, [updates, filter, open, provenance, recentIds]);
+  }, [updates, filter, open, provenance, recentIds, triggers]);
 
   return (
     <div className="space-y-3">

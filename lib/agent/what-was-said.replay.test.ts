@@ -168,7 +168,8 @@ describe("the 09-30 morning read of CEG, through get_theses", () => {
     expect(quiet).toBe(false);
     const context = full!.context!;
     expect(context.startsWith(HEADER)).toBe(true);
-    expect(context).toContain('09-28 08:04 · $261.23 · Review — "CEG\'s repeated 200-day review');
+    // The 09-28 review answered the analyst's 200-day rule, and its title says so (the page's title, through the resolved list get_theses hands it).
+    expect(context).toContain('09-28 08:04 · $261.23 · Review below the 200-day average — "CEG\'s repeated 200-day review');
     expect(context).toContain("09-28 11:20 · $257.63 · Trigger: Trailing 15% from high — review");
     expect(context).toContain(RAISE_THE_FLOOR);
     // The principal's 09-14 removal of the 8% trail is older than the 8: the full history is one call away.

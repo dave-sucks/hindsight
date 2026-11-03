@@ -7,6 +7,7 @@
  */
 import { activityFeed, type ProposalOrder, type StoredLine } from "@/lib/thesis/activity-feed";
 import { buildStockContext, type StockContext } from "@/lib/agent/stock-context";
+import type { TitleTrigger } from "@/components/agent/sheets/thesis-timeline-utils";
 
 /**
  * How many of a stock's newest Activity lines are loaded (about a month).
@@ -22,6 +23,6 @@ export const ACTIVITY_SELECT = {
   verdict: true, verdictLine: true, answersUpdateId: true, answers: { select: { timestamp: true } },
 } as const;
 
-export function stockContextFor(args: { ticker: string; rows: StoredLine[]; orders?: ProposalOrder[] }): StockContext {
-  return buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: args.rows, orders: args.orders ?? [] }) });
+export function stockContextFor(args: { ticker: string; rows: StoredLine[]; orders?: ProposalOrder[]; triggers?: ReadonlyArray<TitleTrigger> }): StockContext {
+  return buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: args.rows, orders: args.orders ?? [] }), triggers: args.triggers });
 }
