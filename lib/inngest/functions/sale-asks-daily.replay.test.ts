@@ -7,7 +7,8 @@
  * floor waited a day and 10-23 had no ask. Now that pass is skipped unstamped
  * and the 13:50 pass, with the old proposal expired but not yet swept, asks.
  *
- * NVDA (PEAD, floor $236, no wait) is the cooldown-0 control. IOT is the close
+ * NVDA (PEAD, floor $236, stored with no wait): since 2026-11-02 a wait of 0
+ * reads as a day, so it asks once a day like every sale. IOT is the close
  * pass: its 10-23 high, $44.985 at 15:58 ET, came after the last 5-minute pass.
  *
  * Real handlers, rows and tape; doubled: the database, Alpaca, the model, the clock.
@@ -193,18 +194,24 @@ describe("ASML 10-22 → 10-23: a floor below the price asks every day", () => {
 });
 
 const NVDA_DAY = { o: 210.99, l: 210.18 };
-describe("NVDA, no wait on its floor: unchanged", () => {
+describe("NVDA, its floor stored with no wait: a sale asks once a day", () => {
   it("while its proposal waits: no run, as before", async () => {
     const db = book("NVDA");
     const { sent } = await pass(db, "2026-10-23T14:30:05Z", { snapshots: { NVDA: snap(212.895, "2026-10-23T14:30:00Z", { ...NVDA_DAY, h: 213.32 }, 212.21) } });
     expect(sent).toEqual([]);
   });
 
-  it("once the sweeper has marked it EXPIRED: it fires and the run reaches the analyst, as before", async () => {
+  it("once the sweeper has marked it EXPIRED, the same day: the floor waits for tomorrow (a 0 read as 'ask on every pass' until 2026-11-02; CEG woke a run every five minutes while its analyst held)", async () => {
     const db = book("NVDA", "EXPIRED");
     const { sent } = await pass(db, "2026-10-23T15:00:30Z", { snapshots: { NVDA: snap(212.975, "2026-10-23T15:00:29Z", { ...NVDA_DAY, h: 213.85 }, 212.21) } });
+    expect(sent).toEqual([]);
+  });
+
+  it("the next trading day: it fires and the run reaches the analyst", async () => {
+    const db = book("NVDA", "EXPIRED");
+    const { sent } = await pass(db, "2026-10-26T14:30:30Z", { snapshots: { NVDA: snap(212.975, "2026-10-26T14:30:29Z", { ...NVDA_DAY, h: 213.85 }, 212.21) } });
     expect(fired(sent)).toEqual([["NVDA", NVDA_FLOOR.id, 212.975]]);
-    const run = await trigger(db, "2026-10-23T15:00:45Z", sent[0].data);
+    const run = await trigger(db, "2026-10-26T14:30:45Z", sent[0].data);
     expect(run.modelCalls).toBeGreaterThan(0);
   });
 });

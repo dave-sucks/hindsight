@@ -224,7 +224,6 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
     add_triggers: [
       {
         action: "REVIEW",
-        cooldownDays: 3,
         predicate: { watch: "price", is: "below", value: 65 },
         rationale: "Pullback to the rising 20-day (~$64.50) — evaluate entry with stop $61.52 and target $82.96.",
       },

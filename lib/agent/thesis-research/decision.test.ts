@@ -445,9 +445,9 @@ describe("submit_thesis edit_triggers — the same form update_thesis saves (DAV
   it("the writer and update_thesis edit a trigger with the one schema, and an old `days` reads as the value", () => {
     // Two hand-written copies drifted once (PRAX 09-11); there is one now.
     expect(thesisDecisionSchema.shape.edit_triggers.unwrap().element).toBe(editTriggerOpSchema);
-    const op = { id: PRAX_0911_EDIT.id, action: "REVIEW", days: 7, rationale: "Weekly into the PDUFA.", cooldown_days: 7 };
+    const op = { id: PRAX_0911_EDIT.id, action: "REVIEW", days: 7, rationale: "Weekly into the PDUFA." };
     const parsed = editTriggerOpSchema.parse(op);
-    expect(parsed).toMatchObject({ id: PRAX_0911_EDIT.id, action: "REVIEW", rationale: "Weekly into the PDUFA.", cooldown_days: 7 });
+    expect(parsed).toMatchObject({ id: PRAX_0911_EDIT.id, action: "REVIEW", rationale: "Weekly into the PDUFA." });
     expect(editNumber(parsed)).toEqual({ value: 7, unit: "days" });
   });
 });

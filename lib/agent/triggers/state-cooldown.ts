@@ -7,7 +7,7 @@
 
 import { shapeOf } from "./condition/valid";
 import { isState } from "./condition/rules";
-import { fireModeOf, type FireMode } from "./fire-mode";
+import type { FireMode } from "./fire-mode";
 
 
 /**
@@ -32,15 +32,19 @@ export const STATE_PREDICATE_MIN_COOLDOWN_DAYS = 7;
 
 /**
  * The floor, applied to whatever cooldown the rung would otherwise use.
- * Only a REVIEW is floored: a buy on these fires on its crossing, and a
- * sale is a standing order that asks every day its condition holds.
+ * A review on a state is floored at a week. A trade (a buy, add, trim or
+ * sale) is floored at a day whatever its fire mode: a sale is a standing
+ * order that asks every day its condition holds, and never more often.
  */
 export function flooredCooldownDays(
   trigger: { action: string; predicate: unknown; fireMode?: FireMode },
   days: number,
 ): number {
   if (trigger.action === "REVIEW" && isStatePredicate(trigger.predicate)) return Math.max(days, STATE_PREDICATE_MIN_COOLDOWN_DAYS);
-  // A trade left for the morning run is answered once a day, so it asks once a day: a floor at 0 would write a fire every pass.
-  if (trigger.action !== "REVIEW" && fireModeOf(trigger) === "NEXT_MORNING") return Math.max(days, 1);
+  // A trade asks once a day, never more. A wait of 0 on a sale woke a run
+  // every pass while the analyst held (CEG, 2026-11-02: 9:30, 9:35, 9:40);
+  // the "a waiting sale drops the repeats" guard has nothing to hold onto
+  // when the run holds.
+  if (trigger.action !== "REVIEW") return Math.max(days, 1);
   return days;
 }

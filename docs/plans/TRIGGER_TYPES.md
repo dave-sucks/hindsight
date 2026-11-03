@@ -554,7 +554,7 @@ Every other type fills the same parts:
 
 - **Tools.** `update_thesis` keeps its add / edit / remove operations by id;
   the trigger inside them is the new shape. An edit becomes `{ id, value?,
-  variable?, action?, fire_mode?, rationale?, cooldown_days? }`: one number
+  variable?, action?, fire_mode?, rationale? }`: one number
   or one variable, the same for every trigger. Today it is `level`, `pct` or
   `days` depending on the kind. `entry_price`, `target_price` and
   `stop_loss` still write the fixed-price buy, target and floor, as today. The writer's `submit_thesis` uses

@@ -278,6 +278,9 @@ export const triggerInputSchema = triggerSchema
     source: true,
     // A trim's size is the owner's (the dialog); an agent's trim sells the default half unless the run names another.
     trimPct: true,
+    // The wait is the app's: a trade asks once a day, a review on its measure's clock. Agents could set
+    // 0–90 days until 2026-11-02; a 0 on CEG's sale woke a run every five minutes. A sent value is dropped.
+    cooldownDays: true,
   })
   .extend({ predicate: predicateInputSchema() });
 
@@ -301,7 +304,6 @@ export const editTriggerOpSchema = z.looseObject({
   action: triggerActionSchema.optional(),
   fire_mode: z.enum(FIRE_MODES).optional(),
   rationale: z.string().optional().describe("REQUIRED when the value changes — the sentence moves with the number."),
-  cooldown_days: z.number().int().min(0).max(90).optional(),
   close: z.boolean().optional().describe("A price level: true fires only on the 16:20 close pass; false = intraday."),
 });
 

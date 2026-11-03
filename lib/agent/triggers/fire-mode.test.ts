@@ -69,9 +69,9 @@ describe("a new trigger names none: one default", () => {
     expect(out.fireMode).toBe(mode);
   });
 
-  it("one it names is kept, and a sale's cooldown of 0 with it", () => {
+  it("one it names is kept; a sale's cooldown of 0 reads as a day (2026-11-02)", () => {
     const [out] = applyTriggerDefaults([{ id: "t", action: "EXIT", predicate: { watch: "price", is: "below", value: 100 }, rationale: "x", cooldownDays: 0, fireMode: "ASK_NOW" }]);
-    expect(out).toMatchObject({ fireMode: "ASK_NOW", cooldownDays: 0 });
+    expect(out).toMatchObject({ fireMode: "ASK_NOW", cooldownDays: 1 });
   });
 });
 
@@ -97,10 +97,12 @@ describe("what each mode does", () => {
     expect(doItTrade({ action: "EXIT", fireMode: "ASK_NOW" }, true)).toBeNull();
   });
 
-  it("a sale left for the morning run asks at most once a day, even with a cooldown of 0", () => {
+  it("a sale asks at most once a day whatever its On fire, even with a cooldown of 0", () => {
+    // Until 2026-11-02 only the morning-run mode was floored; CEG's Send-to-Agent sale at 0 woke a run every five minutes.
     const floor: Trigger = { id: "f", action: "EXIT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "x", cooldownDays: 0 };
     expect(effectiveCooldownDays({ ...floor, fireMode: "NEXT_MORNING" })).toBe(1);
-    expect(effectiveCooldownDays({ ...floor, fireMode: "DO_IT" })).toBe(0);
+    expect(effectiveCooldownDays({ ...floor, fireMode: "ASK_NOW" })).toBe(1);
+    expect(effectiveCooldownDays({ ...floor, fireMode: "DO_IT" })).toBe(1);
   });
 });
 
