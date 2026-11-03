@@ -78,6 +78,7 @@ export async function GET(
       // Structural belief fields (load-bearing — trade-evaluator reads these
       // on close; tactical agent reads them on trigger fire). Surfaced to the
       // sheet so the user can see what the agent actually committed to.
+      company: true,
       coreBelief: true,
       keyAssumptions: true,
       invalidationConds: true,
@@ -354,6 +355,7 @@ export async function GET(
     analystId: thesis.researchRun?.agentConfigId ?? null,
     position,
     analystName: thesis.researchRun?.agentConfig?.name ?? null,
+    company: thesis.company,
     coreBelief: thesis.coreBelief,
     keyAssumptions: thesis.keyAssumptions ?? [],
     invalidationConds: thesis.invalidationConds ?? [],

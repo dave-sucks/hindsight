@@ -187,7 +187,7 @@ export default async function TradeDetailPage({
           status={trade.thesis?.status ?? (isClosed ? 'RETIRED' : 'HOLDING')}
           agentWatchDays={agentWatchDays(trade.thesis?.triggers)}
           conviction={(trade.thesis?.conviction ?? null) as 'STRONG' | 'HIGH' | 'MEDIUM' | 'LOW' | null}
-          convictionRationale={trade.thesis?.convictionRationale ?? null}
+          score={trade.thesis ? getThesisComposite(trade.thesis) : null}
           analystId={analystIdVal}
           thesisId={trade.thesis?.id}
           extraActions={<TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />}

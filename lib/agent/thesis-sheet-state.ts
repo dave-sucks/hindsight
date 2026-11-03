@@ -26,6 +26,7 @@ export const thesisSheetStateSelect = {
   stopLoss: true,
   catalystDate: true,
   triggers: true,
+  company: true,
   coreBelief: true,
   keyAssumptions: true,
   invalidationConds: true,
