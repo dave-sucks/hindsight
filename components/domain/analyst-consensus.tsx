@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/collapsible";
 import { SourceCitation, type CitationSource } from "@/components/ai-elements/inline-citation";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
+import { epsWords } from "@/lib/market-data/street-consensus";
 import type {
   ResearchCitation,
   ResearchTextSection,
@@ -145,6 +146,14 @@ export function AnalystConsensusWidget({
           consensus={consensus}
           priceTargets={priceTargets}
         />
+      ) : null}
+
+      {priceTargets ? (
+        <p className="text-xs text-muted-foreground tabular-nums">
+          Targets as of{" "}
+          {new Date(`${priceTargets.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
+          {coverage?.eps ? ` · ${epsWords(coverage.eps.nextQuarter, coverage.eps.up, coverage.eps.down)}` : ""}
+        </p>
       ) : null}
 
       {narrative ? <ConsensusNarrative narrative={narrative} /> : null}

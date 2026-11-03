@@ -19,6 +19,7 @@
  */
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 import { writtenNote } from "@/lib/agent/triggers/note";
+import { streetLine } from "@/lib/market-data/street-consensus";
 
 export type RowSize = "line" | "short" | "full";
 
@@ -400,6 +401,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
     for (const k of RESEARCH_SECTIONS) put(k, sectionText(row[k]));
   }
   put("chart", chartLine(row));
+  put("street", streetLine(row));
   put("research", researchLine(row, size));
   const catalyst = date(row.catalystDate);
   put("catalyst", catalyst ? isoDay(catalyst) : catalystDateMissing(row) ? "date missing" : null);
