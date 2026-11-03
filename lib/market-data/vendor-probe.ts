@@ -23,6 +23,7 @@ import { getAlpacaMovers } from "@/lib/market-data/alpaca-screener";
 import { getBars, getSnapshots, type AlpacaCredentials } from "@/lib/alpaca";
 import { quoteFromSnapshot } from "@/lib/market-data/live-quote";
 import { getIntradayCandles } from "@/lib/actions/finnhub.actions";
+import { nasdaqAnalyst, readTargets } from "@/lib/market-data/street-consensus";
 
 export type ProbeStatus = "ok" | "empty" | "error";
 
@@ -41,9 +42,10 @@ export interface ProbeDeps {
   getBars: typeof getBars;
   getSnapshots: typeof getSnapshots;
   getIntradayCandles: typeof getIntradayCandles;
+  nasdaq: typeof nasdaqAnalyst;
 }
 
-const DEFAULT_DEPS: ProbeDeps = { finnhub, getAlpacaMovers, getBars, getSnapshots, getIntradayCandles };
+const DEFAULT_DEPS: ProbeDeps = { finnhub, getAlpacaMovers, getBars, getSnapshots, getIntradayCandles, nasdaq: nasdaqAnalyst };
 
 /** The mid-cap used when the book has nothing held. */
 export const DEFAULT_PROBE_TICKER = "SMMT";
@@ -196,8 +198,19 @@ export async function runVendorProbe(
     return [quote, bars, minutes, screener];
   };
 
-  const [fh, al] = await Promise.all([finnhubProbes(), alpacaProbes()]);
-  return [...fh, ...al];
+  // Nasdaq's website feed behind the Street targets, always on SMMT (a held
+  // fund has no targets). A moved key is error; "No record found" is empty.
+  const nasdaqProbe = async (): Promise<ProbeResult[]> => [
+    await timed(`Nasdaq Street targets (${DEFAULT_PROBE_TICKER})`, async () => {
+      const json = await d.nasdaq(DEFAULT_PROBE_TICKER, "targetprice");
+      if ((json as { data?: unknown } | null)?.data == null) return { status: "empty" as const, detail: "no record" };
+      const t = readTargets(json);
+      return { status: "ok" as const, detail: `$${t.low.toFixed(2)}–$${t.high.toFixed(2)}, avg $${t.avg.toFixed(2)}, ${t.buy + t.hold + t.sell} analysts` };
+    }),
+  ];
+
+  const [fh, al, nq] = await Promise.all([finnhubProbes(), alpacaProbes(), nasdaqProbe()]);
+  return [...fh, ...al, ...nq];
 }
 
 /** One line for the log: `ok=6 empty=1 error=1 (SMMT) — empty: Finnhub filed statements; error: Alpaca screener`. */

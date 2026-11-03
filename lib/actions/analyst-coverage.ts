@@ -1,40 +1,15 @@
 /**
- * Analyst coverage for a ticker — a standing Bullish/Neutral/Bearish ratings
- * snapshot (Finnhub). The price-target range used to come from FMP; removed
- * 2026-09-08 (the tier we hold refuses most of the book's names, and Finnhub
- * gates its own target endpoint). `priceTargets` is null until a source
- * that covers our names is paid for. Powers the AnalystConsensusWidget.
+ * Analyst coverage for a ticker: the standing Bullish/Neutral/Bearish ratings
+ * snapshot (Finnhub), and the Wall Street price-target range and next-quarter
+ * EPS consensus from the newest StreetConsensus row (Nasdaq's feed, stored
+ * daily). Powers the AnalystConsensusWidget.
  *
  * Extracted from app/api/theses/[id]/analyst-coverage/route.ts so the
  * thesis-sheet consensus endpoint (/api/theses/:id/analyst-coverage) can fetch it
  * alongside the quote/candles instead of the client making a separate call.
  */
 import { getRecommendationTrends } from "@/lib/actions/finnhub.actions";
-
-interface PriceTargetConsensus {
-  symbol?: string;
-  targetHigh?: number;
-  targetLow?: number;
-  targetConsensus?: number;
-  targetMedian?: number;
-}
-
-/**
- * FMP /stable/price-target-summary.
- *
- * NOTE: there is no `numberOfAnalysts` field and never was in the /stable
- * shape — code here used to read `numberOfAnalysts ?? publishers`, and
- * `publishers` is a JSON-encoded STRING of news outlets ("[\"TheFly\",
- * \"Benzinga\",...]"), not a count. That string was being handed to the agent
- * as `numAnalysts` (DAV-191). The real counts are the *Count fields.
- */
-interface PriceTargetSummary {
-  symbol?: string;
-  lastMonthCount?: number;
-  lastQuarterCount?: number;
-  lastYearCount?: number;
-  allTimeCount?: number;
-}
+import { newestStreetRows } from "@/lib/market-data/street-consensus-store";
 
 export interface AnalystCoverageData {
   ticker: string;
@@ -46,13 +21,17 @@ export interface AnalystCoverageData {
     total: number;
     period: string | null;
   } | null;
+  /** The card measures the move to the average from its own live price. */
   priceTargets: {
     low: number | null;
     average: number;
     median: number | null;
     high: number | null;
     numAnalysts: number | null;
+    asOf: string;
   } | null;
+  /** Next-quarter EPS consensus and its revisions over the last 4 weeks. */
+  eps: { nextQuarter: number; up: number | null; down: number | null } | null;
   errors?: string[];
 }
 
@@ -61,10 +40,19 @@ export async function getAnalystCoverageData(
 ): Promise<AnalystCoverageData> {
   const T = ticker.toUpperCase();
 
-  const finnhubTrends = await getRecommendationTrends(T).catch(() => null);
+  const [finnhubTrends, street] = await Promise.all([
+    getRecommendationTrends(T).catch(() => null),
+    newestStreetRows([T]).then((m) => m.get(T) ?? null).catch(() => null),
+  ]);
 
   const errors: string[] = [];
-  const priceTargets: AnalystCoverageData["priceTargets"] = null;
+  const priceTargets: AnalystCoverageData["priceTargets"] = street
+    ? { low: street.targetLow, average: street.targetAvg, median: null, high: street.targetHigh, numAnalysts: street.analysts, asOf: street.asOf }
+    : null;
+  const eps: AnalystCoverageData["eps"] =
+    street?.epsNextQuarter != null
+      ? { nextQuarter: street.epsNextQuarter, up: street.epsNextQuarterUp, down: street.epsNextQuarterDown }
+      : null;
 
   // Finnhub returns one record per month (most-recent first). The latest
   // record is the current standing ratings snapshot — strongBuy + buy collapse
@@ -87,6 +75,7 @@ export async function getAnalystCoverageData(
     ticker: T,
     consensus,
     priceTargets,
+    eps,
     errors: errors.length > 0 ? errors : undefined,
   };
 }

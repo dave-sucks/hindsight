@@ -6,6 +6,7 @@
 
 import { runVendorProbe, summarizeProbe } from "./vendor-probe";
 import type { ProbeDeps } from "./vendor-probe";
+import smmtStreet from "./__fixtures__/nasdaq-street-SMMT-2026-11-02.json";
 
 jest.mock("@/lib/agent/research-helpers", () => ({ finnhub: jest.fn() }));
 jest.mock("@/lib/market-data/alpaca-screener", () => ({ getAlpacaMovers: jest.fn() }));
@@ -34,6 +35,7 @@ const healthy: ProbeDeps = {
   getBars: jest.fn(async () => [{ close: 17.1, volume: 1 }]) as never,
   getSnapshots: jest.fn(async () => ({ SMMT: smmtBefore0930 })) as never,
   getIntradayCandles: jest.fn(async () => [{ date: "2026-09-09T19:59:00Z", open: 15.5, high: 15.5, low: 15.48, close: 15.48, volume: 12_000 }]) as never,
+  nasdaq: jest.fn(async () => smmtStreet.targetprice) as never,
 };
 
 const NOW = new Date("2026-09-10T10:25:00Z");
@@ -41,11 +43,12 @@ const NOW = new Date("2026-09-10T10:25:00Z");
 describe("runVendorProbe", () => {
   it("every source answering with a body is ok — an empty calendar week is still an answer", async () => {
     const out = await runVendorProbe("smmt", { now: NOW, deps: healthy });
-    expect(out).toHaveLength(10);
+    expect(out).toHaveLength(11);
     expect(out.every((r) => r.status === "ok")).toBe(true);
     expect(out.find((r) => r.source === "Finnhub earnings calendar")?.detail).toBe("0 reports in 7 days");
     expect(out.find((r) => r.source === "Alpaca intraday bars")).toMatchObject({ status: "ok", detail: "1 one-minute bars, last 19:59Z" });
-    expect(summarizeProbe("smmt", out)).toBe("ok=10 empty=0 error=0 (SMMT)");
+    expect(out.find((r) => r.source === "Nasdaq Street targets (SMMT)")?.detail).toBe("$11.90–$43.00, avg $27.49, 13 analysts");
+    expect(summarizeProbe("smmt", out)).toBe("ok=11 empty=0 error=0 (SMMT)");
   });
 
   it("the live price is probed on Alpaca with the mid-cap: before the open it is the last close, with its prior close", async () => {
@@ -86,7 +89,7 @@ describe("runVendorProbe", () => {
     };
     const out = await runVendorProbe("SMMT", { now: NOW, deps });
     expect(out.find((r) => r.source === "Finnhub filed statements")).toMatchObject({ status: "empty", detail: "0 filings" });
-    expect(summarizeProbe("SMMT", out)).toBe("ok=9 empty=1 error=0 (SMMT) — empty: Finnhub filed statements");
+    expect(summarizeProbe("SMMT", out)).toBe("ok=10 empty=1 error=0 (SMMT) — empty: Finnhub filed statements");
   });
 
   it("a thrown or refused call is error, and the other probes still run", async () => {
@@ -100,7 +103,7 @@ describe("runVendorProbe", () => {
     const out = await runVendorProbe("SMMT", { now: NOW, deps });
     expect(out.find((r) => r.source === "Alpaca daily bars")).toMatchObject({ status: "error", detail: "403 Forbidden" });
     expect(out.find((r) => r.source === "Alpaca screener")).toMatchObject({ status: "error", detail: "HTTP 429" });
-    expect(out.filter((r) => r.status === "ok")).toHaveLength(8);
+    expect(out.filter((r) => r.status === "ok")).toHaveLength(9);
     expect(summarizeProbe("SMMT", out)).toContain("error: Alpaca daily bars, Alpaca screener");
   });
 
@@ -118,5 +121,17 @@ describe("runVendorProbe", () => {
     const out = await runVendorProbe("SMMT", { now: NOW, deps });
     expect(out.find((r) => r.source === "Finnhub quote (fallback)")).toMatchObject({ status: "error", detail: "HTTP 401" });
     expect(out.find((r) => r.source === "Finnhub key metrics")).toMatchObject({ status: "empty", detail: "null body" });
+  });
+
+  it("Nasdaq's Street feed: no record is empty, a moved key is error", async () => {
+    const run = (body: unknown) =>
+      runVendorProbe("SMMT", { now: NOW, deps: { ...healthy, nasdaq: jest.fn(async () => body) as never } });
+    const none = await run({ data: null, status: { rCode: 200, bCodeMessage: [{ code: 1002, errorMessage: "No record found." }] } });
+    expect(none.find((r) => r.source === "Nasdaq Street targets (SMMT)")).toMatchObject({ status: "empty", detail: "no record" });
+    const moved = await run({ data: { symbol: "smmt", consensus: smmtStreet.targetprice.data.consensusOverview } });
+    expect(moved.find((r) => r.source === "Nasdaq Street targets (SMMT)")).toMatchObject({
+      status: "error",
+      detail: "nasdaq targetprice: no data.consensusOverview",
+    });
   });
 });

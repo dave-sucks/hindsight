@@ -15,6 +15,9 @@
  *
  * Fail-open per ticker: a name whose bars don't come back is skipped and
  * named in the log line; the rest are written.
+ *
+ * Then the Wall Street targets and EPS consensus for the same stocks
+ * (lib/market-data/street-consensus-store.ts), one StreetConsensus row each.
  */
 
 import { inngest } from "@/lib/inngest/client";
@@ -22,6 +25,7 @@ import { prisma } from "@/lib/prisma";
 import { getDailyBars } from "@/lib/alpaca";
 import { CHART_SESSIONS } from "@/lib/market-data/benchmark-bars";
 import { computeAndStoreSnapshot } from "@/lib/market-data/ensure-snapshots";
+import { pullStreetMany } from "@/lib/market-data/street-consensus-store";
 
 /** Tickers per step — bounds one step's wall time (≈10 Alpaca pulls). */
 const CHUNK = 10;
@@ -77,10 +81,23 @@ export const indicatorSnapshot = inngest.createFunction(
       skipped.push(...result.missed);
     }
 
+    // Wall Street targets and EPS consensus for the same stocks, half a second
+    // apart; a stock whose pull fails keeps yesterday's row.
+    const book = tickers.filter((t) => t !== "SPY");
+    let street = 0;
+    const streetMissed: string[] = [];
+    for (let i = 0; i < book.length; i += CHUNK) {
+      const result = await step.run(`street-${i / CHUNK}`, () => pullStreetMany(book.slice(i, i + CHUNK)));
+      street += result.written;
+      streetMissed.push(...result.missed);
+    }
+
     console.log(
       `[indicator-snapshot] wrote ${written}/${tickers.length}` +
-        (skipped.length ? `; skipped ${skipped.join(", ")}` : ""),
+        (skipped.length ? `; skipped ${skipped.join(", ")}` : "") +
+        `; street ${street}/${book.length}` +
+        (streetMissed.length ? `; street missed ${streetMissed.join(", ")}` : ""),
     );
-    return { written, skipped };
+    return { written, skipped, street, streetMissed };
   },
 );

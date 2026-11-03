@@ -38,7 +38,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 Eastern time, on trading days unless it says otherwise.
 
 - **6:25 AM:** Every market-data source is probed; an email goes out if one is empty or erroring.
-- **6:30 AM:** The chart numbers for every stock on the book: averages, highs, RSI, strength, gaps, insider buys.
+- **6:30 AM:** The chart numbers for every stock on the book: averages, highs, RSI, strength, gaps, insider buys. Then Wall Street's price targets and EPS consensus for the same stocks.
 - **8:00 AM:** Morning runs, on each analyst's run days.
 - **9:30 AM – 4:00 PM (1 PM on half days):** The trigger check, every five minutes. Each check first brings every holding's high since the buy up to date for the trails. No order waits at the broker, so a floor broken overnight is acted on at the first check after the open. A buy or an add waits for a price from the last 15 minutes; a sale or a review doesn't.
 - **4:00 AM – 8:00 PM:** Orders are matched to the broker's fills every five minutes, and proposals past their 24 hours lapse every thirty.
@@ -55,7 +55,9 @@ The two workflows these clocks drive, end to end: [From fire to run](deep-dives/
 
 Live prices and every bar come from Alpaca, off the consolidated tape, with Finnhub behind it if a price can't be had. A live price is never cached, and every quote carries the time it printed, so a stale one is said out loud instead of passed off as now. Earnings, company numbers, news and insider trades come from Finnhub; filings straight from the SEC; the web from Perplexity and Claude's own search; X from Grok.
 
-Some data isn't on any plan we hold: analyst price targets, forward revenue and EPS estimates, an economic calendar and options chains. The tools say so when asked, and never guess.
+Wall Street's price targets, its rating split and the EPS consensus with its revisions come from Nasdaq's own website feed: free, but a website's feed and not a licensed one, so it can change without notice and the 6:25 probe checks it every morning. A stock whose pull fails keeps the day before's numbers.
+
+Some data isn't on any plan we hold: forward revenue estimates, an economic calendar and options chains. The tools say so when asked, and never guess.
 
 ## The right model for each job
 
@@ -96,6 +98,9 @@ Inngest functions in `lib/inngest/functions/`, served from `app/api/inngest/rout
 
 #### Chart numbers
 `indicator-snapshot.ts` → `TickerIndicators`, from `lib/market-data/price-structure.ts`.
+
+#### Street targets
+`lib/market-data/street-consensus.ts` (Nasdaq's feed and its parser) → `StreetConsensus`, written by `indicator-snapshot.ts` and on demand by `get_analyst_coverage`.
 
 #### Prompts
 `lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `buildPrincipalSystemPrompt` in `lib/agent/modes.ts` (chat), `lib/agent/house-rules.ts`, `lib/agent/voice.ts`.

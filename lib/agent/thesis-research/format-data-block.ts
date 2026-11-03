@@ -11,6 +11,7 @@
  */
 
 import type { PriceStructure } from "@/lib/market-data/price-structure";
+import { epsDetail, type StreetFacts } from "@/lib/market-data/street-consensus";
 
 interface StockDataInput {
   ticker: string;
@@ -96,7 +97,10 @@ interface AnalystCoverageInput {
     currentPrice: number | null;
     impliedUpsidePct: number | null;
     numAnalysts: number | null;
+    asOf?: string;
   } | null;
+  /** The newest StreetConsensus row (get_analyst_coverage's `street`). */
+  street?: StreetFacts | null;
   errors?: string[];
 }
 
@@ -571,9 +575,11 @@ function buildAnalystCoverage(a: AnalystCoverageInput | null): string {
         ? ` · Implied upside ${fmtPct(a.priceTargets.impliedUpsidePct, 1)} vs ${a.priceTargets.currentPrice != null ? `$${a.priceTargets.currentPrice.toFixed(2)}` : "current"}`
         : "";
     lines.push(
-      `Targets: Low $${a.priceTargets.low?.toFixed(2) ?? "—"} · Avg $${a.priceTargets.average.toFixed(2)} · Median $${a.priceTargets.median?.toFixed(2) ?? "—"} · High $${a.priceTargets.high?.toFixed(2) ?? "—"}${upText}`,
+      `Targets: Low $${a.priceTargets.low?.toFixed(2) ?? "—"} · Avg $${a.priceTargets.average.toFixed(2)} · Median $${a.priceTargets.median?.toFixed(2) ?? "—"} · High $${a.priceTargets.high?.toFixed(2) ?? "—"}${upText}${a.priceTargets.asOf ? ` · as of ${a.priceTargets.asOf}` : ""}`,
     );
   }
+  const eps = a.street ? epsDetail(a.street) : null;
+  if (eps) lines.push(`EPS consensus: ${eps}`);
   if (a.errors && a.errors.length > 0) lines.push(`(partial — ${a.errors.join("; ")})`);
   return lines.join("\n");
 }

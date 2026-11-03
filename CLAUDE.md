@@ -267,8 +267,10 @@ plus `get_stock_data`.
   empty body. Statements now come from Finnhub `/stock/financials-reported`
   (`lib/market-data/finnhub-financials.ts`), ratios from `/stock/metric`,
   movers from Alpaca's screener (`lib/market-data/alpaca-screener.ts`).
-  Not on any plan we hold: analyst price-target ranges and forward
-  revenue/EPS estimates — the tools report them as absent, never guess.
+  Analyst price targets and the EPS consensus come from Nasdaq's website
+  JSON instead (`lib/market-data/street-consensus.ts`, one
+  `StreetConsensus` row per stock per day). Forward revenue estimates are
+  on no plan we hold — the tools report them as absent, never guess.
   Do not re-add an FMP client without a plan that covers all US symbols,
   and probe it with a mid-cap (SMMT, not AAPL) — the free list covers the
   mega-caps, which is how the August audit was fooled.

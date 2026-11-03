@@ -1446,3 +1446,37 @@ model TickerIndicators {
   @@unique([ticker, asOf])
 }
 
+// ── Wall Street targets and EPS consensus ───────────────────────────────
+// From Nasdaq's website JSON (lib/market-data/street-consensus.ts), pulled
+// at 06:30 ET for the book and on demand by get_analyst_coverage. One row
+// per stock per day; a failed pull writes nothing.
+model StreetConsensus {
+  id                      String   @id @default(cuid())
+  ticker                  String
+  /// New York date of the pull (YYYY-MM-DD).
+  asOf                    String
+  targetLow               Float
+  targetAvg               Float
+  targetHigh              Float
+  /// buy + hold + sell
+  analysts                Int
+  buy                     Int
+  hold                    Int
+  sell                    Int
+  epsNextQuarter          Float?
+  epsNextQuarterEstimates Int?
+  /// Revisions over the last 4 weeks.
+  epsNextQuarterUp        Int?
+  epsNextQuarterDown      Int?
+  /// "Dec 2026"
+  epsNextQuarterFiscalEnd String?
+  epsFiscalYear           Float?
+  epsFiscalYearUp         Int?
+  epsFiscalYearDown       Int?
+  epsNextQuarter1wAgo     Float?
+  epsNextQuarter1mAgo     Float?
+  fetchedAt               DateTime @default(now())
+
+  @@unique([ticker, asOf])
+}
+

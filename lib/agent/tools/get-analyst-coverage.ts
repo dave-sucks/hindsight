@@ -1,56 +1,19 @@
 /**
- * get_analyst_coverage — consensus rating (Finnhub) + price-target range (FMP).
+ * get_analyst_coverage — the rating split (Finnhub recommendation trends), the
+ * Wall Street price-target range and the EPS consensus with its revisions
+ * (Nasdaq's feed, stored daily in StreetConsensus). Backs the thesis
+ * 'Analyst Consensus' section.
  *
- * Backs the thesis 'Analyst Consensus' section: how the street is positioned
- * and where the consensus target sits versus the live price.
- *
- * 2026-08-19 (DAV-191) — the firm-by-firm rating-action timeline is GONE, and
- * it was never actually working. It was built on FMP `/stable/grades-historical`
- * + `/stable/upgrades-downgrades`, both of which return 404 `[]` on our plan,
- * and the tool derived its `consensus` block *from that same empty timeline* —
- * so every call in production returned `consensus: null` + `recentActions: []`
- * while reporting success. No vendor we pay for serves the named-firm/named-
- * analyst table (Finnhub `/stock/upgrade-downgrade` is 403 too), so rather than
- * fake it, consensus now comes from Finnhub `/stock/recommendation`, which is
- * healthy and gives the real buy/hold/sell distribution.
- *
- * Price targets stay on FMP — `/stable/price-target-consensus` and
- * `/stable/price-target-summary` were both verified 200 with live data.
+ * No vendor we hold serves the firm-by-firm rating actions (DAV-191), so the
+ * tool gives the split, the range and the consensus, never named firms.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub } from "@/lib/agent/research-helpers";
-
-interface PriceTargetConsensus {
-  symbol?: string;
-  targetHigh?: number;
-  targetLow?: number;
-  targetConsensus?: number;
-  targetMedian?: number;
-}
-
-/**
- * FMP /stable/price-target-summary.
- *
- * NOTE: there is no `numberOfAnalysts` field and never was in the /stable
- * shape — code here used to read `numberOfAnalysts ?? publishers`, and
- * `publishers` is a JSON-encoded STRING of news outlets ("[\"TheFly\",
- * \"Benzinga\",...]"), not a count. That string was being handed to the agent
- * as `numAnalysts` (DAV-191). The real counts are the *Count fields.
- */
-interface PriceTargetSummary {
-  symbol?: string;
-  lastMonthCount?: number;
-  lastQuarterCount?: number;
-  lastYearCount?: number;
-  allTimeCount?: number;
-}
-
-interface QuoteRow {
-  symbol?: string;
-  price?: number;
-}
+import { getLiveQuote } from "@/lib/market-data/live-quote";
+import { epsDetail } from "@/lib/market-data/street-consensus";
+import { streetFor } from "@/lib/market-data/street-consensus-store";
 
 /** Finnhub /stock/recommendation row — one per month, newest first. */
 interface RecommendationRow {
@@ -65,9 +28,9 @@ interface RecommendationRow {
 
 export const getAnalystCoverage = defineTool({
   description:
-    "Get analyst coverage for a stock — the consensus BUY/HOLD/SELL distribution across " +
-    "covering analysts. The price-target range is not available on the current data plan " +
-    "and is reported as absent. Backs the thesis 'Analyst Consensus' section.",
+    "Get analyst coverage for a stock: the consensus BUY/HOLD/SELL distribution across " +
+    "covering analysts, the Wall Street price-target range (low, average, high) and the " +
+    "EPS consensus with its revisions over the last 4 weeks. Backs the thesis 'Analyst Consensus' section.",
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
   }),
@@ -76,29 +39,32 @@ export const getAnalystCoverage = defineTool({
 
   progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()}'s analyst coverage`,
 
-  execute: async ({ ticker }) => {
+  execute: async ({ ticker }, ctx) => {
     const T = ticker.toUpperCase();
 
-    // Price-target range: FMP's endpoints were removed 2026-09-08 — the tier
-    // we hold refused 26 of 28 book names — and Finnhub gates
-    // /stock/price-target on a higher plan. So the range is reported as
-    // absent rather than silently empty; consensus rating still comes from
-    // Finnhub recommendation trends.
-    const recsRes = await finnhub(`/stock/recommendation?symbol=${T}`, 2);
+    // The stored row, pulled fresh when it is missing or a day old.
+    const [recsRes, street, live] = await Promise.all([
+      finnhub(`/stock/recommendation?symbol=${T}`, 2),
+      streetFor(T).catch(() => null),
+      getLiveQuote(T, { caller: "other", creds: ctx.alpacaCreds }),
+    ]);
 
     const errors: string[] = [];
     if (recsRes.error) errors.push(`recommendation: ${recsRes.error}`);
 
-    const currentPrice = null as number | null;
-    const priceTargets = null as {
-      low: number | null;
-      average: number | null;
-      median: number | null;
-      high: number | null;
-      currentPrice: number | null;
-      impliedUpsidePct: number | null;
-      numAnalysts: number | null;
-    } | null;
+    const currentPrice = live.quote?.c ?? null;
+    const priceTargets = street
+      ? {
+          low: street.targetLow,
+          average: street.targetAvg,
+          median: null,
+          high: street.targetHigh,
+          currentPrice,
+          impliedUpsidePct: currentPrice ? ((street.targetAvg - currentPrice) / currentPrice) * 100 : null,
+          numAnalysts: street.analysts,
+          asOf: street.asOf,
+        }
+      : null;
 
     // Consensus from Finnhub's most-recent monthly recommendation snapshot.
     const recRows = Array.isArray(recsRes.data)
@@ -170,14 +136,16 @@ export const getAnalystCoverage = defineTool({
           : "";
       items.push({
         kind: "generic",
-        text: `Targets — Low $${priceTargets.low?.toFixed(2)} · Avg $${priceTargets.average.toFixed(2)} · High $${priceTargets.high?.toFixed(2)}${upText}`,
+        text: `Targets — Low $${priceTargets.low?.toFixed(2)} · Avg $${priceTargets.average.toFixed(2)} · High $${priceTargets.high?.toFixed(2)}${upText} · ${priceTargets.numAnalysts} analysts, as of ${priceTargets.asOf}`,
       });
     } else {
       items.push({
         kind: "generic",
-        text: "Price-target range: not available on the current data plan. Do not cite a consensus target you did not see.",
+        text: "Price-target range: none on file for this stock. Do not cite a consensus target you did not see.",
       });
     }
+    const eps = street ? epsDetail(street) : null;
+    if (eps) items.push({ kind: "generic", text: `EPS consensus: ${eps}` });
 
     if (errors.length > 0) {
       items.push({
@@ -195,6 +163,7 @@ export const getAnalystCoverage = defineTool({
         ticker: T,
         consensus,
         priceTargets,
+        street,
         errors,
         items,
       },
@@ -205,6 +174,15 @@ export const getAnalystCoverage = defineTool({
                 provider: "Finnhub",
                 title: `${T} Recommendation Trends`,
                 url: "https://finnhub.io/docs/api/recommendation-trends",
+              },
+            ]
+          : []),
+        ...(street
+          ? [
+              {
+                provider: "Nasdaq",
+                title: `${T} analyst research`,
+                url: `https://www.nasdaq.com/market-activity/stocks/${T.toLowerCase()}/analyst-research`,
               },
             ]
           : []),

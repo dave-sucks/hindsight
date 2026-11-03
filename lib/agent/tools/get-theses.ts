@@ -33,6 +33,8 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
+import { newestStreetRows } from "@/lib/market-data/street-consensus-store";
+import type { StreetFacts } from "@/lib/market-data/street-consensus";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
 import {
@@ -113,7 +115,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses`: its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, the plan, the protection, every trigger with its id, the belief, the setup, the snapshot's first paragraph, the score, the chart numbers and when the research was written; `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: the bull and bear cases, the conviction rationale, the variant view, the score notes, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses`: its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, the plan, the protection, every trigger with its id, the belief, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph, the score, the chart numbers, Wall Street's ratings, target range and EPS consensus (`street`) and when the research was written; `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row, which adds the score notes, the whole snapshot, the research sections, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
   schema,
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
@@ -463,6 +465,7 @@ export const getTheses = defineTool({
       slots: tickerFiltered ? "positions" : "rows",
     });
     const load = facts.load;
+    const streetByTicker = await newestStreetRows(theses.map((t) => t.ticker)).catch(() => new Map<string, StreetFacts>());
     Object.assign(priceAsOf, load.priceAsOf);
     if (load.priceFetchFailed) priceFetchFailed = true;
     const resolverPriceMap: Record<string, number> = load.livePrice;
@@ -625,6 +628,8 @@ export const getTheses = defineTool({
         // from the analyst and the account. Saved for the screen and the
         // run; rowForModel decides what the model reads of them.
         ...rowFacts(t, load, resolverPriceMap[t.ticker] ?? null),
+        // Wall Street's ratings, target range and EPS consensus (StreetConsensus).
+        street: streetByTicker.get(t.ticker.toUpperCase()) ?? null,
       };
     });
 
