@@ -204,17 +204,17 @@ describe("a review's verdict and the line it answers: one title on the page, the
 
   it("the agent's line: the title names the trigger the review answered, then the word, the paragraph, the verdict's line, the line it answers by date, and its own id", () => {
     expect(saidBlock("GEV", verdictFeed, TRIGGERS)!.split("\n")[2]).toBe(
-      `  10-29 09:45 · $881.14 · Review below 6% from the high since we bought · weaker — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" — verdict: "${LINE}" — answers the 10-28 09:41 line [id cmvtljbyt000u07jtwe1op938]`,
+      `  10-29 09:45 · $881.14 · Sale review below 6% from the high since we bought · weaker — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" — verdict: "${LINE}" — answers the 10-28 09:41 line [id cmvtljbyt000u07jtwe1op938]`,
     );
     // Without the thesis's list the trigger is unknown and the title is the bare word.
     expect(saidBlock("GEV", verdictFeed)!.split("\n")[2]).toContain("· Review · weaker — ");
   });
 
-  it("the page's title is the same: Review below 6% from the high since we bought · weaker", () => {
+  it("the page's title is the same: Sale review below 6% from the high since we bought · weaker", () => {
     const item = verdictFeed.find((i) => i.id === "cmvtljbyt000u07jtwe1op938")!;
     const row = serializeFeedItem(item) as unknown as TimelineUpdate;
     expect(isPlainReview(row)).toBe(true);
-    expect(reviewTitle(row, TRIGGERS)).toEqual({ primary: "Review", secondary: "below 6% from the high since we bought · weaker" });
+    expect(reviewTitle(row, TRIGGERS)).toEqual({ primary: "Sale review", secondary: "below 6% from the high since we bought · weaker" });
     expect(reviewTitle(row)).toEqual({ primary: "Review", secondary: "· weaker" });
     // A line with its own title keeps it, with the word after it.
     expect(titleSegments({ ...row, type: "UPDATED", fieldChanges: { targetPrice: { from: 80, to: 95 } } })).toEqual({ primary: "Updated", secondary: "target $80.00 → $95.00 · weaker" });

@@ -164,11 +164,15 @@ describe("reviewTitle — what kind of review it was, from the trigger that fire
     expect(reviewTitle(review("acct-filing"), triggers)).toEqual({ primary: "Filing review", secondary: "" });
   });
 
-  it("a price or move trigger: Review with the trigger's own condition, whatever its action", () => {
+  it("a review trigger on a price or chart line: Review with the trigger's own condition", () => {
     expect(reviewTitle(review("sma200"), triggers)).toEqual({ primary: "Review", secondary: "below the 200-day average" });
-    expect(reviewTitle(review("acct-trail"), triggers)).toEqual({ primary: "Review", secondary: "below 6% from the high since we bought" });
-    expect(reviewTitle(review("iot-sale"), triggers)).toEqual({ primary: "Review", secondary: "below $42.70" });
     expect(reviewTitle(review("abbv-close"), triggers)).toEqual({ primary: "Review", secondary: "below $283.43 · only on the close" });
+  });
+
+  it("a review after a sale line fired: Sale review with that line's condition (GEV's trail, IOT's sale line, today)", () => {
+    expect(reviewTitle(review("acct-trail"), triggers)).toEqual({ primary: "Sale review", secondary: "below 6% from the high since we bought" });
+    expect(reviewTitle(review("iot-sale"), triggers)).toEqual({ primary: "Sale review", secondary: "below $42.70" });
+    expect(reviewTitle(review("acct-trail", { verdict: "WEAKER" }), triggers)).toEqual({ primary: "Sale review", secondary: "below 6% from the high since we bought · weaker" });
   });
 
   it("no trigger, a trigger since removed, or no list to look in: Review", () => {
