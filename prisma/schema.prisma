@@ -59,7 +59,7 @@ model Account {
   // entry". A rung parameterized by one thesis's own numbers (a $64.00
   // hard stop) has no meaning account-wide and is rejected at the write
   // path. Empty array = inherit the code defaults beneath.
-  triggers         Json      @default("[]")
+  triggers Json @default("[]")
   // When the starting standing rules were written (lib/agent/triggers/
   // seed-account). Distinguishes "never seeded" from "the principal
   // deleted every rule" — without it, emptying your account rules would
@@ -67,8 +67,8 @@ model Account {
   triggersSeededAt DateTime?
   // Stop when buying: a new holding's floor this % under its buy price
   // (lib/trading/auto-stop.ts). An analyst may override both.
-  autoStopOnBuy    Boolean   @default(false)
-  autoStopPct      Float     @default(8)
+  autoStopOnBuy Boolean @default(false)
+  autoStopPct   Float   @default(8)
 
   // ── The playbook's numbers, as settings (DAV-273) ─────────────────────
   // Per-setup overrides of the setup catalog's numbers (lib/agent/knowledge/
@@ -243,21 +243,21 @@ enum ThesisStatus {
 }
 
 model Thesis {
-  id            String  @id @default(cuid())
-  researchRunId String
-  userId        String
-  accountId     String
-  ticker        String
-  source        String // "AGENT" | "MANUAL"
-  direction     String? // P1-24: "LONG" | "SHORT" | null (unresearched watch). PASS/PENDING removed — PASS → status=PASSED, PENDING → null + WATCHING (migrated in PR B).
-  entryPrice    Float?
-  targetPrice   Float?
-  stopLoss      Float?
-  holdDuration  String // "DAY" | "SWING" | "POSITION"
-  sector        String?
-  modelUsed     String
-  fullResearch  Json?
-  thoughtTrace  Json? // [{type, data, timestamp_ms}] — per-ticker event log for replay
+  id               String   @id @default(cuid())
+  researchRunId    String
+  userId           String
+  accountId        String
+  ticker           String
+  source           String // "AGENT" | "MANUAL"
+  direction        String? // P1-24: "LONG" | "SHORT" | null (unresearched watch). PASS/PENDING removed — PASS → status=PASSED, PENDING → null + WATCHING (migrated in PR B).
+  entryPrice       Float?
+  targetPrice      Float?
+  stopLoss         Float?
+  holdDuration     String // "DAY" | "SWING" | "POSITION"
+  sector           String?
+  modelUsed        String
+  fullResearch     Json?
+  thoughtTrace     Json? // [{type, data, timestamp_ms}] — per-ticker event log for replay
 
   // V2: Thesis lifecycle
   status         ThesisStatus @default(WATCHING)
@@ -317,7 +317,7 @@ model Thesis {
   // resolveLadder overlays it. See lib/agent/triggers/levels.
   triggerState Json @default("{}")
 
-  catalystDate   DateTime? // CATALYST horizon only
+  catalystDate DateTime? // CATALYST horizon only
   /// When the analyst last actually looked at this thesis — stamped by any
   /// run that writes a REVIEWED / UPDATED row for it. A FACT, not a plan.
   /// The review cadence trigger counts from here; every surface that shows
@@ -398,7 +398,7 @@ model Thesis {
   // scoring.entryQuality.score ≥ 2 — late-stage chases can't carry
   // top-tier conviction even on a strong composite.
   // See docs/plans/CONVICTION_EXPRESSION.md §3-§4.
-  conviction String?
+  conviction          String?
 
   // One-sentence justification for the conviction tier (≤200 chars).
   // Required whenever `conviction` is set (Layer-1). For backfilled rows,
@@ -416,7 +416,7 @@ model Thesis {
   // can be re-checked against today's signals (consensus moved to the
   // writer's view → defer).
   // See docs/plans/CONVICTION_EXPRESSION.md §3-§4.
-  variantView String?
+  variantView         String?
 
   // ── PROMOTED state context (set only at PAPER→LIVE promotion) ───────
   // Frozen at the moment the user promotes the analyst. Drives the
@@ -430,10 +430,10 @@ model Thesis {
   // (GAPS P1-4). The audit-row peer in `ThesisUpdate` is written via Postgres
   // `now()` so it isn't affected by the adapter bug, but `promotedAt` is set
   // from a JS `Date` in `transitionThesisToPromoted` and must be timestamptz.
-  promotedAt       DateTime? @db.Timestamptz(6)
-  paperTenureDays  Int?
-  paperRealizedPnl Float?
-  paperReviewCount Int?
+  promotedAt           DateTime?            @db.Timestamptz(6)
+  paperTenureDays      Int?
+  paperRealizedPnl     Float?
+  paperReviewCount     Int?
 
   // Relations
   researchRun  ResearchRun     @relation(fields: [researchRunId], references: [id])
@@ -502,8 +502,8 @@ model ThesisUpdate {
   // The earlier line this note answers (the pre-report note, after the report).
   answersUpdateId String?
 
-  thesis     Thesis         @relation(fields: [thesisId], references: [id], onDelete: Cascade)
-  run        ResearchRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+  thesis Thesis       @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  run    ResearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
   answers    ThesisUpdate?  @relation("Answers", fields: [answersUpdateId], references: [id], onDelete: SetNull)
   answeredBy ThesisUpdate[] @relation("Answers")
 
@@ -523,45 +523,31 @@ model ThesisUpdate {
 // envelopes); no per-gate wiring. Pure telemetry: nothing reads this table
 // to make a decision, so dropping a write can never affect a run.
 model GateRejection {
-  id         String    @id @default(cuid())
-  /**
-   * Tool name as registered ("update_thesis", "place_trade", ...).
-   */
-  tool       String
-  /**
-   * Machine code when the gate supplied one ("goalpost_moving_blocked",
-   * "protective_level_locked", ...). Null for note-only rejections
-   * (record_thesis's FAILED shape) — group those by summary instead.
-   * "__exception__" = the tool THREW rather than refused.
-   */
-  gateCode   String?
-  /**
-   * The rejection's one-line summary, verbatim.
-   */
-  summary    String
-  /**
-   * The full reason the tool gave the agent (data.message / data.note), so a
-   * refused buy can be read — and acted on by hand — from the Activity feed.
-   */
-  detail     String?
-  ticker     String?
-  runId      String?
-  analystId  String?
-  runMode    String?
-  /**
-   * The thesis the call named (update_thesis's thesis_id), when it named one.
-   */
-  thesisId   String?
-  createdAt  DateTime  @default(now())
-  /**
-   * When the same tool later landed on the same stock or thesis for this
-   * analyst — the refusal was answered. Null = still open: the next run is
-   * told about it, and the Activity feed shows it.
-   */
+  id        String   @id @default(cuid())
+  /** Tool name as registered ("update_thesis", "place_trade", ...). */
+  tool      String
+  /** Machine code when the gate supplied one ("goalpost_moving_blocked",
+   *  "protective_level_locked", ...). Null for note-only rejections
+   *  (record_thesis's FAILED shape) — group those by summary instead.
+   *  "__exception__" = the tool THREW rather than refused. */
+  gateCode  String?
+  /** The rejection's one-line summary, verbatim. */
+  summary   String
+  /** The full reason the tool gave the agent (data.message / data.note), so a
+   *  refused buy can be read — and acted on by hand — from the Activity feed. */
+  detail    String?
+  ticker    String?
+  runId     String?
+  analystId String?
+  runMode   String?
+  /** The thesis the call named (update_thesis's thesis_id), when it named one. */
+  thesisId  String?
+  createdAt DateTime @default(now())
+  /** When the same tool later landed on the same stock or thesis for this
+   *  analyst — the refusal was answered. Null = still open: the next run is
+   *  told about it, and the Activity feed shows it. */
   resolvedAt DateTime?
-  /**
-   * "run:<runId>" — the run whose landed call answered it.
-   */
+  /** "run:<runId>" — the run whose landed call answered it. */
   resolvedBy String?
 
   @@index([tool, gateCode, createdAt(sort: Desc)])
@@ -571,43 +557,43 @@ model GateRejection {
 }
 
 model AgentConfig {
-  id                  String               @id @default(cuid())
-  userId              String // NOT unique — multiple Analysts per user
-  accountId           String
-  name                String               @default("My Analyst")
-  enabled             Boolean              @default(false)
+  id                     String               @id @default(cuid())
+  userId                 String // NOT unique — multiple Analysts per user
+  accountId              String
+  name                   String               @default("My Analyst")
+  enabled                Boolean              @default(false)
   // Analyst identity
-  analystPrompt       String? // "Find me high-risk EV day trades every morning"
-  description         String? // short display description on analyst card
+  analystPrompt          String? // "Find me high-risk EV day trades every morning"
+  description            String? // short display description on analyst card
   // The universe: `sectors`, the market-cap band and `exclusionList`
   // (lib/agent/universe.ts checkUniverse). Empty or null = no filter on that
   // axis; the exclusion list always wins; held and watched stocks bypass it.
-  marketCapMin        BigInt?
-  marketCapMax        BigInt?
-  researchRuns        ResearchRun[]
-  positions           Position[]
-  decisions           TradeDecision[]
+  marketCapMin           BigInt?
+  marketCapMax           BigInt?
+  researchRuns           ResearchRun[]
+  positions              Position[]
+  decisions              TradeDecision[]
   // Watchlist collapse — `watchlist: String[]` and `watchlistItems: AnalystWatchlistItem[]`
   // were removed. The watchlist is now a query: `Thesis WHERE researchRun.agentConfigId = id
   // AND status = 'WATCHING'`. See docs/WATCHLIST_COLLAPSE_PLAN.md.
-  sectors             String[] // canonical GICS sectors
-  exclusionList       String[]
+  sectors                String[] // canonical GICS sectors
+  exclusionList          String[]
   // Sizing: smallest trade (a normal buy; 0 = no floor) and largest trade
   // (a STRONG/HIGH conviction buy). Both enforced in place_trade; the third
   // number, maxPositionTotal, sits below. See lib/agent/position-sizing.ts.
   // The defaults are a new analyst's: NEW_ANALYST_DEFAULTS in lib/analyst-settings.ts.
-  minPositionSize     Float                @default(3000)
-  maxPositionSize     Float                @default(8000)
-  maxOpenPositions    Int                  @default(5)
-  minConfidence       Int                  @default(60)
+  minPositionSize        Float                @default(3000)
+  maxPositionSize        Float                @default(8000)
+  maxOpenPositions       Int                  @default(5)
+  minConfidence          Int                  @default(60)
   // Risk per trade, % of account equity (DAV-251). A buy with no explicit
   // size is shares = equity × riskPct × conviction multiplier ÷ the stop
   // distance, clamped inside the three dollar limits above.
   // lib/agent/position-sizing.ts sizeByRisk. The orphan maxRiskPct column
   // this replaces is dropped in the follow-up migration (two-PR rule).
-  riskPct             Float                @default(1)
-  holdDurations       String[]             @default(["SWING"])
-  directionBias       String               @default("LONG")
+  riskPct                Float                @default(1)
+  holdDurations          String[]             @default(["SWING"])
+  directionBias          String               @default("LONG")
   // Per-analyst daily-run schedule (daily-run cost control). ISO weekdays,
   // 1=Mon..5=Fri. The morning-research cron only runs an analyst whose
   // runDaysOfWeek includes today's ET weekday. Default [1,2,3,4,5] (Mon–Fri)
@@ -615,7 +601,7 @@ model AgentConfig {
   // keep running until the owner narrows the days. A null/empty array is
   // treated defensively as "all weekdays" so no analyst silently stops.
   // The 5-min trigger cron is unaffected — intraday reactivity fires every day.
-  runDaysOfWeek       Int[]                @default([1, 2, 3, 4, 5])
+  runDaysOfWeek          Int[]                @default([1, 2, 3, 4, 5])
   // ── Analyst standing triggers (the ANALYST level of the cascade) ──────
   // Per-analyst overrides of the account rules and the code defaults —
   // "Momentum trails 5%, the Compounder trails 12%." Same `Trigger[]`
@@ -623,30 +609,30 @@ model AgentConfig {
   // (see the note on Account.triggers). Overridden per-name by a thesis
   // rung in the same bucket. Empty array = inherit from the account.
   // Resolution lives in lib/agent/triggers/levels.
-  triggers            Json                 @default("[]")
+  triggers               Json                 @default("[]")
   // Stop when buying (lib/trading/auto-stop.ts). Null = the account's setting.
-  autoStopOnBuy       Boolean?
-  autoStopPct         Float?
+  autoStopOnBuy          Boolean?
+  autoStopPct            Float?
   // ── The setups this analyst runs (DAV-280) ─────────────────────────────
   // Catalog ids (lib/agent/knowledge/setups). The writer prices a plan by
   // one of these; the first is the analyst's signature setup, whose rules
   // the template writes onto its Triggers tab. Empty = the whole catalog.
-  setupIds            String[]             @default([])
-  graduationWinRate   Float                @default(0.65)
-  graduationMinTrades Int                  @default(50)
+  setupIds               String[]             @default([])
+  graduationWinRate      Float                @default(0.65)
+  graduationMinTrades    Int                  @default(50)
   // Per-analyst trading environment. New analysts default to PAPER; the
   // "Promote to live" action flips to LIVE after force-closing any open
   // paper positions for the analyst (theses are preserved with no position,
   // re-evaluated on first live run). See docs/PROD_DEPLOYMENT_PLAN.md.
-  tradingEnvironment  String               @default("PAPER") // "PAPER" | "LIVE"
+  tradingEnvironment     String               @default("PAPER") // "PAPER" | "LIVE"
   // Most in one stock — the ceiling for adding to a winner (cost basis +
   // pending add). Enforced in manage_position; 0 = twice the largest trade.
   // Replaced the hidden ×2 constant and the LIVE-only `realMaxPosition`
   // "promotion cap" on 2026-09-08 — see lib/agent/position-sizing.ts.
-  maxPositionTotal    Float                @default(0)
-  emailAlerts         Boolean              @default(true)
-  signalRoutes        AnalystSignalRoute[]
-  monitors            Monitor[]
+  maxPositionTotal       Float                @default(0)
+  emailAlerts            Boolean              @default(true)
+  signalRoutes           AnalystSignalRoute[]
+  monitors               Monitor[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -920,59 +906,59 @@ model PodcastSegmentSignalRoute {
 /// What the analyst currently holds. One row per open holding per analyst.
 /// Closed positions stay for history. This is the "portfolio" view.
 model Position {
-  id                String                     @id @default(cuid())
-  analystId         String // FK to AgentConfig (the analyst who owns this)
-  userId            String // audit: which team member opened/placed this position
-  accountId         String // scope: the Account this position belongs to
+  id                  String                     @id @default(cuid())
+  analystId           String // FK to AgentConfig (the analyst who owns this)
+  userId              String // audit: which team member opened/placed this position
+  accountId           String // scope: the Account this position belongs to
   // Snapshot of which Alpaca account this position lives in. Set at
   // place_trade time from the run's environment. Filters
   // get_portfolio_context and the sync-heartbeat cron
   // so paper and live inventories never mix. See docs/PROD_DEPLOYMENT_PLAN.md.
-  environment       String                     @default("PAPER") // "PAPER" | "LIVE"
-  symbol            String
-  direction         String // "LONG" | "SHORT"
+  environment         String                     @default("PAPER") // "PAPER" | "LIVE"
+  symbol              String
+  direction           String // "LONG" | "SHORT"
   // Trade-as-Proposal — PENDING_APPROVAL is a transient state for buy
   // proposals awaiting human approval. On approve → OPEN. On reject /
   // expire → CANCELLED. Close proposals do NOT touch Position.status
   // (Position stays OPEN until the close fills). The sync-heartbeat and
   // get_portfolio_context queries must filter PENDING_APPROVAL out.
   // See docs/plans/TRADE_AS_PROPOSAL.md.
-  status            String // "PENDING_APPROVAL" | "OPEN" | "CLOSED" | "CANCELLED"
+  status              String // "PENDING_APPROVAL" | "OPEN" | "CLOSED" | "CANCELLED"
   // Position sizing
-  quantity          Float // total shares held
-  avgCost           Float // weighted average entry price
+  quantity            Float // total shares held
+  avgCost             Float // weighted average entry price
   // Targets & exit strategy
-  targetPrice       Float?
-  stopLoss          Float?
+  targetPrice         Float?
+  stopLoss            Float?
   /// The stop when the position opened (after any edit at approval). Never
   /// moves: R = gain ÷ (entry − initialStop) for the setup scorecard
   /// (DAV-248). stopLoss above moves with the plan; this is the risk taken.
-  initialStop       Float?
-  exitStrategy      String // "PRICE_TARGET" | "TIME_BASED" | "TRAILING" | "MANUAL"
-  exitDate          DateTime? // for TIME_BASED exits
-  trailingStopPct   Float? // for TRAILING exits
+  initialStop         Float?
+  exitStrategy        String // "PRICE_TARGET" | "TIME_BASED" | "TRAILING" | "MANUAL"
+  exitDate            DateTime? // for TIME_BASED exits
+  trailingStopPct     Float? // for TRAILING exits
   // Close data (populated when position is closed)
-  closePrice        Float?
-  closedAt          DateTime?
-  closeReason       String? // "TARGET" | "STOP" | "TIME" | "MANUAL"
-  realizedPnl       Float?
-  outcome           String? // "WIN" | "LOSS" | "BREAKEVEN"
+  closePrice          Float?
+  closedAt            DateTime?
+  closeReason         String? // "TARGET" | "STOP" | "TIME" | "MANUAL"
+  realizedPnl         Float?
+  outcome             String? // "WIN" | "LOSS" | "BREAKEVEN"
   // Evaluation
-  agentEvaluation   String? // post-trade GPT-4o evaluation narrative
+  agentEvaluation     String? // post-trade GPT-4o evaluation narrative
   // Audit trail — who closed / modified and why
-  closeSource       String? // "agent" | "price_monitor" | "user" — who triggered the close
-  initialQty        Float? // qty at open, before any partial closes or adds
+  closeSource         String? // "agent" | "price_monitor" | "user" — who triggered the close
+  initialQty          Float? // qty at open, before any partial closes or adds
   // Running high/low water marks — raised by the five-minute trigger check (lib/trading/water-mark.ts)
-  peakPrice         Float?
-  troughPrice       Float?
-  peakAt            DateTime?
-  troughAt          DateTime?
+  peakPrice           Float?
+  troughPrice         Float?
+  peakAt              DateTime?
+  troughAt            DateTime?
   // Relations
-  analyst           AgentConfig                @relation(fields: [analystId], references: [id])
-  orders            Order[]
-  events            PositionEvent[]
-  decisions         TradeDecision[]
-  managementActions PositionManagementAction[]
+  analyst             AgentConfig                @relation(fields: [analystId], references: [id])
+  orders              Order[]
+  events              PositionEvent[]
+  decisions           TradeDecision[]
+  managementActions   PositionManagementAction[]
 
   openedAt  DateTime @default(now())
   createdAt DateTime @default(now())
@@ -991,30 +977,30 @@ model Position {
 /// For paper trading, orders fill immediately (1:1 with fills).
 /// Fill data lives directly on the order (no separate Fill table needed for paper trading).
 model Order {
-  id                  String         @id @default(cuid())
-  positionId          String // FK to Position
-  userId              String
+  id                String         @id @default(cuid())
+  positionId        String // FK to Position
+  userId            String
   // Mirrors Position.environment. Lets sync-heartbeat reconcile each
   // Alpaca account independently without joining through Position.
-  environment         String         @default("PAPER") // "PAPER" | "LIVE"
-  symbol              String
-  side                String // "BUY" | "SELL"
-  orderType           String         @default("MARKET") // "MARKET" | "LIMIT" | "STOP"
-  quantity            Float
+  environment       String         @default("PAPER") // "PAPER" | "LIVE"
+  symbol            String
+  side              String // "BUY" | "SELL"
+  orderType         String         @default("MARKET") // "MARKET" | "LIMIT" | "STOP"
+  quantity          Float
   // Order status
-  status              String // "AWAITING_APPROVAL" | "PENDING" | "FILLED" | "CANCELLED" | "REJECTED" | "EXPIRED"
+  status            String // "AWAITING_APPROVAL" | "PENDING" | "FILLED" | "CANCELLED" | "REJECTED" | "EXPIRED"
   // Fill data (populated when filled — for paper trading this is immediate)
-  filledPrice         Float?
-  filledQty           Float?
-  filledAt            DateTime?
+  filledPrice       Float?
+  filledQty         Float?
+  filledAt          DateTime?
   // Alpaca
-  alpacaOrderId       String?
+  alpacaOrderId     String?
   // Sync (Workstream B). Server-generated cuid, passed to Alpaca as
   // client_order_id so an interrupted submit can be looked up by it on
   // recovery. Null on legacy rows; UNIQUE on populated values only via
   // a partial index added in the migration SQL.
-  idempotencyKey      String?        @unique
-  intent              String? // "OPEN" | "CLOSE" | "PARTIAL_CLOSE" | "ADD" | "CANCEL"
+  idempotencyKey    String?        @unique
+  intent            String? // "OPEN" | "CLOSE" | "PARTIAL_CLOSE" | "ADD" | "CANCEL"
   // Originating close decision — carried on every intent="CLOSE" order so an
   // ASYNC fill (the order didn't fill inside closeOpenPosition's 5s poll, or
   // it went through the proposal→approve seam) can stamp the REAL reason on
@@ -1025,8 +1011,8 @@ model Order {
   // intents. reconcile-orders falls back to RECONCILED_FILL / "reconcile" ONLY
   // when the originating order carries neither — i.e. a true orphan fill with
   // no decision row behind it. See lib/inngest/functions/reconcile-orders.ts.
-  closeReason         String? // "TARGET" | "STOP" | "TIME" | "MANUAL" (close intents only)
-  closeSource         String? // "agent" | "price_monitor" | "user" (close intents only)
+  closeReason       String? // "TARGET" | "STOP" | "TIME" | "MANUAL" (close intents only)
+  closeSource       String? // "agent" | "price_monitor" | "user" (close intents only)
   // Sold-name continuity Half A (GAPS P1-35). The closing agent's attestation
   // at propose time: did the thesis's BELIEF survive this exit, or did the
   // exit happen because the belief broke? true → the paired thesis recycles to
@@ -1037,8 +1023,8 @@ model Order {
   // closes are approval-gated: the agent attests when it proposes, the thesis
   // flip happens when the principal approves. See lib/proposals/thesis-flips.ts.
   closeBeliefSurvived Boolean?
-  alpacaSubmittedAt   DateTime? // when we attempted the Alpaca call
-  alpacaConfirmedAt   DateTime? // when we got a non-error response back
+  alpacaSubmittedAt DateTime? // when we attempted the Alpaca call
+  alpacaConfirmedAt DateTime? // when we got a non-error response back
   // Trade-as-Proposal — populated when status='AWAITING_APPROVAL'.
   // expiresAt: now + 24h at proposal time; the proposal-expiry cron flips
   // status to EXPIRED past expiry. rejectionMessage: optional user message
@@ -1048,22 +1034,27 @@ model Order {
   //
   // `@db.Timestamptz(6)` on expiresAt is load-bearing (same reason as
   // Thesis.promotedAt — GAPS P1-4): set from JS `Date` via adapter-pg.
-  expiresAt           DateTime?      @db.Timestamptz(6)
-  rejectionMessage    String?
-  rationale           String?
+  expiresAt        DateTime? @db.Timestamptz(6)
+  rejectionMessage String?
+  rationale        String?
   // First-class link back to the thesis this order acts on (P1-33 Activity
   // tab). Populated at order-creation time on every write path from
   // 2026-08-18 on; null on older rows — readers keep the (analyst, ticker)
   // join fallback for those. Plain column (no relation): the thesis may be
   // superseded/deleted independently of order history, and every consumer
   // resolves it defensively.
-  thesisId            String?
+  thesisId         String?
   // Relations
-  position            Position       @relation(fields: [positionId], references: [id])
-  decision            TradeDecision?
+  position          Position       @relation(fields: [positionId], references: [id])
+  decision          TradeDecision?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([positionId])
+  @@index([userId])
+  @@index([status, createdAt])
+  @@index([thesisId])
   // Also in the database, from raw SQL: "Order_one_sent_close_per_position" —
   // at most one PENDING intent=CLOSE order per position (migration
   // 20260917120000). Prisma can't declare it without the partialIndexes
@@ -1071,11 +1062,6 @@ model Order {
   // `prisma migrate diff --to-schema` proposes `DROP INDEX
   // "Order_one_sent_close_per_position"` — delete that line from any
   // generated migration.
-
-  @@index([positionId])
-  @@index([userId])
-  @@index([status, createdAt])
-  @@index([thesisId])
 }
 
 /// Persisted snapshot of an Alpaca↔DB sync invariant check.
@@ -1469,3 +1455,4 @@ model TickerIndicators {
 
   @@unique([ticker, asOf])
 }
+
