@@ -58,7 +58,6 @@ import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import {
   getThesisComposite,
-  getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -102,7 +101,7 @@ const WEB_SEARCH_MAX_USES = 4;
  * missing ones. 9 is the full template; below 5 the note is materially
  * incomplete (V1's QUALITY BAR equivalent).
  */
-const MIN_SECTIONS_BEFORE_REPAIR = 5;
+const MIN_SECTIONS_BEFORE_REPAIR = 3;
 
 export interface RunThesisWriterArgs {
   childRunId: string;
@@ -206,7 +205,7 @@ interface WriterExistingThesis {
   targetPrice: number | null;
   stopLoss: number | null;
   composite: number | null;
-  snapshotText: string;
+  company: string | null;
   /** The stored triggers, with ids — a refresh edits them one at a time. */
   triggers: Trigger[];
 }
@@ -225,7 +224,7 @@ async function loadExistingThesis(
       targetPrice: true,
       stopLoss: true,
       scoring: true,
-      snapshot: true,
+      company: true,
       triggers: true,
     },
   });
@@ -239,7 +238,7 @@ async function loadExistingThesis(
     targetPrice: row.targetPrice != null ? Number(row.targetPrice) : null,
     stopLoss: row.stopLoss != null ? Number(row.stopLoss) : null,
     composite: getThesisComposite(row),
-    snapshotText: getThesisSnapshotText(row),
+    company: row.company ?? null,
     triggers: parseTriggersResilient(row.triggers).triggers as Trigger[],
   };
 }
@@ -346,7 +345,7 @@ export function buildWriterResearchPrompt(opts: WriterResearchPromptOpts): strin
   • target_price: ${opts.existingThesis.targetPrice ?? "—"}
   • stop_loss: ${opts.existingThesis.stopLoss ?? "—"}
   • composite: ${opts.existingThesis.composite ?? "—"}/10
-  • snapshot: ${opts.existingThesis.snapshotText.slice(0, 300)}
+  • company: ${opts.existingThesis.company ?? "—"}
   • triggers (edit by id — these ids are the handles):
 ${
   opts.existingThesis.triggers.length
@@ -494,41 +493,22 @@ YOUR JOB — one research note, then one submit_thesis call
 ═══════════════════════════════════════════════════════════════════
 
 STEP 1 — write the research note as plain markdown text, using EXACTLY
-these section headers (the server parses them — renamed or skipped
-headers are dropped research):
+these three section headers (the server parses them — a renamed or
+skipped header is dropped research):
 
-   ## Snapshot
-   One paragraph, the first thing the owner reads on a new stock: the
-   stock's standing description under "How you write".
-
-   ## Recent Catalysts
-   One paragraph on what's moved the stock in the last 1-2 weeks and why.
-
-   ## Fundamentals
-   One paragraph + segment breakdown if available — revenue trajectory,
-   margins, FCF, EPS with multi-year context.
-
-   ## Latest Earnings
-   5 bullets — top takeaways from the most recent call, each with a
-   specific number, quote, or commitment.
-
-   ## Catalysts & Events
-   3-5 dated bullets — specific events in the next 1-3 months.
+   ## Company
+   Two plain sentences: what the company does and how it makes money.
+   Written once and kept until the business changes. No numbers unless
+   they define the business ("revenue is subscription, growing about
+   30% a year").
 
    ## Bull Case
    3-5 cited bullets — each tied to a data point or recent event.
 
    ## Bear Case
-   3-5 cited bullets — MANDATORY even on LONG. Specific risks with data;
-   "market volatility" and "competition" are forbidden.
-
-   ## Analyst Consensus
-   One paragraph naming specific firms/analysts and their actions.
-
-   ## Insider & Technical
-   One paragraph — open-market insider buying (the Insider Activity
-   block) + the chart from the Price structure block in plain words:
-   the trend, the moving averages, the recent high and low.
+   3-5 cited bullets — MANDATORY even on LONG. Specific risks with data,
+   each with the tell that would show it is happening; "market
+   volatility" and "competition" are forbidden.
 
    Ground rules for the note:
    • The GROUND-TRUTH DATA block in the user message is authoritative for
@@ -536,12 +516,14 @@ headers are dropped research):
      contradict it. Use web search (up to ${WEB_SEARCH_MAX_USES} searches) only to fill
      narrative gaps: transcript quotes, analyst rationale, dated upcoming
      catalysts, this week's market story.
-   • Every paragraph and bullet carries at least one citation:
-     [STRUCTURED:<field>] for ground-truth claims, [WEB:<url>] for web
-     claims. "Recently" without a date is forbidden; "strong
-     fundamentals" without a metric is forbidden.
-   • Goldman-initiation-note depth. No preamble — open directly with
-     ## Snapshot.
+   • Every bullet carries at least one citation: [STRUCTURED:<field>]
+     for ground-truth claims, [WEB:<url>] for web claims. "Recently"
+     without a date is forbidden; "strong fundamentals" without a metric
+     is forbidden.
+   • Nothing else in the note. The company's numbers, its earnings
+     history, the street's view and the chart are live data on the
+     stock's page and in the row every agent reads; do not restate them.
+     No preamble — open directly with ## Company.
 
 STEP 2 — call submit_thesis ONCE with your decision. The schema documents
 every field; the judgment rules:
@@ -596,6 +578,14 @@ every field; the judgment rules:
      sentences: what it does, why it is worth owning, what has to stay
      true. Never a price path, a target or "within 60 days". It is the
      claim of record every other agent reads.
+   • key_assumptions: two to four checkable premises with the number,
+     each ending with when and where it is checked ("net new ARR stays
+     above $120M, checked at the Q3 report on December 4"). A review
+     grades the thesis against these, so a premise nobody can check is
+     not one.
+   • invalidation_conditions: each a reading and where it is read, never
+     a price level alone: the floor carries that.
+   • scoring: the four numbers. No notes.
    • conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest
      middle (most theses).
    • You do not size the trade. place_trade sizes it by risk from your
@@ -619,9 +609,10 @@ ${priorExitBlock}
 ═══════════════════════════════════════════════════════════════════
 HOW YOU WRITE — what the owner reads
 ═══════════════════════════════════════════════════════════════════
-The research note in STEP 1 keeps its sections and its citations. The
-Snapshot, your rationale, the belief and each trigger's note are what
-the owner reads first: write them by "How you write" above.
+The research note in STEP 1 keeps its citations. Your rationale, the
+company line, the belief and each trigger's note are what the owner
+reads first: write them by "How you write" above. On a new stock your
+rationale is the first Activity line the owner reads.
 
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns
@@ -788,7 +779,7 @@ export async function writerResearchPhase(
 
     const rawDataBlock =
       pullOutput.pull?.rawDataBlock ??
-      `(Structured data pulls failed entirely: ${pullOutput.error ?? "unknown"}. Ground your note in web research and say so explicitly in the Snapshot.)`;
+      `(Structured data pulls failed entirely: ${pullOutput.error ?? "unknown"}. Ground your note in web research and say so in your rationale.)`;
     const currentPrice = pullOutput.pull?.currentPrice ?? null;
 
 
@@ -986,15 +977,9 @@ Write the research note now, then call submit_thesis.`;
     if (accepted && !loopError && sectionCount < MIN_SECTIONS_BEFORE_REPAIR) {
       const have = new Set(Object.keys(sections));
       const wanted = [
-        ["snapshot", "## Snapshot"],
-        ["recentCatalysts", "## Recent Catalysts"],
-        ["fundamentals", "## Fundamentals"],
-        ["latestEarnings", "## Latest Earnings"],
-        ["catalystsAndEvents", "## Catalysts & Events"],
+        ["company", "## Company"],
         ["bullCase", "## Bull Case"],
         ["bearCase", "## Bear Case"],
-        ["analystConsensus", "## Analyst Consensus"],
-        ["insiderTechnical", "## Insider & Technical"],
       ].filter(([key]) => !have.has(key));
       try {
         // TEXT-ONLY continuation (review finding #3): replaying
@@ -1123,15 +1108,9 @@ Write the research note now, then call submit_thesis.`;
 
 type SectionArgs = Partial<
   Record<
-    | "snapshot"
-    | "recent_catalysts"
-    | "fundamentals"
-    | "latest_earnings"
-    | "catalysts_and_events"
+    | "company"
     | "bull_case"
-    | "bear_case"
-    | "analyst_consensus"
-    | "insider_technical",
+    | "bear_case",
     unknown
   >
 >;
@@ -1167,9 +1146,6 @@ export function toCitationObject(raw: string): {
   return { kind: "STRUCTURED", title: ref };
 }
 
-function toSchemaTextSection(s: { text: string; citations: string[] }) {
-  return { text: s.text, citations: s.citations.map(toCitationObject) };
-}
 
 function toSchemaBulletSection(s: { bullets: Array<{ text: string; citation?: string }> }) {
   return {
@@ -1182,15 +1158,10 @@ function toSchemaBulletSection(s: { bullets: Array<{ text: string; citation?: st
 
 export function sectionArgsFrom(sections: ParsedSections): SectionArgs {
   const out: SectionArgs = {};
-  if (sections.snapshot) out.snapshot = toSchemaTextSection(sections.snapshot);
-  if (sections.recentCatalysts) out.recent_catalysts = toSchemaTextSection(sections.recentCatalysts);
-  if (sections.fundamentals) out.fundamentals = toSchemaTextSection(sections.fundamentals);
-  if (sections.latestEarnings) out.latest_earnings = toSchemaBulletSection(sections.latestEarnings);
-  if (sections.catalystsAndEvents) out.catalysts_and_events = toSchemaBulletSection(sections.catalystsAndEvents);
+  // The company line is saved without its source markers: a plain column, read on every row.
+  if (sections.company) out.company = withoutCitationMarkers(sections.company.text);
   if (sections.bullCase) out.bull_case = toSchemaBulletSection(sections.bullCase);
   if (sections.bearCase) out.bear_case = toSchemaBulletSection(sections.bearCase);
-  if (sections.analystConsensus) out.analyst_consensus = toSchemaTextSection(sections.analystConsensus);
-  if (sections.insiderTechnical) out.insider_technical = toSchemaTextSection(sections.insiderTechnical);
   return out;
 }
 
@@ -1265,11 +1236,7 @@ export function buildWriterSaveCall(
   const eventDate = resolveEventDate(d, pull);
   const notes = [...(d.notes ?? []), ...(eventDate.note ? [eventDate.note] : [])];
   const rationale = notes.length ? `${d.rationale}\n\n${notes.map((n) => `[${n}]`).join("\n")}` : d.rationale;
-  // The snapshot paragraph is saved without its source markers: they are
-  // already in its `citations`, and on a new thesis the paragraph is the
-  // first Activity line.
-  const snapshot = sectionArgs.snapshot as { text: string; citations: unknown[] } | undefined;
-  const sections: SectionArgs = snapshot ? { ...sectionArgs, snapshot: { ...snapshot, text: withoutCitationMarkers(snapshot.text) } } : sectionArgs;
+  const sections = sectionArgs;
   if (args.mode === "mint") {
     return {
       toolName: "record_thesis",
@@ -1322,7 +1289,6 @@ export function buildWriterSaveCall(
         acknowledge_prior_exit: d.prior_exit_acknowledgment,
         source_kind: "WEB_SEARCH",
         source_rationale: args.reason.slice(0, 300),
-        research_data: pull?.rawDataBlock,
         ...sections,
       },
     };
@@ -1385,7 +1351,6 @@ export function buildWriterSaveCall(
       edit_triggers: d.edit_triggers?.filter((e) => !keptIds.has(e.id)),
       remove_trigger_ids: d.remove_trigger_ids?.filter((id) => !keptIds.has(id)),
       price_at_time: pull?.currentPrice ?? undefined,
-      research_data: pull?.rawDataBlock,
       ...sections,
     },
   };

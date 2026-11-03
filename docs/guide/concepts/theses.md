@@ -20,7 +20,7 @@ Alongside both sits what's been said: the stock's Activity, one list. A trigger 
 Every agent writes for you in plain English, in one of two styles (`lib/agent/voice.ts`):
 
 - **A note** (a review, a trigger run's decision, a trade's reason, a run-summary line) is one paragraph of three to six sentences that answers "what's going on with this stock, and what should I do?", always in three parts: what is going on with the company and the stock and why, with dates; what that means for why we own it and for your position; then one closing sentence of what the analyst did (sold, bought, holding, raised the floor to $X, still watching) and what would change it. What to find out comes from the stock's [situation](situations.md); the note is what was found. It never opens with a level or a trigger; a stop or target appears at most once, in that last sentence. It picks up from the last note rather than repeating it.
-- **The stock's standing description** (the belief, the snapshot, the variant view) reads like a company page: what the company does, what it has done lately, the numbers that matter, what Wall Street thinks, and what has to stay true.
+- **The stock's standing description** (the company line, the belief, the bull and bear cases, the variant view) reads like a company page: what the company does and how it makes money, why we own it, the case for and against, and what has to stay true. The numbers, the earnings history and what Wall Street thinks are live data beside it, never prose.
 
 Before writing a decision note, an agent searches the web once for the stock's latest news, so the note can say why it moved. If it still doesn't know, it says so. None of the app's shorthand reaches you: no setup names, no "drift", no "rung".
 

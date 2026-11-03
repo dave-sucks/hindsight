@@ -75,7 +75,7 @@ function existingThesis(status: string) {
     targetPrice: 195,
     stopLoss: 180,
     composite: 7,
-    snapshotText: "Old snapshot",
+    company: "Old snapshot",
     triggers: [],
   };
 }
@@ -178,17 +178,7 @@ describe("buildWriterResearchPrompt — status branching", () => {
     });
 
     it("names every section header the server-side parser keys on", () => {
-      for (const header of [
-        "## Snapshot",
-        "## Recent Catalysts",
-        "## Fundamentals",
-        "## Latest Earnings",
-        "## Catalysts & Events",
-        "## Bull Case",
-        "## Bear Case",
-        "## Analyst Consensus",
-        "## Insider & Technical",
-      ]) {
+      for (const header of ["## Company", "## Bull Case", "## Bear Case"]) {
         expect(prompt).toContain(header);
       }
     });
@@ -393,7 +383,7 @@ describe("sectionArgsFrom — citation objects, not strings", () => {
 
   it("converts text and bullet sections to the persist schema shape", () => {
     const args = sectionArgsFrom({
-      snapshot: { text: "para", citations: ["STRUCTURED:quote", "WEB:https://e.com/x"] },
+      company: { text: "Sells widgets [STRUCTURED:profile]; revenue is subscription [WEB:https://e.com/x].", citations: ["STRUCTURED:profile", "WEB:https://e.com/x"] },
       bullCase: {
         bullets: [
           { text: "b1", citation: "WEB:https://e.com/y" },
@@ -401,12 +391,8 @@ describe("sectionArgsFrom — citation objects, not strings", () => {
         ],
       },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const snapshot = args.snapshot as any;
-    expect(snapshot.citations).toEqual([
-      { kind: "STRUCTURED", title: "quote" },
-      { kind: "WEB", url: "https://e.com/x", domain: "e.com" },
-    ]);
+    // The company line is a plain column: its source markers are stripped, not kept as citations.
+    expect(args.company).toBe("Sells widgets; revenue is subscription.");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const bull = args.bull_case as any;
     expect(bull.bullets[0].citation).toEqual({

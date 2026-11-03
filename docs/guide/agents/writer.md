@@ -49,7 +49,7 @@ Then up to four web searches fill in what data can't: the call, the guidance, wh
 
 ## What it decides
 
-First, a research note in nine fixed sections, from the snapshot to the chart, with a bear case even on a buy. The snapshot reads like a company page: what the company does, what it has done lately, the numbers that matter and what Wall Street thinks. On a new stock it's the first note you read. Then the decision:
+First, a research note in three parts: the company in two sentences (what it does and how it makes money), the bull case and the bear case, with a bear case even on a buy. The company's numbers, its earnings history, the street's view and the chart are live data on the stock's page, not prose in the note. On a new stock the Writer's own decision note is the first line you read. Then the decision:
 
 - **A direction:** long, short or pass. A pass is a real answer.
 - **A belief:** why we own the company, in two or three plain sentences: what it does, why it's worth owning, and what has to stay true. Never a price path or a target.

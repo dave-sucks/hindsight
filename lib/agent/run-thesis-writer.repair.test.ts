@@ -96,7 +96,7 @@ it("DYN: the loop ends on a refused submit; the refusal goes back once and the d
       seen.push("research");
       // The research loop: a full note, then the one refused submit, then
       // the step budget is gone.
-      opts.onStepFinish?.({ toolCalls: [], text: "## Snapshot\nDyne.\n## Recent Catalysts\nx\n## Fundamentals\nx\n## Latest Earnings\n- x\n## Catalysts & Events\n- x\n## Bull Case\n- x\n## Bear Case\n- x\n## Analyst Consensus\nx\n## Insider & Technical\nx", response: { messages: [] } });
+      opts.onStepFinish?.({ toolCalls: [], text: "## Company\nDyne makes a drug.\n## Bull Case\n- x\n## Bear Case\n- x", response: { messages: [] } });
       const r = await opts.tools.submit_thesis.execute(refusedFirst, { toolCallId: "t1", messages: [] });
       expect(r.accepted).toBe(false);
       expect(r.errors?.join(" ")).toMatch(/scoring/);

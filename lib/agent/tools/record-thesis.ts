@@ -170,6 +170,7 @@ const recordFields = z.object({
   // this explicit engagement with it before minting at/above the exit.
   acknowledge_prior_exit: F.prior_exit.optional(),
   research_data: F.research_data.optional(),
+  company: F.company.optional(),
   snapshot: F.snapshot.optional(),
   recent_catalysts: F.recent_catalysts.optional(),
   fundamentals: F.fundamentals.optional(),
@@ -204,6 +205,7 @@ export const thesisSchema = recordFields.superRefine(refineThesis);
  * thesis path that validates against `thesisSchema` itself, keep them.
  */
 const WRITER_ONLY_FIELDS = {
+  company: true,
   snapshot: true,
   bull_case: true,
   bear_case: true,
@@ -824,6 +826,7 @@ export const recordThesis = defineTool({
       // run staleness gate (Phase 3) keys off it. The legacy-wrapped fallback
       // doesn't stamp it (those theses are pre-V2; no fresh research).
       const v2SectionSupplied =
+        args.company ||
         args.snapshot ||
         args.recent_catalysts ||
         args.fundamentals ||
@@ -903,6 +906,7 @@ export const recordThesis = defineTool({
           typeof args.research_data === "string" && args.research_data.length > 0
             ? args.research_data
             : undefined,
+        company: args.company ?? undefined,
         snapshot: snapshotPayload,
         recentCatalysts: args.recent_catalysts ?? undefined,
         fundamentals: args.fundamentals ?? undefined,

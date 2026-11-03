@@ -1,9 +1,9 @@
 /**
- * parse-sections.test.ts — the 9-section note parser. In V2 this parser
- * is load-bearing on the persist path (the server parses the research
- * model's text output and writes the sections straight to the Thesis
- * row), so its shape contract with record/update_thesis's
- * sectionTextSchema / sectionBulletSchema is pinned here.
+ * parse-sections.test.ts — the Writer's note parser: three sections. The
+ * parser is load-bearing on the persist path (the server parses the model's
+ * text and writes the sections straight to the Thesis row), so its shape
+ * contract with record/update_thesis's sectionTextSchema /
+ * sectionBulletSchema is pinned here.
  */
 
 import {
@@ -14,79 +14,42 @@ import {
   type ParsedTextSection,
 } from "./parse-sections";
 
-const FULL_NOTE = `## Snapshot
-NVDA trades at $100 after a 12% two-week run [STRUCTURED:quote_current].
-
-## Recent Catalysts
-Blackwell shipment confirmations moved the stock [WEB:https://example.com/news1].
-
-## Fundamentals
-Revenue grew 94% YoY to $35.1B [STRUCTURED:revenue_q3] with 75% gross margin [STRUCTURED:gross_margin].
-
-## Latest Earnings
-- Beat consensus EPS by 8% [STRUCTURED:eps_q3]
-- DC revenue $30.8B, up 112% YoY [STRUCTURED:dc_revenue]
-* Guidance raised to $37.5B [WEB:https://example.com/call]
-
-## Catalysts & Events
-1. Q4 earnings on 2026-02-25 [STRUCTURED:next_earnings]
-2) GTC keynote March 17 [WEB:https://example.com/gtc]
+const FULL_NOTE = `## Company
+Nvidia designs the chips most AI data centers run on and sells them to the big cloud companies [STRUCTURED:profile]. Revenue is hardware, growing with their capex [STRUCTURED:revenue_q3].
 
 ## Bull Case
 - Blackwell ramp ahead of schedule [WEB:https://example.com/bull]
 - Hyperscaler capex guides up [STRUCTURED:capex]
+* Guidance raised to $37.5B [WEB:https://example.com/call]
 
 ## Bear Case
-- Concentration: two customers are 39% of revenue [STRUCTURED:concentration]
-- Export-control expansion risk [WEB:https://example.com/bear]
-
-## Analyst Consensus
-Morgan Stanley raised to $150 on 2026-08-01 [WEB:https://example.com/ms]; consensus PT $142 [STRUCTURED:consensus_pt].
-
-## Insider & Technical
-No insider sales in 90 days [STRUCTURED:insider_window]; RSI 61, above the rising 50d [STRUCTURED:rsi14].`;
+1. Concentration: two customers are 39% of revenue [STRUCTURED:concentration]
+2) Export-control expansion risk [WEB:https://example.com/bear]`;
 
 describe("parseIntoSections — full note round trip", () => {
   const sections = parseIntoSections(FULL_NOTE);
 
-  it("finds all 9 sections", () => {
-    expect(Object.keys(sections).sort()).toEqual(
-      [
-        "analystConsensus",
-        "bearCase",
-        "bullCase",
-        "catalystsAndEvents",
-        "fundamentals",
-        "insiderTechnical",
-        "latestEarnings",
-        "recentCatalysts",
-        "snapshot",
-      ].sort(),
-    );
+  it("finds all 3 sections", () => {
+    expect(Object.keys(sections).sort()).toEqual(["bearCase", "bullCase", "company"]);
   });
 
-  it("text sections carry {text, citations} (sectionTextSchema shape)", () => {
-    const snapshot = sections.snapshot as ParsedTextSection;
-    expect(snapshot.text).toContain("NVDA trades at $100");
-    expect(snapshot.citations).toEqual(["STRUCTURED:quote_current"]);
-    const fundamentals = sections.fundamentals as ParsedTextSection;
-    expect(fundamentals.citations).toEqual([
-      "STRUCTURED:revenue_q3",
-      "STRUCTURED:gross_margin",
-    ]);
+  it("the company section carries {text, citations} (sectionTextSchema shape)", () => {
+    const company = sections.company as ParsedTextSection;
+    expect(company.text).toContain("Nvidia designs the chips");
+    expect(company.citations).toEqual(["STRUCTURED:profile", "STRUCTURED:revenue_q3"]);
   });
 
   it("bullet sections carry {bullets:[{text, citation?}]} (sectionBulletSchema shape)", () => {
-    const earnings = sections.latestEarnings as ParsedBulletSection;
-    expect(earnings.bullets).toHaveLength(3);
-    expect(earnings.bullets[0].text).toContain("Beat consensus EPS");
-    expect(earnings.bullets[0].citation).toBe("STRUCTURED:eps_q3");
+    const bull = sections.bullCase as ParsedBulletSection;
+    expect(bull.bullets).toHaveLength(3);
+    expect(bull.bullets[0].text).toContain("Blackwell ramp");
+    expect(bull.bullets[0].citation).toBe("WEB:https://example.com/bull");
   });
 
   it("accepts numbered-list bullets (1. and 2) styles)", () => {
-    const catalysts = sections.catalystsAndEvents as ParsedBulletSection;
-    expect(catalysts.bullets).toHaveLength(2);
-    expect(catalysts.bullets[1].text).toContain("GTC keynote");
+    const bear = sections.bearCase as ParsedBulletSection;
+    expect(bear.bullets).toHaveLength(2);
+    expect(bear.bullets[1].text).toContain("Export-control");
   });
 });
 
@@ -96,8 +59,8 @@ describe("parseIntoSections — degraded inputs", () => {
   });
 
   it("skips absent sections without inventing them", () => {
-    const partial = parseIntoSections("## Snapshot\nJust a snapshot [STRUCTURED:x].");
-    expect(Object.keys(partial)).toEqual(["snapshot"]);
+    const partial = parseIntoSections("## Company\nJust the company line [STRUCTURED:x].");
+    expect(Object.keys(partial)).toEqual(["company"]);
   });
 
   it("wraps a prose-shaped bullet section as a single fat bullet instead of dropping it", () => {
@@ -109,12 +72,11 @@ describe("parseIntoSections — degraded inputs", () => {
     expect(bull.bullets[0].citation).toBe("WEB:https://example.com/only");
   });
 
-  it("accepts '## Catalysts and Events' / '## Insider and Technical' header variants", () => {
+  it("an old nine-section note yields only the three sections kept", () => {
     const sections = parseIntoSections(
-      "## Catalysts and Events\n- Dated thing [STRUCTURED:a]\n\n## Insider and Technical\nProse [STRUCTURED:b].",
+      "## Snapshot\nOld paragraph [STRUCTURED:a].\n\n## Fundamentals\nOld [STRUCTURED:b].\n\n## Bear Case\n- Risk [STRUCTURED:c]",
     );
-    expect(sections.catalystsAndEvents).toBeDefined();
-    expect(sections.insiderTechnical).toBeDefined();
+    expect(Object.keys(sections)).toEqual(["bearCase"]);
   });
 });
 

@@ -44,10 +44,12 @@ export function getSectionBullets(section: Unknown): string[] {
 }
 
 /**
- * Convenience: returns the snapshot text (legacy `reasoningSummary` equivalent).
+ * The stock's standing description: the snapshot paragraph where a thesis
+ * still has one, else the belief. The Writer stopped writing snapshots on
+ * 2026-11-03; the belief is the sentence every agent reads.
  */
-export function getThesisSnapshotText(t: { snapshot?: Unknown }): string {
-  return getSectionText(t.snapshot);
+export function getThesisSnapshotText(t: { snapshot?: Unknown; coreBelief?: string | null }): string {
+  return getSectionText(t.snapshot) || (typeof t.coreBelief === "string" ? t.coreBelief : "");
 }
 
 /**

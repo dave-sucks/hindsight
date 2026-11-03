@@ -1,17 +1,16 @@
 /**
- * parse-sections.ts — canonical 9-section parser for thesis research notes.
+ * parse-sections.ts — the parser for the Writer's research note: three
+ * sections, each of which is read by the agents and shown on the page.
  *
- * Extracted verbatim from lib/agent/tools/write-thesis-research.ts
- * (THESIS_WRITER_V2) so the V2 writer pipeline can parse the research
- * model's text output server-side and persist it directly — the
- * FORWARD-VERBATIM relay through a second model is gone. The section
- * shapes here deliberately match record_thesis / update_thesis's
- * sectionTextSchema / sectionBulletSchema:
+ *   ## Company    → { text, citations }   two sentences: what it does, how it makes money
+ *   ## Bull Case  → { bullets: [{ text, citation? }] }
+ *   ## Bear Case  → { bullets: [{ text, citation? }] }
  *
- *   kind: "text"    → { text, citations }                  — prose paragraph
- *   kind: "bullets" → { bullets: [{ text, citation? }] }   — bulleted list
- *
- * Keep SECTION_HEADERS in sync with the note template in the writer's
+ * Until 2026-11-03 the note had nine sections (snapshot, recent catalysts,
+ * fundamentals, latest earnings, catalysts and events, analyst consensus,
+ * insider and technical, and the two kept here). The six that went were
+ * essays of data from mint day, read by no run; their facts are live data
+ * now. Keep SECTION_HEADERS in sync with the note template in the writer's
  * research prompt (buildWriterResearchPrompt) — a renamed header here or
  * there silently drops the section.
  */
@@ -22,15 +21,9 @@ export const SECTION_HEADERS: Array<{
   pattern: RegExp;
   kind: SectionKind;
 }> = [
-  { key: "snapshot", pattern: /^##\s+Snapshot\b/im, kind: "text" },
-  { key: "recentCatalysts", pattern: /^##\s+Recent Catalysts\b/im, kind: "text" },
-  { key: "fundamentals", pattern: /^##\s+Fundamentals\b/im, kind: "text" },
-  { key: "latestEarnings", pattern: /^##\s+Latest Earnings\b/im, kind: "bullets" },
-  { key: "catalystsAndEvents", pattern: /^##\s+Catalysts (?:&|and) Events\b/im, kind: "bullets" },
+  { key: "company", pattern: /^##\s+Company\b/im, kind: "text" },
   { key: "bullCase", pattern: /^##\s+Bull Case\b/im, kind: "bullets" },
   { key: "bearCase", pattern: /^##\s+Bear Case\b/im, kind: "bullets" },
-  { key: "analystConsensus", pattern: /^##\s+Analyst Consensus\b/im, kind: "text" },
-  { key: "insiderTechnical", pattern: /^##\s+Insider (?:&|and) Technical\b/im, kind: "text" },
 ];
 
 /**
@@ -61,15 +54,7 @@ export interface ParsedBulletSection {
 export type ParsedSection = ParsedTextSection | ParsedBulletSection;
 
 export interface ParsedSections {
-  // Text sections.
-  snapshot?: ParsedTextSection;
-  recentCatalysts?: ParsedTextSection;
-  fundamentals?: ParsedTextSection;
-  analystConsensus?: ParsedTextSection;
-  insiderTechnical?: ParsedTextSection;
-  // Bullet sections.
-  latestEarnings?: ParsedBulletSection;
-  catalystsAndEvents?: ParsedBulletSection;
+  company?: ParsedTextSection;
   bullCase?: ParsedBulletSection;
   bearCase?: ParsedBulletSection;
 }
@@ -101,10 +86,10 @@ export function parseCitations(text: string): string[] {
 
 /**
  * A paragraph without its source markers. They are already in the section's
- * `citations`; left in the text they print inside the sentence. A new
- * thesis's first Activity line is its snapshot paragraph, and 18 in the 30
- * days to 2026-10-05 read like Visa's: "…alongside Mastercard. [STRUCTURED:
- * MarketCap] The stock closed at $367.74…".
+ * `citations`; left in the text they print inside the sentence (18 of 30
+ * snapshots in the 30 days to 2026-10-05 read like "…alongside Mastercard.
+ * [STRUCTURED:MarketCap] The stock closed at…"). The company line is saved
+ * this way.
  */
 export function withoutCitationMarkers(text: string): string {
   return text
