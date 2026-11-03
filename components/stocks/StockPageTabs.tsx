@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The stock page's tabs — Overview · Research · Activity · News — with the
+ * The stock page's tabs — Overview · Financials · Activity · News — with the
  * sidebar beside every tab's content, as on the trade page. Owns the open
  * tab so Overview's "View all" can switch to Activity.
  */
@@ -13,7 +13,7 @@ import { StockHistory } from "@/components/stocks/StockHistory";
 import type { StockHistoryItem } from "@/lib/stocks/stock-history";
 
 const OVERVIEW = 0;
-const RESEARCH = 1;
+const FINANCIALS = 1;
 const ACTIVITY = 2;
 const NEWS = 3;
 
@@ -21,7 +21,7 @@ export function StockPageTabs({
   overview,
   stats,
   history,
-  research,
+  financials,
   news,
   sidebar,
 }: {
@@ -29,7 +29,7 @@ export function StockPageTabs({
   /** The key stats under the chart. */
   stats: ReactNode;
   history: StockHistoryItem[];
-  research: ReactNode;
+  financials: ReactNode;
   news: ReactNode;
   sidebar: ReactNode;
 }) {
@@ -41,7 +41,7 @@ export function StockPageTabs({
     <Tabs value={tab} onValueChange={(v) => setTab(v as number)}>
       <TabsList>
         <TabsTrigger value={OVERVIEW}>Overview</TabsTrigger>
-        <TabsTrigger value={RESEARCH}>Research</TabsTrigger>
+        <TabsTrigger value={FINANCIALS}>Financials</TabsTrigger>
         <TabsTrigger value={ACTIVITY}>Activity</TabsTrigger>
         <TabsTrigger value={NEWS}>News</TabsTrigger>
       </TabsList>
@@ -53,9 +53,9 @@ export function StockPageTabs({
         </StockOverview>
       </TabsContent>
 
-      <TabsContent value={RESEARCH} className="space-y-5">
+      <TabsContent value={FINANCIALS} className="space-y-5">
         <div className={columns}>
-          <div className="min-w-0 space-y-5">{research}</div>
+          <div className="min-w-0 space-y-5">{financials}</div>
           {side}
         </div>
       </TabsContent>

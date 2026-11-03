@@ -1,4 +1,4 @@
-import { keyStatColumns, researchStatSections } from "./stock-stats";
+import { keyStatColumns, financialStatSections } from "./stock-stats";
 
 // A slice of Finnhub's /stock/metric for NVDA, 2026-11-02.
 const nvda = {
@@ -39,9 +39,9 @@ describe("keyStatColumns", () => {
   });
 });
 
-describe("researchStatSections", () => {
+describe("financialStatSections", () => {
   it("keeps the stats Finnhub has and drops the rest, section by section", () => {
-    const sections = researchStatSections(nvda, 4_931_824_000_000);
+    const sections = financialStatSections(nvda, 4_931_824_000_000);
     const valuation = sections.find((s) => s.label === "Valuation")!;
     expect(valuation.columns.flat().map((s) => s.label)).toEqual([
       "Market cap",
@@ -64,6 +64,6 @@ describe("researchStatSections", () => {
   });
 
   it("is empty with no metrics", () => {
-    expect(researchStatSections(null, null)).toEqual([]);
+    expect(financialStatSections(null, null)).toEqual([]);
   });
 });

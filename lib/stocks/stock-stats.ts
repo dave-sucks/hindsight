@@ -1,11 +1,11 @@
 /**
  * The stock page's numbers, in the order and words they are shown. The
  * Overview's key stats are twelve cells read down three columns, like a
- * broker's quote page; the Research tab's full set is the same grid in
+ * broker's quote page; the Financials tab's full set is one table in
  * sections. Everything here is a pure read of the quote and Finnhub's
  * `/stock/metric` map, so the page cannot print a number this file doesn't
  * name, and a metric Finnhub lacks for a stock reads "—" (or drops out of
- * the Research sections) instead of a guessed value.
+ * the Financials table) instead of a guessed value.
  */
 
 export type Stat = { label: string; value: string };
@@ -80,10 +80,10 @@ function inColumns(stats: Stat[], n = 3): StatColumns {
 }
 
 /**
- * The Research tab's full set, by section. A stat Finnhub has no number for
+ * The Financials tab's full set, by section. A stat Finnhub has no number for
  * is left out, and a section with nothing left is left out too.
  */
-export function researchStatSections(metrics: Metrics, marketCap: number | null): StatSection[] {
+export function financialStatSections(metrics: Metrics, marketCap: number | null): StatSection[] {
   const m = metrics;
   const sections: Array<{ label: string; stats: Array<[string, string]> }> = [
     {

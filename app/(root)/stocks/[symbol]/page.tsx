@@ -8,6 +8,7 @@ import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
 import { PositionCard } from "@/components/stocks/PositionCard";
 import { StatBlock } from "@/components/stocks/StatGrid";
+import { StatTable } from "@/components/stocks/StatTable";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
 import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
@@ -25,7 +26,7 @@ import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 import { buildStockHistory } from "@/lib/stocks/stock-history";
-import { keyStatColumns, researchStatSections } from "@/lib/stocks/stock-stats";
+import { keyStatColumns, financialStatSections } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -228,16 +229,22 @@ export default async function StockDetailPage({ params }: Props) {
     </>
   );
 
-  const statSections = researchStatSections(metrics, marketCap);
-  const research = (
-    <>
-      {statSections.length > 0 ? (
-        statSections.map((section) => <StatBlock key={section.label} {...section} />)
-      ) : (
-        <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
-      )}
-      <StockFilingsSection symbol={upperSymbol} />
-    </>
+  const statSections = financialStatSections(metrics, marketCap);
+  // The statistics take the left third, the filings the right two thirds.
+  const financials = (
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_2fr]">
+      <div className="min-w-0">
+        {statSections.length > 0 ? (
+          <StatTable sections={statSections} />
+        ) : (
+          <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
+        )}
+      </div>
+      <div className="min-w-0 space-y-2">
+        <BlockLabel>Filings</BlockLabel>
+        <StockFilingsSection symbol={upperSymbol} />
+      </div>
+    </div>
   );
 
   const news = (
@@ -281,7 +288,7 @@ export default async function StockDetailPage({ params }: Props) {
           }}
           stats={<StatBlock label="Key stats" columns={keyStatColumns(quote, metrics, marketCap)} />}
           history={history}
-          research={research}
+          financials={financials}
           news={news}
           sidebar={sidebar}
         />
