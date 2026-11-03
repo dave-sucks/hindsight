@@ -83,6 +83,19 @@ interface WriteThesisUpdateInput {
   verdict?: string;
   verdictLine?: string;
   answersUpdateId?: string;
+  /** The rule this line answers or fired on, as it stands: its action and condition (`ruleOnTheLine`). */
+  triggerAction?: string;
+  triggerCondition?: unknown;
+}
+
+/**
+ * What a line keeps of the rule it answers or fired on: the action and the
+ * condition as they are at the moment of writing. A review's title is read
+ * from these, so it holds after the rule is edited or removed (a used buy
+ * level, a replaced checkpoint). Nothing to keep when no rule is named.
+ */
+export function ruleOnTheLine(t: { action: string; predicate: unknown } | null | undefined): { triggerAction?: string; triggerCondition?: unknown } {
+  return t ? { triggerAction: t.action, triggerCondition: t.predicate } : {};
 }
 
 /**
@@ -154,6 +167,8 @@ export async function writeThesisUpdate(
         verdict: input.verdict ?? null,
         verdictLine: input.verdictLine ?? null,
         answersUpdateId: input.answersUpdateId ?? null,
+        triggerAction: input.triggerAction ?? null,
+        ...(input.triggerCondition != null ? { triggerCondition: input.triggerCondition as object } : {}),
       },
       select: { id: true },
     });

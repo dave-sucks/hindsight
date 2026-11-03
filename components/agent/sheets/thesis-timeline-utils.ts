@@ -41,6 +41,9 @@ export interface TimelineUpdate {
   tradeId: string | null;
   /** A review's verdict (STRONGER / UNCHANGED / WEAKER / BROKEN); its title carries the word. */
   verdict?: string | null;
+  /** The rule the line answered, as it stood then: the title reads these first, the live list by id second. */
+  triggerAction?: string | null;
+  triggerCondition?: unknown;
 }
 
 // ── Proposal metadata (Order-derived rows) ───────────────────────────────────
@@ -273,13 +276,17 @@ const REVIEW_KINDS: Partial<Record<Watch, (c: Condition) => string>> = {
  * trigger is named by its measure: "Pre-earnings review", "Post-earnings
  * review", "Scheduled review" (the review clock), "Checkpoint review" (so
  * many days after the buy), "Filing review", or "Review" with the price or
- * chart condition ("Review below the 200-day average"); no trigger, or one
- * since removed, is "Review". The verdict's word follows ("Pre-earnings
- * review · weaker"). The agent's copy of the line carries the same title
- * (saidLine in lib/agent/stock-context.ts).
+ * chart condition ("Review below the 200-day average"); no trigger is
+ * "Review". A line keeps its rule's action and condition as they stood
+ * (2026-11-03 on), so the title holds after the rule is edited or removed;
+ * an older line looks its rule up by id in the live list, and one since
+ * removed is "Review". The verdict's word follows ("Pre-earnings review ·
+ * weaker"). The agent's copy of the line carries the same title (saidLine in
+ * lib/agent/stock-context.ts).
  */
 export function reviewTitle(u: TimelineUpdate, triggers?: ReadonlyArray<TitleTrigger>): TitleSegments {
-  const trigger = u.triggerId ? triggers?.find((t) => t.id === u.triggerId) : undefined;
+  const kept = u.triggerAction && u.triggerCondition != null ? { action: u.triggerAction, predicate: u.triggerCondition } : null;
+  const trigger = kept ?? (u.triggerId ? triggers?.find((t) => t.id === u.triggerId) : undefined);
   const when = trigger ? shapeOf(trigger.predicate) : null;
   if (!when) return withVerdict(u, { primary: "Review", secondary: "" });
   if (trigger!.action === "EXIT") return withVerdict(u, { primary: "Sale review", secondary: whenText(when) });

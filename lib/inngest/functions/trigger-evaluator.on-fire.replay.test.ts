@@ -48,20 +48,25 @@ async function pass(trigger: Record<string, unknown>, price: number) {
     jest.useRealTimers();
   }
   const rows = (db.store.thesisUpdate ?? []) as Array<Record<string, unknown>>;
-  return { events: sent.filter((e) => e.name === "app/thesis.trigger.fired").map((e) => e.data.triggerId), firedRows: rows.filter((r) => r.type === "TRIGGER_FIRED").map((r) => r.triggerId) };
+  return {
+    events: sent.filter((e) => e.name === "app/thesis.trigger.fired").map((e) => e.data.triggerId),
+    firedRows: rows.filter((r) => r.type === "TRIGGER_FIRED").map((r) => r.triggerId),
+    // The rule as it fired, kept on the line (2026-11-03).
+    firedRules: rows.filter((r) => r.type === "TRIGGER_FIRED").map((r) => ({ action: r.triggerAction, condition: r.triggerCondition })),
+  };
 }
 
 describe("where a fire goes", () => {
   it("IOT's live $52 review (now NEXT_MORNING) is written down for the morning run and starts nothing", async () => {
-    expect(await pass({ ...TARGET, fireMode: "NEXT_MORNING" }, 52.4)).toEqual({ events: [], firedRows: [TARGET.id] });
+    expect(await pass({ ...TARGET, fireMode: "NEXT_MORNING" }, 52.4)).toEqual({ events: [], firedRows: [TARGET.id], firedRules: [{ action: "REVIEW", condition: TARGET.predicate }] });
   });
 
   it("the same review set to Send to Agent starts a trigger run", async () => {
-    expect(await pass({ ...TARGET, fireMode: "ASK_NOW" }, 52.4)).toEqual({ events: [TARGET.id], firedRows: [] });
+    expect(await pass({ ...TARGET, fireMode: "ASK_NOW" }, 52.4)).toEqual({ events: [TARGET.id], firedRows: [], firedRules: [] });
   });
 
   it("the floor set to Auto-sell goes to the trigger run's no-agent sale; left for the morning, it waits", async () => {
     expect((await pass({ ...FLOOR, fireMode: "DO_IT" }, 41.3)).events).toEqual([FLOOR.id]);
-    expect(await pass({ ...FLOOR, fireMode: "NEXT_MORNING" }, 41.3)).toEqual({ events: [], firedRows: [FLOOR.id] });
+    expect(await pass({ ...FLOOR, fireMode: "NEXT_MORNING" }, 41.3)).toEqual({ events: [], firedRows: [FLOOR.id], firedRules: [{ action: "EXIT", condition: FLOOR.predicate }] });
   });
 });

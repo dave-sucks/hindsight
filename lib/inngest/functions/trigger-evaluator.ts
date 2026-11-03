@@ -70,7 +70,7 @@ import {
   parseTriggerState,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { ruleOnTheLine, writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
 import { raiseMarksFromDayBars, raiseWaterMarks } from "@/lib/trading/water-mark";
@@ -819,6 +819,7 @@ export const triggerEvaluator = inngest.createFunction(
                     : `the floor broke before we ever bought it, so the plan's premise is gone.`
                   : `it reached the target without us, so the entry is stale.`,
               triggerId: t.id,
+              ...ruleOnTheLine(t),
               priceAtTime: latestQuote?.price ?? null,
             });
             // Demotion refuses on anything that isn't WATCHING (a PROMOTED
@@ -833,6 +834,7 @@ export const triggerEvaluator = inngest.createFunction(
                 // held=false: DEMOTE branch ⇒ un-held.
                 summary: sentenceOf(t, false),
                 triggerId: t.id,
+                ...ruleOnTheLine(t),
                 signalIds: [],
                 runId: null,
                 priceAtTime: latestQuote?.price ?? null,
@@ -853,6 +855,7 @@ export const triggerEvaluator = inngest.createFunction(
               // makes it go and re-fetch what the row could have told it.
               rationale: firedContext ?? undefined,
               triggerId: t.id,
+              ...ruleOnTheLine(t),
               signalIds: [],
               runId: null,
               priceAtTime: latestQuote?.price ?? null,

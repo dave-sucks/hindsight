@@ -818,3 +818,23 @@ describe("period labels — Today, Yesterday, This week, the month, then the yea
     expect(groupLabels(["2026-09-28T14:00:00Z", "2026-09-02T14:00:00Z", "2026-08-14T14:00:00Z"], now)).toEqual(["September", null, "August"]);
   });
 });
+
+describe("reviewTitle — the rule kept on the line (2026-11-03)", () => {
+  const LIST = [{ id: "r1", action: "REVIEW", predicate: { watch: "price", is: "below", value: 42.7 } }];
+  it("a line that kept its rule is titled from it, even after the rule left the stock's list", () => {
+    expect(reviewTitle(row({ type: "REVIEWED", triggerId: "gone", triggerAction: "REVIEW", triggerCondition: { watch: "report", is: "before", value: 5 } }), LIST))
+      .toEqual({ primary: "Pre-earnings review", secondary: "" });
+    expect(reviewTitle(row({ type: "REVIEWED", triggerId: "gone", triggerAction: "EXIT", triggerCondition: { watch: "price", is: "below", value: 42.7 }, verdict: "UNCHANGED" }), LIST))
+      .toEqual({ primary: "Sale review", secondary: "below $42.70 · unchanged" });
+    expect(reviewTitle(row({ type: "REVIEWED", triggerId: "gone", triggerAction: "REVIEW", triggerCondition: { watch: "repeat", value: 7 } }), LIST))
+      .toEqual({ primary: "Scheduled review", secondary: "" });
+  });
+  it("the kept rule beats the live list, which may have been edited since", () => {
+    expect(reviewTitle(row({ type: "REVIEWED", triggerId: "r1", triggerAction: "REVIEW", triggerCondition: { watch: "from_date", is: "after", value: 60, variable: "buy" } }), LIST))
+      .toEqual({ primary: "Checkpoint review", secondary: "" });
+  });
+  it("an older line with nothing kept still looks its rule up by id; one since removed is Review", () => {
+    expect(reviewTitle(row({ type: "REVIEWED", triggerId: "r1" }), LIST)).toEqual({ primary: "Review", secondary: "below $42.70" });
+    expect(reviewTitle(row({ type: "REVIEWED", triggerId: "gone" }), LIST)).toEqual({ primary: "Review", secondary: "" });
+  });
+});

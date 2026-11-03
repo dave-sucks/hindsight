@@ -502,6 +502,11 @@ model ThesisUpdate {
   verdictLine     String?
   // The earlier line this note answers (the pre-report note, after the report).
   answersUpdateId String?
+  // The rule the line answered or fired on, as it stood then: its action
+  // (EXIT, REVIEW …) and its condition shape, so the line's title holds after
+  // the rule is edited or removed.
+  triggerAction    String?
+  triggerCondition Json?
 
   thesis Thesis       @relation(fields: [thesisId], references: [id], onDelete: Cascade)
   run    ResearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)

@@ -47,7 +47,8 @@ const review = SITUATIONS.REVIEW_DUE.guidance;
 
 describe("answering a fired review: REVIEW_DUE's guidance, which the read carries with the stock", () => {
   it("asks for the trigger id and the sentence", () => {
-    expect(review).toContain("Pass trigger_id when a review fired");
+    // The save links the note to the one open fire or the due clock on its own (2026-11-03); the id is asked for only when several fired.
+    expect(review).toContain("trigger_id only when several fired");
     expect(review).toContain("The note: what has happened with the company and the stock since your last note");
     expect(review).toContain("Never a list of what you checked.");
   });

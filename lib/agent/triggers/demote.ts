@@ -58,8 +58,10 @@ export async function demoteThesisPlan(args: {
   thesisId: string;
   /** Why — goes into the audit row the daily run reads. */
   reason: string;
-  /** The trigger whose fire caused this, when it was automatic. */
+  /** The trigger whose fire caused this, when it was automatic, and its shape as it stood (ruleOnTheLine). */
   triggerId?: string | null;
+  triggerAction?: string;
+  triggerCondition?: unknown;
   runId?: string | null;
   priceAtTime?: number | null;
 }): Promise<DemoteResult> {
@@ -108,6 +110,8 @@ export async function demoteThesisPlan(args: {
     type: "TRIGGER_FIRED",
     summary: `${thesis.ticker} plan set down — ${args.reason}`,
     triggerId: args.triggerId ?? undefined,
+    triggerAction: args.triggerAction,
+    triggerCondition: args.triggerCondition,
     signalIds: [],
     runId: args.runId ?? null,
     priceAtTime: args.priceAtTime ?? null,
