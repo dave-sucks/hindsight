@@ -24,7 +24,7 @@ Every agent writes for you in plain English, in one of two styles (`lib/agent/vo
 
 Before writing a decision note, an agent searches the web once for the stock's latest news, so the note can say why it moved. If it still doesn't know, it says so. None of the app's shorthand reaches you: no setup names, no "drift", no "rung".
 
-On the thesis sheet, the belief carries the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38").
+A thesis shows in four tabs, the same on its sheet and on the trade page. **Overview** is the timeline: the price, the chart, the plan (the triggers), the flag for today's work and the newest 8 Activity lines, with the levels and the Wall Street card under them. **Thesis** is the analyst's view, in this order: the company in two sentences as the heading, why we own it under it with the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38"), the bull case and the bear case side by side with their bullets open, what would prove us wrong, then, folded, the assumptions (each ending with when and where it is checked) and where we differ from the street with the conviction's one-line reason. The conviction and the score sit as one chip by the stock's name ("High conviction · 8/10"). **Data** is the company's numbers, live when the tab opens: who it is, the key stats and the financials, the earnings record, open-market insider buying and the SEC filings. **Activity** is the whole list. A row written before the company line shows nothing where it would be, never a placeholder.
 
 ## Where it comes from
 

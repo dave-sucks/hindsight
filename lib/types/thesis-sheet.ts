@@ -12,6 +12,7 @@
  */
 
 import type { NeedsAction } from "@/lib/agent/needs-action";
+import type { StatColumns, StatSection } from "@/lib/stocks/stock-stats";
 import type { When } from "@/lib/agent/triggers/condition";
 import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 
@@ -203,6 +204,8 @@ export interface ThesisDossier {
   // Structural belief — load-bearing fields the trade-evaluator + tactical
   // agent read. Surfaced to the sheet so the user can see what the agent
   // actually committed to.
+  /** Two sentences: what the company does and how it makes money. The Writer's; null on rows written before 2026-11-03. */
+  company: string | null;
   coreBelief: string | null;
   keyAssumptions: string[];
   invalidationConds: string[];
@@ -393,6 +396,14 @@ export interface ThesisStateLevels {
  * last few reported quarters. What the system DID about a report (fired,
  * reviewed, traded) is the activity log, not this.
  */
+/** GET /api/stocks/:symbol/profile — the company's numbers for the Data tab. */
+export interface StockProfileResponse {
+  symbol: string;
+  about: { exchange: string | null; industry: string | null; ipo: string | null; website: string | null; url: string | null };
+  keyStats: StatColumns;
+  financials: StatSection[];
+}
+
 export interface EarningsResponse {
   /** Next scheduled report. `epsActual` is null. */
   next: EarningsCalendarEntry | null;

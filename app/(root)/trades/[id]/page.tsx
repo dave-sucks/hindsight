@@ -187,7 +187,7 @@ export default async function TradeDetailPage({
           status={trade.thesis?.status ?? (isClosed ? 'RETIRED' : 'HOLDING')}
           agentWatchDays={agentWatchDays(trade.thesis?.triggers)}
           conviction={(trade.thesis?.conviction ?? null) as 'STRONG' | 'HIGH' | 'MEDIUM' | 'LOW' | null}
-          convictionRationale={trade.thesis?.convictionRationale ?? null}
+          score={trade.thesis ? getThesisComposite(trade.thesis) : null}
           analystId={analystIdVal}
           thesisId={trade.thesis?.id}
           extraActions={<TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />}
@@ -209,12 +209,7 @@ export default async function TradeDetailPage({
                 { label: 'Shares', value: String(trade.shares) },
                 { label: 'Avg Entry', value: fmtCur(trade.entryPrice) },
                 { label: 'Cost Basis', value: fmtCur(position.avgCost * position.quantity) },
-                ...(() => {
-                  const composite = trade.thesis ? getThesisComposite(trade.thesis) : null;
-                  return composite != null
-                    ? [{ label: 'Composite', value: `${composite}/10` }]
-                    : [];
-                })(),
+                // The score sits in the header's conviction chip; no second copy here.
                 {
                   label: 'R:R Ratio',
                   value: riskReward != null ? `${riskReward.toFixed(2)}:1` : '—',
