@@ -88,10 +88,13 @@ function statusDot(row: CoverageRow): { className: string; label: string } {
 }
 
 // ── 1D/5D/30D cell ───────────────────────────────────────────────────────────
-// Same window either way; `mode` only changes the unit. A name with no shares
-// has no dollars to show, so $ mode reads "—" on the Watching and Passed tabs.
-// The flat band stays a PERCENT test in both modes — "did this barely move"
-// is a question about the move, not about how much of it you own.
+// Every move cell holds BOTH values, the dollars and the percent, always. The
+// desktop's % / $ setting only decides which of the two is shown from md up;
+// a phone shows both (it sees one column at a time), so the setting cannot
+// reach it. A name with no shares has no dollars: desktop $ mode reads "—",
+// a phone shows the percent alone. The flat band stays a PERCENT test —
+// "did this barely move" is a question about the move, not how much you own.
+// Money is TEXT, percent is a BADGE — the app's rule everywhere.
 function Move({
   pct,
   row,
@@ -103,27 +106,34 @@ function Move({
 }) {
   if (pct == null) return <span className="text-muted-foreground/40">—</span>;
   const flat = Math.abs(pct) < FLAT_BAND_PCT;
+  const d = moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
+  const showDollar = mode === "dollar";
 
-  if (mode === "dollar") {
-    const d = moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
-    if (d == null) return <span className="text-muted-foreground/40">—</span>;
-    // Money is TEXT, percent is a BADGE — the app's rule everywhere, and the
-    // Lifetime column two cells over proves it: "+$87.68" plain beside a
-    // "+0.88%" chip. The $ mode shipped dollars in badges and broke it.
-    return (
-      <span
-        className={cn(
-          "tabular-nums text-sm",
-          flat ? "text-muted-foreground" : pnlColor(d),
-        )}
-      >
-        {formatSignedCurrency(d)}
-      </span>
-    );
-  }
-
-  if (flat) return <span className="tabular-nums text-sm text-muted-foreground">{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>;
-  return <PnlBadge value={pct} format="percent" className="text-xs" />;
+  return (
+    <span className="inline-flex items-center gap-1.5 justify-end">
+      {d == null ? (
+        <span className={cn("text-muted-foreground/40", showDollar ? "hidden md:inline" : "hidden")}>—</span>
+      ) : (
+        <span
+          className={cn(
+            "tabular-nums text-sm",
+            flat ? "text-muted-foreground" : pnlColor(d),
+            !showDollar && "md:hidden",
+          )}
+        >
+          {formatSignedCurrency(d)}
+        </span>
+      )}
+      {flat ? (
+        <span className={cn("tabular-nums text-sm text-muted-foreground", showDollar && "md:hidden")}>
+          {pct >= 0 ? "+" : ""}
+          {pct.toFixed(2)}%
+        </span>
+      ) : (
+        <PnlBadge value={pct} format="percent" className={cn("text-xs", showDollar && "md:hidden")} />
+      )}
+    </span>
+  );
 }
 
 // ── Name cell ─────────────────────────────────────────────────────────────────
