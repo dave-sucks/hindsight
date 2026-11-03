@@ -36,7 +36,20 @@ import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 // ─── Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ──────────────
 
 type Tab = "trades" | "sold" | "watching" | "passed";
-type MobileView = "1d" | "5d" | "lifetime";
+/**
+ * The four move columns. Desktop shows all four side by side; a phone shows
+ * ONE of them, the one its tab names, and hides the other three. Each column
+ * is its own cell with its own number — nothing is shared between them, so
+ * no view state can put one column's number in another's place (#914 did
+ * exactly that: the desktop Lifetime column showed the day's move).
+ */
+type Window = "1d" | "5d" | "30d" | "lifetime";
+const WINDOWS: Array<{ value: Window; label: string }> = [
+  { value: "1d", label: "1D" },
+  { value: "5d", label: "5D" },
+  { value: "30d", label: "30D" },
+  { value: "lifetime", label: "Lifetime" },
+];
 /**
  * What the 1D/5D/30D columns say. A column of percents cannot show why a book
  * is down on a day most of its names are up — a −1.16% day on an $11,718
@@ -75,10 +88,13 @@ function statusDot(row: CoverageRow): { className: string; label: string } {
 }
 
 // ── 1D/5D/30D cell ───────────────────────────────────────────────────────────
-// Same window either way; `mode` only changes the unit. A name with no shares
-// has no dollars to show, so $ mode reads "—" on the Watching and Passed tabs.
-// The flat band stays a PERCENT test in both modes — "did this barely move"
-// is a question about the move, not about how much of it you own.
+// Every move cell holds BOTH values, the dollars and the percent, always. The
+// desktop's % / $ setting only decides which of the two is shown from md up;
+// a phone shows both (it sees one column at a time), so the setting cannot
+// reach it. A name with no shares has no dollars: desktop $ mode reads "—",
+// a phone shows the percent alone. The flat band stays a PERCENT test —
+// "did this barely move" is a question about the move, not how much you own.
+// Money is TEXT, percent is a BADGE — the app's rule everywhere.
 function Move({
   pct,
   row,
@@ -90,27 +106,34 @@ function Move({
 }) {
   if (pct == null) return <span className="text-muted-foreground/40">—</span>;
   const flat = Math.abs(pct) < FLAT_BAND_PCT;
+  const d = moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
+  const showDollar = mode === "dollar";
 
-  if (mode === "dollar") {
-    const d = moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
-    if (d == null) return <span className="text-muted-foreground/40">—</span>;
-    // Money is TEXT, percent is a BADGE — the app's rule everywhere, and the
-    // Lifetime column two cells over proves it: "+$87.68" plain beside a
-    // "+0.88%" chip. The $ mode shipped dollars in badges and broke it.
-    return (
-      <span
-        className={cn(
-          "tabular-nums text-sm",
-          flat ? "text-muted-foreground" : pnlColor(d),
-        )}
-      >
-        {formatSignedCurrency(d)}
-      </span>
-    );
-  }
-
-  if (flat) return <span className="tabular-nums text-sm text-muted-foreground">{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>;
-  return <PnlBadge value={pct} format="percent" className="text-xs" />;
+  return (
+    <span className="inline-flex items-center gap-1.5 justify-end">
+      {d == null ? (
+        <span className={cn("text-muted-foreground/40", showDollar ? "hidden md:inline" : "hidden")}>—</span>
+      ) : (
+        <span
+          className={cn(
+            "tabular-nums text-sm",
+            flat ? "text-muted-foreground" : pnlColor(d),
+            !showDollar && "md:hidden",
+          )}
+        >
+          {formatSignedCurrency(d)}
+        </span>
+      )}
+      {flat ? (
+        <span className={cn("tabular-nums text-sm text-muted-foreground", showDollar && "md:hidden")}>
+          {pct >= 0 ? "+" : ""}
+          {pct.toFixed(2)}%
+        </span>
+      ) : (
+        <PnlBadge value={pct} format="percent" className={cn("text-xs", showDollar && "md:hidden")} />
+      )}
+    </span>
+  );
 }
 
 // ── Name cell ─────────────────────────────────────────────────────────────────
@@ -161,46 +184,28 @@ function NameCell({ row }: { row: CoverageRow }) {
   );
 }
 
-// ── Lifetime / 1D / 5D cell (last column) ────────────────────────────────────
-// On desktop: just P&L (price has its own column).
-// On mobile: price on top (since Price column is hidden), then P&L below.
-// mobileView picks the window: 1D, 5D or lifetime.
-function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: MobileView }) {
-  const isLifetime = mobileView === "lifetime";
-  const pct = isLifetime ? row.sincePct : mobileView === "5d" ? row.fiveDayPct : row.oneDayPct;
-  // Every tab shows dollars AND percent on a held name. The row carries the
-  // window moves as a percent only, so the 1D tab used to be half a column
-  // next to a Lifetime tab that had both — and on a phone these tabs are the
-  // whole table. A watched name has no shares, so it stays percent-only.
-  const dollar =
-    row.tradeState == null
-      ? null
-      : isLifetime
-        ? row.sinceDollar
-        : moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
-
+// ── Lifetime cell ────────────────────────────────────────────────────────────
+// The lifetime gain, dollars and percent: unrealized while held, realized once
+// sold, a percent alone on a name we only watched or passed. Reads the row and
+// nothing else.
+function LifetimeGain({ row }: { row: CoverageRow }) {
+  if (row.sincePct == null) return <span className="text-muted-foreground/40 text-xs">—</span>;
+  const dollar = row.tradeState == null ? null : row.sinceDollar;
   return (
-    <div className="flex flex-col items-end gap-0.5">
-      {/* Price — only on mobile since desktop has a dedicated Price column */}
-      {row.currentPrice != null && (
-        <span className="md:hidden text-sm tabular-nums font-light">
-          ${row.currentPrice.toFixed(2)}
-        </span>
+    <span className="inline-flex items-center gap-1.5 justify-end">
+      {dollar != null && (
+        <PriceChange dollarChange={dollar} percentChange={null} size="sm" arrowFirst />
       )}
-      <span className="inline-flex items-center gap-1.5 justify-end">
-        {pct == null ? (
-          <span className="text-muted-foreground/40 text-xs">—</span>
-        ) : (
-          <>
-            {dollar != null && (
-              <PriceChange dollarChange={dollar} percentChange={null} size="sm" arrowFirst />
-            )}
-            <PnlBadge value={pct} format="percent" className="text-xs" />
-          </>
-        )}
-      </span>
-    </div>
+      <PnlBadge value={row.sincePct} format="percent" className="text-xs" />
+    </span>
   );
+}
+
+// On a phone the Price column is hidden, so the one column that shows
+// carries the price above its number.
+function PhonePrice({ row }: { row: CoverageRow }) {
+  if (row.currentPrice == null) return null;
+  return <span className="md:hidden text-sm tabular-nums font-light">${row.currentPrice.toFixed(2)}</span>;
 }
 
 // ── One tab's table ───────────────────────────────────────────────────────────
@@ -217,7 +222,25 @@ function CoverageTab({
   emptyLabel: string;
   onRowClick: (row: CoverageRow) => void;
 }) {
-  const [mobileView, setMobileView] = useState<MobileView>("1d");
+  // Which of the four columns a phone shows. Desktop ignores it: all four show.
+  const [phoneWindow, setPhoneWindow] = useState<Window>("1d");
+  // The column's own cells: on desktop every column is a cell; on a phone
+  // only the chosen one is, the rest are display:none.
+  const windowCell = (w: Window, extra = "") =>
+    cn("text-right", extra, w === phoneWindow ? "table-cell" : "hidden md:table-cell");
+  const phoneTabs = (
+    <div className="md:hidden flex justify-end">
+      <Tabs value={phoneWindow} onValueChange={(v) => setPhoneWindow(v as Window)}>
+        <TabsList size="sm">
+          {WINDOWS.map((w) => (
+            <TabsTrigger key={w.value} value={w.value}>
+              {w.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+    </div>
+  );
 
   if (rows.length === 0) {
     return (
@@ -238,14 +261,23 @@ function CoverageTab({
             <TableHead>Name</TableHead>
             {/* Price — hidden on mobile (it moves into the last column) */}
             <TableHead className="hidden md:table-cell w-24 text-right">Price</TableHead>
-            {/* 1D/5D/30D — desktop only */}
-            <TableHead className="hidden md:table-cell w-24 text-right">1D</TableHead>
-            <TableHead className="hidden md:table-cell w-24 text-right">5D</TableHead>
-            <TableHead className="hidden md:table-cell w-24 text-right">30D</TableHead>
-            {/* Last column — "Lifetime" label on desktop, toggle on mobile.
-                Sized to the gain + badge so the name column keeps the
+            {/* The four move columns. On a phone the chosen one is wide enough
+                for its price and number, and its head holds the tabs. */}
+            <TableHead className={windowCell("1d", "w-52 md:w-24")}>
+              <span className="hidden md:inline">1D</span>
+              {phoneWindow === "1d" && phoneTabs}
+            </TableHead>
+            <TableHead className={windowCell("5d", "w-52 md:w-24")}>
+              <span className="hidden md:inline">5D</span>
+              {phoneWindow === "5d" && phoneTabs}
+            </TableHead>
+            <TableHead className={windowCell("30d", "w-52 md:w-24")}>
+              <span className="hidden md:inline">30D</span>
+              {phoneWindow === "30d" && phoneTabs}
+            </TableHead>
+            {/* Sized to the gain + badge so the name column keeps the
                 shares line instead of "300 sh…". */}
-            <TableHead className="w-44 md:w-52 text-right">
+            <TableHead className={windowCell("lifetime", "w-52")}>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger
@@ -260,17 +292,7 @@ function CoverageTab({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              {/* Mobile toggle — a view setting, so small Tabs like the %/$.
-                  Flush right, under the numbers it changes. */}
-              <div className="md:hidden flex justify-end">
-                <Tabs value={mobileView} onValueChange={(v) => setMobileView(v as MobileView)}>
-                  <TabsList size="sm">
-                    <TabsTrigger value="1d">1D</TabsTrigger>
-                    <TabsTrigger value="5d">5D</TabsTrigger>
-                    <TabsTrigger value="lifetime">Lifetime</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
+              {phoneWindow === "lifetime" && phoneTabs}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -287,17 +309,29 @@ function CoverageTab({
               <TableCell className="hidden md:table-cell text-right text-sm tabular-nums font-light">
                 {row.currentPrice != null ? `$${row.currentPrice.toFixed(2)}` : "—"}
               </TableCell>
-              <TableCell className="hidden md:table-cell text-right">
-<Move pct={row.oneDayPct} row={row} mode={mode} />
+              <TableCell className={windowCell("1d")}>
+                <div className="flex flex-col items-end gap-0.5">
+                  <PhonePrice row={row} />
+                  <Move pct={row.oneDayPct} row={row} mode={mode} />
+                </div>
               </TableCell>
-              <TableCell className="hidden md:table-cell text-right">
-<Move pct={row.fiveDayPct} row={row} mode={mode} />
+              <TableCell className={windowCell("5d")}>
+                <div className="flex flex-col items-end gap-0.5">
+                  <PhonePrice row={row} />
+                  <Move pct={row.fiveDayPct} row={row} mode={mode} />
+                </div>
               </TableCell>
-              <TableCell className="hidden md:table-cell text-right">
-<Move pct={row.thirtyDayPct} row={row} mode={mode} />
+              <TableCell className={windowCell("30d")}>
+                <div className="flex flex-col items-end gap-0.5">
+                  <PhonePrice row={row} />
+                  <Move pct={row.thirtyDayPct} row={row} mode={mode} />
+                </div>
               </TableCell>
-              <TableCell className="text-right">
-                <LifetimeCell row={row} mobileView={mobileView} />
+              <TableCell className={windowCell("lifetime")}>
+                <div className="flex flex-col items-end gap-0.5">
+                  <PhonePrice row={row} />
+                  <LifetimeGain row={row} />
+                </div>
               </TableCell>
             </TableRow>
           ))}
