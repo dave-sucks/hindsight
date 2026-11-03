@@ -1,20 +1,19 @@
 "use client";
 
 /**
- * The stock page's position card: what we hold in this stock now, and every
- * trade we ever made in it, behind two small tabs. The Position tab reads
- * like a receipt — Bought, then Now (or Sold), then the gain as the total.
- * The History tab is one line per trade with its result, and a total line.
+ * The stock page's position card. The chips where the status pill used to be
+ * pick what the card shows: Position (only while we hold the stock — its dot
+ * pulses) is the held numbers in the Trade Details style; History is every
+ * trade we made in the stock, one row each, in the trade row's style.
  */
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import { PriceChange } from "@/components/ui/price-change";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/format";
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { humanizeCloseReason } from "@/components/domain/trade-summary";
@@ -34,16 +33,30 @@ export type PositionCardTrade = {
   closedAt: string | null;
 };
 
-const POSITION = 0;
-const HISTORY = 1;
+type View = "position" | "history";
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+/** "Sep 30, 2:26 PM" for the hover line. */
+function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function daysBetween(fromIso: string, toIso: string | null): number {
   const to = toIso ? new Date(toIso).getTime() : Date.now();
   return Math.max(0, Math.floor((to - new Date(fromIso).getTime()) / 86_400_000));
+}
+
+function fmtQty(qty: number): string {
+  return Number.isInteger(qty) ? String(qty) : qty.toFixed(2);
 }
 
 function statusOf(t: PositionCardTrade) {
@@ -67,187 +80,164 @@ function gainOf(t: PositionCardTrade, price: number | null): { dollar: number; p
   return { dollar, pct: cost > 0 ? (dollar / cost) * 100 : null };
 }
 
-function StatusBadge({ trade }: { trade: PositionCardTrade }) {
-  const s = statusOf(trade);
+/** One "Bought @ $x …… $total" row, the Trade Details style. */
+function DetailRow({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
   return (
-    <Badge variant="secondary" className="gap-1.5 font-normal">
-      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", s.dotClass)} />
-      {s.label}
-    </Badge>
-  );
-}
-
-/** One receipt line: a label, the big amount, the small print under it. */
-function ReceiptBlock({ label, amount, detail }: { label: string; amount: string; detail: string }) {
-  return (
-    <div className="rounded-md border bg-background/60 px-3 py-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-lg font-semibold tabular-nums leading-tight">{amount}</p>
-      <p className="text-xs text-muted-foreground tabular-nums">{detail}</p>
+    <div className={cn("flex items-center justify-between text-sm pb-1", !last && "border-b border-border")}>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
     </div>
   );
 }
 
-function Receipt({ trade, price }: { trade: PositionCardTrade; price: number | null }) {
-  const closed = trade.status === "CLOSED";
-  const short = trade.direction === "SHORT";
-  const qty = Number.isInteger(trade.quantity) ? trade.quantity : trade.quantity.toFixed(2);
+/** The held position: its gain, then Bought / Now in the Trade Details style. */
+function Held({ trade, price }: { trade: PositionCardTrade; price: number | null }) {
   const cost = trade.avgCost * trade.quantity;
   const gain = gainOf(trade, price);
-  const held = daysBetween(trade.openedAt, trade.closedAt);
+  return (
+    <>
+      <div className="pb-2">
+        {gain ? (
+          <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" />
+        ) : (
+          <span className="text-xl text-muted-foreground">—</span>
+        )}
+      </div>
+      <DetailRow
+        label={`${trade.direction === "SHORT" ? "Shorted" : "Bought"} @ ${formatCurrency(trade.avgCost)}`}
+        value={formatCurrency(cost)}
+      />
+      <DetailRow
+        label={price != null ? `Now @ ${formatCurrency(price)}` : "Now"}
+        value={price != null ? formatCurrency(price * trade.quantity) : "No live price"}
+        last
+      />
+    </>
+  );
+}
+
+/**
+ * One trade, in the trade row's layout: the verb and its price on top with
+ * the gain on the right, the shares and cost under it with the date on the
+ * right (the count sits on the lower line only: with it on both, the top
+ * line was cut off at the card's width).
+ * The date's hover line gives the exact times. Links to the trade's page.
+ */
+function HistoryRow({ trade, price }: { trade: PositionCardTrade; price: number | null }) {
+  const s = statusOf(trade);
+  const gain = gainOf(trade, price);
+  const open = trade.status === "OPEN";
+  const closed = trade.status === "CLOSED";
+  const short = trade.direction === "SHORT";
+  const shares = `${fmtQty(trade.quantity)} share${trade.quantity === 1 ? "" : "s"}`;
+
+  // Sold at its close price; a holding at the price now; a proposal at its entry.
+  const verb = closed ? (short ? "Covered" : "Sold") : open ? "Holding" : short ? "Short proposed" : "Buy proposed";
+  const at = closed ? trade.closePrice : open ? price : trade.avgCost;
+  const value = at != null ? at * trade.quantity : null;
+  const when = closed && trade.closedAt ? trade.closedAt : trade.openedAt;
   const exit = closed ? humanizeCloseReason(trade.closeReason) : null;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <StatusBadge trade={trade} />
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {held} day{held !== 1 ? "s" : ""} held
+    <Link
+      href={`/trades/${trade.id}`}
+      prefetch={false}
+      className="block px-3 py-2.5 border-b border-border/40 last:border-0 hover:bg-accent/40 transition-colors"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 min-w-0 text-sm">
+          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", s.dotClass)} />
+          <span className="font-medium shrink-0">{verb}</span>
+          <span className="text-muted-foreground tabular-nums truncate">
+            {at != null ? `at ${formatCurrency(at)}` : shares}
+          </span>
+        </div>
+        {gain ? (
+          <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" />
+        ) : null}
+      </div>
+      <div className="flex items-center justify-between gap-3 mt-0.5 text-xs text-muted-foreground tabular-nums">
+        <span className="truncate">
+          {value != null ? `${formatCurrency(value)} — ` : ""}
+          {shares} at {formatCurrency(trade.avgCost)} entry
         </span>
+        <Tooltip>
+          <TooltipTrigger render={<span className="shrink-0 cursor-default" />}>{fmtDate(when)}</TooltipTrigger>
+          <TooltipContent side="top" className="tabular-nums">
+            <div>
+              <div>
+                {short ? "Shorted" : "Bought"} {fmtDateTime(trade.openedAt)}
+              </div>
+              {closed && trade.closedAt ? (
+                <div>
+                  {short ? "Covered" : "Sold"} {fmtDateTime(trade.closedAt)}
+                  {exit ? ` · ${exit}` : ""}
+                </div>
+              ) : null}
+            </div>
+          </TooltipContent>
+        </Tooltip>
       </div>
-
-      <ReceiptBlock
-        label={short ? "Shorted" : "Bought"}
-        amount={formatCurrency(cost)}
-        detail={`${qty} shares @ ${formatCurrency(trade.avgCost)} · ${fmtDate(trade.openedAt)}`}
-      />
-      <div className="flex justify-center -my-1">
-        <ArrowDown className="h-3.5 w-3.5 text-muted-foreground/50" />
-      </div>
-      {closed ? (
-        <ReceiptBlock
-          label={short ? "Covered" : "Sold"}
-          amount={trade.closePrice != null ? formatCurrency(trade.closePrice * trade.quantity) : "—"}
-          detail={
-            (trade.closePrice != null ? `@ ${formatCurrency(trade.closePrice)}` : "") +
-            (trade.closedAt ? ` · ${fmtDate(trade.closedAt)}` : "") +
-            (exit ? ` · ${exit}` : "")
-          }
-        />
-      ) : (
-        <ReceiptBlock
-          label="Now"
-          amount={price != null ? formatCurrency(price * trade.quantity) : "—"}
-          detail={price != null ? `@ ${formatCurrency(price)} · live` : "No live price"}
-        />
-      )}
-
-      <div className="flex items-center justify-between border-t border-border pt-2">
-        <span className="text-sm text-muted-foreground">{closed ? "Result" : "Gain"}</span>
-        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="base" /> : <span>—</span>}
-      </div>
-
-      <Link
-        href={`/trades/${trade.id}`}
-        className="block text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
-      >
-        View trade →
-      </Link>
-    </div>
+    </Link>
   );
 }
 
-function HistoryRows({ trades, price }: { trades: PositionCardTrade[]; price: number | null }) {
-  const sold = trades.filter((t) => t.status === "CLOSED");
-  const won = sold.filter((t) => t.outcome === "WIN").length;
-  const realized = sold.reduce((sum, t) => sum + (t.realizedPnl ?? 0), 0);
-  const cost = sold.reduce((sum, t) => sum + t.avgCost * t.quantity, 0);
-
+function PositionChip({ dotClass, label }: { dotClass: string; label: string }) {
   return (
-    <div>
-      {trades.map((t) => {
-        const gain = gainOf(t, price);
-        const s = statusOf(t);
-        const short = t.direction === "SHORT";
-        const qty = Number.isInteger(t.quantity) ? t.quantity : t.quantity.toFixed(2);
-        return (
-          <Link
-            key={t.id}
-            href={`/trades/${t.id}`}
-            className="flex items-center justify-between gap-3 border-b border-border py-1.5 last:border-0 hover:bg-muted/70 -mx-1 px-1 rounded-sm transition-colors"
-          >
-            <span className="min-w-0">
-              <span className="block text-sm tabular-nums truncate">
-                {formatCurrency(t.avgCost)}
-                {t.status === "CLOSED" && t.closePrice != null ? ` → ${formatCurrency(t.closePrice)}` : ""}
-                {t.status === "OPEN" ? " → now" : ""}
-              </span>
-              <span className="block text-xs text-muted-foreground tabular-nums truncate">
-                <span className={cn("inline-block h-1.5 w-1.5 rounded-full mr-1.5 align-middle", s.dotClass)} />
-                {qty} sh · {fmtDate(t.openedAt)}
-                {t.status === "CLOSED" && t.closedAt ? ` → ${fmtDate(t.closedAt)}` : ""}
-                {t.status === "OPEN" ? " · holding" : ""}
-                {t.status === "PENDING_APPROVAL" ? ` · ${short ? "short" : "buy"} proposed` : ""}
-              </span>
-            </span>
-            {gain ? (
-              <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" />
-            ) : (
-              <span className="text-xs text-muted-foreground shrink-0">—</span>
-            )}
-          </Link>
-        );
-      })}
-
-      {sold.length > 0 ? (
-        <div className="flex items-center justify-between border-t border-border pt-2 mt-1">
-          <span className="text-sm text-muted-foreground tabular-nums">
-            {sold.length} sold · {won} won
-          </span>
-          <PriceChange dollarChange={realized} percentChange={cost > 0 ? (realized / cost) * 100 : null} size="base" />
-        </div>
-      ) : null}
-    </div>
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
+      {label}
+    </span>
   );
 }
 
 export function PositionCard({ trades, price }: { trades: PositionCardTrade[]; price: number | null }) {
-  const [tab, setTab] = useState<number>(POSITION);
   const open = trades.find((t) => t.status === "OPEN") ?? null;
-  const proposed = trades.find((t) => t.status === "PENDING_APPROVAL") ?? null;
-  // Nothing held: the last trade is what the Position tab shows, so a sold
-  // stock still reads as a receipt rather than an empty card.
-  const last = open ?? trades.find((t) => t.status === "CLOSED") ?? null;
+  const [view, setView] = useState<View>(open ? "position" : "history");
+  const showing: View = open ? view : "history";
+
+  // The Position chip exists only while we hold the stock; its dot is the
+  // holding row's pulse, standing where the status pill used to be.
+  const options = [
+    ...(open
+      ? [
+          {
+            value: "position" as const,
+            label: <PositionChip dotClass={getTradeStatusDisplay("OPEN").dotClass} label="Position" />,
+          },
+        ]
+      : []),
+    { value: "history" as const, label: "History" },
+  ];
 
   return (
     <Card className="bg-muted/40 p-2 gap-1">
-      <Tabs value={tab} onValueChange={(v) => setTab(v as number)}>
-        <div className="flex items-center justify-between pb-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Position</p>
-          <TabsList size="sm">
-            <TabsTrigger value={POSITION}>Position</TabsTrigger>
-            <TabsTrigger value={HISTORY}>History</TabsTrigger>
-          </TabsList>
+      <div className="flex items-center justify-between pb-1">
+        <ChipTabs
+          size="sm"
+          clearable={false}
+          options={options}
+          value={showing}
+          onChange={(v) => v && setView(v)}
+        />
+        {showing === "position" && open ? (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {daysBetween(open.openedAt, null)} day{daysBetween(open.openedAt, null) !== 1 ? "s" : ""} held
+          </span>
+        ) : null}
+      </div>
+
+      {showing === "position" && open ? (
+        <Held trade={open} price={price} />
+      ) : trades.length > 0 ? (
+        <div className="-mx-2 -mb-2 border-t border-border">
+          {trades.map((t) => (
+            <HistoryRow key={t.id} trade={t} price={price} />
+          ))}
         </div>
-
-        <TabsContent value={POSITION}>
-          {last ? (
-            <Receipt trade={last} price={price} />
-          ) : (
-            <p className="text-sm text-muted-foreground">Not held.</p>
-          )}
-          {!open && proposed ? (
-            <Link
-              href={`/trades/${proposed.id}`}
-              className="mt-2 flex items-center justify-between text-xs text-muted-foreground hover:text-foreground"
-            >
-              <span>
-                <span className="inline-block h-1.5 w-1.5 rounded-full mr-1.5 align-middle bg-amber-500" />
-                Buy proposed · {proposed.quantity} sh @ {formatCurrency(proposed.avgCost)}
-              </span>
-              <span>→</span>
-            </Link>
-          ) : null}
-        </TabsContent>
-
-        <TabsContent value={HISTORY}>
-          {trades.length > 0 ? (
-            <HistoryRows trades={trades} price={price} />
-          ) : (
-            <p className="text-sm text-muted-foreground">No trades yet.</p>
-          )}
-        </TabsContent>
-      </Tabs>
+      ) : (
+        <p className="text-sm text-muted-foreground px-1 pb-1">No trades yet.</p>
+      )}
     </Card>
   );
 }
