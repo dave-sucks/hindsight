@@ -730,7 +730,7 @@ describe("each priced row carries its move from the row before it in time", () =
 
 });
 
-describe("period labels — Today, Yesterday, This week, then the month", () => {
+describe("period labels — Today, Yesterday, This week, the month, then the year", () => {
   // A Friday afternoon; the rows' own times show only on hover, so the labels carry the time.
   const now = new Date("2026-10-30T18:00:00Z");
   const at = (iso: string) => periodLabel(iso, now);
@@ -742,6 +742,8 @@ describe("period labels — Today, Yesterday, This week, then the month", () => 
     expect(at("2026-10-20T14:00:00Z")).toBe("October");
     expect(at("2026-09-28T14:00:00Z")).toBe("September");
     expect(at("2025-11-03T14:00:00Z")).toBe("November 2025");
+    expect(at("2025-10-01T14:00:00Z")).toBe("2025");
+    expect(at("2024-03-09T14:00:00Z")).toBe("2024");
   });
 
   it("labels only where the period changes, newest first", () => {

@@ -473,8 +473,13 @@ export function proposalSpanSegments(items: TimelineItem[]): Set<number> {
   return segments;
 }
 
-/** Month header label — "August", with the year when it isn't this year. */
+/**
+ * Month header label — "August"; "November 2025" when it isn't this year;
+ * and a year or more back, the year alone: that far out the month says
+ * nothing the reader needs.
+ */
 function monthLabel(d: Date, now: Date): string {
+  if (now.getTime() - d.getTime() >= 365 * 86_400_000) return String(d.getFullYear());
   const month = d.toLocaleString("en-US", { month: "long" });
   return d.getFullYear() === now.getFullYear()
     ? month
@@ -484,8 +489,9 @@ function monthLabel(d: Date, now: Date): string {
 /**
  * The period a row falls in, as the list labels it: "Today", "Yesterday",
  * "This week" (the last seven days), then the month ("October", or
- * "November 2025" in another year). The labels carry the time now that a
- * row's own timestamp shows only on hover.
+ * "November 2025" in another year), then just the year once a row is a year
+ * or more old. The labels carry the time now that a row's own timestamp
+ * shows only on hover.
  */
 export function periodLabel(timestamp: string, now = new Date()): string {
   const d = new Date(timestamp);

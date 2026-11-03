@@ -40,10 +40,6 @@ function eps(n: number | null): string {
   return n == null ? "—" : `${n < 0 ? "−" : ""}$${Math.abs(n).toFixed(2)}`;
 }
 
-function signedPct(n: number): string {
-  return `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1)}%`;
-}
-
 /** "Oct 13 · before open · in 28 days" — the whole when, in one line. */
 function reportWhen(iso: string, hour: string | null): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -152,46 +148,37 @@ function DotPlot({ columns }: { columns: Column[] }) {
 }
 
 /**
- * What one column says on hover: the quarter, the two numbers that make it,
- * and the verdict under a rule. Everything the column used to print under
- * itself, plus the revenue estimate that used to need its own row.
+ * What one column says on hover: two plain lines. A reported quarter is its
+ * verdict and the two numbers behind it; a coming one is when it reports and
+ * what is expected. No table and no colour: the tooltip's own surface is the
+ * contrast, and a sentence reads faster than a grid at that size.
  */
 function QuarterDetail({ column: c }: { column: Column }) {
-  const beat = c.surprisePct != null && c.surprisePct >= 0;
-  const rows: Array<[string, string]> = c.upcoming
-    ? [
-        ["Reports", c.upcoming.when],
-        ...(c.estimate != null ? ([["Est. EPS", eps(c.estimate)]] as Array<[string, string]>) : []),
-        ...(c.upcoming.revenueEstimate != null
-          ? ([["Est. rev.", compactMoney(c.upcoming.revenueEstimate)]] as Array<[string, string]>)
-          : []),
-      ]
-    : [
-        ["Est.", eps(c.estimate)],
-        ["Act.", eps(c.actual)],
-      ];
-
-  return (
-    <div className="space-y-1">
-      <p className="font-medium">{c.label}</p>
-      <div className="space-y-0.5">
-        {rows.map(([label, value]) => (
-          <p key={label} className="flex items-baseline justify-between gap-4">
-            <span className="text-muted-foreground">{label}</span>
-            <span className="tabular-nums">{value}</span>
-          </p>
-        ))}
-      </div>
-      {c.surprisePct != null ? (
-        <p
-          className={cn(
-            "border-t pt-1 tabular-nums",
-            beat ? "text-positive" : "text-negative",
-          )}
-        >
-          {beat ? "Beat" : "Miss"} {signedPct(c.surprisePct)}
+  if (c.upcoming) {
+    const expected = [
+      c.estimate != null ? `${eps(c.estimate)} EPS` : null,
+      c.upcoming.revenueEstimate != null ? `${compactMoney(c.upcoming.revenueEstimate)} revenue` : null,
+    ].filter(Boolean);
+    return (
+      <div className="space-y-0.5 tabular-nums">
+        <p className="font-medium">
+          {c.label} · Reports {c.upcoming.when}
         </p>
-      ) : null}
+        {expected.length > 0 ? <p>Expected {expected.join(", ")}</p> : null}
+      </div>
+    );
+  }
+  const verdict =
+    c.surprisePct == null ? null : `${c.surprisePct >= 0 ? "Beat" : "Missed"} by ${Math.abs(c.surprisePct).toFixed(1)}%`;
+  return (
+    <div className="space-y-0.5 tabular-nums">
+      <p className="font-medium">
+        {c.label}
+        {verdict ? ` · ${verdict}` : ""}
+      </p>
+      <p>
+        {eps(c.actual)} vs {eps(c.estimate)} expected
+      </p>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,7 +20,8 @@ import { cn } from "@/lib/utils";
 
 export interface ChipTabOption<T extends string = string> {
   value: T;
-  label: string;
+  /** The chip's text — or a node, for a chip that carries a status dot. */
+  label: ReactNode;
   /** Optional accessible tooltip — useful when the label is an abbreviation. */
   title?: string;
 }
