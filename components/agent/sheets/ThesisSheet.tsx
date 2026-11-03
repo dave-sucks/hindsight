@@ -13,7 +13,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLivePoll } from "@/hooks/useLivePoll";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
 import { ThesisChart } from "@/components/domain/thesis-chart";
 import {
@@ -265,9 +265,13 @@ function Bullets({ items }: { items: ReadonlyArray<CaseBullet> }) {
 /** The bull or the bear case as a card: its bullets open. */
 function CaseCard({ label, bullets }: { label: string; bullets: CaseBullet[] }) {
   return (
-    <Card className="bg-muted/40 p-3 gap-2">
-      <SectionLabel>{label}</SectionLabel>
-      {bullets.length > 0 ? <Bullets items={bullets} /> : <p className="text-sm text-muted-foreground">Not written.</p>}
+    <Card size="sm">
+      <CardHeader>
+        <SectionLabel>{label}</SectionLabel>
+      </CardHeader>
+      <CardContent>
+        {bullets.length > 0 ? <Bullets items={bullets} /> : <p className="text-sm text-muted-foreground">Not written.</p>}
+      </CardContent>
     </Card>
   );
 }

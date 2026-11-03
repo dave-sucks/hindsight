@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
@@ -65,14 +65,20 @@ function AboutRows({ about }: { about: StockProfileResponse["about"] }) {
     });
   }
   return (
-    <Card className="bg-muted/40 p-2 gap-1">
-      <Label>About</Label>
-      {rows.map(({ label, value }) => (
-        <div key={label} className="flex items-center justify-between gap-3 text-sm border-b border-border pb-1 last:border-0">
-          <span className="text-muted-foreground shrink-0">{label}</span>
-          <span className="font-medium tabular-nums text-right min-w-0 truncate">{value}</span>
+    <Card size="sm">
+      <CardHeader>
+        <Label>About</Label>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1">
+          {rows.map(({ label, value }) => (
+            <div key={label} className="flex items-center justify-between gap-3 text-sm border-b border-border pb-1 last:border-0">
+              <span className="text-muted-foreground shrink-0">{label}</span>
+              <span className="font-medium tabular-nums text-right min-w-0 truncate">{value}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      </CardContent>
     </Card>
   );
 }
@@ -84,16 +90,20 @@ function InsidersBlock({ data }: { data: StockInsiderBuying | null }) {
       <Label>Insiders</Label>
       <p className="text-sm text-foreground">{insiderSummary(data)}</p>
       {rows.length > 0 ? (
-        <Card className="p-1 gap-1">
-          {rows.map((r) => (
-            <div key={`${r.date}-${r.name}-${r.text}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md p-2 text-sm">
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {new Date(`${r.date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
-              </span>
-              <span className="min-w-0 truncate">{r.name}</span>
-              <span className="text-muted-foreground tabular-nums">{r.text}</span>
+        <Card size="sm">
+          <CardContent>
+            <div className="divide-y divide-border">
+              {rows.map((r) => (
+                <div key={`${r.date}-${r.name}-${r.text}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-2 text-sm">
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {new Date(`${r.date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
+                  </span>
+                  <span className="min-w-0 truncate">{r.name}</span>
+                  <span className="text-muted-foreground tabular-nums">{r.text}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          </CardContent>
         </Card>
       ) : null}
     </section>
