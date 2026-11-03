@@ -1,6 +1,6 @@
 /**
  * The stock page's numbers, in the order and words they are shown. The
- * Overview's key stats are twelve cells read down three columns, like a
+ * Overview's key stats are nine cells read down three columns, like a
  * broker's quote page; the Financials tab's full set is one table in
  * sections. Everything here is a pure read of the quote and Finnhub's
  * `/stock/metric` map, so the page cannot print a number this file doesn't
@@ -13,7 +13,7 @@ export type StatColumns = Stat[][];
 export type StatSection = { label: string; columns: StatColumns };
 
 type Metrics = Record<string, number | string> | null | undefined;
-type Quote = { o: number; h: number; l: number; pc: number } | null | undefined;
+type Quote = { o: number; h: number; l: number } | null | undefined;
 
 const NONE = "—";
 
@@ -43,8 +43,8 @@ export const fmtBig = (n: number | null, prefix = "$") => {
 const millions = (n: number | null) => (n != null ? n * 1_000_000 : null);
 
 /**
- * The Overview's twelve: the session's prices, what the company is worth
- * and earns, and where the price has been. `marketCap` is in dollars (the
+ * The Overview's nine: the session's prices, what the company is worth and
+ * earns, and where the price has been. `marketCap` is in dollars (the
  * page already picks the profile's over the metric's).
  */
 export function keyStatColumns(quote: Quote, metrics: Metrics, marketCap: number | null): StatColumns {
@@ -54,19 +54,16 @@ export function keyStatColumns(quote: Quote, metrics: Metrics, marketCap: number
       { label: "Open", value: fmtMoney(quote?.o ?? null) },
       { label: "High", value: fmtMoney(quote?.h ?? null) },
       { label: "Low", value: fmtMoney(quote?.l ?? null) },
-      { label: "Prev close", value: fmtMoney(quote?.pc ?? null) },
     ],
     [
       { label: "Market cap", value: fmtBig(marketCap) },
       { label: "P/E", value: fmtNum(num(m, "peTTM")) },
       { label: "EPS", value: fmtMoney(num(m, "epsTTM")) },
-      { label: "Dividend yield", value: fmtPct(num(m, "dividendYieldIndicatedAnnual"), 2) },
     ],
     [
       { label: "52-wk high", value: fmtMoney(num(m, "52WeekHigh")) },
       { label: "52-wk low", value: fmtMoney(num(m, "52WeekLow")) },
       { label: "Avg volume", value: fmtBig(millions(num(m, "3MonthAverageTradingVolume")), "") },
-      { label: "Beta", value: fmtNum(num(m, "beta")) },
     ],
   ];
 }

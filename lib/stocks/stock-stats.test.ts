@@ -20,14 +20,13 @@ const nvda = {
   yearToDatePriceReturnDaily: 9.7265,
   "priceRelativeToS&P50052Week": -10.3006,
 };
-const quote = { o: 204.5, h: 206.1, l: 201.2, pc: 204.64 };
+const quote = { o: 204.5, h: 206.1, l: 201.2 };
 
 describe("keyStatColumns", () => {
-  it("is twelve cells down three columns, in dollars, from the session's quote and the metric map", () => {
+  it("is nine cells down three columns, in dollars, from the session's quote and the metric map", () => {
     const cols = keyStatColumns(quote, nvda, 4_931_824_000_000);
-    expect(cols.map((c) => c.length)).toEqual([4, 4, 4]);
+    expect(cols.map((c) => c.length)).toEqual([3, 3, 3]);
     expect(cols[0][0]).toEqual({ label: "Open", value: "$204.50" });
-    expect(cols[0][3]).toEqual({ label: "Prev close", value: "$204.64" });
     expect(cols[1][0]).toEqual({ label: "Market cap", value: "$4.93T" });
     expect(cols[1][2]).toEqual({ label: "EPS", value: "$7.91" });
     expect(cols[2][2]).toEqual({ label: "Avg volume", value: "120.03M" });
