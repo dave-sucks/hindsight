@@ -2,8 +2,7 @@
 
 /**
  * The stock page's tabs — Overview · Financials · Activity · News — with the
- * sidebar beside every tab's content, as on the trade page. Owns the open
- * tab so Overview's "View all" can switch to Activity.
+ * sidebar beside every tab's content, as on the trade page.
  */
 
 import { useState, type ReactNode } from "react";
@@ -49,7 +48,6 @@ export function StockPageTabs({
       <TabsContent value={OVERVIEW} className="space-y-5">
         <StockOverview {...overview} sidebar={sidebar}>
           {stats}
-          <StockHistory ticker={overview.ticker} items={history} limit={5} onViewAll={() => setTab(ACTIVITY)} />
         </StockOverview>
       </TabsContent>
 

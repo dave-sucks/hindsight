@@ -3,8 +3,7 @@
 /**
  * Hindsight on this stock, in the homepage activity feed's rows: grouped by
  * day, a status pill, one sentence, the result on the right. A thesis row
- * opens its sheet; a trade row opens the trade. With a `limit` it shows the
- * newest few and a "View all" that the parent turns into the Activity tab.
+ * opens its sheet; a trade row opens the trade. The Activity tab's body.
  */
 
 import { useMemo, useState } from "react";
@@ -40,21 +39,9 @@ function groupByDay(items: StockHistoryItem[]) {
 const ROW =
   "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md p-2 text-left hover:bg-muted/70 transition-colors";
 
-export function StockHistory({
-  ticker,
-  items,
-  limit,
-  onViewAll,
-}: {
-  ticker: string;
-  items: StockHistoryItem[];
-  /** Show only the newest few, with "View all" when there are more. */
-  limit?: number;
-  onViewAll?: () => void;
-}) {
+export function StockHistory({ ticker, items }: { ticker: string; items: StockHistoryItem[] }) {
   const [openThesisId, setOpenThesisId] = useState<string | null>(null);
-  const shown = useMemo(() => (limit ? items.slice(0, limit) : items), [items, limit]);
-  const groups = useMemo(() => groupByDay(shown), [shown]);
+  const groups = useMemo(() => groupByDay(items), [items]);
 
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">No research or trades on this stock yet.</p>;
@@ -97,16 +84,6 @@ export function StockHistory({
           </Card>
         </div>
       ))}
-
-      {limit && items.length > limit && onViewAll ? (
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="px-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          View all {items.length} →
-        </button>
-      ) : null}
 
       {openThesisId ? (
         <ThesisSheet
