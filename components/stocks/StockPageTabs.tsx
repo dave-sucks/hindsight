@@ -19,12 +19,15 @@ const NEWS = 3;
 
 export function StockPageTabs({
   overview,
+  stats,
   history,
   research,
   news,
   sidebar,
 }: {
   overview: StockOverviewProps;
+  /** The key stats under the chart. */
+  stats: ReactNode;
   history: StockHistoryItem[];
   research: ReactNode;
   news: ReactNode;
@@ -45,6 +48,7 @@ export function StockPageTabs({
 
       <TabsContent value={OVERVIEW} className="space-y-5">
         <StockOverview {...overview} sidebar={sidebar}>
+          {stats}
           <StockHistory ticker={overview.ticker} items={history} limit={5} onViewAll={() => setTab(ACTIVITY)} />
         </StockOverview>
       </TabsContent>

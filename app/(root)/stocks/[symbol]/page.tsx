@@ -7,6 +7,7 @@ import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
 import { PositionCard } from "@/components/stocks/PositionCard";
+import { StatBlock } from "@/components/stocks/StatGrid";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
 import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
@@ -24,6 +25,7 @@ import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 import { buildStockHistory } from "@/lib/stocks/stock-history";
+import { keyStatColumns, researchStatSections } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -32,23 +34,9 @@ import { ExternalLink } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-const fmt = (n: number | null | undefined, digits = 2) => (n != null ? n.toFixed(digits) : "—");
-const fmtCur = (n: number | null | undefined) =>
-  n != null
-    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n)
-    : "—";
-const fmtBig = (n: number | null | undefined) => {
-  if (n == null) return "—";
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  return `$${n.toFixed(0)}`;
-};
-const pct = (n: number | null | undefined, digits = 1) => (n != null ? `${n.toFixed(digits)}%` : "—");
-
 /** The details-card label every sidebar and research block uses. */
 function BlockLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">{children}</p>;
+  return <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
 }
 
 /** One label · value row, the Trade Details pattern. */
@@ -206,22 +194,11 @@ export default async function StockDetailPage({ params }: Props) {
       ) : null}
 
       <Card className="bg-muted/40 p-2 gap-1">
-        <BlockLabel>Stock details</BlockLabel>
+        <BlockLabel>About</BlockLabel>
         <DetailRows
           rows={[
             { label: "Exchange", value: identity.exchange ?? "—" },
             { label: "Industry", value: profile?.finnhubIndustry || "—" },
-            { label: "Market cap", value: fmtBig(marketCap) },
-            { label: "P/E", value: fmt(metrics?.["peBasicExclExtraTTM"]) },
-            { label: "EPS", value: fmtCur(metrics?.["epsBasicExclExtraAnnual"]) },
-            { label: "Dividend yield", value: pct(metrics?.["dividendYieldIndicatedAnnual"], 2) },
-            {
-              label: "52-week range",
-              value:
-                metrics?.["52WeekLow"] != null && metrics?.["52WeekHigh"] != null
-                  ? `${fmtCur(metrics["52WeekLow"])} – ${fmtCur(metrics["52WeekHigh"])}`
-                  : "—",
-            },
             { label: "IPO", value: profile?.ipo || "—" },
             ...(website && profile?.weburl
               ? [
@@ -251,32 +228,14 @@ export default async function StockDetailPage({ params }: Props) {
     </>
   );
 
+  const statSections = researchStatSections(metrics, marketCap);
   const research = (
     <>
-      <Card className="bg-muted/40 p-2 gap-1">
-        <BlockLabel>Financials</BlockLabel>
-        {metrics ? (
-          <DetailRows
-            rows={[
-              { label: "P/E (TTM)", value: fmt(metrics["peBasicExclExtraTTM"]) },
-              { label: "Forward P/E", value: fmt(metrics["peTTM"]) },
-              { label: "P/B", value: fmt(metrics["pbAnnual"]) },
-              { label: "P/S", value: fmt(metrics["psTTM"]) },
-              { label: "EPS (TTM)", value: fmtCur(metrics["epsBasicExclExtraAnnual"]) },
-              { label: "Return on equity", value: pct(metrics["roeRfy"]) },
-              { label: "Return on assets", value: pct(metrics["roaRfy"]) },
-              { label: "Gross margin", value: pct(metrics["grossMarginTTM"]) },
-              { label: "Operating margin", value: pct(metrics["operatingMarginTTM"]) },
-              { label: "Net margin", value: pct(metrics["netProfitMarginTTM"]) },
-              { label: "Debt / equity", value: fmt(metrics["totalDebt/totalEquityAnnual"]) },
-              { label: "Current ratio", value: fmt(metrics["currentRatioAnnual"]) },
-              { label: "Beta", value: fmt(metrics["beta"]) },
-            ].filter((r) => r.value !== "—")}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
-        )}
-      </Card>
+      {statSections.length > 0 ? (
+        statSections.map((section) => <StatBlock key={section.label} {...section} />)
+      ) : (
+        <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
+      )}
       <StockFilingsSection symbol={upperSymbol} />
     </>
   );
@@ -320,6 +279,7 @@ export default async function StockDetailPage({ params }: Props) {
               ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
               : null,
           }}
+          stats={<StatBlock label="Key stats" columns={keyStatColumns(quote, metrics, marketCap)} />}
           history={history}
           research={research}
           news={news}
