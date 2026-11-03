@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { STREET_ENDPOINTS, nasdaqAnalyst, nyDay, parseStreet, type StreetFacts } from "@/lib/market-data/street-consensus";
 
 const ONE_DAY_MS = 86_400_000;
+/** A stock the feed stops serving shows its last row this long, then reads as absent. */
+const KEEP_DAYS = 14;
 
 /** Pull the three calls and store today's row. Throws, writing nothing, on any failure. */
 export async function pullStreet(ticker: string, now: Date = new Date()): Promise<StreetFacts> {
@@ -37,11 +39,11 @@ export async function pullStreetMany(tickers: string[], gapMs = 500): Promise<{ 
   return { written, missed };
 }
 
-/** The newest stored row for each ticker. */
-export async function newestStreetRows(tickers: string[]): Promise<Map<string, StreetFacts & { fetchedAt: Date }>> {
+/** The newest stored row for each ticker, from the last 14 New York days. */
+export async function newestStreetRows(tickers: string[], now: Date = new Date()): Promise<Map<string, StreetFacts & { fetchedAt: Date }>> {
   if (tickers.length === 0) return new Map();
   const rows = await prisma.streetConsensus.findMany({
-    where: { ticker: { in: tickers.map((t) => t.toUpperCase()) } },
+    where: { ticker: { in: tickers.map((t) => t.toUpperCase()) }, asOf: { gte: nyDay(new Date(now.getTime() - KEEP_DAYS * ONE_DAY_MS)) } },
     orderBy: { asOf: "desc" },
     distinct: ["ticker"],
   });
@@ -51,7 +53,7 @@ export async function newestStreetRows(tickers: string[]): Promise<Map<string, S
 /** The newest row, pulled fresh first when it is missing or more than a day old. A failed pull keeps the old row. */
 export async function streetFor(ticker: string, now: Date = new Date()): Promise<StreetFacts | null> {
   const T = ticker.toUpperCase();
-  const newest = (await newestStreetRows([T])).get(T) ?? null;
+  const newest = (await newestStreetRows([T], now)).get(T) ?? null;
   if (newest && now.getTime() - new Date(newest.fetchedAt).getTime() <= ONE_DAY_MS) return newest;
   try {
     return await pullStreet(T, now);

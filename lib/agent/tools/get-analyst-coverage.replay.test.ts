@@ -65,6 +65,13 @@ describe("get_analyst_coverage — the Street targets", () => {
     expect((result.data as unknown as Data).priceTargets).toMatchObject({ average: 634.08, asOf: "2026-10-30" });
   });
 
+  it("a row past 14 days is not read: with no fresh pull the range is absent", async () => {
+    serveNasdaq({ targetprice: { data: null }, "earnings-forecast": { data: null }, "estimate-momentum": { data: null } });
+    const stale = { ...parseStreet("MSFT", msft, nyDay(new Date(Date.now() - 15 * 86_400_000))), fetchedAt: new Date(Date.now() - 15 * 86_400_000) };
+    const { result } = await run([stale]);
+    expect((result.data as unknown as Data).priceTargets).toBeNull();
+  });
+
   it("nothing stored and nothing pulled: the range is said to be absent", async () => {
     serveNasdaq({ targetprice: { data: null }, "earnings-forecast": { data: null }, "estimate-momentum": { data: null } });
     const { result, db } = await run([]);
