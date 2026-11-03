@@ -70,11 +70,11 @@ export function ConvictionChip({ conviction, score }: { conviction: Conviction |
   const label = conviction ? `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} conviction` : null;
   const hot = conviction === "STRONG" || conviction === "HIGH";
   return (
-    <Badge variant="secondary" className="gap-1.5 font-normal tabular-nums">
+    <Badge variant="secondary">
       {hot ? <FlameIcon className="size-3" /> : null}
-      {label}
+      {label ? <span className="font-normal">{label}</span> : null}
       {label && score != null ? <span className="text-muted-foreground">·</span> : null}
-      {score != null ? `${score}/10` : null}
+      {score != null ? <span className="font-normal tabular-nums">{score}/10</span> : null}
     </Badge>
   );
 }
