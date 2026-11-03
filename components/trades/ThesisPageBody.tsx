@@ -4,23 +4,28 @@ import type { ReactNode } from "react";
 import { ThesisBody, ThesisBodySkeleton, useThesisSheetData } from "@/components/agent/sheets/ThesisSheet";
 
 /**
- * The trade page's body: the thesis sheet's body with a sidebar — the same
- * tabs, chart, triggers and notes, loaded the same way the sheet loads them,
- * pinned to this page's own position row. The body puts the position card
- * and the stock cards in the sidebar itself; `aside` is the page's one extra
- * card (Trade Details), rendered between them. While the thesis loads it
- * sits beside the skeleton.
+ * A thesis as a page body: the sheet's body with a sidebar — the same tabs,
+ * chart, triggers and notes, loaded the same way the sheet loads them. The
+ * trade page pins its own position row; the stock page takes the thesis's
+ * current trade and adds its News tab and its history under Activity. The
+ * body puts the position card and the stock cards in the sidebar itself;
+ * `aside` is a page's extra card (the trade page's Trade Details), rendered
+ * between them. While the thesis loads it sits beside the skeleton.
  */
 export function ThesisPageBody({
   thesisId,
-  positionId,
+  positionId = null,
   ticker,
   aside,
+  moreTabs,
+  afterActivity,
 }: {
   thesisId: string | null;
-  positionId: string;
+  positionId?: string | null;
   ticker: string;
   aside?: ReactNode;
+  moreTabs?: Array<{ label: string; content: ReactNode }>;
+  afterActivity?: ReactNode;
 }) {
   const data = useThesisSheetData(thesisId ?? undefined, ticker, positionId);
   const state = data.state;
@@ -40,5 +45,15 @@ export function ThesisPageBody({
       </div>
     );
   }
-  return <ThesisBody data={{ ...data, state }} thesis_id={thesisId} ticker={ticker} surface="page" aside={aside} />;
+  return (
+    <ThesisBody
+      data={{ ...data, state }}
+      thesis_id={thesisId}
+      ticker={ticker}
+      surface="page"
+      aside={aside}
+      moreTabs={moreTabs}
+      afterActivity={afterActivity}
+    />
+  );
 }
