@@ -9,7 +9,7 @@ Model: claude-sonnet-4-6
 Starts: When you type
 Steps: Up to 45
 Tools: 30
-Saves: 21 fields: also belief, direction
+Saves: 24 fields: also belief, direction
 ```
 
 ```chat

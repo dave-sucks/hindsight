@@ -53,6 +53,10 @@ export const TRIGGER_EDITS = {
   remove: "Triggers to remove, by id.",
 } as const;
 
+/** The four verdicts a review ends with. */
+export const VERDICTS = ["STRONGER", "UNCHANGED", "WEAKER", "BROKEN"] as const;
+export type Verdict = (typeof VERDICTS)[number];
+
 export function thesisFields(opts: { writer?: boolean } = {}) {
   const score = (max: number) => (opts.writer ? z.number() : z.number().min(0).max(max));
   const part = (max: number) => z.object({ score: score(max), note: z.string() });
@@ -124,6 +128,13 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
     prior_exit: z
       .string()
       .describe("One line on how this plan differs from this analyst's sale of the stock in the last 14 days. Needed only when the buy is at or above that sale's price."),
+
+    // A review's verdict, and the earlier line a note answers (update_thesis only; a string, so a wrong word comes back by name).
+    verdict: z.string().describe("Your verdict on the thesis after this review: STRONGER, UNCHANGED, WEAKER or BROKEN. Comes with verdict_line."),
+    verdict_line: z.string().describe("One sentence: which assumption or which 'would prove it wrong' line moved the verdict, with the number."),
+    answers_update_id: z
+      .string()
+      .describe("The id of the earlier Activity line this note answers, when it answers one (the pre-report note, after the report): the [id …] at the end of that line."),
 
     // The writer's research note, saved section by section.
     research_data: z.string().describe("The writer's raw data block, passed through verbatim for the card's data tab."),

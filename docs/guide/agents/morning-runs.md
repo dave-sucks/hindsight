@@ -9,7 +9,7 @@ Model: gpt-5.4
 Starts: 8:00 AM ET, run days
 Steps: Up to 65
 Tools: 15
-Saves: 18 fields: plan, verdict, note
+Saves: 21 fields: plan, verdict, note
 ```
 
 ```chat

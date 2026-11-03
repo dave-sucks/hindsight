@@ -22,7 +22,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Score:** a score out of 10 for the stock against the setup.
 - **Conviction:** how strongly the analyst holds the belief. It scales the size of the buy.
 - **Horizon:** how long the thesis means to hold: **catalyst** (until a dated event resolves), **trade** (days to weeks, tight stop), **target** (weeks to months, to a set price) or **compounder** (months to years). It sets how fast the research goes stale.
-- **Verdict:** where a stock stands after a run looks: its direction, conviction and status.
+- **Verdict:** how a review leaves the thesis: stronger, unchanged, weaker or broken, with one line on what moved it.
 - **Plan:** a thesis's triggers. The buy, the floor and the target are triggers too.
 - **Seed:** a stock put on the watchlist with no view yet, by you or the analyst builder. It's due its first research on its review clock.
 - **Wake:** a review trigger on a watch with no plan, like a price or a date, that brings the stock back for a fresh look.

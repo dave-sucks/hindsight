@@ -5,8 +5,9 @@
  * The rule, as a table the test prints: the write-up (the eight research
  * sections and the raw data block) is the writer's; the claim (core_belief,
  * key_assumptions, invalidation_conditions) is the writer's and the owner's
- * chat's; everything else (the plan, the verdict, the note) is everyone's,
- * except the trigger run, whose save takes the plan and the note only. The
+ * chat's; everything else (the plan, the view, the note) is everyone's,
+ * except the trigger run, whose save takes the plan and the note only. A
+ * review's verdict and the line it answers are every door's but the writer's. The
  * score, the variant view, the cited snapshot and the price the caller read
  * are the writer's too (step 12, part 2). A field present gets filled: 224 of
  * 285 morning saves in 30 days sent price_at_time back, 25 rewrote the
@@ -40,8 +41,9 @@ const ROWS: Record<string, string[]> = {
   "write-up": ["snapshot", "recent_catalysts", "fundamentals", "latest_earnings", "catalysts_and_events", "bull_case", "bear_case", "analyst_consensus", "insider_technical", "research_data", "scoring", "variant_view"],
   claim: ["core_belief", "key_assumptions", "invalidation_conditions"],
   plan: ["entry_price", "entry_on_close", "target_price", "target_basis", "stop_loss", "stop_basis", "setup_id", "horizon", "catalyst_date", "add_triggers", "edit_triggers", "remove_trigger_ids"],
-  verdict: ["direction", "conviction", "conviction_rationale", "change_status"],
+  view: ["direction", "conviction", "conviction_rationale", "change_status"],
   note: ["thesis_id", "rationale", "trigger_id", "price_at_time"],
+  review: ["verdict", "verdict_line", "answers_update_id"],
 };
 const EVERY_FIELD = Object.values(ROWS).flat().sort();
 
@@ -51,10 +53,10 @@ const WRITER_ONLY = [...ROWS["write-up"], "price_at_time"];
 const WRITER_AND_CHAT = [...ROWS.claim, "direction"];
 
 const EXPECTED: Record<(typeof DOORS)[number][1], string[]> = {
-  THESIS_WRITER: EVERY_FIELD,
+  THESIS_WRITER: EVERY_FIELD.filter((f) => !ROWS.review.includes(f)),
   PRINCIPAL_CHAT: EVERY_FIELD.filter((f) => !WRITER_ONLY.includes(f) && f !== "trigger_id"),
-  MORNING_PLAN: [...ROWS.plan, "conviction", "conviction_rationale", "change_status", "thesis_id", "rationale", "trigger_id"].sort(),
-  INTRADAY_TACTICAL: ["thesis_id", "trigger_id", "rationale", "add_triggers", "edit_triggers", "remove_trigger_ids", "stop_loss", "stop_basis", "target_price", "target_basis", "entry_price"].sort(),
+  MORNING_PLAN: [...ROWS.plan, "conviction", "conviction_rationale", "change_status", "thesis_id", "rationale", "trigger_id", ...ROWS.review].sort(),
+  INTRADAY_TACTICAL: ["thesis_id", "trigger_id", "rationale", "add_triggers", "edit_triggers", "remove_trigger_ids", "stop_loss", "stop_basis", "target_price", "target_basis", "entry_price", ...ROWS.review].sort(),
 };
 
 describe("what a save may change, by who is saving", () => {
@@ -68,11 +70,15 @@ describe("what a save may change, by who is saving", () => {
     }
     lines.push(`| **fields** | | ${DOORS.map(([, m]) => byDoor[m].length).join(" | ")} |`);
     console.log(lines.join("\n"));
-    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([35, 21, 18, 11]);
+    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([35, 24, 21, 14]);
   });
 
   it("every field of the tool is in one row of the rule", () => {
-    expect(byDoor.THESIS_WRITER).toEqual(EVERY_FIELD);
+    expect([...new Set(Object.values(byDoor).flat())].sort()).toEqual(EVERY_FIELD);
+  });
+
+  it("a review's verdict and the line it answers are the morning run's, the trigger run's and the chat's, never the writer's", () => {
+    for (const f of ROWS.review) expect([f, DOORS.filter(([, m]) => byDoor[m].includes(f)).map(([n]) => n)]).toEqual([f, ["chat", "morning run", "trigger run"]]);
   });
 
   it.each(DOORS)("%s: exactly its fields", (_name, runMode) => {
@@ -91,8 +97,8 @@ describe("what a save may change, by who is saving", () => {
     for (const f of [...ROWS.claim, "direction", ...WRITER_ONLY]) expect([f, byDoor.MORNING_PLAN.includes(f)]).toEqual([f, false]);
   });
 
-  it("the trigger run's save is the plan and the note: no verdict, no claim, no write-up, no price", () => {
-    for (const f of [...ROWS.verdict, ...ROWS.claim, ...ROWS["write-up"], "price_at_time", "setup_id", "horizon", "catalyst_date", "entry_on_close"]) expect([f, byDoor.INTRADAY_TACTICAL.includes(f)]).toEqual([f, false]);
+  it("the trigger run's save is the plan, the note and the review: no view, no claim, no write-up, no price", () => {
+    for (const f of [...ROWS.view, ...ROWS.claim, ...ROWS["write-up"], "price_at_time", "setup_id", "horizon", "catalyst_date", "entry_on_close"]) expect([f, byDoor.INTRADAY_TACTICAL.includes(f)]).toEqual([f, false]);
   });
 });
 
