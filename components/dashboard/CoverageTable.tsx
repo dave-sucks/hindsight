@@ -20,6 +20,7 @@ import { PnlBadge } from "@/components/ui/pnl-badge";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { moveDollar } from "@/lib/portfolio/move-dollar";
+import { lastColumn, type LastColumnGain, type LastColumnWindow } from "@/lib/portfolio/last-column";
 import {
   Tooltip,
   TooltipContent,
@@ -36,7 +37,7 @@ import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 // ─── Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ──────────────
 
 type Tab = "trades" | "sold" | "watching" | "passed";
-type MobileView = "1d" | "5d" | "lifetime";
+type MobileView = LastColumnWindow;
 /**
  * What the 1D/5D/30D columns say. A column of percents cannot show why a book
  * is down on a day most of its names are up — a −1.16% day on an $11,718
@@ -161,24 +162,26 @@ function NameCell({ row }: { row: CoverageRow }) {
   );
 }
 
-// ── Lifetime / 1D / 5D cell (last column) ────────────────────────────────────
-// On desktop: just P&L (price has its own column).
-// On mobile: price on top (since Price column is hidden), then P&L below.
-// mobileView picks the window: 1D, 5D or lifetime.
-function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: MobileView }) {
-  const isLifetime = mobileView === "lifetime";
-  const pct = isLifetime ? row.sincePct : mobileView === "5d" ? row.fiveDayPct : row.oneDayPct;
-  // Every tab shows dollars AND percent on a held name. The row carries the
-  // window moves as a percent only, so the 1D tab used to be half a column
-  // next to a Lifetime tab that had both — and on a phone these tabs are the
-  // whole table. A watched name has no shares, so it stays percent-only.
-  const dollar =
-    row.tradeState == null
-      ? null
-      : isLifetime
-        ? row.sinceDollar
-        : moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
+// ── The last column ──────────────────────────────────────────────────────────
+// On desktop it is the Lifetime column, and it is ALWAYS lifetime. On a phone
+// the Price and 1D/5D/30D columns are hidden, so this one column is the whole
+// table: the price on top, then whichever desktop column the toggle picked.
+// The two are decided apart (lib/portfolio/last-column.ts) so the phone's
+// toggle can never reach the desktop's column.
+function Gain({ gain }: { gain: LastColumnGain }) {
+  if (gain.pct == null) return <span className="text-muted-foreground/40 text-xs">—</span>;
+  return (
+    <>
+      {gain.dollar != null && (
+        <PriceChange dollarChange={gain.dollar} percentChange={null} size="sm" arrowFirst />
+      )}
+      <PnlBadge value={gain.pct} format="percent" className="text-xs" />
+    </>
+  );
+}
 
+function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: MobileView }) {
+  const { desktop, phone } = lastColumn(row, mobileView);
   return (
     <div className="flex flex-col items-end gap-0.5">
       {/* Price — only on mobile since desktop has a dedicated Price column */}
@@ -187,17 +190,11 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
           ${row.currentPrice.toFixed(2)}
         </span>
       )}
-      <span className="inline-flex items-center gap-1.5 justify-end">
-        {pct == null ? (
-          <span className="text-muted-foreground/40 text-xs">—</span>
-        ) : (
-          <>
-            {dollar != null && (
-              <PriceChange dollarChange={dollar} percentChange={null} size="sm" arrowFirst />
-            )}
-            <PnlBadge value={pct} format="percent" className="text-xs" />
-          </>
-        )}
+      <span className="hidden md:inline-flex items-center gap-1.5 justify-end">
+        <Gain gain={desktop} />
+      </span>
+      <span className="md:hidden inline-flex items-center gap-1.5 justify-end">
+        <Gain gain={phone} />
       </span>
     </div>
   );
@@ -245,7 +242,7 @@ function CoverageTab({
             {/* Last column — "Lifetime" label on desktop, toggle on mobile.
                 Sized to the gain + badge so the name column keeps the
                 shares line instead of "300 sh…". */}
-            <TableHead className="w-44 md:w-52 text-right">
+            <TableHead className="w-52 text-right">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger
@@ -267,6 +264,7 @@ function CoverageTab({
                   <TabsList size="sm">
                     <TabsTrigger value="1d">1D</TabsTrigger>
                     <TabsTrigger value="5d">5D</TabsTrigger>
+                    <TabsTrigger value="30d">30D</TabsTrigger>
                     <TabsTrigger value="lifetime">Lifetime</TabsTrigger>
                   </TabsList>
                 </Tabs>
