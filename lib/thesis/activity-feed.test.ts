@@ -226,3 +226,15 @@ describe("a review's verdict and the line it answers: one title on the page, the
     expect(proposed).toMatchObject({ verdict: "WEAKER", verdictLine: LINE, answersUpdateId: ANSWERED, noteId: "cmvtljbyt000u07jtwe1op938" });
   });
 });
+
+describe("the rule kept on a line (2026-11-03)", () => {
+  it("rides from the stored line to the feed item and the serialized page row; a proposal step has none", () => {
+    const line: StoredLine = { id: "u-kept", timestamp: at("2026-11-03T13:01:00Z"), type: "REVIEWED", summary: "Reviewed GEV thesis — no changes", rationale: "note", ...run("r-kept", "MORNING_PLAN"), triggerId: TRAIL, triggerAction: "EXIT", triggerCondition: TRIGGERS[0].predicate, verdict: "UNCHANGED" };
+    const feed = activityFeed({ updates: [line], orders: [ORDERS[0]] });
+    const kept = feed.find((i) => i.id === "u-kept")!;
+    expect([kept.triggerAction, kept.triggerCondition]).toEqual(["EXIT", TRIGGERS[0].predicate]);
+    expect(serializeFeedItem(kept)).toMatchObject({ triggerAction: "EXIT", triggerCondition: TRIGGERS[0].predicate });
+    const step = feed.find((i) => i.type === "PROPOSAL_PROPOSED")!;
+    expect([step.triggerAction, step.triggerCondition]).toEqual([null, null]);
+  });
+});

@@ -77,6 +77,10 @@ import { computePlanSanity } from "@/lib/agent/plan-sanity";
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 import { claimNamesOldLevel } from "@/lib/agent/tools/claim-names-level";
+import { ruleOnTheLine } from "@/lib/agent/thesis-updates";
+import { openFires } from "@/lib/agent/stock-context";
+import { ACTIVITY_LINES } from "@/lib/agent/stock-context-for";
+import { reviewDue } from "@/lib/agent/needs-action";
 
 // The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
 const F = thesisFields();
@@ -332,6 +336,60 @@ const morningRunSchema = updateSchema.omit({
 /** The morning run's door: its save has no price field; it reads the quote. */
 const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLAN";
 
+/**
+ * The rule this save's line answers, kept on the line as it stands now
+ * (ruleOnTheLine, so the line's title holds after the rule changes): the
+ * trigger the call names, found on the stock's own list or among the rules
+ * it inherits. The morning run's save with none named links the note to
+ * what asked for it: the one fire open on the stock, or the review clock
+ * when the review was due; several open fires leave it blank rather than
+ * guess, and a terminal save (a plan set down, a pass) names nothing.
+ * (2026-11-03: 86 of 371 fires in 45 days were answered by a line with no
+ * id, nearly all the morning run's, and every clock review was.) A lookup
+ * that fails links nothing, as before.
+ */
+async function ruleAnswered(
+  existing: {
+    id: string; triggers: unknown; triggerState: unknown; status: string; horizon: string | null;
+    lastReviewedAt: Date | null; createdAt: Date; researchRun: { agentConfigId: string | null } | null;
+  },
+  ctx: { runMode?: string },
+  named: string | undefined,
+  terminal: boolean,
+): Promise<{ triggerId?: string; triggerAction?: string; triggerCondition?: unknown }> {
+  let resolved: Trigger[] | null = null;
+  const ladder = async (): Promise<Trigger[]> => {
+    if (resolved) return resolved;
+    const analystId = existing.researchRun?.agentConfigId ?? null;
+    const sources = analystId ? (await loadLevelSources([analystId])).get(analystId) : undefined;
+    resolved = resolveThesisLadder(
+      { triggers: existing.triggers, triggerState: existing.triggerState, status: existing.status, horizon: existing.horizon },
+      sources,
+      `thesis=${existing.id}`,
+    ) as Trigger[];
+    return resolved;
+  };
+  let id = named;
+  try {
+    if (!id && isMorningRun(ctx) && !terminal) {
+      const rows = await prisma.thesisUpdate.findMany({
+        where: { thesisId: existing.id },
+        orderBy: { timestamp: "desc" },
+        take: ACTIVITY_LINES,
+        select: { id: true, type: true, timestamp: true, triggerId: true, summary: true, rationale: true, fieldChanges: true, runId: true, priceAtTime: true },
+      });
+      const fires = openFires(rows);
+      if (fires.length === 1) id = fires[0].triggerId;
+      else if (fires.length === 0) id = reviewDue({ triggers: await ladder(), lastReviewedAt: existing.lastReviewedAt, createdAt: existing.createdAt }, new Date())?.triggerId;
+    }
+    if (!id) return {};
+    return { triggerId: id, ...ruleOnTheLine((await ladder()).find((t) => t.id === id)) };
+  } catch (err) {
+    console.warn(`[update_thesis] the line's rule could not be read for ${existing.id}:`, err);
+    return id ? { triggerId: id } : {};
+  }
+}
+
 /** The chat never answers a fired trigger, so it has no trigger to name (0 of its 58 calls in the same 30 days). */
 const NOT_THE_CHATS = { trigger_id: true } as const;
 
@@ -567,6 +625,9 @@ export const updateThesis = defineTool({
         // Per-thesis fire state for inherited rungs — read so a rung
         // dropped as redundant can hand its cooldown stamp over.
         triggerState: true,
+        // The review clock's due date, for the line's link to the clock (ruleAnswered).
+        lastReviewedAt: true,
+        createdAt: true,
       },
     });
 
@@ -1045,6 +1106,9 @@ export const updateThesis = defineTool({
       args.change_status === "INVALIDATED" ||
       args.change_status === "ARCHIVED" ||
       args.direction === "PASS";
+
+    // The rule this line answers, kept on the line (named, or on the morning run the one open fire or the due clock).
+    const answered = await ruleAnswered(existing, ctx, args.trigger_id, isTerminalTransition);
 
     // ── Trigger ops (DAV-242) ────────────────────────────────────────────
     // Every trigger change is an op: add, edit by id, remove by id — and
@@ -1654,7 +1718,7 @@ export const updateThesis = defineTool({
         rationale: args.rationale,
         ...(notAppliedList.length ? { fieldChanges: notAppliedChange } : {}),
         runId: ctx.runId,
-        triggerId: args.trigger_id,
+        ...answered,
         priceAtTime: resolvedPriceAtTime,
         ...review,
       });
@@ -1902,7 +1966,7 @@ export const updateThesis = defineTool({
       rationale: args.rationale,
       fieldChanges,
       runId: ctx.runId,
-      triggerId: args.trigger_id,
+      ...answered,
       priceAtTime: resolvedPriceAtTime,
       ...review,
     });

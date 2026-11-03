@@ -21,6 +21,7 @@ export const ACTIVITY_SELECT = {
   id: true, thesisId: true, type: true, triggerId: true, timestamp: true, fieldChanges: true,
   summary: true, rationale: true, runId: true, priceAtTime: true, positionAtTime: true, signalIds: true, tradeId: true, run: { select: { mode: true } },
   verdict: true, verdictLine: true, answersUpdateId: true, answers: { select: { timestamp: true } },
+  triggerAction: true, triggerCondition: true,
 } as const;
 
 export function stockContextFor(args: { ticker: string; rows: StoredLine[]; orders?: ProposalOrder[]; triggers?: ReadonlyArray<TitleTrigger> }): StockContext {

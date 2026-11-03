@@ -251,6 +251,8 @@ export const tacticalRun = inngest.createFunction(
         // Each trigger that fired with this one on the same pass (its own audit row says both fired).
         coFired: fired.coFired ?? [],
         trigger,
+        // The resolved list, for the shape each co-fired rule keeps on its own line.
+        ladder,
         agentConfig,
         capacity,
         position: position
@@ -268,7 +270,7 @@ export const tacticalRun = inngest.createFunction(
     if (!ctx) {
       return { skipped: "context-not-loadable", thesisId: fired.thesisId };
     }
-    const { thesis, trigger, agentConfig, position, coFired } = ctx;
+    const { thesis, trigger, agentConfig, position, coFired, ladder } = ctx;
 
     // A paused analyst runs nothing. A stock it still holds keeps its sales
     // (the five-minute check reads nothing else for it); each goes to the
@@ -453,6 +455,8 @@ export const tacticalRun = inngest.createFunction(
       // says both fired — but shares this one run.
       // The rows carry what fired and the price; the analyst's note answers them.
       for (const co of coFired) {
+        // The rule as it fired, kept on the line so its title holds after the rule changes.
+        const rule = findTriggerById(ladder as Trigger[], co.triggerId);
         await prisma.thesisUpdate.create({
           data: {
             thesisId: thesis.id,
@@ -460,6 +464,8 @@ export const tacticalRun = inngest.createFunction(
             summary: co.sentence,
             rationale: null,
             triggerId: co.triggerId,
+            triggerAction: rule?.action ?? null,
+            ...(rule ? { triggerCondition: rule.predicate as object } : {}),
             signalIds: [],
             runId: run.id,
             priceAtTime: fired.firedPrice ?? null,
@@ -475,6 +481,8 @@ export const tacticalRun = inngest.createFunction(
           // happened, not just that something did.
           rationale: fired.firedContext ?? null,
           triggerId: trigger.id,
+          triggerAction: trigger.action,
+          triggerCondition: trigger.predicate as object,
           signalIds: [],
           runId: run.id,
           // The quote that fired the predicate — rides in on the event so

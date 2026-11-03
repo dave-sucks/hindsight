@@ -115,7 +115,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses`: its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, the plan, the protection, every trigger with its id, the belief, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph, the score, the chart numbers, Wall Street's ratings, target range and EPS consensus (`street`) and when the research was written; `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row, which adds the score notes, the whole snapshot, the research sections, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses`: its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, the plan, the protection, every trigger with its id, the company line, the belief, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph, the score, the chart numbers, Wall Street's ratings, target range and EPS consensus (`street`) and when the research was written; `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row, which adds the score notes, the whole snapshot, the research sections, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
   schema,
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
@@ -289,6 +289,7 @@ export const getTheses = defineTool({
         // facing shape below extracts plain strings via helpers so prompts
         // and tactical-agent context keep working.
         snapshot: true,
+        company: true,
         bullCase: true,
         bearCase: true,
         keyAssumptions: true,
@@ -514,6 +515,7 @@ export const getTheses = defineTool({
       setupId: t.setupId ?? null,
       conviction: t.conviction ?? null,
       composite: getThesisComposite(t),
+      company: t.company,
       coreBelief: t.coreBelief,
       // A seed's one line says "no write-up yet", or that its newest one failed.
       writerRun: (() => {

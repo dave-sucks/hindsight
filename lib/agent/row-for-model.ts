@@ -367,6 +367,8 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   const put = (k: string, v: unknown) => { if (v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
 
   put("stock", [String(row.ticker), stance(row.status), str(row.direction) ?? "no view", str(row.setupId) ?? str(row.horizon), str(row.conviction) ? `conviction ${row.conviction}` : null].filter(Boolean).join(" · "));
+  // What the company does and how it makes money, in two sentences: the Writer's, on every stock written up from 2026-11-03.
+  put("company", str(row.company) ? stripSourceTags(row.company as string) : null);
   put("id", row.id);
   // An account-wide read names each stock's analyst.
   put("analyst", str(row.analyst));

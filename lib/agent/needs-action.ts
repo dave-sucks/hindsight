@@ -372,6 +372,37 @@ export interface NeedsActionInput {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
+ * The 24h look-ahead is load-bearing: the morning run fires once at 08:00,
+ * so a review coming due later today has to be caught now or it waits a day.
+ */
+const REVIEW_DUE_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The review clock, due: which trigger is the clock and how many days
+ * overdue (0 = due within the day), or null with no clock or none due yet.
+ * The cadence trigger on the resolved ladder is the authority, "review every
+ * N days" counted from the last actual review; the first clock on the list
+ * decides. Read by the work list (REVIEW_DUE) and by the morning run's save,
+ * which links a note to the clock when nothing fired.
+ */
+export function reviewDue(
+  thesis: { triggers: Trigger[]; lastReviewedAt?: Date | null; createdAt: Date },
+  now: Date,
+): { triggerId: string; clockDays: number; daysOverdue: number } | null {
+  for (const t of thesis.triggers) {
+    const w = shapeOf(t.predicate);
+    const clockDays = w == null ? null : reviewClockDays(w);
+    if (clockDays == null) continue;
+    const lastLooked = thesis.lastReviewedAt ?? thesis.createdAt;
+    const dueAt = lastLooked.getTime() + clockDays * 86_400_000;
+    if (dueAt > now.getTime() + REVIEW_DUE_LOOKAHEAD_MS) return null;
+    // Clamp negative ("due later today") to 0 so the UI reads "due today" rather than "-1 days overdue".
+    return { triggerId: t.id, clockDays, daysOverdue: Math.max(0, Math.floor((now.getTime() - dueAt) / 86_400_000)) };
+  }
+  return null;
+}
+
+/**
  * Every kind true on the stock, as a list. [0] is the lead: the one flag a
  * screen and complete_run show, by the precedence below, unchanged. The rest
  * follow in a fixed rank (SALE_DECLINED, PROMOTED_AWAITING_RESOLUTION,
@@ -627,30 +658,16 @@ export function computeNeedsAction(
   // through the generic trigger loop: the morning run fires once at 08:00,
   // so a review coming due later today has to be caught now or it waits a
   // whole day.
-  const REVIEW_DUE_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
-  // Only the review clock decides REVIEW_DUE. A day count from the buy or
-  // the event date is an ordinary trigger: it fires through the evaluator
-  // and arrives as TRIGGER_FIRED.
-  const clockDays = thesis.triggers
-    .map((t) => shapeOf(t.predicate))
-    .map((w) => (w == null ? null : reviewClockDays(w)))
-    .find((d) => d != null);
+  // Only the review clock decides REVIEW_DUE (reviewDue). A day count from
+  // the buy or the event date is an ordinary trigger: it fires through the
+  // evaluator and arrives as TRIGGER_FIRED.
   let due: NeedsAction | null = null;
-  if (clockDays != null) {
-    const lastLooked = thesis.lastReviewedAt ?? thesis.createdAt;
-    const dueAt = lastLooked.getTime() + clockDays * 86_400_000;
-    if (dueAt <= now.getTime() + REVIEW_DUE_LOOKAHEAD_MS) {
-      // Clamp negative ("due later today") to 0 so the UI reads "due today"
-      // rather than "-1 days overdue".
-      const daysOverdue = Math.max(
-        0,
-        Math.floor((now.getTime() - dueAt) / 86_400_000),
-      );
-      const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
-      // A seed has no committed view yet — route it to "commit a direction".
-      if (isUnresearchedSeed(thesis.direction)) result.pendingFirstReview = true;
-      due = result;
-    }
+  const clock = reviewDue(thesis, now);
+  if (clock) {
+    const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue: clock.daysOverdue };
+    // A seed has no committed view yet — route it to "commit a direction".
+    if (isUnresearchedSeed(thesis.direction)) result.pendingFirstReview = true;
+    due = result;
   }
 
   // 5) RESEARCH_STALE — the thesis is not due for review, but the work

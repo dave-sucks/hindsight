@@ -1,0 +1,256 @@
+{
+ "note": "NVDA, 2026-10-07 08:00 ET: the analyst's 'Up 10% from entry \u2014 review' (8d64ad2b, inherited) fired 10-06 13:30 UTC, flagged for the morning run (summary as stored). The run answered with this call, trigger_id named; of its two lines the plan move carried no id and the note did. Replayed without trigger_id to show the save links the one open fire on its own, and as sent to show the rule's shape kept on the line. Rows as stored; long texts cut.",
+ "price": 242.12,
+ "thesis": {
+  "id": "cmtg9nbdy000204jpc6cwawgg",
+  "ticker": "NVDA",
+  "status": "HOLDING",
+  "direction": "LONG",
+  "horizon": "TARGET",
+  "setupId": "PEAD",
+  "conviction": "LOW",
+  "entryPrice": 218.2259,
+  "targetPrice": null,
+  "stopLoss": 236,
+  "triggers": [
+   {
+    "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "value": 7,
+     "watch": "repeat"
+    },
+    "rationale": "Look at this every 7 days, counting from the last real review.",
+    "cooldownDays": 7
+   },
+   {
+    "id": "6306936b-bb02-4298-9ca0-90f586772512",
+    "action": "EXIT",
+    "source": "AGENT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "is": "below",
+     "value": 236,
+     "watch": "price"
+    },
+    "rationale": "Under your hand-set $236 floor, raised after the run from the $218.23 entry.",
+    "lastFiredAt": "2026-11-03T14:30:31.487Z",
+    "cooldownDays": 0
+   },
+   {
+    "id": "1f2454ae-1a4d-4123-8502-fdcb85006401",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "after",
+     "value": 60,
+     "watch": "from_date",
+     "variable": "buy"
+    },
+    "rationale": "60 days after the buy \u2014 Hold 30\u201360 days; the bulk of the drift is inside ~20 ...",
+    "lastFiredAt": "2026-10-30T13:55:10.456Z",
+    "cooldownDays": 60
+   },
+   {
+    "id": "ce4de003-2bc2-438d-a3cf-1b786d72f88f",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "match": "all",
+     "conditions": [
+      {
+       "is": "beat",
+       "value": 0,
+       "watch": "surprise"
+      },
+      {
+       "is": "below",
+       "value": 3,
+       "watch": "move",
+       "variable": "prev_close"
+      }
+     ]
+    },
+    "rationale": "A beat the market sold \u2014 the stock is down 3%+ on the day it beat. The market...",
+    "cooldownDays": 7
+   }
+  ],
+  "triggerState": {
+   "1758189f-7614-4193-92e2-b913264f3307": {
+    "firedAt": "2026-09-14T19:55:09.053Z"
+   },
+   "8d64ad2b-b2b5-4202-9724-ec984efad75e": {
+    "firedAt": "2026-10-06T13:30:13.347Z"
+   },
+   "bd941c67-a53a-41b8-918f-d303ec3b5e66": {
+    "firedAt": "2026-11-03T14:30:31.487Z"
+   },
+   "f552414c-ff2a-455d-b779-d5401ac9ea98": {
+    "firedAt": "2026-10-23T19:55:03.522Z"
+   }
+  },
+  "createdAt": "2026-08-30T20:32:41.062",
+  "researchRunId": "cmtg9jfgr000504l2dy6lm0iz",
+  "agentConfigId": "cmnhxpjio000004jvox6kl6c7",
+  "accountId": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+  "coreBelief": "NVDA drifts to the analyst consensus median of $322 within 60 days post-print as the Q4 FY2026 $65B revenue guide-raise and FY2028 70%-growth commitment mechani"
+ },
+ "fire": {
+  "id": "cmuwpupoo000004l5cq5lb3b2",
+  "type": "TRIGGER_FIRED",
+  "timestamp": "2026-10-06T13:30:21.191",
+  "summary": "Up 10% from entry \u2014 review \u2014 deferred to the next daily review",
+  "rationale": null,
+  "triggerId": "8d64ad2b-b2b5-4202-9724-ec984efad75e",
+  "priceAtTime": 242.12,
+  "runId": null
+ },
+ "answer": {
+  "id": "cmuy23ddu000404lefia2237w",
+  "type": "UPDATED",
+  "timestamp": "2026-10-07T12:00:46.722",
+  "triggerId": null,
+  "runId": "cmuy22yjr000004leqbhjwlqc"
+ },
+ "call": {
+  "thesis_id": "cmtg9nbdy000204jpc6cwawgg",
+  "rationale": "Holding Nvidia at $239.24. The +10% re-underwrite was the thing I was watching for, and the stock answered correctly: it is still above the $237.88 pivot with the 20-day rising at $224.89, so I raised the floor to $236. The invalidation conditions have not happened \u2014 no guidance cut and no struct...",
+  "trigger_id": "8d64ad2b-b2b5-4202-9724-ec984efad75e",
+  "price_at_time": 239.24,
+  "stop_loss": 236,
+  "stop_basis": "Under the $237.88 breakout pivot and just beneath the recent reclaim area; that keeps the stock above structure while locking in a meaningful share of the gain."
+ },
+ "analyst": {
+  "id": "cmnhxpjio000004jvox6kl6c7",
+  "accountId": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+  "triggers": [
+   {
+    "id": "8d64ad2b-b2b5-4202-9724-ec984efad75e",
+    "action": "REVIEW",
+    "source": "PRINCIPAL",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "above",
+     "value": 10,
+     "watch": "move",
+     "variable": "entry"
+    },
+    "rationale": "Up 10% from entry \u2014 re-underwrite: raise the floor under real structure and a...",
+    "cooldownDays": 7
+   },
+   {
+    "id": "56be49ac-b01b-4101-8c51-377aa1bab0ac",
+    "action": "REVIEW",
+    "source": "PRINCIPAL",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "below",
+     "value": 12,
+     "watch": "move",
+     "variable": "entry"
+    },
+    "rationale": "Down 12% from entry \u2014 decide hold-vs-cut deliberately, before the floor decid...",
+    "cooldownDays": 7
+   }
+  ]
+ },
+ "account": {
+  "id": "34f5c589-e216-4afe-9ee8-613c13f300e7",
+  "triggers": [
+   {
+    "id": "1aba586f-cd45-4bbd-82da-d651f1e2802a",
+    "action": "ADD",
+    "source": "DEFAULT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "is": "above",
+     "value": 7,
+     "watch": "move",
+     "variable": "prev_close"
+    },
+    "rationale": "Up 7% in a day \u2014 strength on a held name. Evaluate pressing the winner (add +...",
+    "cooldownDays": 3
+   },
+   {
+    "id": "b459cc93-12a4-43f1-8904-d8a8cd846b93",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "value": 7,
+     "watch": "repeat"
+    },
+    "rationale": "Look at this every 7 days, counting from the last real review.",
+    "cooldownDays": 7
+   },
+   {
+    "id": "2eeaf28c-8082-4d28-b5d9-2fa8bdc82ace",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "before",
+     "value": 5,
+     "watch": "report"
+    },
+    "rationale": "Reports within 3 days \u2014 decide before the print: hold through it, trim, or wa...",
+    "cooldownDays": 30
+   },
+   {
+    "id": "355b73cf-1ef6-4394-be81-e63b6aed6976",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "beat",
+     "value": 0,
+     "watch": "surprise"
+    },
+    "rationale": "Reported a beat \u2014 re-underwrite. A clean beat-and-raise earns a higher target...",
+    "cooldownDays": 7
+   },
+   {
+    "id": "5817586d-f522-4d14-acea-7c9081ddab9c",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "miss",
+     "value": 0,
+     "watch": "surprise"
+    },
+    "rationale": "Reported a miss \u2014 is the thesis wrong, or early? Decide deliberately before t...",
+    "cooldownDays": 7
+   },
+   {
+    "id": "30059604-b755-4848-b938-b636464815c3",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "watch": "filing",
+     "variable": "tier:MATERIAL"
+    },
+    "rationale": "Filed something material with the SEC \u2014 read the filing first; the code says ..."
+   },
+   {
+    "id": "bd941c67-a53a-41b8-918f-d303ec3b5e66",
+    "action": "EXIT",
+    "source": "PRINCIPAL",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "is": "below",
+     "value": 6,
+     "watch": "move",
+     "variable": "peak"
+    },
+    "rationale": "below 6% from the high since we bought \u2014 standing rule set by the principal.",
+    "cooldownDays": 1
+   }
+  ]
+ }
+}

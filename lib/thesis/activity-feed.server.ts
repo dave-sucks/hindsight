@@ -37,6 +37,7 @@ export async function loadActivityFeed(thesis: FeedThesis, limit: number): Promi
       id: true, timestamp: true, type: true, summary: true, rationale: true, fieldChanges: true, priceAtTime: true,
       positionAtTime: true, triggerId: true, signalIds: true, runId: true, tradeId: true, run: { select: { mode: true } },
       verdict: true, verdictLine: true, answersUpdateId: true, answers: { select: { timestamp: true } },
+      triggerAction: true, triggerCondition: true,
     },
   });
 

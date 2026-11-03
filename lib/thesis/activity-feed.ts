@@ -33,6 +33,9 @@ export interface FeedItem {
   priceAtTime: number | null;
   positionAtTime: unknown;
   triggerId: string | null;
+  /** The rule the line answered or fired on, as it stood then; null on proposal steps and on lines saved before 2026-11-03. */
+  triggerAction: string | null;
+  triggerCondition: unknown;
   signalIds: string[];
   runId: string | null;
   /** The run's mode when a run wrote the line; null otherwise. */
@@ -59,6 +62,8 @@ export interface StoredLine {
   priceAtTime?: number | null;
   positionAtTime?: unknown;
   triggerId?: string | null;
+  triggerAction?: string | null;
+  triggerCondition?: unknown;
   signalIds?: string[];
   runId?: string | null;
   tradeId?: string | null;
@@ -103,6 +108,8 @@ export function proposalSteps(o: ProposalOrder): FeedItem[] {
     priceAtTime: null,
     positionAtTime: null,
     triggerId: null,
+    triggerAction: null,
+    triggerCondition: null,
     signalIds: [] as string[],
     runId: null,
     runMode: null,
@@ -145,6 +152,8 @@ export function toFeedItem(u: StoredLine): FeedItem {
     priceAtTime: u.priceAtTime ?? null,
     positionAtTime: u.positionAtTime ?? null,
     triggerId: u.triggerId ?? null,
+    triggerAction: u.triggerAction ?? null,
+    triggerCondition: u.triggerCondition ?? null,
     signalIds: u.signalIds ?? [],
     runId: u.runId ?? null,
     runMode: u.runMode ?? u.run?.mode ?? null,
@@ -191,8 +200,8 @@ export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrde
     const oid = proposalOrderId(s.fieldChanges) ?? "";
     const note = s.type === "PROPOSAL_PROPOSED" ? noteFor.get(oid) : undefined;
     if (note) {
-      const { rationale, runId, runMode, triggerId, priceAtTime, verdict, verdictLine, answersUpdateId, answersAt } = note;
-      return { ...s, rationale, runId, runMode, triggerId, priceAtTime, verdict, verdictLine, answersUpdateId, answersAt, noteId: note.id };
+      const { rationale, runId, runMode, triggerId, triggerAction, triggerCondition, priceAtTime, verdict, verdictLine, answersUpdateId, answersAt } = note;
+      return { ...s, rationale, runId, runMode, triggerId, triggerAction, triggerCondition, priceAtTime, verdict, verdictLine, answersUpdateId, answersAt, noteId: note.id };
     }
     const price = priceFor.get(`${oid}:${s.type}`);
     return price != null ? { ...s, priceAtTime: price } : s;

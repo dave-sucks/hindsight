@@ -273,6 +273,8 @@ What you can do:
 
 Answered: update_thesis, or a trade and its update_thesis.
 
+Before the report, the note sets the bar: the number or the \`assumptions\` line the report has to clear, and what a miss would do to the verdict. After it, the note answers that line: answers_update_id with its [id …], the verdict, and verdict_line naming the number against the bar.
+
 The note: what they reported against what was expected, what they said about what comes next, how the stock took it, and what that means for why we own or watch it; then what you did, in one sentence.
 
 Mistakes:
@@ -375,7 +377,7 @@ Answer, in order:
 
 What you can do:
 - Patch the plan: update_thesis with edit_triggers on the levels that moved, by id.
-- The plan stands: update_thesis with a rationale only. Pass trigger_id when a review fired.
+- The plan stands: update_thesis with a rationale only (trigger_id only when several fired).
 - Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one level or move that can still fire, and say what would bring the stock back.
 - A condition that happened is an exit: close_position with belief_survived false.
 - No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.

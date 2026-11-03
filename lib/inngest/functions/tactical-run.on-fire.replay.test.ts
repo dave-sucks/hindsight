@@ -134,7 +134,7 @@ describe("the trigger run, by fire mode", () => {
     expect(r.sent).toContainEqual({ name: "app/proposal.note.written", data: { orderId: "ord_iot" } });
     // The fire's own row carries what fired, never the trigger's old note.
     const fireRow = r.updates.find((u) => u.type === "TRIGGER_FIRED");
-    expect(fireRow).toMatchObject({ summary: "Sell if below $41.42" });
+    expect(fireRow).toMatchObject({ summary: "Sell if below $41.42", triggerAction: "EXIT", triggerCondition: { watch: "price", is: "below", value: 41.42 } });
     expect(fireRow?.rationale ?? null).toBeNull();
   });
 

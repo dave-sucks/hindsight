@@ -27,3 +27,14 @@ it("the full row is the short row plus the score notes, the seven research secti
   expect([...full].sort()).toEqual([...short, "score_notes", ...sections, "history"].sort());
   expect(full.filter((k) => short.includes(k))).toEqual(short);
 });
+
+it("the company line sits right under the stock line, on the short row and the full one (2026-11-03)", () => {
+  const company = "Sells widgets; revenue is subscription.";
+  for (const size of ["short", "full"] as const) {
+    const row = rowForModel({ ...saved(), company }, { named: size === "full", size }) as Row;
+    expect(Object.keys(row).slice(0, 2)).toEqual(["stock", "company"]);
+    expect(row.company).toBe(company);
+  }
+  // A stock written up before the Writer wrote company lines has none, and no empty key.
+  expect(Object.keys(rowForModel(saved(), { named: false, size: "short" }) as Row)).not.toContain("company");
+});
