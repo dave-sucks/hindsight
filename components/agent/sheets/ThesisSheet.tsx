@@ -666,6 +666,8 @@ export function ThesisBody({
   ticker,
   surface,
   aside,
+  moreTabs,
+  afterActivity,
 }: {
   data: ThesisSheetData & { state: ThesisDossier };
   thesis_id?: string;
@@ -676,8 +678,13 @@ export function ThesisBody({
    * tab row, so they start level with the chart instead of with the price.
    */
   aside?: ReactNode;
+  /** More tabs after Activity (the stock page's News). */
+  moreTabs?: Array<{ label: string; content: ReactNode }>;
+  /** Under the Activity tab's list (the stock page's history of the stock). */
+  afterActivity?: ReactNode;
 }) {
   const { state, quote, quoteLoading, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
+  const extraTabs = moreTabs ?? [];
   // What the chart's selected range shows; the price row prints it.
   const [move, setMove] = useState<RangeMove | null>(null);
   // The open tab: Overview's "View all" opens Activity.
@@ -801,6 +808,11 @@ export function ThesisBody({
         <TabsTrigger value={1}>Thesis</TabsTrigger>
         <TabsTrigger value={2}>Data</TabsTrigger>
         <TabsTrigger value={ACTIVITY_TAB}>Activity</TabsTrigger>
+        {extraTabs.map((t, i) => (
+          <TabsTrigger key={t.label} value={ACTIVITY_TAB + 1 + i}>
+            {t.label}
+          </TabsTrigger>
+        ))}
       </TabsList>
 
       {/* ── Overview: price → the trade → chart → the plan → the newest 8 ── */}
@@ -925,10 +937,20 @@ export function ThesisBody({
               No activity yet — this thesis hasn&apos;t been persisted.
             </p>
           )}
+          {afterActivity}
       </div>
       {sideColumn}
       </div>
       </TabsContent>
+
+      {extraTabs.map((t, i) => (
+        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-5">
+          <div className={columns}>
+            <div className="min-w-0 space-y-5">{t.content}</div>
+            {sideColumn}
+          </div>
+        </TabsContent>
+      ))}
     </Tabs>
   );
 }

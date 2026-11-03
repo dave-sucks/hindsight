@@ -3,17 +3,19 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StockPageTabs } from "@/components/stocks/StockPageTabs";
+import { StockHistory } from "@/components/stocks/StockHistory";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
 import { PositionCard } from "@/components/stocks/PositionCard";
 import { StatBlock } from "@/components/stocks/StatGrid";
-import { StatTable } from "@/components/stocks/StatTable";
-import { EarningsCard } from "@/components/domain/earnings-card";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
-import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
+import { ThesisHeader } from "@/components/domain/thesis-header";
+import { ThesisPageBody } from "@/components/trades/ThesisPageBody";
 import { thesisSheetStateSelect } from "@/lib/agent/thesis-sheet-state";
+import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import {
   getNews,
   getStockProfile,
@@ -24,35 +26,14 @@ import {
 import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
-import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 import { buildStockHistory } from "@/lib/stocks/stock-history";
-import { keyStatColumns, financialStatSections } from "@/lib/stocks/stock-stats";
+import { keyStatColumns } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
-import type { EarningsResponse } from "@/lib/types/thesis-sheet";
 import { ExternalLink } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** The details-card label every sidebar and research block uses. */
-function BlockLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
-}
-
-/** One label · value row, the Trade Details pattern. */
-function DetailRows({ rows }: { rows: Array<{ label: string; value: React.ReactNode }> }) {
-  return (
-    <>
-      {rows.map(({ label, value }) => (
-        <div key={label} className="flex items-center justify-between gap-3 text-sm border-b border-border pb-1 last:border-0">
-          <span className="text-muted-foreground shrink-0">{label}</span>
-          <span className="font-medium tabular-nums text-right min-w-0 truncate">{value}</span>
-        </div>
-      ))}
-    </>
-  );
-}
 
 type MarketNewsArticle = { headline: string; source: string; datetime: number; url: string };
 
@@ -104,7 +85,7 @@ export default async function StockDetailPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   const accountId = user ? await getAccountId(user.id) : null;
 
-  const [identity, profile, quote, metrics, candles, coverage, earnings, positions, theses, watchlistStatus] =
+  const [identity, profile, quote, metrics, candles, coverage, positions, theses, watchlistStatus] =
     await Promise.all([
       getStockInfo(upperSymbol),
       getStockProfile(upperSymbol),
@@ -112,7 +93,6 @@ export default async function StockDetailPage({ params }: Props) {
       getStockMetrics(upperSymbol),
       getStockCandles(upperSymbol, 365),
       getAnalystCoverageData(upperSymbol).catch(() => null),
-      getEarningsForSymbol(upperSymbol).catch(() => null),
       accountId
         ? prisma.position.findMany({
             where: { accountId, symbol: upperSymbol },
@@ -141,7 +121,7 @@ export default async function StockDetailPage({ params }: Props) {
             select: {
               ...thesisSheetStateSelect,
               createdAt: true,
-              researchRun: { select: { agentConfig: { select: { name: true } } } },
+              researchRun: { select: { agentConfigId: true, agentConfig: { select: { name: true } } } },
             },
           })
         : Promise.resolve([]),
@@ -169,10 +149,27 @@ export default async function StockDetailPage({ params }: Props) {
   // The open position, for the chart's entry line.
   const open = positions.find((p) => p.status === "OPEN") ?? null;
 
-  const website = profile?.weburl
-    ? profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
-    : null;
+  // The live thesis on the stock, newest first: the page shows its view. A
+  // stock with none shows the company, the street and Hindsight's history.
+  const live = theses.find((t) => t.status === "HOLDING" || t.status === "WATCHING" || t.status === "PROMOTED") ?? null;
 
+  const news = (
+    <Suspense fallback={<Skeleton className="h-40 w-full rounded-lg" />}>
+      <NewsRows symbol={upperSymbol} />
+    </Suspense>
+  );
+
+  // Hindsight on this stock: every thesis and trade on it, as dated rows.
+  const historyBlock =
+    history.length > 0 ? (
+      <section className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hindsight on this stock</p>
+        <StockHistory ticker={upperSymbol} items={history} />
+      </section>
+    ) : null;
+
+  // No live thesis: the trades we made in it, and Wall Street. The company's
+  // numbers are the Data tab's.
   const sidebar = (
     <>
       {positions.length > 0 ? (
@@ -193,102 +190,73 @@ export default async function StockDetailPage({ params }: Props) {
           }))}
         />
       ) : null}
-
-      <Card className="bg-muted/40 p-2 gap-1">
-        <BlockLabel>About</BlockLabel>
-        <DetailRows
-          rows={[
-            { label: "Exchange", value: identity.exchange ?? "—" },
-            { label: "Industry", value: profile?.finnhubIndustry || "—" },
-            { label: "IPO", value: profile?.ipo || "—" },
-            ...(website && profile?.weburl
-              ? [
-                  {
-                    label: "Website",
-                    value: (
-                      <a
-                        href={profile.weburl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 hover:underline"
-                      >
-                        {website}
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </Card>
-
       <AnalystConsensusWidget coverage={coverage} currentPrice={price} />
-
-      {earnings ? <EarningsCard data={earnings as unknown as EarningsResponse} /> : null}
     </>
-  );
-
-  const statSections = financialStatSections(metrics, marketCap);
-  const financials = (
-    <>
-      {statSections.length > 0 ? (
-        <StatTable sections={statSections} />
-      ) : (
-        <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
-      )}
-      <div className="space-y-2">
-        <BlockLabel>Filings</BlockLabel>
-        <StockFilingsSection symbol={upperSymbol} />
-      </div>
-    </>
-  );
-
-  const news = (
-    <Suspense fallback={<Skeleton className="h-40 w-full rounded-lg" />}>
-      <NewsRows symbol={upperSymbol} />
-    </Suspense>
   );
 
   return (
     <div data-surface="paper">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         <LiveRefresh />
-        {/* The same header the trade page and the sheet render. href={null}:
+        {/* The same header the trade page and the sheet render: with a live
+            thesis, its status and conviction beside the name. href={null}:
             we're already on the stock page. */}
         <div className="mb-6">
-          <StockIdentityHeader
-            ticker={upperSymbol}
-            displayName={identity.companyName}
-            exchange={identity.exchange}
-            href={null}
-            actions={
-              <>
-                <TradeButton ticker={upperSymbol} />
-                <PinButton ticker={upperSymbol} />
-                <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
-              </>
-            }
-          />
+          {live ? (
+            <ThesisHeader
+              ticker={upperSymbol}
+              displayName={identity.companyName}
+              href={null}
+              status={live.status}
+              agentWatchDays={agentWatchDays(live.triggers)}
+              conviction={(live.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
+              score={getThesisComposite(live)}
+              analystId={live.researchRun?.agentConfigId ?? null}
+              thesisId={live.id}
+              extraActions={<WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />}
+            />
+          ) : (
+            <StockIdentityHeader
+              ticker={upperSymbol}
+              displayName={identity.companyName}
+              exchange={identity.exchange}
+              href={null}
+              actions={
+                <>
+                  <TradeButton ticker={upperSymbol} />
+                  <PinButton ticker={upperSymbol} />
+                  <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
+                </>
+              }
+            />
+          )}
         </div>
 
-        <StockPageTabs
-          overview={{
-            ticker: upperSymbol,
-            candles,
-            price,
-            dayChange: quote?.d ?? null,
-            dayChangePct: quote?.dp ?? null,
-            held: open
-              ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
-              : null,
-          }}
-          stats={<StatBlock label="Key stats" columns={keyStatColumns(quote, metrics, marketCap)} />}
-          history={history}
-          financials={financials}
-          news={news}
-          sidebar={sidebar}
-        />
+        {live ? (
+          <ThesisPageBody
+            thesisId={live.id}
+            ticker={upperSymbol}
+            moreTabs={[{ label: "News", content: news }]}
+            afterActivity={historyBlock}
+          />
+        ) : (
+          <StockPageTabs
+            overview={{
+              ticker: upperSymbol,
+              candles,
+              price,
+              dayChange: quote?.d ?? null,
+              dayChangePct: quote?.dp ?? null,
+              held: open
+                ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
+                : null,
+            }}
+            stats={<StatBlock label="Key stats" columns={keyStatColumns(quote, metrics, marketCap)} />}
+            history={history}
+            news={news}
+            sidebar={sidebar}
+          />
+        )}
       </div>
     </div>
   );

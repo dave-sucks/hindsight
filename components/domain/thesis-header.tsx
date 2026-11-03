@@ -93,8 +93,10 @@ export interface ThesisHeaderProps {
   analystId: string | null;
   thesisId?: string;
   onSent?: () => void;
-  /** More buttons at the right edge, after pin (the trade page's ··· menu). */
+  /** More buttons at the right edge, after pin (the trade page's ··· menu, the stock page's watchlist menu). */
   extraActions?: ReactNode;
+  /** Where the logo and name link; the stock page passes null, being there already. */
+  href?: string | null;
 }
 
 export function ThesisHeader({
@@ -108,11 +110,13 @@ export function ThesisHeader({
   thesisId,
   onSent,
   extraActions,
+  href,
 }: ThesisHeaderProps) {
   return (
     <StockIdentityHeader
       ticker={ticker}
       displayName={displayName}
+      href={href}
       inlineBadge={
         <span className="inline-flex items-center gap-1.5">
           <StatusPill status={status} agentWatchDays={agentWatchDays} />
