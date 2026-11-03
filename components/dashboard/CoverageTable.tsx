@@ -36,7 +36,7 @@ import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 // ─── Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ──────────────
 
 type Tab = "trades" | "sold" | "watching" | "passed";
-type MobileView = "lifetime" | "1d";
+type MobileView = "1d" | "5d" | "lifetime";
 /**
  * What the 1D/5D/30D columns say. A column of percents cannot show why a book
  * is down on a day most of its names are up — a −1.16% day on an $11,718
@@ -161,27 +161,23 @@ function NameCell({ row }: { row: CoverageRow }) {
   );
 }
 
-// ── Lifetime / 1D cell (last column) ─────────────────────────────────────────
+// ── Lifetime / 1D / 5D cell (last column) ────────────────────────────────────
 // On desktop: just P&L (price has its own column).
 // On mobile: price on top (since Price column is hidden), then P&L below.
-// mobileView controls whether we show lifetime or 1D P&L.
+// mobileView picks the window: 1D, 5D or lifetime.
 function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: MobileView }) {
   const isLifetime = mobileView === "lifetime";
-  const pct = isLifetime ? row.sincePct : row.oneDayPct;
-  // Both tabs show dollars AND percent on a held name. The row carries the
-  // day's move as a percent only, so the 1D tab used to be half a column next
-  // to an All tab that had both — and on a phone those two tabs are the whole
-  // table. A watched name has no shares, so it stays percent-only on both.
+  const pct = isLifetime ? row.sincePct : mobileView === "5d" ? row.fiveDayPct : row.oneDayPct;
+  // Every tab shows dollars AND percent on a held name. The row carries the
+  // window moves as a percent only, so the 1D tab used to be half a column
+  // next to a Lifetime tab that had both — and on a phone these tabs are the
+  // whole table. A watched name has no shares, so it stays percent-only.
   const dollar =
     row.tradeState == null
       ? null
       : isLifetime
         ? row.sinceDollar
-        : moveDollar({
-            shares: row.shares,
-            currentPrice: row.currentPrice,
-            pct: row.oneDayPct,
-          });
+        : moveDollar({ shares: row.shares, currentPrice: row.currentPrice, pct });
 
   return (
     <div className="flex flex-col items-end gap-0.5">
@@ -221,7 +217,7 @@ function CoverageTab({
   emptyLabel: string;
   onRowClick: (row: CoverageRow) => void;
 }) {
-  const [mobileView, setMobileView] = useState<MobileView>("lifetime");
+  const [mobileView, setMobileView] = useState<MobileView>("1d");
 
   if (rows.length === 0) {
     return (
@@ -264,12 +260,14 @@ function CoverageTab({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              {/* Mobile toggle — a view setting, so small Tabs like the %/$ */}
-              <div className="md:hidden">
+              {/* Mobile toggle — a view setting, so small Tabs like the %/$.
+                  Flush right, under the numbers it changes. */}
+              <div className="md:hidden flex justify-end">
                 <Tabs value={mobileView} onValueChange={(v) => setMobileView(v as MobileView)}>
                   <TabsList size="sm">
-                    <TabsTrigger value="lifetime">All</TabsTrigger>
                     <TabsTrigger value="1d">1D</TabsTrigger>
+                    <TabsTrigger value="5d">5D</TabsTrigger>
+                    <TabsTrigger value="lifetime">Lifetime</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -385,12 +383,16 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
           value={activeTab}
           onChange={(v) => v && setActiveTab(v)}
         />
-        <Tabs value={mode} onValueChange={(v) => setMode(v as MoveMode)}>
-          <TabsList size="sm">
-            <TabsTrigger value="pct" title="1D / 5D / 30D as a percent move">%</TabsTrigger>
-            <TabsTrigger value="dollar" title="1D / 5D / 30D as a dollar move, on the shares held now">$</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {/* Desktop only: the phone's one column shows dollars and percent
+            both, so the unit switch would change nothing there. */}
+        <div className="hidden md:block">
+          <Tabs value={mode} onValueChange={(v) => setMode(v as MoveMode)}>
+            <TabsList size="sm">
+              <TabsTrigger value="pct" title="1D / 5D / 30D as a percent move">%</TabsTrigger>
+              <TabsTrigger value="dollar" title="1D / 5D / 30D as a dollar move, on the shares held now">$</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       <CoverageTab
