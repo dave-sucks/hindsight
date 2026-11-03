@@ -2,14 +2,16 @@
  * row-for-model.ts — one row of get_theses as the model reads it, in one of
  * three sizes (Roadmap step 8, docs/plans/AGENT_ARCHITECTURE.md §11.5).
  *
- * A quiet stock is one line. A stock in a situation is the short row: about
- * eighteen lines, each a plain label with a value in units, no research
- * essays. The full row comes by ticker or by rule, for the two situations
- * whose answer needs the research re-planned (QUIET_WATCH_WOKE,
- * NO_SETUP_NAMED): the short row plus the bull and bear cases, the
- * conviction rationale, the variant view, the score notes and the whole
- * snapshot. Code decides the size from the row's situations; nothing
- * depends on the model asking.
+ * A quiet stock is one line. A stock in a situation is the short row: each
+ * line a plain label with a value in units, and the whole view (the belief,
+ * the assumptions, what would prove it wrong, the bull and bear cases, the
+ * conviction rationale, the variant view), so every agent that decides on a
+ * stock reads its case for and against. The full row comes by ticker or by
+ * rule, for the two situations whose answer needs the research re-planned
+ * (QUIET_WATCH_WOKE, NO_SETUP_NAMED): the short row plus the score notes,
+ * the seven research sections, the whole snapshot and, on a named read, the
+ * history. Code decides the size from the row's situations; nothing depends
+ * on the model asking.
  *
  * The tool saves the whole row for the screen and the run; this builder
  * writes what the model reads, and each line explains itself, so no prompt
@@ -380,6 +382,11 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("belief", str(row.coreBelief) ? stripSourceTags(row.coreBelief as string) : null);
   put("assumptions", strings(row.keyAssumptions));
   put("would_prove_it_wrong", strings(row.invalidationConds));
+  // The whole view, on every row an agent decides from (short and full).
+  put("bull_case", strings(list<{ text?: unknown }>(obj(row.bullCase)?.bullets).map((b) => b?.text)));
+  put("bear_case", strings(list<{ text?: unknown }>(obj(row.bearCase)?.bullets).map((b) => b?.text)));
+  put("conviction_rationale", str(row.convictionRationale) ? stripSourceTags(row.convictionRationale as string) : null);
+  put("variant_view", str(row.variantView) ? stripSourceTags(row.variantView as string) : null);
   // The lines a fire checks for the stock's horizon (setupLines' decision cut), in place of the compact line: on the full row, and on the trigger run's short row.
   const lines = size === "full" || setupLinesOn ? strings(obj(row.setup)?.lines) : [];
   if (lines.length) put("setup_lines", lines);
@@ -393,10 +400,6 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("score", scoreLine(row));
   if (size === "full") {
     put("score_notes", scoreNotes(row));
-    put("bull_case", strings(list<{ text?: unknown }>(obj(row.bullCase)?.bullets).map((b) => b?.text)));
-    put("bear_case", strings(list<{ text?: unknown }>(obj(row.bearCase)?.bullets).map((b) => b?.text)));
-    put("conviction_rationale", str(row.convictionRationale) ? stripSourceTags(row.convictionRationale as string) : null);
-    put("variant_view", str(row.variantView) ? stripSourceTags(row.variantView as string) : null);
     for (const k of RESEARCH_SECTIONS) put(k, sectionText(row[k]));
   }
   put("chart", chartLine(row));

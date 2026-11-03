@@ -25,9 +25,9 @@ type Fire = { now: string; price: number; thesis: Record<string, unknown> & { id
 const fx = raw as unknown as { analyst: { name: string; setupIds: string[]; maxOpenPositions: number; minConfidence: number }; docu: Fire; nvda: Fire };
 
 /** What only the full row carries: the trigger run's row has none of it. */
-const FULL_ONLY = ["bull_case", "bear_case", "score_notes", "conviction_rationale", "variant_view", "history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
+const FULL_ONLY = ["score_notes", "history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
 /** The short row's keys the decision reads, every one present on both fires. */
-const SHORT_KEYS = ["stock", "id", "situations", "said", "plan", "triggers", "setup_lines", "snapshot", "score", "research"];
+const SHORT_KEYS = ["stock", "id", "situations", "said", "plan", "triggers", "bull_case", "bear_case", "conviction_rationale", "setup_lines", "snapshot", "score", "research"];
 const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>) => {
   for (const k of SHORT_KEYS) expect([k, k in row]).toEqual([k, true]);
   for (const k of FULL_ONLY) expect([k, k in row]).toEqual([k, false]);
@@ -35,7 +35,7 @@ const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>) 
   expect(String(row.research)).toMatch(/Full row: get_theses\(tickers: \["[A-Z]+"\]\)\.$/);
   // Not vacuous: the same read, as a full row, carries the research.
   const full = rowForModel(saved, { named: true, size: "full" }) as Record<string, unknown>;
-  for (const k of ["bull_case", "bear_case", "score_notes", "conviction_rationale"]) expect([k, k in full]).toEqual([k, true]);
+  expect(full).toHaveProperty("score_notes");
 };
 const DELETED = ["THESIS (id:", "THE SETUP THIS PLAN WAS WRITTEN ON", "DEEP-RESEARCH EXCERPT", "CURRENT TRIGGER LADDER", "POSITION:\n"];
 /** What's been said arrives once, as the row's `said`, not as a block of its own. */
@@ -96,7 +96,7 @@ async function triggerRun(c: Fire) {
 }
 
 describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
-  it("the short row leads with the fire, carries the lines a fire checks for its setup and horizon and the fired buy with its id, and none of the full row", async () => {
+  it("the short row leads with the fire, carries the lines a fire checks for its setup and horizon and the fired buy with its id, the whole view, and nothing else of the full row", async () => {
     const { stock, prompt, saved } = await triggerRun(fx.docu);
     expect(stock).not.toBeNull();
     const row = stock!.row;
@@ -114,7 +114,7 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
 });
 
 describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_theses", () => {
-  it("the short row leads with the sale, carries the position, the PEAD lines and the fired floor with its id, and none of the full row", async () => {
+  it("the short row leads with the sale, carries the position, the PEAD lines and the fired floor with its id, the whole view, and nothing else of the full row", async () => {
     const { stock, prompt, saved } = await triggerRun(fx.nvda);
     expect(stock).not.toBeNull();
     const row = stock!.row;

@@ -36,8 +36,8 @@ const tool = getTheses({ runId: "r", userId: "u", analystId: "a" } as never) as 
 };
 const forModel = (read: Read) => tool.toModelOutput({ toolCallId: "c", input: read.input, output: read.output }).value.data;
 
-const SHORT_KEYS = ["stock", "id", "situations", "said", "position", "proposal_waiting", "price", "plan", "plan_checks", "protection", "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong", "setup", "nameTheSetup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "score", "chart", "research", "catalyst", "repeat", "note", "paper_record"];
-const FULL_ONLY = ["score_notes", "bull_case", "bear_case", "conviction_rationale", "variant_view", "history"];
+const SHORT_KEYS = ["stock", "id", "situations", "said", "position", "proposal_waiting", "price", "plan", "plan_checks", "protection", "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view", "setup", "nameTheSetup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "score", "chart", "research", "catalyst", "repeat", "note", "paper_record"];
+const FULL_ONLY = ["score_notes", "history"];
 
 describe.each(CASES)("the saved case %s", (name) => {
   const reads = recordedReads(name);

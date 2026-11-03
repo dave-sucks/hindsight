@@ -100,16 +100,16 @@ async function read(args: Record<string, unknown>) {
 }
 
 describe("get_theses — the read", () => {
-  it("the opening read with include_history: the short row, no history, no essays, and a dated research line", async () => {
+  it("the opening read with include_history: the short row with the whole view, no history, no score notes, and a dated research line", async () => {
     const { model, modelRow } = await read({ include_history: true });
     expect(modelRow).toBeDefined();
     expect(modelRow.history).toBeUndefined();
     expect(modelRow.stock).toBe("SYK · watch · LONG · BASE_BREAKOUT · conviction MEDIUM");
-    // The short row carries the snapshot's first paragraph and the score; the cases and the notes are the full row's.
+    // The short row carries the snapshot's first paragraph, the score and the cases; the score notes are the full row's.
     expect(modelRow.snapshot).toBe(snapshot.text);
     expect(modelRow.score).toBe("7/10 (entry 1 · trend 2 · relative strength 2 · catalyst 2)");
-    expect(modelRow).not.toHaveProperty("bull_case");
-    expect(modelRow).not.toHaveProperty("bear_case");
+    expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);
+    expect(modelRow).toHaveProperty("bear_case");
     expect(modelRow).not.toHaveProperty("score_notes");
     expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348\.00, 51 days ago\. Full row: get_theses\(tickers: \["SYK"\]\)\.$/);
     expect(modelRow).not.toHaveProperty("triggerState");
