@@ -163,7 +163,7 @@ describe("the block: the newest 8 lines of the feed, as the owner sees them, who
     expect(saidLine(edit)).toContain("Edited by you [Removed: Trailing 8% from high → exit]");
     const long = "x".repeat(2_000);
     const note = toFeedItem({ id: "n", type: "NOTE", timestamp: new Date("2026-10-01T10:00:00Z"), runId: "chat", summary: "x", rationale: long, priceAtTime: 100 });
-    expect(saidLine(note)).toBe(`  10-01 06:00 · $100.00 · Your note — "${long}"`);
+    expect(saidLine(note)).toBe(`  10-01 06:00 · $100.00 · Your note — "${long}" [id n]`);
   });
 
   it("nothing on record → no block", () => {

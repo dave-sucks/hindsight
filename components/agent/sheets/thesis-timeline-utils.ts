@@ -37,6 +37,8 @@ export interface TimelineUpdate {
   signalIds: string[];
   runId: string | null;
   tradeId: string | null;
+  /** A review's verdict (STRONGER / UNCHANGED / WEAKER / BROKEN); its title carries the word. */
+  verdict?: string | null;
 }
 
 // ── Proposal metadata (Order-derived rows) ───────────────────────────────────
@@ -237,13 +239,25 @@ const TITLES: Record<EventKind, { primary: string; secondary: (u: TimelineUpdate
 export function titleSegments(u: TimelineUpdate): TitleSegments {
   const kind = eventKind(u);
   if (kind === "unknown")
-    return {
+    return withVerdict(u, {
       // Legacy/unrecognised type — title-case it rather than invent grammar.
       primary: u.type.charAt(0) + u.type.slice(1).toLowerCase().replace(/_/g, " "),
       secondary: null,
-    };
+    });
   const t = TITLES[kind];
-  return { primary: t.primary, secondary: t.secondary(u) };
+  return withVerdict(u, { primary: t.primary, secondary: t.secondary(u) });
+}
+
+/** A plain review's title (see isPlainReview): "Review", and its verdict after it, "Review · weaker". */
+export function reviewTitle(u: TimelineUpdate): TitleSegments {
+  return withVerdict(u, { primary: "Review", secondary: "" });
+}
+
+/** A review's verdict word after its title, lowercase: "· weaker". */
+function withVerdict(u: TimelineUpdate, t: TitleSegments): TitleSegments {
+  if (!u.verdict) return t;
+  const word = `· ${u.verdict.toLowerCase()}`;
+  return { ...t, secondary: t.secondary ? `${t.secondary} ${word}` : word };
 }
 
 /** "buy 28 shares" — the side and size of a proposal. */

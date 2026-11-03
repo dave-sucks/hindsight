@@ -39,6 +39,7 @@ import {
   dropRepeatedProse,
   toRow,
   isPlainReview,
+  reviewTitle,
   withPriceChanges,
   type LadderChange,
   type DotKind,
@@ -204,7 +205,7 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
   // so the paragraph always sits under it, never beside the price and the actions.
   const titled = rows.map((r, i) => {
     const item = items[i];
-    return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: { primary: "Review", secondary: "" } } : r;
+    return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: reviewTitle(item.row) } : r;
   });
   const ids = items.map(itemIds);
   return { rows: titled, spans: proposalSpanSegments(items), labels, ids };

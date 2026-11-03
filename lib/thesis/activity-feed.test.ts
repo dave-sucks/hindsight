@@ -6,7 +6,7 @@
  */
 import { activityFeed, proposalSteps, recentItems, serializeFeedItem, RECENT_ITEMS, type ProposalOrder, type StoredLine } from "./activity-feed";
 import { saidBlock, unansweredWord } from "@/lib/agent/stock-context";
-import { toRow, withPriceChanges, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
+import { isPlainReview, reviewTitle, titleSegments, toRow, withPriceChanges, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
 
 const at = (iso: string) => new Date(iso);
 const run = (id: string, mode = "INTRADAY_TACTICAL") => ({ runId: id, run: { mode } });
@@ -89,12 +89,13 @@ describe("the newest 8: what the Overview shows and the next run reads", () => {
     const lines = text.split("\n");
     expect(lines[0]).toBe("WHAT'S BEEN SAID ON $GEV — its newest 8 Activity lines, newest first, as the owner sees them:");
     expect(lines).toHaveLength(10);
-    expect(lines[1]).toMatch(/^ {2}10-29 09:55 · \$889\.0[56] · Trigger: Review if below 15% from the high since we bought$/);
-    expect(lines[2]).toBe('  10-29 09:45 · $881.14 · Review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter"');
+    expect(lines[1]).toMatch(/^ {2}10-29 09:55 · \$889\.0[56] · Trigger: Review if below 15% from the high since we bought \[id cmvtlv8fv000z07jtgj1pt6hg\]$/);
+    expect(lines[2]).toBe('  10-29 09:45 · $881.14 · Review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" [id cmvtljbyt000u07jtwe1op938]');
+    // An order's own step has no saved line to answer, so no id.
     expect(lines[3]).toBe('  10-29 09:45 · Proposed sell 9 shares — awaiting your review — "GE Vernova is trading around $883 on Oct. 29 after third-quarter results beat expectations"');
-    expect(lines[4]).toBe("  10-29 09:45 · $882.71 · Trigger: Sell if below 6% from the high since we bought");
+    expect(lines[4]).toBe("  10-29 09:45 · $882.71 · Trigger: Sell if below 6% from the high since we bought [id cmvtlitlc000308l5t8msme4t]");
     expect(lines[5]).toBe("  10-29 09:40 · Expired sell 9 shares — no decision");
-    expect(lines[6]).toBe('  10-28 14:15 · $884.83 · Trigger: Review if below the 200-day average — "200-day $941.20; price $884.83 (−6.0% from it)"');
+    expect(lines[6]).toBe('  10-28 14:15 · $884.83 · Trigger: Review if below the 200-day average — "200-day $941.20; price $884.83 (−6.0% from it)" [id cmvsfpzci000208l10mo0s5jr]');
     expect(lines[9]).toBe('Full history: get_theses(tickers: ["GEV"], include_history: true)');
     // Nothing older than the 8 and nothing the expiry job stitched.
     expect(text).not.toContain("Oct. 27");
@@ -122,7 +123,8 @@ describe("one paragraph per trade: a run's note on a proposal and the proposal a
     const proposed = merged.find((i) => i.id === "order:cmvtlj7h8000o07jtr5hif67i:proposed")!;
     expect(proposed).toMatchObject({ type: "PROPOSAL_PROPOSED", runId: "cmvtlisse000k07jtcm2d5e72", runMode: "INTRADAY_TACTICAL", triggerId: TRAIL, priceAtTime: 881.14, rationale: "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" });
     const line = saidBlock("GEV", merged)!.split("\n")[2];
-    expect(line).toBe('  10-29 09:45 · $881.14 · Proposed sell 9 shares — awaiting your review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter"');
+    // It answers as the note it carries.
+    expect(line).toBe('  10-29 09:45 · $881.14 · Proposed sell 9 shares — awaiting your review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" [id cmvtljbyt000u07jtwe1op938]');
   });
 });
 
@@ -183,5 +185,36 @@ describe("a declined or expired proposal shows the price then", () => {
     expect(rows[0]).toMatchObject({ type: "PROPOSAL_EXPIRED", price: 187.07 });
     expect(rows[0].priceChange?.dollars).toBeCloseTo(-8.15, 2);
     expect(rows[0].priceChange?.pct).toBeCloseTo(-4.17, 2);
+  });
+});
+
+describe("a review's verdict and the line it answers: one title on the page, the same line for the agent", () => {
+  // GEV 10-29 09:45's review, given a verdict and the 10-28 09:41 review it answers.
+  const ANSWERED = "cmvs5xab6000x07lhxdh577tr";
+  const LINE = "Q3 orders beat, but the 6% trail from the high broke at $882.71.";
+  const withVerdict = UPDATES.map((u) =>
+    u.id === "cmvtljbyt000u07jtwe1op938" ? { ...u, verdict: "WEAKER", verdictLine: LINE, answersUpdateId: ANSWERED, answers: { timestamp: at("2026-10-28T13:41:06.546Z") } } : u,
+  );
+  const verdictFeed = activityFeed({ updates: withVerdict, orders: ORDERS });
+
+  it("the agent's line: the title with the word, the paragraph, the verdict's line, the line it answers by date, and its own id", () => {
+    expect(saidBlock("GEV", verdictFeed)!.split("\n")[2]).toBe(
+      `  10-29 09:45 · $881.14 · Review · weaker — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" — verdict: "${LINE}" — answers the 10-28 09:41 line [id cmvtljbyt000u07jtwe1op938]`,
+    );
+  });
+
+  it("the page's title is the same: Review · weaker", () => {
+    const item = verdictFeed.find((i) => i.id === "cmvtljbyt000u07jtwe1op938")!;
+    const row = serializeFeedItem(item) as unknown as TimelineUpdate;
+    expect(isPlainReview(row)).toBe(true);
+    expect(reviewTitle(row)).toEqual({ primary: "Review", secondary: "· weaker" });
+    // A line with its own title keeps it, with the word after it.
+    expect(titleSegments({ ...row, type: "UPDATED", fieldChanges: { targetPrice: { from: 80, to: 95 } } })).toEqual({ primary: "Updated", secondary: "target $80.00 → $95.00 · weaker" });
+  });
+
+  it("a note stamped with the proposal it wrote up gives the Proposed step its verdict", () => {
+    const stamped = withVerdict.map((u) => (u.id === "cmvtljbyt000u07jtwe1op938" ? { ...u, tradeId: "cmvtlj7h8000o07jtr5hif67i" } : u));
+    const proposed = activityFeed({ updates: stamped, orders: ORDERS }).find((i) => i.id === "order:cmvtlj7h8000o07jtr5hif67i:proposed")!;
+    expect(proposed).toMatchObject({ verdict: "WEAKER", verdictLine: LINE, answersUpdateId: ANSWERED, noteId: "cmvtljbyt000u07jtwe1op938" });
   });
 });

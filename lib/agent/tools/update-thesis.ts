@@ -27,7 +27,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
+import { TRIGGER_EDITS, VERDICTS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 import { prisma } from "@/lib/prisma";
 import { analystOf, forTheStock } from "@/lib/agent/analyst-scope";
 import {
@@ -149,7 +149,15 @@ const updateSchema = z.object({
     .optional()
     .describe(`${STATUS_RETIRE}${STATUS_WATCH}${STATUS_OWNED} A researched decline is direction: "PASS".`),
   research_data: F.research_data.optional(),
+
+  // ── The review's verdict, and the line it answers: on the audit row only ──
+  verdict: F.verdict.optional(),
+  verdict_line: F.verdict_line.optional(),
+  answers_update_id: F.answers_update_id.optional(),
 });
+
+/** The review's fields: the morning run's, the trigger run's and the chat's, never the writer's. */
+const THE_REVIEW = { verdict: true, verdict_line: true, answers_update_id: true } as const;
 
 type UpdatePatch = Partial<{
   setupId: string | null;
@@ -276,6 +284,7 @@ const triggerRunSchema = updateSchema.pick({
   thesis_id: true, trigger_id: true, rationale: true,
   add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
   stop_loss: true, stop_basis: true, target_price: true, target_basis: true, entry_price: true,
+  ...THE_REVIEW,
 });
 
 /** The trigger run's door: its save has no price field and no status change. */
@@ -299,7 +308,7 @@ const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TA
  * thesis with a view is refused a flip or a pass), and a field that is
  * offered gets filled, so it left too: a view is set or flipped by research
  * or by the owner. change_status keeps its three values: this door puts a
- * sold stock back on watch. Eighteen fields.
+ * sold stock back on watch. Eighteen fields, and the review's three (THE_REVIEW).
  */
 const THE_CLAIM = { core_belief: true, key_assumptions: true, invalidation_conditions: true } as const;
 /**
@@ -325,7 +334,7 @@ const NOT_THE_CHATS = { trigger_id: true } as const;
 
 /**
  * The owner's chat's save: the claim, the view, the plan, the verdict and the
- * note. The write-up is the writer's (step 12, part 2): twenty-one fields.
+ * note. The write-up is the writer's (step 12, part 2): twenty-one fields, and the review's three.
  */
 const chatSchema = updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_WRITE_UPS_REST, ...NOT_THE_CHATS });
 
@@ -479,14 +488,14 @@ export const updateThesis = defineTool({
   schema: updateSchema,
   schemaFor: (ctx) =>
     ctx.runMode === "THESIS_WRITER"
-      ? updateSchema
+      ? updateSchema.omit(THE_REVIEW)
       : isTriggerRun(ctx)
         ? triggerRunSchema
         : isMorningRun(ctx)
           ? morningRunSchema
           : ctx.runMode === "PRINCIPAL_CHAT"
             ? chatSchema
-            : updateSchema.omit(WRITER_ONLY_UPDATE_FIELDS),
+            : updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_REVIEW }),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 
@@ -593,6 +602,21 @@ export const updateThesis = defineTool({
     // one sentence each in the reply (claim-names-level.ts).
     const claimNotes: string[] = [];
     let stillPromoted = false;
+
+    // The verdict and the line it answers go on this call's audit row; a wrong word or id comes back by name.
+    const verdict = args.verdict?.trim().toUpperCase() || undefined;
+    if (verdict && !(VERDICTS as readonly string[]).includes(verdict)) {
+      refuseField("verdict", `"${args.verdict}" is not a verdict: send STRONGER, UNCHANGED, WEAKER or BROKEN.`, "not one of the four verdicts");
+    }
+    const answers = args.answers_update_id?.trim() || undefined;
+    if (answers && !(await prisma.thesisUpdate.findFirst({ where: { id: answers, thesisId: existing.id }, select: { id: true } }))) {
+      refuseField("answers_update_id", `No Activity line ${answers} on ${existing.ticker}: send the [id …] at the end of the line this note answers.`, "no such line on this stock");
+    }
+    const review = {
+      verdict: args.verdict !== undefined ? verdict : undefined,
+      verdictLine: args.verdict_line?.trim() || undefined,
+      answersUpdateId: args.answers_update_id !== undefined ? answers : undefined,
+    };
 
     // The principal's edit wins (handEditsSince). Looked up only when the
     // call still changes something.
@@ -1626,6 +1650,7 @@ export const updateThesis = defineTool({
         runId: ctx.runId,
         triggerId: args.trigger_id,
         priceAtTime: resolvedPriceAtTime,
+        ...review,
       });
       const reviewedMeans = [...whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence), ...catalystDateMissing(existing)];
       return {
@@ -1872,6 +1897,7 @@ export const updateThesis = defineTool({
       runId: ctx.runId,
       triggerId: args.trigger_id,
       priceAtTime: resolvedPriceAtTime,
+      ...review,
     });
     const flags = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
     const catalystNotes = catalystDateMissing({ ...existing, ...patch });

@@ -23,6 +23,7 @@ import {
   ladderChangeLines,
   notAppliedLines,
   proposalUserMessage,
+  reviewTitle,
   titleSegments,
   type TimelineUpdate,
 } from "@/components/agent/sheets/thesis-timeline-utils";
@@ -180,15 +181,16 @@ function asTimelineUpdate(item: FeedItem): TimelineUpdate {
 
 /**
  * One Activity line as the agent reads it: the time, the price then, the
- * title the owner sees, what changed, and the paragraph if someone wrote one.
- * The same title grammar as the Activity tab, so the two never differ.
+ * title the owner sees, what changed, the paragraph if someone wrote one, the
+ * verdict's line, the line it answers, and its own id (the one a later note
+ * answers). The same title grammar as the Activity tab, so the two never differ.
  */
 export function saidLine(item: FeedItem): string {
   const tu = asTimelineUpdate(item);
   const kind = eventKind(tu);
-  const t = titleSegments(tu);
-  // A plain review reads "Review" on screen too; everything that happened keeps its title.
-  const title = kind === "note" ? "Your note" : isPlainReview(tu) ? "Review" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
+  // A plain review reads "Review" on screen too ("Review · weaker" with a verdict); everything that happened keeps its title.
+  const t = isPlainReview(tu) ? reviewTitle(tu) : titleSegments(tu);
+  const title = kind === "note" ? "Your note" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
   const chips = [...ladderChangeLines(tu), ...notAppliedLines(tu)].map((c) => c.text);
   const comment = proposalUserMessage(tu);
   const paragraph = comment ?? (item.rationale?.trim() ? item.rationale.replace(/^\[USER\]\s*/, "").trim() : null);
@@ -196,6 +198,11 @@ export function saidLine(item: FeedItem): string {
   let line = `  ${parts.join(" · ")}`;
   if (chips.length) line += ` [${chips.join("; ")}]`;
   if (paragraph) line += ` — "${oneLine(paragraph)}"`;
+  if (item.verdictLine) line += ` — verdict: "${oneLine(item.verdictLine)}"`;
+  if (item.answersUpdateId) line += ` — answers the ${item.answersAt ? etStamp(item.answersAt) : item.answersUpdateId} line`;
+  // An order's own step has no saved line to answer; a Proposed step answers as the run's note it carries.
+  const id = item.noteId ?? (item.id.startsWith("order:") ? null : item.id);
+  if (id) line += ` [id ${id}]`;
   return line;
 }
 

@@ -79,6 +79,10 @@ interface WriteThesisUpdateInput {
    * open Position for this ticker, if any. null = explicitly no position.
    */
   positionAtTime?: PositionSnapshot | null;
+  /** A review's verdict (STRONGER / UNCHANGED / WEAKER / BROKEN), its one line, and the earlier line it answers. */
+  verdict?: string;
+  verdictLine?: string;
+  answersUpdateId?: string;
 }
 
 /**
@@ -147,6 +151,9 @@ export async function writeThesisUpdate(
         signalIds: input.signalIds ?? [],
         runId: input.runId ?? null,
         tradeId: input.tradeId ?? null,
+        verdict: input.verdict ?? null,
+        verdictLine: input.verdictLine ?? null,
+        answersUpdateId: input.answersUpdateId ?? null,
       },
       select: { id: true },
     });

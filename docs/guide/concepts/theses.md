@@ -13,7 +13,7 @@ A thesis has two halves, written and kept by different hands.
 - **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (why we own the company and what has to stay true, in plain words), the two or three assumptions it rests on, what would prove it wrong, the case for and against, and a score. Every agent reads it as the claim of record. Only a new write-up, or you through [chat](../agents/chat.md), changes the belief, its assumptions and what would prove it wrong; a morning run can change the setup it trades as and its conviction.
 - **The plan** is its [triggers](triggers.md): one sentence each saying when to buy, add, trim, sell or look again. The buy, the floor and the target are triggers too, so the plan can't disagree with itself. This is the half the agents keep up to date.
 
-Alongside both sits what's been said: the stock's Activity, one list. A trigger firing, an analyst's note, a proposal and what you did with it, your own notes and edits are each one line in it. A declined or expired proposal shows the stock's price at that moment, as an approved one shows the fill. The rule is one sentence: the Activity tab shows the whole list, the Overview shows the newest 8, and the next run on the stock reads the same 8 exactly as they read in the feed (`lib/thesis/activity-feed.ts`). If you see it on the Overview, the agent read it; if you don't, the agent didn't either. A proposal waiting for you is pinned to the top of the Overview as the card. The app gives each line it makes a title and never a paragraph: every paragraph you read is an analyst's words or yours.
+Alongside both sits what's been said: the stock's Activity, one list. A trigger firing, an analyst's note, a proposal and what you did with it, your own notes and edits are each one line in it. A declined or expired proposal shows the stock's price at that moment, as an approved one shows the fill. The rule is one sentence: the Activity tab shows the whole list, the Overview shows the newest 8, and the next run on the stock reads the same 8 exactly as they read in the feed (`lib/thesis/activity-feed.ts`). If you see it on the Overview, the agent read it; if you don't, the agent didn't either. A proposal waiting for you is pinned to the top of the Overview as the card. A review can end with a verdict (stronger, unchanged, weaker or broken) and name the earlier note it answers: its title carries the word ("Review · weaker"), and the agent's copy of the line also carries the verdict's one line, the date of the line it answers and each line's id. The app gives each line it makes a title and never a paragraph: every paragraph you read is an analyst's words or yours.
 
 ## What you read
 
@@ -60,7 +60,7 @@ Who may change what:
 - **The Writer:** the whole thesis, claim included.
 - **Chat:** the plan, and the belief and direction when you ask.
 - **A morning run:** the plan, its verdict and a note.
-- **A trigger run:** the plan and a note.
+- **A trigger run:** the plan, its verdict and a note.
 - **You:** any trigger on the thesis sheet, a yes or no on every proposal, and notes through chat, which the next run answers first.
 
 One rule holds over all of them: no agent can lower a floor on a stock we hold. Only you move it down.
@@ -88,6 +88,8 @@ How a save lands or is refused, field by field: [Saving a thesis](../deep-dives/
 
 #### Stored as
 `Thesis`: `status` WATCHING · HOLDING · PASSED · RETIRED (with `retiredReason` DROPPED · SOLD · INVALIDATED · REPLACED) · PROMOTED; `direction` LONG · SHORT, or none on a seed. Sold is RETIRED with SOLD.
+
+A review's verdict is on its Activity line: `ThesisUpdate.verdict` (STRONGER · UNCHANGED · WEAKER · BROKEN), `verdictLine` and `answersUpdateId`, written by `update_thesis` and read into the agent's copy by `saidLine` in `lib/agent/stock-context.ts`.
 
 #### The parts
 `coreBelief`, `keyAssumptions`, `invalidationConds`, `bullCase`, `bearCase`, `snapshot`, `scoring`, `conviction`, `setupId`, `triggers`

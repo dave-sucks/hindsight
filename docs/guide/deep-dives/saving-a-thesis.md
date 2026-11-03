@@ -25,12 +25,12 @@ If you set a field or a trigger by hand after a run started, the run can't chang
 
 The tool is built per agent, so an agent is never offered a field it may not change. A field that is offered gets filled.
 
-- **Writer, 35 fields:** everything. It alone writes the research sections, the score and the variant view.
-- **Chat, 21:** the claim, the view, the plan, the verdict and the note.
-- **Morning run, 18:** the plan, the verdict and the note. No claim, no direction.
-- **Trigger run, 11:** the note, the triggers and the three price levels. No verdict, no status change.
+- **Writer, 35 fields:** everything but the review's verdict. It alone writes the research sections, the score and the variant view.
+- **Chat, 24:** the claim, the view, the plan, the note and the review's verdict.
+- **Morning run, 21:** the plan, the conviction and status, the note and the review's verdict. No claim, no direction.
+- **Trigger run, 14:** the note, the triggers, the three price levels and the review's verdict. No conviction, no status change.
 
-The fields fall in five groups: write-up, claim, plan, verdict and note. A test pins the counts, so a new field has to be placed on purpose.
+The fields fall in six groups: write-up, claim, plan, view (direction, conviction and status), note, and review: the verdict (stronger, unchanged, weaker or broken), its one line, and the earlier line the note answers. A wrong verdict word or line id comes back by name and the rest of the save lands. A test pins the counts, so a new field has to be placed on purpose.
 
 ## Triggers, one at a time
 

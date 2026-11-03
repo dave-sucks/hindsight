@@ -495,12 +495,22 @@ model ThesisUpdate {
   runId     String?
   tradeId   String?
 
+  // A review's verdict on the thesis: STRONGER | UNCHANGED | WEAKER | BROKEN
+  // (String like `type`), and its one sentence on what moved it.
+  verdict         String?
+  verdictLine     String?
+  // The earlier line this note answers (the pre-report note, after the report).
+  answersUpdateId String?
+
   thesis Thesis       @relation(fields: [thesisId], references: [id], onDelete: Cascade)
   run    ResearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  answers    ThesisUpdate?  @relation("Answers", fields: [answersUpdateId], references: [id], onDelete: SetNull)
+  answeredBy ThesisUpdate[] @relation("Answers")
 
   @@index([thesisId, timestamp(sort: Desc)])
   @@index([runId])
   @@index([type, timestamp(sort: Desc)])
+  @@index([answersUpdateId])
 }
 
 // ── Gate rejection log (DAV-219) ─────────────────────────────────────────

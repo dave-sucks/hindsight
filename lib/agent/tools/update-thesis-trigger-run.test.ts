@@ -1,6 +1,6 @@
 /**
  * update-thesis-trigger-run.test.ts — the trigger run's closing save
- * (Roadmap step 10): update_thesis with the trigger run's eleven fields.
+ * (Roadmap step 10): update_thesis with the trigger run's eleven fields, and the review's three.
  *
  * The four trigger runs that failed (ASML 10-07; NVDA, CEG, MU 10-08) each
  * sent the whole 22-field form in every call, change_status WATCHING among it.
@@ -19,15 +19,15 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { updateThesis } from "./update-thesis";
 
 const DOOR = [
-  "add_triggers", "edit_triggers", "entry_price", "rationale", "remove_trigger_ids",
-  "stop_basis", "stop_loss", "target_basis", "target_price", "thesis_id", "trigger_id",
+  "add_triggers", "answers_update_id", "edit_triggers", "entry_price", "rationale", "remove_trigger_ids",
+  "stop_basis", "stop_loss", "target_basis", "target_price", "thesis_id", "trigger_id", "verdict", "verdict_line",
 ];
 const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode }) as never;
 const schemaOf = (runMode: string) => (updateThesis(ctx(runMode)) as unknown as { inputSchema: z.ZodObject<z.ZodRawShape> }).inputSchema;
 const CALLS = (["ASML", "NVDA", "CEG", "MU"] as const).map((t) => [t, fixture[t].call as Record<string, unknown>] as const);
 
 describe("the trigger run's save", () => {
-  it("offers exactly eleven fields, and no change_status", () => {
+  it("offers exactly fourteen fields, and no change_status", () => {
     const schema = schemaOf("INTRADAY_TACTICAL");
     expect(Object.keys(schema.shape).sort()).toEqual(DOOR);
     const json = zodSchema(schema as never).jsonSchema as { properties: Record<string, unknown> };

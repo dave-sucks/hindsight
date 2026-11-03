@@ -38,6 +38,14 @@ export interface FeedItem {
   /** The run's mode when a run wrote the line; null otherwise. */
   runMode: string | null;
   tradeId: string | null;
+  /** A review's verdict (STRONGER / UNCHANGED / WEAKER / BROKEN) and its one line; null when it gave none. */
+  verdict: string | null;
+  verdictLine: string | null;
+  /** The earlier line this note answers, and when that line was written. */
+  answersUpdateId: string | null;
+  answersAt: Date | null;
+  /** On a Proposed step, the run's note it carries: the saved line a later note can answer. */
+  noteId: string | null;
 }
 
 /** A saved Activity line, as the loaders select it (a test's row may carry no id or summary). */
@@ -56,6 +64,10 @@ export interface StoredLine {
   tradeId?: string | null;
   run?: { mode: string | null } | null;
   runMode?: string | null;
+  verdict?: string | null;
+  verdictLine?: string | null;
+  answersUpdateId?: string | null;
+  answers?: { timestamp: Date } | null;
 }
 
 /** An order that went through the approval seam (`expiresAt` set), as the loaders select it. */
@@ -95,6 +107,11 @@ export function proposalSteps(o: ProposalOrder): FeedItem[] {
     runId: null,
     runMode: null,
     tradeId: o.positionId,
+    verdict: null,
+    verdictLine: null,
+    answersUpdateId: null,
+    answersAt: null,
+    noteId: null,
   };
   const steps: FeedItem[] = [
     { ...base, id: `order:${o.id}:proposed`, timestamp: o.createdAt, type: "PROPOSAL_PROPOSED", summary: `Proposed ${intent} on ${o.symbol}${qty}`, rationale: o.rationale },
@@ -132,6 +149,11 @@ export function toFeedItem(u: StoredLine): FeedItem {
     runId: u.runId ?? null,
     runMode: u.runMode ?? u.run?.mode ?? null,
     tradeId: u.tradeId ?? null,
+    verdict: u.verdict ?? null,
+    verdictLine: u.verdictLine ?? null,
+    answersUpdateId: u.answersUpdateId ?? null,
+    answersAt: u.answers?.timestamp ?? null,
+    noteId: null,
   };
 }
 
@@ -168,7 +190,10 @@ export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrde
   const steps = args.orders.flatMap(proposalSteps).map((s) => {
     const oid = proposalOrderId(s.fieldChanges) ?? "";
     const note = s.type === "PROPOSAL_PROPOSED" ? noteFor.get(oid) : undefined;
-    if (note) return { ...s, rationale: note.rationale, runId: note.runId, runMode: note.runMode, triggerId: note.triggerId, priceAtTime: note.priceAtTime };
+    if (note) {
+      const { rationale, runId, runMode, triggerId, priceAtTime, verdict, verdictLine, answersUpdateId, answersAt } = note;
+      return { ...s, rationale, runId, runMode, triggerId, priceAtTime, verdict, verdictLine, answersUpdateId, answersAt, noteId: note.id };
+    }
     const price = priceFor.get(`${oid}:${s.type}`);
     return price != null ? { ...s, priceAtTime: price } : s;
   });
