@@ -11,6 +11,11 @@ import { isPlainReview, reviewTitle, titleSegments, toRow, withPriceChanges, typ
 const at = (iso: string) => new Date(iso);
 const run = (id: string, mode = "INTRADAY_TACTICAL") => ({ runId: id, run: { mode } });
 const TRAIL = "bd941c67-a53a-41b8-918f-d303ec3b5e66";
+/** GEV's resolved list, the part the titles read: the account's 6% trail (the sale that fired) and the analyst's 15% review. */
+const TRIGGERS = [
+  { id: TRAIL, action: "EXIT", predicate: { watch: "move", is: "below", value: 6, variable: "peak" } },
+  { id: "06506e39-522f-4ad1-aa62-d7fe10bf7003", action: "REVIEW", predicate: { watch: "move", is: "below", value: 15, variable: "peak" } },
+];
 
 const ORDERS: ProposalOrder[] = [
   // Tue 10-29 09:45:49 ET: proposed by the trigger run, still waiting.
@@ -197,16 +202,19 @@ describe("a review's verdict and the line it answers: one title on the page, the
   );
   const verdictFeed = activityFeed({ updates: withVerdict, orders: ORDERS });
 
-  it("the agent's line: the title with the word, the paragraph, the verdict's line, the line it answers by date, and its own id", () => {
-    expect(saidBlock("GEV", verdictFeed)!.split("\n")[2]).toBe(
-      `  10-29 09:45 · $881.14 · Review · weaker — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" — verdict: "${LINE}" — answers the 10-28 09:41 line [id cmvtljbyt000u07jtwe1op938]`,
+  it("the agent's line: the title names the trigger the review answered, then the word, the paragraph, the verdict's line, the line it answers by date, and its own id", () => {
+    expect(saidBlock("GEV", verdictFeed, TRIGGERS)!.split("\n")[2]).toBe(
+      `  10-29 09:45 · $881.14 · Sale review below 6% from the high since we bought · weaker — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" — verdict: "${LINE}" — answers the 10-28 09:41 line [id cmvtljbyt000u07jtwe1op938]`,
     );
+    // Without the thesis's list the trigger is unknown and the title is the bare word.
+    expect(saidBlock("GEV", verdictFeed)!.split("\n")[2]).toContain("· Review · weaker — ");
   });
 
-  it("the page's title is the same: Review · weaker", () => {
+  it("the page's title is the same: Sale review below 6% from the high since we bought · weaker", () => {
     const item = verdictFeed.find((i) => i.id === "cmvtljbyt000u07jtwe1op938")!;
     const row = serializeFeedItem(item) as unknown as TimelineUpdate;
     expect(isPlainReview(row)).toBe(true);
+    expect(reviewTitle(row, TRIGGERS)).toEqual({ primary: "Sale review", secondary: "below 6% from the high since we bought · weaker" });
     expect(reviewTitle(row)).toEqual({ primary: "Review", secondary: "· weaker" });
     // A line with its own title keeps it, with the word after it.
     expect(titleSegments({ ...row, type: "UPDATED", fieldChanges: { targetPrice: { from: 80, to: 95 } } })).toEqual({ primary: "Updated", secondary: "target $80.00 → $95.00 · weaker" });

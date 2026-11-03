@@ -131,14 +131,21 @@ describe("which of the principal's lines ask a run for an answer", () => {
 describe("the block: the newest 8 lines of the feed, as the owner sees them, whole", () => {
   it("09-30 morning read: the 8 newest, newest first, each as the Activity tab titles it", () => {
     const feed = feedBefore("2026-09-30T12:04:25Z");
-    const { text, unansweredDecision } = buildStockContext({ ticker: "CEG", feed });
+    // The resolved list the run is handed: the 09-28 morning review answered the analyst's 200-day rule, and its title says so.
+    const triggers = [
+      { id: BELOW_200_DAY, action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma200" } },
+      { id: FIFTEEN_OFF_HIGH, action: "REVIEW", predicate: { watch: "move", is: "below", value: 15, variable: "peak" } },
+    ];
+    const { text, unansweredDecision } = buildStockContext({ ticker: "CEG", feed, triggers });
     const lines = text!.split("\n");
     expect(lines[0]).toBe("WHAT'S BEEN SAID ON $CEG — its newest 8 Activity lines, newest first, as the owner sees them:");
     expect(lines).toHaveLength(RECENT_ITEMS + 2);
     // The same 8 the Overview shows, in the same order.
     expect(lines.slice(1, 9).map((l) => l.slice(2, 13))).toEqual(recentItems(feed).map((i) => saidLine(i).slice(2, 13)));
-    // The 09-28 morning note, whole; the 15% review that fired after it, as the tab titles it.
-    expect(text).toContain('09-28 08:04 · $261.23 · Review — "CEG\'s repeated 200-day review');
+    // The 09-28 morning note, whole, titled by the trigger it answered; the 15% review that fired after it, as the tab titles it.
+    expect(text).toContain('09-28 08:04 · $261.23 · Review below the 200-day average — "CEG\'s repeated 200-day review');
+    // Handed no list, the trigger is unknown and the title is the bare word.
+    expect(buildStockContext({ ticker: "CEG", feed }).text).toContain('09-28 08:04 · $261.23 · Review — "CEG\'s repeated 200-day review');
     expect(text).toContain("09-28 11:20 · $257.63 · Trigger: Trailing 15% from high — review");
     // Older than the 8: the 09-14 decline and the 09-15 removal are not here; the full history is one call away.
     expect(text).not.toContain(DECLINE_ENDS);

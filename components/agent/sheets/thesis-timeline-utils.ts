@@ -18,6 +18,8 @@
  *   - buildTimeline: each line itself; identical neighbours fold into one ×N row
  */
 
+import { conditionsOf, shapeOf, whenText, type Condition, type Watch } from "@/lib/agent/triggers/condition";
+
 export type FieldChange = { from: unknown; to: unknown };
 
 export interface TimelineUpdate {
@@ -248,9 +250,44 @@ export function titleSegments(u: TimelineUpdate): TitleSegments {
   return withVerdict(u, { primary: t.primary, secondary: t.secondary(u) });
 }
 
-/** A plain review's title (see isPlainReview): "Review", and its verdict after it, "Review · weaker". */
-export function reviewTitle(u: TimelineUpdate): TitleSegments {
-  return withVerdict(u, { primary: "Review", secondary: "" });
+/** A trigger as a review's title reads it: the one the review answered, found by the row's `triggerId`. */
+export interface TitleTrigger {
+  id: string;
+  action: string;
+  predicate: unknown;
+}
+
+/** What a review on a measure is called. A measure not named here titles the review with the trigger's own condition. */
+const REVIEW_KINDS: Partial<Record<Watch, (c: Condition) => string>> = {
+  report: (c) => (c.is === "after" ? "Post-earnings review" : "Pre-earnings review"),
+  surprise: () => "Post-earnings review",
+  repeat: () => "Scheduled review",
+  from_date: () => "Checkpoint review",
+  filing: () => "Filing review",
+};
+
+/**
+ * A plain review's title (see isPlainReview): what kind of review it was,
+ * from the trigger that fired. A review after a sale line fired is a "Sale
+ * review" with that line's condition ("Sale review below $42.70"); a review
+ * trigger is named by its measure: "Pre-earnings review", "Post-earnings
+ * review", "Scheduled review" (the review clock), "Checkpoint review" (so
+ * many days after the buy), "Filing review", or "Review" with the price or
+ * chart condition ("Review below the 200-day average"); no trigger, or one
+ * since removed, is "Review". The verdict's word follows ("Pre-earnings
+ * review · weaker"). The agent's copy of the line carries the same title
+ * (saidLine in lib/agent/stock-context.ts).
+ */
+export function reviewTitle(u: TimelineUpdate, triggers?: ReadonlyArray<TitleTrigger>): TitleSegments {
+  const trigger = u.triggerId ? triggers?.find((t) => t.id === u.triggerId) : undefined;
+  const when = trigger ? shapeOf(trigger.predicate) : null;
+  if (!when) return withVerdict(u, { primary: "Review", secondary: "" });
+  if (trigger!.action === "EXIT") return withVerdict(u, { primary: "Sale review", secondary: whenText(when) });
+  for (const c of conditionsOf(when)) {
+    const kind = REVIEW_KINDS[c.watch];
+    if (kind) return withVerdict(u, { primary: kind(c), secondary: "" });
+  }
+  return withVerdict(u, { primary: "Review", secondary: whenText(when) });
 }
 
 /** A review's verdict word after its title, lowercase: "· weaker". */

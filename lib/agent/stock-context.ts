@@ -26,6 +26,7 @@ import {
   reviewTitle,
   titleSegments,
   type TimelineUpdate,
+  type TitleTrigger,
 } from "@/components/agent/sheets/thesis-timeline-utils";
 import { recentItems, RECENT_ITEMS, type FeedItem } from "@/lib/thesis/activity-feed";
 
@@ -185,11 +186,11 @@ function asTimelineUpdate(item: FeedItem): TimelineUpdate {
  * verdict's line, the line it answers, and its own id (the one a later note
  * answers). The same title grammar as the Activity tab, so the two never differ.
  */
-export function saidLine(item: FeedItem): string {
+export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>): string {
   const tu = asTimelineUpdate(item);
   const kind = eventKind(tu);
-  // A plain review reads "Review" on screen too ("Review · weaker" with a verdict); everything that happened keeps its title.
-  const t = isPlainReview(tu) ? reviewTitle(tu) : titleSegments(tu);
+  // A plain review reads as the page titles it: the kind of review, from the trigger it answered ("Pre-earnings review · weaker"); everything that happened keeps its title.
+  const t = isPlainReview(tu) ? reviewTitle(tu, triggers) : titleSegments(tu);
   const title = kind === "note" ? "Your note" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
   const chips = [...ladderChangeLines(tu), ...notAppliedLines(tu)].map((c) => c.text);
   const comment = proposalUserMessage(tu);
@@ -206,22 +207,22 @@ export function saidLine(item: FeedItem): string {
   return line;
 }
 
-/** The block every agent reads first on a stock: the newest 8 lines of its feed. */
-export function saidBlock(ticker: string, feed: FeedItem[]): string | null {
+/** The block every agent reads first on a stock: the newest 8 lines of its feed. `triggers` is the thesis's resolved list, so a review's title names the trigger it answered. */
+export function saidBlock(ticker: string, feed: FeedItem[], triggers?: ReadonlyArray<TitleTrigger>): string | null {
   const items = recentItems(feed);
   if (items.length === 0) return null;
   const T = ticker.toUpperCase();
   return [
     `WHAT'S BEEN SAID ON $${T} — its newest ${items.length === RECENT_ITEMS ? RECENT_ITEMS : items.length} Activity lines, newest first, as the owner sees them:`,
-    ...items.map(saidLine),
+    ...items.map((i) => saidLine(i, triggers)),
     `Full history: get_theses(tickers: ["${T}"], include_history: true)`,
   ].join("\n");
 }
 
 /** What a run is handed on a stock, and the two facts the situations read off the whole feed. */
-export function buildStockContext(args: { ticker: string; feed: FeedItem[] }): StockContext {
+export function buildStockContext(args: { ticker: string; feed: FeedItem[]; triggers?: ReadonlyArray<TitleTrigger> }): StockContext {
   return {
-    text: saidBlock(args.ticker, args.feed),
+    text: saidBlock(args.ticker, args.feed, args.triggers),
     openFires: openFires(args.feed),
     unansweredDecision: unansweredWord(args.feed),
   };
