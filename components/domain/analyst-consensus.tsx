@@ -18,14 +18,14 @@
  *     and "price target range" in a single visual. The average target
  *     anchors the bottom-right corner of the key row.
  *
- *   • Collapsible synthesis narrative (thesis sheet only) — the prose
- *     summary from the `analystConsensus` JSONB column.
+ *   • Under the bar, the date of the targets and the next-quarter EPS
+ *     consensus with its revisions. Live data only: the written synthesis
+ *     the Writer used to add was dropped 2026-11-03 with the research essays.
  *
  * Data comes from getAnalystCoverageData (lib/actions/analyst-coverage) —
  * server-fetched and passed in; the widget itself never fetches.
  */
 
-import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { TickBar, type Tick } from "@/components/ui/gauge";
@@ -34,18 +34,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { SourceCitation, type CitationSource } from "@/components/ai-elements/inline-citation";
+import type { CitationSource } from "@/components/ai-elements/inline-citation";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { epsWords } from "@/lib/market-data/street-consensus";
-import type {
-  ResearchCitation,
-  ResearchTextSection,
-} from "@/lib/types/thesis-sheet";
+import type { ResearchCitation } from "@/lib/types/thesis-sheet";
 
 /**
  * A thesis's research citations as sources for the one SourceCitation pill.
@@ -78,22 +70,15 @@ export function researchCitationSources(
 
 export function AnalystConsensusWidget({
   coverage,
-  fallbackConsensus = null,
-  narrative = null,
   currentPrice,
   className,
 }: {
   /** Live analyst coverage from getAnalystCoverageData. */
   coverage: AnalystCoverageData | null;
-  /** Legacy mint-time consensus shape — thesis sheet only. */
-  fallbackConsensus?: { buy: number; hold: number; sell: number } | null;
-  /** Prose synthesis behind a collapsible — thesis sheet only. */
-  narrative?: ResearchTextSection | null;
   currentPrice: number | null;
   className?: string;
 }) {
-  // Source consensus: prefer live coverage; fall back to stored values from
-  // mint time. Either may be null — render nothing in that case.
+  // The live ratings; nothing to draw without them and without targets.
   const consensus = coverage?.consensus
     ? {
         buy: coverage.consensus.buy,
@@ -104,25 +89,14 @@ export function AnalystConsensusWidget({
           coverage.consensus.hold +
           coverage.consensus.sell,
       }
-    : fallbackConsensus
-      ? {
-          buy: fallbackConsensus.buy,
-          hold: fallbackConsensus.hold,
-          sell: fallbackConsensus.sell,
-          total:
-            fallbackConsensus.buy +
-            fallbackConsensus.hold +
-            fallbackConsensus.sell,
-        }
-      : null;
+    : null;
 
   const priceTargets = coverage?.priceTargets ?? null;
   const impliedUpsidePct =
     priceTargets && currentPrice != null && currentPrice > 0
       ? ((priceTargets.average - currentPrice) / currentPrice) * 100
       : null;
-  const hasAnyData =
-    (consensus && consensus.total > 0) || priceTargets != null || narrative != null;
+  const hasAnyData = (consensus && consensus.total > 0) || priceTargets != null;
   if (!hasAnyData) return null;
 
   return (
@@ -156,7 +130,6 @@ export function AnalystConsensusWidget({
         </p>
       ) : null}
 
-      {narrative ? <ConsensusNarrative narrative={narrative} /> : null}
     </Card>
   );
 }
@@ -336,26 +309,5 @@ function ConsensusDistributionRow({
         ) : null}
       </div>
     </div>
-  );
-}
-
-function ConsensusNarrative({
-  narrative,
-}: {
-  narrative: ResearchTextSection;
-}) {
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-        <span>Synthesis</span>
-        <ChevronDown className="size-3.5 transition-transform data-[panel-open]:rotate-180" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2 text-sm leading-relaxed">
-        <p className="whitespace-pre-wrap">
-          {narrative.text}{" "}
-          <SourceCitation sources={researchCitationSources(narrative.citations)} />
-        </p>
-      </CollapsibleContent>
-    </Collapsible>
   );
 }

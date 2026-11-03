@@ -2,9 +2,9 @@
 
 /**
  * ThesisHeader — the top of a thesis, the same on the sheet and the trade
- * page: the stock's logo, its name with the status pill beside it, the
- * ticker and the conviction under them, the action buttons on the right. One component, so
- * the two surfaces cannot drift.
+ * page: the stock's logo, its name with the status pill and the conviction
+ * chip (with the score) beside it, the ticker under them, the action buttons
+ * on the right. One component, so the two surfaces cannot drift.
  */
 
 import type { ReactNode } from "react";
@@ -60,33 +60,22 @@ export function StatusPill({
   );
 }
 
-// ── ConvictionText ──
-// The writer's view-strength tier as words on the ticker line — "🔥 High
-// conviction" — in place of the exchange, which said nothing you act on. The
-// flame marks the top two tiers; the rationale sits behind a hover. Null on
-// legacy rows and passes, so the line is just the ticker.
-export function ConvictionText({
-  conviction,
-  rationale,
-}: {
-  conviction: Conviction | null;
-  rationale: string | null;
-}) {
-  if (!conviction) return null;
-  const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} conviction`;
+// ── ConvictionChip ──
+// The writer's conviction and its score as one chip by the title — "🔥 High
+// conviction · 8/10" (the owner, 2026-11-02). The flame marks the top two
+// tiers; the conviction's one-line reason is on the Thesis tab, folded with
+// where we differ from the street. Nothing on legacy rows and passes.
+export function ConvictionChip({ conviction, score }: { conviction: Conviction | null; score: number | null }) {
+  if (!conviction && score == null) return null;
+  const label = conviction ? `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} conviction` : null;
   const hot = conviction === "STRONG" || conviction === "HIGH";
-  const text = (
-    <span className="inline-flex items-center gap-1">
+  return (
+    <Badge variant="secondary" className="gap-1.5 font-normal tabular-nums">
       {hot ? <FlameIcon className="size-3" /> : null}
       {label}
-    </span>
-  );
-  if (!rationale) return text;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>{text}</TooltipTrigger>
-      <TooltipContent>{rationale}</TooltipContent>
-    </Tooltip>
+      {label && score != null ? <span className="text-muted-foreground">·</span> : null}
+      {score != null ? `${score}/10` : null}
+    </Badge>
   );
 }
 
@@ -98,7 +87,8 @@ export interface ThesisHeaderProps {
   status: ThesisStatus | string;
   agentWatchDays: number | null;
   conviction: Conviction | null;
-  convictionRationale: string | null;
+  /** The thesis's score out of 10, beside the conviction. */
+  score?: number | null;
   /** The owning analyst; with `thesisId`, shows Send to agent. */
   analystId: string | null;
   thesisId?: string;
@@ -113,29 +103,23 @@ export function ThesisHeader({
   status,
   agentWatchDays,
   conviction,
-  convictionRationale,
+  score = null,
   analystId,
   thesisId,
   onSent,
   extraActions,
 }: ThesisHeaderProps) {
-  const convictionText = <ConvictionText conviction={conviction} rationale={convictionRationale} />;
   return (
     <StockIdentityHeader
       ticker={ticker}
       displayName={displayName}
-      inlineBadge={<StatusPill status={status} agentWatchDays={agentWatchDays} />}
-      subline={
+      inlineBadge={
         <span className="inline-flex items-center gap-1.5">
-          {ticker}
-          {conviction ? (
-            <>
-              <span>·</span>
-              {convictionText}
-            </>
-          ) : null}
+          <StatusPill status={status} agentWatchDays={agentWatchDays} />
+          <ConvictionChip conviction={conviction} score={score} />
         </span>
       }
+      subline={ticker}
       actions={
         <>
           {analystId && thesisId ? (
