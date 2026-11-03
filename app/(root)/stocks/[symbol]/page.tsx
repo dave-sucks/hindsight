@@ -230,21 +230,18 @@ export default async function StockDetailPage({ params }: Props) {
   );
 
   const statSections = financialStatSections(metrics, marketCap);
-  // The statistics take the left third, the filings the right two thirds.
   const financials = (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_2fr]">
-      <div className="min-w-0">
-        {statSections.length > 0 ? (
-          <StatTable sections={statSections} />
-        ) : (
-          <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
-        )}
-      </div>
-      <div className="min-w-0 space-y-2">
+    <>
+      {statSections.length > 0 ? (
+        <StatTable sections={statSections} />
+      ) : (
+        <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
+      )}
+      <div className="space-y-2">
         <BlockLabel>Filings</BlockLabel>
         <StockFilingsSection symbol={upperSymbol} />
       </div>
-    </div>
+    </>
   );
 
   const news = (
