@@ -117,12 +117,12 @@ function research(): WriterResearchPhaseOutput {
   return {
     ok: true,
     noteText: [
-      "## Snapshot",
-      "DOCU drift note.",
-      "## Latest Earnings",
-      "- Q2 billings grew 9% against a 6% guide.",
+      "## Company",
+      "DocuSign sells e-signature and agreement software by subscription [STRUCTURED:profile].",
       "## Bull Case",
       "- eSignature renewals are expanding into the IAM suite.",
+      "## Bear Case",
+      "- Q2 billings grew 9% against a 6% guide; a slip under the guide breaks the drift.",
     ].join("\n"),
     decision: v.decision as ValidatedThesisDecision,
     riskReward: null,
@@ -148,12 +148,13 @@ beforeEach(() => {
   );
 });
 
-it("the writer's real save writes the bull case and the earnings section to the row", async () => {
+it("the writer's real save writes the company line, the bull case and the bear case to the row", async () => {
   const result = await writerPersistPhase(args, pullOutput, research(), Date.now());
 
   expect(result.status).toBe("COMPLETE");
   expect(mockThesisUpdate).toHaveBeenCalledTimes(1);
   const data = (mockThesisUpdate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+  expect(data.company).toBe("DocuSign sells e-signature and agreement software by subscription.");
   expect(JSON.stringify(data.bullCase)).toContain("expanding into the IAM suite");
-  expect(JSON.stringify(data.latestEarnings)).toContain("billings grew 9%");
+  expect(JSON.stringify(data.bearCase)).toContain("billings grew 9%");
 });

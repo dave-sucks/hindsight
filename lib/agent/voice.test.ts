@@ -206,9 +206,9 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     expect(wordsOf(submit().core_belief)).toBe(words);
   });
 
-  it("the writer asks for a company-first snapshot and belief", () => {
+  it("the writer asks for the company line and a belief about the business", () => {
     const writer = SAMPLE_PROMPTS.writer();
-    expect(writer).toContain("One paragraph, the first thing the owner reads on a new stock: the\n   stock's standing description");
+    expect(writer).toContain("## Company\n   Two plain sentences: what the company does and how it makes money.");
     expect(writer).toContain("core_belief: why we own the company");
     expect(writer).not.toMatch(/outcome \+ timeframe \+\s+mechanism|which of YOUR\s+SETUPS it is/);
   });

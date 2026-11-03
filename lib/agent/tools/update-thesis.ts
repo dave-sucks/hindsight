@@ -125,6 +125,7 @@ const updateSchema = z.object({
   add_triggers: triggersInputArraySchema.optional().describe(TRIGGER_EDITS.add),
   edit_triggers: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
   remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
+  company: F.company.optional(),
   snapshot: F.snapshot.optional(),
   recent_catalysts: F.recent_catalysts.optional(),
   fundamentals: F.fundamentals.optional(),
@@ -169,6 +170,7 @@ type UpdatePatch = Partial<{
   // PR-9 flat schema: legacy plain-string columns (reasoningSummary,
   // thesisBullets, riskFlags) replaced by JSONB section columns. Per the
   // single-shot cutover, the writer no longer surfaces the old fields.
+  company: string;
   snapshot: object;
   bullCase: object;
   bearCase: object;
@@ -255,6 +257,7 @@ function dryRunPassed(ticker: string, triggerOps: TriggerOpResult[], refusedFiel
  * the tool (4,725 characters each); the writer's refresh keeps them.
  */
 const WRITER_ONLY_UPDATE_FIELDS = {
+  company: true,
   bull_case: true,
   bear_case: true,
   recent_catalysts: true,
@@ -359,7 +362,7 @@ const forAgent = (r: RefusedField[]) => r.map(({ field, reason }) => ({ field, r
 
 /** Each field update_thesis compares with the stored row, and the column that stores it. */
 const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
-  ["direction", "direction"], ["core_belief", "coreBelief"], ["key_assumptions", "keyAssumptions"],
+  ["direction", "direction"], ["core_belief", "coreBelief"], ["company", "company"], ["key_assumptions", "keyAssumptions"],
   ["invalidation_conditions", "invalidationConds"], ["conviction", "conviction"],
   ["conviction_rationale", "convictionRationale"], ["horizon", "horizon"], ["setup_id", "setupId"],
   ["snapshot", "snapshot"], ["bull_case", "bullCase"], ["bear_case", "bearCase"],
@@ -544,6 +547,7 @@ export const updateThesis = defineTool({
         catalystsAndEvents: true,
         analystConsensus: true,
         insiderTechnical: true,
+        company: true,
         coreBelief: true,
         keyAssumptions: true,
         invalidationConds: true,
@@ -1103,6 +1107,7 @@ export const updateThesis = defineTool({
     if (args.bear_case !== undefined) {
       patch.bearCase = args.bear_case;
     }
+    if (args.company !== undefined) patch.company = args.company;
     // 6 new V2 sections — no legacy fallback.
     if (args.recent_catalysts !== undefined) patch.recentCatalysts = args.recent_catalysts;
     if (args.fundamentals !== undefined) patch.fundamentals = args.fundamentals;
@@ -1113,6 +1118,7 @@ export const updateThesis = defineTool({
     // Stamp researchUpdatedAt if any V2 section was touched (drives the
     // daily-run staleness gate).
     if (
+      args.company !== undefined ||
       args.snapshot !== undefined ||
       args.bull_case !== undefined ||
       args.bear_case !== undefined ||
@@ -1680,6 +1686,7 @@ export const updateThesis = defineTool({
     // the patch assembly above.
     const diffFields = [
       // Narrative (flat schema)
+      "company",
       "snapshot",
       "bullCase",
       "bearCase",

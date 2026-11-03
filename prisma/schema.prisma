@@ -296,6 +296,7 @@ model Thesis {
   setupId String?
 
   coreBelief        String? // The actual claim, separate from the trade rationale
+  company           String? // Two sentences: what the company does and how it makes money. The Writer's; changed only when the business changes.
   keyAssumptions    String[] @default([]) // Premises that must hold
   invalidationConds String[] @default([]) // What would prove this wrong
 

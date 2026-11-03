@@ -38,7 +38,7 @@ const fieldsOf = (runMode: string): string[] => {
 
 /** Every field update_thesis has, in its row of the rule. */
 const ROWS: Record<string, string[]> = {
-  "write-up": ["snapshot", "recent_catalysts", "fundamentals", "latest_earnings", "catalysts_and_events", "bull_case", "bear_case", "analyst_consensus", "insider_technical", "research_data", "scoring", "variant_view"],
+  "write-up": ["company", "snapshot", "recent_catalysts", "fundamentals", "latest_earnings", "catalysts_and_events", "bull_case", "bear_case", "analyst_consensus", "insider_technical", "research_data", "scoring", "variant_view"],
   claim: ["core_belief", "key_assumptions", "invalidation_conditions"],
   plan: ["entry_price", "entry_on_close", "target_price", "target_basis", "stop_loss", "stop_basis", "setup_id", "horizon", "catalyst_date", "add_triggers", "edit_triggers", "remove_trigger_ids"],
   view: ["direction", "conviction", "conviction_rationale", "change_status"],
@@ -70,7 +70,7 @@ describe("what a save may change, by who is saving", () => {
     }
     lines.push(`| **fields** | | ${DOORS.map(([, m]) => byDoor[m].length).join(" | ")} |`);
     console.log(lines.join("\n"));
-    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([35, 24, 21, 14]);
+    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([36, 24, 21, 14]);
   });
 
   it("every field of the tool is in one row of the rule", () => {

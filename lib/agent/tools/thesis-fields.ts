@@ -41,7 +41,7 @@ const sectionBullets = z
   .describe("Bulleted list, one citation per bullet.");
 
 const SCORING =
-  "The setup's score, each part with a one-sentence note citing the evidence: trendStrength 0-3 (0 no trend or breaking down, 3 a clean multi-week uptrend), " +
+  "The setup's score: trendStrength 0-3 (0 no trend or breaking down, 3 a clean multi-week uptrend), " +
   "relativeStrength 0-3 (0 a laggard, 3 the sector leader), entryQuality 0-2 (0 extended or no setup, 2 a clean defined setup), " +
   "catalystFreshness 0-2 (0 already played, 2 still ahead). They add up to the composite out of 10; a buy is refused when it is under this analyst's minimum confidence.";
 
@@ -59,7 +59,8 @@ export type Verdict = (typeof VERDICTS)[number];
 
 export function thesisFields(opts: { writer?: boolean } = {}) {
   const score = (max: number) => (opts.writer ? z.number() : z.number().min(0).max(max));
-  const part = (max: number) => z.object({ score: score(max), note: z.string() });
+  // The four notes went 2026-11-03: nothing read them. A sent note is kept; none is asked for.
+  const part = (max: number) => z.object({ score: score(max), note: z.string().optional() });
   return {
     direction: z
       .enum(["LONG", "SHORT", "PASS"])
@@ -98,7 +99,18 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
         "Why we own the company, in two or three plain sentences: what it does, why it is worth owning, and what has to stay true. " +
           "About the business, never the trade: no price path, no target, no dates, no shorthand.",
       ),
-    key_assumptions: z.array(z.string()).describe("Specific, checkable premises that must stay true for the core belief: two or more on LONG or SHORT."),
+    company: z
+      .string()
+      .describe(
+        "What the company does and how it makes money, in two plain sentences (\"Samsara sells connected-operations software and the sensors that feed it to fleets; revenue is subscription, growing about 30% a year.\"). " +
+          "Written once; changed only when the business changes.",
+      ),
+    key_assumptions: z
+      .array(z.string())
+      .describe(
+        "Specific, checkable premises that must stay true for the core belief, two or more on LONG or SHORT, each ending with when and where it is checked " +
+          "(\"…, checked at the Q3 report on December 4\"; \"…, in each 10-Q\"). A premise with no reading and no date cannot be checked.",
+      ),
     invalidation_conditions: z
       .array(z.string())
       .describe(
