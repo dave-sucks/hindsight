@@ -193,7 +193,7 @@ export function ReadDemo({ situation }: { situation?: FrameworkSituation }) {
               {c.size === "line"
                 ? "Everything else waits until something changes."
                 : c.size === "short"
-                  ? "No research essays: the short row points to the full one by name."
+                  ? "The research sections wait: the short row points to the full one by name."
                   : "Two situations get this by rule, because their answer needs the research re-planned."}
             </p>
           </div>

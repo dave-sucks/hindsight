@@ -43,7 +43,7 @@ At 8 AM Eastern on the analyst's run days, Monday to Friday by default. Market h
 Two reads open the run. `get_portfolio_context` gives positions, cash, the account's open risk and the market's mood. `get_theses` gives the book, each stock at the size today needs:
 
 - **A quiet stock** is one line: the price, the plan, the next review.
-- **A stock in a situation** gets a short row (position, plan, triggers, belief) and that situation's instructions, once.
+- **A stock in a situation** gets a short row (position, plan, triggers, the belief, the bull and bear cases) and that situation's instructions, once.
 - **A stock that needs a new plan** gets the full row, research and all.
 
 <!-- asset: read-demo -->

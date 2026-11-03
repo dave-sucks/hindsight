@@ -81,7 +81,7 @@ export const MEASURED_REQUEST = {
 
 export const READ_SIZES = {
   line: "95 to 170 characters",
-  short: "1,800 to 6,900 characters",
+  short: "1,800 to 9,900 characters",
   full: "about 20,000 characters",
 } as const;
 
@@ -133,10 +133,10 @@ export const SHEET_FIELDS: ReadonlyArray<{
   {
     section: "Research",
     fields: [
-      { key: "bull", label: "Bull case", value: "Five points", sizes: ["full"] },
-      { key: "bear", label: "Bear case", value: "Four points", sizes: ["full"] },
-      { key: "conviction", label: "Why this conviction", value: "Two paragraphs", sizes: ["full"] },
-      { key: "variant", label: "Where we differ from the Street", value: "One paragraph", sizes: ["full"] },
+      { key: "bull", label: "Bull case", value: "Five points", sizes: ["short", "full"] },
+      { key: "bear", label: "Bear case", value: "Four points", sizes: ["short", "full"] },
+      { key: "conviction", label: "Why this conviction", value: "Two paragraphs", sizes: ["short", "full"] },
+      { key: "variant", label: "Where we differ from the Street", value: "One paragraph", sizes: ["short", "full"] },
       { key: "sections", label: "Fundamentals · earnings · filings · insiders", value: "Seven sections", sizes: ["full"] },
     ],
   },
