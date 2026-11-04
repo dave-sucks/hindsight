@@ -227,7 +227,7 @@ export function validateThesisDecision(
     const atr = opts.chart?.atr14;
     const next = pullback
       ? averages.length
-        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints, target the prior high at ≥ 2R — or PASS with the reason.`
+        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints — or PASS with the reason.`
         : " Write it on MA_PULLBACK (buy at a rising 20- or 50-day, stop 1 ATR under it) if the trend allows — or PASS with the reason."
       : " Pick a setup that applies, or PASS with the reason.";
     errors.push(
@@ -336,8 +336,8 @@ export function validateThesisDecision(
     const canPullback = opts.setups?.some((s) => s.id === "MA_PULLBACK") ?? false;
     const plan =
       canPullback && averages.length
-        ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints, target the prior high at ≥ 2R. `
-        : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop and a target at ≥ 2R. ";
+        ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints. `
+        : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop. ";
     errors.push(
       `levels: a ${d.direction} with no entry, no trigger and no review can never come back — nothing on the stock can fire. ${plan}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );

@@ -24,7 +24,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   daily: 7_939,
   tactical: 13_392,
-  writer: 14_539,
+  writer: 14_670,
   chat: 33_804,
 };
 

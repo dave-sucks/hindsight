@@ -62,7 +62,7 @@ export function buildSetupList(): DocsSetup[] {
     preconditions: s.preconditions,
     entry: s.entry.text,
     stop: s.stop.text,
-    target: s.target.text,
+    target: s.target?.text ?? null,
     time: s.time.text,
     failureSigns: s.failureSigns,
   }));
