@@ -56,7 +56,7 @@ export function ProposalNote({ orderId, reason, writing }: { orderId: string; re
       onClick={() => setOpen((v) => !v)}
       title={open ? "Collapse" : "Expand"}
     >
-      {open ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-3">{paragraphs.join(" ")}</p>}
+      {open ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-2">{paragraphs.join(" ")}</p>}
     </div>
   );
 }
