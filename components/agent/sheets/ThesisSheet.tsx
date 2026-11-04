@@ -387,7 +387,7 @@ function ResearchView({ state, filings, companyName }: { state: ThesisDossier; f
     <>
       {company ? (
         <Section label={`About ${companyName?.trim() || state.ticker}`}>
-          <p className="text-xl font-normal leading-relaxed">{company}</p>
+          <p className="text-lg font-normal leading-relaxed">{company}</p>
         </Section>
       ) : null}
 
@@ -980,7 +980,18 @@ export function ThesisBody({
 
       {/* ── Overview: the belief → the plan → the newest 8 ── */}
       <TabsContent value={0} className="space-y-4">
-      {belief ? <p className="text-sm text-foreground leading-relaxed">{belief}</p> : null}
+      {/* ── Whether it needs work today (DAV-304) ── */}
+      <WorkFlagLine
+        status={state.status}
+        needsAction={quote?.needsAction ?? null}
+        situations={quote?.situations ?? []}
+        quoteLoading={quoteLoading}
+        quoteFailed={!quoteLoading && quote == null}
+      />
+
+      {/* The standing opinion, the same size as the company line on Research. */}
+      {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
+
 
       {/* ── The plan: the triggers ── */}
       {thesis_id ? (
@@ -994,15 +1005,6 @@ export function ThesisBody({
           onChanged={refresh}
         />
       ) : null}
-
-      {/* ── Whether it needs work today (DAV-304) ── */}
-      <WorkFlagLine
-        status={state.status}
-        needsAction={quote?.needsAction ?? null}
-        situations={quote?.situations ?? []}
-        quoteLoading={quoteLoading}
-        quoteFailed={!quoteLoading && quote == null}
-      />
 
       {/* The newest 8 Activity lines, the ones the agents are handed, in the Activity tab's own design. */}
       <RecentActivity items={recent} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
