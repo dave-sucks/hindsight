@@ -23,7 +23,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   daily: 7_939,
-  tactical: 13_458,
+  tactical: 13_392,
   writer: 14_368,
   chat: 33_804,
 };
@@ -36,9 +36,9 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
  */
 const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-03, on main + #909 + #911 + #912: +100 each from #911's get_theses text, +513 from update_thesis's verdict fields.
-  "research-run": 30_680,
-  tactical: 26_600,
-  principal: 63_231,
+  "research-run": 30_681,
+  tactical: 26_601,
+  principal: 63_232,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

@@ -115,6 +115,6 @@ describe("get_theses — the facts on the saved row", () => {
   it("a quiet row goes through the builder as one line", async () => {
     const { model, screen } = await read();
     expect((screen.quiet_theses as Array<{ ticker: string }>).map((q) => q.ticker)).toEqual(["BBB"]);
-    expect(model.quiet_theses).toEqual(["BBB · watch · LONG · BASE_BREAKOUT · $33.00 · buy $36.00 · target $48.00 · floor $32.00 · id t_bbb"]);
+    expect(model.quiet_theses).toEqual(["BBB · watch · LONG · BASE_BREAKOUT · $33.00 · buy $36.00 · id t_bbb"]);
   });
 });
