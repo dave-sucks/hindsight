@@ -12,7 +12,7 @@ An agent buys with `place_trade`. Before anything is written it checks:
 2. The thesis has a committed view and scores at or above the analyst's minimum.
 3. The analyst has a free slot. A buy waiting for approval holds its slot, so a queue can't run past the cap.
 4. The analyst holds none of the stock and has no buy waiting on it.
-5. The live price hasn't already passed the target or the floor.
+5. The plan has a floor, and the live price hasn't already passed it, or the target when the stock carries one.
 
 The agent doesn't pick the size. It's set by risk: the money at risk, divided by the distance to the floor, scaled by conviction and kept inside the analyst's band. One transaction then writes the position and an `Order` with a fresh idempotency key. The key is the broker's client order ID, so a lost reply can't lose the order.
 

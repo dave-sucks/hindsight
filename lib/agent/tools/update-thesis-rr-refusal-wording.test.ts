@@ -106,21 +106,13 @@ beforeEach(() => {
   mockThesisFindUnique.mockResolvedValue(msft());
 });
 
-describe("update_thesis — the 2:1 refusal names the ops that exist (DAV-262)", () => {
-  it("MSFT 09-14: a plan under the floor is refused with remove_trigger_ids naming the buy, floor and target", async () => {
-    // The stop nudged to $450 with the target left at $600: (600 − 518) / (518 − 450) = 1.21.
-    const refused = await run({ stop_loss: 450 });
-    // Refused with the plan message by name; the rest of the call lands.
-    expect(refused.data?.ok).toBe(true);
-    expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
-
-    const message = String((refused.data?.refused_fields as Array<{ field: string; reason: string }>).find((f) => f.field === "triggers")?.reason);
-    expect(message).toContain("1.21:1");
-    expect(message).toContain("remove_trigger_ids");
-    expect(message).not.toMatch(/resend triggers|triggers\[\]|pass that array|ACTIVE thesis/);
-    // The set-down call names the plan's three levels by id, not the review cadence.
-    const named = [...message.matchAll(/"([0-9a-f-]{36})"/g)].map((m) => m[1]);
-    expect(named.sort()).toEqual([BUY, FLOOR, TARGET].sort());
+describe("update_thesis — a plan under 2:1 lands (the ratio is not a rule, 2026-11-04)", () => {
+  it("MSFT 09-14: the stop to $450 with the target at $600 (1.21:1) lands; nothing is refused", async () => {
+    const saved = await run({ stop_loss: 450 });
+    expect(saved.data?.ok).toBe(true);
+    expect(((saved.data?.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
+    expect(mockThesisUpdate.mock.calls.some(([a]) => a.data.stopLoss === 450)).toBe(true);
+    expect(JSON.stringify(saved)).not.toMatch(/\d:1|R\/R floor/);
   });
 
   it("following the named set-down lands", async () => {

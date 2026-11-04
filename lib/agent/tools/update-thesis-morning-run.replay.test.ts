@@ -95,21 +95,16 @@ describe("four real morning calls, sent verbatim through the SDK's loop to the m
     expect(save.result.data?.trigger_ops).toEqual(expect.arrayContaining([expect.objectContaining({ id: "4503a4f5-f854-41df-aed3-3913027d5650", ok: true })]));
   });
 
-  it("DOCU 10-07, sold the day before: back on watch lands through this door; its 1.71:1 plan is refused by name with the arithmetic and the rest lands", async () => {
+  it("DOCU 10-07, sold the day before: back on watch lands through this door, and so does its 1.71:1 plan (the ratio is not a rule, 2026-11-04)", async () => {
     const { received, save } = await sentVerbatim("DOCU");
     expect(received.change_status).toBe("WATCHING");
     expect(received).not.toHaveProperty("price_at_time");
     expect(save.crashed).toBe(false);
     expect(save.refused).toBe(false);
     const row = save.db.store.thesis[0];
-    expect(row).toMatchObject({ status: "WATCHING", retiredReason: null });
-    expect(written(save.db).map((u) => u.type)).toEqual(["STATUS_CHANGED"]);
-    const refused = save.result.data?.refused_fields as Array<{ field: string; reason: string }>;
-    expect(refused).toEqual([expect.objectContaining({ field: "triggers" })]);
-    expect(refused[0].reason).toMatch(/1\.71:1 is below the mandatory 2:1 minimum/);
-    const ops = save.result.data?.trigger_ops as Array<{ ok: boolean }>;
-    expect(ops.length).toBeGreaterThan(0);
-    expect(ops.every((o) => !o.ok)).toBe(true);
+    expect(row).toMatchObject({ status: "WATCHING", retiredReason: null, entryPrice: 74.1, targetPrice: 83, stopLoss: 68.9 });
+    expect(((save.result.data?.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
+    expect(JSON.stringify(save.result)).not.toMatch(/\d\.\d\d:1|2:1 minimum/);
   });
 
   it("CORT 10-09, held: the snapshot, the scores and the variant view it rewrote never reach the save; the note and the conviction's reason land", async () => {
@@ -186,19 +181,20 @@ describe("the price the morning run's save reads for itself", () => {
   });
 });
 
-describe("DOCU 10-07: back on watch with no plan (step 12, part 3)", () => {
-  it("the reply leads with it and the refusal's reason; the sold fill is no longer read as a buy; the row says no plan", async () => {
+describe("DOCU 10-07: back on watch with its plan (step 12, part 3; the ratio is not a rule since 2026-11-04)", () => {
+  it("the reply does not say no plan; the sold fill is not read as a buy; the line names the plan's buy", async () => {
     const { save } = await sentVerbatim("DOCU");
     expect(save.refused).toBe(false);
-    expect(save.result.summary).toMatch(/^Back on watch with no plan: .*1\.71:1 is below the mandatory 2:1 minimum/);
+    expect(String(save.result.summary)).not.toContain("Back on watch with no plan");
     const row = save.db.store.thesis[0];
-    expect(row).toMatchObject({ status: "WATCHING", entryPrice: null });
+    expect(row).toMatchObject({ status: "WATCHING", entryPrice: 74.1 });
     let line = "";
     await jest.isolateModulesAsync(async () => {
       jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
       line = (await import("@/lib/agent/row-for-model")).rowForModel({ ...row }, { named: false, size: "line" }) as string;
     });
-    expect(line).toContain("no plan");
+    expect(line).toContain("buy $74.10");
+    expect(line).not.toContain("no plan");
     expect(line).not.toContain("buy $67.73");
   });
 

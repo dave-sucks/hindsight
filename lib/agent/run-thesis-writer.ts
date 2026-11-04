@@ -521,8 +521,10 @@ every field; the judgment rules:
    • direction: LONG / SHORT / PASS. PASS is a valid, gradeable outcome —
      use it when the research doesn't support a directional edge from
      YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
-   • R/R FLOOR — 2:1 MANDATORY. LONG: (target−entry)/(entry−stop);
-     SHORT: (entry−target)/(stop−entry).
+   • UNDER 2×, SAY WHY. Reward against risk is not a floor: when the room
+     from the entry to your upside level (or to the Street's average, on
+     the Analyst Coverage block) is under twice the distance to the stop,
+     say in the note why the trade is still worth taking.
    • SETUP FIRST. Name the setup (setup_id) from YOUR SETUPS, then take
      every number from its rules and the Price structure block — never a
      round number, never a feel:

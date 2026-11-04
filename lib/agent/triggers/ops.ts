@@ -28,8 +28,8 @@
  *   - on a stock we own, an agent may only tighten a protective sell level
  *     (the ratchet, DAV-185) — the principal is exempt, as before;
  *   - after all ops the plan is checked once (`checkLadder`): ordering
- *     everywhere, 2:1 on a plan we don't own. That one check replaces the
- *     argument-path gate and the derived-tuple gate.
+ *     everywhere. That one check replaces the argument-path gate and the
+ *     derived-tuple gate. (The 2:1 floor it also ran went 2026-11-04.)
  *
  * Pure — no DB, no clock. Callers load, apply, persist, and write the
  * audit row.
@@ -69,7 +69,7 @@ import {
   describeRatchetViolation,
   protectiveRatchetViolations,
 } from "./ratchet";
-import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
+import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export type TriggerOp =
@@ -651,11 +651,10 @@ export type LadderCheck =
   | { ok: false; error: "invalid_thesis_shape" | "missing_enter_trigger"; message: string };
 
 /**
- * Derive the plan from the list and check it once: ordering everywhere, the
- * buy-trigger / sell-trigger rules of `validateEnterTriggerRequired`, and —
- * for an AGENT only — the 2:1 floor on a plan we don't own. The floor is a
- * rule for plans the agents write; the principal is exempt from it as from
- * the ratchet. Held: `entryPrice` is the fill.
+ * Derive the plan from the list and check it once: ordering everywhere and
+ * the buy-trigger / sell-trigger rules of `validateEnterTriggerRequired`.
+ * No reward/risk floor (gone 2026-11-04): the house sets no target of its
+ * own. Held: `entryPrice` is the fill.
  */
 export function checkLadder(input: {
   triggers: Trigger[];
@@ -666,8 +665,6 @@ export function checkLadder(input: {
   /** The fill on a held name (position avgCost, else the stored entry). */
   entryPrice?: number | null;
   avgCost?: number | null;
-  /** A buy waiting for approval, in words (validateThesisShape). */
-  buyWaiting?: string;
 }): LadderCheck {
   const { triggers, inherited = [], direction, status } = input;
   const held = status === "HOLDING";
@@ -687,9 +684,7 @@ export function checkLadder(input: {
       entryPrice: held ? (input.entryPrice ?? columns.entryPrice) : columns.entryPrice,
       targetPrice: columns.targetPrice,
       stopLoss: columns.stopLoss,
-      minRiskReward: held || input.actor !== "AGENT" ? undefined : MIN_RISK_REWARD,
       held,
-      buyWaiting: input.buyWaiting,
     });
     if (!shape.ok) return { ok: false, error: "invalid_thesis_shape", message: shape.note };
   }

@@ -500,10 +500,12 @@ the reason and the rest of the call lands (`data.trigger_ops` on the tool):
   holds a different kind of number, as before.
 - On a held stock an agent may only tighten a protective sell level (§ the
   ratchet, DAV-185); the principal is exempt.
-- After all ops, ONE check on the derived plan: ordering everywhere, a buy
-  trigger where a floor or target is armed, and — for an agent only — 2:1 on
-  a plan we don't own. The principal is exempt from the ratio as from the
-  ratchet; a stop above the buy price is refused for anyone.
+- After all ops, ONE check on the derived plan: ordering everywhere, and a
+  buy trigger where a floor or target is armed. A stop above the buy price is
+  refused for anyone. There is no reward/risk floor (gone 2026-11-04): the
+  house sets no target of its own, so under twice the floor's distance the
+  agent says why in its note, and the row's Street line says how much room
+  there is to the Street's average against that distance.
 
 The plan columns (`entryPrice` / `targetPrice` / `stopLoss`) are recomputed from
 the resulting triggers and mirrored onto the open `Position`, so the chart,

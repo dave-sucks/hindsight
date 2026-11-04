@@ -1251,8 +1251,8 @@ export const updateThesis = defineTool({
     // Rules run per op on the resulting list (one trigger per bucket, the
     // ratchet on a held stock, a rationale on an agent's level change); a
     // refused op is reported by id and the rest lands. Then ONE check on the
-    // derived plan — ordering, and 2:1 on a plan we don't own — replaces the
-    // argument gate and the derived-tuple gate that used to run here.
+    // derived plan — ordering — replaces the argument gate and the
+    // derived-tuple gate that used to run here.
     if (triggerOps.length > 0) {
       if (isTerminalTransition) {
         opResults.push(
@@ -1312,16 +1312,8 @@ export const updateThesis = defineTool({
         // $434 stop refused against the plan). Fall back to the row.
         const held = levelStatus === "HOLDING";
         let avgCost: number | null | undefined;
-        let buyWaiting: string | undefined;
         const checkOf = async (triggers: Trigger[]) => {
           if (avgCost === undefined) {
-            // A buy waiting for approval keeps the plan it was proposed on (IOT 10-15: told to remove it, it did).
-            try {
-              const order = await prisma.order.findFirst({ where: { thesisId: existing.id, status: "AWAITING_APPROVAL", intent: { in: ["OPEN", "ADD"] } }, select: { intent: true, quantity: true } });
-              if (order) buyWaiting = `${order.intent === "ADD" ? "An add" : "A buy"} of ${Number(order.quantity)} shares is waiting for approval`;
-            } catch {
-              /* a lookup that fails knows of no waiting buy: the usual advice */
-            }
             const openPosition =
               held && ctx.analystId
                 ? await prisma.position.findFirst({
@@ -1340,7 +1332,6 @@ export const updateThesis = defineTool({
             actor: "AGENT",
             entryPrice: avgCost ?? (existing.entryPrice != null ? Number(existing.entryPrice) : null),
             avgCost,
-            buyWaiting,
           });
         };
         let liveOps = triggerOps;
@@ -1366,7 +1357,7 @@ export const updateThesis = defineTool({
             field: "target_price",
             why: "the price is past the old target",
             to: check.columns.targetPrice,
-            reason: `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${Number(existing.targetPrice).toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${check.columns.targetPrice.toFixed(2)} and walk away. If you genuinely think the setup has changed, leave the target untouched and give the concrete reason in your rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1). Or close the thesis with change_status: "INVALIDATED".`,
+            reason: `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${Number(existing.targetPrice).toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${check.columns.targetPrice.toFixed(2)} and walk away. If you genuinely think the setup has changed, leave the target untouched and give the concrete reason in your rationale (volume too low, regime change, fresh negative news, the reward no longer worth the risk). Or close the thesis with change_status: "INVALIDATED".`,
           });
           const onTarget = (o: TriggerOp) =>
             o.op === "level"
@@ -1382,11 +1373,10 @@ export const updateThesis = defineTool({
         opResults.push(...applied.results.filter((r) => !r.unchanged));
 
         if (check && !check.ok) {
-          // Both refusals offer "set the plan down" as an exit; name the
-          // exact ids so the agent doesn't guess (DAV-258 for the half
-          // plan, DAV-262 for the 2:1 floor — MSFT 2026-09-14 was told
+          // The refusal offers "set the plan down" as an exit; name the
+          // exact ids so the agent doesn't guess (MSFT 2026-09-14 was told
           // to send the whole list again, an argument that no longer exists).
-          const message = `${check.message} ${buyWaiting ? "" : setDownInstruction(existingTriggers, levelDirection)}`.trim();
+          const message = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
           // A seed's commitment is its plan: without a valid one nothing lands.
           if (isUnresearchedSeed(existing.direction)) {
             return {

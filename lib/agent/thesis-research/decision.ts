@@ -19,7 +19,7 @@
 import { z } from "zod";
 import { editNumber, editTriggerOpSchema, triggerInputSchema, triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { shapeOf } from "@/lib/agent/triggers/condition";
-import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
+import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
@@ -168,21 +168,20 @@ export function validateThesisDecision(
   const priced = entry != null || target != null || stop != null;
 
   if (directional && priced) {
-    // ── Prices + R/R floor ────────────────────────────────────────────
+    // ── Prices, in order ──────────────────────────────────────────────
     const unpricedHint = " — or omit ALL of entry/target/stop to hold the view unpriced.";
     if (entry == null || entry <= 0) errors.push(`entry_price: required and positive on a priced plan${unpricedHint}`);
     if (target == null || target <= 0) errors.push(`target_price: required and positive on a priced plan${unpricedHint}`);
     if (stop == null || stop <= 0) errors.push(`stop_loss: required and positive on a priced plan${unpricedHint}`);
 
     if (entry != null && target != null && stop != null && entry > 0 && target > 0 && stop > 0) {
-      // The one plan rule (ordering + 2:1 floor) — the same helper the
-      // persist gates run, so a repair here is a pass there.
+      // The one plan rule (ordering) — the same helper the persist gates
+      // run, so a repair here is a pass there. The ratio is reported, not enforced.
       const shape = validateThesisShape({
         direction: d.direction,
         entryPrice: entry,
         targetPrice: target,
         stopLoss: stop,
-        minRiskReward: held ? undefined : MIN_RISK_REWARD,
         held,
       });
       if (!shape.ok) {
@@ -198,7 +197,7 @@ export function validateThesisDecision(
   }
 
   // ── The setup and how its numbers were derived (DAV-249) ─────────────
-  // In-loop, like the 2:1 floor: the writer repairs in one step. Nothing
+  // In-loop: the writer repairs in one step. Nothing
   // downstream refuses on these.
   const setup = d.setup_id && opts.setups ? opts.setups.find((s) => s.id === d.setup_id) : undefined;
   if (directional && opts.setups) {

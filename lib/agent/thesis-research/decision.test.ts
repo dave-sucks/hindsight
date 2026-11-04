@@ -99,14 +99,14 @@ describe("validateThesisDecision — accept paths", () => {
   });
 });
 
-describe("validateThesisDecision — R/R floor and price ordering", () => {
-  it("rejects a LONG below 2:1", () => {
+describe("validateThesisDecision — price ordering; the ratio is reported, not a floor", () => {
+  it("accepts a LONG under 2:1 and reports the ratio", () => {
     const v = validateThesisDecision(
       { ...validLong, target_price: 115, stop_loss: 90 }, // 15/10 = 1.5
       mintOpts,
     );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("R/R floor");
+    expect(v.ok).toBe(true);
+    expect(v.riskReward).toBeCloseTo(1.5);
   });
 
   it("rejects inverted LONG ordering (stop above entry)", () => {
