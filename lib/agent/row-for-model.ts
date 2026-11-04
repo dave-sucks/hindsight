@@ -20,6 +20,7 @@
  * saved row or a recorded one (scripts/hero-cases) builds the same way.
  */
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import { stripCitationTags } from "@/lib/thesis/clean-text";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import { streetLine } from "@/lib/market-data/street-consensus";
 
@@ -42,7 +43,7 @@ export function sizeFor(row: Row, named: boolean): RowSize {
 
 /** The screen's citations and markdown bold, off a text the model reads. */
 export function stripSourceTags(s: string): string {
-  return s.replace(/\s*\[(STRUCTURED|WEB)[^\]]*\]/g, "").replace(/\*\*/g, "").replace(/[ \t]{2,}/g, " ").trim();
+  return stripCitationTags(s.replace(/\*\*/g, ""));
 }
 
 // ── Values off a saved or recorded row ─────────────────────────────────────

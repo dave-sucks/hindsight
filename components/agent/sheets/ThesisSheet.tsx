@@ -39,6 +39,7 @@ import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { latestNoteView } from "@/lib/thesis/latest-note";
 import { caseBullets, type CaseBullet } from "@/lib/thesis/case-bullets";
+import { stripCitationTags } from "@/lib/thesis/clean-text";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import {
@@ -262,6 +263,13 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** A sentence as the Writer stored it: the citation tags removed, a **bold** lead drawn bold. */
+function Prose({ text }: { text: string }) {
+  const parts = stripCitationTags(text).split("**");
+  if (parts.length < 3) return <>{parts.join("")}</>;
+  return <>{parts.map((part, i) => (i % 2 === 1 ? <strong key={i} className="font-medium">{part}</strong> : part))}</>;
+}
+
 /** Bullets, each with its source pill when it names one. */
 function Bullets({ items }: { items: ReadonlyArray<CaseBullet> }) {
   return (
@@ -270,7 +278,7 @@ function Bullets({ items }: { items: ReadonlyArray<CaseBullet> }) {
         <li key={i} className="flex gap-2 text-sm text-foreground leading-relaxed">
           <span className="text-muted-foreground/50 select-none">•</span>
           <span className="flex-1">
-            {b.text}
+            <Prose text={b.text} />
             {b.citation ? (
               <>
                 {" "}
@@ -344,34 +352,30 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** "Why we own it" on a holding; a pass says why we passed; a watch, why we'd own it. */
-function beliefLabel(status: string): string {
-  if (status === "HOLDING" || status === "PROMOTED") return "Why we own it";
-  if (status === "PASSED") return "Why we passed";
-  return "Why we'd own it";
-}
-
 /**
  * The Research tab, in the shape it has always had — a heading, labelled
  * sections exposed on the tab, one accordion at the foot — with the fields
- * placed by the owner's order (2026-11-02): the company (two sentences) as
- * the heading where the belief sat; why we own it under it, with the
- * write-up's date and price; the bull case, the bear case and what would
- * prove us wrong exposed as bullets; the filings in their old place under
- * the top block; then the accordion, with its "Updated 50d ago" header row
- * as before, holding the key assumptions and where we differ from the
- * street with the conviction's one-line reason. A row written before the company line
- * shows nothing there, never a placeholder.
+ * placed by the owner's order (2026-11-02, labels 2026-11-03): the company
+ * (two sentences) as the heading, under "About <company>"; the belief under
+ * it as "Core thesis" in every state, with the write-up's date and price;
+ * the bull case, the bear case and what would prove us wrong exposed as
+ * bullets; the filings in their old place under the top block; then the
+ * accordion, with its "Updated 50d ago" header row as before, holding the
+ * key assumptions, where we differ from the street, and the conviction's
+ * reason under its own fold. Every sentence is drawn with the Writer's
+ * citation tags removed. A row written before the company line shows
+ * nothing there, never a placeholder.
  */
-function ResearchView({ state, filings }: { state: ThesisDossier; filings: FilingsResponse | null }) {
-  const company = state.company?.trim() || null;
-  const belief = state.coreBelief?.trim() || null;
+function ResearchView({ state, filings, companyName }: { state: ThesisDossier; filings: FilingsResponse | null; companyName: string | null }) {
+  const clean = (v: string | null | undefined) => (v?.trim() ? stripCitationTags(v) : null);
+  const company = clean(state.company);
+  const belief = clean(state.coreBelief);
   const bull = caseBullets(state.bullCase);
   const bear = caseBullets(state.bearCase);
   const wrong = (state.invalidationConds ?? []).filter(Boolean).map((text) => ({ text }));
   const assumptions = (state.keyAssumptions ?? []).filter(Boolean).map((text) => ({ text }));
-  const variant = state.variantView?.trim() || null;
-  const reason = state.convictionRationale?.trim() || null;
+  const variant = clean(state.variantView);
+  const reason = clean(state.convictionRationale);
   const convictionWord = state.conviction
     ? `${state.conviction.charAt(0)}${state.conviction.slice(1).toLowerCase()} conviction`
     : "Conviction";
@@ -381,10 +385,14 @@ function ResearchView({ state, filings }: { state: ThesisDossier; filings: Filin
   }
   return (
     <>
-      {company ? <p className="text-xl font-normal leading-relaxed">{company}</p> : null}
+      {company ? (
+        <Section label={`About ${companyName?.trim() || state.ticker}`}>
+          <p className="text-xl font-normal leading-relaxed">{company}</p>
+        </Section>
+      ) : null}
 
       {belief ? (
-        <Section label={beliefLabel(state.status)}>
+        <Section label="Core thesis">
           <p className="text-sm text-foreground leading-relaxed">{belief}</p>
           <WrittenUpLine writtenUp={state.writtenUp} />
         </Section>
@@ -424,15 +432,14 @@ function ResearchView({ state, filings }: { state: ThesisDossier; filings: Filin
               <Bullets items={assumptions} />
             </Fold>
           ) : null}
-          {variant || reason ? (
+          {variant ? (
             <Fold label="Where we differ from the street">
-              {variant ? <p>{variant}</p> : null}
-              {reason ? (
-                <p className="text-muted-foreground">
-                  <span className="font-medium text-foreground">{convictionWord}: </span>
-                  {reason}
-                </p>
-              ) : null}
+              <p>{variant}</p>
+            </Fold>
+          ) : null}
+          {reason ? (
+            <Fold label={convictionWord}>
+              <p>{reason}</p>
             </Fold>
           ) : null}
         </div>
@@ -1008,7 +1015,7 @@ export function ThesisBody({
       <TabsContent value={1} className="space-y-5">
       <div className={columns}>
       <div className="min-w-0 space-y-5">
-        <ResearchView state={state} filings={filings} />
+        <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} />
       </div>
       {sideColumn}
       </div>
