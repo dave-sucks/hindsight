@@ -9,13 +9,14 @@
  */
 
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 const POLL_MS = 8_000;
 const MAX_POLLS = 120;
 
 export const WRITING_LABEL = "Writing a summary for this proposal";
 
-export function ProposalNote({ orderId, reason, writing }: { orderId: string; reason: string | null; writing: boolean }) {
+export function ProposalNote({ orderId, reason, writing, expanded }: { orderId: string; reason: string | null; writing: boolean; /** When the card owns the click, it says whether the note is open; the note then takes no clicks of its own. */ expanded?: boolean }) {
   const [text, setText] = useState(reason);
   const [busy, setBusy] = useState(writing);
   const [polls, setPolls] = useState(0);
@@ -52,11 +53,11 @@ export function ProposalNote({ orderId, reason, writing }: { orderId: string; re
   if (paragraphs.length === 0) return null;
   return (
     <div
-      className="space-y-2 cursor-pointer text-xs font-light text-foreground leading-relaxed"
-      onClick={() => setOpen((v) => !v)}
-      title={open ? "Collapse" : "Expand"}
+      className={cn("space-y-2 text-xs font-light text-foreground leading-relaxed", expanded === undefined && "cursor-pointer")}
+      onClick={expanded === undefined ? () => setOpen((v) => !v) : undefined}
+      title={expanded === undefined ? (open ? "Collapse" : "Expand") : undefined}
     >
-      {open ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-2">{paragraphs.join(" ")}</p>}
+      {(expanded ?? open) ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-2">{paragraphs.join(" ")}</p>}
     </div>
   );
 }

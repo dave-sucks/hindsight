@@ -21,7 +21,7 @@
  */
 
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -142,17 +142,24 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
     gain = unrealized;
   }
 
+  // Outline only; a background on hover. The click opens the trade, except on
+  // a waiting proposal, where it expands the reason instead.
+  const proposal = Boolean(pp && !pp.executing);
+  const [expanded, setExpanded] = useState(false);
   return (
-    <div className="relative rounded-lg border px-4 py-3 space-y-1.5">
+    <div
+      className={cn("relative rounded-lg border px-4 py-3 space-y-1.5 transition-colors hover:bg-muted/40", proposal && "cursor-pointer")}
+      onClick={proposal ? () => setExpanded((v) => !v) : undefined}
+    >
       {/* The whole card opens the trade: a stretched link under the content, never a link around the controls. */}
-      {position.id ? (
+      {position.id && !proposal ? (
         <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-lg" />
       ) : null}
       {/* The label and the reason start where the sentence's text starts: past the dot (8px) and its gap (6px). */}
       {reviewSlot ? (
         <div className="relative flex items-center gap-3 pl-[14px]">
           <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Proposal</span>
-          <span className="ml-auto flex items-center">{reviewSlot}</span>
+          <span className="ml-auto flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>
         </div>
       ) : null}
       <div className="relative flex items-center justify-between gap-3 pointer-events-none">
@@ -167,7 +174,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       </div>
       {pp && !pp.executing ? (
         <div className="relative pl-[14px]">
-          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} />
+          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
         </div>
       ) : null}
     </div>
