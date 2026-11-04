@@ -28,7 +28,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceChange } from "@/components/ui/price-change";
 import { ProposalNote } from "@/components/domain/proposal-note";
-import { SendToAgentIcon } from "@/components/ui/send-to-agent-icon";
 import type { TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -87,8 +86,8 @@ export function TradeSummary(props: TradeSummaryProps) {
 // ── The banner ──
 // One card for every state (the owner's rule, 2026-11-04): a bordered,
 // muted card that opens the trade, one sentence with the date and the gain
-// on the right. A waiting proposal gets a small mono PROPOSAL label with the
-// wand icon at the top left and Review at the far right, and leads the sentence with its verb in medium weight; the amber dot says
+// on the right. A waiting proposal gets a small mono PROPOSAL label at the
+// top left and Review at the far right, and leads the sentence with its verb in medium weight; the amber dot says
 // "waiting", so the word "Proposed" is gone. The reason sits under it, two
 // lines until clicked.
 //   • holding          → "Bought N shares at $entry on Oct 5"
@@ -149,13 +148,11 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       {position.id ? (
         <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-lg" />
       ) : null}
+      {/* The label and the reason start where the sentence's text starts: past the dot (8px) and its gap (6px). */}
       {reviewSlot ? (
-        <div className="relative flex items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-            <SendToAgentIcon className="size-3" />
-            Proposal
-          </span>
-          {reviewSlot}
+        <div className="relative flex items-center gap-3 pl-[14px]">
+          <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Proposal</span>
+          <span className="ml-auto flex items-center">{reviewSlot}</span>
         </div>
       ) : null}
       <div className="relative flex items-center justify-between gap-3 pointer-events-none">
@@ -169,7 +166,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
       </div>
       {pp && !pp.executing ? (
-        <div className="relative">
+        <div className="relative pl-[14px]">
           <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} />
         </div>
       ) : null}
