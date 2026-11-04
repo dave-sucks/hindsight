@@ -79,7 +79,16 @@ export const MEASURED_REQUEST = {
   requestsPerMorning: 15,
 } as const;
 
+export const READ_SIZES = {
+  line: "95 to 170 characters",
+  short: "1,800 to 9,900 characters",
+  full: "about 20,000 characters",
+} as const;
+
 export type RowSize = "line" | "short" | "full";
+
+export const EXAMPLE_LINE =
+  "CRWD · held · LONG · PEAD · $418.20 · buy $401.00 · target $480.00 · floor $384.00 · review 10-14 · catalyst 2026-12-02 · id th_8f2c";
 
 /**
  * A thesis as the sheet shows it, field by field, in the sheet's order. Each
@@ -131,6 +140,15 @@ export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
 export interface ReadCase {
   id: string;
   title: string;
+  /** One line under the title on the case card. */
+  body: string;
+  /** The row size this read sends, or the writer's own block. */
+  size: RowSize | "writer" | "none";
+  /** What the agent is thinking as it asks. */
+  ask: string;
+  /** The tool row's label and the ticker's tag. */
+  label: string;
+  tag: string;
   when: string;
   how: string;
   why: string;
@@ -151,6 +169,11 @@ const FULL_EXTRA = ["recentCatalysts", "fundamentals", "latestEarnings", "cataly
 export const READ_CASES: ReadonlyArray<ReadCase> = [
   {
     id: "line",
+    body: "One line: the stock, the price, the plan, the next review.",
+    size: "line",
+    ask: "Reading the book before the open.",
+    label: "Reading your book",
+    tag: "Quiet",
     title: "A quiet stock",
     when: "Nothing about it is a situation today: no fire, no clock due, no plan check, no report near. Most of the book, most mornings.",
     how: "get_theses, every door. One line, about 120 characters: the stock, its stance and view, its setup, the price, the plan's three levels, a proposal if one waits, the next review, the catalyst date, its id.",
@@ -159,6 +182,11 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
   },
   {
     id: "short",
+    body: "It's listed: the short row, and that situation's text once.",
+    size: "short",
+    ask: "CRWD is near its buy. What does its plan say?",
+    label: "Reading your book",
+    tag: "Listed",
     title: "A stock in a situation: the morning run, the chat",
     when: "At least one situation is true of it today: a buy arrived, a review is due, a report is near, a plan check, a winner to press, a floor to raise.",
     how: "get_theses lists it as the short row, about 4,000 characters, and attaches each situation's text once per read.",
@@ -167,6 +195,11 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
   },
   {
     id: "trigger",
+    body: "The short row again, with the setup's own rules in place of its name.",
+    size: "short",
+    ask: "The 10% review fired on CRWD. What does the setup say to do?",
+    label: "Reading $CRWD for the fire",
+    tag: "Fired",
     title: "A stock in a situation: the trigger run",
     when: "A trigger fired on this one stock during the day.",
     how: "The same short row, with the setup's own lines (how it fails, how to manage it) in place of the one-line setup. The full row is one get_theses call away.",
@@ -175,6 +208,11 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
   },
   {
     id: "full-rule",
+    body: "A quiet watch woke, or no setup is named: the full row, unasked.",
+    size: "full",
+    ask: "CRWD woke after a quiet month. Does the research still stand?",
+    label: "Reading $CRWD in full",
+    tag: "By rule",
     title: "The full row, by rule",
     when: "Two situations: a quiet watch woke up, or a stock has no setup named. Both answers re-plan the research.",
     how: "get_theses sends the full row for it unasked: the short row plus the whole snapshot and the seven old sections.",
@@ -183,6 +221,11 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
   },
   {
     id: "full-name",
+    body: "Asked for by name: the full row and every line ever written on it.",
+    size: "full",
+    ask: "Pulling the full case on CRWD before deciding.",
+    label: "Reading $CRWD in full",
+    tag: "By name",
     title: "The full row, by name",
     when: "An agent asks for one stock: get_theses(tickers: [\"CRWD\"]). The chat does this on a question about a stock; a run does it before a buy.",
     how: "The full row plus the stock's history: every Activity line ever written on it, with its id.",
@@ -191,6 +234,11 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
   },
   {
     id: "writer-refresh",
+    body: "The old claim, the plan by id, the company line. Not the old cases.",
+    size: "writer",
+    ask: "Rewriting CRWD: what did we claim, and what is the plan?",
+    label: "Writing $CRWD again",
+    tag: "Refresh",
     title: "The Writer, refreshing a stock",
     when: "A refresh is dispatched: the owner's chat, a stale write-up, a quiet watch brought back, the one-time rewrite.",
     how: "The EXISTING THESIS block in the writer's prompt: status, direction, horizon, the belief, the target and floor, the company line, and every trigger by id. Then its own fresh pulls: quote, profile, financials, news, the Street, a web search.",
@@ -199,6 +247,11 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
   },
   {
     id: "writer-mint",
+    body: "Nothing yet. The dispatch reason and the analyst\u2019s playbook.",
+    size: "none",
+    ask: "A new name. What is the dispatch asking for?",
+    label: "Writing $CRWD for the first time",
+    tag: "New",
     title: "The Writer, on a new stock",
     when: "A dispatch on a name with no thesis: the owner's chat, or a watchlist seed's first research.",
     how: "Only the dispatch reason, the analyst's strategy and setups, and the writer's own fresh pulls. No thesis fields exist yet.",
