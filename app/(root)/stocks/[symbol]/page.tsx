@@ -332,7 +332,7 @@ export default async function StockDetailPage({ params }: Props) {
                 ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
                 : null,
             }}
-            stats={<StatBlock label="Key stats" columns={keyStatColumns(quote, metrics, marketCap)} />}
+            stats={<StatBlock columns={keyStatColumns(quote, metrics, marketCap)} />}
             history={history}
             financials={financials}
             news={news}

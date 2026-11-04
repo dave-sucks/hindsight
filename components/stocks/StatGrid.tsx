@@ -31,12 +31,14 @@ export function StatGrid({ columns }: { columns: StatColumns }) {
 }
 
 /** A labelled grid: "Key stats" on the Overview, one per Research section. */
-export function StatBlock({ label, columns }: StatSection) {
+export function StatBlock({ label, columns }: Omit<StatSection, "label"> & { label?: string }) {
   return (
     <section className="space-y-1">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
+      {label ? (
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </p>
+      ) : null}
       <StatGrid columns={columns} />
     </section>
   );

@@ -28,7 +28,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import { ThesisHeader } from "@/components/domain/thesis-header";
 import { TradeSummary } from "@/components/domain/trade-summary";
 import type { RangeMove } from "@/components/stocks/StockPriceChart";
@@ -909,6 +910,14 @@ export function ThesisBody({
   const recent = state.recent ?? [];
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
+  // The standing opinion, first thing under the chips on Overview.
+  const belief = state.coreBelief?.trim() ? stripCitationTags(state.coreBelief) : null;
+  const tabOptions = [
+    { value: "0", label: "Overview" },
+    { value: "1", label: "Research" },
+    { value: String(ACTIVITY_TAB), label: "Activity" },
+    ...extraTabs.map((t, i) => ({ value: String(ACTIVITY_TAB + 1 + i), label: t.label })),
+  ];
   const sideColumn =
     surface === "page" ? (
       <div className="hidden lg:block space-y-4">
@@ -919,20 +928,8 @@ export function ThesisBody({
     ) : null;
 
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(Number(v))}>
-      <TabsList>
-        <TabsTrigger value={0}>Overview</TabsTrigger>
-        <TabsTrigger value={1}>Research</TabsTrigger>
-        <TabsTrigger value={ACTIVITY_TAB}>Activity</TabsTrigger>
-        {extraTabs.map((t, i) => (
-          <TabsTrigger key={t.label} value={ACTIVITY_TAB + 1 + i}>
-            {t.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-
-      {/* ── Overview: price → the trade → chart → the plan → the newest 8 ── */}
-      <TabsContent value={0} className="space-y-5">
+    <Tabs value={tab} onValueChange={(v) => setTab(Number(v))} className="gap-4">
+      {/* ── Above the tabs on every tab (the owner's order, 2026-11-04): the price, the trade, the chart ── */}
       {/* ── Live price + the selected range's move ───────────── */}
       {/* Hydrates from /quote after the dossier paints: skeleton while in
           flight, nothing if the vendor failed (currentPrice null). */}
@@ -948,9 +945,6 @@ export function ThesisBody({
           ) : null}
         </div>
       ) : null}
-
-      <div className={columns}>
-      <div className="min-w-0 space-y-5">
       {tradeBanner}
 
       {/* ── Price chart (annotated) ───────────────────────────── */}
@@ -978,6 +972,15 @@ export function ThesisBody({
           showChange={false}
         />
       ) : null}
+
+      {/* The sections, as chips: the chart is always worth the screen; the chips pick what sits under it. */}
+      <ChipTabs options={tabOptions} value={String(tab)} onChange={(v) => { if (v != null) setTab(Number(v)); }} clearable={false} />
+
+      {/* ── Overview: the belief → the plan → the newest 8 ── */}
+      <TabsContent value={0} className="space-y-4">
+      <div className={columns}>
+      <div className="min-w-0 space-y-4">
+      {belief ? <p className="text-sm text-foreground leading-relaxed">{belief}</p> : null}
 
       {/* ── The plan: the triggers ── */}
       {thesis_id ? (
@@ -1011,9 +1014,9 @@ export function ThesisBody({
       </TabsContent>
 
       {/* ── Research: the claim and the write-up behind it ─────── */}
-      <TabsContent value={1} className="space-y-5">
+      <TabsContent value={1} className="space-y-4">
       <div className={columns}>
-      <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-4">
         <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} />
       </div>
       {sideColumn}
@@ -1021,9 +1024,9 @@ export function ThesisBody({
       </TabsContent>
 
       {/* ── Activity tab: the whole list ───────────────────────── */}
-      <TabsContent value={ACTIVITY_TAB} className="space-y-5">
+      <TabsContent value={ACTIVITY_TAB} className="space-y-4">
       <div className={columns}>
-      <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-4">
           {thesis_id ? (
             <ThesisTimelineSection
               thesisId={thesis_id}
@@ -1050,9 +1053,9 @@ export function ThesisBody({
       </TabsContent>
 
       {extraTabs.map((t, i) => (
-        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-5">
+        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-4">
           <div className={columns}>
-            <div className="min-w-0 space-y-5">{t.content}</div>
+            <div className="min-w-0 space-y-4">{t.content}</div>
             {sideColumn}
           </div>
         </TabsContent>
@@ -1096,7 +1099,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         invalidatedAt={state.invalidatedAt ?? null}
         invalidReason={state.invalidReason ?? null}
       />
-      <div className="space-y-2">
+      <div className="space-y-4">
         <ThesisHeader
           ticker={ticker}
           // Identity rides in the payload (StockInfo cache via quote) — one

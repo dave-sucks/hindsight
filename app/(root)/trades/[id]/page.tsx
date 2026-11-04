@@ -177,7 +177,7 @@ export default async function TradeDetailPage({
     <div data-surface="paper">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* ── Header — the thesis's, the same one the sheet renders ─────── */}
-      <div className="mb-6">
+      <div className="mb-4">
         <ThesisHeader
           ticker={trade.ticker}
           displayName={companyName ?? trade.ticker}

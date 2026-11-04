@@ -1252,7 +1252,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
               <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
                 {/* Range — a view setting, so small Tabs */}
                 <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
-                  <TabsList size="sm">
+                  <TabsList size="sm" variant="outline">
                     {RANGES.map((r) => (
                       <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
                     ))}
