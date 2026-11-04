@@ -7,10 +7,11 @@ import { ThesisBody, ThesisBodySkeleton, useThesisSheetData } from "@/components
  * A thesis as a page body: the sheet's body with a sidebar — the same tabs,
  * chart, triggers and notes, loaded the same way the sheet loads them. The
  * trade page pins its own position row; the stock page takes the thesis's
- * current trade and adds its News tab and its history under Activity. The
- * body puts the position card and the stock cards in the sidebar itself;
- * `aside` is a page's extra card (the trade page's Trade Details), rendered
- * between them. While the thesis loads it sits beside the skeleton.
+ * current trade and adds its Financials and News tabs and its history under
+ * Activity. The body puts the position card and the stock cards in the
+ * sidebar itself; `aside` is a page's extra card (the trade page's Trade
+ * Details, the stock page's About), rendered between them. While the thesis
+ * loads it sits beside the skeleton.
  */
 export function ThesisPageBody({
   thesisId,

@@ -13,8 +13,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLivePoll } from "@/hooks/useLivePoll";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
+import { EarningsCard } from "@/components/domain/earnings-card";
 import { ThesisChart } from "@/components/domain/thesis-chart";
 import {
   Collapsible,
@@ -35,7 +35,6 @@ import type { RangeMove } from "@/components/stocks/StockPriceChart";
 import { formatCurrency } from "@/lib/format";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { RecentActivity, ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
-import { ThesisDataTab } from "@/components/agent/sheets/ThesisDataTab";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { latestNoteView } from "@/lib/thesis/latest-note";
@@ -49,6 +48,8 @@ import {
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
+import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
+import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AnalystConsensusWidget,
@@ -235,9 +236,19 @@ function WrittenUpLine({ writtenUp }: { writtenUp: ThesisDossier["writtenUp"] })
   );
 }
 
-/** The label over a part of the view. */
-function SectionLabel({ children }: { children: ReactNode }) {
-  return <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
+/** The label over a section of the Research tab, as the tab has always drawn it. */
+function Label({ children }: { children: ReactNode }) {
+  return <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">{children}</p>;
+}
+
+/** A labelled section, exposed on the tab. */
+function Section({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      {children}
+    </div>
+  );
 }
 
 /** Bullets, each with its source pill when it names one. */
@@ -262,21 +273,54 @@ function Bullets({ items }: { items: ReadonlyArray<CaseBullet> }) {
   );
 }
 
-/** The bull or the bear case as a card: its bullets open. */
-function CaseCard({ label, bullets }: { label: string; bullets: CaseBullet[] }) {
+// ── FilingsBlock ───────────────────────────────────────────────────────
+// What this company told the SEC in the last month, live off EDGAR when the
+// sheet opens — the serious and material filings only, since the routine
+// ones (earnings results, press releases, exhibits) are noise on a sheet.
+// One line, each filing linked. Renders nothing when there are none, and
+// says so plainly when EDGAR couldn't be read — "no filings" would be a
+// different claim. See docs/plans/SEC_FILINGS.md §8.
+
+function FilingsBlock({ data }: { data: FilingsResponse }) {
+  const worthALook = data.filings.filter((f) => f.tier !== "CONTEXT");
+  if (!data.error && worthALook.length === 0) return null;
+
   return (
-    <Card size="sm">
-      <CardHeader>
-        <SectionLabel>{label}</SectionLabel>
-      </CardHeader>
-      <CardContent>
-        {bullets.length > 0 ? <Bullets items={bullets} /> : <p className="text-sm text-muted-foreground">Not written.</p>}
-      </CardContent>
-    </Card>
+    <Section label="Filings">
+      {data.error ? (
+        <p className="text-sm text-muted-foreground">SEC filings unavailable — {data.error}.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+          {worthALook.slice(0, 4).map((f, i) => (
+            <span key={f.accession} className="inline-flex items-center gap-1.5">
+              {i > 0 && <span className="text-muted-foreground/40">·</span>}
+              <span className="text-muted-foreground tabular-nums">
+                {new Date(`${f.filedDate}T00:00:00Z`).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  timeZone: "UTC",
+                })}
+              </span>
+              <a
+                href={f.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "font-medium underline-offset-4 hover:underline",
+                  f.tier === "RED" ? "text-red-500" : "text-foreground",
+                )}
+              >
+                {describeFilingEvent(f)}
+              </a>
+            </span>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
 
-/** A folded part of the view: its label, a chevron, the content on a click. */
+/** A row of the tab's accordion: its label, a chevron, the content on a click. */
 function Fold({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Collapsible>
@@ -297,15 +341,17 @@ function beliefLabel(status: string): string {
 }
 
 /**
- * The Thesis tab: the analyst's view, in the order the owner reads it
- * (2026-11-02). The company (two sentences) as the heading, why we own it
- * under it with the write-up's date and price, the bull and bear cases side
- * by side with their bullets open, what would prove us wrong; then, folded,
- * the assumptions (each ending with when and where it is checked) and where
- * we differ from the street with the conviction's reason. A row written
- * before the company line shows nothing there, never a placeholder.
+ * The Research tab, in the shape it has always had — a heading, labelled
+ * sections exposed on the tab, one accordion at the foot — with the fields
+ * placed by the owner's order (2026-11-02): the company (two sentences) as
+ * the heading where the belief sat; why we own it under it, with the
+ * write-up's date and price; the bull case, the bear case and what would
+ * prove us wrong exposed as bullets; the filings; then, in the accordion,
+ * the key assumptions and where we differ from the street with the
+ * conviction's one-line reason. A row written before the company line
+ * shows nothing there, never a placeholder.
  */
-function ThesisView({ state }: { state: ThesisDossier }) {
+function ResearchView({ state, filings }: { state: ThesisDossier; filings: FilingsResponse | null }) {
   const company = state.company?.trim() || null;
   const belief = state.coreBelief?.trim() || null;
   const bull = caseBullets(state.bullCase);
@@ -321,33 +367,37 @@ function ThesisView({ state }: { state: ThesisDossier }) {
     return <p className="text-sm text-muted-foreground">No research on this stock yet.</p>;
   }
   return (
-    <div className="space-y-6">
-      {company || belief ? (
-        <div className="space-y-3">
-          {company ? <p className="text-xl font-normal leading-relaxed">{company}</p> : null}
-          {belief ? (
-            <div className="space-y-1.5">
-              <SectionLabel>{beliefLabel(state.status)}</SectionLabel>
-              <p className="text-sm leading-relaxed">{belief}</p>
-            </div>
-          ) : null}
+    <>
+      {company ? <p className="text-xl font-normal leading-relaxed">{company}</p> : null}
+
+      {belief ? (
+        <Section label={beliefLabel(state.status)}>
+          <p className="text-sm text-foreground leading-relaxed">{belief}</p>
           <WrittenUpLine writtenUp={state.writtenUp} />
-        </div>
+        </Section>
+      ) : company ? (
+        <WrittenUpLine writtenUp={state.writtenUp} />
       ) : null}
 
-      {bull.length > 0 || bear.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <CaseCard label="Bull case" bullets={bull} />
-          <CaseCard label="Bear case" bullets={bear} />
-        </div>
+      {bull.length > 0 ? (
+        <Section label="Bull case">
+          <Bullets items={bull} />
+        </Section>
+      ) : null}
+
+      {bear.length > 0 ? (
+        <Section label="Bear case">
+          <Bullets items={bear} />
+        </Section>
       ) : null}
 
       {wrong.length > 0 ? (
-        <div className="space-y-2">
-          <SectionLabel>What would prove us wrong</SectionLabel>
+        <Section label="What would prove us wrong">
           <Bullets items={wrong} />
-        </div>
+        </Section>
       ) : null}
+
+      {filings ? <FilingsBlock data={filings} /> : null}
 
       {assumptions.length > 0 || variant || reason ? (
         <div className="rounded-lg border divide-y">
@@ -369,7 +419,7 @@ function ThesisView({ state }: { state: ThesisDossier }) {
           ) : null}
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -492,6 +542,8 @@ export interface ThesisSheetData {
   loaded: boolean;
   quote: QuoteResponse | null;
   quoteLoading: boolean;
+  earnings: EarningsResponse | null;
+  filings: FilingsResponse | null;
   candles: StockCandle[] | null;
   candlesLoading: boolean;
   coverage: AnalystCoverageData | null;
@@ -508,7 +560,6 @@ export interface ThesisSheetData {
  *   • GET /api/stocks/candles?symbols=…    → price chart (Alpaca)
  *   • GET /api/theses/:id/analyst-coverage → Wall Street (ratings + targets)
  * Each live layer has its own loading flag driving a region-level skeleton.
- * The Data tab loads the company's numbers itself when it opens.
  */
 export function useThesisSheetData(
   thesis_id: string | undefined,
@@ -520,6 +571,10 @@ export function useThesisSheetData(
   const [loaded, setLoaded] = useState(false);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
+  // Earnings + filings: own regions, never gate the paint, no skeleton (the
+  // block simply appears when the vendor answers; absence is a valid state).
+  const [earnings, setEarnings] = useState<EarningsResponse | null>(null);
+  const [filings, setFilings] = useState<FilingsResponse | null>(null);
   const [candles, setCandles] = useState<StockCandle[] | null>(null);
   const [candlesLoading, setCandlesLoading] = useState(true);
   const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
@@ -540,9 +595,43 @@ export function useThesisSheetData(
     setQuote(null);
     setCandles(null);
     setCoverage(null);
+    setEarnings(null);
+    setFilings(null);
     setQuoteLoading(true);
     setCandlesLoading(true);
     setCoverageLoading(true);
+  }, [thesis_id]);
+
+  useEffect(() => {
+    if (!thesis_id) return;
+    let cancelled = false;
+    fetch(`/api/theses/${thesis_id}/earnings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: EarningsResponse | null) => {
+        if (!cancelled) setEarnings(json);
+      })
+      .catch(() => {
+        /* absent block is the failure state */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [thesis_id]);
+
+  useEffect(() => {
+    if (!thesis_id) return;
+    let cancelled = false;
+    fetch(`/api/theses/${thesis_id}/filings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: FilingsResponse | null) => {
+        if (!cancelled) setFilings(json);
+      })
+      .catch(() => {
+        /* absent block is the failure state */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [thesis_id]);
 
   // Durable dossier — the ONLY fetch that gates the paint. Re-runs on a
@@ -641,6 +730,8 @@ export function useThesisSheetData(
     loaded,
     quote,
     quoteLoading,
+    earnings,
+    filings,
     candles,
     candlesLoading,
     coverage,
@@ -651,10 +742,10 @@ export function useThesisSheetData(
 
 // ─── ThesisBody ──────────────────────────────────────────────────────────────
 // Everything under the header, the same on the sheet and the trade page: the
-// price with the chart's selected move, then four tabs. Overview is the
+// price with the chart's selected move, then three tabs. Overview is the
 // timeline (the trade banner, the chart, the plan, the flag line, the newest
-// 8 Activity lines); Thesis is the analyst's view (ThesisView); Data is the
-// company's numbers, live (ThesisDataTab); Activity is the whole list.
+// 8 Activity lines); Research is the analyst's view (ResearchView); Activity
+// is the whole list.
 //   surface "sheet": the trade banner shows for a held or closed position and
 //                    the stock cards (the levels, Wall Street) close the Overview.
 //   surface "page":  the page's right-hand column carries the position card
@@ -683,13 +774,13 @@ export function ThesisBody({
   /** Under the Activity tab's list (the stock page's history of the stock). */
   afterActivity?: ReactNode;
 }) {
-  const { state, quote, quoteLoading, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
+  const { state, quote, quoteLoading, earnings, filings, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
   const extraTabs = moreTabs ?? [];
   // What the chart's selected range shows; the price row prints it.
   const [move, setMove] = useState<RangeMove | null>(null);
   // The open tab: Overview's "View all" opens Activity.
   const [tab, setTab] = useState(0);
-  const ACTIVITY_TAB = 3;
+  const ACTIVITY_TAB = 2;
 
   // ── Derived — durable from `state`, live from the hydration states ────────
   const liveStatus = state.status as ThesisStatus;
@@ -764,9 +855,9 @@ export function ThesisBody({
       />
     ) : null;
 
-  // The stock cards — the plan's levels and Wall Street — built once. With a
-  // sidebar (the page) they go there; without one (the sheet) they close the
-  // Overview. The earnings record is on the Data tab with the rest of the numbers.
+  // The stock cards — the plan's levels, Wall Street, the earnings record —
+  // built once. With a sidebar (the page) they go there; without one (the
+  // sheet) they close the Overview.
   const stockCards = (
     <>
       {showLevels && entryPrice != null ? (
@@ -781,6 +872,7 @@ export function ThesisBody({
         />
       ) : null}
       {wallStreet}
+      {earnings ? <EarningsCard data={earnings} /> : null}
     </>
   );
 
@@ -805,8 +897,7 @@ export function ThesisBody({
     <Tabs value={tab} onValueChange={(v) => setTab(Number(v))}>
       <TabsList>
         <TabsTrigger value={0}>Overview</TabsTrigger>
-        <TabsTrigger value={1}>Thesis</TabsTrigger>
-        <TabsTrigger value={2}>Data</TabsTrigger>
+        <TabsTrigger value={1}>Research</TabsTrigger>
         <TabsTrigger value={ACTIVITY_TAB}>Activity</TabsTrigger>
         {extraTabs.map((t, i) => (
           <TabsTrigger key={t.label} value={ACTIVITY_TAB + 1 + i}>
@@ -894,21 +985,11 @@ export function ThesisBody({
       </div>
       </TabsContent>
 
-      {/* ── Thesis: the analyst's view ─────────────────────────── */}
+      {/* ── Research: the claim and the write-up behind it ─────── */}
       <TabsContent value={1} className="space-y-5">
       <div className={columns}>
       <div className="min-w-0 space-y-5">
-        <ThesisView state={state} />
-      </div>
-      {sideColumn}
-      </div>
-      </TabsContent>
-
-      {/* ── Data: the company's numbers, live ──────────────────── */}
-      <TabsContent value={2} className="space-y-5">
-      <div className={columns}>
-      <div className="min-w-0 space-y-5">
-        <ThesisDataTab ticker={ticker} />
+        <ResearchView state={state} filings={filings} />
       </div>
       {sideColumn}
       </div>

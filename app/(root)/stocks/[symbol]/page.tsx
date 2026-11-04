@@ -9,7 +9,10 @@ import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
 import { PositionCard } from "@/components/stocks/PositionCard";
 import { StatBlock } from "@/components/stocks/StatGrid";
+import { StatTable } from "@/components/stocks/StatTable";
+import { EarningsCard } from "@/components/domain/earnings-card";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
+import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { ThesisHeader } from "@/components/domain/thesis-header";
 import { ThesisPageBody } from "@/components/trades/ThesisPageBody";
@@ -26,14 +29,35 @@ import {
 import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
+import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 import { buildStockHistory } from "@/lib/stocks/stock-history";
-import { keyStatColumns } from "@/lib/stocks/stock-stats";
+import { keyStatColumns, financialStatSections } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
+import type { EarningsResponse } from "@/lib/types/thesis-sheet";
 import { ExternalLink } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** The details-card label every sidebar and research block uses. */
+function BlockLabel({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
+}
+
+/** One label · value row, the Trade Details pattern. */
+function DetailRows({ rows }: { rows: Array<{ label: string; value: React.ReactNode }> }) {
+  return (
+    <>
+      {rows.map(({ label, value }) => (
+        <div key={label} className="flex items-center justify-between gap-3 text-sm border-b border-border pb-1 last:border-0">
+          <span className="text-muted-foreground shrink-0">{label}</span>
+          <span className="font-medium tabular-nums text-right min-w-0 truncate">{value}</span>
+        </div>
+      ))}
+    </>
+  );
+}
 
 type MarketNewsArticle = { headline: string; source: string; datetime: number; url: string };
 
@@ -85,7 +109,7 @@ export default async function StockDetailPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   const accountId = user ? await getAccountId(user.id) : null;
 
-  const [identity, profile, quote, metrics, candles, coverage, positions, theses, watchlistStatus] =
+  const [identity, profile, quote, metrics, candles, coverage, earnings, positions, theses, watchlistStatus] =
     await Promise.all([
       getStockInfo(upperSymbol),
       getStockProfile(upperSymbol),
@@ -93,6 +117,7 @@ export default async function StockDetailPage({ params }: Props) {
       getStockMetrics(upperSymbol),
       getStockCandles(upperSymbol, 365),
       getAnalystCoverageData(upperSymbol).catch(() => null),
+      getEarningsForSymbol(upperSymbol).catch(() => null),
       accountId
         ? prisma.position.findMany({
             where: { accountId, symbol: upperSymbol },
@@ -163,13 +188,65 @@ export default async function StockDetailPage({ params }: Props) {
   const historyBlock =
     history.length > 0 ? (
       <section className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hindsight on this stock</p>
+        <BlockLabel>Hindsight on this stock</BlockLabel>
         <StockHistory ticker={upperSymbol} items={history} />
       </section>
     ) : null;
 
-  // No live thesis: the trades we made in it, and Wall Street. The company's
-  // numbers are the Data tab's.
+  const website = profile?.weburl
+    ? profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+    : null;
+
+  // Who the company is: the sidebar's About card.
+  const aboutCard = (
+    <Card className="bg-muted/40 p-2 gap-1">
+      <BlockLabel>About</BlockLabel>
+      <DetailRows
+        rows={[
+          { label: "Exchange", value: identity.exchange ?? "—" },
+          { label: "Industry", value: profile?.finnhubIndustry || "—" },
+          { label: "IPO", value: profile?.ipo || "—" },
+          ...(website && profile?.weburl
+            ? [
+                {
+                  label: "Website",
+                  value: (
+                    <a
+                      href={profile.weburl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:underline"
+                    >
+                      {website}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+    </Card>
+  );
+
+  // The Financials tab: the statistics table and the filings.
+  const statSections = financialStatSections(metrics, marketCap);
+  const financials = (
+    <>
+      {statSections.length > 0 ? (
+        <StatTable sections={statSections} />
+      ) : (
+        <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
+      )}
+      <div className="space-y-2">
+        <BlockLabel>Filings</BlockLabel>
+        <StockFilingsSection symbol={upperSymbol} />
+      </div>
+    </>
+  );
+
+  // No live thesis: the trades we made in it, who the company is, Wall
+  // Street and the earnings record.
   const sidebar = (
     <>
       {positions.length > 0 ? (
@@ -190,7 +267,9 @@ export default async function StockDetailPage({ params }: Props) {
           }))}
         />
       ) : null}
+      {aboutCard}
       <AnalystConsensusWidget coverage={coverage} currentPrice={price} />
+      {earnings ? <EarningsCard data={earnings as unknown as EarningsResponse} /> : null}
     </>
   );
 
@@ -236,7 +315,11 @@ export default async function StockDetailPage({ params }: Props) {
           <ThesisPageBody
             thesisId={live.id}
             ticker={upperSymbol}
-            moreTabs={[{ label: "News", content: news }]}
+            aside={aboutCard}
+            moreTabs={[
+              { label: "Financials", content: financials },
+              { label: "News", content: news },
+            ]}
             afterActivity={historyBlock}
           />
         ) : (
@@ -253,6 +336,7 @@ export default async function StockDetailPage({ params }: Props) {
             }}
             stats={<StatBlock label="Key stats" columns={keyStatColumns(quote, metrics, marketCap)} />}
             history={history}
+            financials={financials}
             news={news}
             sidebar={sidebar}
           />
