@@ -87,7 +87,7 @@ describe("CYTK — the refresh hands back its plan", () => {
     expect(res.summary).toContain("Entry $73.50 → $70.25");
     expect(res.summary).toContain("Target $96 → $88.31");
     expect(res.summary).toContain(
-      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00, composite 3/10.",
+      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00.",
     );
   });
 

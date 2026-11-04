@@ -23,7 +23,7 @@ const runInput = {
 const trailTrigger = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." };
 
 export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
-  daily: () => buildDailyRunSystemPromptV2({ name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),
+  daily: () => buildDailyRunSystemPromptV2({ name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),
   tactical: () =>
     buildTacticalSystemPrompt({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
@@ -42,10 +42,10 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
     } as never),
   chat: () =>
     buildPrincipalSystemPrompt({
-      scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], minConfidence: 70, maxPositionSize: 10000, maxOpenPositions: 8 },
+      scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], maxPositionSize: 10000, maxOpenPositions: 8 },
       // Its room on 2026-10-15: full (the holdings themselves are in the book block).
       room: { open: 8, max: 8, held: [], awaitingApproval: 0 },
     }),
   writer: () =>
-    buildWriterResearchPrompt({ analyst: { analystPrompt: null, minConfidence: 70 }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-09-25" } as never),
+    buildWriterResearchPrompt({ analyst: { analystPrompt: null }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-09-25" } as never),
 };

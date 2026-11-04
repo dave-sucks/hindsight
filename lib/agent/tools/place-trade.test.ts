@@ -106,7 +106,6 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
     accountId: "account_1",
     analystId: "analyst_1",
     groupId: (phase: string) => phase,
-    minConfidence: null,
     maxOpenPositions: null,
     maxPositionSize: null,
     runEnvironment: "PAPER",

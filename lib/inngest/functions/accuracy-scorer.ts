@@ -30,8 +30,7 @@ async function generateNarrative(stats: AccuracyStats): Promise<string> {
     .filter((b) => b.count > 0)
     .map(
       (b) =>
-        `  • Confidence ${b.label}: expected ${Math.round(b.expectedWinRate * 100)}% win, ` +
-        `actual ${b.winRate !== null ? Math.round(b.winRate * 100) : "—"}% (n=${b.count})`
+        `  • ${b.label} conviction: ${b.winRate !== null ? Math.round(b.winRate * 100) : "—"}% win rate (n=${b.count})`
     )
     .join("\n");
 

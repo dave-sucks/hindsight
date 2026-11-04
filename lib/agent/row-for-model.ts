@@ -8,7 +8,7 @@
  * conviction rationale, the variant view), so every agent that decides on a
  * stock reads its case for and against. The full row comes by ticker or by
  * rule, for the two situations whose answer needs the research re-planned
- * (QUIET_WATCH_WOKE, NO_SETUP_NAMED): the short row plus the score notes,
+ * (QUIET_WATCH_WOKE, NO_SETUP_NAMED): the short row plus the research sections,
  * the seven research sections, the whole snapshot and, on a named read, the
  * history. Code decides the size from the row's situations; nothing depends
  * on the model asking.
@@ -136,7 +136,6 @@ function line(row: Row): string {
   const target = num(row.targetPrice);
   const floor = num(row.stopLoss);
   const review = date(row.reviewDueAt);
-  const score = num(row.composite);
   const catalyst = date(row.catalystDate);
   const { noClaim, failedOn } = writeUp(row);
   return [
@@ -152,7 +151,6 @@ function line(row: Row): string {
     // A trade waiting for the principal is off the work list, so its stock is often quiet: the line says it waits.
     proposalLine(row) ? `proposal waiting: ${proposalLine(row)}` : null,
     review ? `review ${etDay(review)}` : null,
-    score != null ? `score ${score}` : null,
     catalyst ? `catalyst ${isoDay(catalyst)}` : catalystDateMissing(row) ? "catalyst date missing" : null,
     `id ${String(row.id)}`,
     // An account-wide read names each stock's analyst, last.
@@ -290,22 +288,6 @@ function setupLine(row: Row): string | null {
   return parts.join(" ");
 }
 
-const SCORE_PARTS: Array<[key: string, label: string]> = [["entryQuality", "entry"], ["trendStrength", "trend"], ["relativeStrength", "relative strength"], ["catalystFreshness", "catalyst"]];
-
-function scoreLine(row: Row): string | null {
-  const s = obj(row.scoring);
-  const composite = num(s?.composite);
-  if (composite == null) return null;
-  const parts = SCORE_PARTS.map(([k, label]) => { const v = num(obj(s?.[k])?.score); return v != null ? `${label} ${v}` : null; });
-  return parts.every(Boolean) ? `${composite}/10 (${parts.join(" · ")})` : `${composite}/10`;
-}
-
-function scoreNotes(row: Row): Record<string, string> | null {
-  const s = obj(row.scoring);
-  const out: Record<string, string> = {};
-  for (const [k, label] of SCORE_PARTS) { const note = str(obj(s?.[k])?.note); if (note) out[label.replace(" ", "_")] = stripSourceTags(note); }
-  return Object.keys(out).length ? out : null;
-}
 
 function chartLine(row: Row): string | null {
   const c = obj(row.chart) as Record<string, number | string | null> | null;
@@ -401,9 +383,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("heldThroughFloor", row.heldThroughFloor);
   put("supersededBy", resolved?.supersededBy);
   put("snapshot", snapshot ? (size === "full" ? stripSourceTags(snapshot) : firstParagraph(snapshot, 300)) : null);
-  put("score", scoreLine(row));
   if (size === "full") {
-    put("score_notes", scoreNotes(row));
     for (const k of RESEARCH_SECTIONS) put(k, sectionText(row[k]));
   }
   put("chart", chartLine(row));

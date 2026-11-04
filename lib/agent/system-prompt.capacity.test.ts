@@ -27,7 +27,7 @@ const runInput = (symbols: string[]) =>
 describe("the PEAD Specialist on 2026-09-18 — 4 open, limit 6", () => {
   it("reads 4 of 6 with two free, and carries no full-analyst rule", () => {
     const p = buildDailyRunSystemPromptV2(
-      { name: "PEAD Specialist", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
+      { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
       runInput(["FIVE", "IOT", "MU", "NVDA"]),
     );
     expect(p).toContain("Positions: 4 of 6 — 2 free.");
@@ -39,7 +39,7 @@ describe("the PEAD Specialist on 2026-09-18 — 4 open, limit 6", () => {
     // The bug, pinned so it cannot come back: 2 slots left, passed as the
     // limit, against 4 open.
     const p = buildDailyRunSystemPromptV2(
-      { name: "PEAD Specialist", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 2 },
+      { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 2 },
       runInput(["FIVE", "IOT", "MU", "NVDA"]),
     );
     expect(p).toContain("this analyst is FULL");
@@ -47,7 +47,7 @@ describe("the PEAD Specialist on 2026-09-18 — 4 open, limit 6", () => {
 
   it("a genuinely full analyst still reads full", () => {
     const p = buildDailyRunSystemPromptV2(
-      { name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
+      { name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
       runInput(["ABT", "ASML", "CEG", "WST"]),
     );
     expect(p).toContain("Positions: 4 of 4 — this analyst is FULL.");

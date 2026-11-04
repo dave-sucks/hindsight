@@ -17,10 +17,7 @@ import { getAccountId } from "@/lib/auth/account";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { pickProposalOrder } from "@/lib/trade-status";
 import { etTradingDayDate } from "@/lib/market-hours";
-import {
-  getThesisComposite,
-  getThesisSnapshotText,
-} from "@/lib/agent/thesis-narrative";
+import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -110,7 +107,6 @@ export interface TodaysPick {
   id: string;
   ticker: string;
   direction: string | null;
-  confidenceScore: number;
 }
 
 export interface RecentPick {
@@ -119,7 +115,6 @@ export interface RecentPick {
   direction: string | null;
   /** Lifecycle status — drives the row's leading badge (Watching / Active / etc.). */
   status: string;
-  confidenceScore: number;
   reasoningSummary: string;
   entryPrice: number | null;
   targetPrice: number | null;
@@ -476,9 +471,6 @@ export async function getDashboardData(
         researchRunId: true,
         direction: true,
         status: true,
-        // PR-9: conviction lives in scoring.composite; narrative lives in
-        // snapshot.
-        scoring: true,
         snapshot: true,
         entryPrice: true,
         targetPrice: true,
@@ -562,16 +554,12 @@ export async function getDashboardData(
         direction: { in: ["LONG", "SHORT"] },
         researchRun: { environment },
       },
-      // PR-9: was orderBy confidenceScore desc — scoring.composite is
-      // Json and not server-sortable. Order createdAt-desc and downstream
-      // ranks by composite client-side.
       orderBy: { createdAt: "desc" },
       take: 5,
       select: {
         id: true,
         ticker: true,
         direction: true,
-        scoring: true,
       },
     }),
     // Activity feed: recent management actions with position context
@@ -782,7 +770,6 @@ export async function getDashboardData(
       currentPrice,
       targetPrice: p.targetPrice ?? p.avgCost * 1.1,
       stopPrice: p.stopLoss ?? p.avgCost * 0.9,
-      confidenceScore: 0, // TODO: join via TradeDecision → Thesis
       status: displayStatus,
       pnl: livePrice !== undefined ? dollars : 0,
       pnlPct: livePrice !== undefined ? pct : 0,
@@ -842,7 +829,6 @@ export async function getDashboardData(
       currentPrice: closePrice,
       targetPrice: p.targetPrice ?? p.avgCost * 1.1,
       stopPrice: p.stopLoss ?? p.avgCost * 0.9,
-      confidenceScore: 0,
       status: closedTradeStatus(p.status, p.outcome),
       pnl: realizedPnl,
       pnlPct: positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0,
@@ -1037,16 +1023,7 @@ export async function getDashboardData(
   }));
 
   // ── 10. Today's picks (fetched in phase A) ───────────────────────────
-  // PR-9: legacy 0-100 confidence → composite × 10.
-  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => {
-    const composite = getThesisComposite(t);
-    return {
-      id: t.id,
-      ticker: t.ticker,
-      direction: t.direction,
-      confidenceScore: composite != null ? composite * 10 : 0,
-    };
-  });
+  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => ({ id: t.id, ticker: t.ticker, direction: t.direction }));
 
   // ── 11. Map recentPicks ────────────────────────────────────────────────────
   const recentPicks: RecentPick[] = dbRecentPicks.map((p) => {
@@ -1082,15 +1059,11 @@ export async function getDashboardData(
       };
     }
 
-    // PR-9: legacy 0-100 confidence → composite × 10; reasoningSummary
-    // sourced from snapshot.
-    const composite = getThesisComposite(p);
     return {
       id: p.id,
       ticker: p.ticker,
       direction: p.direction,
       status: p.status,
-      confidenceScore: composite != null ? composite * 10 : 0,
       reasoningSummary: getThesisSnapshotText(p),
       entryPrice: p.entryPrice,
       targetPrice: p.targetPrice,

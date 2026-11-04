@@ -7,7 +7,7 @@
  * Both endpoints already exist and are what the open ThesisSheet uses:
  *
  *   • /api/theses/:id       — durable thesis dossier (status, levels,
- *     coreBelief, snapshot, position metadata, scoring, triggers, etc.)
+ *     coreBelief, snapshot, position metadata, triggers, etc.)
  *   • /api/theses/:id/quote — live current price + day change + position P&L
  *
  * Until this hook existed, the mini-card in the agent chat carousel was

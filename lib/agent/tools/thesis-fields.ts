@@ -40,11 +40,6 @@ const sectionBullets = z
   .object({ bullets: z.array(z.object({ text: z.string(), citation: citation.optional() })) })
   .describe("Bulleted list, one citation per bullet.");
 
-const SCORING =
-  "The setup's score: trendStrength 0-3 (0 no trend or breaking down, 3 a clean multi-week uptrend), " +
-  "relativeStrength 0-3 (0 a laggard, 3 the sector leader), entryQuality 0-2 (0 extended or no setup, 2 a clean defined setup), " +
-  "catalystFreshness 0-2 (0 already played, 2 still ahead). They add up to the composite out of 10; a buy is refused when it is under this analyst's minimum confidence.";
-
 /** The trigger edits, worded once for update_thesis and the writer's submit_thesis (their shapes come from lib/agent/triggers/schema.ts). */
 export const TRIGGER_EDITS = {
   ladder: "The trigger ladder for a new thesis. Omit it for the horizon's defaults.",
@@ -60,7 +55,6 @@ export type Verdict = (typeof VERDICTS)[number];
 export function thesisFields(opts: { writer?: boolean } = {}) {
   const score = (max: number) => (opts.writer ? z.number() : z.number().min(0).max(max));
   // The four notes went 2026-11-03: nothing read them. A sent note is kept; none is asked for.
-  const part = (max: number) => z.object({ score: score(max), note: z.string().optional() });
   return {
     direction: z
       .enum(["LONG", "SHORT", "PASS"])
@@ -117,12 +111,6 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
         "Specific things you could observe that would prove the thesis wrong (a close below the 50-day average, a guidance cut), two or more on LONG or SHORT, " +
           "never a price level: the floor carries it. Exits are graded against them; on a PASS they are what would change your mind.",
       ),
-    scoring: z
-      .object({ trendStrength: part(3), relativeStrength: part(3), entryQuality: part(2), catalystFreshness: part(2) })
-      .describe(SCORING),
-    scoring_patch: z
-      .object({ trendStrength: part(3).optional(), relativeStrength: part(3).optional(), entryQuality: part(2).optional(), catalystFreshness: part(2).optional() })
-      .describe(`${SCORING} Send all four to replace the score, or some to change only those.`),
     conviction: z
       .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
       .describe(

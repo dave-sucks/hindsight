@@ -46,7 +46,7 @@ describe("get_portfolio_context — each analyst's room, on the whole book", () 
   it("FULL is place_trade's own refusal: the Secular Compounder's next buy is refused at 8 of 8", async () => {
     const { result } = await replayTool("place-trade", "placeTrade", {
       seed: { ...seed(), thesis: [thesisRow({ id: "th_new", ticker: "ETN", analystId: "cmmqxola3000004lbj7c11bfn" })] },
-      ctx: { runMode: "PRINCIPAL_CHAT", runEnvironment: "LIVE", analystId: "cmmqxola3000004lbj7c11bfn", maxOpenPositions: 8, minConfidence: 70, dryRun: true },
+      ctx: { runMode: "PRINCIPAL_CHAT", runEnvironment: "LIVE", analystId: "cmmqxola3000004lbj7c11bfn", maxOpenPositions: 8, dryRun: true },
       args: { ticker: "ETN", direction: "LONG", entry_price: 400, thesis_id: "th_new" },
       quotes: { ETN: 400 },
     });

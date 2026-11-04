@@ -33,7 +33,6 @@ export interface BriefAnalyst {
   analystPrompt?: string | null;
   directionBias?: string | null;
   holdDurations?: readonly string[] | null;
-  minConfidence?: number | null;
   minPositionSize?: unknown;
   maxPositionSize?: unknown;
   maxPositionTotal?: unknown;
@@ -53,7 +52,7 @@ export interface UniverseAnalyst {
 
 /** The fields the brief reads, for a script that saves an analyst for a replay. */
 export const BRIEF_FIELDS = [
-  "name", "analystPrompt", "directionBias", "holdDurations", "minConfidence", "minPositionSize",
+  "name", "analystPrompt", "directionBias", "holdDurations", "minPositionSize",
   "maxPositionSize", "maxPositionTotal", "maxOpenPositions", "setupIds",
 ] as const;
 
@@ -118,7 +117,6 @@ export function analystBrief(analyst: BriefAnalyst, room?: AnalystCapacity | nul
   const rules = [
     `- Direction: ${directionLabel(analyst.directionBias)}`,
     `- Hold style: ${analyst.holdDurations?.length ? analyst.holdDurations.join(", ") : "SWING"}`,
-    `- Min confidence: ${analyst.minConfidence ?? 70}%`,
     min > 0
       ? `- Position size: ${dollars(min)}–${dollars(max)} per entry (place_trade sizes every buy inside this band by risk)`
       : `- Max position size: ${dollars(max)}`,

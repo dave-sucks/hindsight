@@ -56,9 +56,9 @@ Asked for the analyst's universe, these tools hide every stock it already watche
 
 It works in two passes. The first reads the whole pool and drops what plainly doesn't fit. The second checks the rest: `get_theses` confirms no other analyst already covers the stock, and `get_stock_data` gives the price, chart and news.
 
-Each stock that survives is scored out of 10: trend (3), strength against the market (3), entry (2) and how fresh its catalyst is (2). A 4 or better earns research. Every stock ends one of four ways:
+For each stock that survives, the chat says in a sentence or two what is changing in the business and whether the chart gives a place to buy it. There is no score; the sentence is the judgment. Every stock ends one of four ways:
 
-- **Research:** `dispatch_thesis_research` sends it to the Writer. Five per conversation at most, the best scores first.
+- **Research:** `dispatch_thesis_research` sends it to the Writer. Five per conversation at most, the clearest business reasons first.
 - **Watch:** strong but not ready to price, or past the five. Saved with `record_thesis` as a watch with a wake-up (a price, a move, an earnings beat or miss, or days before the report), so "no room this week" never means "never." A watch with no wake-up at all is just a name on the list, waiting for you.
 - **Pass:** researched and declined. Saved as Passed with what would change the verdict, so it isn't pitched again without a reason.
 - **Skip:** dropped in the first pass. One line in the summary; nothing is saved.
@@ -88,8 +88,8 @@ The batched-discovery section ("Triage flow") of the chat prompt, `buildPrincipa
 #### Mode
 `principal` in `lib/agent/modes.ts`. The standalone `discovery` mode, its prompt and its run (`lib/inngest/functions/discovery-run.ts`) were deleted; old DISCOVERY runs still open on the runs page.
 
-#### Score and cap
-The 10-point composite, its bar of 4 and the cap of five dispatches a conversation are rules in the chat prompt.
+#### The cap
+The cap of five dispatches a conversation is a rule in the chat prompt.
 
 #### Outcomes
 `record_thesis` with `direction: PASS` is a pass; with `status: WATCHING` as well, a watch without a plan. A new plan is always the Writer's.

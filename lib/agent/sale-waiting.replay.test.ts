@@ -167,7 +167,7 @@ describe("NVDA 10-09 08:00 ET: the fired $236 sale was its only work, and that s
     expect(row).toBeNull();
     expect(quiet).not.toBeNull();
     expect(modelLine).toBe(
-      "NVDA · held · LONG · PEAD · $230.48 · entry $218.23 · target $322.00 · floor $236.00 · proposal waiting: sell 33 sh, placed 10-08 09:31 ET, expires 10-09 09:31 ET · review 10-14 · score 8 · id cmtg9nbdy000204jpc6cwawgg",
+      "NVDA · held · LONG · PEAD · $230.48 · entry $218.23 · target $322.00 · floor $236.00 · proposal waiting: sell 33 sh, placed 10-08 09:31 ET, expires 10-09 09:31 ET · review 10-14 · id cmtg9nbdy000204jpc6cwawgg",
     );
   });
 

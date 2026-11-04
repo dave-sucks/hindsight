@@ -85,7 +85,6 @@ export type ThesisCardData = {
   // P1-24: a committed view (LONG/SHORT) or null. A pass stores direction=null
   // and is identified by status=PASSED, not by the direction column.
   direction: "LONG" | "SHORT" | null;
-  confidence_score: number;
   reasoning_summary?: string;
   thesis_bullets?: string[];
   risk_flags?: string[];
@@ -1107,7 +1106,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           status={state.status}
           agentWatchDays={agentWatchDays(state.triggers)}
           conviction={(state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
-          score={state.scoringComposite ?? null}
           analystId={state.analystId}
           thesisId={thesis_id}
           onSent={data.refresh}

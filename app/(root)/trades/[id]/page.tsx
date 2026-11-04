@@ -23,7 +23,6 @@ import {
 } from '@/lib/agent/triggers/load-levels';
 import { agentWatchDays } from '@/lib/agent/triggers/agent-watch';
 import { canonicalLevels } from '@/lib/agent/triggers/price-levels';
-import { getThesisComposite } from '@/lib/agent/thesis-narrative';
 import { getStockInfo } from '@/lib/actions/stock-info';
 import { cn } from '@/lib/utils';
 import { TradeActions } from '@/components/trades/TradeActions';
@@ -187,7 +186,6 @@ export default async function TradeDetailPage({
           status={trade.thesis?.status ?? (isClosed ? 'RETIRED' : 'HOLDING')}
           agentWatchDays={agentWatchDays(trade.thesis?.triggers)}
           conviction={(trade.thesis?.conviction ?? null) as 'STRONG' | 'HIGH' | 'MEDIUM' | 'LOW' | null}
-          score={trade.thesis ? getThesisComposite(trade.thesis) : null}
           analystId={analystIdVal}
           thesisId={trade.thesis?.id}
           extraActions={<TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />}

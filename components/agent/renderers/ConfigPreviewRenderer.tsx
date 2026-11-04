@@ -41,7 +41,6 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
       { key: "directionBias", label: "Direction" },
       { key: "holdDurations", label: "Hold Duration" },
       { key: "setupIds", label: "Setups" },
-      { key: "minConfidence", label: "Min Confidence" },
       { key: "minPositionSize", label: "Min Position Size" },
       { key: "maxPositionSize", label: "Max Position Size" },
       { key: "maxOpenPositions", label: "Max Positions" },
@@ -84,7 +83,6 @@ function formatValue(key: FieldKey, val: unknown): string {
   ) {
     return `$${val.toLocaleString()}`;
   }
-  if (key === "minConfidence" && typeof val === "number") return `${val}%`;
   if (typeof val === "string" && key === "analystPrompt")
     return val.length > 140 ? val.slice(0, 140) + "…" : val;
   return String(val);

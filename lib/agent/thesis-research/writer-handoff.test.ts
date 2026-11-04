@@ -15,7 +15,7 @@ const WRITER_SUMMARY =
   "Updated CYTK: Entry $73.50 → $70.25, Entry: fires on the close, Stop: wording updated, Target $96 → $88.31, composite 6 → 3, rationale updated, research refreshed";
 
 /** The plan as the writer left it on the row at 12:08:00. */
-const CYTK_PLAN = { entryPrice: 70.25, targetPrice: 88.31, stopLoss: 64, composite: 3 };
+const CYTK_PLAN = { entryPrice: 70.25, targetPrice: 88.31, stopLoss: 64 };
 
 describe("the plan the refresh wrote goes back to the run that asked for it", () => {
   const h = writerHandoff({
@@ -26,7 +26,7 @@ describe("the plan the refresh wrote goes back to the run that asked for it", ()
 
   it("names every level the parent went on to delete", () => {
     expect(h.planLine).toBe(
-      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00, composite 3/10.",
+      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00.",
     );
   });
 
@@ -39,7 +39,7 @@ describe("the plan the refresh wrote goes back to the run that asked for it", ()
   it("the one line the tool row and the model both read", () => {
     expect(writerHandoffLine(h)).toBe(
       "The refresh changed: Entry $73.50 → $70.25, Entry: fires on the close, Stop: wording updated, Target $96 → $88.31, composite 6 → 3, rationale updated, research refreshed. " +
-        "The plan the refresh left: buy $70.25, target $88.31, floor $64.00, composite 3/10.",
+        "The plan the refresh left: buy $70.25, target $88.31, floor $64.00.",
     );
   });
 
@@ -55,7 +55,7 @@ describe("the shapes a refresh can leave behind", () => {
     const h = writerHandoff({
       ticker: "CYTK",
       update: { summary: "Updated CYTK: research refreshed" },
-      plan: { entryPrice: null, targetPrice: null, stopLoss: null, composite: null },
+      plan: { entryPrice: null, targetPrice: null, stopLoss: null },
     });
     expect(h.planLine).toBe(
       "The refresh left no priced plan on $CYTK — no buy level, target or floor.",
@@ -67,7 +67,7 @@ describe("the shapes a refresh can leave behind", () => {
     const h = writerHandoff({ ticker: "CYTK", update: null, plan: CYTK_PLAN });
     expect(h.changed).toBeNull();
     expect(writerHandoffLine(h)).toBe(
-      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00, composite 3/10.",
+      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00.",
     );
   });
 
@@ -76,9 +76,9 @@ describe("the shapes a refresh can leave behind", () => {
       writerHandoff({
         ticker: "ETN",
         update: null,
-        plan: { entryPrice: 418, targetPrice: null, stopLoss: 355, composite: 7 },
+        plan: { entryPrice: 418, targetPrice: null, stopLoss: 355 },
       }).planLine,
-    ).toBe("The plan the refresh left: buy $418.00, floor $355.00, composite 7/10.");
+    ).toBe("The plan the refresh left: buy $418.00, floor $355.00.");
   });
 
   it("the lead strips with or without the dollar sign, and an empty summary is no summary", () => {

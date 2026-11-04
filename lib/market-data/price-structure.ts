@@ -104,11 +104,6 @@ export interface TrendTemplate {
   failing: string[];
 }
 
-export interface SuggestedScore {
-  score: number;
-  note: string;
-}
-
 export interface PriceStructure {
   /** Date of the last completed bar. */
   asOf: string;
@@ -163,11 +158,6 @@ export interface PriceStructure {
   fib: FibLevels | null;
   trendTemplate: TrendTemplate | null;
   verdict: TrendVerdict | null;
-  /** Computed defaults for the writer's composite; the model may override with a note. */
-  suggested: {
-    trendStrength: SuggestedScore | null;
-    relativeStrength: SuggestedScore | null;
-  };
 }
 
 // ── Constants (documented, not settings) ─────────────────────────────────
@@ -503,46 +493,6 @@ export function trendVerdict(
   return "UPTREND";
 }
 
-function suggestTrendStrength(
-  verdict: TrendVerdict | null,
-  tt: TrendTemplate | null,
-  s200: MovingAverage | null,
-  price: number,
-): SuggestedScore | null {
-  if (!verdict) return null;
-  if (verdict === "BROKEN") return { score: 0, note: "Broke the 200-day." };
-  if (verdict === "DOWNTREND") {
-    return {
-      score: 0,
-      note: price < (s200?.value ?? Infinity)
-        ? "Below the 200-day."
-        : "Above a falling 200-day with the 50-day under it — a rally inside a downtrend.",
-    };
-  }
-  if (verdict === "PULLBACK_IN_UPTREND") {
-    return { score: 1, note: "Above the 200-day, pulled back under the 50-day." };
-  }
-  const ttNote = tt ? ` Trend Template ${tt.passed}/${tt.of}.` : "";
-  if (tt && tt.passed >= 7 && s200?.slope === "RISING") {
-    return { score: 3, note: `${verdict === "BASING" ? "Basing" : "Uptrend"} over a rising 200-day.${ttNote}` };
-  }
-  return { score: 2, note: `${verdict === "BASING" ? "Basing" : "Uptrend"} above the 200-day.${ttNote}` };
-}
-
-function suggestRelativeStrength(vsSpy: RelativeReturns | null): SuggestedScore | null {
-  if (!vsSpy) return null;
-  const windows = [vsSpy.m1, vsSpy.m3, vsSpy.m6].filter((x): x is number => x != null);
-  if (windows.length === 0) return null;
-  const ahead = windows.filter((x) => x > 0).length;
-  const fmt = (x: number | null, l: string) => (x == null ? null : `${l} ${x >= 0 ? "+" : ""}${x}pts`);
-  const note = `vs SPY: ${[fmt(vsSpy.m1, "1M"), fmt(vsSpy.m3, "3M"), fmt(vsSpy.m6, "6M")].filter(Boolean).join(", ")}.`;
-  let score = 0;
-  if (ahead === windows.length && (vsSpy.m3 ?? 0) >= 10) score = 3;
-  else if (ahead >= 2) score = 2;
-  else if (ahead === 1) score = 1;
-  return { score, note };
-}
-
 // ── The one entry point ───────────────────────────────────────────────────
 
 export interface PriceStructureInput {
@@ -636,10 +586,6 @@ export function computePriceStructure(input: PriceStructureInput): PriceStructur
     fib: lastUpLegFib(bars),
     trendTemplate: tt,
     verdict,
-    suggested: {
-      trendStrength: suggestTrendStrength(verdict, tt, d200, price),
-      relativeStrength: suggestRelativeStrength(vsSpy),
-    },
   };
 }
 

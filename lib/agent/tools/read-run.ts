@@ -33,7 +33,6 @@ export const readRun = defineTool({
             ticker: true,
             direction: true,
             status: true,
-            scoring: true,
             targetPrice: true,
             stopLoss: true,
             snapshot: true,

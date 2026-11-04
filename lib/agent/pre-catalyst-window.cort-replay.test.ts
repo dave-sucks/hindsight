@@ -62,7 +62,6 @@ const seed = (extra: Record<string, unknown[]> = {}) => ({
       sectors: [],
       tradingEnvironment: "LIVE",
       setupIds: fx.analyst.setupIds,
-      minConfidence: fx.analyst.minConfidence,
       minPositionSize: fx.analyst.minPositionSize,
       maxPositionSize: fx.analyst.maxPositionSize,
       maxPositionTotal: fx.analyst.maxPositionTotal,

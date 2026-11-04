@@ -48,7 +48,6 @@ export default async function AnalystEditPage({
     sectors: config.sectors,
     marketCapMin: config.marketCapMin != null ? Number(config.marketCapMin) : null,
     marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
-    minConfidence: config.minConfidence,
     riskPct: config.riskPct,
     minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize ? Number(config.maxPositionSize) : undefined,

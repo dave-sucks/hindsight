@@ -70,12 +70,6 @@ const RULE_DEFS = {
     // in the refusal; their prompts no longer say it a third time.
     markers: { chat: "only tighten" },
   },
-  MIN_CONFIDENCE: {
-    says: "A buy needs the analyst's minimum confidence (the composite score).",
-    refusal: "place_trade / record_thesis — names the composite and the minimum.",
-    // Every door reads it in the analyst's brief (lib/agent/analyst-brief.ts).
-    markers: { daily: "Min confidence", chat: "Min confidence", writer: "Min confidence" },
-  },
   LEVEL_ORDER: {
     says: "Entry, target and stop sit in order against each other and the live price (long: stop < entry < target).",
     refusal: "invalid_thesis_shape — names the three levels and which is out of order.",
@@ -130,7 +124,6 @@ const BELIEF: FieldContract[] = [
   f("conviction", "CHOSEN"),
   f("conviction_rationale", "TEXT", { note: "No cap: a 401-character rationale once threw away a thesis." }),
   f("variant_view", "TEXT", { note: "STRONG/HIGH without one is stored MEDIUM with the reason, never refused." }),
-  f("scoring", "JUDGED", { rule: "MIN_CONFIDENCE", note: "The composite the model rates; the minimum is the analyst's setting." }),
   f("horizon", "CHOSEN"),
   f("setup_id", "CHOSEN"),
   f("stop_basis", "TEXT"),
@@ -252,7 +245,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("sectors", "CHOSEN"),
     f("marketCapMin", "JUDGED", { note: "0, a negative or the $5T sentinel means no bound; the editor's null removes one (normalizeAnalystPatch)." }),
     f("marketCapMax", "JUDGED", { note: "As the floor." }),
-    f("minConfidence", "JUDGED", { note: "0–100, rounded on save." }),
     f("maxOpenPositions", "JUDGED", { note: "1–20, rounded on save." }),
     f("watchlist", "IDENTITY", { note: "Tickers cleaned and each once; Apply adds only what the analyst doesn't hold or watch (watchlistAdds)." }),
     f("exclusionList", "IDENTITY"),

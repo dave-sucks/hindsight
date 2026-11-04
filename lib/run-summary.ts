@@ -40,15 +40,6 @@
 export interface RunSummaryInputTheses {
   ticker: string;
   direction: string | null;
-  /**
-   * Composite score JSONB (`{ trendStrength, relativeStrength, entryQuality,
-   * catalystFreshness, composite }` — see `record_thesis`'s scoring arg).
-   * PR-9 dropped the standalone `confidenceScore` int — `scoring.composite`
-   * (0-10 scale) is the single conviction number. `unknown` since callers
-   * pass Prisma's `JsonValue`; readers crack the shape via
-   * `getThesisComposite()` from `lib/agent/thesis-narrative`.
-   */
-  scoring: unknown;
 }
 
 export interface RunSummaryInputTradeDecision {

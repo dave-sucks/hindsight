@@ -20,7 +20,6 @@
  * read.
  */
 
-import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { conditionSentence, levelOf, shapeOf } from "@/lib/agent/triggers/condition";
@@ -52,8 +51,6 @@ export type TriggerState =
 export interface ResolvedEnvelope {
   /** Live quote at read time. Null on quote failure. */
   currentPrice: number | null;
-  /** Flat surfacing of scoring.entryQuality.score. */
-  entryQualityScore: number | null;
 
   /**
    * Unrealized gain % for HOLDING rows (direction-aware), so the agent sees
@@ -164,9 +161,6 @@ export interface ResolverThesisInput {
   /** The horizon — a CATALYST row with no named setup is a dated binary too. */
   horizon?: string | null;
   createdAt: Date;
-  scoring: unknown; // for entryQualityScore surfacing + the composite
-  /** The owning analyst's minimum confidence (0–100), for the plan flag. */
-  minConfidence?: number | null;
   /** Pre-parsed trigger array — caller invokes triggersArraySchema.safeParse. */
   parsedTriggers: Trigger[];
   /**
@@ -204,11 +198,6 @@ export function buildResolvedEnvelope(args: {
   const { thesis, currentPrice, supersession, now } = args;
   const printedAt =
     typeof args.priceAsOf === "number" ? args.priceAsOf * 1000 : args.priceAsOf ? new Date(args.priceAsOf).getTime() : NaN;
-
-  // entryQuality surfaced flat from nested scoring (was buried under
-  // scoring.entryQuality.score — primary cause of the "composite hides
-  // bottleneck" gap from tonight's ranking exercise).
-  const entryQualityScore = extractEntryQualityScore(thesis.scoring);
 
   // Find the ENTER trigger (one per thesis by writer discipline). Used
   // for triggerState + actionability.
@@ -345,8 +334,6 @@ export function buildResolvedEnvelope(args: {
     stopLoss: thesis.stopLoss ?? null,
     currentPrice,
     dayRangePct: thesis.dayRangePct ?? null,
-    composite: getThesisComposite({ scoring: thesis.scoring }),
-    minConfidence: thesis.minConfidence ?? null,
     lastLadderEditAt: thesis.lastLadderEditAt ?? null,
     entryRaisesAway: thesis.entryRaisesAway ?? null,
     spentBuyCrossing: thesis.spentBuyCrossing ?? null,
@@ -375,7 +362,6 @@ export function buildResolvedEnvelope(args: {
 
   return {
     currentPrice,
-    entryQualityScore,
     unrealizedGainPct: winner.unrealizedGainPct,
     progressToTarget: winner.progressToTarget,
     ladderHealth,
@@ -403,15 +389,6 @@ export function buildResolvedEnvelope(args: {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
-
-function extractEntryQualityScore(scoring: unknown): number | null {
-  if (!scoring || typeof scoring !== "object") return null;
-  const s = scoring as Record<string, unknown>;
-  const eq = s.entryQuality;
-  if (!eq || typeof eq !== "object") return null;
-  const score = (eq as { score?: unknown }).score;
-  return typeof score === "number" ? score : null;
-}
 
 /** The condition in words, and for a typed price how far the price is from it: "above $92.50 (now $90.30, -2.4%)". */
 function describePredicate(predicate: unknown, currentPrice: number | null): string {

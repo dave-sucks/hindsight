@@ -80,8 +80,7 @@ const recordFields = z.object({
   //
   // `confidence_score`, `signal_types`, `sources_used` args removed in
   // PR-9 (2026-05-21) — the columns are dropped from the DB.
-  // Confidence ⇒ `scoring.composite` (the /10 setup grade is the single
-  // conviction number). Signal types ⇒ derivable from `source_signal_ids`.
+  // Signal types ⇒ derivable from `source_signal_ids`.
   // Sources ⇒ per-section citations inside the 9 narrative columns.
   // Renamed from `fundamentals` (2026-05-23) to free that name for the V2
   // narrative section below — the two were unrelated things with the same
@@ -124,7 +123,6 @@ const recordFields = z.object({
     .string()
     .optional()
     .describe("One line on how you got to this ticker. Required with source_kind."),
-  scoring: F.scoring.optional(),
   horizon: F.horizon,
   core_belief: F.core_belief.optional(),
   key_assumptions: F.key_assumptions.optional(),
@@ -315,7 +313,7 @@ export const recordThesis = defineTool({
                 note:
                   `You currently hold ${heldPosition.direction} ${heldPosition.quantity} shares of ${args.ticker}. PASS is for tickers you researched and decided NOT to trade — it is incompatible with holding the name. ` +
                   `If your conviction on this position has dropped, the correct tools are:\n` +
-                  `  • update_thesis(thesis_id, scoring: { ... lower composite }, stop_loss: <tighter>, rationale: "<why>") — keep the position but reflect lower conviction, OR\n` +
+                  `  • update_thesis(thesis_id, conviction: <a lower tier>, conviction_rationale: "<why>", stop_loss: <tighter>, rationale: "<why>") — keep the position but reflect lower conviction, OR\n` +
                   `  • close_position(...) followed by update_thesis(thesis_id, change_status: "INVALIDATED", rationale: "<why>") — exit the position and mark the thesis broken.\n` +
                   `Find the active LONG/SHORT thesis_id via get_theses(tickers: ["${args.ticker}"]) and call update_thesis. Do NOT retry record_thesis on ${args.ticker} with direction PASS — it will reject again.`,
               },
@@ -519,40 +517,6 @@ export const recordThesis = defineTool({
           );
         }
       }
-
-      // Compute composite = SUM of the four weighted dimensions (caps:
-      // 3+3+2+2 = 10). NOT an average — each dimension's cap is the weight,
-      // so summing produces a score on the same /10 scale. ≥ 7 = ADD/ROTATE
-      // eligible; < 7 must be PASS or WATCH. R/R and portfolio comparison
-      // are separate gates, applied in the workflow.
-      const scoringComposite = args.scoring
-        ? args.scoring.trendStrength.score +
-          args.scoring.relativeStrength.score +
-          args.scoring.entryQuality.score +
-          args.scoring.catalystFreshness.score
-        : null;
-
-      // Top-level scoring column (promoted from fullResearch.scoring on
-      // 2026-05-18 — THESIS_CLEANUP PR-1). Composite folds in as a peer
-      // key alongside the four dimensions.
-      const scoring = args.scoring
-        ? { ...args.scoring, composite: scoringComposite }
-        : null;
-
-      // ── Conviction Expression v4 — consistency gates REMOVED ────────
-      // v4 originally had Gate A (STRONG requires composite ≥ 7) and
-      // Gate B (STRONG/HIGH require entryQuality ≥ 2). They were dropped
-      // 2026-05-31 because they made conviction = derived-from-composite,
-      // which defeated the whole point of conviction being the writer's
-      // independent view. Conviction is now what the writer decides,
-      // full stop. Composite is its own field for its own purpose.
-      // The writer system prompt teaches the tier rubric as guidance,
-      // not enforcement.
-
-      // PR-4 (2026-05-18): we no longer write `fullResearch` — the
-      // `scoring` block is now top-level (PR-1), and the legacy
-      // `fundamentals` sub-key had zero readers. The column itself drops
-      // in PR-5 after the soak.
 
       // The review clock has one home (DAV-221): a review-clock trigger,
       // counted from the last actual review (createdAt until the first one).
@@ -867,10 +831,7 @@ export const recordThesis = defineTool({
         sourceSignalIds,
         sourceKind: inferredSourceKind,
         sourceRationale: sourceRationale.length > 0 ? sourceRationale : null,
-        scoring: scoring ?? undefined,
-        // 2026-05-18 (THESIS_CLEANUP PR-4): `fullResearch` write was
-        // dropped (scoring moved to top-level in PR-1; fundamentals
-        // sub-key had zero readers). `source` + `modelUsed` are kept
+        // `fullResearch` is no longer written. `source` + `modelUsed` are kept
         // here only because the columns are NOT NULL in the legacy
         // schema; both have zero readers and drop together in PR-5.
         source: "AGENT",
@@ -1014,7 +975,6 @@ export const recordThesis = defineTool({
                     `    // Plus any of these you actually want to change:\n` +
                     `    target_price: <new>,\n` +
                     `    stop_loss: <new>,\n` +
-                    `    scoring: { trendStrength: { score, note }, ... },\n` +
                     `    snapshot: { text: "<refreshed>", citations: [] },\n` +
                     `  })\n` +
                     `If you reviewed and nothing actually changed, call update_thesis with ONLY thesis_id + rationale — that writes a REVIEWED entry and counts as the required thesis touch for this run. ` +
@@ -1301,16 +1261,12 @@ export const recordThesis = defineTool({
       // Single source of truth for thesis history. Non-fatal: if this
       // fails the thesis still landed; we just lose the timeline row.
       // Logs LOUD so we notice if writes start dropping.
-      const compositeForMessage =
-        scoringComposite != null ? `composite ${scoringComposite}/10` : null;
       const createdSummary =
         args.direction === "PASS"
           ? passKeepsWatch
             ? `Watching ${args.ticker} (soft — wakes on triggers, no review cadence)`
             : `Passed on ${args.ticker}`
-          : compositeForMessage
-            ? `${args.direction} thesis on ${args.ticker} at ${compositeForMessage}`
-            : `${args.direction} thesis on ${args.ticker}`;
+          : `${args.direction} thesis on ${args.ticker}`;
       await writeThesisUpdate({
         thesisId: thesis.id,
         type: "CREATED",
@@ -1421,9 +1377,7 @@ export const recordThesis = defineTool({
                 // PR-9: confidence_score / signal_types / sources_used /
                 // reasoning_summary / thesis_bullets / risk_flags fields
                 // removed. The event payload mirrors the new flat schema:
-                // composite (the conviction signal), snapshot (narrative),
-                // and the 9 section blocks.
-                composite: scoringComposite,
+                // snapshot (narrative) and the section blocks.
                 snapshot: snapshotPayload,
                 bull_case: bullCasePayload,
                 bear_case: bearCasePayload,
@@ -1434,9 +1388,7 @@ export const recordThesis = defineTool({
                 // derive from horizon for the event payload.
                 hold_duration: holdDurationFromHorizon(args.horizon),
               },
-              ...(evType === "skip"
-                ? { reason: narrativeText, composite: scoringComposite }
-                : {}),
+              ...(evType === "skip" ? { reason: narrativeText } : {}),
             } as object,
           },
         });
@@ -1466,7 +1418,6 @@ export const recordThesis = defineTool({
       return {
         summary:
           `Thesis recorded: ${args.direction} ${args.ticker} (${effectiveStatus.toLowerCase()}` +
-          (scoringComposite != null ? `, composite ${scoringComposite}/10` : "") +
           `)` +
           (provenanceNudge ? ` — ${provenanceNudge}` : ""),
         data: {

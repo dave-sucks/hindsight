@@ -38,15 +38,13 @@ export interface FactsRow {
   setupId: string | null;
   horizon: string | null;
   createdAt: Date;
-  scoring: unknown;
-  /** The stock's analyst: its own setups, which a row with none may choose from, and on an account-wide read its minimum score. */
-  researchRun: { agentConfigId?: string | null; agentConfig: { setupIds: string[]; minConfidence?: number | null } | null } | null;
+  /** The stock's analyst: its own setups, which a row with none may choose from. */
+  researchRun: { agentConfigId?: string | null; agentConfig: { setupIds: string[] } | null } | null;
 }
 
 export interface FactsContext extends WorkContext {
   accountId?: string | null;
   /** The owning analyst's minimum confidence, for the plan check. */
-  minConfidence?: number | null;
   maxOpenPositions?: number | null;
   /**
    * Where the analyst's slot count comes from: these rows (the whole book
@@ -254,8 +252,6 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
           setupId: t.setupId ?? null,
           horizon: t.horizon ?? null,
           createdAt: t.createdAt,
-          scoring: t.scoring,
-          minConfidence: ctx.minConfidence ?? t.researchRun?.agentConfig?.minConfidence ?? null,
           parsedTriggers: load.ladders.get(t.id) ?? [],
           positionOpenedAt: w?.positionOpenedAt ?? null,
         },

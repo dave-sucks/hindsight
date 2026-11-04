@@ -28,7 +28,7 @@ const fx = raw as unknown as {
 };
 const vst = writerRaw as unknown as {
   currentPrice: number;
-  analyst: { setupIds: string[]; minConfidence: number; triggers: unknown[] };
+  analyst: { setupIds: string[]; triggers: unknown[] };
   account: { triggers: unknown[]; triggersSeededAt: string };
   thesisBefore: Record<string, unknown> & { triggers: Trigger[] };
 };
@@ -47,7 +47,7 @@ const seed = () => ({
     }),
   ],
   agentConfig: [
-    agentConfigRow({ setupIds: vst.analyst.setupIds, minConfidence: vst.analyst.minConfidence, triggers: vst.analyst.triggers }),
+    agentConfigRow({ setupIds: vst.analyst.setupIds, triggers: vst.analyst.triggers }),
   ],
   account: [accountRow({ triggers: vst.account.triggers, triggersSeededAt: new Date(vst.account.triggersSeededAt) })],
 });

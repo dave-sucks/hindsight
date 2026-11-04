@@ -11,9 +11,9 @@ import { replayTool, thesisRow, agentConfigRow, accountRow, positionRow, type Re
 import { doItCall } from "./do-it";
 import type { Trigger } from "./types";
 
-const SECULAR = { id: "cmmqxola3000004lbj7c11bfn", name: "Secular Compounder", minPositionSize: 4000, maxPositionSize: 10000, maxPositionTotal: 20000, maxOpenPositions: 10, minConfidence: 70, riskPct: 1 };
-const CATALYST = { id: "cmmmh0wxu000004js7yoyzvlf", name: "Catalyst Event PM", minPositionSize: 3000, maxPositionSize: 8000, maxPositionTotal: 16000, maxOpenPositions: 5, minConfidence: 50, riskPct: 1 };
-const PEAD = { id: "cmnhxpjio000004jvox6kl6c7", name: "PEAD Specialist", minPositionSize: 3000, maxPositionSize: 14000, maxPositionTotal: 28000, maxOpenPositions: 6, minConfidence: 60, riskPct: 1 };
+const SECULAR = { id: "cmmqxola3000004lbj7c11bfn", name: "Secular Compounder", minPositionSize: 4000, maxPositionSize: 10000, maxPositionTotal: 20000, maxOpenPositions: 10, riskPct: 1 };
+const CATALYST = { id: "cmmmh0wxu000004js7yoyzvlf", name: "Catalyst Event PM", minPositionSize: 3000, maxPositionSize: 8000, maxPositionTotal: 16000, maxOpenPositions: 5, riskPct: 1 };
+const PEAD = { id: "cmnhxpjio000004jvox6kl6c7", name: "PEAD Specialist", minPositionSize: 3000, maxPositionSize: 14000, maxPositionTotal: 28000, maxOpenPositions: 6, riskPct: 1 };
 const APPROVALS = accountRow({ requireApprovalBuysLive: true, requireApprovalSellsLive: true, requireApprovalBuysPaper: true, requireApprovalSellsPaper: true });
 
 const TRV_BUY: Trigger = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "DO_IT", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70.", cooldownDays: 1 };
@@ -42,7 +42,7 @@ const IOT = {
 };
 const IOT_POSITION = positionRow({ id: "cmv9m90g0000a06l3zv45o24s", symbol: "IOT", analystId: PEAD.id, environment: "LIVE", quantity: 300, initialQty: 300, avgCost: 42.695, peakPrice: 43.62, stopLoss: 41.42, targetPrice: 47 });
 
-const analystCtx = (a: typeof SECULAR) => ({ analystId: a.id, runMode: "INTRADAY_TACTICAL", runEnvironment: "LIVE", minPositionSize: a.minPositionSize, maxPositionSize: a.maxPositionSize, maxPositionTotal: a.maxPositionTotal, maxOpenPositions: a.maxOpenPositions, minConfidence: a.minConfidence });
+const analystCtx = (a: typeof SECULAR) => ({ analystId: a.id, runMode: "INTRADAY_TACTICAL", runEnvironment: "LIVE", minPositionSize: a.minPositionSize, maxPositionSize: a.maxPositionSize, maxPositionTotal: a.maxPositionTotal, maxOpenPositions: a.maxOpenPositions });
 
 async function buy(stock: typeof TRV, analyst: typeof SECULAR, price: number, extra: Record<string, unknown> = {}): Promise<Replay> {
   const call = doItCall({ trade: "BUY", trigger: stock.triggers[0] as Trigger, thesis: stock, price });

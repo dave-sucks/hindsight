@@ -55,7 +55,7 @@ A sale waiting for you takes the stock off the agents' work list: it's yours to 
 <summary>Technical details</summary>
 
 #### Checks
-`lib/agent/tools/place-trade.ts`: `isExcluded`, the committed-direction guard, `minConfidence`, the `maxOpenPositions` count over `OPEN` and `PENDING_APPROVAL`, the duplicate-position check and the live-price guard. Sized by `sizeByRisk` in `lib/agent/position-sizing.ts`. The `Order` carries `idempotencyKey` (a UUID) and `intent: "OPEN"`.
+`lib/agent/tools/place-trade.ts`: `isExcluded`, the committed-direction guard, the `maxOpenPositions` count over `OPEN` and `PENDING_APPROVAL`, the duplicate-position check and the live-price guard. Sized by `sizeByRisk` in `lib/agent/position-sizing.ts`. The `Order` carries `idempotencyKey` (a UUID) and `intent: "OPEN"`.
 
 #### Gate
 `maybeAwaitApproval` and `approvalRequired` in `lib/proposals/maybe-await-approval.ts`; `ApprovalGateAccountUnresolvedError` on live. Switches: `requireApprovalBuysLive`, `requireApprovalSellsLive` (default true), `requireApprovalBuysPaper`, `requireApprovalSellsPaper` (default false) in `prisma/schema.prisma`. `PROPOSAL_TTL_MS` is 24 hours. Alerts: `lib/emails/proposal-pending.ts` (skipped when the analyst's `emailAlerts` is off) and `lib/notify/proposal-push.ts` (needs `NTFY_TOPIC`). An Auto trade's write-up: `lib/proposals/auto-writeup.ts` (the note onto the order, and whether one is still coming) and the `AUTO_TRADE` situation; the email waits in `proposal-pending-email` (`lib/inngest/functions/proposal-pending-email.ts`). Sales are staged in `closeOpenPosition` (`lib/actions/closeTrade.actions.ts`), where `source: "user"` skips the gate.

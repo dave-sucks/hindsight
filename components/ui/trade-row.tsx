@@ -478,7 +478,6 @@ export function TradeRow({
         thesis_id={thesisId}
         ticker={ticker}
         direction={direction ?? null}
-        confidence_score={0}
       />
     )}
     </>
@@ -563,7 +562,6 @@ export function WatchlistRow({
         thesis_id={thesisId}
         ticker={ticker}
         direction={direction === "LONG" || direction === "SHORT" ? direction : null}
-        confidence_score={0}
       />
     )}
     </>

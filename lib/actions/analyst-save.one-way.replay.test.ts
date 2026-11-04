@@ -65,11 +65,11 @@ const settings = async (row: { id: string }, field: string, value: unknown) => {
 describe("a new analyst starts from one set of defaults", () => {
   it("the panel and Create agree: long, swing, $3,000 → $8,000, confidence 60, 5 slots, most in one stock live", async () => {
     const proposal = { name: "Drift Hunter", analystPrompt: "Post-earnings drift." } as AgentConfigData;
-    expect(toFormValues(proposal)).toMatchObject({ directionBias: "LONG", holdDurations: ["SWING"], minPositionSize: 3000, maxPositionSize: 8000, minConfidence: 60, maxOpenPositions: 5 });
+    expect(toFormValues(proposal)).toMatchObject({ directionBias: "LONG", holdDurations: ["SWING"], minPositionSize: 3000, maxPositionSize: 8000, maxOpenPositions: 5 });
 
     await createAnalystFromBuilder(toCreateInput(proposal));
     expect(create.mock.calls[0][0].data).toMatchObject({
-      directionBias: "LONG", holdDurations: ["SWING"], minPositionSize: 3000, maxPositionSize: 8000, minConfidence: 60, maxOpenPositions: 5,
+      directionBias: "LONG", holdDurations: ["SWING"], minPositionSize: 3000, maxPositionSize: 8000, maxOpenPositions: 5,
       // 0 = twice the largest trade, read live: raising the largest later raises it too.
       maxPositionTotal: 0, riskPct: 1, tradingEnvironment: "PAPER", runDaysOfWeek: [1, 2, 3, 4, 5], emailAlerts: true,
     });
@@ -143,20 +143,17 @@ describe("a save never wipes or overflows a setting", () => {
     expect(written()).not.toHaveProperty("analystPrompt");
   });
   it("confidence is 0–100 and slots 1–20, whole numbers", async () => {
-    expect(await settings(CATALYST, "minConfidence", 150)).toEqual({ minConfidence: 100 });
-    expect(await settings(CATALYST, "minConfidence", 72.6)).toEqual({ minConfidence: 73 });
     expect(await settings(CATALYST, "maxOpenPositions", 0)).toEqual({ maxOpenPositions: 1 });
     expect(await settings(CATALYST, "maxOpenPositions", 25)).toEqual({ maxOpenPositions: 20 });
   });
 });
 
 it("the editor's change list shows no row for money or a direction the proposal leaves out", () => {
-  const current = { ...CATALYST, directionBias: "LONG", holdDurations: ["SWING", "POSITION"], minConfidence: 50, maxOpenPositions: 5, watchlist: [] };
-  const proposal = { name: CATALYST.name, analystPrompt: CATALYST.analystPrompt, holdDurations: ["SWING", "POSITION"], minConfidence: 55, maxOpenPositions: 5 } as AgentConfigData;
+  const current = { ...CATALYST, directionBias: "LONG", holdDurations: ["SWING", "POSITION"], maxOpenPositions: 5, watchlist: [] };
+  const proposal = { name: CATALYST.name, analystPrompt: CATALYST.analystPrompt, holdDurations: ["SWING", "POSITION"], maxOpenPositions: 5 } as AgentConfigData;
   const html = renderToStaticMarkup(
     createElement(ToolUICallbacksProvider, { value: { currentConfig: current, onConfirmConfig: () => {} } },
       createElement(ConfigPreviewRenderer, { result: { ok: true, ui: "config-preview", summary: "", data: proposal, sources: [] }, loading: false })),
   );
-  expect(html).toContain("Min Confidence");
   for (const label of ["Direction", "Min Position Size", "Max Position Size"]) expect({ label, shown: html.includes(label) }).toMatchObject({ shown: false });
 });

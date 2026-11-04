@@ -369,7 +369,6 @@ function seedFor(row: CoverageRow): ThesisCardData {
     thesis_id: row.thesisId ?? undefined,
     ticker: row.ticker,
     direction: row.direction === "LONG" || row.direction === "SHORT" ? row.direction : null,
-    confidence_score: 0,
     status,
   };
 }

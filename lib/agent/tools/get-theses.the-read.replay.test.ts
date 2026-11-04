@@ -100,17 +100,15 @@ async function read(args: Record<string, unknown>) {
 }
 
 describe("get_theses — the read", () => {
-  it("the opening read with include_history: the short row with the whole view, no history, no score notes, and a dated research line", async () => {
+  it("the opening read with include_history: the short row with the whole view, no history, and a dated research line", async () => {
     const { model, modelRow } = await read({ include_history: true });
     expect(modelRow).toBeDefined();
     expect(modelRow.history).toBeUndefined();
     expect(modelRow.stock).toBe("SYK · watch · LONG · BASE_BREAKOUT · conviction MEDIUM");
-    // The short row carries the snapshot's first paragraph, the score and the cases; the score notes are the full row's.
+    // The short row carries the snapshot's first paragraph and the cases.
     expect(modelRow.snapshot).toBe(snapshot.text);
-    expect(modelRow.score).toBe("7/10 (entry 1 · trend 2 · relative strength 2 · catalyst 2)");
     expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);
     expect(modelRow).toHaveProperty("bear_case");
-    expect(modelRow).not.toHaveProperty("score_notes");
     expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348\.00, 51 days ago\. Full row: get_theses\(tickers: \["SYK"\]\)\.$/);
     expect(modelRow).not.toHaveProperty("triggerState");
     expect(String(model.historyNote)).toMatch(/named stocks/);
@@ -123,16 +121,15 @@ describe("get_theses — the read", () => {
     const quiet = (model.quiet_theses as string[]).map((line) => line.split(" · ")[0]);
     expect(full).toEqual(["SYK"]);
     expect(quiet).toEqual(["CEG"]);
-    expect(model.quiet_theses).toEqual([expect.stringMatching(/^CEG · held · LONG · COMPOUNDER_ACCUMULATION · \$280\.00 · entry \$250\.00 · target \$340\.00 · floor \$262\.00 · review \d\d-\d\d · score 7 · id t_ceg$/)]);
+    expect(model.quiet_theses).toEqual([expect.stringMatching(/^CEG · held · LONG · COMPOUNDER_ACCUMULATION · \$280\.00 · entry \$250\.00 · target \$340\.00 · floor \$262\.00 · review \d\d-\d\d · id t_ceg$/)]);
   });
 
-  it("a read of a named stock is the full row: the history, the cases and the score notes", async () => {
+  it("a read of a named stock is the full row: the history and the cases", async () => {
     const { modelRow } = await read({ tickers: ["SYK"], include_history: true });
     expect(Array.isArray(modelRow.history) && (modelRow.history as unknown[]).length).toBeGreaterThan(0);
     expect(modelRow.snapshot).toBe(snapshot.text);
     expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);
     expect(modelRow.bear_case).toEqual(["Capacity auction prices fall back."]);
-    expect((modelRow.score_notes as Record<string, string>).trend).toMatch(/51 days ago/);
     expect(String(modelRow.research)).toMatch(/at \$348\.00/);
   });
 

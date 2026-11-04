@@ -72,7 +72,6 @@ export type FormValues = {
   // Trading rules
   directionBias: "LONG" | "SHORT" | "BOTH";
   holdDurations: string[];
-  minConfidence: number;
   maxOpenPositions: number;
   // Sizing (lib/agent/position-sizing.ts): risk per trade sizes a buy from
   // its stop distance; the three dollar limits clamp it — the smallest trade
@@ -482,24 +481,6 @@ function SettingsTab({
               </div>
             </>
           )}
-
-          <RowLabel
-            label="Min Confidence"
-            tooltip="Lowest score a stock needs before this analyst may buy it. Scores are out of 10, so 70 here means 7 out of 10. In your chat a lower score is a line on the proposal, not a refusal."
-          />
-          <Input
-            type="number"
-            defaultValue={values.minConfidence}
-            min={0}
-            max={100}
-            className={cn(GHOST_INPUT, "w-24 text-right tabular-nums")}
-            onBlur={(e) => {
-              const n = parseInt(e.target.value, 10);
-              if (!isNaN(n) && n !== values.minConfidence) {
-                onChange("minConfidence", Math.min(100, Math.max(0, n)));
-              }
-            }}
-          />
 
           <RowLabel
             label="Max Positions"

@@ -17,7 +17,7 @@ const runInput = {
   filings: { recent: [{ ticker: "PRAX", date: "2026-07-02", tier: "serious" as const, summary: "8-K — auditor change (4.01)", url: "https://www.sec.gov/prax" }] },
 } as unknown as RunInput;
 
-const prompt = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000 }, runInput);
+const prompt = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, runInput);
 
 describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager", () => {
   it("deletes the per-horizon data discipline block and the three-path fired buy", () => {
@@ -62,7 +62,7 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
 
   it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is BUY_BLOCKED_FULL's", () => {
     const p = buildDailyRunSystemPromptV2(
-      { name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
+      { name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
       withBook(["ABT", "ASML", "CEG", "WST"]),
     );
     expect(p).toContain("Positions: 4 of 4 — this analyst is FULL.");
@@ -73,7 +73,7 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
 
   it("PEAD, 4 of 6: says two are free and carries no full-analyst rule", () => {
     const p = buildDailyRunSystemPromptV2(
-      { name: "PEAD Specialist", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
+      { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
       withBook(["FIVE", "IOT", "MU", "NVDA"]),
     );
     expect(p).toContain("Positions: 4 of 6 — 2 free.");

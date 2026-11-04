@@ -2,7 +2,6 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import { getAccountId } from "@/lib/auth/account";
 
 const STARTING_CAPITAL = 100_000;
@@ -30,12 +29,6 @@ export interface SectorBreakdown {
   return: number;
 }
 
-export interface ConfidencePoint {
-  ticker: string;
-  confidence: number;
-  return: number;
-}
-
 export interface SignalAccuracyStat {
   signal: string;
   winRate: number | null;
@@ -44,7 +37,6 @@ export interface SignalAccuracyStat {
 
 export interface CalibrationBucket {
   label: string;
-  expectedWinRate: number;
   actualWinRate: number | null;
   count: number;
 }
@@ -116,7 +108,6 @@ export interface AnalyticsData {
   directionBreakdown: DirectionBreakdown[];
   durationBreakdown: DurationBreakdown[];
   sectorBreakdown: SectorBreakdown[];
-  confidenceScatter: ConfidencePoint[];
   stats: AnalyticsStats;
   analystBreakdown: AnalystStat[];
   recentRuns: ResearchRunSummary[];
@@ -181,7 +172,6 @@ export async function getAnalyticsData(
               include: {
                 thesis: {
                   select: {
-                    scoring: true,
                     sector: true,
                     holdDuration: true,
                     ticker: true,
@@ -317,24 +307,6 @@ export async function getAnalyticsData(
     }))
     .sort((a, b) => b.return - a.return);
 
-  // ── Confidence scatter ────────────────────────────────────────────────────
-
-  const confidenceScatter: ConfidencePoint[] = closedPositions
-    .filter((p) => getThesisComposite(getThesis(p) ?? { scoring: null }) != null)
-    .map((p) => {
-      const thesis = getThesis(p)!;
-      const composite = getThesisComposite(thesis);
-      const cost = p.avgCost * p.quantity;
-      const ret = cost > 0 ? ((p.realizedPnl ?? 0) / cost) * 100 : 0;
-      // PR-9: legacy 0-100 confidence → composite × 10 so the scatter's
-      // existing X-axis bucketing keeps working.
-      return {
-        ticker: thesis.ticker,
-        confidence: composite != null ? composite * 10 : 0,
-        return: ret,
-      };
-    });
-
   // ── Graduation progress ───────────────────────────────────────────────────
 
   const winRateTarget = (agentConfig?.graduationWinRate ?? 0.65) * 100;
@@ -444,7 +416,6 @@ export async function getAnalyticsData(
           .filter((b) => b.count > 0)
           .map((b) => ({
             label: b.label,
-            expectedWinRate: b.expectedWinRate,
             actualWinRate: b.winRate,
             count: b.count,
           }));
@@ -482,7 +453,6 @@ export async function getAnalyticsData(
     directionBreakdown,
     durationBreakdown,
     sectorBreakdown,
-    confidenceScatter,
     stats,
     analystBreakdown,
     recentRuns,

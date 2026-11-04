@@ -14,17 +14,17 @@ it("the short row prints these keys, in this order", () => {
     "stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price", "plan", "plan_checks",
     "protection", "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong",
     "bull_case", "bear_case", "conviction_rationale", "variant_view",
-    "setup", "nameTheSetup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "score", "chart",
+    "setup", "nameTheSetup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "chart",
     "research", "catalyst", "repeat", "note",
   ]);
 });
 
-it("the full row is the short row plus the score notes, the seven research sections and the history", () => {
+it("the full row is the short row plus the seven research sections and the history", () => {
   // The trigger run's short row, so both carry the setup's lines (the full row always does).
   const short = Object.keys(rowForModel(saved(), { named: true, size: "short", setupLines: true }) as Row);
   const full = Object.keys(rowForModel(saved(), { named: true, size: "full" }) as Row);
   const sections = ["recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
-  expect([...full].sort()).toEqual([...short, "score_notes", ...sections, "history"].sort());
+  expect([...full].sort()).toEqual([...short, ...sections, "history"].sort());
   expect(full.filter((k) => short.includes(k))).toEqual(short);
 });
 

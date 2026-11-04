@@ -30,7 +30,6 @@ export interface ThesisRowData {
   ticker: string;
   // P1-24: LONG | SHORT | null (a pass/seed stores direction=null).
   direction: string | null;
-  confidenceScore: number;
   reasoningSummary: string;
   entryPrice: number | null;
   targetPrice: number | null;
@@ -413,7 +412,6 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         thesis_id={t.id}
         ticker={t.ticker}
         direction={t.direction === "LONG" || t.direction === "SHORT" ? t.direction : null}
-        confidence_score={t.confidenceScore}
         reasoning_summary={t.reasoningSummary}
         thesis_bullets={t.thesisBullets}
         risk_flags={t.riskFlags}

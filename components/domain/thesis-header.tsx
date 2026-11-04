@@ -3,7 +3,7 @@
 /**
  * ThesisHeader — the top of a thesis, the same on the sheet and the trade
  * page: the stock's logo, its name with the status pill and the conviction
- * chip (with the score) beside it, the ticker under them, the action buttons
+ * chip beside it, the ticker under them, the action buttons
  * on the right. One component, so the two surfaces cannot drift.
  */
 
@@ -61,20 +61,18 @@ export function StatusPill({
 }
 
 // ── ConvictionChip ──
-// The writer's conviction and its score as one chip by the title — "🔥 High
-// conviction · 8/10" (the owner, 2026-11-02). The flame marks the top two
-// tiers; the conviction's one-line reason is on the Thesis tab, folded with
-// where we differ from the street. Nothing on legacy rows and passes.
-export function ConvictionChip({ conviction, score }: { conviction: Conviction | null; score: number | null }) {
-  if (!conviction && score == null) return null;
-  const label = conviction ? `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} conviction` : null;
+// The writer's conviction as one chip by the title — "🔥 High conviction"
+// (the owner, 2026-11-03: the tier with the flame, nothing else). The flame
+// marks the top two tiers; the reason is on the Research tab. Nothing on
+// legacy rows and passes.
+export function ConvictionChip({ conviction }: { conviction: Conviction | null }) {
+  if (!conviction) return null;
+  const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} conviction`;
   const hot = conviction === "STRONG" || conviction === "HIGH";
   return (
     <Badge variant="secondary">
       {hot ? <FlameIcon className="size-3" /> : null}
-      {label ? <span className="font-normal">{label}</span> : null}
-      {label && score != null ? <span className="text-muted-foreground">·</span> : null}
-      {score != null ? <span className="font-normal tabular-nums">{score}/10</span> : null}
+      <span className="font-normal">{label}</span>
     </Badge>
   );
 }
@@ -87,8 +85,6 @@ export interface ThesisHeaderProps {
   status: ThesisStatus | string;
   agentWatchDays: number | null;
   conviction: Conviction | null;
-  /** The thesis's score out of 10, beside the conviction. */
-  score?: number | null;
   /** The owning analyst; with `thesisId`, shows Send to agent. */
   analystId: string | null;
   thesisId?: string;
@@ -105,7 +101,6 @@ export function ThesisHeader({
   status,
   agentWatchDays,
   conviction,
-  score = null,
   analystId,
   thesisId,
   onSent,
@@ -120,7 +115,7 @@ export function ThesisHeader({
       inlineBadge={
         <span className="inline-flex items-center gap-1.5">
           <StatusPill status={status} agentWatchDays={agentWatchDays} />
-          <ConvictionChip conviction={conviction} score={score} />
+          <ConvictionChip conviction={conviction} />
         </span>
       }
       subline={ticker}

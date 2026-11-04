@@ -36,7 +36,7 @@ const runInput = () =>
 
 const built = () =>
   buildDailyRunSystemPromptV2(
-    { name: "Secular Compounder", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
+    { name: "Secular Compounder", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
     runInput(),
   );
 

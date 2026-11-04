@@ -27,10 +27,10 @@ it("the earnings-drift playbook no longer hands out the stop the live PEAD copie
   expect(content).toContain("long only");
 });
 
-it("a playbook says what it comes with: the setups, confidence, slots and fence suggest_config fills in", async () => {
+it("a playbook says what it comes with: the setups, slots and fence suggest_config fills in", async () => {
   const { content } = await read({ topic: "archetype", id: "EARNINGS_DRIFT" });
   expect(content).toContain("setups: PEAD, EPISODIC_PIVOT, MA_PULLBACK (the first is the signature setup)");
-  expect(content).toContain("confidence a buy needs: 60; stocks held at once: 6");
+  expect(content).toContain("stocks held at once: 6");
   expect(content).toContain("market cap: $200,000,000–any (the sectors are the owner's choice)");
   expect(content).not.toContain("Universe hints");
 });
@@ -56,8 +56,7 @@ it("the builder asks no direction and offers no paper-era sizes or stops", () =>
 
 it("a same-day hold no longer throws away the watchlist", () => {
   const cfg = configSchema.parse({
-    name: "x", analystPrompt: "x", directionBias: "LONG", holdDurations: ["DAY"], sectors: [],
-    minConfidence: 60, maxPositionSize: 5000, maxOpenPositions: 5,
+    name: "x", analystPrompt: "x", directionBias: "LONG", holdDurations: ["DAY"], sectors: [], maxPositionSize: 5000, maxOpenPositions: 5,
     watchlist: [{ symbol: "NVDA", reason: "named by the owner" }],
   });
   expect(cfg.watchlist).toEqual([{ symbol: "NVDA", reason: "named by the owner" }]);

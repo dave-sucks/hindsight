@@ -16,7 +16,6 @@ import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpac
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
-  getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 import {
@@ -72,7 +71,6 @@ export interface RunInput {
     thesisDirection: string | null;
     targetPrice: number | null;
     stopPrice: number | null;
-    conviction: number | null;
     catalyst: string | null;
     daysOnList: number;
     lastReviewedDaysAgo: number;
@@ -81,7 +79,6 @@ export interface RunInput {
     id: string;
     ticker: string;
     direction: string | null;
-    confidence: number;
     reasoningSummary: string;
     entryPrice: number | null;
     targetPrice: number | null;
@@ -226,7 +223,7 @@ export async function buildRunInput(
   let watchlistItems: Array<{
     symbol: string; reason: string; priority: string;
     thesisDirection: string | null; targetPrice: number | null;
-    stopPrice: number | null; conviction: number | null;
+    stopPrice: number | null;
     catalyst: string | null; createdAt: Date; lastReviewedAt: Date | null;
   }> = [];
   try {
@@ -241,7 +238,6 @@ export async function buildRunInput(
         direction: true,
         targetPrice: true,
         stopLoss: true,
-        scoring: true,
         snapshot: true,
         catalystDate: true,
         createdAt: true,
@@ -249,7 +245,6 @@ export async function buildRunInput(
       },
     });
     watchlistItems = watchingTheses.map((t) => {
-      const composite = getThesisComposite(t);
       return {
         symbol: t.ticker,
         reason: getThesisSnapshotText(t),
@@ -259,9 +254,6 @@ export async function buildRunInput(
         thesisDirection: t.direction === "PENDING" ? null : t.direction,
         targetPrice: t.targetPrice,
         stopPrice: t.stopLoss,
-        // PR-9: legacy `confidenceScore` (0-100) → `scoring.composite × 10`
-        // so the same downstream display thresholds keep working.
-        conviction: composite != null ? composite * 10 : 0,
         catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
         createdAt: t.createdAt,
         // The actual last-look stamp. This used to read the cached
@@ -372,7 +364,7 @@ export async function buildRunInput(
   // thesis without the coverage gate firing. Variable name is historical;
   // semantics now include WATCHING.
   let activeTheses: Array<{
-    id: string; ticker: string; direction: string | null; scoring: unknown;
+    id: string; ticker: string; direction: string | null;
     snapshot: unknown; bullCase: unknown; bearCase: unknown;
     entryPrice: number | null; targetPrice: number | null;
     stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
@@ -399,7 +391,7 @@ export async function buildRunInput(
         orderBy: { createdAt: "desc" },
         distinct: ["ticker"],
         select: {
-          id: true, ticker: true, direction: true, scoring: true,
+          id: true, ticker: true, direction: true,
           snapshot: true, bullCase: true, bearCase: true,
           entryPrice: true, targetPrice: true,
           stopLoss: true, createdAt: true, researchRunId: true, status: true,
@@ -448,7 +440,6 @@ export async function buildRunInput(
     thesisDirection: w.thesisDirection,
     targetPrice: w.targetPrice,
     stopPrice: w.stopPrice,
-    conviction: w.conviction,
     catalyst: w.catalyst,
     daysOnList: Math.floor(
       (now - w.createdAt.getTime()) / (1000 * 60 * 60 * 24),
@@ -638,14 +629,11 @@ export async function buildRunInput(
     openRefusals,
     watchlist,
     activeTheses: activeTheses.map((t) => {
-      const composite = getThesisComposite(t);
       const snapshotText = getThesisSnapshotText(t);
       return {
         id: t.id,
         ticker: t.ticker,
         direction: t.direction,
-        // PR-9: legacy 0-100 confidence → composite/10 × 10.
-        confidence: composite != null ? composite * 10 : 0,
         reasoningSummary: snapshotText,
         entryPrice: t.entryPrice,
         targetPrice: t.targetPrice,

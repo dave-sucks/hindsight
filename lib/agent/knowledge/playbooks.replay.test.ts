@@ -31,10 +31,10 @@ import type { AgentConfigData } from "@/components/domain/agent-config-card";
 
 const ALL_SECTORS = ["Information Technology", "Health Care", "Industrials", "Utilities", "Communication Services", "Energy", "Materials", "Consumer Discretionary", "Consumer Staples", "Financials", "Real Estate"];
 const LIVE = [
-  { name: "PEAD Specialist", playbook: "EARNINGS_DRIFT", setupIds: ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"], holdDurations: ["SWING", "POSITION"], minConfidence: 60, maxOpenPositions: 6, sectors: [], marketCapMin: 200_000_000, marketCapMax: null },
+  { name: "PEAD Specialist", playbook: "EARNINGS_DRIFT", setupIds: ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"], holdDurations: ["SWING", "POSITION"], maxOpenPositions: 6, sectors: [], marketCapMin: 200_000_000, marketCapMax: null },
   // Its Health Care + IT is coverage its owner set on the panel; the playbook gives every sector.
-  { name: "Catalyst Event PM", playbook: "CATALYST_EVENT", setupIds: ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"], holdDurations: ["SWING", "POSITION"], minConfidence: 50, maxOpenPositions: 5, sectors: [], marketCapMin: 500_000_000, marketCapMax: 20_000_000_000 },
-  { name: "Secular Compounder", playbook: "THEMATIC_SECULAR", setupIds: ["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"], holdDurations: ["POSITION"], minConfidence: 70, maxOpenPositions: 10, sectors: ALL_SECTORS, marketCapMin: null, marketCapMax: null },
+  { name: "Catalyst Event PM", playbook: "CATALYST_EVENT", setupIds: ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"], holdDurations: ["SWING", "POSITION"], maxOpenPositions: 5, sectors: [], marketCapMin: 500_000_000, marketCapMax: 20_000_000_000 },
+  { name: "Secular Compounder", playbook: "THEMATIC_SECULAR", setupIds: ["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"], holdDurations: ["POSITION"], maxOpenPositions: 10, sectors: ALL_SECTORS, marketCapMin: null, marketCapMax: null },
 ];
 
 const fence = (sectors: string[]) => (sectors.length === 0 || sectors.length === SECTORS.length ? "every sector" : [...sectors].sort());
@@ -57,7 +57,6 @@ describe.each(LIVE)("$name, built from $playbook", (live) => {
     expect({ ...row, sectors: fence(row.sectors as string[]) }).toMatchObject({
       setupIds: live.setupIds,
       holdDurations: live.holdDurations,
-      minConfidence: live.minConfidence,
       maxOpenPositions: live.maxOpenPositions,
       sectors: fence(live.sectors),
       marketCapMin: big(live.marketCapMin),

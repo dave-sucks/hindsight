@@ -24,12 +24,6 @@ const validLong: ThesisDecisionInput = {
     "NVDA prints ≥$50B data-center revenue by Q4 FY26 as Blackwell replaces Hopper at hyperscalers.",
   key_assumptions: ["DC capex stays above $200B/yr", "Blackwell yields hold above 60%"],
   invalidation_conditions: ["Gross margin below 70% on next print", "Guidance cut on DC revenue"],
-  scoring: {
-    trendStrength: { score: 3, note: "multi-week uptrend, rising 50d" },
-    relativeStrength: { score: 2, note: "+28% YTD vs AMD +14%" },
-    entryQuality: { score: 2, note: "pullback to 20d in trend" },
-    catalystFreshness: { score: 2, note: "earnings 3 weeks out, beat-raise setup" },
-  },
   conviction: "HIGH",
   conviction_rationale:
     "I really like this setup — the catalyst is ahead and consensus is too conservative on DC revenue.",
@@ -39,11 +33,10 @@ const validLong: ThesisDecisionInput = {
 const mintOpts = { mode: "mint" as const, existingStatus: null, currentPrice: 101 };
 
 describe("validateThesisDecision — accept paths", () => {
-  it("accepts a fully-specified LONG mint and computes composite + R/R", () => {
+  it("accepts a fully-specified LONG mint and computes R/R", () => {
     const v = validateThesisDecision(validLong, mintOpts);
     expect(v.ok).toBe(true);
     expect(v.errors).toEqual([]);
-    expect(v.decision?.composite).toBe(9);
     expect(v.riskReward).toBeCloseTo(2.5);
   });
 
@@ -226,24 +219,6 @@ describe("validateThesisDecision — belief + conviction requirements (LONG/SHOR
     expect(v.ok).toBe(true);
   });
 
-  it("rejects missing scoring dimensions and out-of-cap scores", () => {
-    const v = validateThesisDecision(
-      {
-        ...validLong,
-        scoring: {
-          trendStrength: { score: 5, note: "over cap" },
-          relativeStrength: { score: 2, note: "ok" },
-          entryQuality: { score: 2, note: "" },
-          catalystFreshness: { score: 2, note: "ok" },
-        },
-      },
-      mintOpts,
-    );
-    expect(v.ok).toBe(false);
-    const all = v.errors.join(" ");
-    expect(all).toContain("scoring.trendStrength");
-    expect(all).toContain("scoring.entryQuality");
-  });
 });
 
 describe("validateThesisDecision — horizon conditionals", () => {

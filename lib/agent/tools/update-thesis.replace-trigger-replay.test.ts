@@ -36,7 +36,7 @@ type Submit = Parameters<typeof validateThesisDecision>[0];
 const fx = raw as unknown as {
   runId: string;
   currentPrice: number;
-  analyst: { setupIds: string[]; minConfidence: number; triggers: unknown[] };
+  analyst: { setupIds: string[]; triggers: unknown[] };
   account: { triggers: unknown[]; triggersSeededAt: string };
   thesisBefore: Record<string, unknown> & { id: string; targetPrice: number; triggers: Trigger[] };
   submit: Submit;
@@ -49,7 +49,7 @@ const REVIEW_146 = "Added: Review if above $146 · only on the close";
 const seed = () => ({
   thesis: [thesisRow({ ...fx.thesisBefore, analystId: REPLAY_ANALYST_ID })],
   agentConfig: [
-    agentConfigRow({ setupIds: fx.analyst.setupIds, minConfidence: fx.analyst.minConfidence, triggers: fx.analyst.triggers }),
+    agentConfigRow({ setupIds: fx.analyst.setupIds, triggers: fx.analyst.triggers }),
   ],
   account: [accountRow({ triggers: fx.account.triggers, triggersSeededAt: new Date(fx.account.triggersSeededAt) })],
 });

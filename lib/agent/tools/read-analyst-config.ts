@@ -77,7 +77,7 @@ export const readAnalystConfig = defineTool({
       },
       {
         kind: "generic" as const,
-        text: `Sizing: minConfidence ${analyst.minConfidence} · position band ${analyst.minPositionSize > 0 ? `$${analyst.minPositionSize.toLocaleString()}–` : "up to "}$${analyst.maxPositionSize.toLocaleString()} · maxOpenPositions ${analyst.maxOpenPositions}`,
+        text: `Sizing: position band ${analyst.minPositionSize > 0 ? `$${analyst.minPositionSize.toLocaleString()}–` : "up to "}$${analyst.maxPositionSize.toLocaleString()} · maxOpenPositions ${analyst.maxOpenPositions}`,
       },
       {
         kind: "generic" as const,
@@ -102,7 +102,6 @@ export const readAnalystConfig = defineTool({
           marketCapMax: analyst.marketCapMax?.toString() ?? null,
           watchlist,
           exclusionList: analyst.exclusionList,
-          minConfidence: analyst.minConfidence,
           minPositionSize: analyst.minPositionSize,
           maxPositionSize: analyst.maxPositionSize,
           maxOpenPositions: analyst.maxOpenPositions,

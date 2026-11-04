@@ -4,7 +4,7 @@
  * The DURABLE thesis dossier — everything the sheet needs to render its
  * structure, straight from Postgres in ONE fast query with ZERO third-party
  * calls. This is the endpoint that gates the sheet's first paint: header text,
- * core belief, trade block, triggers, scoring, the 9 narrative sections, and
+ * core belief, trade block, triggers, the narrative sections, and
  * durable position metadata (qty / avg cost / days held / pending proposal).
  *
  * The LIVE market layer — quote, candles, coverage, and the price-dependent
@@ -82,9 +82,6 @@ export async function GET(
       coreBelief: true,
       keyAssumptions: true,
       invalidationConds: true,
-      // Scoring rubric + composite. `composite` is the single conviction
-      // number after PR-9. `fullResearch` is the transitional fallback.
-      scoring: true,
       fullResearch: true,
       // 9 narrative sections (PR-9 flat schema).
       snapshot: true,
@@ -283,30 +280,6 @@ export async function GET(
     }
   }
 
-  // Scoring: prefer the top-level column (PR-1 canonical), fall back to the
-  // legacy fullResearch nesting for rows minted before the 2026-05-18 backfill.
-  type Scoring4Dim = {
-    trendStrength?: unknown;
-    relativeStrength?: unknown;
-    entryQuality?: unknown;
-    catalystFreshness?: unknown;
-    composite?: number | null;
-  };
-  const topLevelScoring = (thesis.scoring ?? null) as Scoring4Dim | null;
-  const legacyFullResearch = (thesis.fullResearch ?? null) as
-    | { scoring?: Scoring4Dim; scoringComposite?: number | null }
-    | null;
-  const scoring: Scoring4Dim | null =
-    topLevelScoring ??
-    (legacyFullResearch?.scoring
-      ? {
-          ...legacyFullResearch.scoring,
-          composite: legacyFullResearch.scoringComposite ?? null,
-        }
-      : null);
-  const scoringComposite =
-    topLevelScoring?.composite ?? legacyFullResearch?.scoringComposite ?? null;
-
   return NextResponse.json({
     thesisId: thesis.id,
     ticker: thesis.ticker,
@@ -359,8 +332,6 @@ export async function GET(
     coreBelief: thesis.coreBelief,
     keyAssumptions: thesis.keyAssumptions ?? [],
     invalidationConds: thesis.invalidationConds ?? [],
-    scoring,
-    scoringComposite,
     snapshot: thesis.snapshot,
     recentCatalysts: thesis.recentCatalysts,
     fundamentals: thesis.fundamentals,

@@ -10,7 +10,7 @@ import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { boundRiskPct, DEFAULT_RISK_PCT } from "@/lib/agent/position-sizing";
 
 /** A new analyst's numbers. Change them here. */
-export const NEW_ANALYST_NUMBERS = { minPositionSize: 3000, maxPositionSize: 8000, minConfidence: 60, maxOpenPositions: 5 };
+export const NEW_ANALYST_NUMBERS = { minPositionSize: 3000, maxPositionSize: 8000, maxOpenPositions: 5 };
 
 export const NEW_ANALYST_DEFAULTS = {
   ...NEW_ANALYST_NUMBERS,
@@ -148,8 +148,6 @@ export function normalizeAnalystPatch(stored: StoredAnalyst, patch: Record<strin
   }
   if (Array.isArray(patch.exclusionList)) out.exclusionList = normalizeTickers(patch.exclusionList);
 
-  const confidence = num(patch.minConfidence);
-  if (confidence !== undefined) out.minConfidence = Math.min(100, Math.max(0, Math.round(confidence)));
   const slots = num(patch.maxOpenPositions);
   if (slots !== undefined) out.maxOpenPositions = Math.min(20, Math.max(1, Math.round(slots)));
   Object.assign(out, moneyFields(stored, patch));

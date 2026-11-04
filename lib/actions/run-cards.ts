@@ -42,7 +42,7 @@ export async function fetchRunCardRuns(opts: {
         select: { title: true, durationSec: true, citations: true },
       },
       theses: {
-        select: { ticker: true, direction: true, scoring: true },
+        select: { ticker: true, direction: true },
         orderBy: { createdAt: "asc" },
       },
       decisions: {

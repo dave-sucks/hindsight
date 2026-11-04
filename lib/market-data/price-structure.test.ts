@@ -332,8 +332,6 @@ describe("computePriceStructure", () => {
     expect(ps.relativeStrength.vsSpy?.m3).toBeGreaterThan(0);
     expect(ps.relativeStrength.vsSector?.etf).toBe("XLK");
     expect(ps.verdict).toBe("UPTREND");
-    expect(ps.suggested.trendStrength?.score).toBe(3);
-    expect(ps.suggested.relativeStrength?.score).toBe(3);
     expect(ps.volume.avgDollarVolume50).toBeGreaterThan(0);
   });
 
@@ -342,7 +340,6 @@ describe("computePriceStructure", () => {
     expect(ps.price).toBe(1);
     expect(ps.sma.d50!.pctFromPrice).toBeLessThan(-90);
     expect(ps.verdict).toBe("BROKEN");
-    expect(ps.suggested.trendStrength?.score).toBe(0);
   });
 
   it("returns null under 20 bars", () => {

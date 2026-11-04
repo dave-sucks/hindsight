@@ -65,12 +65,12 @@ it("a new row's database defaults are a new analyst's", () => {
   const dflt = (field: string) => MODEL.match(new RegExp(`^\\s+${field}\\s+\\S+\\s+@default\\(([^)]*)\\)`, "m"))?.[1];
   const D = NEW_ANALYST_DEFAULTS;
   expect({
-    minPositionSize: dflt("minPositionSize"), maxPositionSize: dflt("maxPositionSize"), minConfidence: dflt("minConfidence"),
+    minPositionSize: dflt("minPositionSize"), maxPositionSize: dflt("maxPositionSize"),
     maxOpenPositions: dflt("maxOpenPositions"), directionBias: dflt("directionBias"), holdDurations: dflt("holdDurations"),
     riskPct: dflt("riskPct"), maxPositionTotal: dflt("maxPositionTotal"), tradingEnvironment: dflt("tradingEnvironment"),
     runDaysOfWeek: dflt("runDaysOfWeek"), emailAlerts: dflt("emailAlerts"),
   }).toEqual({
-    minPositionSize: String(D.minPositionSize), maxPositionSize: String(D.maxPositionSize), minConfidence: String(D.minConfidence),
+    minPositionSize: String(D.minPositionSize), maxPositionSize: String(D.maxPositionSize),
     maxOpenPositions: String(D.maxOpenPositions), directionBias: `"${D.directionBias}"`, holdDurations: `[${D.holdDurations.map((h) => `"${h}"`).join(", ")}]`,
     riskPct: String(D.riskPct), maxPositionTotal: String(D.maxPositionTotal), tradingEnvironment: `"${D.tradingEnvironment}"`,
     runDaysOfWeek: `[${D.runDaysOfWeek.join(", ")}]`, emailAlerts: String(D.emailAlerts),
@@ -89,11 +89,11 @@ it("Create, Apply and Settings write none of them, and each still saves", async 
   expect(leftover(created)).toEqual([]);
   expect(created).toMatchObject({ name: CATALYST.name, setupIds: ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"], marketCapMin: BigInt(500_000_000) });
 
-  const edit = editorConfigSchema.parse({ name: CATALYST.name, analystPrompt: CATALYST.analystPrompt, holdDurations: ["SWING"], sectors: ["Health Care"], minConfidence: 55, maxOpenPositions: 5 });
+  const edit = editorConfigSchema.parse({ name: CATALYST.name, analystPrompt: CATALYST.analystPrompt, holdDurations: ["SWING"], sectors: ["Health Care"], maxOpenPositions: 5 });
   await updateAnalystFromBuilder(CATALYST.id, toApplyInput(editorPanelStart({ ...CATALYST }, edit as AgentConfigData)));
   const applied = update.mock.calls.at(-1)![0].data;
   expect(leftover(applied)).toEqual([]);
-  expect(applied).toMatchObject({ sectors: ["Health Care"], minConfidence: 55 });
+  expect(applied).toMatchObject({ sectors: ["Health Care"] });
 
   await updateAnalystField(CATALYST.id, "sectors", ["Health Care", "Information Technology"]);
   expect(update.mock.calls.at(-1)![0].data).toEqual({ sectors: ["Health Care", "Information Technology"] });
