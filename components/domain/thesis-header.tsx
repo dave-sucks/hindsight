@@ -3,7 +3,7 @@
 /**
  * ThesisHeader — the top of a thesis, the same on the sheet and the trade
  * page: the stock's logo, its name with the status pill and the conviction
- * chip (with the score) beside it, the ticker under them, the action buttons
+ * chip beside it, the ticker under them, the action buttons
  * on the right. One component, so the two surfaces cannot drift.
  */
 
