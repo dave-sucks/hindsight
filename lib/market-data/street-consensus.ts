@@ -172,5 +172,31 @@ export function streetLine(row: Record<string, unknown>): string | null {
     `${s.buy} buy / ${s.hold} hold / ${s.sell} sell`,
     `targets ${usd(s.targetLow)}–${usd(s.targetHigh)}, avg ${usd(s.targetAvg)}${moved} (as of ${String(s.asOf).slice(5)})`,
     epsWords(s.epsNextQuarter, s.epsNextQuarterUp, s.epsNextQuarterDown),
+    roomWords(row, s.targetAvg),
   ].filter(Boolean).join(" · ");
+}
+
+/**
+ * The room to the Street average against the floor's distance, one line of
+ * information in place of the reward/risk refusal (2026-11-04): on a stock
+ * we watch it is measured from the buy level, the price we would pay; on
+ * one we hold, from the live price. Computed on every read, never stored;
+ * nothing refuses on it. Nothing when the row has no floor or no price to
+ * measure from.
+ */
+function roomWords(row: Record<string, unknown>, avg: number): string | null {
+  const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const held = row.status === "HOLDING";
+  const price = row.price && typeof row.price === "object" ? n((row.price as { current?: unknown }).current) : null;
+  const live = price ?? n((row.resolved as { currentPrice?: unknown } | undefined)?.currentPrice);
+  const from = held ? live : n(row.entryPrice);
+  const floor = n(row.stopLoss);
+  if (from == null || floor == null) return null;
+  const short = row.direction === "SHORT";
+  const what = held ? "price" : "buy level";
+  const risk = short ? floor - from : from - floor;
+  if (risk <= 0) return `the ${what} is past the floor`;
+  const room = short ? from - avg : avg - from;
+  if (room <= 0) return `no room to the Street average: it sits ${short ? "above" : "under"} the ${what}`;
+  return `room to the Street average is ${(room / risk).toFixed(1)}× the floor's distance from the ${what}`;
 }

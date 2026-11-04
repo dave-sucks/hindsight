@@ -99,14 +99,14 @@ describe("validateThesisDecision — accept paths", () => {
   });
 });
 
-describe("validateThesisDecision — R/R floor and price ordering", () => {
-  it("rejects a LONG below 2:1", () => {
+describe("validateThesisDecision — price ordering; the ratio is reported, not a floor", () => {
+  it("accepts a LONG under 2:1 and reports the ratio", () => {
     const v = validateThesisDecision(
       { ...validLong, target_price: 115, stop_loss: 90 }, // 15/10 = 1.5
       mintOpts,
     );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("R/R floor");
+    expect(v.ok).toBe(true);
+    expect(v.riskReward).toBeCloseTo(1.5);
   });
 
   it("rejects inverted LONG ordering (stop above entry)", () => {
@@ -116,6 +116,18 @@ describe("validateThesisDecision — R/R floor and price ordering", () => {
     );
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("price ordering");
+  });
+
+  it("accepts a priced plan with a buy and a floor and no target (ETN as read 2026-11-04: buy $410, floor $358.50); no ratio to report", () => {
+    const v = validateThesisDecision({ ...validLong, entry_price: 410, target_price: undefined, stop_loss: 358.5 }, mintOpts);
+    expect(v.ok).toBe(true);
+    expect(v.errors).toEqual([]);
+    expect(v.riskReward).toBeUndefined();
+  });
+
+  it("a target, when given, still has to be positive and in order", () => {
+    expect(validateThesisDecision({ ...validLong, target_price: 0 }, mintOpts).errors.join(" ")).toContain("target_price: positive when given");
+    expect(validateThesisDecision({ ...validLong, target_price: 95 }, mintOpts).errors.join(" ")).toContain("price ordering");
   });
 
   it("rejects a half-priced plan (target + stop, no entry)", () => {

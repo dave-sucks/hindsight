@@ -56,12 +56,10 @@ export interface Rule {
 }
 
 const RULE_DEFS = {
-  RISK_REWARD_FLOOR: {
-    says: "A plan pays at least 2:1: (target − entry) ÷ (entry − stop). Below it the plan is refused with the arithmetic and the three legal answers (a real level, PASS, or set the plan down).",
-    refusal: "invalid_thesis_shape — names the ratio, the three levels, and the fix.",
-    // The morning run reads it in PLAN_PROBLEM's guidance when a plan is
-    // under it (lib/agent/situations.ts), and in the refusal.
-    markers: { chat: "2:1", writer: "2:1" },
+  UNDER_2X_SAY_WHY: {
+    says: "Reward against risk is reported, never a floor (2026-11-04): the house sets no target of its own. Under twice the floor's distance the writer says why in the note; the row's Street line says how much room there is to the Street's average.",
+    refusal: "none — nothing refuses on the ratio.",
+    markers: { writer: "UNDER 2×" },
   },
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
@@ -113,8 +111,8 @@ const RESEARCH_BLOCKS: FieldContract[] = [
 
 const PLAN_LEVELS: FieldContract[] = [
   f("entry_price", "JUDGED", { rule: "LEVEL_ORDER" }),
-  f("target_price", "JUDGED", { rule: "RISK_REWARD_FLOOR" }),
-  f("stop_loss", "JUDGED", { rule: "RISK_REWARD_FLOOR" }),
+  f("target_price", "JUDGED", { rule: "UNDER_2X_SAY_WHY" }),
+  f("stop_loss", "JUDGED", { rule: "UNDER_2X_SAY_WHY" }),
 ];
 
 const BELIEF: FieldContract[] = [

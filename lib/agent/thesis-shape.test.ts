@@ -7,7 +7,7 @@
 
 // Uses jest globals (project test runner is jest per package.json) — same
 // import-less pattern as lib/agent/triggers/evaluate.test.ts.
-import { MIN_RISK_REWARD, riskReward, validateThesisShape } from "./thesis-shape";
+import { riskReward, validateThesisShape } from "./thesis-shape";
 
 describe("validateThesisShape", () => {
   // ── PASS ───────────────────────────────────────────────────────────────
@@ -202,57 +202,32 @@ describe("validateThesisShape", () => {
   });
 });
 
-describe("validateThesisShape — the 2:1 floor (one rule, every write path)", () => {
-  it("PLTR as stored: entry 183 / target 190 / stop 110 is 0.1:1 and refused", () => {
-    const r = validateThesisShape({
-      direction: "LONG",
-      entryPrice: 183,
-      targetPrice: 190,
-      stopLoss: 110,
-      minRiskReward: MIN_RISK_REWARD,
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.reason).toBe("risk-reward-below-floor");
-      expect(r.note).toContain("0.10:1");
-      expect(r.note).toContain("2:1");
-    }
+describe("validateThesisShape — the ratio is reported, never a floor (2026-11-04)", () => {
+  it("PLTR as stored: entry 183 / target 190 / stop 110 is 0.1:1 and legal", () => {
+    expect(validateThesisShape({ direction: "LONG", entryPrice: 183, targetPrice: 190, stopLoss: 110 })).toMatchObject({ ok: true, riskReward: expect.closeTo(0.1, 1) });
   });
 
-  it("returns the realised R/R on a plan that clears the floor", () => {
-    expect(
-      validateThesisShape({
-        direction: "LONG",
-        entryPrice: 100,
-        targetPrice: 125,
-        stopLoss: 90,
-        minRiskReward: MIN_RISK_REWARD,
-      }),
-    ).toEqual({ ok: true, riskReward: 2.5 });
+  it("returns the realised R/R on a plan in order", () => {
+    expect(validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 125, stopLoss: 90 })).toEqual({ ok: true, riskReward: 2.5 });
   });
 
   it("SHORT mirrors the arithmetic", () => {
-    const r = validateThesisShape({
-      direction: "SHORT",
-      entryPrice: 100,
-      targetPrice: 90,
-      stopLoss: 108,
-      minRiskReward: MIN_RISK_REWARD,
-    });
-    expect(r.ok).toBe(false); // 10 / 8 = 1.25
+    expect(validateThesisShape({ direction: "SHORT", entryPrice: 100, targetPrice: 90, stopLoss: 108 })).toEqual({ ok: true, riskReward: 1.25 });
     expect(riskReward("SHORT", 100, 80, 108)).toBe(2.5);
   });
 
-  it("no floor requested (a held name) → ordering only, R/R still reported", () => {
-    expect(
-      validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 110, stopLoss: 90 }),
-    ).toEqual({ ok: true, riskReward: 1 });
+  it("a held name: ordering only, R/R still reported", () => {
+    expect(validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 110, stopLoss: 90 })).toEqual({ ok: true, riskReward: 1 });
   });
 
-  it("a partial plan has no R/R to check", () => {
-    expect(
-      validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 101, minRiskReward: 2 }),
-    ).toEqual({ ok: true });
+  it("a partial plan has no R/R to report", () => {
+    expect(validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 101 })).toEqual({ ok: true });
+  });
+
+  it("no note of the ratio ever reaches a refusal", () => {
+    const r = validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 90, stopLoss: 80 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.note).not.toMatch(/\d:1/);
   });
 });
 

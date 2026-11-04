@@ -32,14 +32,12 @@
  * Equal values fail — a target equal to entry has zero R/R and is
  * functionally the same bug as target < entry.
  *
- * The 2:1 reward/risk floor lives here too (2026-09-02). It ran only in
- * the writer loop; record_thesis / update_thesis merely described it, so
- * principal-chat plans skipped it (PLTR: 183 / 190 / 110 = 0.1:1; 8 of 26
- * priced watch rows under the floor). Callers pass `minRiskReward` for a
- * plan we don't own yet — on a held name the floor ratchets past the fill.
+ * The reward/risk ratio is reported on a legal plan, never enforced: the
+ * house sets no target of its own (the plan is the triggers; "target" is
+ * Wall Street's number), so a reward/risk floor had nothing of ours to
+ * measure. The refusal that lived here from 2026-09-02 to 2026-11-04 is
+ * gone; under twice the floor's distance the agent says why in its note.
  */
-
-export const MIN_RISK_REWARD = 2;
 
 export interface ThesisShapeArgs {
   // P1-24 B4: `null` is the unresearched-seed sentinel (legacy 'PENDING'
@@ -48,8 +46,6 @@ export interface ThesisShapeArgs {
   entryPrice?: number | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
-  /** When set and all three levels are present, reward/risk must be ≥ this. */
-  minRiskReward?: number;
   /**
    * The row is a live position. `entry` is then the fill, a historical
    * fact, and the stop is meant to ratchet up past it — a breakeven stop is
@@ -59,8 +55,6 @@ export interface ThesisShapeArgs {
    * a rule written for plans we haven't bought — DAV-233.)
    */
   held?: boolean;
-  /** A buy waiting for approval, in words: the 2:1 refusal then keeps its plan instead of offering ways out. */
-  buyWaiting?: string;
 }
 
 export type ThesisShapeResult =
@@ -110,7 +104,7 @@ export function validateThesisShape(
         note:
           `LONG thesis requires target_price > entry_price. ` +
           `You passed entry=$${entry}, target=$${target}. ` +
-          `Set a NEW target_price ABOVE entry_price (R/R ≥ 2:1 vs the stop). ` +
+          `Set a NEW target_price ABOVE entry_price. ` +
           `If this is a WATCHING thesis where price has crossed the old target, ` +
           `the OLD target was the ENTER trigger level — it's no longer valid as a take-profit. ` +
           `Recompute target relative to current price.`,
@@ -159,7 +153,7 @@ export function validateThesisShape(
         note:
           `LONG thesis requires target_price > stop_loss. ` +
           `You passed target=$${target}, stop=$${stop}. ` +
-          `Either lower stop_loss or raise target_price so target > stop (R/R ≥ 2:1 ideally).`,
+          `Either lower stop_loss or raise target_price so target > stop.`,
       };
     }
     if (!isLong && target >= stop) {
@@ -169,30 +163,12 @@ export function validateThesisShape(
         note:
           `SHORT thesis requires target_price < stop_loss. ` +
           `You passed target=$${target}, stop=$${stop}. ` +
-          `Either raise stop_loss or lower target_price so target < stop (R/R ≥ 2:1 ideally).`,
+          `Either raise stop_loss or lower target_price so target < stop.`,
       };
     }
   }
 
   if (entry == null || target == null || stop == null) return { ok: true };
   const rr = riskReward(args.direction, entry, target, stop) ?? undefined;
-  if (rr != null && args.minRiskReward != null && rr < args.minRiskReward) {
-    const formula = isLong
-      ? "(target − entry) / (entry − stop)"
-      : "(entry − target) / (stop − entry)";
-    return {
-      ok: false,
-      reason: "risk-reward-below-floor",
-      note:
-        `R/R floor: ${rr.toFixed(2)}:1 is below the mandatory ${args.minRiskReward}:1 minimum ` +
-        `(${formula} with entry=$${entry}, target=$${target}, stop=$${stop}). ` +
-        (args.buyWaiting
-          ? `${args.buyWaiting}, so its plan stays: the floor and target stay as they are.`
-          : `Tighten the stop to a REAL technical level, raise the target to a CITED level, ` +
-            `or — if no level makes the math work — set direction to PASS, or set the plan down: ` +
-            `remove the buy, floor and target by id with remove_trigger_ids (the name stays in view with no plan). ` +
-            `Never fabricate a level to clear the floor.`),
-    };
-  }
   return { ok: true, riskReward: rr };
 }

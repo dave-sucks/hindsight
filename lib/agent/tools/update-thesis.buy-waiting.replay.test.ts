@@ -1,9 +1,9 @@
 /**
- * A buy waiting for approval keeps its plan. IOT's trigger run, 2026-10-15
- * 10:10 ET, proposed 331 shares, then moved the buy to $42.21. The 2:1 check
- * refused it at 1.99 and its text said "set the plan down: remove the buy,
- * floor and target by id with remove_trigger_ids". The run did that, with its
- * own buy waiting. The 2:1 rule is unchanged; only its advice is.
+ * IOT's trigger run, 2026-10-15 10:10 ET, proposed 331 shares, then moved
+ * the buy to $42.21. The 2:1 check refused it at 1.99 and its text said "set
+ * the plan down: remove the buy, floor and target by id"; the run did that,
+ * with its own buy waiting. The ratio is not a rule any more (2026-11-04):
+ * the move lands, buy waiting or not, and nothing advises a set-down.
  *
  * The verbatim call, with the waiting order seeded, through update_thesis's
  * real entry point.
@@ -31,18 +31,11 @@ it("the seed is the plan the run saw: floor, target and buy, in the order its re
   expect(fx.thesis.triggers.map((t) => sentenceOf(t as Trigger, false))).toEqual(["Take the plan down if below $39.80", "Review if above $47 · only on the close", "Buy if above $42.15"]);
 });
 
-it("IOT 10-15: the 1.99 refusal names the waiting buy and never advises removing the floor or target", async () => {
-  const { result, db } = await save([order("AWAITING_APPROVAL")]);
-  const reason = refusalOf(result.data!);
-  expect(reason).toMatch(/^R\/R floor: 1\.99:1 is below the mandatory 2:1 minimum/);
-  expect(reason).toContain("A buy of 331 shares is waiting for approval, so its plan stays: the floor and target stay as they are.");
-  expect(JSON.stringify(result)).not.toMatch(/remove_trigger_ids|set the plan down/);
-  // Refused as before: the plan is untouched.
-  expect((db.store.thesis[0].triggers as Trigger[]).map((t) => sentenceOf(t, false))).toEqual(fx.thesis.triggers.map((t) => sentenceOf(t as Trigger, false)));
-});
-
-it("with no buy waiting the refusal is the one the run got, word for word", async () => {
-  expect(refusalOf((await save([order("FILLED")])).result.data!)).toBe(fx.refusedThen);
+it.each([["waiting", "AWAITING_APPROVAL"], ["filled", "FILLED"]])("IOT 10-15, the buy %s: the move to $42.21 lands at 1.99:1 and nothing advises a set-down", async (_w, status) => {
+  const { result, db } = await save([order(status)]);
+  expect(refusalOf(result.data!)).toBe("");
+  expect(JSON.stringify(result)).not.toMatch(/remove_trigger_ids|set the plan down|\d:1/);
+  expect((db.store.thesis[0].triggers as Trigger[]).map((t) => sentenceOf(t, false))).toContain("Buy if above $42.21");
 });
 
 it("the fixture holds only the fields the save reads, under the cap", () => {
