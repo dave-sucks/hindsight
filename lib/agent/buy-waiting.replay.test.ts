@@ -17,7 +17,7 @@ const seed = (orderStatus: string) => {
   const position = positionRow({ id: "cmv9o0nhe000006lbmypszfe7", symbol: "MU", analystId: SECULAR, accountId: REPLAY_ACCOUNT_ID, environment: "LIVE", status: orderStatus === "AWAITING_APPROVAL" ? "PENDING_APPROVAL" : "CANCELLED", quantity: 11, avgCost: 906.33 });
   return {
     thesis: [thesisRow({ id: THESIS, ticker: "MU", status: "WATCHING", direction: "LONG", analystId: SECULAR, entryPrice: 906, targetPrice: 1500, stopLoss: 850, triggers: [{ ...buy, id: BUY }, ...rest] })],
-    agentConfig: [agentConfigRow({ id: SECULAR, name: "Secular Compounder", accountId: REPLAY_ACCOUNT_ID, tradingEnvironment: "LIVE", maxOpenPositions: 8, minConfidence: 70 })],
+    agentConfig: [agentConfigRow({ id: SECULAR, name: "Secular Compounder", accountId: REPLAY_ACCOUNT_ID, tradingEnvironment: "LIVE", maxOpenPositions: 8 })],
     account: [accountRow({ requireApprovalBuysLive: true, requireApprovalSellsLive: true })],
     position: [position],
     order: [{ id: "cmv9o0njb000106lbg2ok0luk", positionId: position.id, position, intent: "OPEN", status: orderStatus, quantity: 11, createdAt: new Date("2026-10-15T14:59:59Z") }],

@@ -58,7 +58,6 @@ export const thesisDecisionSchema = z.object({
   core_belief: W.core_belief.optional(),
   key_assumptions: W.key_assumptions.optional(),
   invalidation_conditions: W.invalidation_conditions.optional(),
-  scoring: W.scoring.optional(),
   conviction: W.conviction.optional(),
   conviction_rationale: W.conviction_rationale.optional(),
   variant_view: W.variant_view.optional(),
@@ -78,8 +77,6 @@ export interface ValidatedThesisDecision
   extends Omit<ThesisDecisionInput, "triggers" | "add_triggers"> {
   triggers?: z.infer<typeof triggersArraySchema>;
   add_triggers?: z.infer<typeof triggersArraySchema>;
-  /** Sum of the four scoring dimensions (present on LONG/SHORT). */
-  composite?: number;
   /**
    * What the app fixed on the way in, in words — a conviction stored one
    * tier down, a trigger it couldn't read. Appended to the saved rationale
@@ -288,32 +285,12 @@ export function validateThesisDecision(
       errors.push("invalidation_conditions: ≥2 specific trip-wires required for LONG/SHORT (numbers, events, dates — not 'market volatility').");
     }
 
-    // ── Scoring rubric ────────────────────────────────────────────────
-    if (!d.scoring) {
-      errors.push("scoring: required for LONG/SHORT — all four dimensions with a note each.");
-    } else {
-      const caps: Array<[keyof NonNullable<typeof d.scoring>, number]> = [
-        ["trendStrength", 3],
-        ["relativeStrength", 3],
-        ["entryQuality", 2],
-        ["catalystFreshness", 2],
-      ];
-      for (const [dim, cap] of caps) {
-        const s = d.scoring[dim];
-        if (!s || typeof s.score !== "number" || s.score < 0 || s.score > cap) {
-          errors.push(`scoring.${dim}: score must be 0-${cap}.`);
-        } else if (!s.note || s.note.trim().length === 0) {
-          errors.push(`scoring.${dim}: note is required — one line of concrete evidence.`);
-        }
-      }
-    }
-
     // ── Conviction Expression v4 ──────────────────────────────────────
     if (!d.conviction) {
       errors.push("conviction: required for LONG/SHORT — STRONG/HIGH/MEDIUM/LOW, your real view.");
     }
     if (!d.conviction_rationale || d.conviction_rationale.trim().length === 0) {
-      errors.push("conviction_rationale: required — the judgment in plain speech, not a paraphrase of the scoring object.");
+      errors.push("conviction_rationale: required — the judgment in plain speech, not a paraphrase of the bull case.");
     }
     // A top-tier call needs a variant view. Without one the tier is MEDIUM —
     // stored that way with a note, not refused. Three catalyst theses were
@@ -421,12 +398,6 @@ export function validateThesisDecision(
       ...d,
       triggers: parsedTriggers,
       add_triggers: parsedAdds,
-      composite: d.scoring
-        ? d.scoring.trendStrength.score +
-          d.scoring.relativeStrength.score +
-          d.scoring.entryQuality.score +
-          d.scoring.catalystFreshness.score
-        : undefined,
       notes: notes.length ? notes : undefined,
     },
   };

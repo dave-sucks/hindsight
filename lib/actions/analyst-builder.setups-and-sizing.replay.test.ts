@@ -53,7 +53,6 @@ const PEAD_CALL = {
   setupIds: SETUPS,
   sectors: [],
   marketCapMin: 200_000_000,
-  minConfidence: 60,
   minPositionSize: 3000,
   maxPositionSize: 14000,
   maxOpenPositions: 6,

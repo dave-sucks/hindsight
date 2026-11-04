@@ -17,10 +17,7 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import {
-  getThesisComposite,
-  getThesisSnapshotText,
-} from "@/lib/agent/thesis-narrative";
+import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
 
 /** Display tag per intent — TRIM reads better than PARTIAL_CLOSE in a chip. */
@@ -124,7 +121,6 @@ export const listProposals = defineTool({
               targetPrice: true,
               stopLoss: true,
               snapshot: true,
-              scoring: true,
               updatedAt: true,
               researchRun: { select: { agentConfigId: true } },
             },
@@ -236,7 +232,6 @@ export const listProposals = defineTool({
               entryPrice: thesis.entryPrice,
               targetPrice: thesis.targetPrice,
               stopLoss: thesis.stopLoss,
-              conviction: getThesisComposite(thesis),
               snapshot: getThesisSnapshotText(thesis),
             }
           : null,

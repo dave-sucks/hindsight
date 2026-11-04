@@ -352,13 +352,6 @@ export function updatedSecondary(u: TimelineUpdate): string | null {
     if (!entry || (coveredByChips && LEVEL_KEYS.has(key))) continue;
     parts.push(`${label.toLowerCase()} ${fmt(entry.from)} → ${fmt(entry.to)}`);
   }
-  const scoring = fc.scoring;
-  if (scoring) {
-    const from = (scoring.from as { composite?: number } | null)?.composite;
-    const to = (scoring.to as { composite?: number } | null)?.composite;
-    if (from != null && to != null && from !== to)
-      parts.push(`composite ${from} → ${to}`);
-  }
   if (parts.length === 0 && RESEARCH_KEYS.some((k) => fc[k]))
     parts.push("research refreshed");
   return parts.length > 0 ? parts.join(", ") : null;

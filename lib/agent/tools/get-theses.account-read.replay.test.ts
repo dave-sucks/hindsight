@@ -18,7 +18,7 @@ import { replayTool, thesisRow, positionRow, agentConfigRow, REPLAY_USER_ID } fr
 const PEAD = "an_pead";
 const COMP = "an_comp";
 const days = (n: number) => new Date(Date.now() - n * 86_400_000);
-const onAnalyst = (id: string, name: string) => ({ agentConfigId: id, agentConfig: { name, setupIds: [], minConfidence: 60 } });
+const onAnalyst = (id: string, name: string) => ({ agentConfigId: id, agentConfig: { name, setupIds: [] } });
 const trail = { id: "pead_trail", action: "EXIT", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, rationale: "The analyst's trail.", cooldownDays: 0 };
 
 function seed() {
@@ -51,7 +51,7 @@ async function read(args: Record<string, unknown>, ctx: Record<string, unknown> 
     seed: seed() as never,
     args,
     // The chat with no analyst: no analystId, no analyst's limits.
-    ctx: { runMode: "PRINCIPAL_CHAT", userId: REPLAY_USER_ID, analystId: undefined, maxOpenPositions: undefined, minConfidence: undefined, ...ctx },
+    ctx: { runMode: "PRINCIPAL_CHAT", userId: REPLAY_USER_ID, analystId: undefined, maxOpenPositions: undefined, ...ctx },
     quotes: { NVDA: 240, MU: 105 },
   });
   const screen = result.data as unknown as Data;
@@ -117,7 +117,7 @@ describe("get_theses with no analyst: each stock with its own analyst", () => {
 
 describe("get_theses for one analyst: unchanged", () => {
   it("names no analyst on any row or line, and leaves nothing out at this size", async () => {
-    const { model } = await read({}, { analystId: PEAD, runMode: "MORNING_PLAN", maxOpenPositions: 6, minConfidence: 60 });
+    const { model } = await read({}, { analystId: PEAD, runMode: "MORNING_PLAN", maxOpenPositions: 6 });
     expect(JSON.stringify(model)).not.toMatch(/PEAD Specialist|Secular Compounder|"analyst"/);
     expect(model).not.toHaveProperty("left_out");
   });

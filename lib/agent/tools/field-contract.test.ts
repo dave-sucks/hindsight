@@ -25,7 +25,7 @@ type JsonSchema = { properties?: Record<string, Record<string, unknown>>; requir
 
 const ctxFor = (runMode: string) => ({
   runId: "contract", userId: "u", accountId: "a", analystId: "an", runMode, runEnvironment: "PAPER" as const,
-  groupId: (p: string) => p, minPositionSize: 3000, maxPositionSize: 10000, maxPositionTotal: 20000, maxOpenPositions: 6, minConfidence: 70,
+  groupId: (p: string) => p, minPositionSize: 3000, maxPositionSize: 10000, maxPositionTotal: 20000, maxOpenPositions: 6,
 });
 
 function wireOf(toolName: string, runMode: string): JsonSchema {

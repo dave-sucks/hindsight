@@ -19,7 +19,6 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Belief:** one sentence we can be wrong about, with an outcome, a timeframe and the reason.
 - **Wrong if:** what would prove the belief wrong, written before the buy.
 - **Setup:** the kind of trade, from the shared **playbook** (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has its checklist for the buy, the floor, the target and the time limit.
-- **Score:** a score out of 10 for the stock against the setup.
 - **Conviction:** how strongly the analyst holds the belief. It scales the size of the buy.
 - **Horizon:** how long the thesis means to hold: **catalyst** (until a dated event resolves), **trade** (days to weeks, tight stop), **target** (weeks to months, to a set price) or **compounder** (months to years). It sets how fast the research goes stale.
 - **Verdict:** how a review leaves the thesis: stronger, unchanged, weaker or broken, with one line on what moved it.

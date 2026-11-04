@@ -32,8 +32,6 @@ export interface StrategyArchetype {
   holdDurations: HoldDuration[];
   /** The setups it runs, signature first. Empty = the whole catalog. */
   setupIds: SetupId[];
-  /** The confidence a buy needs. */
-  minConfidence: number;
   /** How many stocks it holds at once. */
   maxOpenPositions: number;
   /**
@@ -60,7 +58,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
     setupIds: ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"],
-    minConfidence: 60,
     maxOpenPositions: 6,
     fence: { marketCapMin: 200_000_000 },
     primarySignals: ["EARNINGS_BEAT", "ANALYST_REVISION", "INSTITUTIONAL_FLOW"],
@@ -92,7 +89,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     directionBias: "LONG",
     holdDurations: ["SWING"],
     setupIds: ["BASE_BREAKOUT", "MOMENTUM_FLAG", "RS_52W_HIGH"],
-    minConfidence: 60,
     maxOpenPositions: 5,
     fence: { marketCapMin: 500_000_000 },
     primarySignals: ["PRICE_BREAKOUT", "VOLUME_SPIKE", "SECTOR_ROTATION"],
@@ -124,7 +120,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     directionBias: "LONG",
     holdDurations: ["SWING"],
     setupIds: ["RSI2_BOUNCE"],
-    minConfidence: 60,
     maxOpenPositions: 5,
     primarySignals: ["RSI_OVERSOLD", "VOLATILITY_SPIKE", "FEAR_INDICATOR"],
     keySources: ["FINVIZ", "STOCKCHARTS", "MARKETWATCH", "CNBC"],
@@ -155,7 +150,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
     setupIds: ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"],
-    minConfidence: 50,
     maxOpenPositions: 5,
     // A dated binary moves a small or mid cap; a mega cap doesn't gap on one event.
     fence: { marketCapMin: 500_000_000, marketCapMax: 20_000_000_000 },
@@ -187,7 +181,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     directionBias: "LONG",
     holdDurations: ["SWING", "POSITION"],
     setupIds: ["SECTOR_ROTATION", "RS_52W_HIGH", "MA_PULLBACK"],
-    minConfidence: 60,
     maxOpenPositions: 5,
     primarySignals: ["SECTOR_ROTATION", "MACRO_SHIFT", "ANALYST_REVISION"],
     keySources: ["SPDR_SECTOR", "BARRONS", "WSJ_MARKETS", "BLOOMBERG"],
@@ -218,7 +211,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     directionBias: "LONG",
     holdDurations: ["POSITION"],
     setupIds: ["INSIDER_CLUSTER", "BASE_BREAKOUT", "MA_PULLBACK"],
-    minConfidence: 60,
     maxOpenPositions: 5,
     primarySignals: ["INSIDER_BUYING", "FORM_4_CLUSTER"],
     keySources: ["SEC_EDGAR", "INSIDER_MONKEY", "FINVIZ_INSIDER", "OPENINSIDER"],
@@ -250,7 +242,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     holdDurations: ["POSITION"],
     // No setup in the catalog is a value entry: an analyst on it runs the whole catalog.
     setupIds: [],
-    minConfidence: 60,
     maxOpenPositions: 5,
     primarySignals: ["VALUATION_EXTREME", "INSIDER_BUYING", "ANALYST_DOWNGRADE_EXHAUSTION"],
     keySources: ["SEC_EDGAR", "SEEKING_ALPHA", "MORNINGSTAR", "VIC"],
@@ -281,7 +272,6 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     directionBias: "LONG",
     holdDurations: ["POSITION"],
     setupIds: ["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"],
-    minConfidence: 70,
     maxOpenPositions: 10,
     primarySignals: ["THEME_MOMENTUM", "EARNINGS_GROWTH", "CAPEX_TREND"],
     keySources: ["BARRONS", "BLOOMBERG", "STRATECHERY", "THE_INFORMATION"],
@@ -316,7 +306,6 @@ export function playbookFields(id: string) {
   return {
     setupIds: [...p.setupIds],
     holdDurations: [...p.holdDurations],
-    minConfidence: p.minConfidence,
     maxOpenPositions: p.maxOpenPositions,
     ...(p.fence?.marketCapMin != null ? { marketCapMin: p.fence.marketCapMin } : {}),
     ...(p.fence?.marketCapMax != null ? { marketCapMax: p.fence.marketCapMax } : {}),

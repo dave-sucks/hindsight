@@ -56,9 +56,6 @@ import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import type { ToolContext } from "@/lib/agent/tool-context";
-import {
-  getThesisComposite,
-} from "@/lib/agent/thesis-narrative";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import {
@@ -164,7 +161,6 @@ interface WriterAnalyst {
   maxOpenPositions: number;
   sectors: string[];
   exclusionList: string[];
-  minConfidence: number;
   tradingEnvironment: string | null;
   minPositionSize: unknown;
   maxPositionSize: unknown;
@@ -186,7 +182,6 @@ async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | nul
       maxOpenPositions: true,
       sectors: true,
       exclusionList: true,
-      minConfidence: true,
       tradingEnvironment: true,
       minPositionSize: true,
       maxPositionSize: true,
@@ -204,7 +199,6 @@ interface WriterExistingThesis {
   coreBelief: string | null;
   targetPrice: number | null;
   stopLoss: number | null;
-  composite: number | null;
   company: string | null;
   /** The stored triggers, with ids — a refresh edits them one at a time. */
   triggers: Trigger[];
@@ -223,7 +217,6 @@ async function loadExistingThesis(
       coreBelief: true,
       targetPrice: true,
       stopLoss: true,
-      scoring: true,
       company: true,
       triggers: true,
     },
@@ -237,7 +230,6 @@ async function loadExistingThesis(
     coreBelief: row.coreBelief,
     targetPrice: row.targetPrice != null ? Number(row.targetPrice) : null,
     stopLoss: row.stopLoss != null ? Number(row.stopLoss) : null,
-    composite: getThesisComposite(row),
     company: row.company ?? null,
     triggers: parseTriggersResilient(row.triggers).triggers as Trigger[],
   };
@@ -285,7 +277,6 @@ async function buildWriterToolCtx(
     watchlist,
     exclusionList: analyst.exclusionList ?? [],
     sectors: analyst.sectors ?? [],
-    minConfidence: analyst.minConfidence,
     minPositionSize: Number(analyst.minPositionSize),
     maxPositionSize: Number(analyst.maxPositionSize),
     maxPositionTotal: Number(analyst.maxPositionTotal),
@@ -344,7 +335,6 @@ export function buildWriterResearchPrompt(opts: WriterResearchPromptOpts): strin
   • core belief: ${opts.existingThesis.coreBelief ?? "—"}
   • target_price: ${opts.existingThesis.targetPrice ?? "—"}
   • stop_loss: ${opts.existingThesis.stopLoss ?? "—"}
-  • composite: ${opts.existingThesis.composite ?? "—"}/10
   • company: ${opts.existingThesis.company ?? "—"}
   • triggers (edit by id — these ids are the handles):
 ${
@@ -585,24 +575,17 @@ every field; the judgment rules:
      not one.
    • invalidation_conditions: each a reading and where it is read, never
      a price level alone: the floor carries that.
-   • scoring: the four numbers. No notes.
    • conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest
      middle (most theses).
    • You do not size the trade. place_trade sizes it by risk from your
      stop: the account loses about the analyst's risk per trade if the
      stop hits, scaled by conviction (LOW ×0.5 … STRONG ×1.25). A tight,
      honest stop is what earns size.
-   • confidence context: this analyst's minimum confidence for
-     trade-eligible coverage is ${opts.analyst.minConfidence ?? 70}/100 — calibrate composite +
-     conviction honestly against that bar.${
+${
        opts.setupRecord?.length
-         ? `\n   • your record by setup (closed trades since 2026-05-27):\n${opts.setupRecord.map((l) => `       ${l}`).join("\n")}`
+         ? `   • your record by setup (closed trades since 2026-05-27):\n${opts.setupRecord.map((l) => `       ${l}`).join("\n")}\n`
          : ""
      }
-   • entryQuality scores the setup's own entry rule: 2 = its condition is
-     true today (inside the chase limit), 1 = within a few percent of it,
-     0 = not formed. Never distance from the 52-week high by itself.
-
 ${triggerBlock}
 ${earningsTriggerBlock}
 ${priorExitBlock}
@@ -1262,7 +1245,6 @@ export function buildWriterSaveCall(
         current_price: pull?.currentPrice ?? undefined,
         horizon: d.horizon,
         catalyst_date: eventDate.iso,
-        scoring: d.scoring,
         conviction: d.conviction,
         conviction_rationale: d.conviction_rationale,
         variant_view: d.variant_view,
@@ -1340,7 +1322,6 @@ export function buildWriterSaveCall(
       entry_on_close: pass || held ? undefined : d.entry_on_close,
       horizon: d.horizon,
       catalyst_date: eventDate.iso,
-      scoring: d.scoring,
       conviction: d.conviction,
       conviction_rationale: d.conviction_rationale,
       variant_view: d.variant_view,

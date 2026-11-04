@@ -21,10 +21,7 @@ import { getLatestPricesWithMeta, getAccount, type PriceLookup } from "@/lib/alp
 import { readPrice } from "@/lib/market-data/quote-age";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { analystRoomLines } from "@/lib/agent/analyst-scope";
-import {
-  getThesisComposite,
-  getThesisSnapshotText,
-} from "@/lib/agent/thesis-narrative";
+import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 
 interface PositionDetail {
   positionId: string;
@@ -49,7 +46,7 @@ interface PositionDetail {
   priceAsOf: string | null;
   /** Plain words when `currentPrice` is missing or old; absent when it is live. */
   priceWarning?: string;
-  thesis: { id: string; reasoning: string; confidence: number; status: string } | null;
+  thesis: { id: string; reasoning: string; status: string } | null;
 }
 
 interface CapitalSummary {
@@ -117,13 +114,13 @@ export const getPortfolioContext = defineTool({
     const prices = lookup?.prices ?? {};
 
     // Each position's thesis: its stop and target are the plan's, and its reasoning on request.
-    const theses = new Map<string, { id: string; snapshot: unknown; scoring: unknown; status: string; stopLoss: number | null; targetPrice: number | null }>();
+    const theses = new Map<string, { id: string; snapshot: unknown; status: string; stopLoss: number | null; targetPrice: number | null }>();
     for (const pos of openPositions) {
       try {
         const thesis = await prisma.thesis.findFirst({
           where: { ticker: pos.symbol, status: "HOLDING", researchRun: { agentConfigId: pos.analystId } },
           orderBy: { createdAt: "desc" },
-          select: { id: true, snapshot: true, scoring: true, status: true, stopLoss: true, targetPrice: true },
+          select: { id: true, snapshot: true, status: true, stopLoss: true, targetPrice: true },
         });
         if (thesis) theses.set(pos.id, thesis);
       } catch { /* the position's own levels stand in */ }
@@ -162,8 +159,6 @@ export const getPortfolioContext = defineTool({
       }
 
       const thesis = theses.get(pos.id) ?? null;
-      // PR-9: conviction lives in scoring.composite (/10); the 0-100 shape here is ×10.
-      const composite = thesis ? getThesisComposite(thesis as never) : null;
       return {
         positionId: pos.id,
         symbol: pos.symbol,
@@ -189,7 +184,6 @@ export const getPortfolioContext = defineTool({
             ? {
                 id: thesis.id,
                 reasoning: getThesisSnapshotText(thesis as never),
-                confidence: composite != null ? composite * 10 : 0,
                 status: thesis.status,
               }
             : null,

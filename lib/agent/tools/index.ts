@@ -78,8 +78,6 @@ interface ToolCtx {
   /** Most in one stock — see ToolContext.maxPositionTotal. */
   maxPositionTotal?: number;
   maxOpenPositions?: number;
-  /** Min thesis confidence (0-100) required for place_trade — enforced. */
-  minConfidence?: number;
   alpacaCreds?: AlpacaCredentials;
   /** Snapshot of ResearchRun.environment — see ToolContext.runEnvironment. */
   runEnvironment?: "PAPER" | "LIVE";

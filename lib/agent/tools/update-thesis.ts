@@ -74,7 +74,6 @@ import {
 } from "@/lib/agent/thesis-transitions";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { computePlanSanity } from "@/lib/agent/plan-sanity";
-import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 import { claimNamesOldLevel } from "@/lib/agent/tools/claim-names-level";
 import { ruleOnTheLine } from "@/lib/agent/thesis-updates";
@@ -110,7 +109,6 @@ const updateSchema = z.object({
   core_belief: F.core_belief.optional(),
   key_assumptions: F.key_assumptions.optional(),
   invalidation_conditions: F.invalidation_conditions.optional(),
-  scoring: F.scoring_patch.optional(),
   target_price: F.target_price.nullable().optional(),
   stop_loss: F.stop_loss.nullable().optional(),
   setup_id: F.setup_id_or_none.optional(),
@@ -188,9 +186,6 @@ type UpdatePatch = Partial<{
   coreBelief: string | null;
   keyAssumptions: string[];
   invalidationConds: string[];
-  // PR-9 dropped the old score columns. Conviction lives
-  // in scoring.composite (set via the scoring arg, not patched directly).
-  scoring: object;
   targetPrice: number | null;
   stopLoss: number | null;
   // ── Conviction Expression v4 (existing-row read) ──────────────────────
@@ -304,8 +299,7 @@ const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TA
  * change, a setup named, a conviction tier with its reason. Horizon and the
  * catalyst date stay. Four left first: price_at_time (224 calls, each a copy
  * of the price the row showed; the save reads the quote itself), snapshot (25
- * saves rewrote the writer's cited paragraph uncited), scoring (the writer's
- * number) and variant_view (the writer's claim, which the conviction gate
+ * saves rewrote the writer's cited paragraph uncited) and variant_view (the writer's claim, which the conviction gate
  * reads off the row). Then the claim (step 12, part 1): core_belief,
  * key_assumptions and invalidation_conditions are the writer's and the
  * owner's chat's, never a run's; a seed's first research and a woken watch
@@ -325,7 +319,7 @@ const THE_CLAIM = { core_belief: true, key_assumptions: true, invalidation_condi
  * 14 of its 25 update_thesis calls in the 60 days to 2026-10-09; HPE
  * 2026-10-02 rewrote the snapshot and took the score 9 → 7 uncited.
  */
-const THE_WRITE_UPS_REST = { price_at_time: true, snapshot: true, scoring: true, variant_view: true } as const;
+const THE_WRITE_UPS_REST = { price_at_time: true, snapshot: true, variant_view: true } as const;
 const morningRunSchema = updateSchema.omit({
   ...WRITER_ONLY_UPDATE_FIELDS,
   ...THE_WRITE_UPS_REST,
@@ -431,7 +425,7 @@ const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
 const LEVEL_SLOT: Record<string, LevelSlot> = { entry_price: "ENTRY", target_price: "TARGET", stop_loss: "FLOOR" };
 /** Every field a hand edit can have set, with its column (the levels and the fields compared above). */
 const HAND_FIELDS: Array<[keyof UpdateArgs, string]> = [
-  ...FIELD_COLUMNS, ["variant_view", "variantView"], ["catalyst_date", "catalystDate"], ["scoring", "scoring"],
+  ...FIELD_COLUMNS, ["variant_view", "variantView"], ["catalyst_date", "catalystDate"],
   ["entry_price", "entryPrice"], ["target_price", "targetPrice"], ["stop_loss", "stopLoss"],
 ];
 
@@ -512,11 +506,6 @@ export function dropUnchanged(
   if (out.catalyst_date !== undefined && sameValue(out.catalyst_date ? new Date(String(out.catalyst_date)) : null, row.catalystDate ?? null)) {
     out.catalyst_date = undefined;
   }
-  if (args.scoring) {
-    const parts = (row.scoring ?? {}) as Record<string, unknown>;
-    const moved = Object.entries(args.scoring).filter(([k, v]) => v !== undefined && !sameValue(v, parts[k]));
-    out.scoring = moved.length ? Object.fromEntries(moved) : undefined;
-  }
   const triggers = parseTriggersResilient(row.triggers).triggers as Trigger[];
   const column = { entry_price: row.entryPrice, target_price: row.targetPrice, stop_loss: row.stopLoss };
   const level = (arg: keyof typeof column, slot: LevelSlot, basis?: "target_basis" | "stop_basis") => {
@@ -595,7 +584,6 @@ export const updateThesis = defineTool({
         direction: true,
         entryPrice: true,
         researchRun: { select: { agentConfigId: true } },
-        // PR-9 flat schema: select the V2 narrative columns + scoring.
         snapshot: true,
         bullCase: true,
         bearCase: true,
@@ -609,7 +597,6 @@ export const updateThesis = defineTool({
         coreBelief: true,
         keyAssumptions: true,
         invalidationConds: true,
-        scoring: true,
         targetPrice: true,
         stopLoss: true,
         // Conviction Expression v4 — read existing values so gates can
@@ -1054,15 +1041,6 @@ export const updateThesis = defineTool({
     //   1. Coherence: if patching `conviction`, must also patch rationale.
     //   2. Coherence: if patching to STRONG/HIGH, variantView must exist
     //      (either patched in this call, or already on the row).
-    //   3. Consistency Gate A: conviction (patched or existing) = STRONG
-    //      requires effective composite ≥ 7.
-    //   4. Consistency Gate B: conviction = STRONG/HIGH requires effective
-    //      entryQuality.score ≥ 2.
-    //
-    // "Effective" = patched value if present in this call, otherwise the
-    // existing-row value. This catches the asymmetric case where a writer
-    // lowers composite via a scoring patch on a thesis that already has
-    // conviction=STRONG (the patch would silently break the invariant).
     // P1-24 B4: seed = direction null (new) or 'PENDING' (legacy).
     const isPendingPromotionForConvictionGates = isUnresearchedSeed(
       existing.direction,
@@ -1093,11 +1071,7 @@ export const updateThesis = defineTool({
           : `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
       }
 
-      // Consistency gates (Gate A, Gate B) REMOVED 2026-05-31.
-      // See record-thesis.ts for the rationale: conviction is the
-      // writer's view, NOT a derived field from composite. Coupling them
-      // made the tier "just a name on composite," which defeated the
-      // point. Conviction patches now stand on their own.
+      // Conviction is the writer's view; it is not derived from any score.
     }
 
     // A terminal flip clears the plan, so the price-shape rules below don't
@@ -1201,22 +1175,6 @@ export const updateThesis = defineTool({
       patch.keyAssumptions = args.key_assumptions;
     if (args.invalidation_conditions !== undefined)
       patch.invalidationConds = args.invalidation_conditions;
-    // PR-9: confidence_score arg dropped — composite (in scoring) is the
-    // single conviction number. Scoring is merged with existing (partial
-    // updates supported); composite is computed from the 4 dims.
-    if (args.scoring !== undefined) {
-      // Read current scoring + merge with patch.
-      const currentScoring =
-        existing.scoring && typeof existing.scoring === "object"
-          ? (existing.scoring as Record<string, unknown>)
-          : {};
-      const merged = { ...currentScoring, ...args.scoring };
-      const t = (merged.trendStrength as { score?: number } | undefined)?.score ?? 0;
-      const r = (merged.relativeStrength as { score?: number } | undefined)?.score ?? 0;
-      const e = (merged.entryQuality as { score?: number } | undefined)?.score ?? 0;
-      const c = (merged.catalystFreshness as { score?: number } | undefined)?.score ?? 0;
-      patch.scoring = { ...merged, composite: t + r + e + c };
-    }
     // target_price / stop_loss / entry_price are NOT written here. A level
     // change is a trigger op; the columns are recomputed from the resulting
     // trigger list in the ops block below. Writing the column directly is
@@ -1722,7 +1680,7 @@ export const updateThesis = defineTool({
         priceAtTime: resolvedPriceAtTime,
         ...review,
       });
-      const reviewedMeans = [...whatThisMeans(existing, resolvedPriceAtTime, ctx.minConfidence), ...catalystDateMissing(existing)];
+      const reviewedMeans = [...whatThisMeans(existing, resolvedPriceAtTime), ...catalystDateMissing(existing)];
       return {
         summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}${notChanged ? ` ${notChanged}` : ""}`,
         data: {
@@ -1744,7 +1702,7 @@ export const updateThesis = defineTool({
     // These are the keys the patch above can actually write (PR-9 flat
     // schema). The pre-PR-9 legacy names (reasoningSummary / thesisBullets /
     // riskFlags / confidenceScore) sat here long after the patch stopped
-    // writing them, so every narrative/scoring/section change fell through
+    // writing them, so every narrative/section change fell through
     // the diff — 47% of UPDATED rows carried an empty fieldChanges (GAPS P2
     // audit hole, prerequisite for P1-33). Keep this list in lockstep with
     // the patch assembly above.
@@ -1766,8 +1724,6 @@ export const updateThesis = defineTool({
       "coreBelief",
       "keyAssumptions",
       "invalidationConds",
-      // Conviction + scoring
-      "scoring",
       "conviction",
       "convictionRationale",
       "variantView",
@@ -1912,17 +1868,6 @@ export const updateThesis = defineTool({
     // ops lead, one line each — a moved entry IS the entry change, not
     // "triggers updated" plus a separate column line.
     const summaryParts: string[] = landedOps.map((o) => o.text);
-    if (fieldChanges.scoring) {
-      const from = (fieldChanges.scoring.from as { composite?: number } | null)
-        ?.composite;
-      const to = (fieldChanges.scoring.to as { composite?: number } | null)
-        ?.composite;
-      summaryParts.push(
-        from != null && to != null && from !== to
-          ? `composite ${from} → ${to}`
-          : "scoring updated",
-      );
-    }
     if (fieldChanges.status) {
       summaryParts.push(
         `${fieldChanges.status.from} → ${fieldChanges.status.to}`,
@@ -1970,7 +1915,7 @@ export const updateThesis = defineTool({
       priceAtTime: resolvedPriceAtTime,
       ...review,
     });
-    const flags = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime, ctx.minConfidence);
+    const flags = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime);
     const catalystNotes = catalystDateMissing({ ...existing, ...patch });
     const means = [...flags, ...claimNotes, ...catalystNotes];
     // Back on watch with no plan (step 12, part 3): the status landed and
@@ -2010,19 +1955,15 @@ export const updateThesis = defineTool({
 
 /**
  * The save's reply (docs/plans/AGENT_CONTEXT.md §3.6): what the saved plan
- * means, in the sheet's words (plan-sanity.ts). Words, never a refusal. EME
- * 2026-09-29: a buy armed at a score of 6 against this analyst's 7 got only
- * "composite 3 → 6" back; told, the chat fixed it in one turn.
+ * means, in the sheet's words (plan-sanity.ts). Words, never a refusal.
  */
-function whatThisMeans(row: Record<string, unknown>, price: number | null, minConfidence?: number | null): string[] {
+function whatThisMeans(row: Record<string, unknown>, price: number | null): string[] {
   const n = (v: unknown) => (v == null ? null : Number(v));
   const flags = computePlanSanity({
     status: String(row.status), direction: (row.direction as string | null) ?? null, currentPrice: price,
     entryPrice: n(row.entryPrice), targetPrice: n(row.targetPrice), stopLoss: n(row.stopLoss),
-    composite: getThesisComposite(row as never), minConfidence: minConfidence ?? null,
   });
-  // The score line is about a buy; with no buy price there is none to refuse.
-  return flags.filter((f) => f.kind !== "COMPOSITE_BELOW_MINIMUM" || n(row.entryPrice) != null).map((f) => `${row.ticker}: ${f.text}`);
+  return flags.map((f) => `${row.ticker}: ${f.text}`);
 }
 
 /**

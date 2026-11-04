@@ -5,17 +5,13 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type CalibrationBucket = {
-  label: string;           // e.g. "60-70"
-  minConf: number;
-  maxConf: number;
+  label: string;           // the conviction tier: Low, Medium, High, Strong
   count: number;
   winRate: number | null;  // null when no trades in bucket
-  expectedWinRate: number; // the midpoint confidence (e.g. 0.65 for 60-70 bucket)
 };
 
 export type SignalAccuracy = {
@@ -52,12 +48,12 @@ export type AccuracyStats = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const CONFIDENCE_BUCKETS: Array<{ label: string; min: number; max: number }> = [
-  { label: "0–40",  min: 0,  max: 40  },
-  { label: "41–55", min: 41, max: 55  },
-  { label: "56–70", min: 56, max: 70  },
-  { label: "71–85", min: 71, max: 85  },
-  { label: "86+",   min: 86, max: 100 },
+/** Win rate by the analyst's conviction tier on the thesis the trade came from. */
+const CONVICTION_TIERS: Array<{ label: string; tier: string }> = [
+  { label: "Low", tier: "LOW" },
+  { label: "Medium", tier: "MEDIUM" },
+  { label: "High", tier: "HIGH" },
+  { label: "Strong", tier: "STRONG" },
 ];
 
 function winRateFrom(wins: number, total: number): number | null {
@@ -106,10 +102,9 @@ export async function getAccuracyStats(
         take: 1,
         include: {
           thesis: {
-            // PR-9: confidenceScore (Int) → scoring.composite (/10).
             // The signal-type rollup below joins through
             // sourceSignalIds → Signal.aggregateType.
-            select: { scoring: true, sourceSignalIds: true },
+            select: { conviction: true, sourceSignalIds: true },
           },
         },
       },
@@ -122,14 +117,7 @@ export async function getAccuracyStats(
     return {
       tradesAnalyzed: 0,
       overallWinRate: null,
-      calibration: CONFIDENCE_BUCKETS.map((b) => ({
-        label: b.label,
-        minConf: b.min,
-        maxConf: b.max,
-        count: 0,
-        winRate: null,
-        expectedWinRate: (b.min + b.max) / 200,
-      })),
+      calibration: CONVICTION_TIERS.map((b) => ({ label: b.label, count: 0, winRate: null })),
       signalAccuracy: [],
       directionStats: [],
       longestWinStreak: 0,
@@ -145,25 +133,11 @@ export async function getAccuracyStats(
   const wins = positions.filter((p) => p.outcome === "WIN").length;
   const overallWinRate = winRateFrom(wins, n);
 
-  // ── Calibration buckets ───────────────────────────────────────────────────
-  // PR-9: legacy Thesis.confidenceScore (0-100 Int) was dropped. The
-  // replacement is scoring.composite (0-10), so we multiply by 10 to keep
-  // the bucket thresholds (e.g. 70-79%) working unchanged.
-  const calibration: CalibrationBucket[] = CONFIDENCE_BUCKETS.map((b) => {
-    const inBucket = positions.filter((p) => {
-      const composite = getThesisComposite(getThesis(p) ?? { scoring: null });
-      const conf = composite != null ? composite * 10 : 0;
-      return conf >= b.min && conf <= b.max;
-    });
+  // ── Win rate by conviction tier ───────────────────────────────────────────
+  const calibration: CalibrationBucket[] = CONVICTION_TIERS.map((b) => {
+    const inBucket = positions.filter((p) => getThesis(p)?.conviction === b.tier);
     const bucketWins = inBucket.filter((p) => p.outcome === "WIN").length;
-    return {
-      label: b.label,
-      minConf: b.min,
-      maxConf: b.max,
-      count: inBucket.length,
-      winRate: winRateFrom(bucketWins, inBucket.length),
-      expectedWinRate: (b.min + b.max) / 200,
-    };
+    return { label: b.label, count: inBucket.length, winRate: winRateFrom(bucketWins, inBucket.length) };
   });
 
   // ── Signal-type accuracy ──────────────────────────────────────────────────

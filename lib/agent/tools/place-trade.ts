@@ -33,10 +33,7 @@ import { loadAutoStop } from "@/lib/trading/auto-stop";
 import { loadAccountRisk, industryOf } from "@/lib/agent/load-account-risk";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { heatLine, industryLine } from "@/lib/agent/portfolio-risk";
-import {
-  getThesisComposite,
-  getThesisSnapshotText,
-} from "@/lib/agent/thesis-narrative";
+import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { cashShortfall } from "@/lib/trading/manual-order-rules";
@@ -238,7 +235,7 @@ export const placeTrade = defineTool({
         };
       }
 
-      // 0b. Analyst config guardrails — minConfidence, maxOpenPositions,
+      // 0b. Analyst config guardrails — maxOpenPositions,
       // maxPositionSize. Previously these were advisory (passed to the
       // prompt) and the model could ignore them. Now they're hard gates:
       // a violation returns a FAILED trade result. This protects the
@@ -294,41 +291,6 @@ export const placeTrade = defineTool({
               direction: args.direction,
               message: msg,
               tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
-            },
-            sources: [],
-          };
-        }
-      }
-
-      // ── Guardrail 1: thesis composite score ≥ minConfidence ────────
-      // PR-9 dropped the legacy `confidenceScore` int — `scoring.composite`
-      // (a /10 setup grade with 4-dim breakdown) is the single conviction
-      // number. Analyst configs still store `minConfidence` on the legacy
-      // 0-100 scale; we convert composite ×10 for comparison so existing
-      // configs (e.g. `minConfidence: 70`) keep their semantics.
-      let belowMinimum: string | null = null;
-      if (ctx.minConfidence != null) {
-        const thesis = await prisma.thesis.findUnique({
-          where: { id: args.thesis_id },
-          select: { scoring: true, direction: true },
-        });
-        const composite = getThesisComposite(thesis ?? { scoring: null });
-        const compositeOn100Scale = composite != null ? composite * 10 : null;
-        const below = !!thesis && (compositeOn100Scale == null || compositeOn100Scale < ctx.minConfidence);
-        const compositeLabel = composite != null ? `${composite}/10 (=${compositeOn100Scale}%)` : "unscored";
-        // In the chat the minimum is a line in the reply, not a refusal, as the principal's size is (ruling 2026-10-15).
-        if (below && isPrincipalChat(ctx)) belowMinimum = `Scores ${compositeLabel}, below this analyst's minimum (${ctx.minConfidence}%).`;
-        if (below && !isPrincipalChat(ctx)) {
-          const blockedMsg = `Trade blocked: thesis composite ${compositeLabel} is below this analyst's minimum (${ctx.minConfidence}%). Raise the composite via update_thesis with a fresh 4-dim scoring, or skip the trade.`;
-          return {
-            summary: `Trade blocked: $${ticker} — below min composite`,
-            data: {
-              success: false,
-              ticker,
-              status: "FAILED" as const,
-              direction: args.direction,
-              message: blockedMsg,
-              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
             },
             sources: [],
           };
@@ -535,7 +497,7 @@ export const placeTrade = defineTool({
 
       let resolvedShares: number | undefined;
       let resolvedNotional: number | undefined;
-      const sizingNotes: string[] = belowMinimum ? [belowMinimum] : [];
+      const sizingNotes: string[] = [];
       // Only the principal's chat may name a size. A size a run's model
       // passed anyway (an older prompt, a direct call) is ignored, not
       // refused — the rules size the buy and the reply says so.

@@ -24,7 +24,6 @@ export function toFormValues(config: AgentConfigData): FormValues {
     directionBias: config.directionBias ?? D.directionBias,
     holdDurations: config.holdDurations ?? D.holdDurations,
     setupIds: config.setupIds ?? [],
-    minConfidence: config.minConfidence ?? D.minConfidence,
     maxOpenPositions: config.maxOpenPositions ?? D.maxOpenPositions,
     riskPct: config.riskPct ?? D.riskPct,
     minPositionSize: config.minPositionSize ?? D.minPositionSize,
@@ -50,7 +49,6 @@ export function applyChange<K extends keyof FormValues>(
     case "directionBias":
     case "holdDurations":
     case "setupIds":
-    case "minConfidence":
     case "maxOpenPositions":
     case "riskPct":
     case "minPositionSize":
@@ -96,7 +94,6 @@ export function toCreateInput(config: AgentConfigData): BuilderConfig {
     holdDurations: (config.holdDurations ?? D.holdDurations) as BuilderConfig["holdDurations"],
     setupIds: config.setupIds,
     sectors: config.sectors ?? [],
-    minConfidence: config.minConfidence ?? D.minConfidence,
     riskPct: config.riskPct,
     minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize ?? D.maxPositionSize,
@@ -119,7 +116,6 @@ export function toApplyInput(config: AgentConfigData): Partial<BuilderConfig> {
     holdDurations: config.holdDurations as BuilderConfig["holdDurations"] | undefined,
     setupIds: config.setupIds,
     sectors: config.sectors,
-    minConfidence: config.minConfidence,
     riskPct: config.riskPct,
     minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize,

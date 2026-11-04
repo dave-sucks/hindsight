@@ -57,11 +57,10 @@ export async function GET(
       catalystDate: true,
       setupId: true,
       createdAt: true,
-      scoring: true,
       researchRun: {
         select: {
           agentConfigId: true,
-          agentConfig: { select: { minConfidence: true, maxOpenPositions: true, setupIds: true } },
+          agentConfig: { select: { maxOpenPositions: true, setupIds: true } },
         },
       },
     },
@@ -96,7 +95,6 @@ export async function GET(
     analystId: thesis.researchRun?.agentConfigId ?? null,
     accountId,
     prices: currentPrice != null ? { [thesis.ticker]: { price: currentPrice, t: liveQuote?.t ?? 0, dp: dayChangePct } } : {},
-    minConfidence: analyst?.minConfidence ?? null,
     maxOpenPositions: analyst?.maxOpenPositions ?? null,
     slots: "positions",
   });

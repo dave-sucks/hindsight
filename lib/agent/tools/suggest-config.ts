@@ -90,11 +90,6 @@ const styleShape = {
         SECTORS.join(", ") +
         ". Empty = all sectors.",
     ),
-  minConfidence: z
-    .number()
-    .min(40)
-    .max(95)
-    .describe("The confidence (0-100) a buy needs."),
   maxOpenPositions: z
     .number()
     .min(1)

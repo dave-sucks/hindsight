@@ -20,8 +20,7 @@ import { replayTool, thesisRow, positionRow, agentConfigRow, accountRow, REPLAY_
 import { analystToolSettings } from "@/lib/agent/tool-context";
 
 const ROW = {
-  sectors: [], exclusionList: [], marketCapMin: null, marketCapMax: null,
-  minConfidence: 60, maxOpenPositions: 5,
+  sectors: [], exclusionList: [], marketCapMin: null, marketCapMax: null, maxOpenPositions: 5,
   minPositionSize: 3000, maxPositionSize: 8000, maxPositionTotal: 12000,
 };
 const chat = { runMode: "PRINCIPAL_CHAT", runEnvironment: "PAPER", ...analystToolSettings(ROW, []) };
@@ -33,7 +32,7 @@ const seedBase = () => ({
 
 describe("the tools' settings off the analyst's row", () => {
   it("carry the smallest trade, the largest trade and the most in one stock", () => {
-    expect(analystToolSettings(ROW, ["AAA"])).toMatchObject({ watchlist: ["AAA"], minPositionSize: 3000, maxPositionSize: 8000, maxPositionTotal: 12000, maxOpenPositions: 5, minConfidence: 60 });
+    expect(analystToolSettings(ROW, ["AAA"])).toMatchObject({ watchlist: ["AAA"], minPositionSize: 3000, maxPositionSize: 8000, maxPositionTotal: 12000, maxOpenPositions: 5 });
   });
 });
 

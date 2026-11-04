@@ -10,7 +10,7 @@ const base = {
   watchlist: [], activeTheses: [],
   triggersFiredSinceLastRun: [], triggersMatchingNow: [], earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] },
 };
-const cfg = { name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 };
+const cfg = { name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 };
 
 describe("Blocked last time", () => {
   it("the Monday after PLTR: the prompt names the refused buy and says it is still owed", () => {

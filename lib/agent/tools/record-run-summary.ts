@@ -65,18 +65,10 @@ export const recordRunSummary = defineTool({
               "  PASS     = researched and rejected; no thesis maintained.\n" +
               "  FAILED   = the buy order was refused (by the broker, as a duplicate, etc).",
             ),
-          composite_score: z
-            .number()
-            .min(0)
-            .max(10)
-            .optional()
-            .describe(
-              "The thesis's score out of 10, when it has one.",
-            ),
         }),
       )
       .describe(
-        "Every stock the run worked on, ranked by composite_score (or by conviction when there is no score), with the action that actually happened.",
+        "Every stock the run worked on, ranked by conviction, with the action that actually happened.",
       ),
     exposure_breakdown: z
       .object({

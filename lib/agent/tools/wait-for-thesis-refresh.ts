@@ -37,7 +37,6 @@ import type { Horizon } from "@/lib/agent/horizon-policy";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
-  getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 import {
@@ -218,7 +217,6 @@ export const waitForThesisRefresh = defineTool({
             entryPrice: true,
             targetPrice: true,
             stopLoss: true,
-            scoring: true,
             researchUpdatedAt: true,
             horizon: true,
           },
@@ -251,7 +249,6 @@ export const waitForThesisRefresh = defineTool({
               entryPrice: thesis.entryPrice,
               targetPrice: thesis.targetPrice ?? null,
               stopLoss: thesis.stopLoss ?? null,
-              composite: getThesisComposite({ scoring: thesis.scoring }),
             },
           }),
         };

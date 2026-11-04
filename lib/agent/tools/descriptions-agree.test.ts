@@ -52,14 +52,6 @@ describe("field descriptions agree with the save", () => {
     }
   });
 
-  it("the buy bar is the analyst's minimum confidence, not a fixed 7", () => {
-    for (const tool of ["update_thesis", "record_thesis"]) {
-      const d = describe_(tool, "scoring");
-      expect(d).toMatch(/minimum confidence/);
-      expect(d).not.toMatch(/ADD\/ROTATE/);
-    }
-  });
-
   it("invalidation conditions name no signal pipeline", () => {
     expect(describe_("update_thesis", "invalidation_conditions")).not.toMatch(/signal/);
   });

@@ -18,7 +18,6 @@ import { ThesisHeader } from "@/components/domain/thesis-header";
 import { ThesisPageBody } from "@/components/trades/ThesisPageBody";
 import { thesisSheetStateSelect } from "@/lib/agent/thesis-sheet-state";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
-import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import {
   getNews,
   getStockProfile,
@@ -289,7 +288,6 @@ export default async function StockDetailPage({ params }: Props) {
               status={live.status}
               agentWatchDays={agentWatchDays(live.triggers)}
               conviction={(live.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
-              score={getThesisComposite(live)}
               analystId={live.researchRun?.agentConfigId ?? null}
               thesisId={live.id}
               extraActions={<WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />}

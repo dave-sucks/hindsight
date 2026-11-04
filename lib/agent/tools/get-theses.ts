@@ -40,7 +40,6 @@ import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/ag
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
-  getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
@@ -305,10 +304,6 @@ export const getTheses = defineTool({
         lastReviewedAt: true,
         sourceSignalIds: true,
         sourceKind: true,
-        // 4-dim composite scoring + composite total. `composite` is the
-        // single conviction number (PR-9 dropped the parallel
-        // `confidenceScore` int).
-        scoring: true,
         // Conviction Expression v4 — writer-side fields (read into the
         // agent's context + the resolver's actionability decision tree).
         conviction: true,
@@ -335,7 +330,7 @@ export const getTheses = defineTool({
         // The analyst's own setups are what a row with none may choose from
         // (DAV-285, DAV-280) — read off the row, not a second query.
         // On an account-wide read, each stock's analyst: its rules, its minimum score, its name on the row.
-        researchRun: { select: { agentConfigId: true, agentConfig: { select: { setupIds: true, minConfidence: true, name: true } } } },
+        researchRun: { select: { agentConfigId: true, agentConfig: { select: { setupIds: true, name: true } } } },
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name. snapshot/bullCase/bearCase are
@@ -461,7 +456,6 @@ export const getTheses = defineTool({
       runEnvironment: ctx.runEnvironment,
       alpacaCreds: ctx.alpacaCreds,
       accountId: ctx.accountId,
-      minConfidence: ctx.minConfidence,
       maxOpenPositions: ctx.maxOpenPositions,
       slots: tickerFiltered ? "positions" : "rows",
     });
@@ -514,7 +508,6 @@ export const getTheses = defineTool({
       horizon: t.horizon,
       setupId: t.setupId ?? null,
       conviction: t.conviction ?? null,
-      composite: getThesisComposite(t),
       company: t.company,
       coreBelief: t.coreBelief,
       // A seed's one line says "no write-up yet", or that its newest one failed.
@@ -639,17 +632,12 @@ export const getTheses = defineTool({
     // agent read. Same shape as record_thesis / update_thesis returns so
     // ThesisCardRenderer can fold them into the "Read theses" carousel.
     const cards = enriched.map((t) => {
-      // PR-9: legacy 0-100 confidence → composite × 10 for the renderer
-      // which still consumes the 0-100 shape. Narrative columns extracted
-      // via helpers; bullCase/bearCase materialized as plain string[].
-      const composite = getThesisComposite(t);
       return {
         thesis_id: t.id,
         ticker: t.ticker,
         // P1-24: LONG | SHORT | null (null = unresearched seed; a pass stores
         // direction=null and is identified by status=PASSED).
         direction: t.direction as "LONG" | "SHORT" | null,
-        confidence_score: composite != null ? composite * 10 : 0,
         reasoning_summary: getThesisSnapshotText(t),
         thesis_bullets: getThesisBullCaseBullets(t),
         risk_flags: getThesisBearCaseBullets(t),

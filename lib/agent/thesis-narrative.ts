@@ -68,13 +68,3 @@ export function getThesisBearCaseBullets(t: { bearCase?: Unknown }): string[] {
   return getSectionBullets(t.bearCase);
 }
 
-/**
- * Pull the composite score (single conviction number, replacement for the
- * legacy `confidenceScore` int) from a Thesis row. Returns null when the
- * thesis hasn't been scored yet.
- */
-export function getThesisComposite(t: { scoring?: Unknown }): number | null {
-  if (!isObject(t.scoring)) return null;
-  const c = t.scoring["composite"];
-  return typeof c === "number" ? c : null;
-}

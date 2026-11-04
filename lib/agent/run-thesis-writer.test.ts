@@ -59,7 +59,7 @@ import { prisma } from "@/lib/prisma";
 import { pullThesisData } from "@/lib/agent/thesis-research/pull-data";
 
 const baseOpts: Omit<WriterResearchPromptOpts, "mode" | "existingThesis"> = {
-  analyst: { name: "Test Analyst", analystPrompt: null, minConfidence: 60 },
+  analyst: { name: "Test Analyst", analystPrompt: null },
   ticker: "NVDA",
   reason: "Promotion refresh — write PROMOTED triggers",
   runDate: "2026-05-27",

@@ -34,7 +34,7 @@ describe("the morning run's save", () => {
     expect(Object.keys(schemaOf("MORNING_PLAN").shape).sort()).toEqual(DOOR);
     expect(DOOR).toHaveLength(21);
     expect(enumOf("MORNING_PLAN")).toEqual(["INVALIDATED", "ARCHIVED", "WATCHING"]);
-    for (const dropped of ["price_at_time", "snapshot", "scoring", "variant_view", "core_belief", "key_assumptions", "invalidation_conditions", "direction"]) expect(DOOR).not.toContain(dropped);
+    for (const dropped of ["price_at_time", "snapshot", "variant_view", "core_belief", "key_assumptions", "invalidation_conditions", "direction"]) expect(DOOR).not.toContain(dropped);
   });
 
   it("leaves the other doors' saves as they were", () => {
@@ -42,10 +42,10 @@ describe("the morning run's save", () => {
     expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).not.toContain("change_status");
     const chat = Object.keys(schemaOf("PRINCIPAL_CHAT").shape);
     expect(chat).toHaveLength(24);
-    for (const f of ["price_at_time", "snapshot", "scoring", "variant_view"]) expect(chat).not.toContain(f);
+    for (const f of ["price_at_time", "snapshot", "variant_view"]) expect(chat).not.toContain(f);
     expect(chat).toEqual(expect.arrayContaining(["core_belief", "key_assumptions", "invalidation_conditions", "direction"]));
-    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(36);
-    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(26);
+    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(35);
+    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(25);
   });
 
   it("FIRST_RESEARCH and a woken watch send the claim through the writer, and name no field this save lacks", () => {

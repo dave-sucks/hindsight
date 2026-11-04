@@ -54,7 +54,6 @@ const analystRow = {
   analystPrompt: null,
   sectors: [],
   exclusionList: [],
-  minConfidence: 50,
   tradingEnvironment: "LIVE",
   minPositionSize: 3000,
   maxPositionSize: 8000,
@@ -81,7 +80,7 @@ type Submit = { execute: (a: unknown, o: unknown) => Promise<{ accepted: boolean
 type Call = { messages?: Array<{ role: string; content: string }>; tools?: { submit_thesis?: Submit }; onStepFinish?: (s: unknown) => void };
 
 /** What the model sent at 00:09 — minus the scoring block, so the writer's own check refuses it. */
-const refusedFirst = { ...fx.last.input, scoring: undefined };
+const refusedFirst = { ...fx.last.input, invalidation_conditions: undefined };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -99,14 +98,14 @@ it("DYN: the loop ends on a refused submit; the refusal goes back once and the d
       opts.onStepFinish?.({ toolCalls: [], text: "## Company\nDyne makes a drug.\n## Bull Case\n- x\n## Bear Case\n- x", response: { messages: [] } });
       const r = await opts.tools.submit_thesis.execute(refusedFirst, { toolCallId: "t1", messages: [] });
       expect(r.accepted).toBe(false);
-      expect(r.errors?.join(" ")).toMatch(/scoring/);
+      expect(r.errors?.join(" ")).toMatch(/invalidation_conditions/);
       return { text: "", response: { messages: [] } };
     }
     if (repair) {
       seen.push("repair");
       // The model is shown exactly what it sent and why it was refused.
       expect(opts.messages?.[2]?.content).toMatch(/"direction":"LONG"/);
-      expect(opts.messages?.[2]?.content).toMatch(/scoring/);
+      expect(opts.messages?.[2]?.content).toMatch(/invalidation_conditions/);
       const r = await opts.tools!.submit_thesis!.execute(fx.last.input, { toolCallId: "t2", messages: [] });
       expect(r.accepted).toBe(true);
       return { text: "", response: { messages: [] } };

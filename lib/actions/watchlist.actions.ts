@@ -15,7 +15,6 @@ import { horizonFor } from "@/lib/agent/triggers/load-levels";
 import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
 import { HELD_OR_WATCHED } from "@/lib/agent/watchlist-symbols";
 import {
-  getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 
@@ -59,14 +58,12 @@ export interface WatchlistItemView {
   thesisDirection: string | null;
   targetPrice: number | null;
   stopPrice: number | null;
-  conviction: number | null;
   catalyst: string | null;
   lastReviewedAt: Date | null;
   createdAt: Date;
   thesisCount: number;
   latestThesis: {
     direction: string | null;
-    confidenceScore: number;
     createdAt: Date;
   } | null;
 }
@@ -166,7 +163,6 @@ export async function getWatchlistItems(
       direction: true,
       targetPrice: true,
       stopLoss: true,
-      scoring: true,
       snapshot: true,
       sourceKind: true,
       sourceRationale: true,
@@ -189,7 +185,7 @@ export async function getWatchlistItems(
       ticker: { in: tickers },
       researchRun: { agentConfigId: analystId },
     },
-    select: { ticker: true, direction: true, scoring: true, createdAt: true },
+    select: { ticker: true, direction: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -214,9 +210,6 @@ export async function getWatchlistItems(
           : t.sourceKind === "EDITOR_SEED"
             ? "BUILDER"
             : "AGENT";
-    // PR-9: legacy 0-100 conviction → composite × 10.
-    const composite = getThesisComposite(t);
-    const histComposite = hist?.latest ? getThesisComposite(hist.latest) : null;
     return {
       id: t.id,
       thesisId: t.id,
@@ -232,7 +225,6 @@ export async function getWatchlistItems(
       thesisDirection: t.direction === "PENDING" ? null : t.direction,
       targetPrice: t.targetPrice,
       stopPrice: t.stopLoss,
-      conviction: composite != null ? composite * 10 : 0,
       catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
       lastReviewedAt: t.lastReviewedAt,
       createdAt: t.createdAt,
@@ -240,7 +232,6 @@ export async function getWatchlistItems(
       latestThesis: hist?.latest
         ? {
             direction: hist.latest.direction,
-            confidenceScore: histComposite != null ? histComposite * 10 : 0,
             createdAt: hist.latest.createdAt,
           }
         : null,
@@ -396,7 +387,6 @@ export async function addWatchlistItem(
       direction: true,
       targetPrice: true,
       stopLoss: true,
-      scoring: true,
       snapshot: true,
       sourceKind: true,
       createdAt: true,
@@ -410,7 +400,6 @@ export async function addWatchlistItem(
         : existing.sourceKind === "USER_ADDED"
           ? "USER"
           : "AGENT";
-    const existingComposite = getThesisComposite(existing);
     return {
       id: existing.id,
       thesisId: existing.id,
@@ -424,7 +413,6 @@ export async function addWatchlistItem(
       thesisDirection: existing.direction === "PENDING" ? null : existing.direction,
       targetPrice: existing.targetPrice,
       stopPrice: existing.stopLoss,
-      conviction: existingComposite != null ? existingComposite * 10 : 0,
       catalyst: null,
       lastReviewedAt: existing.lastReviewedAt,
       createdAt: existing.createdAt,
@@ -456,8 +444,6 @@ export async function addWatchlistItem(
       status: "WATCHING",
       holdDuration: "SWING",
       // PR-9 flat schema: legacy plain-string narrative columns replaced
-      // by JSONB snapshot/bullCase/bearCase; the composite lives in
-      // scoring (null until first research).
       snapshot: {
         text: reason || "Added manually — awaiting first research",
         citations: [],
@@ -483,9 +469,6 @@ export async function addWatchlistItem(
   });
 
   revalidatePath(`/analysts/${analystId}`);
-  // PR-9: legacy 0-100 conviction → composite × 10; we just minted the
-  // thesis with no scoring yet, so conviction is null/0.
-  const mintedComposite = getThesisComposite(thesis);
   return {
     id: thesis.id,
     symbol: thesis.ticker,
@@ -497,7 +480,6 @@ export async function addWatchlistItem(
     thesisDirection: null,
     targetPrice: null,
     stopPrice: null,
-    conviction: mintedComposite != null ? mintedComposite * 10 : 0,
     catalyst: null,
     lastReviewedAt: null, // just minted — never reviewed
     createdAt: thesis.createdAt,

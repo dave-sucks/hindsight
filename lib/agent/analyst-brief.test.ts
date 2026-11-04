@@ -34,7 +34,6 @@ const CATALYST = {
   analystPrompt: STRATEGY,
   directionBias: "LONG",
   holdDurations: ["SWING", "POSITION"],
-  minConfidence: 50,
   minPositionSize: "3000",
   maxPositionSize: "8000",
   maxPositionTotal: "16000",
@@ -92,7 +91,6 @@ describe("the Catalyst Event PM's brief", () => {
           "Rules:",
           "- Direction: LONG",
           "- Hold style: SWING, POSITION",
-          "- Min confidence: 50%",
           "- Position size: $3,000–$8,000 per entry (place_trade sizes every buy inside this band by risk)",
           "- Most in one stock: $16,000",
           "- Max open positions: 5",
@@ -123,7 +121,7 @@ describe("the Catalyst Event PM's brief", () => {
   });
 
   it("an unset analyst reads as the morning run always rendered one", () => {
-    expect(analystBrief({})).toContain("## Analyst: Research Analyst\n\nRules:\n- Direction: Long & Short\n- Hold style: SWING\n- Min confidence: 70%\n- Max position size: $2,500");
+    expect(analystBrief({})).toContain("## Analyst: Research Analyst\n\nRules:\n- Direction: Long & Short\n- Hold style: SWING\n- Max position size: $2,500");
   });
 });
 
@@ -149,7 +147,6 @@ describe("every door reads the same brief, once", () => {
     for (const door of Object.keys(DOORS) as Array<keyof typeof DOORS>) {
       expect([door, count(prompts[door], "## Analyst: ")]).toEqual([door, 1]);
       expect([door, count(prompts[door], STRATEGY)]).toEqual([door, 1]);
-      expect([door, count(prompts[door], "Min confidence:")]).toEqual([door, 1]);
     }
   });
 

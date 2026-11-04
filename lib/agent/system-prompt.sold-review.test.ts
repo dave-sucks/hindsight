@@ -29,7 +29,7 @@ const runInput = () =>
 
 const prompt = () =>
   buildDailyRunSystemPromptV2(
-    { name: "Catalyst Event PM", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
+    { name: "Catalyst Event PM", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
     runInput(),
   );
 

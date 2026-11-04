@@ -181,7 +181,6 @@ export const tacticalRun = inngest.createFunction(
             holdDurations: true,
             setupIds: true,
             sectors: true,
-            minConfidence: true,
             minPositionSize: true,
             maxPositionSize: true,
             maxOpenPositions: true,
@@ -508,7 +507,6 @@ export const tacticalRun = inngest.createFunction(
         maxPositionSize: Number(agentConfig.maxPositionSize),
         maxPositionTotal: Number(agentConfig.maxPositionTotal),
         maxOpenPositions: agentConfig.maxOpenPositions,
-        minConfidence: agentConfig.minConfidence,
         alpacaCreds: (await resolveAlpacaCredentials(agentConfig.userId, runEnvironment)) ?? undefined,
         runEnvironment,
       });

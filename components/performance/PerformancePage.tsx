@@ -16,8 +16,6 @@ import {
   Line,
   BarChart,
   Bar,
-  ScatterChart,
-  Scatter,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -293,50 +291,31 @@ function CalibrationCard({ calibration }: { calibration: CalibrationData }) {
           </div>
         )}
 
-        {/* Confidence calibration */}
+        {/* Win rate by conviction */}
         {calibrationBuckets.length > 0 && (
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
-              Confidence Calibration
+              Win rate by conviction
             </p>
             <div className="rounded-md border border-border overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-secondary/30">
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Bucket</th>
-                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">Expected</th>
-                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">Actual</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Conviction</th>
+                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">Win rate</th>
                     <th className="px-3 py-2 text-right font-medium text-muted-foreground">n</th>
-                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">Flag</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {calibrationBuckets.map((b) => {
-                    const actual = b.actualWinRate != null ? b.actualWinRate * 100 : null;
-                    const gap = b.actualWinRate != null ? b.actualWinRate - b.expectedWinRate : null;
-                    const isOver = gap != null && gap < -0.15;
-                    const isUnder = gap != null && gap > 0.1;
-                    return (
-                      <tr key={b.label} className="hover:bg-secondary/20">
-                        <td className="px-3 py-2 font-mono text-foreground">{b.label}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                          {(b.expectedWinRate * 100).toFixed(0)}%
-                        </td>
-                        <td className={cn(
-                          'px-3 py-2 text-right tabular-nums font-medium',
-                          actual == null ? 'text-muted-foreground' :
-                            isOver ? 'text-negative' : isUnder ? 'text-positive' : 'text-foreground'
-                        )}>
-                          {actual != null ? `${actual.toFixed(0)}%` : '—'}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{b.count}</td>
-                        <td className="px-3 py-2 text-right text-xs">
-                          {isOver && <span className="text-negative">⚠ overconfident</span>}
-                          {isUnder && <span className="text-positive">✓ room to push</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {calibrationBuckets.map((b) => (
+                    <tr key={b.label} className="hover:bg-secondary/20">
+                      <td className="px-3 py-2 text-foreground">{b.label}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium text-foreground">
+                        {b.actualWinRate != null ? `${(b.actualWinRate * 100).toFixed(0)}%` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{b.count}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -391,7 +370,7 @@ interface Props {
 export default function PerformancePage({ data, scorecard = [] }: Props) {
   const [activeRange, setActiveRange] = useState<TimeRange>('1M');
 
-  const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, confidenceScatter, stats, analystBreakdown, recentRuns, calibration } = data;
+  const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, stats, analystBreakdown, recentRuns, calibration } = data;
   const { totalReturn, totalReturnPct, returnOnDeployedPct, winRate, avgReturnPerTrade, openTrades, closedTrades, totalTrades, graduation } = stats;
 
   const winRatePct = Math.min((graduation.currentWinRate / graduation.winRateTarget) * 100, 100);
@@ -563,71 +542,6 @@ export default function PerformancePage({ data, scorecard = [] }: Props) {
           </CardContent>
         </Card>
 
-        {/* Confidence Score vs Outcome Scatter */}
-        <Card className="border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">Confidence vs Outcome</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {confidenceScatter.length === 0 ? (
-              <EmptyChart height={220} message="Close trades to see confidence vs outcome" />
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <ScatterChart margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" />
-                  <XAxis
-                    type="number"
-                    dataKey="confidence"
-                    name="Confidence"
-                    domain={[50, 95]}
-                    tick={{ fontSize: 10, fill: AXIS_COLOR }}
-                    axisLine={false}
-                    tickLine={false}
-                    label={{
-                      value: 'Confidence %',
-                      position: 'insideBottomRight',
-                      offset: -5,
-                      fontSize: 10,
-                      fill: AXIS_COLOR,
-                    }}
-                  />
-                  <YAxis
-                    type="number"
-                    dataKey="return"
-                    name="Return %"
-                    tick={{ fontSize: 10, fill: AXIS_COLOR }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v) => `${v}%`}
-                    width={40}
-                  />
-                  <ReferenceLine y={0} stroke={GRID_COLOR} strokeWidth={1.5} />
-                  <Tooltip
-                    cursor={{ strokeDasharray: '3 3', stroke: GRID_COLOR }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const d = payload[0]?.payload as { ticker: string; confidence: number; return: number };
-                      return (
-                        <div className="bg-card border border-border rounded-md px-3 py-2 text-sm shadow-lg">
-                          <p className="font-mono font-semibold text-foreground">{d.ticker}</p>
-                          <p className="text-xs text-muted-foreground">Conf: <span className="tabular-nums text-foreground">{d.confidence}%</span></p>
-                          <p className={cn('text-xs tabular-nums', d.return >= 0 ? 'text-positive' : 'text-negative')}>
-                            Return: {d.return >= 0 ? '+' : ''}{d.return.toFixed(2)}%
-                          </p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Scatter data={confidenceScatter} name="Trades">
-                    {confidenceScatter.map((entry, i) => (
-                      <Cell key={i} fill={entry.return >= 0 ? EMERALD : RED} fillOpacity={0.8} />
-                    ))}
-                  </Scatter>
-                </ScatterChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* ── Sector breakdown (full width) ── */}

@@ -20,8 +20,6 @@ export type {
   Trigger,
   ThesisStatePosition,
   ThesisPendingProposal,
-  ThesisScoringDim,
-  ThesisScoring,
   ThesisDossier,
   QuoteResponse,
   ResolvedEnvelope,

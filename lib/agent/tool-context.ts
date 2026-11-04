@@ -77,12 +77,6 @@ export interface ToolContext {
    */
   maxPositionTotal?: number;
   maxOpenPositions?: number;
-  /**
-   * Minimum thesis confidence (0-100) required for place_trade to proceed.
-   * Enforced inside place_trade, not just advised to the model. Defaults
-   * to 60 when undefined.
-   */
-  minConfidence?: number;
 
   /**
    * Chat-dispatched thesis-writer mints clamp to WATCHING. P1-24: a
@@ -162,7 +156,7 @@ export interface ToolContext {
 /** The analyst's fence and limits, as the tools read them off ToolContext. */
 export type AnalystToolSettings = Pick<
   ToolContext,
-  "watchlist" | "exclusionList" | "sectors" | "marketCapMin" | "marketCapMax" | "minConfidence" | "minPositionSize" | "maxPositionSize" | "maxPositionTotal" | "maxOpenPositions"
+  "watchlist" | "exclusionList" | "sectors" | "marketCapMin" | "marketCapMax" | "minPositionSize" | "maxPositionSize" | "maxPositionTotal" | "maxOpenPositions"
 >;
 
 /**
@@ -175,7 +169,7 @@ export function analystToolSettings(
   row: {
     exclusionList: string[]; sectors: string[];
     marketCapMin: bigint | number | null; marketCapMax: bigint | number | null;
-    minConfidence: number; maxOpenPositions: number;
+    maxOpenPositions: number;
     minPositionSize: unknown; maxPositionSize: unknown; maxPositionTotal: unknown;
   },
   watchlist: string[],
@@ -187,7 +181,6 @@ export function analystToolSettings(
     sectors: row.sectors,
     marketCapMin: row.marketCapMin != null ? Number(row.marketCapMin) : null,
     marketCapMax: row.marketCapMax != null ? Number(row.marketCapMax) : null,
-    minConfidence: row.minConfidence,
     minPositionSize: money(row.minPositionSize),
     maxPositionSize: money(row.maxPositionSize),
     maxPositionTotal: money(row.maxPositionTotal),

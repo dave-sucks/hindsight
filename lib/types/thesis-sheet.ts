@@ -109,17 +109,6 @@ export interface ThesisPendingProposal {
   writing?: boolean;
 }
 
-export interface ThesisScoringDim {
-  score: number;
-  note?: string;
-}
-export interface ThesisScoring {
-  trendStrength?: ThesisScoringDim;
-  relativeStrength?: ThesisScoringDim;
-  entryQuality?: ThesisScoringDim;
-  catalystFreshness?: ThesisScoringDim;
-}
-
 /**
  * One Activity line (a saved line or a proposal's step), in the shape the
  * Activity tab's `TimelineUpdate` expects, so the Overview and the Activity
@@ -208,11 +197,6 @@ export interface ThesisDossier {
   coreBelief: string | null;
   keyAssumptions: string[];
   invalidationConds: string[];
-  // 4-dim composite scoring + the /10 sum. Composite is the SINGLE
-  // conviction number (PR-9 collapsed the legacy `confidenceScore` int
-  // onto this). Both place_trade gates read from here.
-  scoring: ThesisScoring | null;
-  scoringComposite: number | null;
   // ── Conviction Expression v4 (writer-side) ──────────────────────────
   // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Tier verdict +
   // one-sentence rationale + the writer's contrarian take. Null on
@@ -260,7 +244,6 @@ export interface ThesisDossier {
 // QuoteResponse rather than the durable dossier.
 export interface ResolvedEnvelope {
   currentPrice: number | null;
-  entryQualityScore: number | null;
   triggerState: "ENTER_FIRED" | "ENTER_WAITING" | "EXIT_FIRED" | "NONE";
   triggerDetail: string | null;
   actionability:

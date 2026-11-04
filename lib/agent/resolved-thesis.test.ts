@@ -228,23 +228,6 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     expect(r.actionability).toBe("WAIT_FOR_TRIGGER");
   });
 
-  it("surfaces entryQualityScore flat from nested scoring", () => {
-    const r = buildResolvedEnvelope({
-      thesis: baseThesis({
-        scoring: {
-          trendStrength: { score: 3, note: "" },
-          relativeStrength: { score: 2, note: "" },
-          entryQuality: { score: 1, note: "" },
-          catalystFreshness: { score: 1, note: "" },
-          composite: 7,
-        },
-      }),
-      currentPrice: 100,
-      now: NOW,
-    });
-    expect(r.entryQualityScore).toBe(1);
-  });
-
   it("currentPrice null when no quote provided; quoteAgeMs null", () => {
     const r = buildResolvedEnvelope({
       thesis: baseThesis(),

@@ -112,7 +112,6 @@ export function StockHistory({
           // The sheet loads everything by id; these two are only required by
           // the card type it also accepts.
           direction={null}
-          confidence_score={0}
         />
       ) : null}
     </div>

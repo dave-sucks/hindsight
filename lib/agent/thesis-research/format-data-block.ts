@@ -383,16 +383,6 @@ function buildPriceStructure(s: StockDataInput): string {
     lines.push(`Trend Template — ${tt.passed}/${tt.of}${tt.failing.length ? `; failing: ${tt.failing.join("; ")}` : ""}`);
   }
 
-  const sg: string[] = [];
-  if (t.suggested.trendStrength) sg.push(`trendStrength ${t.suggested.trendStrength.score} ("${t.suggested.trendStrength.note}")`);
-  if (t.suggested.relativeStrength) sg.push(`relativeStrength ${t.suggested.relativeStrength.score} ("${t.suggested.relativeStrength.note}")`);
-  if (sg.length) {
-    lines.push(
-      `Computed composite scores from this chart — ${sg.join(" · ")}. ` +
-        `Use them unless your research says otherwise; if you change one, say why in its note.`,
-    );
-  }
-
   lines.push(
     `(These are the levels your setup's entry, stop and target come from. ` +
       `A setup already true today is an entry at or a few cents past the live price.)`,

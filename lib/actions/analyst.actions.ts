@@ -14,7 +14,6 @@ import { getAccountId } from "@/lib/auth/account";
 import { getHeldOrWatchedSymbols } from "@/lib/agent/watchlist-symbols";
 import { NEW_ANALYST_DEFAULTS, normalizeAnalystPatch, watchlistAdds, watchlistReasons } from "@/lib/analyst-settings";
 import {
-  getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 
@@ -36,7 +35,6 @@ export interface AnalystConfig {
   sectors: string[];
   holdDurations: string[];
   directionBias: string;
-  minConfidence: number;
   maxOpenPositions: number;
   /** Per-entry floor; 0 = no floor. Enforced in place_trade. */
   minPositionSize: number;
@@ -83,7 +81,6 @@ export interface AnalystListItem {
   sectors: string[];
   holdDurations: string[];
   directionBias: string;
-  minConfidence: number;
   lastRunAt: Date | null;
   lastRunStatus: string | null;
   tradeCount: number;
@@ -108,7 +105,6 @@ export interface PositionWithThesis {
   closedAt: Date | null;
   thesis: {
     id: string;
-    confidenceScore: number;
     reasoningSummary: string;
   };
   // Trade-as-Proposal — populated when this Position has an outstanding
@@ -137,7 +133,6 @@ export interface AnalystStats {
   losses: number;
   bestWin: number | null;
   worstLoss: number | null;
-  avgConfidence: number | null;
 }
 
 export interface AnalystDetail {
@@ -156,7 +151,6 @@ export interface DashboardRun {
   theses: {
     ticker: string;
     direction: string | null;
-    confidenceScore: number;
     trade: { id: string; status: string; realizedPnl: number | null } | null;
   }[];
 }
@@ -296,7 +290,6 @@ export async function getAnalystList(
       sectors: config.sectors,
       holdDurations: config.holdDurations,
       directionBias: config.directionBias,
-      minConfidence: config.minConfidence,
       lastRunAt: lastRun?.startedAt ?? null,
       lastRunStatus: lastRun?.status ?? null,
       tradeCount: configPositions.length,
@@ -364,7 +357,6 @@ export async function getAnalystDetail(
             thesis: {
               select: {
                 id: true,
-                scoring: true,
                 snapshot: true,
               },
             },
@@ -389,20 +381,10 @@ export async function getAnalystDetail(
   ]);
 
   // Compute stats from all positions for this analyst.
-  // PR-9 dropped the legacy `confidenceScore` Int — the conviction signal
-  // moved into `scoring.composite` (Json `{ ... composite: number }`).
-  // Prisma aggregate can't average a Json field; fetch the scoring blobs
-  // and average composites client-side. Cheap on a per-analyst scope.
-  const [allPositions, scoringRows] = await Promise.all([
-    prisma.position.findMany({
-      where: { accountId, analystId },
-      select: { outcome: true, realizedPnl: true },
-    }),
-    prisma.thesis.findMany({
-      where: { researchRun: { agentConfigId: analystId }, accountId },
-      select: { scoring: true },
-    }),
-  ]);
+  const allPositions = await prisma.position.findMany({
+    where: { accountId, analystId },
+    select: { outcome: true, realizedPnl: true },
+  });
 
   const closedPositions = allPositions.filter((p) => p.outcome != null);
   const wins = closedPositions.filter((p) => p.outcome === "WIN").length;
@@ -426,16 +408,6 @@ export async function getAnalystDetail(
     lossPositions.length > 0
       ? Math.min(...lossPositions.map((p) => p.realizedPnl!))
       : null;
-  // Average composite, on the legacy 0-100 scale (composite × 10) so the
-  // analyst card's existing renderer keeps working.
-  const composites: number[] = scoringRows
-    .map((r) => getThesisComposite(r))
-    .filter((c): c is number => c != null);
-  const avgConfidence =
-    composites.length > 0
-      ? (composites.reduce((s, c) => s + c, 0) / composites.length) * 10
-      : null;
-
   // Map Prisma config (Json fields) → typed AnalystConfig
   const mappedConfig: AnalystConfig = {
     id: config.id,
@@ -450,7 +422,6 @@ export async function getAnalystDetail(
     sectors: config.sectors as string[],
     holdDurations: config.holdDurations as string[],
     directionBias: config.directionBias,
-    minConfidence: config.minConfidence,
     maxOpenPositions: config.maxOpenPositions,
     minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize,
@@ -467,7 +438,6 @@ export async function getAnalystDetail(
 
   const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => {
     const th = p.decisions[0]?.thesis;
-    const composite = th ? getThesisComposite(th) : null;
     const proposal = pickProposalOrder(p.orders ?? []);
     return {
       id: p.id,
@@ -487,10 +457,9 @@ export async function getAnalystDetail(
       thesis: th
         ? {
             id: th.id,
-            confidenceScore: composite != null ? composite * 10 : 0,
             reasoningSummary: getThesisSnapshotText(th),
           }
-        : { id: "", confidenceScore: 0, reasoningSummary: "" },
+        : { id: "", reasoningSummary: "" },
       pendingProposal: proposal
         ? {
             orderId: proposal.order.id,
@@ -520,7 +489,6 @@ export async function getAnalystDetail(
       losses,
       bestWin,
       worstLoss,
-      avgConfidence,
     },
   };
 }
@@ -548,7 +516,6 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
         select: {
           ticker: true,
           direction: true,
-          scoring: true,
           decisions: {
             take: 1,
             where: { decision: "BUY" },
@@ -559,9 +526,6 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
             },
           },
         },
-        // PR-9: was orderBy confidenceScore desc — server-side sort on
-        // Json composite isn't supported; results land createdAt-desc and
-        // downstream renderers sort if needed.
         orderBy: { createdAt: "desc" },
         take: 8,
       },
@@ -577,13 +541,9 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
     completedAt: r.completedAt,
     theses: r.theses.map((th) => {
       const pos = th.decisions[0]?.position;
-      const composite = getThesisComposite(th);
       return {
         ticker: th.ticker,
         direction: th.direction,
-        // PR-9: legacy 0-100 confidence → composite × 10 for renderers
-        // still consuming the 0-100 shape.
-        confidenceScore: composite != null ? composite * 10 : 0,
         trade: pos ? { id: pos.id, status: pos.status, realizedPnl: pos.realizedPnl } : null,
       };
     }),
@@ -601,7 +561,6 @@ export interface BuilderConfig {
   /** The setups this analyst runs (DAV-280); the first is its signature setup. */
   setupIds?: string[];
   sectors: string[];
-  minConfidence: number;
   /** Per-entry floor; omit or 0 for no floor. */
   minPositionSize?: number;
   maxPositionSize: number;
@@ -642,7 +601,7 @@ export async function createAnalystFromBuilder(
   // the proposal on top of a new analyst's defaults.
   const fields = { ...NEW_ANALYST_ROW, ...normalizeAnalystPatch(NEW_ANALYST_ROW, data as unknown as Record<string, unknown>) };
 
-  console.log(`[analyst] Creating analyst: name="${fields.name}" sectors=${fields.sectors.join(",") || "all"} bias=${fields.directionBias} posSize=${fields.maxPositionSize} minConf=${fields.minConfidence}`);
+  console.log(`[analyst] Creating analyst: name="${fields.name}" sectors=${fields.sectors.join(",") || "all"} bias=${fields.directionBias} posSize=${fields.maxPositionSize}`);
 
   // The watchlist seeds: each name cleaned and once (watchlistAdds), with its reason.
   const reasons = watchlistReasons(data.watchlist);
@@ -705,8 +664,6 @@ export async function createAnalystFromBuilder(
               holdDuration: "SWING",
               // PR-9 flat schema: legacy plain-string narrative columns
               // (reasoningSummary, thesisBullets, riskFlags) replaced by
-              // JSONB snapshot/bullCase/bearCase; the composite lives in
-              // scoring (null until first research).
               snapshot: {
                 text: w.reason || "Builder-seeded — awaiting first research",
                 citations: [],
@@ -758,7 +715,6 @@ type UpdatableField =
   | "name"
   | "description"
   | "directionBias"
-  | "minConfidence"
   // Position-size band. minPositionSize is the floor (0 = off); place_trade
   // rejects an entry below it rather than resizing — see Guardrail 5b in
   // lib/agent/tools/place-trade.ts and lib/agent/position-sizing.ts.
@@ -1020,7 +976,6 @@ export async function getAnalystTheses(analystId: string) {
       ticker: true,
       direction: true,
       status: true,
-      scoring: true,
       snapshot: true,
       entryPrice: true,
       targetPrice: true,
@@ -1032,7 +987,6 @@ export async function getAnalystTheses(analystId: string) {
   });
 
   return rows.map((t) => {
-    const composite = getThesisComposite(t);
     // P1-24: a pass/seed stores direction=null; the card keys its isPass on
     // status=PASSED, so pass null through honestly instead of coercing to PASS.
     const dir =
@@ -1049,7 +1003,6 @@ export async function getAnalystTheses(analystId: string) {
       thesis_id: t.id,
       ticker: t.ticker,
       direction: dir,
-      confidence_score: composite != null ? Math.round(composite * 10) : 0,
       reasoning_summary: getThesisSnapshotText(t),
       entry_price: t.entryPrice,
       target_price: t.targetPrice,

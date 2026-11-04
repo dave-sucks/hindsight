@@ -30,7 +30,6 @@ export type AgentConfigData = {
   sectors?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
-  minConfidence?: number;
   /** Per-entry floor; 0 = none. Pairs with maxPositionSize as a band. */
   minPositionSize?: number;
   maxPositionSize?: number;
@@ -71,7 +70,6 @@ export function AgentConfigCard({
   sectors = [],
   marketCapMin,
   marketCapMax,
-  minConfidence = D.minConfidence,
   minPositionSize = D.minPositionSize,
   maxPositionSize = D.maxPositionSize,
   maxOpenPositions = D.maxOpenPositions,
@@ -130,7 +128,6 @@ export function AgentConfigCard({
 
       {/* ── Config rows ───────────────────────────────────────────── */}
       <div className="p-3 border-b flex flex-col gap-1">
-        <InfoRow label="Min Confidence" value={`${minConfidence}%`} mono />
         <InfoRow
           label="Position Size"
           value={

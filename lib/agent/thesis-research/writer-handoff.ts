@@ -6,7 +6,7 @@
  *
  *   12:08:00  THESIS_WRITER (child of the morning run)
  *             buy $73.50 → $70.25, fires on the close, target $96 → $88.31,
- *             composite 6 → 3. "The PDUFA date (Nov 14) is confirmed…"
+ *             "The PDUFA date (Nov 14) is confirmed…"
  *   12:08:17  MORNING_PLAN (its parent)
  *             review cadence 7 → 14 days, removed the buy, removed the floor,
  *             removed the target. "Fresh research points to the nHCM filing
@@ -33,8 +33,6 @@ export interface WriterPlan {
   entryPrice: number | null;
   targetPrice: number | null;
   stopLoss: number | null;
-  /** The 4-dimension composite, out of 10. */
-  composite: number | null;
 }
 
 export interface WriterHandoff {
@@ -63,7 +61,6 @@ export function writerHandoff(input: {
   if (plan.entryPrice != null) parts.push(`buy ${fmt(plan.entryPrice)}`);
   if (plan.targetPrice != null) parts.push(`target ${fmt(plan.targetPrice)}`);
   if (plan.stopLoss != null) parts.push(`floor ${fmt(plan.stopLoss)}`);
-  if (plan.composite != null) parts.push(`composite ${plan.composite}/10`);
 
   const raw = input.update?.summary?.trim() || null;
   const changed = raw ? stripLead(raw, ticker) || null : null;

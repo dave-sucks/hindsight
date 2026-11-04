@@ -22,12 +22,12 @@ import { rowForModel } from "@/lib/agent/row-for-model";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 type Fire = { now: string; price: number; thesis: Record<string, unknown> & { id: string; ticker: string; triggers: Trigger[] }; fire: { triggerId: string; at: string; price: number; summary: string }; position?: Record<string, unknown>; answer?: Record<string, unknown> };
-const fx = raw as unknown as { analyst: { name: string; setupIds: string[]; maxOpenPositions: number; minConfidence: number }; docu: Fire; nvda: Fire };
+const fx = raw as unknown as { analyst: { name: string; setupIds: string[]; maxOpenPositions: number }; docu: Fire; nvda: Fire };
 
 /** What only the full row carries: the trigger run's row has none of it. */
-const FULL_ONLY = ["score_notes", "history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
+const FULL_ONLY = ["history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
 /** The short row's keys the decision reads, every one present on both fires. */
-const SHORT_KEYS = ["stock", "id", "situations", "said", "plan", "triggers", "bull_case", "bear_case", "conviction_rationale", "setup_lines", "snapshot", "score", "research"];
+const SHORT_KEYS = ["stock", "id", "situations", "said", "plan", "triggers", "bull_case", "bear_case", "conviction_rationale", "setup_lines", "snapshot", "research"];
 const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>) => {
   for (const k of SHORT_KEYS) expect([k, k in row]).toEqual([k, true]);
   for (const k of FULL_ONLY) expect([k, k in row]).toEqual([k, false]);
@@ -35,7 +35,7 @@ const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>) 
   expect(String(row.research)).toMatch(/Full row: get_theses\(tickers: \["[A-Z]+"\]\)\.$/);
   // Not vacuous: the same read, as a full row, carries the research.
   const full = rowForModel(saved, { named: true, size: "full" }) as Record<string, unknown>;
-  expect(full).toHaveProperty("score_notes");
+  expect(full).toHaveProperty("snapshot");
 };
 const DELETED = ["THESIS (id:", "THE SETUP THIS PLAN WAS WRITTEN ON", "DEEP-RESEARCH EXCERPT", "CURRENT TRIGGER LADDER", "POSITION:\n"];
 /** What's been said arrives once, as the row's `said`, not as a block of its own. */
@@ -75,7 +75,7 @@ async function triggerRun(c: Fire) {
         ],
       } as never,
       args: { tickers: [t.ticker] },
-      ctx: { runMode: "INTRADAY_TACTICAL", maxOpenPositions: fx.analyst.maxOpenPositions, minConfidence: fx.analyst.minConfidence },
+      ctx: { runMode: "INTRADAY_TACTICAL", maxOpenPositions: fx.analyst.maxOpenPositions },
       quotes: { [t.ticker]: c.price },
     });
     const stock = stockFromRead(result, t.id);

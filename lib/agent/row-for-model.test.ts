@@ -79,9 +79,9 @@ describe("the size a row gets", () => {
 });
 
 describe("the one line", () => {
-  it("is the stock and its stance, the price, the plan levels, the next review, the score and the id", () => {
+  it("is the stock and its stance, the price, the plan levels, the next review and the id", () => {
     expect(rowForModel(quiet(), { named: false, size: "line" })).toBe(
-      "DOCU · watch · LONG · PEAD · $70.03 · buy $74.10 · target $83.00 · floor $68.90 · review 10-20 · score 8 · id t_docu",
+      "DOCU · watch · LONG · PEAD · $70.03 · buy $74.10 · target $83.00 · floor $68.90 · review 10-20 · id t_docu",
     );
   });
   it("leaves out what a stock lacks, says no view and no write-up yet on a seed, and names the horizon when no setup is named", () => {
@@ -119,7 +119,7 @@ describe("the short row", () => {
     expect(Object.keys(row)).toEqual([
       "stock", "id", "situations", "said", "position", "proposal_waiting", "price", "plan", "protection", "triggers",
       "belief", "assumptions", "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view",
-      "setup", "snapshot", "score", "chart", "research", "catalyst", "repeat",
+      "setup", "snapshot", "chart", "research", "catalyst", "repeat",
     ]);
   });
 
@@ -147,7 +147,6 @@ describe("the short row", () => {
     expect(row.conviction_rationale).toBe("All four signals clean.");
     expect(row.variant_view).toBe("Consensus sees deceleration; I see the ARR cohort.");
     expect(row.setup).toBe("PEAD, Post-earnings drift. Failure looks like: The gap-day low breaks; Revisions don't follow. Manage: After +10%: 3 ATR under the high. Time: Hold 30–60 days.");
-    expect(row.score).toBe("8/10 (entry 2 · trend 2 · relative strength 2 · catalyst 2)");
     expect(row.chart).toBe("as of the 2026-10-07 close: 20d $39.70 · 50d $39.47 · 200d $33.68 · RSI 56 (14-day, from the closes and the live price) · 20d range $36.40–$44.21 · 52w high $47.47 · ATR $1.99 · vs the S&P 1M -0.6% / 3M +6.1% · 20d avg volume 5.7M · 5d +2.1% · 20d +6.4%");
     expect(row.research).toBe('Written 2026-10-05 at $39.55, 2 days ago. Full row: get_theses(tickers: ["IOT"]).');
     expect(row.catalyst).toBe("2026-10-29");
@@ -170,7 +169,7 @@ describe("the short row", () => {
   });
 
   it("carries no score notes, no raw facts, no bookkeeping and no source tags", () => {
-    for (const k of ["bullCase", "bearCase", "convictionRationale", "variantView", "score_notes", "resolved", "needsAction", "triggerState", "researchAge", "unapprovedExitCount", "history", "inheritedTriggers", "proposals", "coreBelief", "context"]) {
+    for (const k of ["bullCase", "bearCase", "convictionRationale", "variantView", "resolved", "needsAction", "triggerState", "researchAge", "unapprovedExitCount", "history", "inheritedTriggers", "proposals", "coreBelief", "context"]) {
       expect(row).not.toHaveProperty(k);
     }
     expect(JSON.stringify(row)).not.toMatch(/\[(STRUCTURED|WEB)/);
@@ -196,17 +195,15 @@ describe("the short row", () => {
 });
 
 describe("the full row", () => {
-  it("is the short row plus the score notes, the whole snapshot and, on a named read, the history", () => {
+  it("is the short row plus the whole snapshot and, on a named read, the history", () => {
     const row = rowForModel(held(), { named: true, size: "full" }) as Row;
     expect(row.bull_case).toEqual(["Clean beat: EPS +25%", "Upgrades"]);
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
     expect(row.conviction_rationale).toBe("All four signals clean.");
     expect(row.variant_view).toBe("Consensus sees deceleration; I see the ARR cohort.");
-    expect(row.score_notes).toEqual({ entry: "pullback to the 50-day", trend: "above the 200-day", relative_strength: "leads SPY", catalyst: "reported 10 days ago" });
     expect(String(row.snapshot)).toMatch(/Fourth sentence\.$/);
     expect(row.research).toBe("Written 2026-10-05 at $39.55, 2 days ago.");
     expect(row.history).toEqual([{ id: "u1", type: "REVIEWED" }]);
-    expect(Object.keys(row).indexOf("snapshot")).toBeLessThan(Object.keys(row).indexOf("score"));
     expect(Object.keys(row).indexOf("bull_case")).toBeLessThan(Object.keys(row).indexOf("chart"));
   });
   it("by rule, without a named read, carries no history", () => {
@@ -259,7 +256,7 @@ describe("the trigger run's door (step 10): the short row with the setup's lines
     expect(row.setup_lines).toEqual(["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."]);
     expect(row).not.toHaveProperty("setup");
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
-    for (const k of ["score_notes", "history", ...SECTIONS]) expect([k, k in row]).toEqual([k, false]);
+    for (const k of ["history", ...SECTIONS]) expect([k, k in row]).toEqual([k, false]);
     expect(row.research).toMatch(/Full row: get_theses\(tickers: \["IOT"\]\)\.$/);
   });
   it("every other short row is unchanged: the compact setup line, no setup_lines", () => {

@@ -76,7 +76,6 @@ const analystRow = {
   analystPrompt: null,
   sectors: [],
   exclusionList: [],
-  minConfidence: 60,
   tradingEnvironment: "PAPER",
   minPositionSize: 2000,
   maxPositionSize: 8000,

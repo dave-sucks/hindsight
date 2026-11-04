@@ -20,7 +20,6 @@ export interface MockTrade {
   currentPrice: number;
   targetPrice: number;
   stopPrice: number;
-  confidenceScore: number; // 0–100
   status: TradeStatus;
   pnl: number;
   pnlPct: number;
@@ -83,7 +82,6 @@ export const mockOpenTrades: MockTrade[] = [
     currentPrice: 921.00,
     targetPrice: 950.00,
     stopPrice: 840.00,
-    confidenceScore: 82,
     status: 'OPEN',
     pnl: 46.00,
     pnlPct: 5.26,
@@ -99,7 +97,6 @@ export const mockOpenTrades: MockTrade[] = [
     currentPrice: 231.00,
     targetPrice: 215.00,
     stopPrice: 260.00,
-    confidenceScore: 71,
     status: 'OPEN',
     pnl: 14.00,
     pnlPct: 5.71,
@@ -115,7 +112,6 @@ export const mockOpenTrades: MockTrade[] = [
     currentPrice: 198.00,
     targetPrice: 210.00,
     stopPrice: 188.00,
-    confidenceScore: 68,
     status: 'OPEN',
     pnl: 3.00,
     pnlPct: 1.54,
@@ -134,7 +130,6 @@ export const mockClosedTrades: MockTrade[] = [
     currentPrice: 562.00,
     targetPrice: 560.00,
     stopPrice: 490.00,
-    confidenceScore: 79,
     status: 'CLOSED_WIN',
     pnl: 52.00,
     pnlPct: 10.20,
@@ -151,7 +146,6 @@ export const mockClosedTrades: MockTrade[] = [
     currentPrice: 251.00,
     targetPrice: 320.00,
     stopPrice: 255.00,
-    confidenceScore: 61,
     status: 'CLOSED_LOSS',
     pnl: -29.00,
     pnlPct: -10.36,
@@ -168,7 +162,6 @@ export const mockClosedTrades: MockTrade[] = [
     currentPrice: 448.00,
     targetPrice: 450.00,
     stopPrice: 405.00,
-    confidenceScore: 85,
     status: 'CLOSED_WIN',
     pnl: 28.00,
     pnlPct: 6.67,
@@ -185,7 +178,6 @@ export const mockClosedTrades: MockTrade[] = [
     currentPrice: 162.00,
     targetPrice: 200.00,
     stopPrice: 162.00,
-    confidenceScore: 66,
     status: 'CLOSED_LOSS',
     pnl: -13.00,
     pnlPct: -7.43,
@@ -202,7 +194,6 @@ export const mockClosedTrades: MockTrade[] = [
     currentPrice: 229.00,
     targetPrice: 230.00,
     stopPrice: 195.00,
-    confidenceScore: 77,
     status: 'CLOSED_WIN',
     pnl: 21.00,
     pnlPct: 10.10,
@@ -219,7 +210,6 @@ export const mockClosedTrades: MockTrade[] = [
     currentPrice: 14.20,
     targetPrice: 9.00,
     stopPrice: 14.00,
-    confidenceScore: 58,
     status: 'CLOSED_LOSS',
     pnl: -17.00,
     pnlPct: -13.60,
@@ -236,7 +226,6 @@ export const mockClosedTrades: MockTrade[] = [
     currentPrice: 895.00,
     targetPrice: 960.00,
     stopPrice: 850.00,
-    confidenceScore: 64,
     status: 'CLOSED_EXPIRED',
     pnl: 5.00,
     pnlPct: 0.56,

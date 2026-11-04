@@ -282,7 +282,6 @@ export const morningResearch = inngest.createFunction(
             environment: runEnvironment,
             parameters: {
               sectors: config.sectors,
-              minConfidence: config.minConfidence,
               tickers: watchlistSymbols,
               triggeredBy: "morning-cron",
               agentMode: true,
@@ -337,7 +336,6 @@ export const morningResearch = inngest.createFunction(
           maxPositionSize: Number(config.maxPositionSize),
           maxPositionTotal: Number(config.maxPositionTotal),
           maxOpenPositions: config.maxOpenPositions,
-          minConfidence: config.minConfidence,
           alpacaCreds,
           runEnvironment,
         });

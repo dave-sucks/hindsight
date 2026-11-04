@@ -303,10 +303,6 @@ function collectWriteTheses(
         display.direction === "LONG" || display.direction === "SHORT"
           ? (display.direction as "LONG" | "SHORT")
           : null,
-      confidence_score:
-        (display.confidence_score as number) ??
-        (display.confidenceScore as number) ??
-        0,
       reasoning_summary: display.reasoning_summary as string | undefined,
       thesis_bullets: (display.thesis_bullets as string[]) ?? [],
       risk_flags: (display.risk_flags as string[]) ?? [],

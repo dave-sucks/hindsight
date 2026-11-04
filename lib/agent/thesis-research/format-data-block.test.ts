@@ -84,11 +84,6 @@ describe("formatDataBlock — the chart, in dollars", () => {
     expect(out).toMatch(/vs XLK: 1M/);
   });
 
-  it("offers computed composite scores the writer may override", () => {
-    expect(out).toContain("Computed composite scores from this chart — trendStrength");
-    expect(out).toContain("if you change one, say why in its note");
-  });
-
   it("labels fib levels as candidates, never a reason alone", () => {
     expect(out).toContain("Retracements of the last up-leg");
     expect(out).toContain("candidates only");

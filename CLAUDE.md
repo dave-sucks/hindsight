@@ -282,7 +282,7 @@ plus `get_stock_data`.
 ## Data Model (Prisma)
 ### Core
 - AgentConfig — analyst persona config (name, analystPrompt,
-  setups, sectors, market-cap band, confidence threshold, direction
+  setups, sectors, market-cap band, direction
   bias, hold durations, position sizing, exclusionList; the watchlist
   is its WATCHING theses). A new row's defaults are a new analyst's
   (`NEW_ANALYST_DEFAULTS`, `lib/analyst-settings.ts`), and Create, Apply

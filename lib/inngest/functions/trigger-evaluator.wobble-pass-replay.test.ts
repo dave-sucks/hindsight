@@ -26,7 +26,7 @@ type Row = Record<string, unknown>;
 const fx = raw as unknown as {
   thesisBefore: Row & { id: string; createdAt: string; triggers: Trigger[] };
   firedAt: string;
-  analyst: { id: string; name: string; setupIds: string[]; minConfidence: number; triggers: unknown[] };
+  analyst: { id: string; name: string; setupIds: string[]; triggers: unknown[] };
   account: { triggers: unknown[]; triggersSeededAt: string };
   run: { id: string; createdAt: string };
   runRows: Array<Row & { type: string; triggerId: string | null; priceAtTime: number; timestamp: string; rationale: string }>;
@@ -49,7 +49,7 @@ function book(): PrismaDouble {
       }),
     ],
     agentConfig: [
-      agentConfigRow({ id: fx.analyst.id, accountId: REPLAY_ACCOUNT_ID, triggers: fx.analyst.triggers, minConfidence: fx.analyst.minConfidence, enabled: true }),
+      agentConfigRow({ id: fx.analyst.id, accountId: REPLAY_ACCOUNT_ID, triggers: fx.analyst.triggers, enabled: true }),
     ],
     account: [accountRow({ triggers: fx.account.triggers, triggersSeededAt: new Date(fx.account.triggersSeededAt) })],
   });

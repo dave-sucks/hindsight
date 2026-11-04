@@ -27,12 +27,6 @@ const docu: ThesisDecisionInput = {
   core_belief: "DOCU re-rates toward $76 by December as IAM seat growth keeps billings above 8%.",
   key_assumptions: ["Billings growth stays above 8%", "Gross margin holds above 80%"],
   invalidation_conditions: ["A close below $57.50", "Next-quarter billings guide below 6%"],
-  scoring: {
-    trendStrength: { score: 2, note: "Uptrend over a rising 50-day" },
-    relativeStrength: { score: 2, note: "Beating SPY over 1M" },
-    entryQuality: { score: 1, note: "Near the gap" },
-    catalystFreshness: { score: 2, note: "Reported 09-04" },
-  },
   conviction: "MEDIUM",
   conviction_rationale: "The beat was real and the stock held the gap, but the multiple already moved a lot.",
 };
@@ -134,12 +128,6 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     core_belief: "HPE drifts toward $64+ within 45 days as institutional buyers reaccumulate on the clean beat-and-raise.",
     key_assumptions: ["Record backlog converts to revenue", "FY27 framework holds"],
     invalidation_conditions: ["A close below the 09-03 gap-day low of $45.70", "A guidance cut"],
-    scoring: {
-      trendStrength: { score: 3, note: "Uptrend over a rising 200-day; Trend Template 8/8" },
-      relativeStrength: { score: 2, note: "vs SPY 3M +12.5pts" },
-      entryQuality: { score: 1, note: "PEAD condition true in principle, day 13; no clean priced entry today" },
-      catalystFreshness: { score: 2, note: "Q3 print 09-02, beat and raise" },
-    },
     conviction: "MEDIUM",
     conviction_rationale: "The fundamental PEAD signal is genuine, but two gap-downs have damaged the structure enough that I can't price a clean entry right now.",
     remove_trigger_ids: ["buy-57.25", "floor-54.90", "target-66.50"],
@@ -212,12 +200,6 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
     core_belief: "DOCU drifts to $83 within 60 days of the September 3 print as HOLD-rated analysts absorb the ARR guide raise.",
     key_assumptions: ["IAM ARR mix keeps expanding toward 18–19%", "The remaining HOLD analysts revise up over 4–6 weeks"],
     invalidation_conditions: ["A close below the gap-day low $64.16 on volume", "Consensus targets stay under $75 for 30 days"],
-    scoring: {
-      trendStrength: { score: 2, note: "Uptrend above the 200-day; Trend Template 6/8" },
-      relativeStrength: { score: 3, note: "vs SPY 3M +62pts" },
-      entryQuality: { score: 1, note: "Day 9 of the drift window; extended 11% past the gap" },
-      catalystFreshness: { score: 2, note: "Reported 09-03, ARR guide raised" },
-    },
     conviction: "MEDIUM",
     conviction_rationale: "The PEAD signal was clean, but the stock has run 11%+ from the gap day; I need the 20-day to come to me.",
     remove_trigger_ids: ["buy-62.50", "floor-57.50", "target-83"],

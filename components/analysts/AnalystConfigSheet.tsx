@@ -42,7 +42,6 @@ export function AnalystConfigSheet({
     watchlist: config.watchlist,
     directionBias: (config.directionBias as FormValues["directionBias"]) ?? "BOTH",
     holdDurations: config.holdDurations,
-    minConfidence: config.minConfidence,
     maxOpenPositions: config.maxOpenPositions,
     minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize,

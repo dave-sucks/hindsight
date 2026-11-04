@@ -384,7 +384,6 @@ function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowDa
     ticker: pick.ticker,
     direction: pick.direction,
     status: pick.status,
-    confidenceScore: pick.confidenceScore,
     reasoningSummary: pick.reasoningSummary,
     entryPrice: pick.entryPrice,
     targetPrice: pick.targetPrice,
