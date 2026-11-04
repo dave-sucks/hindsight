@@ -5,9 +5,10 @@
  * the stock page (the owner's design, 2026-11-04, cleaned up 11-05):
  *
  *   • Analyst ratings — the verdict as a plain badge (Strong Buy / Buy /
- *     Hold / Sell), one 60-tick bar of how the covering firms split, every
- *     tick the same height and a solid colour, and the three counts under
- *     it: bearish left, neutral centre, bullish right.
+ *     Hold / Sell), one filled bar of how the covering firms split (red,
+ *     gray, green, sized to the counts; filled so it never reads as a
+ *     price line), and the three counts under it: bearish left, neutral
+ *     centre, bullish right.
  *
  *   • Analyst targets — the 12-month targets on a line of plain ticks with
  *     one spare tick past each end: Low (red) and High (green) as tall lines
@@ -203,55 +204,29 @@ function AnalystVerdictBadge({ consensus }: { consensus: { buy: number; hold: nu
   return <Badge variant={verdict.variant}>{verdict.label}</Badge>;
 }
 
+
+
 /**
- * Largest-remainder (Hamilton) apportionment: distribute exactly `slots`
- * across the input buckets in proportion to their counts. Every bucket
- * with a non-zero count gets at least 1 slot (a tiny minority bucket
- * shouldn't disappear from the bar). Returns a same-length array of
- * integer slot counts that always sums to exactly `slots`.
+ * The rating split as one filled bar, the tick bar's height, in three solid
+ * parts sized to the counts (red, gray, green, a hairline gap between), then
+ * the counts: bearish left, neutral centre, bullish right. Filled, not
+ * ticks, so it reads as a share of the firms and not as a price line like
+ * the targets card under it.
  */
-function allocateSlots(counts: number[], slots: number): number[] {
-  const total = counts.reduce((s, c) => s + c, 0);
-  if (total === 0) return counts.map(() => 0);
-  const exact = counts.map((c) => (c / total) * slots);
-  const out = exact.map(Math.floor);
-  // Hand out remainders to whichever buckets have the largest fractional
-  // shortfall, until the slots add up exactly.
-  let remaining = slots - out.reduce((s, n) => s + n, 0);
-  const byRemainder = exact
-    .map((e, i) => ({ i, r: e - Math.floor(e) }))
-    .sort((a, b) => b.r - a.r);
-  for (const { i } of byRemainder) {
-    if (remaining <= 0) break;
-    out[i]++;
-    remaining--;
-  }
-  // Minimum-1 nudge for non-zero buckets that rounded to 0. Steal from
-  // the largest bucket so the sum stays exactly `slots`.
-  for (let i = 0; i < counts.length; i++) {
-    if (counts[i] > 0 && out[i] === 0) {
-      let maxIdx = 0;
-      for (let j = 1; j < out.length; j++) if (out[j] > out[maxIdx]) maxIdx = j;
-      if (out[maxIdx] > 1) {
-        out[maxIdx]--;
-        out[i]++;
-      }
-    }
-  }
-  return out;
-}
-
-
-/** The rating split as one 60-tick bar, every tick the same height and a solid colour, then the counts: bearish left, neutral centre, bullish right. */
 function ConsensusDistributionRow({ consensus }: { consensus: { buy: number; hold: number; sell: number; total: number } }) {
-  const { buy, hold, sell } = consensus;
-  const [sellSlots, holdSlots] = allocateSlots([sell, hold, buy], 60);
-  const ticks: Tick[] = Array.from({ length: 60 }, (_, i) => ({
-    color: i < sellSlots ? "bg-negative" : i < sellSlots + holdSlots ? "bg-muted-foreground" : "bg-positive",
-  }));
+  const { buy, hold, sell, total } = consensus;
+  const parts = [
+    { n: sell, color: "bg-negative", label: "Bearish" },
+    { n: hold, color: "bg-muted-foreground", label: "Neutral" },
+    { n: buy, color: "bg-positive", label: "Bullish" },
+  ];
   return (
     <div className="space-y-1.5">
-      <TickBar ticks={ticks} />
+      <div className="flex h-4 w-full gap-0.5 overflow-hidden rounded-full" role="img" aria-label={`${sell} bearish, ${hold} neutral, ${buy} bullish of ${total}`}>
+        {parts.map((p) =>
+          p.n > 0 ? <span key={p.label} className={cn("h-full rounded-sm", p.color)} style={{ flexGrow: p.n, flexBasis: 0 }} /> : null,
+        )}
+      </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-negative" />
