@@ -162,7 +162,8 @@ describe("the catalog", () => {
   it("offers only the variables that save with the button", () => {
     const ids = (c: Condition, held = true) => variableOptions(c, { level: "THESIS", held }).map((o) => o.id);
     expect(ids({ watch: "price", is: "below" })).toEqual(["sma20", "sma50", "sma150", "sma200"]);
-    expect(ids({ watch: "price", is: "above" })).toEqual(["sma20", "sma50", "sma150", "sma200", "high20", "high52"]);
+    // The Street's targets are reached from below only (2026-11-04).
+    expect(ids({ watch: "price", is: "above" })).toEqual(["sma20", "sma50", "sma150", "sma200", "high20", "high52", "street_avg", "street_high", "street_low"]);
     expect(ids({ watch: "move", is: "below", value: 5 })).toEqual(["prev_close", "close_5d", "close_20d", "entry", "peak"]);
     expect(ids({ watch: "move", is: "below", value: 5 }, false)).toEqual(["prev_close", "close_5d", "close_20d"]);
     expect(ids({ watch: "from_date", is: "before", value: 5 })).toEqual(["event"]);

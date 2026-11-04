@@ -38,6 +38,7 @@ export const TRIGGER_TYPE_DOCS: readonly TriggerTypeDoc[] = [
     examples: [
       { action: "EXIT", when: { watch: "price", is: "below", value: 40.8 }, why: "The floor. Under the breakout shelf, and above the rising 20-day." },
       { action: "ENTER", when: { watch: "move", is: "near", value: 2, variable: "sma20" }, why: "Buy the pullback, not the spike: the setup is true near a rising average." },
+      { action: "REVIEW", when: { watch: "price", is: "above", variable: "street_avg" }, why: "Past the Street's average target the easy part is done: look again, and let the analyst say whether to press or take it. The Street moves, and so does this line." },
       { action: "EXIT", when: { watch: "move", is: "below", value: 12, variable: "peak" }, why: "A trail. Its line follows the highest price since the buy and never comes down." },
       { action: "TRIM", when: { watch: "move", is: "above", value: 15.6, variable: "entry" }, why: "Take a partial at twice the risk." },
       { action: "ADD", when: { watch: "move", is: "above", value: 7, variable: "prev_close" }, why: "A big up day on a holding asks whether to press it." },

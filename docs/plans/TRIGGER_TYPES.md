@@ -163,8 +163,9 @@ high".
 
 **The variables** are yesterday's close · the close 5 or 20 days ago · our
 entry · the high since we bought · the 20, 50, 150 or 200-day average · the
-20-day high or low · the 52-week high or low. The menu shows each one's value
-today.
+20-day high or low · the 52-week high or low · the Street's average, high or
+low target (from below only: the Street is evidence a rule can watch, never a
+floor; 2026-11-04). The menu shows each one's value today.
 
 Three checks show as a message under the input. None of them changes the
 form.
@@ -442,6 +443,7 @@ the gain.
 | the close 5 / 20 days ago | `closes[n − 5]` / `closes[n − 20]` | the 06:30 chart snapshot | no snapshot |
 | an average | `sma[days]` | the snapshot | no snapshot |
 | 20-day / 52-week high, low | `high20` / `high52w` / `low20` / `low52w` | the snapshot | no snapshot |
+| the Street's average / high / low target | `targetAvg` / `targetHigh` / `targetLow` | the newest `StreetConsensus` row within 14 days | no row (none stored, too old, the feed down) |
 | the buy · the event date | `Position.openedAt` · `Thesis.catalystDate` | the position · the thesis | not held · no date |
 
 All of these numbers are in the snapshot, on the position or on the thesis

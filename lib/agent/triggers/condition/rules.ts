@@ -64,7 +64,8 @@ export function readsSource(w: When, source: Source): boolean {
   return conditionsOf(w).some(
     (c) =>
       measureOf(c).reads?.includes(source) === true ||
-      (source === "snapshot" && c.variable != null && variableDef(c.variable).snapshot === true),
+      (source === "snapshot" && c.variable != null && variableDef(c.variable).snapshot === true) ||
+      (source === "street" && c.variable != null && variableDef(c.variable).street === true),
   );
 }
 
