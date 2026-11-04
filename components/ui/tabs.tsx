@@ -30,8 +30,8 @@ const tabsListVariants = cva(
       variant: {
         default: "bg-muted",
         line: "gap-1 bg-transparent",
-        // Over a chart: a border and the chart's background, so the range picker doesn't fight the chart.
-        outline: "border bg-card",
+        // Over a chart: a border and no fill, so it takes the chart's own background and the range picker doesn't fight the chart.
+        outline: "border bg-transparent",
       },
       width: {
         fit: "w-fit",
