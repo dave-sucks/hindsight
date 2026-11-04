@@ -36,9 +36,9 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
  */
 const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-03, on main + #909 + #911 + #912: +100 each from #911's get_theses text, +513 from update_thesis's verdict fields.
-  "research-run": 30_694,
+  "research-run": 30_680,
   tactical: 26_600,
-  principal: 63_259,
+  principal: 63_231,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

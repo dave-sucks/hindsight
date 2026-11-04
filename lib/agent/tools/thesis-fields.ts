@@ -116,7 +116,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
       .describe(
         "Your own view, apart from the score: STRONG a top call to buy in size now, HIGH a clear edge you want in size, MEDIUM probably works, LOW tracking without enthusiasm. Comes with conviction_rationale.",
       ),
-    conviction_rationale: z.string().describe("Why you feel this strongly about the company and the stock, in a few plain sentences: the business and the price, not the scores or the chart restated."),
+    conviction_rationale: z.string().describe("Why you feel this strongly about the company and the stock, in a few plain sentences: the business and the price, not the chart restated."),
     variant_view: z
       .string()
       .describe("Where you differ from Wall Street about the business, in plain words: 'analysts expect X, I think Y, because Z'. A STRONG or HIGH call without one is stored as MEDIUM."),

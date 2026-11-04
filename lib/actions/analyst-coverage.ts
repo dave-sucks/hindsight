@@ -57,8 +57,12 @@ export async function getAnalystCoverageData(
   // Finnhub returns one record per month (most-recent first). The latest
   // record is the current standing ratings snapshot — strongBuy + buy collapse
   // into Bullish, hold is Neutral, sell + strongSell is Bearish.
+  // One source with the agents' row: the Nasdaq split on the StreetConsensus
+  // row. Finnhub's monthly trend only when no row exists for the stock.
   const latest = finnhubTrends?.[0];
-  const consensus = latest
+  const consensus = street && street.buy + street.hold + street.sell > 0
+    ? { buy: street.buy, hold: street.hold, sell: street.sell, unknown: 0, total: street.buy + street.hold + street.sell, period: street.asOf }
+    : latest
     ? (() => {
         const bull = (latest.strongBuy ?? 0) + (latest.buy ?? 0);
         const neutral = latest.hold ?? 0;
