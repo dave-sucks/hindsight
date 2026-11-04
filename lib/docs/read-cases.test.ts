@@ -18,7 +18,7 @@ describe("the framework's read cases follow row-for-model.ts", () => {
     const litByAny = new Set(READ_CASES.flatMap((c) => [...fieldsLit(c)]));
     for (const f of SHEET_FIELDS) expect([f.id, litByAny.has(f.id)]).toEqual([f.id, true]);
   });
-  it("the seven reads are distinct", () => {
+  it("the reads are distinct", () => {
     const sets = READ_CASES.map((c) => [...c.keys].sort().join(","));
     expect(new Set(sets).size).toBe(READ_CASES.length);
   });
