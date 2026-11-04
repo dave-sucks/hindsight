@@ -928,6 +928,8 @@ export function ThesisBody({
     ) : null;
 
   return (
+    <div className={columns}>
+    <div className="min-w-0">
     <Tabs value={tab} onValueChange={(v) => setTab(Number(v))} className="gap-4">
       {/* ── Above the tabs on every tab (the owner's order, 2026-11-04): the price, the trade, the chart ── */}
       {/* ── Live price + the selected range's move ───────────── */}
@@ -978,8 +980,6 @@ export function ThesisBody({
 
       {/* ── Overview: the belief → the plan → the newest 8 ── */}
       <TabsContent value={0} className="space-y-4">
-      <div className={columns}>
-      <div className="min-w-0 space-y-4">
       {belief ? <p className="text-sm text-foreground leading-relaxed">{belief}</p> : null}
 
       {/* ── The plan: the triggers ── */}
@@ -1008,25 +1008,15 @@ export function ThesisBody({
       <RecentActivity items={recent} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
 
       {surface === "sheet" ? stockCards : null}
-      </div>
-      {sideColumn}
-      </div>
       </TabsContent>
 
       {/* ── Research: the claim and the write-up behind it ─────── */}
       <TabsContent value={1} className="space-y-4">
-      <div className={columns}>
-      <div className="min-w-0 space-y-4">
         <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} />
-      </div>
-      {sideColumn}
-      </div>
       </TabsContent>
 
       {/* ── Activity tab: the whole list ───────────────────────── */}
       <TabsContent value={ACTIVITY_TAB} className="space-y-4">
-      <div className={columns}>
-      <div className="min-w-0 space-y-4">
           {thesis_id ? (
             <ThesisTimelineSection
               thesisId={thesis_id}
@@ -1047,20 +1037,17 @@ export function ThesisBody({
             </p>
           )}
           {afterActivity}
-      </div>
-      {sideColumn}
-      </div>
       </TabsContent>
 
       {extraTabs.map((t, i) => (
         <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-4">
-          <div className={columns}>
-            <div className="min-w-0 space-y-4">{t.content}</div>
-            {sideColumn}
-          </div>
+          {t.content}
         </TabsContent>
       ))}
     </Tabs>
+    </div>
+    {sideColumn}
+    </div>
   );
 }
 
