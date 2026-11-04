@@ -84,23 +84,25 @@ export function TradeSummary(props: TradeSummaryProps) {
 }
 
 // ── The banner ──
-// One card for every state (the owner's rule, 2026-11-04): a muted card
-// that opens the trade, one sentence with the date and the gain on the
-// right. A waiting proposal adds a line above it, with Review at the far
-// right, and its reason under it, two lines until clicked.
+// One card for every state (the owner's rule, 2026-11-04): a bordered,
+// muted card that opens the trade, one sentence with the date and the gain
+// on the right. A waiting proposal puts Review on its own line above and
+// leads the sentence with its verb in medium weight; the amber dot says
+// "waiting", so the word "Proposed" is gone. The reason sits under it, two
+// lines until clicked.
 //   • holding          → "Bought N shares at $entry on Oct 5"
 //   • closed           → "Sold N shares at $close on Nov 19"
-//   • held + pending   → "Proposed: Sell at $current" over the bought line
-//   • pending buy      → "Proposed" over "Buy N shares at $entry on Nov 19"
+//   • held + pending   → "Sell: Bought N shares at $entry on Oct 5"
+//   • pending buy      → "Buy N shares at $entry on Nov 19"
 function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummaryProps) {
   const pp = pendingProposal;
   const usd = (n: number) => formatCurrency(n);
   const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
-  const current = pnl?.currentPrice ?? null;
   const unrealized: TradeStatementGain | null = pnl ? { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct } : null;
+  const bought = `Bought ${shares(position.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
 
-  let header: string | null = null;
-  let line: string;
+  let lead: string | null = null;
+  let rest: string;
   let gain: TradeStatementGain | null = null;
   let dotClass = "bg-muted-foreground/40";
 
@@ -116,47 +118,44 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       </Tooltip>
     );
   } else if (pp) {
-    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />;
+    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="start" />;
   }
 
   if (pp && pp.intent === "OPEN") {
-    header = pp.executing ? EXECUTING_LABEL : "Proposed";
-    line = `${direction === "SHORT" ? "Short" : "Buy"} ${shares(pp.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
+    lead = direction === "SHORT" ? "Short" : "Buy";
+    rest = ` ${shares(pp.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
     dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
   } else if (pp) {
-    const verb = pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim";
-    header = pp.executing ? EXECUTING_LABEL : `Proposed: ${verb}${current != null ? ` at ${usd(current)}` : ""}`;
-    line = `Bought ${shares(position.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
+    lead = `${pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim"}:`;
+    rest = ` ${bought}`;
     dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
     gain = unrealized;
   } else if (position.closed) {
-    line =
+    rest =
       `Sold ${shares(position.quantity)}` +
       (position.closePrice != null ? ` at ${usd(position.closePrice)}` : "") +
       (position.closedAt ? ` on ${fmtTradeDate(position.closedAt)}` : "");
     if (position.realizedPnl != null) gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
   } else {
-    line = `Bought ${shares(position.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
+    rest = bought;
     dotClass = getThesisStatusDisplay("HOLDING").dotClass;
     gain = unrealized;
   }
 
   return (
-    <div className="relative rounded-lg bg-muted/40 px-4 py-3 space-y-1.5">
+    <div className="relative rounded-lg border bg-muted/40 px-4 py-3 space-y-1.5">
       {/* The whole card opens the trade: a stretched link under the content, never a link around the controls. */}
       {position.id ? (
         <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-lg" />
       ) : null}
-      {header ? (
-        <div className="relative flex items-center justify-between gap-3 pointer-events-none">
-          <span className="text-sm font-medium">{header}</span>
-          {reviewSlot ? <span className="pointer-events-auto">{reviewSlot}</span> : null}
-        </div>
-      ) : null}
+      {reviewSlot ? <div className="relative flex justify-start">{reviewSlot}</div> : null}
       <div className="relative flex items-center justify-between gap-3 pointer-events-none">
         <div className="flex items-center gap-1.5 min-w-0 text-sm">
           <span className={cn("size-2 rounded-full shrink-0", dotClass)} />
-          <span className="font-medium tabular-nums truncate">{line}</span>
+          <span className="font-normal tabular-nums truncate">
+            {lead ? <span className="font-medium">{lead}</span> : null}
+            {rest}
+          </span>
         </div>
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
       </div>
