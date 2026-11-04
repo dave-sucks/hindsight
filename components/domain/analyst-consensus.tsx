@@ -11,11 +11,13 @@
  *     centre, bullish right.
  *
  *   • Analyst targets — the 12-month targets on a line of plain ticks with
- *     one spare tick past each end: Low (red) and High (green) as tall lines
- *     at the ends, the Average as a tall line, our Entry as a blue line when
- *     we hold the stock, and the Current price as a pulsing dot. Every line
- *     and the dot name their price on hover; under the bar only Low and
- *     High are written, the Average sits in the header. Then the date of
+ *     one spare tick past each end, running from the lowest of the Street's
+ *     low, the price and our entry to the highest of them: Low (red) and
+ *     High (green) as tall lines, the Average as a tall line, our Entry as a
+ *     blue line when we hold the stock, and the Current price as a pulsing
+ *     dot, each where it really is. Every line and the dot name their price
+ *     on hover; under the bar only Low and High are written, as a dot and
+ *     muted words like the ratings key; the Average sits in the header. Then the date of
  *     the targets and the EPS consensus with its revisions. The old "Price
  *     targets" card drew our own plan here; the plan is the triggers and
  *     the chart's lines, and the word "target" means what the Street expects.
@@ -136,12 +138,14 @@ export function AnalystTargetsCard({
 }) {
   const t = coverage?.priceTargets ?? null;
   if (!t) return null;
-  const low = t.low ?? t.average;
-  const high = t.high ?? t.average;
-  // The bar runs from the Street's low to its high; a price outside that range sits on the spare tick past the end.
-  const span = high - low || t.average * 0.1 || 1;
+  // The bar runs from the lowest of the Street's low, the price and our entry to the highest of the Street's high,
+  // the price and our entry, so every marker sits where it really is: a stock under every target shows how far under.
+  const points = [t.low, t.average, t.high, currentPrice, entry].filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const lo = Math.min(...points);
+  const hi = Math.max(...points);
+  const span = hi - lo || t.average * 0.1 || 1;
   const usable = COUNT - EDGE_PAD * 2 - 1;
-  const idxFor = (p: number) => Math.min(COUNT - 1, Math.max(0, Math.round(EDGE_PAD + ((p - low) / span) * usable)));
+  const idxFor = (p: number) => Math.min(COUNT - 1, Math.max(0, Math.round(EDGE_PAD + ((p - lo) / span) * usable)));
   const ticks: Tick[] = Array.from({ length: COUNT }, () => ({ color: "bg-muted-foreground/25" }));
   const asOf = new Date(`${t.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const eps = coverage?.eps ? epsWords(coverage.eps.nextQuarter, coverage.eps.up, coverage.eps.down) : null;
@@ -175,9 +179,14 @@ export function AnalystTargetsCard({
             </Tooltip>
           ) : null}
         </div>
-        <div className="flex items-center justify-between text-xs tabular-nums">
-          <span className="text-negative">{t.low != null ? `Low ${money(t.low)}` : ""}</span>
-          <span className="text-positive">{t.high != null ? `High ${money(t.high)}` : ""}</span>
+        {/* The same key as the ratings card: a coloured dot, muted words. */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+          <span className="inline-flex items-center gap-1.5">
+            {t.low != null ? <><span className="size-1.5 rounded-full bg-negative" />Low {money(t.low)}</> : null}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            {t.high != null ? <><span className="size-1.5 rounded-full bg-positive" />High {money(t.high)}</> : null}
+          </span>
         </div>
       </div>
       <p className="text-xs text-muted-foreground tabular-nums">
