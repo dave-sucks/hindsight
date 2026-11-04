@@ -197,11 +197,14 @@ function WorkFlagLine({
     quoteFailed,
   });
   if (!view) return null;
+  // Nothing while the live layer loads, and no wrapper when there is nothing
+  // to say: an empty element still takes a slot in the stack's spacing, which
+  // read as a double gap under the chips (2026-11-04).
+  if (view.flags === "hidden" || view.flags === "loading") return null;
 
   return (
-    <div className="space-y-2">
-      {/* Nothing while the live layer loads: the line appears when it knows, never a placeholder holding its height. */}
-      {view.flags === "hidden" || view.flags === "loading" ? null : view.flags === "reasons" ? (
+    <>
+      {view.flags === "reasons" ? (
         // The lead flag, then the other situations the stock is in. With no
         // work flag, the situations alone are why the morning read lists it.
         <p className="flex items-center gap-1.5 text-sm text-foreground">
@@ -220,7 +223,7 @@ function WorkFlagLine({
           Couldn&apos;t reach the live price, so the work flags couldn&apos;t be checked.
         </p>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -976,7 +979,7 @@ export function ThesisBody({
       <ChipTabs options={tabOptions} value={String(tab)} onChange={(v) => { if (v != null) setTab(Number(v)); }} clearable={false} />
 
       {/* ── Overview: the belief → the plan → the newest 8 ── */}
-      <TabsContent value={0} className="space-y-4">
+      <TabsContent value={0} className="space-y-6">
       {/* ── Whether it needs work today (DAV-304) ── */}
       <WorkFlagLine
         status={state.status}
@@ -1010,12 +1013,12 @@ export function ThesisBody({
       </TabsContent>
 
       {/* ── Research: the claim and the write-up behind it ─────── */}
-      <TabsContent value={1} className="space-y-4">
+      <TabsContent value={1} className="space-y-6">
         <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} />
       </TabsContent>
 
       {/* ── Activity tab: the whole list ───────────────────────── */}
-      <TabsContent value={ACTIVITY_TAB} className="space-y-4">
+      <TabsContent value={ACTIVITY_TAB} className="space-y-6">
           {thesis_id ? (
             <ThesisTimelineSection
               thesisId={thesis_id}
@@ -1039,7 +1042,7 @@ export function ThesisBody({
       </TabsContent>
 
       {extraTabs.map((t, i) => (
-        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-4">
+        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-6">
           {t.content}
         </TabsContent>
       ))}

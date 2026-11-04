@@ -216,8 +216,9 @@ export function ThesisHeader({
         ) : (
           <StockLogo ticker={ticker} size="md" />
         )}
-        <span className="font-mono text-lg font-semibold uppercase tracking-wide text-foreground shrink-0">{ticker}</span>
-        <p className="text-lg font-semibold text-foreground truncate min-w-0">
+        <span className="font-mono text-lg font-normal uppercase tracking-wide text-foreground shrink-0">{ticker}</span>
+        <span className="text-muted-foreground shrink-0" aria-hidden>·</span>
+        <p className="text-lg font-normal text-foreground truncate min-w-0">
           {link ? (
             <Link href={link} className="hover:underline underline-offset-4">
               {displayName}
