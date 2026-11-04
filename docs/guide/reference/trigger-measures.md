@@ -33,6 +33,9 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 - `low20`: 20-day low
 - `high52`: 52-week high
 - `low52`: 52-week low
+- `street_avg`: Street average target
+- `street_high`: Street high target
+- `street_low`: Street low target
 
 **Settings:**
 
@@ -40,7 +43,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 **Rest period for a plain condition, when none is set:** 1 day.
 
-- From `sma20`, `sma50`, `sma150`, `sma200`: review 7 days, the rest 1 day.
+- From `sma20`, `sma50`, `sma150`, `sma200`, `street_avg`, `street_high`, `street_low`: review 7 days, the rest 1 day.
 
 **Examples:**
 
@@ -48,6 +51,12 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
   ```json
   {"action":"EXIT","predicate":{"watch":"price","is":"below","value":40.8}}
+  ```
+
+- "Review if above the Street's average target". Past the Street's average target the easy part is done: look again, and let the analyst say whether to press or take it. The Street moves, and so does this line.
+
+  ```json
+  {"action":"REVIEW","predicate":{"watch":"price","is":"above","variable":"street_avg"}}
   ```
 
 - "Review if below the 200-day average". A long-term holding losing its 200-day is worth a look. A state, so it asks at most weekly.
@@ -75,6 +84,9 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 - `low20`: 20-day low
 - `high52`: 52-week high
 - `low52`: 52-week low
+- `street_avg`: Street average target
+- `street_high`: Street high target
+- `street_low`: Street low target
 
 **Rest period for a plain condition, when none is set:** 1 day.
 

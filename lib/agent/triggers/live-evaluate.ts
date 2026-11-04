@@ -28,6 +28,7 @@ import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { isMarketOpen } from "@/lib/market-hours";
 import { conditionSentence } from "@/lib/agent/triggers/condition";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { newestStreetRows } from "@/lib/market-data/street-consensus-store";
 import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import { readsTheTape, shapeOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -146,6 +147,8 @@ export async function evaluateLiveTriggerMatches({
   // Chart kinds read yesterday's snapshot. Fail-open: no snapshot → those
   // kinds read false, the rest still evaluate.
   const indicators = await loadIndicatorSnapshots(tickers).catch(() => new Map());
+  // Wall Street's targets, the newest row within 14 days: a rung on a Street variable reads it; none → false.
+  const street = await newestStreetRows(tickers, now).catch(() => new Map());
 
   // ANALYST + ACCOUNT levels once for the batch — this function is
   // already scoped to a single analyst.
@@ -179,6 +182,7 @@ export async function evaluateLiveTriggerMatches({
         // A close-basis level isn't true mid-session — it waits for the close.
         session: isMarketOpen(now) ? "INTRADAY" : undefined,
         indicators: indicators.get(thesis.ticker) ?? null,
+        street: street.get(thesis.ticker) ?? null,
         // the move from our entry and the trail read entry cost + water
         // mark from the open position; WATCHING rows get null → false.
         position: posInfo

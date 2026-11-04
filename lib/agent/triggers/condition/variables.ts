@@ -29,6 +29,8 @@ export interface VariableDef {
   position?: boolean;
   /** Its number comes off the daily indicator snapshot, so the check loads it. */
   snapshot?: boolean;
+  /** Its number is Wall Street's, off the newest StreetConsensus row within 14 days, so the check loads it. */
+  street?: boolean;
   /** Variables that are one rule at different values share a slot ("any material filing" and "a red flag"). */
   slot?: string;
 }
@@ -47,6 +49,10 @@ export const PRICE_VARIABLES: readonly (VariableDef & { id: PriceVariable })[] =
   { id: "low20", label: "20-day low", group: "Highs and lows", chip: "20-day low", words: "the 20-day low", snapshot: true },
   { id: "high52", label: "52-week high", group: "Highs and lows", chip: "52-week high", words: "the 52-week high", snapshot: true },
   { id: "low52", label: "52-week low", group: "Highs and lows", chip: "52-week low", words: "the 52-week low", snapshot: true },
+  // Wall Street's 12-month targets: a line a rule can watch, never a level of ours (2026-11-04).
+  { id: "street_avg", label: "Street average target", group: "Wall Street", chip: "Street average", words: "the Street's average target", street: true },
+  { id: "street_high", label: "Street high target", group: "Wall Street", chip: "Street high", words: "the Street's high target", street: true },
+  { id: "street_low", label: "Street low target", group: "Wall Street", chip: "Street low", words: "the Street's low target", street: true },
 ];
 
 export const DATE_VARIABLES: readonly (VariableDef & { id: DateVariable })[] = [

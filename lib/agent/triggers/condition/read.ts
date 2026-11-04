@@ -47,6 +47,19 @@ function snapshotLevel(variable: string, ctx: EvaluationContext): number | null 
   return read && ctx.indicators ? read(ctx.indicators) : null;
 }
 
+/** Wall Street's targets, off the newest Street row the check loaded; null with none within 14 days. */
+const STREET_LEVEL: Readonly<Partial<Record<string, (s: NonNullable<EvaluationContext["street"]>) => number>>> = {
+  street_avg: (s) => s.targetAvg,
+  street_high: (s) => s.targetHigh,
+  street_low: (s) => s.targetLow,
+};
+
+function variableLevel(variable: string, ctx: EvaluationContext): number | null {
+  const street = STREET_LEVEL[variable];
+  if (street) return ctx.street ? street(ctx.street) : null;
+  return snapshotLevel(variable, ctx);
+}
+
 /** % above or below the variable, the way each one is measured. Null when the context can't say. */
 const MOVE_FROM: Readonly<Partial<Record<string, (ctx: EvaluationContext) => number | null>>> = {
   // The quote's own change on the day, the number every app shows.
@@ -70,7 +83,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       if (price == null) return false;
       // "Only on the close" waits for the 16:20 pass.
       if (setting(c, "close") === true && ctx.session === "INTRADAY") return false;
-      const line = c.variable ? snapshotLevel(c.variable, ctx) : c.value;
+      const line = c.variable ? variableLevel(c.variable, ctx) : c.value;
       if (line == null) return false;
       return c.is === "above" ? price > line : price < line;
     },

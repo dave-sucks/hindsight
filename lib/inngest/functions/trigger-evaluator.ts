@@ -76,7 +76,8 @@ import { getTodaySessionBars } from "@/lib/alpaca";
 import { raiseMarksFromDayBars, raiseWaterMarks } from "@/lib/trading/water-mark";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
-import { describeChartFire } from "@/lib/agent/triggers/condition/facts";
+import { newestStreetRows } from "@/lib/market-data/street-consensus-store";
+import { describeChartFire, describeStreetFire } from "@/lib/agent/triggers/condition/facts";
 import { fetchBookFilings, type BookFilings } from "@/lib/market-data/sec-filings";
 import {
   describeFiling,
@@ -154,6 +155,8 @@ const needsUpcomingEarnings = (p: When) => SHAPE_CHECKER.readsUpcomingReport(p);
 const needsFilings = (p: When) => reads(p, "filings");
 /** Does this predicate read the daily indicator snapshot? Drives the load. */
 const needsIndicators = (p: When) => reads(p, "snapshot");
+/** Does this predicate read Wall Street's targets? Drives the Street row load. */
+const needsStreet = (p: When) => reads(p, "street");
 /** Does this predicate read today's session volume? Drives the Alpaca call. */
 const needsTodayVolume = (p: When) => reads(p, "volume");
 
@@ -605,6 +608,19 @@ export const triggerEvaluator = inngest.createFunction(
           })
         : new Map();
 
+      // Wall Street's targets, the newest row within 14 days, only for tickers
+      // with a rung on a Street variable. No row (none stored, too old, the
+      // 06:30 pull down): the rung reads false and says so when it is read.
+      const streetTickers = Array.from(
+        new Set(candidates.filter((c) => c.ladder.some((t) => needsStreet(t.predicate))).map((c) => c.thesis.ticker)),
+      ).filter((t) => uniqueTickers.includes(t));
+      const street = streetTickers.length
+        ? await newestStreetRows(streetTickers, now).catch((err) => {
+            console.error("[trigger-evaluator] Street rows unavailable — Street variables read false:", err);
+            return new Map();
+          })
+        : new Map();
+
       // Today's consolidated bar: volume for the volume and gap triggers, and on
       // the close pass the day's close itself.
       const wantsTodayBar =
@@ -692,6 +708,7 @@ export const triggerEvaluator = inngest.createFunction(
           latestQuote,
           session,
           indicators: indicators.get(thesis.ticker) ?? null,
+          street: street.get(thesis.ticker) ?? null,
           today: { open: quote?.open ?? null, volume: todayBar?.volume ?? null },
           // earnings beat / miss read this. Absent when the name
           // hasn't reported inside the lookback window, which is the
@@ -791,6 +808,8 @@ export const triggerEvaluator = inngest.createFunction(
                   : null
                 : report && needsEarningsData(t.predicate)
                   ? describeEarningsReport(report)
+                  : needsStreet(t.predicate)
+                    ? describeStreetFire(t.predicate, street.get(thesis.ticker), latestQuote?.price)
                   : needsIndicators(t.predicate)
                     ? describeChartFire(t.predicate, indicators.get(thesis.ticker), latestQuote?.price, {
                         open: quote?.open ?? null,
@@ -898,6 +917,7 @@ export const triggerEvaluator = inngest.createFunction(
 export const __test__ = {
   isPriceSidePredicate,
   needsIndicators,
+  needsStreet,
   needsTodayVolume,
   hasCloseBasis,
   isClosePassTick,
