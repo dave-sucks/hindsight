@@ -81,7 +81,7 @@ export function RequestGrid({ data, linkBase = "" }: { data: FrameworkData; link
   ];
   const whenNeeded: Part[] = [
     { id: "guidance", label: "Situation guidance", body: `The instructions for each flag that is up, once per read. On this example day: ${flags.map((s) => s.name).join(", ")}.`, chars: guidanceChars, squares: squaresOf(guidanceChars), source: "Measured from this deploy", href: `${linkBase}#situations`, hrefLabel: "How" },
-    { id: "named", label: "A full row, by name", body: "When it asks for one stock by name: the research sections, the score notes, the history.", chars: null, squares: 20, source: "About 20,000, varies with the stock" },
+    { id: "named", label: "A full row, by name", body: "When it asks for one stock by name: the research sections, the history.", chars: null, squares: 20, source: "About 20,000, varies with the stock" },
   ];
 
   const parts = [...always, ...whenNeeded];
