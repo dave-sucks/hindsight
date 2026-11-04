@@ -11,6 +11,7 @@
 
 import { streamText, stepCountIs, hasToolCall, type ToolSet } from "ai";
 import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
+import { hideOldLookups, withTheTime } from "@/lib/agent/old-lookups";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
@@ -752,7 +753,12 @@ export async function POST(
     let lastStepTimeMs = t0;
 
     // A tool missing from this set (a turn under another scope) passes its result through as is.
-    const modelMessages = await historyForModel(messages, tools as ToolSet);
+    // The chat is one long thread: it reads the time on each message and never an old lookup.
+    const askedAt = new Date();
+    const modelMessages =
+      agentMode === "principal"
+        ? withTheTime(await historyForModel(hideOldLookups(messages, askedAt), tools as ToolSet), askedAt)
+        : await historyForModel(messages, tools as ToolSet);
 
     // Allow client to override model (validated to known model IDs).
     // gpt-5.5 added 2026-05-15 alongside the research-run / tactical model

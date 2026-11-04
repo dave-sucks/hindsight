@@ -136,6 +136,8 @@ export type ToolResult<T = unknown> =
       summary: string;
       data: T;
       sources: ToolSource[];
+      /** When the tool ran (ISO). A chat hides a lookup once it is old (`lib/agent/old-lookups.ts`). */
+      at?: string;
     }
   | {
       ok: false;
