@@ -1131,7 +1131,7 @@ interface ThesisSheetProps extends ThesisCardData {
 export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" size="xl" floating showCloseButton={false}>
+      <SheetContent side="right" size="xl" floating showCloseButton={false} className="gap-0">
         <SheetHeader className="p-0">
           <SheetTitle className="sr-only">{data.ticker} Thesis</SheetTitle>
         </SheetHeader>
