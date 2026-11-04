@@ -83,7 +83,7 @@ export function setupExitTriggers(input: {
         id: input.mintId(),
         predicate: { watch: "move", is: "above", value: pct, variable: "entry" },
         action: "TRIM",
-        rationale: `Up ${pct}% from entry — ${setup.manage.partialAtR}R on a ${distPct.toFixed(1)}% stop. ${setup.target.text}`,
+        rationale: `Up ${pct}% from entry — ${setup.manage.partialAtR}R on a ${distPct.toFixed(1)}% stop.${setup.target ? ` ${setup.target.text}` : ""}`,
         cooldownDays: 7,
         source: "DEFAULT",
       });

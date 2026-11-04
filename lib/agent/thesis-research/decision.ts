@@ -227,7 +227,7 @@ export function validateThesisDecision(
     const atr = opts.chart?.atr14;
     const next = pullback
       ? averages.length
-        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints, target the prior high at ≥ 2R — or PASS with the reason.`
+        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints — or PASS with the reason.`
         : " Write it on MA_PULLBACK (buy at a rising 20- or 50-day, stop 1 ATR under it) if the trend allows — or PASS with the reason."
       : " Pick a setup that applies, or PASS with the reason.";
     errors.push(
@@ -238,8 +238,9 @@ export function validateThesisDecision(
     if (opts.setups && (!d.stop_basis || d.stop_basis.trim().length < 10)) {
       errors.push("stop_basis: required on a priced plan — the structure the stop sits under and its distance in ATR, with the numbers.");
     }
-    if (opts.setups && (!d.target_basis || d.target_basis.trim().length < 10)) {
-      errors.push("target_basis: required on a priced plan — which rule produced the target (measured move, prior high, R multiple), with the numbers.");
+    // A target is an upside rule only where the setup has one; its basis is owed only when a target is given.
+    if (opts.setups && target != null && (!d.target_basis || d.target_basis.trim().length < 10)) {
+      errors.push("target_basis: required when a target_price is given — the upside rule that set it (a review at the Street's average target, a trim at the prior high), with the numbers.");
     }
     const atr = opts.chart?.atr14;
     const dist = Math.abs(entry - stop);
@@ -336,8 +337,8 @@ export function validateThesisDecision(
     const canPullback = opts.setups?.some((s) => s.id === "MA_PULLBACK") ?? false;
     const plan =
       canPullback && averages.length
-        ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints, target the prior high at ≥ 2R. `
-        : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop and a target at ≥ 2R. ";
+        ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints. `
+        : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop. ";
     errors.push(
       `levels: a ${d.direction} with no entry, no trigger and no review can never come back — nothing on the stock can fire. ${plan}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );

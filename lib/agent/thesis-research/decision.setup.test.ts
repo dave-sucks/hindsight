@@ -40,6 +40,9 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
     expect(v.errors.some((e) => e.startsWith("setup_id: required"))).toBe(true);
     expect(v.errors.some((e) => e.startsWith("stop_basis: required"))).toBe(true);
     expect(v.errors.some((e) => e.startsWith("target_basis: required"))).toBe(true);
+    // No target, no basis owed (2026-11-04): a plan is a buy and a floor; the target is an upside rule only where the setup has one.
+    const noTarget = validateThesisDecision({ ...docu, target_price: undefined, target_basis: undefined, stop_basis: "under the swing low $58.73, 2.2 ATR" }, opts);
+    expect(noTarget.errors.filter((e) => e.startsWith("target_basis"))).toEqual([]);
   });
 
   it("the repaired decision passes — the numbers didn't have to move", () => {
@@ -139,7 +142,7 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     const v = validateThesisDecision(hpe, opts);
     expect(v.ok).toBe(false);
     expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), stop 1 ATR ($3.75) under it until the pullback low prints, target the prior high at ≥ 2R — or PASS with the reason.",
+      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), stop 1 ATR ($3.75) under it until the pullback low prints — or PASS with the reason.",
     ]);
   });
 
@@ -216,7 +219,7 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
   it("is sent back with the pullback plan it had already written into a review", () => {
     const v = validateThesisDecision(docu, opts);
     expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), stop 1 ATR ($2.98) under it until the pullback low prints, target the prior high at ≥ 2R — or PASS with the reason.",
+      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), stop 1 ATR ($2.98) under it until the pullback low prints — or PASS with the reason.",
     ]);
   });
 

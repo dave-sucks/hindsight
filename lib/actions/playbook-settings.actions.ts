@@ -28,7 +28,8 @@ export interface PlaybookSetupView {
   horizons: string[];
   entryText: string;
   stopText: string;
-  targetText: string;
+  /** The upside rule, where the setup has one that is an action; null when the plan is the buy and the floor. */
+  targetText: string | null;
   timeText: string;
   /** What the time limit is counted in — sessions for the short clocks. */
   timeUnit: "SESSIONS" | "CALENDAR";
@@ -75,7 +76,7 @@ function view(overrides: SetupOverrides): PlaybookSetupView[] {
       horizons: s.horizons,
       entryText: s.entry.text,
       stopText: s.stop.text,
-      targetText: s.target.text,
+      targetText: s.target?.text ?? null,
       timeText: s.time.text,
       timeUnit: s.time.unit,
       preconditions: s.preconditions,

@@ -390,7 +390,7 @@ function formatSetupText(entry: NonNullable<SetupEntry>): string {
   if (entry.entry.chaseLimitPct != null) lines.push(`  Chase limit: ${entry.entry.chaseLimitPct}% past the level`);
   lines.push("");
   lines.push(`Stop: ${entry.stop.text}`);
-  lines.push(`Target: ${entry.target.text}`);
+  if (entry.target) lines.push(`Target: ${entry.target.text}`);
   lines.push(`Size: ${entry.sizing}${entry.riskMultiplier !== 1 ? ` (risk × ${entry.riskMultiplier})` : ""}`);
   const trail = Object.entries(entry.trail);
   if (trail.length) {

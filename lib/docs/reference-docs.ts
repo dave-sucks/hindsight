@@ -113,7 +113,8 @@ function setupSection(s: Setup): string[] {
   if (s.preconditions.length) out.push("**Before it applies:**", "", ...s.preconditions.map((p) => `- ${p}`), "");
   out.push(`**Buy:** ${s.entry.text}`);
   if (s.entry.entryVia?.length) out.push(` Entry through ${s.entry.entryVia.map((id) => `\`${id}\``).join(", ")}.`);
-  out.push("", `**Floor:** ${s.stop.text}`, "", `**Target:** ${s.target.text}`, "");
+  out.push("", `**Floor:** ${s.stop.text}`, "");
+  if (s.target) out.push(`**Target:** ${s.target.text}`, "");
   const trails = Object.entries(s.trail);
   if (trails.length) out.push("**Trail:**", "", ...trails.map(([h, text]) => `- ${h.toLowerCase()}: ${text}`), "");
   out.push(`**Time limit:** ${s.time.text}`, "");

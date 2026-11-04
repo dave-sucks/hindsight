@@ -59,7 +59,7 @@ export function Playbook() {
           </DocFact>
           <DocFact label="Entry">{s.entry}</DocFact>
           <DocFact label="Stop">{s.stop}</DocFact>
-          <DocFact label="Target">{s.target}</DocFact>
+          {s.target ? <DocFact label="Target">{s.target}</DocFact> : null}
           <DocFact label="Time">{s.time}</DocFact>
         </DocAccordion>
       ))}
