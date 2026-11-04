@@ -40,6 +40,9 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
     expect(v.errors.some((e) => e.startsWith("setup_id: required"))).toBe(true);
     expect(v.errors.some((e) => e.startsWith("stop_basis: required"))).toBe(true);
     expect(v.errors.some((e) => e.startsWith("target_basis: required"))).toBe(true);
+    // No target, no basis owed (2026-11-04): a plan is a buy and a floor; the target is an upside rule only where the setup has one.
+    const noTarget = validateThesisDecision({ ...docu, target_price: undefined, target_basis: undefined, stop_basis: "under the swing low $58.73, 2.2 ATR" }, opts);
+    expect(noTarget.errors.filter((e) => e.startsWith("target_basis"))).toEqual([]);
   });
 
   it("the repaired decision passes — the numbers didn't have to move", () => {

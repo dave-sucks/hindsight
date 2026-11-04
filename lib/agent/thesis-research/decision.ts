@@ -238,8 +238,9 @@ export function validateThesisDecision(
     if (opts.setups && (!d.stop_basis || d.stop_basis.trim().length < 10)) {
       errors.push("stop_basis: required on a priced plan — the structure the stop sits under and its distance in ATR, with the numbers.");
     }
-    if (opts.setups && (!d.target_basis || d.target_basis.trim().length < 10)) {
-      errors.push("target_basis: required on a priced plan — which rule produced the target (measured move, prior high, R multiple), with the numbers.");
+    // A target is an upside rule only where the setup has one; its basis is owed only when a target is given.
+    if (opts.setups && target != null && (!d.target_basis || d.target_basis.trim().length < 10)) {
+      errors.push("target_basis: required when a target_price is given — the upside rule that set it (a review at the Street's average target, a trim at the prior high), with the numbers.");
     }
     const atr = opts.chart?.atr14;
     const dist = Math.abs(entry - stop);
