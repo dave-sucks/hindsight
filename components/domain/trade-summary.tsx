@@ -20,6 +20,7 @@
  * SHARED <TradeStatement>; this file only picks per-state inputs.
  */
 
+import { getThesisStatusDisplay } from "@/lib/thesis-status";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -192,7 +193,8 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       entry,
       current,
     });
-    dotClass = "bg-positive";
+    // The same blue every holding dot has (lib/thesis-status.ts); it was a hardcoded green here.
+    dotClass = getThesisStatusDisplay("HOLDING").dotClass;
     if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
     meta =
       `Opened ${fmtTradeDate(position.openedAt)}` +
