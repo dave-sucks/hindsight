@@ -41,6 +41,7 @@ export const CRWD_ROW: Row = {
   entryPrice: 404.1,
   targetPrice: null,
   stopLoss: 384,
+  reviewDueAt: "2026-10-14T12:00:00.000Z",
   catalystDate: "2026-12-02T00:00:00.000Z",
   snapshot: { text: "A clean beat and raise; four targets raised after the call. The first paragraph on a short row, the whole text on a full one." },
   recentCatalysts: "The Q2 report on August 27: a beat and raise, with four targets raised after the call.",

@@ -89,8 +89,9 @@ export const READ_SIZES = {
 
 export type RowSize = "line" | "short" | "full";
 
+/** The quiet line for the page's CRWD row, as rowForModel builds it (pinned to the builder by lib/docs/read-cases.test.ts). */
 export const EXAMPLE_LINE =
-  "CRWD · held · LONG · PEAD · $418.20 · buy $401.00 · target $480.00 · floor $384.00 · review 10-14 · catalyst 2026-12-02 · id th_8f2c";
+  "CRWD · held · LONG · PEAD · entry $404.10 · proposal waiting: sell 14 sh, placed 10-16 09:31 ET, expires 10-17 09:31 ET · review 10-14 · catalyst 2026-12-02 · id th_8f2c";
 
 /**
  * A thesis as the sheet shows it, field by field, in the sheet's order. Each
@@ -215,9 +216,9 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     body: "A stock we only watched went quiet for weeks and just woke up, or a stock has no setup named at all.",
     size: "full",
     when: "Two situations do this. The question is not what the plan says but whether the research behind it still holds, and the agent has to re-plan the stock.",
-    how: "The full row, without being asked for: the short row plus the whole snapshot and the seven old research sections.",
+    how: "The full row, without being asked for: the short row with the setup's own rules in place of its name, plus the whole snapshot and the seven old research sections.",
     why: "You cannot judge whether research still stands without the research. The history still stays out: it is long, and the question is about today's facts.",
-    keys: [...SHORT_KEYS, ...FULL_EXTRA],
+    keys: [...SHORT_KEYS.map((k) => (k === "setup" ? "setup_lines" : k)), ...FULL_EXTRA],
   },
   {
     id: "full-name",
@@ -226,9 +227,9 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     body: "get_theses with a ticker. Your chat does this when you ask about a stock; a run does it right before a buy.",
     size: "full",
     when: "The agent already knows which stock it cares about and wants all of it, not the book.",
-    how: "The full row plus the history: every Activity line ever written on the stock, each with its id.",
+    how: "The full row, the setup's own rules included, plus the history: every Activity line ever written on the stock, each with its id.",
     why: "Asking by name means the agent wants everything the app knows about this one stock. One stock's history fits in a prompt where 30 stocks' would not.",
-    keys: [...SHORT_KEYS, ...FULL_EXTRA, "history"],
+    keys: [...SHORT_KEYS.map((k) => (k === "setup" ? "setup_lines" : k)), ...FULL_EXTRA, "history"],
   },
   {
     id: "writer-refresh",
