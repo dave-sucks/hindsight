@@ -42,7 +42,7 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
         lead="Each stock at the size today needs."
         rest="Every agent asks one tool for its stocks. Code decides how much of each thesis to send: one line when nothing changed, more when something did, everything when asked by name."
       >
-        <ReadDemo situation={situation} />
+        <ReadDemo situation={situation} samples={data.readSamples} />
       </Block>
 
       <Block
