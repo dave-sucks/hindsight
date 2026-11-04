@@ -144,7 +144,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
   }
 
   return (
-    <div className="relative rounded-lg border bg-muted/40 px-4 py-3 space-y-1.5">
+    <div className="relative rounded-lg border px-4 py-3 space-y-1.5">
       {/* The whole card opens the trade: a stretched link under the content, never a link around the controls. */}
       {position.id ? (
         <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-lg" />
