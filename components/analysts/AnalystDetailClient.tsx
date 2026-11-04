@@ -809,7 +809,7 @@ export default function AnalystDetailClient({
                 {/* Range tabs */}
                 <div className="absolute bottom-2 left-2 right-2 z-10 flex items-center justify-between">
                   <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
-                    <TabsList size="sm">
+                    <TabsList size="sm" variant="outline">
                       {RANGES.map((r) => (
                         <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
                       ))}

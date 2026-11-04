@@ -17,7 +17,7 @@
  * lib/trading/manual-order.ts.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, Loader2 } from "lucide-react";
@@ -63,11 +63,16 @@ export function TradeButton({
   ticker,
   analystId,
   size = "icon-sm",
+  openSignal = 0,
+  hideTrigger = false,
 }: {
   ticker: string;
   /** The analyst this surface belongs to — the dialog starts on its side of the stock. */
   analystId?: string | null;
   size?: "icon-sm" | "icon";
+  /** Bump it to open the dialog from somewhere else (the header's menu item); the trigger button can then hide. */
+  openSignal?: number;
+  hideTrigger?: boolean;
 }) {
   const router = useRouter();
   const [ticket, setTicket] = useState<TradeTicket | null>(null);
@@ -273,9 +278,19 @@ export function TradeButton({
     }
   }
 
+  const lastSignal = useRef(0);
+  useEffect(() => {
+    if (openSignal > lastSignal.current) {
+      lastSignal.current = openSignal;
+      void start("BUY");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal]);
+
   return (
     <>
       <Button
+        hidden={hideTrigger}
         variant="ghost"
         size={size}
         aria-label={`Trade ${ticker}`}

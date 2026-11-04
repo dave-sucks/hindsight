@@ -83,10 +83,15 @@ export const getAnalystCoverage = defineTool({
       asOf: string | null;
     } | null = null;
 
-    if (latestRec) {
-      const bullish = (latestRec.strongBuy ?? 0) + (latestRec.buy ?? 0);
-      const neutral = latestRec.hold ?? 0;
-      const bearish = (latestRec.sell ?? 0) + (latestRec.strongSell ?? 0);
+    // One source with the row every agent reads: the Nasdaq split on the
+    // stored StreetConsensus row; Finnhub's monthly trend only without one.
+    const split = street && street.buy + street.hold + street.sell > 0
+      ? { bullish: street.buy, neutral: street.hold, bearish: street.sell, asOf: street.asOf }
+      : latestRec
+        ? { bullish: (latestRec.strongBuy ?? 0) + (latestRec.buy ?? 0), neutral: latestRec.hold ?? 0, bearish: (latestRec.sell ?? 0) + (latestRec.strongSell ?? 0), asOf: latestRec.period ?? null }
+        : null;
+    if (split) {
+      const { bullish, neutral, bearish } = split;
       const totalRated = bullish + neutral + bearish;
       if (totalRated > 0) {
         consensus = {
@@ -100,7 +105,7 @@ export const getAnalystCoverage = defineTool({
           neutral,
           bearish,
           totalAnalysts: totalRated,
-          asOf: latestRec.period ?? null,
+          asOf: split.asOf,
         };
       }
     }

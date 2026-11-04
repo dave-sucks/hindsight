@@ -50,6 +50,20 @@ export async function newestStreetRows(tickers: string[], now: Date = new Date()
   return new Map(rows.map((r) => [r.ticker, r]));
 }
 
+/** The newest row from about a month ago (the newest on or before 30 days back, within 45), to say which way the Street moved. */
+export async function monthAgoStreetRows(tickers: string[], now: Date = new Date()): Promise<Map<string, StreetFacts>> {
+  if (tickers.length === 0) return new Map();
+  const rows = await prisma.streetConsensus.findMany({
+    where: {
+      ticker: { in: tickers.map((t) => t.toUpperCase()) },
+      asOf: { lte: nyDay(new Date(now.getTime() - 30 * ONE_DAY_MS)), gte: nyDay(new Date(now.getTime() - 45 * ONE_DAY_MS)) },
+    },
+    orderBy: { asOf: "desc" },
+    distinct: ["ticker"],
+  });
+  return new Map(rows.map((r) => [r.ticker, r]));
+}
+
 /** The newest row, pulled fresh first when it is missing or more than a day old. A failed pull keeps the old row. */
 export async function streetFor(ticker: string, now: Date = new Date()): Promise<StreetFacts | null> {
   const T = ticker.toUpperCase();

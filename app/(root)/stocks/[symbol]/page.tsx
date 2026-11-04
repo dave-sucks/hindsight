@@ -11,7 +11,7 @@ import { PositionCard } from "@/components/stocks/PositionCard";
 import { StatBlock } from "@/components/stocks/StatGrid";
 import { StatTable } from "@/components/stocks/StatTable";
 import { EarningsCard } from "@/components/domain/earnings-card";
-import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
+import { AnalystCards } from "@/components/domain/analyst-consensus";
 import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { ThesisHeader } from "@/components/domain/thesis-header";
@@ -267,7 +267,7 @@ export default async function StockDetailPage({ params }: Props) {
         />
       ) : null}
       {aboutCard}
-      <AnalystConsensusWidget coverage={coverage} currentPrice={price} />
+      <AnalystCards coverage={coverage} currentPrice={price} />
       {earnings ? <EarningsCard data={earnings as unknown as EarningsResponse} /> : null}
     </>
   );
@@ -332,7 +332,7 @@ export default async function StockDetailPage({ params }: Props) {
                 ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
                 : null,
             }}
-            stats={<StatBlock label="Key stats" columns={keyStatColumns(quote, metrics, marketCap)} />}
+            stats={<StatBlock columns={keyStatColumns(quote, metrics, marketCap)} />}
             history={history}
             financials={financials}
             news={news}

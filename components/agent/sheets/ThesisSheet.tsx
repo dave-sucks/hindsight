@@ -13,7 +13,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLivePoll } from "@/hooks/useLivePoll";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { ThesisChart } from "@/components/domain/thesis-chart";
 import {
@@ -28,7 +27,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import { ThesisHeader } from "@/components/domain/thesis-header";
 import { TradeSummary } from "@/components/domain/trade-summary";
 import type { RangeMove } from "@/components/stocks/StockPriceChart";
@@ -52,8 +52,9 @@ import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
 import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SectionLabel } from "@/components/domain/section-label";
 import {
-  AnalystConsensusWidget,
+  AnalystCards,
   researchCitationSources,
 } from "@/components/domain/analyst-consensus";
 import { SourceCitation } from "@/components/ai-elements/inline-citation";
@@ -195,12 +196,14 @@ function WorkFlagLine({
     quoteFailed,
   });
   if (!view) return null;
+  // Nothing while the live layer loads, and no wrapper when there is nothing
+  // to say: an empty element still takes a slot in the stack's spacing, which
+  // read as a double gap under the chips (2026-11-04).
+  if (view.flags === "hidden" || view.flags === "loading") return null;
 
   return (
-    <div className="space-y-2">
-      {view.flags === "hidden" ? null : view.flags === "loading" ? (
-        <Skeleton className="h-4 w-56" />
-      ) : view.flags === "reasons" ? (
+    <>
+      {view.flags === "reasons" ? (
         // The lead flag, then the other situations the stock is in. With no
         // work flag, the situations alone are why the morning read lists it.
         <p className="flex items-center gap-1.5 text-sm text-foreground">
@@ -219,7 +222,7 @@ function WorkFlagLine({
           Couldn&apos;t reach the live price, so the work flags couldn&apos;t be checked.
         </p>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -249,7 +252,7 @@ function relativeTime(iso: string): string {
 
 /** The label over a section of the Research tab, as the tab has always drawn it. */
 function Label({ children }: { children: ReactNode }) {
-  return <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">{children}</p>;
+  return <SectionLabel>{children}</SectionLabel>;
 }
 
 /** A labelled section, exposed on the tab. */
@@ -386,7 +389,7 @@ function ResearchView({ state, filings, companyName }: { state: ThesisDossier; f
     <>
       {company ? (
         <Section label={`About ${companyName?.trim() || state.ticker}`}>
-          <p className="text-xl font-normal leading-relaxed">{company}</p>
+          <p className="text-lg font-normal leading-relaxed">{company}</p>
         </Section>
       ) : null}
 
@@ -421,10 +424,7 @@ function ResearchView({ state, filings, companyName }: { state: ThesisDossier; f
 
       {assumptions.length > 0 || variant || reason ? (
         <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <Label>Research notes</Label>
-            {updatedAt ? <p className="text-xs text-muted-foreground">Updated {relativeTime(updatedAt)}</p> : null}
-          </div>
+          <SectionLabel action={updatedAt ? <p className="text-xs text-muted-foreground">Updated {relativeTime(updatedAt)}</p> : null}>Research notes</SectionLabel>
         <div className="rounded-lg border divide-y">
           {assumptions.length > 0 ? (
             <Fold label="Key assumptions">
@@ -822,17 +822,6 @@ export function ThesisBody({
   const entryPrice = state.levels?.entry?.price ?? state.entryPrice;
   const targetPrice = state.targetPrice;
   const stopLoss = state.stopLoss;
-  const floorLevel = state.levels?.floor ?? null;
-  const targetLevel = state.levels?.target ?? null;
-  // Show the block when there is either a live level or a stored number worth
-  // flagging — a decorative stop is exactly what the reader needs to see.
-  const showLevels =
-    !isPass &&
-    entryPrice != null &&
-    (targetLevel != null ||
-      floorLevel != null ||
-      targetPrice != null ||
-      stopLoss != null);
 
   // The price row's move. On 1D it is the quote's own day change — the live
   // price against yesterday's close, the same number the ticker tape shows.
@@ -852,7 +841,7 @@ export function ThesisBody({
     coverageLoading && !coverage ? (
       <Skeleton className="h-40 w-full rounded-lg" />
     ) : (
-      <AnalystConsensusWidget coverage={coverage} currentPrice={quote?.currentPrice ?? null} />
+      <AnalystCards coverage={coverage} currentPrice={quote?.currentPrice ?? null} entry={position && !position.closed ? position.avgCost : null} />
     );
 
   // The trade, in its two looks. The banner sits under the price: on the
@@ -885,17 +874,6 @@ export function ThesisBody({
   // sheet) they close the Overview.
   const stockCards = (
     <>
-      {showLevels && entryPrice != null ? (
-        <PriceTargetsBlock
-          entry={entryPrice}
-          target={targetLevel}
-          stop={floorLevel}
-          storedTarget={targetPrice}
-          storedStop={stopLoss}
-          current={quote?.currentPrice ?? null}
-          direction={direction === "SHORT" ? "SHORT" : "LONG"}
-        />
-      ) : null}
       {wallStreet}
       {earnings ? <EarningsCard data={earnings} /> : null}
     </>
@@ -909,6 +887,14 @@ export function ThesisBody({
   const recent = state.recent ?? [];
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
+  // The standing opinion, first thing under the chips on Overview.
+  const belief = state.coreBelief?.trim() ? stripCitationTags(state.coreBelief) : null;
+  const tabOptions = [
+    { value: "0", label: "Overview" },
+    { value: "1", label: "Research" },
+    { value: String(ACTIVITY_TAB), label: "Activity" },
+    ...extraTabs.map((t, i) => ({ value: String(ACTIVITY_TAB + 1 + i), label: t.label })),
+  ];
   const sideColumn =
     surface === "page" ? (
       <div className="hidden lg:block space-y-4">
@@ -919,20 +905,10 @@ export function ThesisBody({
     ) : null;
 
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(Number(v))}>
-      <TabsList>
-        <TabsTrigger value={0}>Overview</TabsTrigger>
-        <TabsTrigger value={1}>Research</TabsTrigger>
-        <TabsTrigger value={ACTIVITY_TAB}>Activity</TabsTrigger>
-        {extraTabs.map((t, i) => (
-          <TabsTrigger key={t.label} value={ACTIVITY_TAB + 1 + i}>
-            {t.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-
-      {/* ── Overview: price → the trade → chart → the plan → the newest 8 ── */}
-      <TabsContent value={0} className="space-y-5">
+    <div className={columns}>
+    <div className="min-w-0">
+    <Tabs value={tab} onValueChange={(v) => setTab(Number(v))} className="gap-4">
+      {/* ── Above the tabs on every tab (the owner's order, 2026-11-04): the price, the trade, the chart ── */}
       {/* ── Live price + the selected range's move ───────────── */}
       {/* Hydrates from /quote after the dossier paints: skeleton while in
           flight, nothing if the vendor failed (currentPrice null). */}
@@ -948,9 +924,6 @@ export function ThesisBody({
           ) : null}
         </div>
       ) : null}
-
-      <div className={columns}>
-      <div className="min-w-0 space-y-5">
       {tradeBanner}
 
       {/* ── Price chart (annotated) ───────────────────────────── */}
@@ -979,6 +952,24 @@ export function ThesisBody({
         />
       ) : null}
 
+      {/* The sections, as chips: the chart is always worth the screen; the chips pick what sits under it. */}
+      <ChipTabs options={tabOptions} value={String(tab)} onChange={(v) => { if (v != null) setTab(Number(v)); }} clearable={false} />
+
+      {/* ── Overview: the belief → the plan → the newest 8 ── */}
+      <TabsContent value={0} className="space-y-6">
+      {/* ── Whether it needs work today (DAV-304) ── */}
+      <WorkFlagLine
+        status={state.status}
+        needsAction={quote?.needsAction ?? null}
+        situations={quote?.situations ?? []}
+        quoteLoading={quoteLoading}
+        quoteFailed={!quoteLoading && quote == null}
+      />
+
+      {/* The standing opinion, the same size as the company line on Research. */}
+      {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
+
+
       {/* ── The plan: the triggers ── */}
       {thesis_id ? (
         <ThesisTriggersSection
@@ -992,38 +983,19 @@ export function ThesisBody({
         />
       ) : null}
 
-      {/* ── Whether it needs work today (DAV-304) ── */}
-      <WorkFlagLine
-        status={state.status}
-        needsAction={quote?.needsAction ?? null}
-        situations={quote?.situations ?? []}
-        quoteLoading={quoteLoading}
-        quoteFailed={!quoteLoading && quote == null}
-      />
-
       {/* The newest 8 Activity lines, the ones the agents are handed, in the Activity tab's own design. */}
       <RecentActivity items={recent} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
 
       {surface === "sheet" ? stockCards : null}
-      </div>
-      {sideColumn}
-      </div>
       </TabsContent>
 
       {/* ── Research: the claim and the write-up behind it ─────── */}
-      <TabsContent value={1} className="space-y-5">
-      <div className={columns}>
-      <div className="min-w-0 space-y-5">
+      <TabsContent value={1} className="space-y-6">
         <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} />
-      </div>
-      {sideColumn}
-      </div>
       </TabsContent>
 
       {/* ── Activity tab: the whole list ───────────────────────── */}
-      <TabsContent value={ACTIVITY_TAB} className="space-y-5">
-      <div className={columns}>
-      <div className="min-w-0 space-y-5">
+      <TabsContent value={ACTIVITY_TAB} className="space-y-6">
           {thesis_id ? (
             <ThesisTimelineSection
               thesisId={thesis_id}
@@ -1044,20 +1016,17 @@ export function ThesisBody({
             </p>
           )}
           {afterActivity}
-      </div>
-      {sideColumn}
-      </div>
       </TabsContent>
 
       {extraTabs.map((t, i) => (
-        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-5">
-          <div className={columns}>
-            <div className="min-w-0 space-y-5">{t.content}</div>
-            {sideColumn}
-          </div>
+        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-6">
+          {t.content}
         </TabsContent>
       ))}
     </Tabs>
+    </div>
+    {sideColumn}
+    </div>
   );
 }
 
@@ -1085,7 +1054,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   }
 
   return (
-    <div className="px-4 pb-6 pt-2 space-y-5">
+    <div className="px-4 pb-6 pt-3 space-y-4">
       {/* Terminal non-trade states only (INVALIDATED / DROPPED): why the thesis
           ended + when, so the rest reads as history. Returns null otherwise. */}
       <TerminalStatusAlert
@@ -1096,7 +1065,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         invalidatedAt={state.invalidatedAt ?? null}
         invalidReason={state.invalidReason ?? null}
       />
-      <div className="space-y-2">
+      <div className="space-y-4">
         <ThesisHeader
           ticker={ticker}
           // Identity rides in the payload (StockInfo cache via quote) — one
@@ -1109,6 +1078,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           analystId={state.analystId}
           thesisId={thesis_id}
           onSent={data.refresh}
+          surface="sheet"
+          expandHref={state.position?.id ? `/trades/${state.position.id}` : `/stocks/${ticker}`}
+          closeTrade={state.position?.id && !state.position.closed ? { tradeId: state.position.id } : null}
         />
         <ThesisBody data={{ ...data, state }} thesis_id={thesis_id} ticker={ticker} surface="sheet" />
       </div>
@@ -1128,8 +1100,8 @@ interface ThesisSheetProps extends ThesisCardData {
 export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" size="xl" floating>
-        <SheetHeader className="pb-0">
+      <SheetContent side="right" size="xl" floating showCloseButton={false} className="gap-0">
+        <SheetHeader className="p-0">
           <SheetTitle className="sr-only">{data.ticker} Thesis</SheetTitle>
         </SheetHeader>
         <ThesisSheetBody thesis_id={data.thesis_id} ticker={data.ticker} />

@@ -9,6 +9,8 @@
  */
 
 import { z } from "zod";
+import { streetFor } from "@/lib/market-data/street-consensus-store";
+import type { StreetFacts } from "@/lib/market-data/street-consensus";
 import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub } from "@/lib/agent/research-helpers";
 import { getDailyBars, getTodaySessionBars } from "@/lib/alpaca";
@@ -112,10 +114,9 @@ export const getStockData = defineTool({
           2,
         ),
         finnhub(`/stock/recommendation?symbol=${ticker}`, 2),
-        // Price targets: no source on the current plans (FMP removed
-        // 2026-09-08; Finnhub gates /stock/price-target). Kept as a null
-        // slot so the snapshot shape is unchanged.
-        Promise.resolve({ data: null as unknown, error: undefined as string | undefined }),
+        // The Street's targets and rating split: the stored Nasdaq row (the
+        // same one every agent's row carries), pulled fresh when a day old.
+        streetFor(ticker).then((s) => ({ data: s, error: undefined as string | undefined })).catch((e: unknown) => ({ data: null, error: e instanceof Error ? e.message : "street" })),
       ]);
 
     const quote = quoteResult.quote;
@@ -216,15 +217,9 @@ export const getStockData = defineTool({
     }
 
     // ── Price targets ──────────────────────────────────────────────────────
-    const ptArr = priceTargetResult.data as { targetConsensus?: number; targetHigh?: number; targetLow?: number; targetMedian?: number; numberOfAnalysts?: number }[];
-    const targetsData = Array.isArray(ptArr) && ptArr.length > 0
-      ? {
-          consensus: ptArr[0].targetConsensus,
-          high: ptArr[0].targetHigh,
-          low: ptArr[0].targetLow,
-          median: ptArr[0].targetMedian,
-          numAnalysts: ptArr[0].numberOfAnalysts,
-        }
+    const street = priceTargetResult.data as StreetFacts | null;
+    const targetsData = street
+      ? { consensus: street.targetAvg, high: street.targetHigh, low: street.targetLow, median: undefined as number | undefined, numAnalysts: street.analysts, asOf: street.asOf }
       : null;
 
     // ── Normalize data ─────────────────────────────────────────────────────
@@ -251,9 +246,12 @@ export const getStockData = defineTool({
     const financialsData = financials?.metric
       ? { peRatio: financials.metric.peNormalizedAnnual as number | null, pbRatio: financials.metric.pbAnnual as number | null, high52w: financials.metric["52WeekHigh"] as number | null, low52w: financials.metric["52WeekLow"] as number | null, avgVolume10d: financials.metric["10DayAverageTradingVolume"] as number | null, beta: financials.metric.beta as number | null }
       : null;
-    const consensusData = latestRec
-      ? { buy: latestRec.buy, hold: latestRec.hold, sell: latestRec.sell, strongBuy: latestRec.strongBuy, strongSell: latestRec.strongSell }
-      : null;
+    // The rating split from the same row as the targets; Finnhub's monthly trend only without one.
+    const consensusData = street && street.buy + street.hold + street.sell > 0
+      ? { buy: street.buy, hold: street.hold, sell: street.sell, strongBuy: 0, strongSell: 0 }
+      : latestRec
+        ? { buy: latestRec.buy, hold: latestRec.hold, sell: latestRec.sell, strongBuy: latestRec.strongBuy, strongSell: latestRec.strongSell }
+        : null;
 
     // ── Summary ────────────────────────────────────────────────────────────
     const sParts: string[] = [];

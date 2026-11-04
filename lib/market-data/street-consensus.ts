@@ -161,14 +161,16 @@ export function epsDetail(s: StreetFacts): string | null {
   return `${next}${about.length ? ` (${about.join("; ")})` : ""}${year}`;
 }
 
-/** The row's Street line, from `row.street`: ratings, the target range and average, the EPS consensus. */
+/** The row's Street line, from `row.street` (and `row.streetMonthAgo` when a month of rows exists): ratings, the target range and average, which way the average moved, the EPS consensus. */
 export function streetLine(row: Record<string, unknown>): string | null {
   const s = row.street as StreetFacts | null | undefined;
   if (!s || typeof s !== "object" || typeof s.targetAvg !== "number") return null;
   const usd = usdBy(s.targetHigh);
+  const ago = row.streetMonthAgo as StreetFacts | null | undefined;
+  const moved = ago && typeof ago.targetAvg === "number" && Math.abs(ago.targetAvg - s.targetAvg) >= 0.005 ? `, from ${usd(ago.targetAvg)} a month ago` : "";
   return [
     `${s.buy} buy / ${s.hold} hold / ${s.sell} sell`,
-    `targets ${usd(s.targetLow)}–${usd(s.targetHigh)}, avg ${usd(s.targetAvg)} (as of ${String(s.asOf).slice(5)})`,
+    `targets ${usd(s.targetLow)}–${usd(s.targetHigh)}, avg ${usd(s.targetAvg)}${moved} (as of ${String(s.asOf).slice(5)})`,
     epsWords(s.epsNextQuarter, s.epsNextQuarterUp, s.epsNextQuarterDown),
   ].filter(Boolean).join(" · ");
 }

@@ -18,6 +18,22 @@ import { sendToThesisWriter } from "@/lib/actions/watchlist.actions";
 // on the horizon's own review schedule, which is what turns a plain watch
 // into an Agent Watch.
 
+/** The send itself, shared by the button and the header's menu item. */
+export function useSendToAgent(analystId: string, ticker: string, thesisId: string, onSent?: () => void) {
+  const [pending, setPending] = useState(false);
+  const send = () => {
+    setPending(true);
+    sendToThesisWriter(analystId, ticker, "horizon", "refresh", thesisId)
+      .then(() => {
+        toast.success(`${ticker} sent to the agent — it lands shortly.`);
+        onSent?.();
+      })
+      .catch((err: unknown) => toast.error(err instanceof Error ? err.message : `Couldn't send ${ticker}`))
+      .finally(() => setPending(false));
+  };
+  return { pending, send };
+}
+
 export function SendToAgentButton({
   analystId,
   ticker,
@@ -31,7 +47,7 @@ export function SendToAgentButton({
   size?: "icon-sm" | "icon";
   onSent?: () => void;
 }) {
-  const [pending, setPending] = useState(false);
+  const { pending, send } = useSendToAgent(analystId, ticker, thesisId, onSent);
 
   return (
     <Tooltip>
@@ -45,18 +61,7 @@ export function SendToAgentButton({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setPending(true);
-              sendToThesisWriter(analystId, ticker, "horizon", "refresh", thesisId)
-                .then(() => {
-                  toast.success(`${ticker} sent to the agent — it lands shortly.`);
-                  onSent?.();
-                })
-                .catch((err: unknown) =>
-                  toast.error(
-                    err instanceof Error ? err.message : `Couldn't send ${ticker}`,
-                  ),
-                )
-                .finally(() => setPending(false));
+              send();
             }}
           />
         }

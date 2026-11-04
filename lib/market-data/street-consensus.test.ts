@@ -84,6 +84,9 @@ describe("the words", () => {
     );
     // BBIO on 2026-11-02: one format across the range.
     expect(streetLine({ street: { ...street, targetLow: 88, targetHigh: 156, targetAvg: 110.12 } })).toContain("targets $88–$156, avg $110");
+    // A month of rows says which way the average moved; without one, nothing is claimed.
+    expect(streetLine({ street: { ...street, targetLow: 88, targetHigh: 156, targetAvg: 110.12 }, streetMonthAgo: { ...street, targetAvg: 98 } })).toMatch(/avg \$110(\.12)?, from \$98(\.00)? a month ago/);
+    expect(streetLine({ street: { ...street, targetLow: 88, targetHigh: 156, targetAvg: 110.12 }, streetMonthAgo: { ...street, targetAvg: 110.12 } })).not.toContain("a month ago");
     expect(streetLine({ street: null })).toBeNull();
   });
 

@@ -7,19 +7,20 @@
  * and the same live P&L (the quote's), so the numbers can't drift between
  * them. What differs is the look:
  *
- *   • "banner" — the block under the price: a proposal with its Review
- *     control and reason, a holding with its gain, or a closed trade with
- *     its result. The sheet shows it in every state; the page shows it only
+ *   • "banner" — the muted card under the price that opens the trade: one
+ *     sentence with the date and the gain, a waiting proposal's line and
+ *     Review above it, its reason under it. The sheet shows it in every state; the page shows it only
  *     while a proposal waits (the card carries the held numbers there).
  *   • "card"   — the page's right-hand position card: status pill and days
  *     held, the gain in the header's PriceChange, then Bought / Sold / Now /
  *     Exit rows in the Trade Details style. Nothing while a buy is only
  *     proposed — no shares exist yet.
  *
- * The sentence is built by the SHARED buildTradeSentence and the row is the
+ * The card builds its own lines; the rows keep the SHARED buildTradeSentence and the
  * SHARED <TradeStatement>; this file only picks per-state inputs.
  */
 
+import { getThesisStatusDisplay } from "@/lib/thesis-status";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -27,10 +28,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceChange } from "@/components/ui/price-change";
 import { ProposalNote } from "@/components/domain/proposal-note";
-import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
+import { SectionLabel } from "@/components/domain/section-label";
+import type { TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { buildTradeSentence } from "@/lib/trade-statement";
+import { fmtQty } from "@/lib/trade-statement";
 import { EXECUTING_LABEL, EXECUTING_TOOLTIP, getTradeStatusDisplay } from "@/lib/trade-status";
 import { formatCurrency } from "@/lib/format";
 import type { ThesisPendingProposal, ThesisStatePosition } from "@/lib/types/thesis-sheet";
@@ -78,58 +80,35 @@ export function humanizeCloseReason(raw: string | null | undefined): string | nu
   return raw;
 }
 
-// The proposal's own write-up. These run long — the agent explains the level,
-// the risk math, the exposure after the buy — and at full length the block
-// pushed the chart and the triggers off the screen. Clamped to four lines,
-// the whole paragraph is the hit area, click toggles.
-function TradeNote({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <p
-      className={cn(
-        "text-sm text-muted-foreground leading-relaxed cursor-pointer transition-colors hover:text-foreground",
-        !open && "line-clamp-4",
-      )}
-      onClick={() => setOpen((v) => !v)}
-      title={open ? "Collapse" : "Expand"}
-    >
-      {text}
-    </p>
-  );
-}
-
 export function TradeSummary(props: TradeSummaryProps) {
   return props.look === "card" ? <TradeCard {...props} /> : <TradeBanner {...props} />;
 }
 
 // ── The banner ──
-// Every state — pending proposal, holding, closed — renders through the SAME
-// container and the SAME slot layout (Review · statement · note · brief ·
-// meta). Only the slot values differ per state. The headings follow one
-// grammar:
-//   • pending buy      → "Proposed: Buy N shares at $entry"
-//   • holding          → "Bought N shares at $entry, now trading at $current"
-//   • closed           → "Bought N shares at $entry, closed at $closePrice"
-//   • held + pending   → "Proposed: Sell at $current, bought N shares at $entry"
+// One card for every state (the owner's rule, 2026-11-04): a bordered,
+// muted card that opens the trade, one sentence with the date and the gain
+// on the right. A waiting proposal gets a small mono PROPOSAL label at the
+// top left and Review at the far right, and leads the sentence with its verb in medium weight; the amber dot says
+// "waiting", so the word "Proposed" is gone. The reason sits under it, two
+// lines until clicked.
+//   • holding          → "Bought N shares at $entry on Oct 5"
+//   • closed           → "Sold N shares at $close on Nov 19"
+//   • held + pending   → "Sell: Bought N shares at $entry on Oct 5"
+//   • pending buy      → "Buy N shares at $entry on Nov 19"
 function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummaryProps) {
   const pp = pendingProposal;
-  const entry = position.avgCost;
-  const current = pnl?.currentPrice ?? null;
+  const usd = (n: number) => formatCurrency(n);
+  const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
+  const unrealized: TradeStatementGain | null = pnl ? { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct } : null;
+  const bought = `Bought ${shares(position.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
 
-  let sentence: string | null;
-  let review: ReactNode = null;
+  let lead: string | null = null;
+  let rest: string;
   let gain: TradeStatementGain | null = null;
   let dotClass = "bg-muted-foreground/40";
-  let note: string | null = null;
-  let meta: string | null = null;
 
-  // The slot above the statement. While the decision is yours it holds the
-  // Review control; once you've approved, the order is at Alpaca and there is
-  // nothing left to decide, so the same slot reads a shimmering "Executing"
-  // until the fill lands (PRAX, 2026-08-31). An order already sent can't
-  // lapse, so its "Expires" meta goes too.
+  // Review while the decision is yours; "Executing" once the order is at Alpaca.
   let reviewSlot: ReactNode = null;
-  let proposalMeta: string | null = null;
   if (pp?.executing) {
     reviewSlot = (
       <Tooltip>
@@ -141,92 +120,63 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
     );
   } else if (pp) {
     reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />;
-    proposalMeta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
   }
 
   if (pp && pp.intent === "OPEN") {
-    sentence = buildTradeSentence({
-      kind: "proposed-buy",
-      qty: pp.quantity,
-      entry,
-      buyVerb: direction === "SHORT" ? "Short" : "Buy",
-      executing: pp.executing,
-    });
-    review = reviewSlot;
-    // Amber is "waiting on you"; once at Alpaca it takes the holding row's
-    // live-and-open blue, from the shared status map.
+    lead = direction === "SHORT" ? "Short" : "Buy";
+    rest = ` ${shares(pp.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
     dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
-    note = pp.rationale;
-    meta = proposalMeta;
   } else if (pp) {
-    sentence = buildTradeSentence({
-      kind: "proposed-exit",
-      qty: position.quantity,
-      entry,
-      current,
-      exitVerb: pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
-      proposalQty: pp.quantity,
-      executing: pp.executing,
-    });
-    review = reviewSlot;
+    lead = `${pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim"}:`;
+    rest = ` ${bought}`;
     dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
-    if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
-    note = pp.rationale;
-    meta = proposalMeta;
+    gain = unrealized;
   } else if (position.closed) {
-    sentence = buildTradeSentence({
-      kind: "closed",
-      qty: position.quantity,
-      entry,
-      closePrice: position.closePrice,
-    });
-    dotClass = "bg-muted-foreground/40";
-    if (position.realizedPnl != null)
-      gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
-    note = humanizeCloseReason(position.closeReason);
-    meta = position.closedAt ? `Closed ${fmtTradeDate(position.closedAt)}` : null;
+    rest =
+      `Sold ${shares(position.quantity)}` +
+      (position.closePrice != null ? ` at ${usd(position.closePrice)}` : "") +
+      (position.closedAt ? ` on ${fmtTradeDate(position.closedAt)}` : "");
+    if (position.realizedPnl != null) gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
   } else {
-    sentence = buildTradeSentence({
-      kind: "holding",
-      qty: position.quantity,
-      entry,
-      current,
-    });
-    dotClass = "bg-positive";
-    if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
-    meta =
-      `Opened ${fmtTradeDate(position.openedAt)}` +
-      (position.daysHeld > 0 ? ` · ${position.daysHeld}d held` : "");
+    rest = bought;
+    dotClass = getThesisStatusDisplay("HOLDING").dotClass;
+    gain = unrealized;
   }
 
+  // Outline only; a background on hover. The click opens the trade, except on
+  // a waiting proposal, where it expands the reason instead.
+  const proposal = Boolean(pp && !pp.executing);
+  const [expanded, setExpanded] = useState(false);
   return (
-    <div className="rounded-lg border px-4 py-3 space-y-1.5">
-      {/* Review sits on its own row ABOVE the statement, left-aligned — the
-          statement row is always the same shape (dot + sentence left, P&L
-          right), never squeezed by an action control. */}
-      {review ? <div className="flex justify-start">{review}</div> : null}
-      <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
-      {pp && !pp.executing ? (
-        <ProposalNote orderId={pp.orderId} reason={note} writing={pp.writing ?? false} />
-      ) : note ? (
-        <TradeNote text={note} />
+    <div
+      className={cn("relative rounded-lg border px-4 py-3 space-y-1.5 transition-colors hover:bg-muted/40", proposal && "cursor-pointer")}
+      onClick={proposal ? () => setExpanded((v) => !v) : undefined}
+    >
+      {/* The whole card opens the trade: a stretched link under the content, never a link around the controls. */}
+      {position.id && !proposal ? (
+        <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-lg" />
       ) : null}
-      {/* Meta line doubles as the path to the trade detail page. */}
-      {meta || position.id ? (
-        <p className="text-xs text-muted-foreground">
-          {meta}
-          {position.id ? (
-            <>
-              {meta ? " · " : null}
-              <Link
-                href={`/trades/${position.id}`}
-                className="hover:text-foreground hover:underline underline-offset-2"
-              >
-                View trade →
-              </Link>
-            </>
-          ) : null}
-        </p>
+      {/* The label and the reason start where the sentence's text starts: past the dot (8px) and its gap (6px). */}
+      {reviewSlot ? (
+        <div className="relative flex items-center gap-3 pl-[14px]">
+          <SectionLabel>Proposal</SectionLabel>
+          <span className="ml-auto flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>
+        </div>
+      ) : null}
+      <div className="relative flex items-center justify-between gap-3 pointer-events-none">
+        <div className="flex items-center gap-1.5 min-w-0 text-sm">
+          <span className={cn("size-2 rounded-full shrink-0", dotClass)} />
+          <span className="font-normal tabular-nums truncate">
+            {lead ? <span className="font-medium">{lead}</span> : null}
+            {rest}
+          </span>
+        </div>
+        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
+      </div>
+      {pp && !pp.executing ? (
+        <div className="relative pl-[14px]">
+          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
+        </div>
       ) : null}
     </div>
   );

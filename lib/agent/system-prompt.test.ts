@@ -28,7 +28,7 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
   it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a plan check, not refused", () => {
     expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Set the plan down:");
     expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("A buy left as a note comes back on the next morning run");
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it: it comes back as a plan check, with the count.");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it: it comes back as a plan check.");
     expect(prompt).not.toContain("a fired buy is a decision with two answers");
   });
   it("a plan check is answered by PLAN_PROBLEM's guidance; the prompt no longer restates the checks", () => {

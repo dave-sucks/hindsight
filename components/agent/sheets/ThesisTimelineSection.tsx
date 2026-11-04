@@ -23,6 +23,7 @@
  *     Scalar edits live in the title and are never repeated below it.
  */
 
+import { SectionLabel } from "@/components/domain/section-label";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Ban, ChevronsUpDown, Plus, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
@@ -285,12 +286,7 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
   if (items.length === 0) return null;
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>
-        <Button size="xs" variant="ghost" onClick={onViewAll}>
-          View all
-        </Button>
-      </div>
+      <SectionLabel action={<Button size="xs" variant="outline" onClick={onViewAll}>View all</Button>}>Recent activity</SectionLabel>
       <TimelineList
         rows={rows}
         spans={spans}

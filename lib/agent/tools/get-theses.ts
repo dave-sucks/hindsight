@@ -33,7 +33,7 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
-import { newestStreetRows } from "@/lib/market-data/street-consensus-store";
+import { monthAgoStreetRows, newestStreetRows } from "@/lib/market-data/street-consensus-store";
 import type { StreetFacts } from "@/lib/market-data/street-consensus";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
@@ -461,6 +461,7 @@ export const getTheses = defineTool({
     });
     const load = facts.load;
     const streetByTicker = await newestStreetRows(theses.map((t) => t.ticker)).catch(() => new Map<string, StreetFacts>());
+    const streetMonthAgoByTicker = await monthAgoStreetRows(theses.map((t) => t.ticker)).catch(() => new Map<string, StreetFacts>());
     Object.assign(priceAsOf, load.priceAsOf);
     if (load.priceFetchFailed) priceFetchFailed = true;
     const resolverPriceMap: Record<string, number> = load.livePrice;
@@ -625,6 +626,7 @@ export const getTheses = defineTool({
         ...rowFacts(t, load, resolverPriceMap[t.ticker] ?? null),
         // Wall Street's ratings, target range and EPS consensus (StreetConsensus).
         street: streetByTicker.get(t.ticker.toUpperCase()) ?? null,
+        streetMonthAgo: streetMonthAgoByTicker.get(t.ticker.toUpperCase()) ?? null,
       };
     });
 

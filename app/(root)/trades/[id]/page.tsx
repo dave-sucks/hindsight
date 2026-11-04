@@ -25,7 +25,6 @@ import { agentWatchDays } from '@/lib/agent/triggers/agent-watch';
 import { canonicalLevels } from '@/lib/agent/triggers/price-levels';
 import { getStockInfo } from '@/lib/actions/stock-info';
 import { cn } from '@/lib/utils';
-import { TradeActions } from '@/components/trades/TradeActions';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -178,7 +177,7 @@ export default async function TradeDetailPage({
     <div data-surface="paper">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* ── Header — the thesis's, the same one the sheet renders ─────── */}
-      <div className="mb-6">
+      <div className="mb-4">
         <ThesisHeader
           ticker={trade.ticker}
           displayName={companyName ?? trade.ticker}
@@ -188,7 +187,7 @@ export default async function TradeDetailPage({
           conviction={(trade.thesis?.conviction ?? null) as 'STRONG' | 'HIGH' | 'MEDIUM' | 'LOW' | null}
           analystId={analystIdVal}
           thesisId={trade.thesis?.id}
-          extraActions={<TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />}
+          closeTrade={isOpen ? { tradeId: trade.id } : null}
         />
       </div>
 
