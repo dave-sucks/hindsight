@@ -207,8 +207,9 @@ function AnalystVerdictBadge({ consensus }: { consensus: { buy: number; hold: nu
 
 
 /**
- * The rating split as one filled bar, the tick bar's height, in three solid
- * parts sized to the counts (red, gray, green, a hairline gap between), then
+ * The rating split as one filled bar, thinner than the tick bar, in three
+ * solid parts sized to the counts (red, gray, green, a small gap between; a
+ * count of zero still shows as a sliver), then
  * the counts: bearish left, neutral centre, bullish right. Filled, not
  * ticks, so it reads as a share of the firms and not as a price line like
  * the targets card under it.
@@ -222,10 +223,11 @@ function ConsensusDistributionRow({ consensus }: { consensus: { buy: number; hol
   ];
   return (
     <div className="space-y-1.5">
-      <div className="flex h-4 w-full gap-0.5 overflow-hidden rounded-full" role="img" aria-label={`${sell} bearish, ${hold} neutral, ${buy} bullish of ${total}`}>
-        {parts.map((p) =>
-          p.n > 0 ? <span key={p.label} className={cn("h-full rounded-sm", p.color)} style={{ flexGrow: p.n, flexBasis: 0 }} /> : null,
-        )}
+      {/* A part with no firms still shows as a sliver, so every colour on the key has its place on the bar. */}
+      <div className="flex h-2.5 w-full gap-1 overflow-hidden rounded-full" role="img" aria-label={`${sell} bearish, ${hold} neutral, ${buy} bullish of ${total}`}>
+        {parts.map((p) => (
+          <span key={p.label} className={cn("h-full min-w-1.5 rounded-sm", p.color)} style={{ flexGrow: p.n, flexBasis: 0 }} />
+        ))}
       </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
