@@ -119,7 +119,7 @@ export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
   { id: "variant_view", label: "Where we differ from the Street", value: "The Street models 25% growth; I think Flex pulls it to 30% because attach is running ahead of plan.", keys: ["variant_view"] },
   { id: "setup", label: "Setup", value: "Post-earnings drift: fails when the gap day's low breaks or revisions stall; manage with a 3 ATR trail after +10%.", keys: ["setup", "setup_lines", "nameTheSetup"] },
   { id: "triggers", label: "Every trigger, as a sentence", value: "Sell if below $384 on the close · Review if above 10% from our entry · Review 5 days before earnings · Review every 30 days", keys: ["triggers"] },
-  { id: "plan_checks", label: "Plan checks and protection", value: "The floor locks in +4.2% · the buy fired 3 days ago, unanswered", keys: ["plan_checks", "floor_risk", "buyBlockedByFull", "heldThroughFloor", "supersededBy"] },
+  { id: "plan_checks", label: "Plan checks", value: "The floor locks in +4.2% · the buy fired 3 days ago, unanswered", keys: ["plan_checks", "floor_risk", "buyBlockedByFull", "heldThroughFloor", "supersededBy"] },
   { id: "position", label: "Position", value: "Bought 14 shares at $404.10 on Oct 15, now $418.20 (+3.5%)", keys: ["position"] },
   { id: "proposal_waiting", label: "Proposal waiting", value: "sell 14 sh, placed 10-16 09:31 ET, expires 10-17", keys: ["proposal_waiting"] },
   { id: "price", label: "Live price", value: "$418.20, +6.8% today, 2.1% from the buy", keys: ["price"] },
