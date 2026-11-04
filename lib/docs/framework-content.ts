@@ -88,7 +88,7 @@ export const READ_SIZES = {
 export type RowSize = "line" | "short" | "full";
 
 export const EXAMPLE_LINE =
-  "CRWD · held · LONG · PEAD · $418.20 · buy $401.00 · target $480.00 · floor $384.00 · review 10-14 · catalyst 2026-12-02 · id th_8f2c";
+  "CRWD · held · LONG · PEAD · $418.20 · entry $401.00 · review 10-14 · catalyst 2026-12-02 · id th_8f2c";
 
 /**
  * A thesis as the sheet shows it, field by field, in the sheet's order. Each
@@ -118,9 +118,8 @@ export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
   { id: "conviction_rationale", label: "Conviction and its reason", value: "MEDIUM: the business is compounding, but the stock is extended 18% above its 50-day and estimates have not moved in a month.", keys: ["conviction_rationale", "note"] },
   { id: "variant_view", label: "Where we differ from the Street", value: "The Street models 25% growth; I think Flex pulls it to 30% because attach is running ahead of plan.", keys: ["variant_view"] },
   { id: "setup", label: "Setup", value: "Post-earnings drift: fails when the gap day's low breaks or revisions stall; manage with a 3 ATR trail after +10%.", keys: ["setup", "setup_lines", "nameTheSetup"] },
-  { id: "plan", label: "Buy · target · floor", value: "entry $401.00 · target $480.00 · floor $384.00", keys: ["plan"] },
   { id: "triggers", label: "Every trigger, as a sentence", value: "Sell if below $384 on the close · Review if above 10% from our entry · Review 5 days before earnings · Review every 30 days", keys: ["triggers"] },
-  { id: "plan_checks", label: "Plan checks and protection", value: "The floor locks in +4.2% · the buy fired 3 days ago, unanswered", keys: ["plan_checks", "protection", "floor_risk", "buyBlockedByFull", "heldThroughFloor", "supersededBy"] },
+  { id: "plan_checks", label: "Plan checks", value: "The floor locks in +4.2% · the buy fired 3 days ago, unanswered", keys: ["plan_checks", "floor_risk", "buyBlockedByFull", "heldThroughFloor", "supersededBy"] },
   { id: "position", label: "Position", value: "Bought 14 shares at $404.10 on Oct 15, now $418.20 (+3.5%)", keys: ["position"] },
   { id: "proposal_waiting", label: "Proposal waiting", value: "sell 14 sh, placed 10-16 09:31 ET, expires 10-17", keys: ["proposal_waiting"] },
   { id: "price", label: "Live price", value: "$418.20, +6.8% today, 2.1% from the buy", keys: ["price"] },
@@ -157,10 +156,10 @@ export interface ReadCase {
 }
 
 /** The one line's parts (row-for-model.ts `line()`), by the sheet field they come from. */
-const LINE_KEYS = ["stock", "id", "analyst", "price", "plan", "proposal_waiting", "research", "catalyst"] as const;
+const LINE_KEYS = ["stock", "id", "analyst", "price", "proposal_waiting", "research", "catalyst"] as const;
 /** Every key the short row puts (row-for-model.ts `shortOrFull`, size "short"). */
 const SHORT_KEYS = [
-  "stock", "company", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price", "plan", "plan_checks", "protection", "floor_risk", "triggers",
+  "stock", "company", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price", "plan_checks", "floor_risk", "triggers",
   "belief", "assumptions", "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view", "setup", "nameTheSetup", "buyBlockedByFull",
   "heldThroughFloor", "supersededBy", "snapshot", "chart", "street", "research", "catalyst", "repeat", "note", "paper_record",
 ] as const;
@@ -243,7 +242,7 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     when: "A refresh is dispatched: the owner's chat, a stale write-up, a quiet watch brought back, the one-time rewrite.",
     how: "The EXISTING THESIS block in the writer's prompt: status, direction, horizon, the belief, the target and floor, the company line, and every trigger by id. Then its own fresh pulls: quote, profile, financials, news, the Street, a web search.",
     why: "The writer rewrites the claim, so it gets the old claim to argue with and the plan to edit by id. It does not get the old assumptions, cases, conviction reason or variant view: those are what it writes.",
-    keys: ["stock", "belief", "plan", "triggers", "company"],
+    keys: ["stock", "belief", "triggers", "company"],
   },
   {
     id: "writer-mint",

@@ -128,13 +128,11 @@ function researchLine(row: Row, size: RowSize): string {
 
 // ── The one line ───────────────────────────────────────────────────────────
 
-/** A quiet stock: the stock and its stance, the price, the plan levels, the next review, the score, the id. */
+/** A quiet stock: the stock and its stance, the price, the buy it waits on, the next review, the id. The levels are the triggers; a quiet row names none. */
 function line(row: Row): string {
   const held = row.status === "HOLDING";
   const price = num(row.currentPrice);
   const entry = num(row.entryPrice);
-  const target = num(row.targetPrice);
-  const floor = num(row.stopLoss);
   const review = date(row.reviewDueAt);
   const catalyst = date(row.catalystDate);
   const { noClaim, failedOn } = writeUp(row);
@@ -146,8 +144,6 @@ function line(row: Row): string {
     str(row.setupId) ?? str(row.horizon),
     price != null ? money(price) : null,
     entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noPlan(row) ? "no plan" : null,
-    target != null ? `target ${money(target)}` : null,
-    floor != null ? `floor ${money(floor)}` : null,
     // A trade waiting for the principal is off the work list, so its stock is often quiet: the line says it waits.
     proposalLine(row) ? `proposal waiting: ${proposalLine(row)}` : null,
     review ? `review ${etDay(review)}` : null,
@@ -243,41 +239,6 @@ const noPlan = (row: Row) => row.status === "WATCHING" && str(row.direction) != 
 /** A dated-event stock with no date: nothing to schedule around (step 12, part 3). */
 const catalystDateMissing = (row: Row) => row.horizon === "CATALYST" && date(row.catalystDate) == null;
 
-function planLine(row: Row): string | null {
-  const held = row.status === "HOLDING";
-  const entry = num(row.entryPrice);
-  const avg = num(obj(row.position)?.avgCost);
-  const target = num(row.targetPrice);
-  const floor = num(row.stopLoss);
-  const progress = held ? num(obj(row.resolved)?.progressToTarget) : null;
-  const parts = [
-    held && (avg ?? entry) != null ? `entry ${money((avg ?? entry)!)} (filled)` : !held && entry != null ? `buy ${money(entry)}` : null,
-    target != null ? `target ${money(target)}` : null,
-    floor != null ? `floor ${money(floor)}` : null,
-    progress != null ? `${Math.round(progress * 100)}% of the way to the target` : null,
-  ].filter((x): x is string => x != null);
-  if (noPlan(row)) parts.unshift("no plan");
-  return parts.length ? parts.join(" · ") : null;
-}
-
-function protectionLine(row: Row, price: number | null): string | null {
-  if (row.status !== "HOLDING") return null;
-  const lh = obj(obj(row.resolved)?.ladderHealth) as { summary?: string; floor?: { price?: number } | null; flooredGainPct?: number | null; hasTrail?: boolean; nearestRung?: { action?: string; label?: string; price?: number; distancePct?: number } | null; daysSinceLadderEdit?: number | null } | null;
-  if (!lh) return null;
-  const floor = num(lh.floor?.price);
-  const short = row.direction === "SHORT";
-  const breached = floor != null && price != null && (short ? price >= floor : price <= floor);
-  if (!breached) return str(lh.summary);
-  const rung = lh.nearestRung;
-  return [
-    `floor ${money(floor!)} is breached (price ${money(price!)}, ${pct((price! / floor! - 1) * 100)})`,
-    num(lh.flooredGainPct) != null ? `it would lock ${pct(lh.flooredGainPct!)}` : null,
-    lh.hasTrail ? "trail on" : "no trail",
-    rung && num(rung.price) != null ? `next rung ${rung.action ?? ""} at ${money(rung.price!)}${num(rung.distancePct) != null ? ` (${pct(rung.distancePct!)} away)` : ""}`.replace(/\s+/g, " ") : null,
-    num(lh.daysSinceLadderEdit) != null ? `ladder last edited ${lh.daysSinceLadderEdit}d ago` : null,
-  ].filter(Boolean).join("; ");
-}
-
 function setupLine(row: Row): string | null {
   const s = obj(row.setup) as { id?: string; name?: string; failureSigns?: string[]; manage?: string | null; time?: string | null } | null;
   if (!s) return null;
@@ -360,9 +321,8 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("position", positionLine(row, price));
   put("proposal_waiting", proposalLine(row));
   put("price", priceLine(row));
-  put("plan", planLine(row));
+  // The levels are the triggers (`triggers`, each with its id): no plan line and no protection line restate them.
   put("plan_checks", list<{ text?: string }>(resolved?.planSanity).map((f) => f.text).filter(Boolean));
-  put("protection", protectionLine(row, price));
   put("floor_risk", str(obj(resolved?.floorRisk)?.line));
   put("triggers", triggerLines(row));
   put("belief", str(row.coreBelief) ? stripSourceTags(row.coreBelief as string) : null);

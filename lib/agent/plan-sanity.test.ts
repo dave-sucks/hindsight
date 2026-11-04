@@ -196,8 +196,8 @@ describe("computePlanSanity — scope guards", () => {
   });
 });
 
-describe("computePlanSanity — PLAN_BELOW_RR_FLOOR (the floor, read back)", () => {
-  it("flags PLTR as stored: 183 / 190 / 110 pays 0.1:1", () => {
+describe("computePlanSanity — no 2:1 check (the plan is the triggers; the house sets no target)", () => {
+  it("says nothing about the ratio on PLTR as stored, 183 / 190 / 110, the plan the 2:1 flag was written for", () => {
     const flags = computePlanSanity({
       ...base,
       entryPrice: 183,
@@ -205,21 +205,8 @@ describe("computePlanSanity — PLAN_BELOW_RR_FLOOR (the floor, read back)", () 
       stopLoss: 110,
       currentPrice: 167,
     });
-    const rr = flags.find((f) => f.kind === "PLAN_BELOW_RR_FLOOR");
-    expect(rr).toBeDefined();
-    expect(rr?.text).toContain("0.1:1");
-    expect(rr?.text).toContain("$183.00");
-  });
-
-  it("stays quiet on a plan that clears 2:1", () => {
-    const flags = computePlanSanity({
-      ...base,
-      entryPrice: 100,
-      targetPrice: 130,
-      stopLoss: 90,
-      currentPrice: 95,
-    });
-    expect(flags.some((f) => f.kind === "PLAN_BELOW_RR_FLOOR")).toBe(false);
+    expect(flags.map((f) => f.kind)).not.toContain("PLAN_BELOW_RR_FLOOR");
+    expect(flags.some((f) => /\d:1/.test(f.text))).toBe(false);
   });
 });
 

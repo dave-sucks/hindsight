@@ -31,7 +31,6 @@
  * resolver already holds, so this adds zero cost to get_theses.
  */
 
-import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 import { CATALYST_WINDOW_DAYS, PRE_CATALYST_ENTRY_CUTOFF_DAYS, isPreCatalystPlay } from "@/lib/agent/knowledge/setups";
@@ -49,7 +48,6 @@ export type PlanSanityFlag = {
     | "STOP_ALREADY_BREACHED"
     | "STOP_INSIDE_NOISE"
     | "FLOOR_INSIDE_NOISE"
-    | "PLAN_BELOW_RR_FLOOR"
 ;
   /** Plain-language statement of the arithmetic, with the numbers. */
   text: string;
@@ -197,7 +195,7 @@ export function computePlanSanity(args: {
   if (args.ownTriggerCount === 0 && entryPrice == null) {
     flags.push({
       kind: "NOTHING_CAN_WAKE",
-      text: `${direction} with no buy price, no trigger and no review of its own: nothing can bring this stock back. Price the level you are waiting for (the pullback to a rising average, the base's pivot) with its stop and a target at 2:1 or better, or give it the wake that brings it back (a REVIEW at a price, or a short day-count review), or let it go (\`change_status: "ARCHIVED"\`).`,
+      text: `${direction} with no buy price, no trigger and no review of its own: nothing can bring this stock back. Price the level you are waiting for (the pullback to a rising average, the base's pivot) with its stop, or give it the wake that brings it back (a REVIEW at a price, or a short day-count review), or let it go (\`change_status: "ARCHIVED"\`).`,
     });
   }
   // ── NO_BUY_LEVEL (DAV-321) ──────────────────────────────────────────
@@ -227,8 +225,8 @@ export function computePlanSanity(args: {
         text:
           `${direction} on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. ` +
           (windowOpen
-            ? `The buying window is open — ${daysOut} days to the event. Price the buy now: the pivot or the pullback if the chart offers one, otherwise a close above the highest high of the last 20 sessions, with its stop under the last swing low and a target at 2:1 or better. If no level clears 2:1, let it go. `
-            : "Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. ") +
+            ? `The buying window is open — ${daysOut} days to the event. Price the buy now: the pivot or the pullback if the chart offers one, otherwise a close above the highest high of the last 20 sessions, with its stop under the last swing low. `
+            : "Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop, or let it go. ") +
           "A rationale with no plan leaves it here tomorrow.",
       });
     }
@@ -386,21 +384,6 @@ export function computePlanSanity(args: {
           `The floor ${fmt(stopLoss)} sits ${floorGapPct.toFixed(1)}% ${isLong ? "under" : "over"} the live price ${fmt(currentPrice)}, ` +
           `but this stock's ordinary daily move is ~${dayRangePct.toFixed(1)}%. A floor on a stock we don't own sets the plan down on a close ${isLong ? "below" : "above"} it, ` +
           `so an ordinary ${isLong ? "red" : "green"} day that closes there erases this plan. Put the floor under real structure with room, or say in one sentence that a break of today's level is meant to end the plan.`,
-      });
-    }
-  }
-
-  // The floor the write paths enforce, read back against what's stored:
-  // rows written before the floor ran on every path (PLTR at 0.1:1) reach
-  // the daily run this way instead of waiting for the next level edit.
-  if (entryPrice != null && targetPrice != null && stopLoss != null) {
-    const rr = riskReward(direction, entryPrice, targetPrice, stopLoss);
-    if (rr != null && rr < MIN_RISK_REWARD) {
-      flags.push({
-        kind: "PLAN_BELOW_RR_FLOOR",
-        text:
-          `This plan pays ${rr.toFixed(1)}:1 — entry ${fmt(entryPrice)}, target ${fmt(targetPrice)}, stop ${fmt(stopLoss)} — under the ${MIN_RISK_REWARD}:1 floor every write path enforces. ` +
-          `Any level edit will be refused until the plan clears it: raise the target to a cited level, tighten the stop to real structure, or set the plan down.`,
       });
     }
   }
