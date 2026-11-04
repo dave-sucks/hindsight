@@ -14,6 +14,7 @@ import {
   PenLine,
   Search,
   Sun,
+  Target,
   UserRound,
   Zap,
   type LucideIcon,
@@ -31,6 +32,7 @@ export type DocSlug =
   | "triggers"
   | "situations"
   | "approvals"
+  | "price-targets"
   | "architecture"
   | "glossary"
   | "situations-library"
@@ -61,6 +63,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "analysts", title: "Analysts", group: "Concepts", icon: UserRound, blurb: "A trading style with its own universe, sizing and sell rules." },
   { slug: "situations", title: "Situations", group: "Concepts", icon: Flag, blurb: "The seventeen reasons a stock needs an answer today." },
   { slug: "approvals", title: "Approvals", group: "Concepts", icon: CheckCircle2, blurb: "Analysts propose. You approve. Proposals expire after a day." },
+  { slug: "price-targets", title: "Price targets", group: "Concepts", icon: Target, blurb: "The house sets none. The plan is the buy, the floor and an upside rule; the Street's targets are a card and a line a rule can watch." },
   { slug: "architecture", title: "Architecture", group: "Overview", icon: Layers, blurb: "How the pieces fit: data, the record, the clocks, the read, the agents and the gate." },
   { slug: "glossary", title: "Glossary", group: "Overview", icon: BookOpen, blurb: "Every term the app, the docs and the agents use, a sentence each." },
   { slug: "saving-a-thesis", title: "Saving a thesis", group: "Deep dives", icon: PenLine, blurb: "How every agent edit lands or is refused: a save is a patch, one trigger at a time, floors only go up." },
