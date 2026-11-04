@@ -17,10 +17,10 @@ describe("the proposal card's note", () => {
     expect(html).toContain(WRITING_LABEL);
     expect(html).not.toContain("came true");
   });
-  it("once written: the analyst's note, three lines with a click for the rest", () => {
+  it("once written: the analyst's note, two lines with a click for the rest", () => {
     const html = renderToStaticMarkup(createElement(ProposalNote, { orderId: "o1", reason: NOTE, writing: false }));
     expect(html).toContain(NOTE);
-    expect(html).toContain("line-clamp-3");
+    expect(html).toContain("line-clamp-2");
     expect(html).not.toContain(WRITING_LABEL);
   });
 });
