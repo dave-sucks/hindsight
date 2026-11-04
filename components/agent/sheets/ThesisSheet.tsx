@@ -1085,7 +1085,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   }
 
   return (
-    <div className="px-4 pb-6 pt-2 space-y-5">
+    <div className="px-4 pb-6 pt-3 space-y-4">
       {/* Terminal non-trade states only (INVALIDATED / DROPPED): why the thesis
           ended + when, so the rest reads as history. Returns null otherwise. */}
       <TerminalStatusAlert
@@ -1132,7 +1132,7 @@ export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" size="xl" floating showCloseButton={false}>
-        <SheetHeader className="pb-0">
+        <SheetHeader className="p-0">
           <SheetTitle className="sr-only">{data.ticker} Thesis</SheetTitle>
         </SheetHeader>
         <ThesisSheetBody thesis_id={data.thesis_id} ticker={data.ticker} />

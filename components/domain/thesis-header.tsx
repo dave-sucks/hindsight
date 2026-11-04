@@ -14,7 +14,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { XIcon, MoreHorizontal } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
+import { ArrowExpand01Icon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SheetClose } from "@/components/ui/sheet";
@@ -180,7 +180,7 @@ export function ThesisHeader({
   const link = href === undefined ? `/stocks/${ticker}` : href;
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-1.5">
+      <div className="-mx-1 flex items-center gap-1.5">
         {sheet && expandHref ? (
           <Button
             variant="ghost"
@@ -189,7 +189,7 @@ export function ThesisHeader({
             render={<Link href={expandHref} />}
             aria-label={`Open ${ticker}'s page`}
           >
-            <HugeiconsIcon icon={ArrowExpandIcon} className="size-4" />
+            <HugeiconsIcon icon={ArrowExpand01Icon} className="size-4" />
           </Button>
         ) : null}
         <StatusPill status={status} agentWatchDays={agentWatchDays} />
