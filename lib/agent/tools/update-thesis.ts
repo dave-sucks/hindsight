@@ -922,7 +922,7 @@ export const updateThesis = defineTool({
           `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
         : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
           `Three legal commitments:\n` +
-          `  • \`direction: "LONG"\` + horizon + entry_price (or one buy trigger in add_triggers) + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
+          `  • \`direction: "LONG"\` + horizon + entry_price (or one buy trigger in add_triggers) + stop_loss (and target_price only when the setup has an upside rule) + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
           `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
           `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
           `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
@@ -973,7 +973,6 @@ export const updateThesis = defineTool({
       if (args.direction === "LONG" || args.direction === "SHORT") {
         const missing: string[] = [];
         if (!args.horizon) missing.push("horizon");
-        if (args.target_price == null) missing.push("target_price");
         if (args.stop_loss == null) missing.push("stop_loss");
         // The buy may already be on the stock as a chart condition, or come
         // in this call as one. SMMT 2026-10-02: the buy was "closes above

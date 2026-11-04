@@ -118,6 +118,18 @@ describe("validateThesisDecision — price ordering; the ratio is reported, not 
     expect(v.errors.join(" ")).toContain("price ordering");
   });
 
+  it("accepts a priced plan with a buy and a floor and no target (ETN as read 2026-11-04: buy $410, floor $358.50); no ratio to report", () => {
+    const v = validateThesisDecision({ ...validLong, entry_price: 410, target_price: undefined, stop_loss: 358.5 }, mintOpts);
+    expect(v.ok).toBe(true);
+    expect(v.errors).toEqual([]);
+    expect(v.riskReward).toBeUndefined();
+  });
+
+  it("a target, when given, still has to be positive and in order", () => {
+    expect(validateThesisDecision({ ...validLong, target_price: 0 }, mintOpts).errors.join(" ")).toContain("target_price: positive when given");
+    expect(validateThesisDecision({ ...validLong, target_price: 95 }, mintOpts).errors.join(" ")).toContain("price ordering");
+  });
+
   it("rejects a half-priced plan (target + stop, no entry)", () => {
     const v = validateThesisDecision(
       { ...validLong, entry_price: undefined },

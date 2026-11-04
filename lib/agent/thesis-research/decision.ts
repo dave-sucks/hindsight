@@ -160,7 +160,8 @@ export function validateThesisDecision(
   let riskReward: number | undefined;
 
   const { entry_price: entry, target_price: target, stop_loss: stop } = d;
-  // A view is either priced (all three levels) or not priced at all. The
+  // A view is either priced (a buy and a floor; a target only when the
+  // setup has an upside rule, 2026-11-04) or not priced at all. The
   // unpriced shape is the set-down state the persist gates already admit
   // (no plan level, ≥1 REVIEW wake — DAV-224): "bullish, entry window
   // opens in January" used to be unwritable, so BMRN came back with
@@ -169,18 +170,18 @@ export function validateThesisDecision(
 
   if (directional && priced) {
     // ── Prices, in order ──────────────────────────────────────────────
-    const unpricedHint = " — or omit ALL of entry/target/stop to hold the view unpriced.";
+    const unpricedHint = " — or omit entry, stop and target to hold the view unpriced.";
     if (entry == null || entry <= 0) errors.push(`entry_price: required and positive on a priced plan${unpricedHint}`);
-    if (target == null || target <= 0) errors.push(`target_price: required and positive on a priced plan${unpricedHint}`);
+    if (target != null && target <= 0) errors.push("target_price: positive when given; a plan needs no target (a buy and a floor price it).");
     if (stop == null || stop <= 0) errors.push(`stop_loss: required and positive on a priced plan${unpricedHint}`);
 
-    if (entry != null && target != null && stop != null && entry > 0 && target > 0 && stop > 0) {
+    if (entry != null && stop != null && entry > 0 && stop > 0 && (target == null || target > 0)) {
       // The one plan rule (ordering) — the same helper the persist gates
       // run, so a repair here is a pass there. The ratio is reported, not enforced.
       const shape = validateThesisShape({
         direction: d.direction,
         entryPrice: entry,
-        targetPrice: target,
+        targetPrice: target ?? null,
         stopLoss: stop,
         held,
       });
@@ -268,7 +269,7 @@ export function validateThesisDecision(
     !(d.remove_trigger_ids && d.remove_trigger_ids.length > 0)
   ) {
     errors.push(
-      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, send `remove_trigger_ids` naming the buy, floor and target trigger ids from EXISTING THESIS (keep ≥1 REVIEW wake; the level columns follow the triggers). To keep the plan, send all three levels.",
+      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, send `remove_trigger_ids` naming the buy, floor and target trigger ids from EXISTING THESIS (keep ≥1 REVIEW wake; the level columns follow the triggers). To keep the plan, send its levels: the buy and the floor, and the target if it has one.",
     );
   }
 
