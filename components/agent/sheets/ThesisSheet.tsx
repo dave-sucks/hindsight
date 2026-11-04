@@ -236,6 +236,17 @@ function WrittenUpLine({ writtenUp }: { writtenUp: ThesisDossier["writtenUp"] })
   );
 }
 
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(ms / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return `${days}d ago`;
+}
+
 /** The label over a section of the Research tab, as the tab has always drawn it. */
 function Label({ children }: { children: ReactNode }) {
   return <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">{children}</p>;
@@ -346,9 +357,10 @@ function beliefLabel(status: string): string {
  * placed by the owner's order (2026-11-02): the company (two sentences) as
  * the heading where the belief sat; why we own it under it, with the
  * write-up's date and price; the bull case, the bear case and what would
- * prove us wrong exposed as bullets; the filings; then, in the accordion,
- * the key assumptions and where we differ from the street with the
- * conviction's one-line reason. A row written before the company line
+ * prove us wrong exposed as bullets; the filings in their old place under
+ * the top block; then the accordion, with its "Updated 50d ago" header row
+ * as before, holding the key assumptions and where we differ from the
+ * street with the conviction's one-line reason. A row written before the company line
  * shows nothing there, never a placeholder.
  */
 function ResearchView({ state, filings }: { state: ThesisDossier; filings: FilingsResponse | null }) {
@@ -363,6 +375,7 @@ function ResearchView({ state, filings }: { state: ThesisDossier; filings: Filin
   const convictionWord = state.conviction
     ? `${state.conviction.charAt(0)}${state.conviction.slice(1).toLowerCase()} conviction`
     : "Conviction";
+  const updatedAt = state.writtenUp?.at ?? state.researchUpdatedAt;
   if (!company && !belief && bull.length === 0 && bear.length === 0 && wrong.length === 0 && assumptions.length === 0 && !variant) {
     return <p className="text-sm text-muted-foreground">No research on this stock yet.</p>;
   }
@@ -378,6 +391,8 @@ function ResearchView({ state, filings }: { state: ThesisDossier; filings: Filin
       ) : company ? (
         <WrittenUpLine writtenUp={state.writtenUp} />
       ) : null}
+
+      {filings ? <FilingsBlock data={filings} /> : null}
 
       {bull.length > 0 ? (
         <Section label="Bull case">
@@ -397,9 +412,12 @@ function ResearchView({ state, filings }: { state: ThesisDossier; filings: Filin
         </Section>
       ) : null}
 
-      {filings ? <FilingsBlock data={filings} /> : null}
-
       {assumptions.length > 0 || variant || reason ? (
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <Label>Research notes</Label>
+            {updatedAt ? <p className="text-xs text-muted-foreground">Updated {relativeTime(updatedAt)}</p> : null}
+          </div>
         <div className="rounded-lg border divide-y">
           {assumptions.length > 0 ? (
             <Fold label="Key assumptions">
@@ -417,6 +435,7 @@ function ResearchView({ state, filings }: { state: ThesisDossier; filings: Filin
               ) : null}
             </Fold>
           ) : null}
+        </div>
         </div>
       ) : null}
     </>
