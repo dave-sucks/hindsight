@@ -21,6 +21,7 @@
  * move — so none of those are designed for here. See docs/plans/MARKET_DATA.md.
  */
 
+import { SectionLabel } from "@/components/domain/section-label";
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -226,7 +227,7 @@ export function EarningsCard({
 
   return (
     <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Earnings</p>
+      <SectionLabel>Earnings</SectionLabel>
 
       {imminent && next ? (
         <p className="text-sm tabular-nums">

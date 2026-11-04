@@ -53,6 +53,7 @@ import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
 import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SectionLabel } from "@/components/domain/section-label";
 import {
   AnalystConsensusWidget,
   researchCitationSources,
@@ -199,9 +200,8 @@ function WorkFlagLine({
 
   return (
     <div className="space-y-2">
-      {view.flags === "hidden" ? null : view.flags === "loading" ? (
-        <Skeleton className="h-4 w-56" />
-      ) : view.flags === "reasons" ? (
+      {/* Nothing while the live layer loads: the line appears when it knows, never a placeholder holding its height. */}
+      {view.flags === "hidden" || view.flags === "loading" ? null : view.flags === "reasons" ? (
         // The lead flag, then the other situations the stock is in. With no
         // work flag, the situations alone are why the morning read lists it.
         <p className="flex items-center gap-1.5 text-sm text-foreground">
@@ -250,7 +250,7 @@ function relativeTime(iso: string): string {
 
 /** The label over a section of the Research tab, as the tab has always drawn it. */
 function Label({ children }: { children: ReactNode }) {
-  return <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">{children}</p>;
+  return <SectionLabel>{children}</SectionLabel>;
 }
 
 /** A labelled section, exposed on the tab. */
@@ -422,10 +422,7 @@ function ResearchView({ state, filings, companyName }: { state: ThesisDossier; f
 
       {assumptions.length > 0 || variant || reason ? (
         <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <Label>Research notes</Label>
-            {updatedAt ? <p className="text-xs text-muted-foreground">Updated {relativeTime(updatedAt)}</p> : null}
-          </div>
+          <SectionLabel action={updatedAt ? <p className="text-xs text-muted-foreground">Updated {relativeTime(updatedAt)}</p> : null}>Research notes</SectionLabel>
         <div className="rounded-lg border divide-y">
           {assumptions.length > 0 ? (
             <Fold label="Key assumptions">

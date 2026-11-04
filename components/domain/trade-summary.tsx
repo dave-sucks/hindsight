@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceChange } from "@/components/ui/price-change";
 import { ProposalNote } from "@/components/domain/proposal-note";
+import { SectionLabel } from "@/components/domain/section-label";
 import type { TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -158,7 +159,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       {/* The label and the reason start where the sentence's text starts: past the dot (8px) and its gap (6px). */}
       {reviewSlot ? (
         <div className="relative flex items-center gap-3 pl-[14px]">
-          <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Proposal</span>
+          <SectionLabel>Proposal</SectionLabel>
           <span className="ml-auto flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>
         </div>
       ) : null}

@@ -135,7 +135,7 @@ const RANGE_DAYS: Record<DailyRange, number> = {
 
 // Axis / mark colors — hardcoded hex (SVG stroke/fill can't consume our oklch()
 // theme vars).
-const AXIS_TICK = '#71717a';
+const AXIS_TICK = 'var(--muted-foreground)';
 // The line is colored green ABOVE and red BELOW the graph's starting price
 // (the first visible point), switching mid-line. These are the sRGB hex of the
 // app's --positive / --negative tokens (oklch(69.92% .166 144.58) /
@@ -145,7 +145,7 @@ const LINE_GREEN = '#51b857';
 const LINE_RED = '#ff6d87';
 // Faint uniform color for the entry/target/stop reference lines — the small
 // colored dot at the left edge carries the meaning, the line stays quiet.
-const REF_LINE = '#71717a';
+const REF_LINE = 'var(--muted-foreground)';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

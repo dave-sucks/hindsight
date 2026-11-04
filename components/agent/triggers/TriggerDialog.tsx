@@ -41,15 +41,17 @@ function TypeMenu({
   types,
   onPick,
   variant = "outline",
+  size = "sm",
 }: {
   label: string;
   types: readonly TriggerType[];
   onPick: (t: TriggerType) => void;
   variant?: "outline" | "ghost";
+  size?: "sm" | "xs";
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant={variant} size="sm" />}>
+      <DropdownMenuTrigger render={<Button variant={variant} size={size} />}>
         <Plus data-icon="inline-start" />
         {label}
       </DropdownMenuTrigger>
@@ -69,13 +71,14 @@ function TypeMenu({
 }
 
 /** "Add trigger": pick a type, fill in its dialog. */
-export function AddTrigger(props: AddProps) {
+export function AddTrigger(props: AddProps & { label?: string; size?: "sm" | "xs" }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<TriggerType>("price");
   return (
     <>
       <TypeMenu
-        label="Add trigger"
+        label={props.label ?? "Add trigger"}
+        size={props.size ?? "sm"}
         types={TRIGGER_TYPES.map((t) => t.id)}
         onPick={(t) => {
           setType(t);

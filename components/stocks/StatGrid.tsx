@@ -4,6 +4,7 @@
  * section of the Research tab, so a number looks the same wherever it is.
  */
 
+import { SectionLabel } from "@/components/domain/section-label";
 import type { StatColumns, StatSection } from "@/lib/stocks/stock-stats";
 
 export function StatGrid({ columns }: { columns: StatColumns }) {
@@ -34,11 +35,7 @@ export function StatGrid({ columns }: { columns: StatColumns }) {
 export function StatBlock({ label, columns }: Omit<StatSection, "label"> & { label?: string }) {
   return (
     <section className="space-y-1">
-      {label ? (
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {label}
-        </p>
-      ) : null}
+      {label ? <SectionLabel>{label}</SectionLabel> : null}
       <StatGrid columns={columns} />
     </section>
   );

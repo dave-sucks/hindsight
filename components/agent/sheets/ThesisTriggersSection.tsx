@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { carriesNumber, rowLabel, shapeOf } from "@/lib/agent/triggers/condition";
 import { AddTrigger } from "@/components/agent/triggers/TriggerDialog";
+import { SectionLabel } from "@/components/domain/section-label";
 import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 
 // The thesis-sheet contract types (the /triggers payload shape) live in
@@ -171,12 +172,15 @@ export function ThesisTriggersSection({
 
   return (
     <div className="space-y-3">
+      <SectionLabel action={editable ? <AddTrigger level="THESIS" held={held} endpointBase={endpointBase} onChanged={onChanged} label="Add" size="xs" /> : null}>
+        Triggers
+      </SectionLabel>
       {shownTriggers.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           {editableOnly
-            ? "No price or % triggers yet. Add one below."
+            ? "No price or % triggers yet."
             : editable
-              ? "No triggers yet. Add one below."
+              ? "No triggers yet."
               : "No triggers attached."}
         </p>
       ) : (
@@ -190,11 +194,6 @@ export function ThesisTriggersSection({
           onChanged={onChanged}
         />
       )}
-      {editable ? (
-        <div>
-          <AddTrigger level="THESIS" held={held} endpointBase={endpointBase} onChanged={onChanged} />
-        </div>
-      ) : null}
     </div>
   );
 }

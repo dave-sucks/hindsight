@@ -26,6 +26,7 @@
  * server-fetched and passed in; the widget itself never fetches.
  */
 
+import { SectionLabel } from "@/components/domain/section-label";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { TickBar, type Tick } from "@/components/ui/gauge";
@@ -102,9 +103,7 @@ export function AnalystConsensusWidget({
   return (
     <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-          Analyst Consensus
-        </p>
+        <SectionLabel>Analyst Consensus</SectionLabel>
         {consensus ? (
           <AnalystVerdictBadge
             consensus={consensus}

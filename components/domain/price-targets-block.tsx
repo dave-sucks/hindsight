@@ -1,3 +1,4 @@
+import { SectionLabel } from "@/components/domain/section-label";
 import { Card } from "@/components/ui/card";
 import { PriceGauge } from "@/components/ui/gauge";
 import { levelLabelState } from "@/lib/agent/triggers/price-levels";
@@ -98,9 +99,7 @@ export function PriceTargetsBlock({
 
   return (
     <Card className="bg-muted/40 p-2 gap-3">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-        Price Targets
-      </p>
+      <SectionLabel>Price targets</SectionLabel>
 
       <div className="space-y-2">
         {/* Floating labels above their markers. Entry sits on the upper
