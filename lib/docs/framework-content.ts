@@ -79,68 +79,136 @@ export const MEASURED_REQUEST = {
   requestsPerMorning: 15,
 } as const;
 
-export const READ_SIZES = {
-  line: "95 to 170 characters",
-  short: "1,800 to 9,900 characters",
-  full: "about 20,000 characters",
-} as const;
-
 export type RowSize = "line" | "short" | "full";
 
 /**
- * A thesis as the sheet shows it, field by field, with the sizes of the read
- * that carry each one (lib/agent/row-for-model.ts in #816). A field in no
- * size stays on the screen and never reaches the model.
+ * A thesis as the sheet shows it, field by field, in the sheet's order. Each
+ * field names the keys of the row the agents read that carry it
+ * (lib/agent/row-for-model.ts: every `put("…")`, the one line's parts, and
+ * the writer's EXISTING THESIS block in lib/agent/run-thesis-writer.ts).
+ * The read cases below say which keys each read sends; the page lights the
+ * fields those keys carry.
  */
-export const SHEET_FIELDS: ReadonlyArray<{
-  section: string;
-  fields: ReadonlyArray<{ key: string; label: string; value: string; sizes: readonly RowSize[] }>;
-}> = [
+export interface SheetField {
+  id: string;
+  label: string;
+  /** One or two lines of a real-looking value, for the stack. */
+  value: string;
+  /** The row keys that carry this field, in any read that sends them. */
+  keys: readonly string[];
+}
+
+export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
+  { id: "stock", label: "Stock", value: "CRWD · held · LONG · PEAD · conviction MEDIUM", keys: ["stock", "id", "analyst"] },
+  { id: "company", label: "About CrowdStrike", value: "CrowdStrike sells cloud-delivered endpoint and identity security on one agent; revenue is subscription, growing about 30% a year.", keys: ["company"] },
+  { id: "belief", label: "Core thesis", value: "The platform keeps taking share as security budgets consolidate; what has to stay true is net new ARR above $200M a quarter.", keys: ["belief"] },
+  { id: "assumptions", label: "Key assumptions", value: "Net new ARR above $200M, checked at the Q3 report on December 2 · gross margin holds above 78%", keys: ["assumptions"] },
+  { id: "would_prove_it_wrong", label: "What would prove us wrong", value: "Net new ARR under $180M at the Q3 report · a second outage with customer churn named on the call", keys: ["would_prove_it_wrong"] },
+  { id: "bull_case", label: "Bull case", value: "Five points: the beat and raise, Falcon Flex adoption, module attach, the margin step-up, the buyback.", keys: ["bull_case"] },
+  { id: "bear_case", label: "Bear case", value: "Four points: valuation at 90× earnings, the July outage's legal tail, a slowing net new ARR cohort, insider selling.", keys: ["bear_case"] },
+  { id: "conviction_rationale", label: "Conviction and its reason", value: "MEDIUM: the business is compounding, but the stock is extended 18% above its 50-day and estimates have not moved in a month.", keys: ["conviction_rationale", "note"] },
+  { id: "variant_view", label: "Where we differ from the Street", value: "The Street models 25% growth; I think Flex pulls it to 30% because attach is running ahead of plan.", keys: ["variant_view"] },
+  { id: "setup", label: "Setup", value: "Post-earnings drift: fails when the gap day's low breaks or revisions stall; manage with a 3 ATR trail after +10%.", keys: ["setup", "setup_lines", "nameTheSetup"] },
+  { id: "plan", label: "Buy · target · floor", value: "entry $401.00 · target $480.00 · floor $384.00", keys: ["plan"] },
+  { id: "triggers", label: "Every trigger, as a sentence", value: "Sell if below $384 on the close · Review if above 10% from our entry · Review 5 days before earnings · Review every 30 days", keys: ["triggers"] },
+  { id: "plan_checks", label: "Plan checks and protection", value: "The floor locks in +4.2% · the buy fired 3 days ago, unanswered", keys: ["plan_checks", "protection", "floor_risk", "buyBlockedByFull", "heldThroughFloor", "supersededBy"] },
+  { id: "position", label: "Position", value: "Bought 14 shares at $404.10 on Oct 15, now $418.20 (+3.5%)", keys: ["position"] },
+  { id: "proposal_waiting", label: "Proposal waiting", value: "sell 14 sh, placed 10-16 09:31 ET, expires 10-17", keys: ["proposal_waiting"] },
+  { id: "price", label: "Live price", value: "$418.20, +6.8% today, 2.1% from the buy", keys: ["price"] },
+  { id: "chart", label: "Chart numbers", value: "20d $402 · 50d $388 · 200d $351 · RSI 64 · vs the S&P +9% over 3M", keys: ["chart"] },
+  { id: "street", label: "The Street", value: "23 buy / 7 hold / 0 sell · targets $380–$520, avg $451, from $432 a month ago · next-quarter EPS $1.04, 6 up / 1 down", keys: ["street"] },
+  { id: "said", label: "Recent activity, the newest 8", value: "Today · Trigger: Review if above 10% from our entry · This week · Review: the beat held and the floor was raised to $384…", keys: ["said"] },
+  { id: "situations", label: "Situations", value: "ADD_OR_WINNER (add or near target) · REVIEW_DUE (review due) · fired again, 3rd day", keys: ["situations", "repeat"] },
+  { id: "research", label: "Research date", value: "Written 2026-10-05 at $39.55, 2 days ago", keys: ["research"] },
+  { id: "catalyst", label: "Catalyst date", value: "2026-12-02, the next report", keys: ["catalyst"] },
+  { id: "snapshot", label: "Snapshot", value: "A clean beat and raise; four targets raised after the call. The first paragraph on a short row, the whole text on a full one.", keys: ["snapshot"] },
+  { id: "sections", label: "The seven old sections", value: "Recent catalysts · fundamentals · latest earnings · catalysts and events · analyst consensus · insider and technical · research data (no longer written; kept on old rows)", keys: ["recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"] },
+  { id: "history", label: "History", value: "Every Activity line ever written on the stock, with its id", keys: ["history"] },
+  { id: "paper_record", label: "Paper record", value: "Held 41 days on paper, +12.4%, 3 reviews (a promoted stock only)", keys: ["paper_record"] },
+];
+
+/** One way an agent reads a thesis: when it happens, which tool and size, why, and the keys it sends. */
+export interface ReadCase {
+  id: string;
+  title: string;
+  when: string;
+  how: string;
+  why: string;
+  /** The row keys this read sends (the ones above, plus a few the line builds from the same facts). */
+  keys: readonly string[];
+}
+
+/** The one line's parts (row-for-model.ts `line()`), by the sheet field they come from. */
+const LINE_KEYS = ["stock", "id", "analyst", "price", "plan", "proposal_waiting", "research", "catalyst"] as const;
+/** Every key the short row puts (row-for-model.ts `shortOrFull`, size "short"). */
+const SHORT_KEYS = [
+  "stock", "company", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price", "plan", "plan_checks", "protection", "floor_risk", "triggers",
+  "belief", "assumptions", "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view", "setup", "nameTheSetup", "buyBlockedByFull",
+  "heldThroughFloor", "supersededBy", "snapshot", "chart", "street", "research", "catalyst", "repeat", "note", "paper_record",
+] as const;
+const FULL_EXTRA = ["recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"] as const;
+
+export const READ_CASES: ReadonlyArray<ReadCase> = [
   {
-    section: "The stock",
-    fields: [
-      { key: "stock", label: "Stock", value: "CRWD · watch · long · post-earnings drift", sizes: ["line", "short", "full"] },
-      { key: "price", label: "Price", value: "$418.20, +6.8% today", sizes: ["line", "short", "full"] },
-      { key: "said", label: "What you said", value: "\"Don't chase the gap.\"", sizes: ["short", "full"] },
-    ],
+    id: "line",
+    title: "A quiet stock",
+    when: "Nothing about it is a situation today: no fire, no clock due, no plan check, no report near. Most of the book, most mornings.",
+    how: "get_theses, every door. One line, about 120 characters: the stock, its stance and view, its setup, the price, the plan's three levels, a proposal if one waits, the next review, the catalyst date, its id.",
+    why: "The agent should know the stock exists and where it stands, and nothing more. The belief, the cases, the triggers and the Street stay on the sheet until something changes.",
+    keys: LINE_KEYS,
   },
   {
-    section: "Plan",
-    fields: [
-      { key: "plan", label: "Buy · target · floor", value: "$401 · $480 · $384", sizes: ["line", "short", "full"] },
-      { key: "review", label: "Next review", value: "Oct 14", sizes: ["line"] },
-      { key: "catalyst", label: "Catalyst", value: "Dec 2, next report", sizes: ["line", "short", "full"] },
-      { key: "triggers", label: "Triggers", value: "Buy if within 2% of the 20-day · Sell if below $384 on the close", sizes: ["short", "full"] },
-    ],
+    id: "short",
+    title: "A stock in a situation: the morning run, the chat",
+    when: "At least one situation is true of it today: a buy arrived, a review is due, a report is near, a plan check, a winner to press, a floor to raise.",
+    how: "get_theses lists it as the short row, about 4,000 characters, and attaches each situation's text once per read.",
+    why: "A decision is owed, so the whole view goes: the belief, the assumptions, the cases, the plan with every trigger, the position, the Street, the newest 8 Activity lines. Not the research essays, not the history.",
+    keys: SHORT_KEYS,
   },
   {
-    section: "The case",
-    fields: [
-      { key: "belief", label: "Strategy", value: "Drifts toward $480 over two months as estimates rise.", sizes: ["short", "full"] },
-      { key: "assumptions", label: "Assumptions", value: "Guidance holds · margins keep expanding", sizes: ["short", "full"] },
-      { key: "wrong", label: "What would prove it wrong", value: "A close back under the gap day's low", sizes: ["short", "full"] },
-      { key: "setup", label: "Setup", value: "Post-earnings drift: how it fails, how to manage it", sizes: ["short", "full"] },
-    ],
+    id: "trigger",
+    title: "A stock in a situation: the trigger run",
+    when: "A trigger fired on this one stock during the day.",
+    how: "The same short row, with the setup's own lines (how it fails, how to manage it) in place of the one-line setup. The full row is one get_theses call away.",
+    why: "A fire is a decision about one stock against its setup's rules, so the rules ride along. Everything else is the same read the morning gets.",
+    keys: SHORT_KEYS.map((k) => (k === "setup" ? "setup_lines" : k)),
   },
   {
-    section: "Numbers",
-    fields: [
-      { key: "score", label: "Score", value: "7/10", sizes: ["line", "short", "full"] },
-      { key: "chart", label: "Chart", value: "20d $402 · 50d $388 · RSI 64 · vs the S&P +9%", sizes: ["short", "full"] },
-      { key: "snapshot", label: "Snapshot", value: "A clean beat and raise; four targets raised after the call.", sizes: ["short", "full"] },
-    ],
+    id: "full-rule",
+    title: "The full row, by rule",
+    when: "Two situations: a quiet watch woke up, or a stock has no setup named. Both answers re-plan the research.",
+    how: "get_theses sends the full row for it unasked: the short row plus the whole snapshot and the seven old sections.",
+    why: "The decision is whether the research still stands, so the research comes. Still no history.",
+    keys: [...SHORT_KEYS, ...FULL_EXTRA],
   },
   {
-    section: "Research",
-    fields: [
-      { key: "bull", label: "Bull case", value: "Five points", sizes: ["short", "full"] },
-      { key: "bear", label: "Bear case", value: "Four points", sizes: ["short", "full"] },
-      { key: "conviction", label: "Why this conviction", value: "Two paragraphs", sizes: ["short", "full"] },
-      { key: "variant", label: "Where we differ from the Street", value: "One paragraph", sizes: ["short", "full"] },
-      { key: "sections", label: "Fundamentals · earnings · filings · insiders", value: "Seven sections", sizes: ["full"] },
-    ],
+    id: "full-name",
+    title: "The full row, by name",
+    when: "An agent asks for one stock: get_theses(tickers: [\"CRWD\"]). The chat does this on a question about a stock; a run does it before a buy.",
+    how: "The full row plus the stock's history: every Activity line ever written on it, with its id.",
+    why: "Asked by name means the agent wants everything the app knows about this one stock.",
+    keys: [...SHORT_KEYS, ...FULL_EXTRA, "history"],
+  },
+  {
+    id: "writer-refresh",
+    title: "The Writer, refreshing a stock",
+    when: "A refresh is dispatched: the owner's chat, a stale write-up, a quiet watch brought back, the one-time rewrite.",
+    how: "The EXISTING THESIS block in the writer's prompt: status, direction, horizon, the belief, the target and floor, the company line, and every trigger by id. Then its own fresh pulls: quote, profile, financials, news, the Street, a web search.",
+    why: "The writer rewrites the claim, so it gets the old claim to argue with and the plan to edit by id. It does not get the old assumptions, cases, conviction reason or variant view: those are what it writes.",
+    keys: ["stock", "belief", "plan", "triggers", "company"],
+  },
+  {
+    id: "writer-mint",
+    title: "The Writer, on a new stock",
+    when: "A dispatch on a name with no thesis: the owner's chat, or a watchlist seed's first research.",
+    how: "Only the dispatch reason, the analyst's strategy and setups, and the writer's own fresh pulls. No thesis fields exist yet.",
+    why: "There is nothing to read. The writer's output is the first version of every field above.",
+    keys: [],
   },
 ];
 
-/** What the model is handed for the example stock, by size. The one line is built the way row-for-model.ts builds it. */
-export const EXAMPLE_LINE = "CRWD · watch · LONG · PEAD · $418.20 · buy $401.00 · target $480.00 · floor $384.00 · review 10-14 · score 7 · catalyst 2026-12-02 · id th_8f2c";
+/** The fields a read lights: every sheet field one of the read's keys carries. */
+export function fieldsLit(read: ReadCase): Set<string> {
+  const keys = new Set(read.keys);
+  return new Set(SHEET_FIELDS.filter((f) => f.keys.some((k) => keys.has(k))).map((f) => f.id));
+}
