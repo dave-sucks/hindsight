@@ -15,9 +15,11 @@
  *     low, the price and our entry to the highest of them: Low (red) and
  *     High (green) as tall lines, the Average as a tall line, our Entry as a
  *     blue line when we hold the stock, and the Current price as a pulsing
- *     dot, each where it really is. Every line and the dot name their price
- *     on hover; under the bar only Low and High are written, as a dot and
- *     muted words like the ratings key; the Average sits in the header. Then the date of
+ *     dot, each where it really is; the ticks between Entry and Current are
+ *     tinted faint green when up and faint red when down. Every line and the
+ *     dot name their price on hover; under the bar Low, Avg and High are a
+ *     dot and muted words like the ratings key; Entry and Now sit in the
+ *     header. Then the date of
  *     the targets and the EPS consensus with its revisions. The old "Price
  *     targets" card drew our own plan here; the plan is the triggers and
  *     the chart's lines, and the word "target" means what the Street expects.
@@ -146,12 +148,33 @@ export function AnalystTargetsCard({
   const span = hi - lo || t.average * 0.1 || 1;
   const usable = COUNT - EDGE_PAD * 2 - 1;
   const idxFor = (p: number) => Math.min(COUNT - 1, Math.max(0, Math.round(EDGE_PAD + ((p - lo) / span) * usable)));
-  const ticks: Tick[] = Array.from({ length: COUNT }, () => ({ color: "bg-muted-foreground/25" }));
+  // The run from where we bought to where it is: a faint green between the two when up, faint red when down.
+  const entryIdx = entry != null ? idxFor(entry) : null;
+  const currentIdx = currentPrice != null ? idxFor(currentPrice) : null;
+  const run = entryIdx != null && currentIdx != null && entryIdx !== currentIdx ? { lo: Math.min(entryIdx, currentIdx), hi: Math.max(entryIdx, currentIdx), color: currentPrice! >= entry! ? "bg-positive/40" : "bg-negative/40" } : null;
+  const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => ({ color: run && i > run.lo && i < run.hi ? run.color : "bg-muted-foreground/25" }));
   const asOf = new Date(`${t.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const eps = coverage?.eps ? epsWords(coverage.eps.nextQuarter, coverage.eps.up, coverage.eps.down) : null;
   return (
     <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
-      <SectionLabel action={<span className="text-xs text-muted-foreground tabular-nums">Avg {money(t.average)}</span>}>
+      <SectionLabel
+        action={
+          <span className="inline-flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
+            {entry != null ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-blue-500" />
+                Entry {money(entry)}
+              </span>
+            ) : null}
+            {currentPrice != null ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-foreground" />
+                Now {money(currentPrice)}
+              </span>
+            ) : null}
+          </span>
+        }
+      >
         Analyst targets
       </SectionLabel>
       <div className="space-y-2">
@@ -179,10 +202,14 @@ export function AnalystTargetsCard({
             </Tooltip>
           ) : null}
         </div>
-        {/* The same key as the ratings card: a coloured dot, muted words. */}
+        {/* The same key as the ratings card: a coloured dot, muted words; Low left, the Average centre, High right. */}
         <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
           <span className="inline-flex items-center gap-1.5">
             {t.low != null ? <><span className="size-1.5 rounded-full bg-negative" />Low {money(t.low)}</> : null}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-foreground" />
+            Avg {money(t.average)}
           </span>
           <span className="inline-flex items-center gap-1.5">
             {t.high != null ? <><span className="size-1.5 rounded-full bg-positive" />High {money(t.high)}</> : null}
