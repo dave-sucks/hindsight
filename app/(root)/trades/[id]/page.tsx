@@ -25,7 +25,6 @@ import { agentWatchDays } from '@/lib/agent/triggers/agent-watch';
 import { canonicalLevels } from '@/lib/agent/triggers/price-levels';
 import { getStockInfo } from '@/lib/actions/stock-info';
 import { cn } from '@/lib/utils';
-import { TradeActions } from '@/components/trades/TradeActions';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -188,7 +187,7 @@ export default async function TradeDetailPage({
           conviction={(trade.thesis?.conviction ?? null) as 'STRONG' | 'HIGH' | 'MEDIUM' | 'LOW' | null}
           analystId={analystIdVal}
           thesisId={trade.thesis?.id}
-          extraActions={<TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />}
+          closeTrade={isOpen ? { tradeId: trade.id } : null}
         />
       </div>
 

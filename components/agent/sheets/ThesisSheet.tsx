@@ -1109,6 +1109,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           analystId={state.analystId}
           thesisId={thesis_id}
           onSent={data.refresh}
+          surface="sheet"
+          expandHref={state.position?.id ? `/trades/${state.position.id}` : `/stocks/${ticker}`}
+          closeTrade={state.position?.id && !state.position.closed ? { tradeId: state.position.id } : null}
         />
         <ThesisBody data={{ ...data, state }} thesis_id={thesis_id} ticker={ticker} surface="sheet" />
       </div>
@@ -1128,7 +1131,7 @@ interface ThesisSheetProps extends ThesisCardData {
 export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" size="xl" floating>
+      <SheetContent side="right" size="xl" floating showCloseButton={false}>
         <SheetHeader className="pb-0">
           <SheetTitle className="sr-only">{data.ticker} Thesis</SheetTitle>
         </SheetHeader>
