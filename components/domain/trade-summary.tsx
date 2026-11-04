@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceChange } from "@/components/ui/price-change";
 import { ProposalNote } from "@/components/domain/proposal-note";
+import { SendToAgentIcon } from "@/components/ui/send-to-agent-icon";
 import type { TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -86,8 +87,8 @@ export function TradeSummary(props: TradeSummaryProps) {
 // ── The banner ──
 // One card for every state (the owner's rule, 2026-11-04): a bordered,
 // muted card that opens the trade, one sentence with the date and the gain
-// on the right. A waiting proposal puts Review on its own line above and
-// leads the sentence with its verb in medium weight; the amber dot says
+// on the right. A waiting proposal gets a small mono PROPOSAL label with the
+// wand icon at the top left and Review at the far right, and leads the sentence with its verb in medium weight; the amber dot says
 // "waiting", so the word "Proposed" is gone. The reason sits under it, two
 // lines until clicked.
 //   • holding          → "Bought N shares at $entry on Oct 5"
@@ -118,7 +119,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       </Tooltip>
     );
   } else if (pp) {
-    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="start" />;
+    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />;
   }
 
   if (pp && pp.intent === "OPEN") {
@@ -148,7 +149,15 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       {position.id ? (
         <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-lg" />
       ) : null}
-      {reviewSlot ? <div className="relative flex justify-start">{reviewSlot}</div> : null}
+      {reviewSlot ? (
+        <div className="relative flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+            <SendToAgentIcon className="size-3" />
+            Proposal
+          </span>
+          {reviewSlot}
+        </div>
+      ) : null}
       <div className="relative flex items-center justify-between gap-3 pointer-events-none">
         <div className="flex items-center gap-1.5 min-w-0 text-sm">
           <span className={cn("size-2 rounded-full shrink-0", dotClass)} />

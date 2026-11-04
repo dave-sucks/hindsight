@@ -52,7 +52,7 @@ export function ProposalNote({ orderId, reason, writing }: { orderId: string; re
   if (paragraphs.length === 0) return null;
   return (
     <div
-      className="space-y-2 cursor-pointer text-sm text-muted-foreground leading-relaxed transition-colors hover:text-foreground"
+      className="space-y-2 cursor-pointer text-xs font-light text-foreground leading-relaxed"
       onClick={() => setOpen((v) => !v)}
       title={open ? "Collapse" : "Expand"}
     >
