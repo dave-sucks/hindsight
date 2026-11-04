@@ -1,24 +1,21 @@
 "use client";
 
 /**
- * The stock page's tabs when no thesis is live on the stock — Overview · Data
- * · Activity · News — with the sidebar beside every tab's content. Overview
- * is the chart, the key stats and Hindsight's history on the stock; Data is
- * the company's numbers, the same tab a thesis has; Activity is the whole
- * history; News is the wire. With a live thesis the page renders the thesis's
- * own body instead (ThesisPageBody). Owns the open tab so Overview's "View
- * all" can switch to Activity.
+ * The stock page's tabs when no thesis is live on the stock — Overview ·
+ * Financials · Activity · News — with the sidebar beside every tab's content,
+ * as on the trade page. With a live thesis the page renders the thesis's own
+ * body instead (ThesisPageBody), with these two tabs after its own. Owns the
+ * open tab so Overview's "View all" can switch to Activity.
  */
 
 import { useState, type ReactNode } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StockOverview, type StockOverviewProps } from "@/components/stocks/StockOverview";
 import { StockHistory } from "@/components/stocks/StockHistory";
-import { ThesisDataTab } from "@/components/agent/sheets/ThesisDataTab";
 import type { StockHistoryItem } from "@/lib/stocks/stock-history";
 
 const OVERVIEW = 0;
-const DATA = 1;
+const FINANCIALS = 1;
 const ACTIVITY = 2;
 const NEWS = 3;
 
@@ -26,6 +23,7 @@ export function StockPageTabs({
   overview,
   stats,
   history,
+  financials,
   news,
   sidebar,
 }: {
@@ -33,6 +31,7 @@ export function StockPageTabs({
   /** The key stats under the chart. */
   stats: ReactNode;
   history: StockHistoryItem[];
+  financials: ReactNode;
   news: ReactNode;
   sidebar: ReactNode;
 }) {
@@ -44,7 +43,7 @@ export function StockPageTabs({
     <Tabs value={tab} onValueChange={(v) => setTab(v as number)}>
       <TabsList>
         <TabsTrigger value={OVERVIEW}>Overview</TabsTrigger>
-        <TabsTrigger value={DATA}>Data</TabsTrigger>
+        <TabsTrigger value={FINANCIALS}>Financials</TabsTrigger>
         <TabsTrigger value={ACTIVITY}>Activity</TabsTrigger>
         <TabsTrigger value={NEWS}>News</TabsTrigger>
       </TabsList>
@@ -56,11 +55,9 @@ export function StockPageTabs({
         </StockOverview>
       </TabsContent>
 
-      <TabsContent value={DATA} className="space-y-5">
+      <TabsContent value={FINANCIALS} className="space-y-5">
         <div className={columns}>
-          <div className="min-w-0 space-y-5">
-            <ThesisDataTab ticker={overview.ticker} />
-          </div>
+          <div className="min-w-0 space-y-5">{financials}</div>
           {side}
         </div>
       </TabsContent>

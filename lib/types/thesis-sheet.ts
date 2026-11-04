@@ -12,7 +12,6 @@
  */
 
 import type { NeedsAction } from "@/lib/agent/needs-action";
-import type { StatColumns, StatSection } from "@/lib/stocks/stock-stats";
 import type { When } from "@/lib/agent/triggers/condition";
 import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 
@@ -396,14 +395,6 @@ export interface ThesisStateLevels {
  * last few reported quarters. What the system DID about a report (fired,
  * reviewed, traded) is the activity log, not this.
  */
-/** GET /api/stocks/:symbol/profile — the company's numbers for the Data tab. */
-export interface StockProfileResponse {
-  symbol: string;
-  about: { exchange: string | null; industry: string | null; ipo: string | null; website: string | null; url: string | null };
-  keyStats: StatColumns;
-  financials: StatSection[];
-}
-
 export interface EarningsResponse {
   /** Next scheduled report. `epsActual` is null. */
   next: EarningsCalendarEntry | null;
