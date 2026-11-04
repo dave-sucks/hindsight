@@ -2,10 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { StockPriceChart, type RangeMove } from '@/components/stocks/StockPriceChart';
-import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import type { ThesisStateLevels } from '@/lib/types/thesis-sheet';
-import type { CardLevel } from '@/components/domain/price-targets-block';
+
+/** A plan level drawn on the chart: the price, whether it is only projected, and the action it fires. */
+export interface CardLevel {
+  price: number;
+  projected: boolean;
+  action?: string;
+}
 
 // Reference-line / marker colors. Hardcoded hex (not CSS vars) because the
 // chart renders to SVG and our theme vars are oklch(), which SVG stroke/fill
@@ -69,7 +74,7 @@ type ThesisChartProps = {
  * and the trade detail page. Horizontal Entry/Target/Stop lines on every
  * surface; vertical "started watching" / "entered" markers only on the full
  * variant (the card's short fixed window usually predates entry). Degrades to
- * the PriceTargetsBlock gauge when there's no candle data, and renders nothing
+ * nothing when there's no candle data, and renders nothing
  * when there's neither a chart nor any price levels to show.
  */
 export function ThesisChart({
@@ -209,21 +214,8 @@ export function ThesisChart({
     };
   }, [wantHourly, hourly, ticker]);
 
-  // ── No candles → gauge fallback (or nothing if there's nothing to show) ──
-  if (candles.length < 2) {
-    if (!hasLevels || entry == null) return null;
-    return (
-      <PriceTargetsBlock
-        entry={entry}
-        target={targetLevel}
-        stop={floorLevel}
-        storedTarget={targetPrice}
-        storedStop={stopLoss}
-        current={current}
-        direction={dir}
-      />
-    );
-  }
+  // No candles: nothing. The plan is the triggers and these lines; there is no second drawing of it.
+  if (candles.length < 2) return null;
 
   // THREE lines: entry, the floor, the target. The same three the Price
   // Targets card shows, so the card and the chart cannot disagree.

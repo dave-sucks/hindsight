@@ -79,7 +79,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
           "A plan has entry, target and stop, or none of them.",
       ),
     entry_on_close: z.boolean().describe("true: the buy fires only on a close past entry_price, not an intraday cross."),
-    target_price: z.number().describe("Where you'd take profit: the target trigger's level."),
+    target_price: z.number().describe("Where you'd take profit: the target trigger's level, from the setup's rule. The Street's average and high are on the row; they inform the level and never set it, and your note says where yours sits against them."),
     target_basis: z.string().describe("Why the target is there, in plain words with the number (\"the July high of $236.54\"). It becomes the target trigger's note."),
     stop_loss: z.number().describe("Where the thesis breaks: the floor trigger's level."),
     stop_basis: z

@@ -540,6 +540,15 @@ every field; the judgment rules:
        – target_price: the setup's target rule (measured move, prior
          high, R multiple), ≥ 2R. target_basis says which, with the
          numbers.
+       – THE STREET (the Analyst Coverage block: targets low / average /
+         high, the rating split, EPS revisions) informs every level and
+         sets none. In conviction_rationale say where your target sits
+         against the Street's average and high. A target above the
+         Street's high, or a buy where the average target sits under the
+         price, needs its reason there. An average target far above the
+         price with estimates revised up in the last 4 weeks is a reason
+         for conviction; a wide low–high spread says the Street is
+         unsettled, not that the midpoint is right.
      If no setup fits the chart, the answer is PASS or an unpriced view
      — not a plan with invented levels.
    • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). When the

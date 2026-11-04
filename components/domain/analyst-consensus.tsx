@@ -1,29 +1,23 @@
 "use client";
 
 /**
- * AnalystConsensusWidget — THE Street-view widget, shared by every surface
- * that shows analyst consensus (thesis sheet, stock page sidebar). One bar,
- * one badge, one collapsible — extracted from ThesisSheet so no surface can
- * hand-roll its own variant again. One consolidated visual:
+ * The Street, in two cards shared by the thesis sheet, the trade page and
+ * the stock page (the owner's design, 2026-11-04):
  *
- *   • Header badge: consensus rating (Buy / Hold / Sell) with the implied
- *     upside % to the consensus average target appended ("Buy +37.1%").
- *     Tooltip explains the math.
+ *   • Analyst ratings — the verdict badge (Buy / Hold / Sell with the upside
+ *     to the average target), one 60-tick bar of how the covering firms
+ *     split Bearish / Neutral / Bullish, and the counts.
  *
- *   • Distribution bar: 60-tick proportional bar showing how the covering
- *     firms split across Bearish / Neutral / Bullish (red / grey / green).
- *     The lowest bear target ($ value, red text) sits above the leftmost
- *     red tick; the highest bull target ($, green text) above the
- *     rightmost green tick — so the bar reads as both "rating distribution"
- *     and "price target range" in a single visual. The average target
- *     anchors the bottom-right corner of the key row.
- *
- *   • Under the bar, the date of the targets and the next-quarter EPS
- *     consensus with its revisions. Live data only: the written synthesis
- *     the Writer used to add was dropped 2026-11-03 with the research essays.
+ *   • Analyst targets — the 12-month targets on a line: Low at the left,
+ *     High at the right, the Average as a tall tick, the Current price as a
+ *     diamond and, when we hold the stock, our Entry as a hollow marker.
+ *     Under it, the date of the targets and the EPS consensus with its
+ *     revisions. The old "Price targets" card drew our own plan here; the
+ *     plan is the triggers and the chart's lines, and the word "target"
+ *     now means what the Street expects.
  *
  * Data comes from getAnalystCoverageData (lib/actions/analyst-coverage) —
- * server-fetched and passed in; the widget itself never fetches.
+ * server-fetched and passed in; the cards never fetch.
  */
 
 import { SectionLabel } from "@/components/domain/section-label";
@@ -69,66 +63,134 @@ export function researchCitationSources(
   return out;
 }
 
-export function AnalystConsensusWidget({
-  coverage,
-  currentPrice,
-  className,
-}: {
-  /** Live analyst coverage from getAnalystCoverageData. */
-  coverage: AnalystCoverageData | null;
-  currentPrice: number | null;
-  className?: string;
-}) {
-  // The live ratings; nothing to draw without them and without targets.
-  const consensus = coverage?.consensus
-    ? {
-        buy: coverage.consensus.buy,
-        hold: coverage.consensus.hold,
-        sell: coverage.consensus.sell,
-        total:
-          coverage.consensus.buy +
-          coverage.consensus.hold +
-          coverage.consensus.sell,
-      }
-    : null;
+type Coverage = AnalystCoverageData | null;
 
-  const priceTargets = coverage?.priceTargets ?? null;
-  const impliedUpsidePct =
-    priceTargets && currentPrice != null && currentPrice > 0
-      ? ((priceTargets.average - currentPrice) / currentPrice) * 100
-      : null;
-  const hasAnyData = (consensus && consensus.total > 0) || priceTargets != null;
-  if (!hasAnyData) return null;
+function consensusOf(coverage: Coverage) {
+  if (!coverage?.consensus) return null;
+  const { buy, hold, sell } = coverage.consensus;
+  return { buy, hold, sell, total: buy + hold + sell };
+}
 
+function impliedUpside(average: number | null | undefined, currentPrice: number | null): number | null {
+  return average != null && currentPrice != null && currentPrice > 0 ? ((average - currentPrice) / currentPrice) * 100 : null;
+}
+
+/** Both cards, in order. `entry` is our fill price when we hold the stock, drawn on the targets line. */
+export function AnalystCards({ coverage, currentPrice, entry = null }: { coverage: Coverage; currentPrice: number | null; entry?: number | null }) {
+  return (
+    <>
+      <AnalystRatingsCard coverage={coverage} currentPrice={currentPrice} />
+      <AnalystTargetsCard coverage={coverage} currentPrice={currentPrice} entry={entry} />
+    </>
+  );
+}
+
+export function AnalystRatingsCard({ coverage, currentPrice, className }: { coverage: Coverage; currentPrice: number | null; className?: string }) {
+  const consensus = consensusOf(coverage);
+  if (!consensus || consensus.total === 0) return null;
+  const average = coverage?.priceTargets?.average ?? null;
   return (
     <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
-      <div className="flex items-baseline justify-between gap-2">
-        <SectionLabel>Analyst Consensus</SectionLabel>
-        {consensus ? (
+      <SectionLabel
+        action={
           <AnalystVerdictBadge
             consensus={consensus}
-            impliedUpsidePct={impliedUpsidePct}
-            avgTarget={priceTargets?.average ?? null}
+            impliedUpsidePct={impliedUpside(average, currentPrice)}
+            avgTarget={average}
             currentPrice={currentPrice}
           />
-        ) : null}
+        }
+      >
+        Analyst ratings
+      </SectionLabel>
+      <ConsensusDistributionRow consensus={consensus} />
+    </Card>
+  );
+}
+
+export function AnalystTargetsCard({
+  coverage,
+  currentPrice,
+  entry = null,
+  className,
+}: {
+  coverage: Coverage;
+  currentPrice: number | null;
+  /** Our fill price while we hold the stock; a hollow marker on the line. */
+  entry?: number | null;
+  className?: string;
+}) {
+  const t = coverage?.priceTargets ?? null;
+  if (!t) return null;
+  const points = [t.low, t.average, t.high, currentPrice, entry].filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const lo = Math.min(...points);
+  const hi = Math.max(...points);
+  const span = hi - lo || t.average * 0.1 || 1;
+  // The same scale as every tick bar: three empty ticks of room at each edge.
+  const COUNT = 60;
+  const EDGE_PAD = 3;
+  const usable = COUNT - EDGE_PAD * 2 - 1;
+  const idxFor = (p: number) => Math.round(EDGE_PAD + ((p - lo) / span) * usable);
+  const pctFor = (p: number) => Math.min(94, Math.max(6, (idxFor(p) / (COUNT - 1)) * 100));
+  const lowIdx = t.low != null ? idxFor(t.low) : -1;
+  const highIdx = t.high != null ? idxFor(t.high) : -1;
+  const avgIdx = idxFor(t.average);
+  const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => {
+    if (i === lowIdx) return { color: "bg-negative", tall: true };
+    if (i === highIdx) return { color: "bg-positive", tall: true };
+    if (i === avgIdx) return { color: "bg-foreground", tall: true };
+    return { color: "bg-muted-foreground/25" };
+  });
+  const floatAt = (pct: number): React.CSSProperties =>
+    pct < 18 ? { left: `${pct}%`, transform: "translateX(-4px)" } : pct > 82 ? { right: `${100 - pct}%`, transform: "translateX(4px)" } : { left: `${pct}%`, transform: "translateX(-50%)" };
+  const asOf = new Date(`${t.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const eps = coverage?.eps ? epsWords(coverage.eps.nextQuarter, coverage.eps.up, coverage.eps.down) : null;
+  return (
+    <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
+      <SectionLabel action={<span className="text-xs text-muted-foreground tabular-nums">Avg ${t.average.toFixed(2)}</span>}>
+        Analyst targets
+      </SectionLabel>
+      <div className="space-y-2">
+        {/* Two label bands above the line, so Entry and Current never collide: Entry on the upper, Current right above the bar. */}
+        <div className="relative h-8 text-xs tabular-nums">
+          {entry != null ? (
+            <span className="absolute top-0 whitespace-nowrap text-muted-foreground" style={floatAt(pctFor(entry))}>
+              Entry ${entry.toFixed(2)}
+            </span>
+          ) : null}
+          {currentPrice != null ? (
+            <span className="absolute bottom-0 whitespace-nowrap font-medium" style={floatAt(pctFor(currentPrice))}>
+              ${currentPrice.toFixed(2)}
+            </span>
+          ) : null}
+        </div>
+        <div className="relative">
+          <TickBar ticks={ticks} />
+          {entry != null ? (
+            <span
+              aria-hidden
+              className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-muted-foreground bg-background"
+              style={{ left: `${pctFor(entry)}%` }}
+            />
+          ) : null}
+          {currentPrice != null ? (
+            <span
+              aria-hidden
+              className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-foreground"
+              style={{ left: `${pctFor(currentPrice)}%` }}
+            />
+          ) : null}
+        </div>
+        <div className="flex items-center justify-between text-xs tabular-nums">
+          <span className="text-negative">{t.low != null ? `Low $${t.low.toFixed(2)}` : ""}</span>
+          <span className="text-positive">{t.high != null ? `High $${t.high.toFixed(2)}` : ""}</span>
+        </div>
       </div>
-
-      {consensus && consensus.total > 0 ? (
-        <ConsensusDistributionRow
-          consensus={consensus}
-          priceTargets={priceTargets}
-        />
-      ) : null}
-
-      {priceTargets ? (
-        <p className="text-xs text-muted-foreground tabular-nums">
-          Targets as of{" "}
-          {new Date(`${priceTargets.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
-          {coverage?.eps ? ` · ${epsWords(coverage.eps.nextQuarter, coverage.eps.up, coverage.eps.down)}` : ""}
-        </p>
-      ) : null}
-
+      <p className="text-xs text-muted-foreground tabular-nums">
+        Targets as of {asOf}
+        {t.numAnalysts != null ? ` · ${t.numAnalysts} analysts` : ""}
+        {eps ? ` · ${eps}` : ""}
+      </p>
     </Card>
   );
 }
@@ -215,97 +277,36 @@ function allocateSlots(counts: number[], slots: number): number[] {
   return out;
 }
 
-function ConsensusDistributionRow({
-  consensus,
-  priceTargets,
-}: {
-  consensus: { buy: number; hold: number; sell: number; total: number };
-  priceTargets: {
-    low: number | null;
-    average: number;
-    median: number | null;
-    high: number | null;
-    numAnalysts: number | null;
-  } | null;
-}) {
-  const { buy, hold, sell } = consensus;
-  // Fixed-width 60-tick bar with segments sized by proportion of each
-  // bucket. Prior approach (1 tick per analyst) looked anemic at 2 analysts
-  // and bled together at 50+ — proportional renders identically at any
-  // analyst count. Order across the bar: Sell (red) → Hold (grey) → Buy
-  // (green), L→R.
-  const [sellSlots, holdSlots, buySlots] = allocateSlots([sell, hold, buy], 60);
 
-  // The leftmost-bear and rightmost-bull ticks get an extra-tall treatment
-  // so they read as the range endpoints when paired with the low/high
-  // price-target labels above the bar.
+/** The rating split as one 60-tick bar, the first bear tick and the last bull tick tall, then the counts. */
+function ConsensusDistributionRow({ consensus }: { consensus: { buy: number; hold: number; sell: number; total: number } }) {
+  const { buy, hold, sell } = consensus;
+  const [sellSlots, holdSlots, buySlots] = allocateSlots([sell, hold, buy], 60);
   const lastBullIdx = sellSlots + holdSlots + buySlots - 1;
   const ticks: Tick[] = Array.from({ length: 60 }, (_, i) => {
     const isLeftmostBear = sell > 0 && i === 0;
     const isRightmostBull = buy > 0 && i === lastBullIdx;
-    // The Price Targets gauge's palette and heights, so the two bars read
-    // as one family: muted fills at base height, the two endpoint markers
-    // full-strength and tall.
     if (isLeftmostBear) return { color: "bg-negative", tall: true };
     if (isRightmostBull) return { color: "bg-positive", tall: true };
-    const color =
-      i < sellSlots
-        ? "bg-negative/40"
-        : i < sellSlots + holdSlots
-          ? "bg-muted-foreground/25"
-          : "bg-positive/40";
+    const color = i < sellSlots ? "bg-negative/40" : i < sellSlots + holdSlots ? "bg-muted-foreground/25" : "bg-positive/40";
     return { color };
   });
-
   return (
     <div className="space-y-1.5">
-      {/* Low/high price-target labels above the bar's endpoints. Red on the
-          left = most bearish firm's 12-mo. target; green on the right =
-          most bullish firm's target. The "Bear Target / Bull Target" prefix
-          spells out what the $ value represents — without it the numbers
-          looked like statistical aggregates of nothing in particular. */}
-      {priceTargets && (priceTargets.low != null || priceTargets.high != null) ? (
-        <div className="flex items-end justify-between text-xs tabular-nums">
-          <span className="text-negative">
-            {priceTargets.low != null
-              ? `Bear Target $${priceTargets.low.toFixed(2)}`
-              : ""}
-          </span>
-          <span className="text-positive">
-            {priceTargets.high != null
-              ? `Bull Target $${priceTargets.high.toFixed(2)}`
-              : ""}
-          </span>
-        </div>
-      ) : null}
-
       <TickBar ticks={ticks} />
-
-      {/* Bottom row: distribution key on the left, average target on the
-          right. Key order matches the bar L→R: Bearish (red) → Neutral
-          (grey) → Bullish (green). Avg is the single "consensus number"
-          — kept in muted text so it reads as label-weight, not a
-          competing headline. */}
-      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-negative" />
-            {sell} Bearish
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-muted-foreground/40" />
-            {hold} Neutral
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-positive" />
-            {buy} Bullish
-          </span>
-        </div>
-        {priceTargets ? (
-          <span className="tabular-nums">
-            Avg ${priceTargets.average.toFixed(2)}
-          </span>
-        ) : null}
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-negative" />
+          {sell} Bearish
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-muted-foreground/40" />
+          {hold} Neutral
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-positive" />
+          {buy} Bullish
+        </span>
       </div>
     </div>
   );

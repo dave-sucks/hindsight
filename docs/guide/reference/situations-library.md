@@ -126,16 +126,16 @@ A watched stock reached its buy level.
 When: a buy trigger fired or is true now on a stock we watch and the analyst has room, or the price sits at the plan's buy level.
 
 Answer, in order:
-1. What is the story right now: the company's news, its sector, the market (get_stock_data, one web_search)? Does it support buying today? A buy into bad news is a fade.
+1. What is the story right now: the company's news, its sector, the market (get_stock_data, one web_search)? Does it support buying today? A buy into bad news is a fade. Where the average target sits against the price (`street`).
 2. Does the price still hold the level? If it touched and slipped back, say so.
-3. Did the setup's confirmation happen? By the setup (the row's `setup` line, or its `setup_lines`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
-4. Is it chased? A buy that fired unanswered shows in `plan_checks`, with the setup's chase limit and how far past it the stock is.
+3. Did the setup confirm? By the setup (the row's `setup` line, or its `setup_lines`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
+4. Is it chased? An unanswered buy shows in `plan_checks`, with the chase limit and how far past it the stock is.
 5. Did the principal decline this buy (`said`), with nothing they named changed since? Then say so and pass.
 6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view.
 
 What you can do:
 - Buy, only when every check above holds: place_trade (it sizes the buy), then one update_thesis.
-- Re-price: update_thesis with edit_triggers on the buy's id, at a level from the chart's structure.
+- Re-price: edit_triggers on the buy's id, at a level from the chart's structure.
 - Set the plan down: update_thesis with remove_trigger_ids naming the buy, floor and target, keeping a review.
 
 Answered: one of those. A buy left as a note comes back on the next morning run as a plan check or a live match; a note does answer a buy whose price slipped back.
@@ -145,7 +145,7 @@ The note: what is going on with the company and why now is the time to buy or no
 Mistakes:
 - place_trade after a check failed.
 - Volume as the reason on a pullback, a compounder or a pre-catalyst buy, or before mid-session.
-- Moving the buy above the price to dodge it: it comes back as a plan check, with the count.
+- Moving the buy above the price to dodge it: it comes back as a plan check.
 ```
 
 ## Buy blocked, full
@@ -186,7 +186,7 @@ When: an add trigger fired or is true now on a stock we hold, or the holding has
 
 Answer, in order:
 1. Why did it move: its news, its sector, the market (get_stock_data, one web_search; get_market_context for a drop)? A rise counts only if it confirms the thesis: the catalyst playing out, estimates rising, healthy structure, not an exhaustion chase. A drop counts only if it is market- or sector-wide, the thesis intact and support holding.
-2. Does the live price still confirm, with no headline against it, and does the reward to a justified target still beat the risk?
+2. Does the live price still confirm, with no headline against it, and does the reward to a justified target still beat the risk? The Street's average target (`street`) is one reading of what is left.
 3. Did the principal decline this add (`said`), with nothing they named changed since? Then say so and pass.
 
 What you can do (one of these):
@@ -374,16 +374,16 @@ The review clock came round, or a review fired, and nothing else covers it.
 When: the review clock came due on a LONG or SHORT stock, or a review trigger fired or is true now and no other situation covers it.
 
 Answer, in order:
-1. Has the principal said something not yet answered (`said`)? Answer it first.
-2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search)?
-3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has. Price being down is not on the list unless you wrote it there.
+1. Anything from the principal not yet answered (`said`)? Answer it first.
+2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search), and the Street (`street`)?
+3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has. A falling price is not on the list unless you wrote it there.
 4. Is the setup still working? The `setup` line: its failure signs, the manage rule, the time limit.
 5. Did the world move past the levels? An add level blown through, a floor lagging the gain (the `protection` line), a fired checkpoint never replaced, a target the street re-rated past.
 
 What you can do:
-- Patch the plan: update_thesis with edit_triggers on the levels that moved, by id.
+- Patch the plan: edit_triggers on the levels that moved, by id.
 - The plan stands: update_thesis with a rationale only (trigger_id only when several fired).
-- Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one level or move that can still fire, and say what would bring the stock back.
+- Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one wake that can still fire, and say what would bring the stock back.
 - A condition that happened is an exit: close_position with belief_survived false.
 - No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.
 
@@ -402,16 +402,16 @@ In a trigger run it reads:
 When: the review clock came due on a LONG or SHORT stock, or a review trigger fired or is true now and no other situation covers it.
 
 Answer, in order:
-1. Has the principal said something not yet answered (`said`)? Answer it first.
-2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search)?
-3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has. Price being down is not on the list unless you wrote it there.
+1. Anything from the principal not yet answered (`said`)? Answer it first.
+2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search), and the Street (`street`)?
+3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has. A falling price is not on the list unless you wrote it there.
 4. Is the setup still working? The `setup` line: its failure signs, the manage rule, the time limit.
 5. Did the world move past the levels? An add level blown through, a floor lagging the gain (the `protection` line), a fired checkpoint never replaced, a target the street re-rated past.
 
 What you can do:
-- Patch the plan: update_thesis with edit_triggers on the levels that moved, by id.
+- Patch the plan: edit_triggers on the levels that moved, by id.
 - The plan stands: update_thesis with a rationale only (trigger_id only when several fired).
-- Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one level or move that can still fire, and say what would bring the stock back.
+- Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one wake that can still fire, and say what would bring the stock back.
 - A condition that happened is an exit: close_position with belief_survived false.
 - No longer applicable: on a stock we watch, take its buy, floor and target down by id (remove_trigger_ids) and say so in the note; the morning run decides whether it stays on the book. A stock we hold is sold with close_position, which retires the thesis.
 
@@ -460,7 +460,7 @@ When: a watched stock's plan contradicts the tape or the calendar. The `plan_che
 
 Answer, in order:
 1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?
-2. What does each check say? Read its numbers.
+2. What does each check say? Read its numbers, and the `street` line: where the Street's targets sit against the plan's levels.
 
 What you can do, for each check:
 - Fix the number: update_thesis with the re-anchored level (edit_triggers on its id) and a rationale.

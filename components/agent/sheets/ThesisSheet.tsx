@@ -13,7 +13,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLivePoll } from "@/hooks/useLivePoll";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { ThesisChart } from "@/components/domain/thesis-chart";
 import {
@@ -55,7 +54,7 @@ import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectionLabel } from "@/components/domain/section-label";
 import {
-  AnalystConsensusWidget,
+  AnalystCards,
   researchCitationSources,
 } from "@/components/domain/analyst-consensus";
 import { SourceCitation } from "@/components/ai-elements/inline-citation";
@@ -823,17 +822,6 @@ export function ThesisBody({
   const entryPrice = state.levels?.entry?.price ?? state.entryPrice;
   const targetPrice = state.targetPrice;
   const stopLoss = state.stopLoss;
-  const floorLevel = state.levels?.floor ?? null;
-  const targetLevel = state.levels?.target ?? null;
-  // Show the block when there is either a live level or a stored number worth
-  // flagging — a decorative stop is exactly what the reader needs to see.
-  const showLevels =
-    !isPass &&
-    entryPrice != null &&
-    (targetLevel != null ||
-      floorLevel != null ||
-      targetPrice != null ||
-      stopLoss != null);
 
   // The price row's move. On 1D it is the quote's own day change — the live
   // price against yesterday's close, the same number the ticker tape shows.
@@ -853,7 +841,7 @@ export function ThesisBody({
     coverageLoading && !coverage ? (
       <Skeleton className="h-40 w-full rounded-lg" />
     ) : (
-      <AnalystConsensusWidget coverage={coverage} currentPrice={quote?.currentPrice ?? null} />
+      <AnalystCards coverage={coverage} currentPrice={quote?.currentPrice ?? null} entry={position && !position.closed ? position.avgCost : null} />
     );
 
   // The trade, in its two looks. The banner sits under the price: on the
@@ -886,17 +874,6 @@ export function ThesisBody({
   // sheet) they close the Overview.
   const stockCards = (
     <>
-      {showLevels && entryPrice != null ? (
-        <PriceTargetsBlock
-          entry={entryPrice}
-          target={targetLevel}
-          stop={floorLevel}
-          storedTarget={targetPrice}
-          storedStop={stopLoss}
-          current={quote?.currentPrice ?? null}
-          direction={direction === "SHORT" ? "SHORT" : "LONG"}
-        />
-      ) : null}
       {wallStreet}
       {earnings ? <EarningsCard data={earnings} /> : null}
     </>
