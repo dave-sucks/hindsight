@@ -51,6 +51,8 @@ When you type. With an [analyst](../concepts/analysts.md) selected, chat works f
 - **The record:** `list_runs`, `read_run` and `read_trade_results`, what the analysts did and how their trades turned out.
 - **Research:** the market data, filings, earnings, the web and X, the same tools as every other agent.
 
+Every message you send reaches chat with the day, the time and whether the market is open. A lookup older than 15 minutes is hidden from it, so it looks again before it quotes a price. A conversation picked up days later never answers from the old numbers. What chat changed (a trade, an edit, a note) stays visible, so it never does it twice.
+
 ## What it decides
 
 When your message is clear ("raise the floor to $1,650", "sell NVDA"), chat says what it's doing in one sentence and does it.
@@ -94,6 +96,9 @@ With an analyst selected, the chat is a `PRINCIPAL_CHAT` run on that analyst, so
 
 #### Notes
 `write_note`, only after a yes on `ask_question` or when you asked for one.
+
+#### Old lookups
+`hideOldLookups` and `withTheTime` in `lib/agent/old-lookups.ts`. Every tool result carries `at`, the time it ran (`defineTool`).
 
 #### Route
 `app/api/agent/[mode]/route.ts`

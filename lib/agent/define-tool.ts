@@ -187,6 +187,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
             summary: result.summary,
             data: result.data,
             sources: result.sources ?? [],
+            at: new Date().toISOString(),
           };
         } catch (err) {
           const elapsed = Date.now() - t0;
