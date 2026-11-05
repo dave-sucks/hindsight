@@ -8,7 +8,7 @@ It reads the same theses and runs the same research as every other agent, and it
 Model: claude-sonnet-4-6
 Starts: When you type
 Steps: Up to 45
-Tools: 30
+Tools: 29
 Saves: 24 fields: also belief, direction
 ```
 

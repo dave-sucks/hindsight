@@ -274,7 +274,7 @@ model Thesis {
   // idea came from so we can audit compliance from the DB (not just logs)
   // and later bucket theses by origin for hit-rate analysis. Nullable
   // because legacy rows predate this column.
-  sourceKind      String? // "ROUTED_SIGNAL" | "WEB_SEARCH" | "WATCHLIST_REVIEW" | "POSITION_REVIEW" | "USER_ADDED" | "BUILDER_SEED" | "EDITOR_SEED"
+  sourceKind      String? // "ROUTED_SIGNAL" | "WEB_SEARCH" | "WATCHLIST_REVIEW" | "POSITION_REVIEW" | "OUTSIDE_IDEA" | "USER_ADDED" | "BUILDER_SEED" | "EDITOR_SEED"
   sourceRationale String?
 
   // ── Thesis Durable State (PR 1) ──────────────────────────────────────

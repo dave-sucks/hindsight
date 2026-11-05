@@ -114,10 +114,10 @@ const recordFields = z.object({
   // the signal router (deleted 2026-09-15); the stored column keeps the old
   // values on old rows.
   source_kind: z
-    .enum(["WEB_SEARCH", "WATCHLIST_REVIEW", "POSITION_REVIEW"])
+    .enum(["WEB_SEARCH", "WATCHLIST_REVIEW", "POSITION_REVIEW", "OUTSIDE_IDEA"])
     .optional()
     .describe(
-      "Where this thesis came from: WEB_SEARCH, WATCHLIST_REVIEW (reviewing your own watchlist) or POSITION_REVIEW (reviewing an open position)."
+      "Where this thesis came from: WEB_SEARCH, WATCHLIST_REVIEW (reviewing your own watchlist), POSITION_REVIEW (reviewing an open position) or OUTSIDE_IDEA (someone else's thesis: a post, an article; name who in source_rationale)."
     ),
   source_rationale: z
     .string()

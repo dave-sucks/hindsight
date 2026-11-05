@@ -10,7 +10,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { send: jest.fn() } }));
 import type { z } from "zod";
-import { dispatchThesisResearch, trimScreenRow, SCREEN_ROW_MAX } from "./dispatch-thesis-research";
+import { dispatchThesisResearch, trimScreenRow, SCREEN_ROW_MAX, RESEARCH_NOTES_MAX, IDEA_TEXT_MAX } from "./dispatch-thesis-research";
 
 const LUXE_ROW =
   "Reported 2026-09-16, EPS +111% vs est, all three segments returned to growth (Q4 GMV +7.9%), gapped ~17% on 18× volume. Gap held — stock added another +3.3% day-after on 3.6× volume. Price $9.48, 27-day base (depth 12%) broken out. RS vs SPY +26pts 1M, +21pts 3M. In-universe $1.2B market cap. Caution: Trend Template 5/8 — 150/200-day stack not fully aligned; this is a post-earnings drift play inside a longer-term recovery, not a classic stage-2 breakout.";
@@ -46,5 +46,29 @@ describe("dispatch_thesis_research — the screen row", () => {
 
   it("a row with no spaces is still cut to fit", () => {
     expect(trimScreenRow("x".repeat(900)).length).toBe(SCREEN_ROW_MAX);
+  });
+});
+
+describe("dispatch_thesis_research — the sender's notes and a pasted idea", () => {
+  it("long notes and a long post are trimmed at a whole word, never refused", () => {
+    const parsed = schemaOf().safeParse({
+      ticker: "LUXE",
+      analyst_id: "cmnhxpjio000004jvox6kl6c7",
+      mode: "mint",
+      reason: "Survives PEAD triage — dispatching for the deep look.",
+      research_notes: "word ".repeat(900),
+      idea_source: { author: "@example_author on X", text: "claim ".repeat(900) },
+    });
+    expect(parsed.success).toBe(true);
+    const d = parsed.data as { research_notes: string; idea_source: { author: string; text: string } };
+    expect(d.research_notes.length).toBeLessThanOrEqual(RESEARCH_NOTES_MAX);
+    expect(d.research_notes.endsWith("word…")).toBe(true);
+    expect(d.idea_source.text.length).toBeLessThanOrEqual(IDEA_TEXT_MAX);
+    expect(d.idea_source.author).toBe("@example_author on X");
+  });
+
+  it("an idea needs only who wrote it", () => {
+    const parsed = schemaOf().safeParse({ ticker: "LUXE", analyst_id: "a", mode: "mint", reason: "From a post the owner pasted.", idea_source: { author: "the owner" } });
+    expect(parsed.success).toBe(true);
   });
 });
