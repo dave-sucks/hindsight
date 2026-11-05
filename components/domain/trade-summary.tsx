@@ -7,10 +7,12 @@
  * and the same live P&L (the quote's), so the numbers can't drift between
  * them. What differs is the look:
  *
- *   • "banner" — the muted card under the price that opens the trade: one
- *     sentence with the date and the gain, a waiting proposal's line and
- *     Review above it, its reason under it. The sheet shows it in every state; the page shows it only
- *     while a proposal waits (the card carries the held numbers there).
+ *   • "banner" — the muted card under the price that opens the trade: a
+ *     title row with a coloured dot (Proposal / Position / Closed position,
+ *     Review at its right while a proposal waits), the sentence with the
+ *     date and the gain, and a waiting proposal's reason under it. The sheet
+ *     shows it in every state; the page shows it only while a proposal waits
+ *     (the card carries the held numbers there).
  *   • "card"   — the page's right-hand position card: status pill and days
  *     held, the gain in the header's PriceChange, then Bought / Sold / Now /
  *     Exit rows in the Trade Details style. Nothing while a buy is only
@@ -85,16 +87,15 @@ export function TradeSummary(props: TradeSummaryProps) {
 }
 
 // ── The banner ──
-// One card for every state (the owner's rule, 2026-11-04): a bordered,
-// muted card that opens the trade, one sentence with the date and the gain
-// on the right. A waiting proposal gets a small mono PROPOSAL label at the
-// top left and Review at the far right, and leads the sentence with its verb in medium weight; the amber dot says
-// "waiting", so the word "Proposed" is gone. The reason sits under it, two
-// lines until clicked.
-//   • holding          → "Bought N shares at $entry on Oct 5"
-//   • closed           → "Sold N shares at $close on Nov 19"
-//   • held + pending   → "Sell: Bought N shares at $entry on Oct 5"
-//   • pending buy      → "Buy N shares at $entry on Nov 19"
+// One card for every state, two rows at least (the owner's rule, 2026-11-04,
+// finalised the same night): the stock cards' surface (muted, bordered), a
+// title row like the Triggers and Agent insights headings with a coloured
+// dot where their icon sits, then the sentence, left-aligned, with the gain
+// on its right, then a waiting proposal's reason.
+//   • proposal waiting → amber dot · "Proposal" · Review at the right
+//                        "Sell: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
+//   • holding          → blue dot · "Position" · "Bought N shares at $entry on Oct 5"
+//   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close on Nov 19"
 function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummaryProps) {
   const pp = pendingProposal;
   const usd = (n: number) => formatCurrency(n);
@@ -105,7 +106,8 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
   let lead: string | null = null;
   let rest: string;
   let gain: TradeStatementGain | null = null;
-  let dotClass = "bg-muted-foreground/40";
+  let title: string;
+  let dotClass: string;
 
   // Review while the decision is yours; "Executing" once the order is at Alpaca.
   let reviewSlot: ReactNode = null;
@@ -125,10 +127,12 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
   if (pp && pp.intent === "OPEN") {
     lead = direction === "SHORT" ? "Short" : "Buy";
     rest = ` ${shares(pp.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
+    title = "Proposal";
     dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
   } else if (pp) {
     lead = `${pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim"}:`;
     rest = ` ${bought}`;
+    title = "Proposal";
     dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
     gain = unrealized;
   } else if (position.closed) {
@@ -137,48 +141,50 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
       (position.closePrice != null ? ` at ${usd(position.closePrice)}` : "") +
       (position.closedAt ? ` on ${fmtTradeDate(position.closedAt)}` : "");
     if (position.realizedPnl != null) gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
+    title = "Closed position";
+    dotClass = getTradeStatusDisplay((position.realizedPnl ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
   } else {
     rest = bought;
+    title = "Position";
     dotClass = getThesisStatusDisplay("HOLDING").dotClass;
     gain = unrealized;
   }
 
-  // Outline only; a background on hover. The click opens the trade, except on
-  // a waiting proposal, where it expands the reason instead.
+  // The click opens the trade, except on a waiting proposal, where it expands the reason instead.
   const proposal = Boolean(pp && !pp.executing);
   const [expanded, setExpanded] = useState(false);
   return (
-    <div
-      className={cn("relative rounded-lg border px-4 py-3 space-y-1.5 transition-colors hover:bg-muted/40", proposal && "cursor-pointer")}
+    <Card
+      className={cn("relative bg-muted/40 p-3 gap-2", proposal && "cursor-pointer")}
       onClick={proposal ? () => setExpanded((v) => !v) : undefined}
     >
       {/* The whole card opens the trade: a stretched link under the content, never a link around the controls. */}
       {position.id && !proposal ? (
-        <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-lg" />
+        <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-xl" />
       ) : null}
-      {/* The label and the reason start where the sentence's text starts: past the dot (8px) and its gap (6px). */}
-      {reviewSlot ? (
-        <div className="relative flex items-center gap-3 pl-[14px]">
-          <SectionLabel>Proposal</SectionLabel>
-          <span className="ml-auto flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>
-        </div>
-      ) : null}
-      <div className="relative flex items-center justify-between gap-3 pointer-events-none">
-        <div className="flex items-center gap-1.5 min-w-0 text-sm">
+      {/* The title row: the dot where the other headings keep their icon; Review (or Executing) at the right edge. */}
+      <SectionLabel
+        className="relative"
+        action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
+      >
+        <span className="inline-flex items-center gap-1.5">
           <span className={cn("size-2 rounded-full shrink-0", dotClass)} />
-          <span className="font-normal tabular-nums truncate">
-            {lead ? <span className="font-medium">{lead}</span> : null}
-            {rest}
-          </span>
-        </div>
+          {title}
+        </span>
+      </SectionLabel>
+      <div className="relative flex items-center justify-between gap-3 pointer-events-none text-sm">
+        <span className="font-normal tabular-nums truncate">
+          {lead ? <span className="font-medium">{lead}</span> : null}
+          {rest}
+        </span>
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
       </div>
       {pp && !pp.executing ? (
-        <div className="relative pl-[14px]">
+        <div className="relative">
           <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
