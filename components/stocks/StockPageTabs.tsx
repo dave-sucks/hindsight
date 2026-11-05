@@ -22,7 +22,6 @@ const NEWS = 3;
 
 export function StockPageTabs({
   overview,
-  stats,
   transactions,
   held,
   financials,
@@ -30,8 +29,6 @@ export function StockPageTabs({
   sidebar,
 }: {
   overview: StockOverviewProps;
-  /** The key stats under the chart. */
-  stats: ReactNode;
   /** Every fill on the stock. */
   transactions: FillFacts[];
   /** The open position, for the total line's "still holding". */
@@ -55,7 +52,6 @@ export function StockPageTabs({
 
       <TabsContent value={OVERVIEW} className="space-y-5">
         <StockOverview {...overview} sidebar={sidebar}>
-          {stats}
           <Transactions ticker={overview.ticker} fills={transactions} limit={5} onViewAll={() => setTab(TRANSACTIONS)} openThesis held={held} currentPrice={overview.price} />
         </StockOverview>
       </TabsContent>

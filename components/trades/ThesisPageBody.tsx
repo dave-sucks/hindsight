@@ -8,8 +8,8 @@ import type { FillFacts } from "@/lib/stocks/stock-history";
  * A thesis as a page body: the sheet's body with a sidebar — the same tabs,
  * chart, triggers and notes, loaded the same way the sheet loads them. The
  * trade page pins its own position row; the stock page hands in every trade
- * on the stock for the Transactions tab, its key stats under the chart, its
- * Financials and News tabs, and hides the plan and the Activity tab (it is
+ * on the stock for the Transactions tab, its Financials (the key stats at the
+ * top) and News tabs, and hides the plan and the Activity tab (it is
  * the stock, not the trade). The body puts the stock cards in the sidebar
  * itself; `aside` is a page's extra card (the stock page's About). While the
  * thesis loads it sits beside the skeleton.
@@ -20,7 +20,6 @@ export function ThesisPageBody({
   ticker,
   aside,
   moreTabs,
-  underChart,
   transactions,
   showTriggers,
   showActivity,
@@ -30,7 +29,6 @@ export function ThesisPageBody({
   ticker: string;
   aside?: ReactNode;
   moreTabs?: Array<{ label: string; content: ReactNode }>;
-  underChart?: ReactNode;
   transactions?: FillFacts[];
   showTriggers?: boolean;
   showActivity?: boolean;
@@ -61,7 +59,6 @@ export function ThesisPageBody({
       surface="page"
       aside={aside}
       moreTabs={moreTabs}
-      underChart={underChart}
       transactions={transactions}
       showTriggers={showTriggers}
       showActivity={showActivity}

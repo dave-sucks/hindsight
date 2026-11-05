@@ -235,10 +235,12 @@ export default async function StockDetailPage({ params }: Props) {
     </Card>
   );
 
-  // The Financials tab: the statistics table and the filings.
+  // The Financials tab: the key stats first (the owner, 2026-11-05), then
+  // the statistics table and the filings. With or without a live thesis.
   const statSections = financialStatSections(metrics, marketCap);
   const financials = (
     <>
+      <StatBlock columns={keyStatColumns(quote, metrics, marketCap)} />
       {statSections.length > 0 ? (
         <StatTable sections={statSections} />
       ) : (
@@ -250,9 +252,6 @@ export default async function StockDetailPage({ params }: Props) {
       </div>
     </>
   );
-
-  // The key stats under the chart, with or without a live thesis.
-  const stats = <StatBlock columns={keyStatColumns(quote, metrics, marketCap)} />;
 
   // No live thesis: the trades we made in it, who the company is, Wall
   // Street and the earnings record.
@@ -289,7 +288,7 @@ export default async function StockDetailPage({ params }: Props) {
         {/* The same header the trade page and the sheet render: with a live
             thesis, its status and conviction beside the name. href={null}:
             we're already on the stock page. */}
-        <div className="mb-6">
+        <div className="mb-3">
           {live ? (
             <ThesisHeader
               ticker={upperSymbol}
@@ -320,14 +319,13 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
 
         {live ? (
-          // The stock, not the trade: the thesis's view with the stats under
-          // the chart, no plan on the Overview, no Activity tab, and every
-          // trade on the stock under Transactions.
+          // The stock, not the trade: the thesis's view with no plan on the
+          // Overview, no Activity tab, every trade on the stock under
+          // Transactions, and the stock's Financials and News after.
           <ThesisPageBody
             thesisId={live.id}
             ticker={upperSymbol}
             aside={aboutCard}
-            underChart={stats}
             transactions={transactions}
             showTriggers={false}
             showActivity={false}
@@ -348,7 +346,6 @@ export default async function StockDetailPage({ params }: Props) {
                 ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
                 : null,
             }}
-            stats={stats}
             transactions={transactions}
             held={open ? { shares: Number(open.quantity), avgCost: Number(open.avgCost) } : null}
             financials={financials}

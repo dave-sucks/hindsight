@@ -785,7 +785,6 @@ export function ThesisBody({
   surface,
   aside,
   moreTabs,
-  underChart,
   transactions,
   showTriggers = true,
   showActivity = true,
@@ -801,8 +800,6 @@ export function ThesisBody({
   aside?: ReactNode;
   /** More tabs after Transactions (the stock page's Financials and News). */
   moreTabs?: Array<{ label: string; content: ReactNode }>;
-  /** Between the chart and the tabs (the stock page's key stats). */
-  underChart?: ReactNode;
   /** The Transactions tab's fills. Omitted, the thesis's own trades' fills (the route's). */
   transactions?: FillFacts[];
   /** The stock page hides the plan: it is the stock, not the trade. */
@@ -883,10 +880,9 @@ export function ThesisBody({
     </>
   );
 
-  // The page's two columns: the tab's content on the left, the cards on the
-  // right. Each tab opens its own pair under the tab bar — on Overview under
-  // the price row too — so the cards start level with the chart. Only the
-  // open tab is mounted, so the cards render once.
+  // The page's two columns: the chart and the tabs on the left, the cards on
+  // the right. The price row sits above both, with the header, so the chart
+  // and the first card start level (the owner, 2026-11-05).
   // The stock's newest 8 Activity lines: what the agents are handed, as Activity rows.
   const recent = state.recent ?? [];
   const noted = state.noted ?? [];
@@ -972,28 +968,28 @@ export function ThesisBody({
   const tabOptions = tabs.map((t) => ({ value: t.value, label: t.label }));
 
   return (
-    <div className={columns}>
-    <div className="min-w-0">
-    <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-4">
-      {/* ── Above the tabs on every tab (the owner's order, 2026-11-04): the price, the trade, the chart ── */}
-      {/* ── Live price + the selected range's move ───────────── */}
+    <div className="flex flex-col gap-4">
+      {/* ── The price closes the header (the owner's order, 2026-11-05): the live price and the selected range's move, one size up on desktop, above both columns; on the sheet the trade under it ── */}
       {/* Hydrates from /quote after the dossier paints: skeleton while in
           flight, nothing if the vendor failed (currentPrice null). */}
       {quoteLoading ? (
-        <Skeleton className="h-7 w-32" />
+        <Skeleton className="h-7 w-32 sm:h-8" />
       ) : quote?.currentPrice != null ? (
         <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-          <span className="text-xl font-semibold tabular-nums">
+          <span className="text-xl font-semibold tabular-nums sm:text-2xl">
             {formatCurrency(quote.currentPrice)}
           </span>
           {shownMove ? (
-            <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" />
+            <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" className="sm:text-2xl sm:[&_svg]:size-6" />
           ) : null}
         </div>
       ) : null}
       {tradeBanner}
 
-      {/* ── Price chart (annotated) ───────────────────────────── */}
+    <div className={columns}>
+    <div className="min-w-0">
+    <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-4">
+      {/* ── Price chart (annotated), the first thing in the column ─── */}
       {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
           markers. Its selected range's move prints in the price row above,
           not inside the chart. */}
@@ -1019,8 +1015,6 @@ export function ThesisBody({
         />
       ) : null}
 
-      {underChart}
-
       {/* The sections, as chips: the chart is always worth the screen; the chips pick what sits under it. */}
       <ChipTabs options={tabOptions} value={tab} onChange={(v) => { if (v != null) setTab(String(v)); }} clearable={false} />
 
@@ -1032,6 +1026,7 @@ export function ThesisBody({
     </Tabs>
     </div>
     {sideColumn}
+    </div>
     </div>
   );
 }
@@ -1071,7 +1066,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         invalidatedAt={state.invalidatedAt ?? null}
         invalidReason={state.invalidReason ?? null}
       />
-      <div className="space-y-4">
+      <div className="space-y-3">
         <ThesisHeader
           ticker={ticker}
           // Identity rides in the payload (StockInfo cache via quote) — one
