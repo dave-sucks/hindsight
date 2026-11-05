@@ -11,6 +11,8 @@ import { useEffect, useState } from "react";
 import { carriesNumber, rowLabel, shapeOf } from "@/lib/agent/triggers/condition";
 import { AddTrigger } from "@/components/agent/triggers/TriggerDialog";
 import { SectionLabel } from "@/components/domain/section-label";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { FlashIcon } from "@hugeicons/core-free-icons";
 import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 
 // The thesis-sheet contract types (the /triggers payload shape) live in
@@ -74,7 +76,7 @@ export function TriggerGroups({
         return (
           <div key={action} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
             {/* Each trim pill leads with its size: "Trim [30% if | above | $150]". */}
-            <span className="shrink-0 text-sm text-muted-foreground">{rowLabel(action, level === "THESIS" ? held : undefined)}</span>
+            <span className="shrink-0 text-sm text-foreground">{rowLabel(action, level === "THESIS" ? held : undefined)}</span>
             {items.map((t) => (
               <TriggerPill
                 key={t.id}
@@ -180,7 +182,10 @@ export function ThesisTriggersSection({
   return (
     <div className="space-y-3">
       <SectionLabel action={editable ? <AddTrigger level="THESIS" held={held} endpointBase={endpointBase} onChanged={onChanged} label="Add" size="xs" /> : null}>
-        Triggers
+        <span className="inline-flex items-center gap-1.5">
+          <HugeiconsIcon icon={FlashIcon} className="size-3.5" />
+          Triggers
+        </span>
       </SectionLabel>
       {shownTriggers.length === 0 ? (
         <p className="text-xs text-muted-foreground">

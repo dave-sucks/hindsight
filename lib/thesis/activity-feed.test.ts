@@ -4,7 +4,7 @@
  * (Secular Compounder): three sale proposals, three trigger-run notes, four
  * fires and the expiry job's lines, as stored. Text cut to its opening.
  */
-import { activityFeed, proposalSteps, recentItems, serializeFeedItem, RECENT_ITEMS, type ProposalOrder, type StoredLine } from "./activity-feed";
+import { activityFeed, hasWrittenParagraph, notedItems, proposalSteps, recentItems, serializeFeedItem, NOTED_ITEMS, RECENT_ITEMS, type ProposalOrder, type StoredLine } from "./activity-feed";
 import { saidBlock, unansweredWord } from "@/lib/agent/stock-context";
 import { isPlainReview, reviewTitle, titleSegments, toRow, withPriceChanges, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
 
@@ -83,10 +83,25 @@ describe("one list: the saved lines and each proposal's steps, newest first", ()
   });
 });
 
-describe("the newest 8: what the Overview shows and the next run reads", () => {
+describe("the newest 8: what the next run reads", () => {
   it("GEV on the night of 10-29: the 15% review, today's note and sale, yesterday's lapse, the 200-day review, yesterday's two notes and sale", () => {
     expect(recentItems(feed).map((i) => i.id)).toEqual(feed.slice(0, RECENT_ITEMS).map((i) => i.id));
     expect(recentItems(feed)).toHaveLength(8);
+  });
+
+  it("the Overview's Agent insights are the newest 5 with a written paragraph: notes and proposals, never a fire's figures", () => {
+    const noted = notedItems(feed);
+    expect(noted.length).toBeLessThanOrEqual(NOTED_ITEMS);
+    expect(noted.every(hasWrittenParagraph)).toBe(true);
+    expect(noted.map((i) => i.type)).not.toContain("TRIGGER_FIRED");
+    // The 200-day fire carries the check's figures as its rationale; it is not a write-up.
+    expect(hasWrittenParagraph(feed.find((i) => i.id === "cmvsfpzci000208l10mo0s5jr")!)).toBe(false);
+    // Yesterday's two notes are write-ups and make the cut.
+    expect(noted.map((i) => i.id)).toEqual(expect.arrayContaining(["cmvs5xab6000x07lhxdh577tr", "cmvs5wxyn000n07lhrwg6r637"]));
+    // Newest first, like the feed.
+    expect(noted.map((i) => i.timestamp.getTime())).toEqual([...noted].map((i) => i.timestamp.getTime()).sort((x, y) => y - x));
+    // The owner's words on a proposal count as a paragraph.
+    expect(hasWrittenParagraph({ type: "PROPOSAL_DECLINED", rationale: null, fieldChanges: { proposal: { to: { userMessage: "Not at this price." } } } })).toBe(true);
   });
 
   it("the agent's block is those 8 lines as the owner sees them, titles and paragraphs whole, newest first", () => {

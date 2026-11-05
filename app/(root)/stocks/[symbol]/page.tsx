@@ -268,7 +268,7 @@ export default async function StockDetailPage({ params }: Props) {
       ) : null}
       {aboutCard}
       <AnalystCards coverage={coverage} currentPrice={price} />
-      {earnings ? <EarningsCard data={earnings as unknown as EarningsResponse} /> : null}
+      {earnings ? <EarningsCard data={earnings as unknown as EarningsResponse} streetEps={coverage?.eps?.nextQuarter ?? null} /> : null}
     </>
   );
 

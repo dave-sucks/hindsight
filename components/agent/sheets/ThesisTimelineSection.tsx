@@ -31,6 +31,10 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AiEditingIcon } from "@hugeicons/core-free-icons";
+import { NOTED_ITEMS, RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { PriceChange } from "@/components/ui/price-change";
 import {
   buildTimeline,
@@ -49,6 +53,7 @@ import {
   type TimelineRow,
   type TimelineUpdate,
   type TitleTrigger,
+  proposalOutcomeWord,
 } from "@/components/agent/sheets/thesis-timeline-utils";
 
 // When the sheet opens from a run-detail page (/runs/[id]), entries whose
@@ -105,7 +110,7 @@ function Dot({ kind, pulse }: { kind: DotKind; pulse: boolean }) {
               : kind === "declined"
                 ? "bg-amber-500"
                 : kind === "open-ask"
-                  ? "bg-foreground animate-pulse [animation-duration:3s]"
+                  ? "bg-amber-500 animate-pulse [animation-duration:3s]"
                   : kind === "quiet"
                     ? "bg-transparent border border-foreground/15"
                     : "bg-foreground/15",
@@ -275,22 +280,50 @@ function TimelineList({
 }
 
 /**
- * The Overview's Recent activity: the stock's newest 8 Activity lines, the
- * same 8 every run is handed (lib/thesis/activity-feed.ts), assembled and
- * drawn exactly as the Activity tab draws them.
+ * The Overview's Agent insights: the stock's newest 5 Activity lines with a
+ * written paragraph (`notedItems`, lib/thesis/activity-feed.ts), assembled
+ * and drawn exactly as the Activity tab draws them. The heading carries the
+ * first period ("Agent insights · Today") in place of the list's first rail
+ * label, and says on hover what the agents read instead: the newest 8
+ * lines, note or not, the ones the Activity tab marks.
  */
 export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; onViewAll: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
-  const { rows, spans, labels } = useMemo(() => assembleRows(items, "all", open, null, triggers), [items, open, triggers]);
+  const { rows, spans, labels } = useMemo(() => {
+    const built = assembleRows(items, "all", open, null, triggers);
+    // This cut hides a proposal's Expired / Declined / Approved step (no paragraph), so its Proposed
+    // row says how it ended. The Overview's words only: the Activity tab shows the step itself, and
+    // the agents' read is untouched.
+    const byId = new Map(items.map((u) => [u.id, u]));
+    const rows = built.rows.map((r) => {
+      const u = byId.get(r.key);
+      const word = u ? proposalOutcomeWord(u) : null;
+      return word && !r.title.outcome ? { ...r, title: { ...r.title, outcome: word } } : r;
+    });
+    return { ...built, rows };
+  }, [items, open, triggers]);
   if (items.length === 0) return null;
+  const [first, ...rest] = labels;
   return (
     <div className="space-y-3">
-      <SectionLabel action={<Button size="xs" variant="outline" onClick={onViewAll}>View all</Button>}>Recent activity</SectionLabel>
+      <SectionLabel action={<Button size="xs" variant="outline" onClick={onViewAll}>View all</Button>}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex cursor-help items-center gap-1.5">
+                <HugeiconsIcon icon={AiEditingIcon} className="size-3.5" />
+                Agent insights{first ? ` · ${first}` : ""}
+              </span>
+            }
+          />
+          <TooltipContent>The newest {NOTED_ITEMS} lines with a note. The agents read the newest {RECENT_ITEMS} lines, note or not, as the Activity tab marks them.</TooltipContent>
+        </Tooltip>
+      </SectionLabel>
       <TimelineList
         rows={rows}
         spans={spans}
-        labels={labels}
+        labels={[null, ...rest]}
         currentRunId={currentRunId}
         open={open}
         onToggle={(key) =>
@@ -306,8 +339,8 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
   );
 }
 
-/** The line the tab draws under the newest 8, where the Overview's list and the agent's read end. */
-export const RECENT_END_LABEL = "The newest 8 end here: they are on the Overview and in the agent's read.";
+/** The line the tab draws under the newest 8, where the agent's read ends. */
+export const RECENT_END_LABEL = "The newest 8 end here: the agent's read.";
 
 export function ThesisTimelineSection({ thesisId, provenance, recentIds, triggers }: Props) {
   const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
@@ -494,7 +527,8 @@ function Row({
         {showDescription ? (
           <p
             className={cn(
-              "text-sm font-light text-muted-foreground leading-relaxed cursor-pointer pt-0.5",
+              // The paragraph is the point of the row, so it reads in the foreground; the date groups and the price stay muted.
+              "text-sm font-light text-foreground leading-relaxed cursor-pointer pt-0.5",
               row.quoted && "border-l-2 border-border pl-2",
               !open && "line-clamp-2",
             )}

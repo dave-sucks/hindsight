@@ -2,19 +2,32 @@
 
 /**
  * The Street, in two cards shared by the thesis sheet, the trade page and
- * the stock page (the owner's design, 2026-11-04):
+ * the stock page (the owner's design, 2026-11-04, cleaned up 11-05):
  *
- *   • Analyst ratings — the verdict badge (Buy / Hold / Sell with the upside
- *     to the average target), one 60-tick bar of how the covering firms
- *     split Bearish / Neutral / Bullish, and the counts.
+ *   • Analyst ratings — the verdict as a plain badge (Strong Buy / Buy /
+ *     Hold / Sell), one filled bar of how the covering firms split (red,
+ *     gray, green, sized to the counts; filled so it never reads as a
+ *     price line), and the three counts under it: bearish left, neutral
+ *     centre, bullish right.
  *
- *   • Analyst targets — the 12-month targets on a line: Low at the left,
- *     High at the right, the Average as a tall tick, the Current price as a
- *     diamond and, when we hold the stock, our Entry as a hollow marker.
- *     Under it, the date of the targets and the EPS consensus with its
- *     revisions. The old "Price targets" card drew our own plan here; the
- *     plan is the triggers and the chart's lines, and the word "target"
- *     now means what the Street expects.
+ *   • Analyst targets — the 12-month targets on a line of plain ticks with
+ *     one spare tick past each end, running from the lowest of the Street's
+ *     low, the price and our entry to the highest of them: Low (red) and
+ *     High (green) as tall lines, the Average as a tall line, our Entry as a
+ *     hollow white dot when we hold the stock, and the Current price as a
+ *     filled white dot that pulses, each where it really is; the ticks
+ *     between Entry and Current are tinted faint green when up and faint red
+ *     when down. Every line and both dots name their price on hover; under
+ *     the bar Low, Avg and High are a dot and muted words like the ratings
+ *     key; Entry sits in the header (with its hollow dot) when we hold the
+ *     stock, the current price is the filled dot and its hover. Under a
+ *     divider that runs the card's full width, one line that never wraps:
+ *     when the row was pulled, then how many analysts raised (green chevron)
+ *     and lowered (red chevron) their next-quarter EPS estimate in the last
+ *     four weeks.
+ *     The EPS consensus itself is on the Earnings card. The old "Price
+ *     targets" card drew our own plan here; the plan is the triggers and
+ *     the chart's lines, and the word "target" means what the Street expects.
  *
  * Data comes from getAnalystCoverageData (lib/actions/analyst-coverage) —
  * server-fetched and passed in; the cards never fetch.
@@ -31,7 +44,10 @@ import {
 } from "@/components/ui/tooltip";
 import type { CitationSource } from "@/components/ai-elements/inline-citation";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
-import { epsWords } from "@/lib/market-data/street-consensus";
+import { cn } from "@/lib/utils";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ChevronDownIcon, ChevronUpIcon } from "@hugeicons/core-free-icons";
+import { Separator } from "@/components/ui/separator";
 import type { ResearchCitation } from "@/lib/types/thesis-sheet";
 
 /**
@@ -71,10 +87,6 @@ function consensusOf(coverage: Coverage) {
   return { buy, hold, sell, total: buy + hold + sell };
 }
 
-function impliedUpside(average: number | null | undefined, currentPrice: number | null): number | null {
-  return average != null && currentPrice != null && currentPrice > 0 ? ((average - currentPrice) / currentPrice) * 100 : null;
-}
-
 /** Both cards, in order. `entry` is our fill price when we hold the stock, drawn on the targets line. */
 export function AnalystCards({ coverage, currentPrice, entry = null }: { coverage: Coverage; currentPrice: number | null; entry?: number | null }) {
   return (
@@ -85,26 +97,39 @@ export function AnalystCards({ coverage, currentPrice, entry = null }: { coverag
   );
 }
 
-export function AnalystRatingsCard({ coverage, currentPrice, className }: { coverage: Coverage; currentPrice: number | null; className?: string }) {
+export function AnalystRatingsCard({ coverage, className }: { coverage: Coverage; currentPrice?: number | null; className?: string }) {
   const consensus = consensusOf(coverage);
   if (!consensus || consensus.total === 0) return null;
-  const average = coverage?.priceTargets?.average ?? null;
   return (
-    <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
-      <SectionLabel
-        action={
-          <AnalystVerdictBadge
-            consensus={consensus}
-            impliedUpsidePct={impliedUpside(average, currentPrice)}
-            avgTarget={average}
-            currentPrice={currentPrice}
-          />
-        }
-      >
-        Analyst ratings
-      </SectionLabel>
+    <Card className={className ?? "bg-muted/40 p-3 gap-4"}>
+      <SectionLabel action={<AnalystVerdictBadge consensus={consensus} />}>Analyst ratings</SectionLabel>
       <ConsensusDistributionRow consensus={consensus} />
     </Card>
+  );
+}
+
+/** The bar's columns: one spare tick past each end, Low and High on the first and last tick inside them. */
+const COUNT = 60;
+const EDGE_PAD = 1;
+/** The centre of tick column `i`, as a % of the bar's width — the same column maths as the ticks, so a marker can't drift. */
+const pctOf = (i: number) => ((i + 0.5) / COUNT) * 100;
+const money = (n: number) => `$${n.toFixed(2)}`;
+
+/** A tall line on the bar that names its price on hover. */
+function PriceLine({ pct, color, label }: { pct: number; color: string; label: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={label}
+            className={cn("absolute top-1/2 h-[22px] w-0.5 -translate-x-1/2 -translate-y-1/2 cursor-help rounded-full", color)}
+            style={{ left: `${pct}%` }}
+          />
+        }
+      />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -116,96 +141,126 @@ export function AnalystTargetsCard({
 }: {
   coverage: Coverage;
   currentPrice: number | null;
-  /** Our fill price while we hold the stock; a hollow marker on the line. */
+  /** Our fill price while we hold the stock; a blue line on the bar. */
   entry?: number | null;
   className?: string;
 }) {
   const t = coverage?.priceTargets ?? null;
   if (!t) return null;
+  // The bar runs from the lowest of the Street's low, the price and our entry to the highest of the Street's high,
+  // the price and our entry, so every marker sits where it really is: a stock under every target shows how far under.
   const points = [t.low, t.average, t.high, currentPrice, entry].filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   const lo = Math.min(...points);
   const hi = Math.max(...points);
   const span = hi - lo || t.average * 0.1 || 1;
-  // The same scale as every tick bar: three empty ticks of room at each edge.
-  const COUNT = 60;
-  const EDGE_PAD = 3;
   const usable = COUNT - EDGE_PAD * 2 - 1;
-  const idxFor = (p: number) => Math.round(EDGE_PAD + ((p - lo) / span) * usable);
-  const pctFor = (p: number) => Math.min(94, Math.max(6, (idxFor(p) / (COUNT - 1)) * 100));
-  const lowIdx = t.low != null ? idxFor(t.low) : -1;
-  const highIdx = t.high != null ? idxFor(t.high) : -1;
-  const avgIdx = idxFor(t.average);
-  const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => {
-    if (i === lowIdx) return { color: "bg-negative", tall: true };
-    if (i === highIdx) return { color: "bg-positive", tall: true };
-    if (i === avgIdx) return { color: "bg-foreground", tall: true };
-    return { color: "bg-muted-foreground/25" };
-  });
-  const floatAt = (pct: number): React.CSSProperties =>
-    pct < 18 ? { left: `${pct}%`, transform: "translateX(-4px)" } : pct > 82 ? { right: `${100 - pct}%`, transform: "translateX(4px)" } : { left: `${pct}%`, transform: "translateX(-50%)" };
+  const idxFor = (p: number) => Math.min(COUNT - 1, Math.max(0, Math.round(EDGE_PAD + ((p - lo) / span) * usable)));
+  // The run from where we bought to where it is: a faint green between the two when up, faint red when down.
+  const entryIdx = entry != null ? idxFor(entry) : null;
+  const currentIdx = currentPrice != null ? idxFor(currentPrice) : null;
+  const run = entryIdx != null && currentIdx != null && entryIdx !== currentIdx ? { lo: Math.min(entryIdx, currentIdx), hi: Math.max(entryIdx, currentIdx), color: currentPrice! >= entry! ? "bg-positive/40" : "bg-negative/40" } : null;
+  const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => ({ color: run && i > run.lo && i < run.hi ? run.color : "bg-muted-foreground/25" }));
   const asOf = new Date(`${t.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  const eps = coverage?.eps ? epsWords(coverage.eps.nextQuarter, coverage.eps.up, coverage.eps.down) : null;
+  const up = coverage?.eps?.up ?? null;
+  const down = coverage?.eps?.down ?? null;
   return (
-    <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
-      <SectionLabel action={<span className="text-xs text-muted-foreground tabular-nums">Avg ${t.average.toFixed(2)}</span>}>
+    <Card className={className ?? "bg-muted/40 p-3 gap-4"}>
+      <SectionLabel
+        action={
+          entry != null ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+              <span className="size-1.5 rounded-full border border-foreground" />
+              Entry {money(entry)}
+            </span>
+          ) : null
+        }
+      >
         Analyst targets
       </SectionLabel>
-      <div className="space-y-2">
-        {/* Two label bands above the line, so Entry and Current never collide: Entry on the upper, Current right above the bar. */}
-        <div className="relative h-8 text-xs tabular-nums">
-          {entry != null ? (
-            <span className="absolute top-0 whitespace-nowrap text-muted-foreground" style={floatAt(pctFor(entry))}>
-              Entry ${entry.toFixed(2)}
-            </span>
-          ) : null}
-          {currentPrice != null ? (
-            <span className="absolute bottom-0 whitespace-nowrap font-medium" style={floatAt(pctFor(currentPrice))}>
-              ${currentPrice.toFixed(2)}
-            </span>
-          ) : null}
-        </div>
-        <div className="relative">
+      <div className="space-y-3">
+        <div className="relative py-1">
           <TickBar ticks={ticks} />
+          {t.low != null ? <PriceLine pct={pctOf(idxFor(t.low))} color="bg-negative" label={`Low ${money(t.low)}`} /> : null}
+          <PriceLine pct={pctOf(idxFor(t.average))} color="bg-foreground" label={`Average ${money(t.average)}`} />
+          {t.high != null ? <PriceLine pct={pctOf(idxFor(t.high))} color="bg-positive" label={`High ${money(t.high)}`} /> : null}
           {entry != null ? (
-            <span
-              aria-hidden
-              className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-muted-foreground bg-background"
-              style={{ left: `${pctFor(entry)}%` }}
-            />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    aria-label={`Entry ${money(entry)}`}
+                    className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 cursor-help rounded-full border-2 border-foreground bg-background"
+                    style={{ left: `${pctOf(idxFor(entry))}%` }}
+                  />
+                }
+              />
+              <TooltipContent>Entry {money(entry)}</TooltipContent>
+            </Tooltip>
           ) : null}
           {currentPrice != null ? (
-            <span
-              aria-hidden
-              className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-foreground"
-              style={{ left: `${pctFor(currentPrice)}%` }}
-            />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    aria-label={`Current ${money(currentPrice)}`}
+                    className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 cursor-help rounded-full"
+                    style={{ left: `${pctOf(idxFor(currentPrice))}%` }}
+                  >
+                    <span aria-hidden className="absolute inset-0 animate-ping rounded-full bg-foreground/60" />
+                    <span aria-hidden className="absolute inset-0 rounded-full bg-foreground ring-2 ring-background" />
+                  </span>
+                }
+              />
+              <TooltipContent>Current {money(currentPrice)}</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
-        <div className="flex items-center justify-between text-xs tabular-nums">
-          <span className="text-negative">{t.low != null ? `Low $${t.low.toFixed(2)}` : ""}</span>
-          <span className="text-positive">{t.high != null ? `High $${t.high.toFixed(2)}` : ""}</span>
+        {/* The same key as the ratings card: a coloured dot, muted words; Low left, the Average centre, High right. */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+          <span className="inline-flex items-center gap-1.5">
+            {t.low != null ? <><span className="size-1.5 rounded-full bg-negative" />Low {money(t.low)}</> : null}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-foreground" />
+            Avg {money(t.average)}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            {t.high != null ? <><span className="size-1.5 rounded-full bg-positive" />High {money(t.high)}</> : null}
+          </span>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground tabular-nums">
-        Targets as of {asOf}
-        {t.numAnalysts != null ? ` · ${t.numAnalysts} analysts` : ""}
-        {eps ? ` · ${eps}` : ""}
+      {/* A divider the full width of the card, then one sentence: when the row was pulled, and the revisions. */}
+      <div className="-mx-3">
+        <Separator />
+      </div>
+      {/* One line, never two: the date, then how many analysts raised and lowered their next-quarter estimate; measured to fit the narrowest card. */}
+      <p className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+        Updated {asOf}
+        {up != null || down != null ? (
+          <>
+            {" · Analysts "}
+            {up != null ? (
+              <span className="inline-flex items-center gap-0.5">
+                <HugeiconsIcon icon={ChevronUpIcon} className="size-3.5 text-positive" strokeWidth={2.5} />
+                {up} up
+              </span>
+            ) : null}
+            {up != null && down != null ? ", " : ""}
+            {down != null ? (
+              <span className="inline-flex items-center gap-0.5">
+                <HugeiconsIcon icon={ChevronDownIcon} className="size-3.5 text-negative" strokeWidth={2.5} />
+                {down} down
+              </span>
+            ) : null}
+          </>
+        ) : null}
       </p>
     </Card>
   );
 }
 
-function AnalystVerdictBadge({
-  consensus,
-  impliedUpsidePct,
-  avgTarget,
-  currentPrice,
-}: {
-  consensus: { buy: number; hold: number; sell: number; total: number };
-  impliedUpsidePct: number | null;
-  avgTarget: number | null;
-  currentPrice: number | null;
-}) {
+/** The verdict, as a plain badge: the word only. */
+function AnalystVerdictBadge({ consensus }: { consensus: { buy: number; hold: number; sell: number; total: number } }) {
   const { buy, total } = consensus;
   const buyPct = total > 0 ? buy / total : 0;
   const verdict =
@@ -216,91 +271,41 @@ function AnalystVerdictBadge({
         : buyPct >= 0.3
           ? { label: "Hold", variant: "secondary" as const }
           : { label: "Sell", variant: "negative" as const };
-  const upsideSuffix =
-    impliedUpsidePct != null
-      ? ` ${impliedUpsidePct >= 0 ? "+" : ""}${impliedUpsidePct.toFixed(1)}%`
-      : "";
-  const tooltipBody =
-    avgTarget != null && currentPrice != null
-      ? `Consensus rating across ${total} covering firms. ${impliedUpsidePct != null ? `${impliedUpsidePct >= 0 ? "+" : ""}${impliedUpsidePct.toFixed(1)}%` : "—"} is the implied move from the current price ($${currentPrice.toFixed(2)}) to the average 12-month price target ($${avgTarget.toFixed(2)}).`
-      : `Consensus rating across ${total} covering firms.`;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Badge variant={verdict.variant} className="font-normal cursor-help">
-            {verdict.label}
-            {upsideSuffix}
-          </Badge>
-        }
-      />
-      <TooltipContent>{tooltipBody}</TooltipContent>
-    </Tooltip>
-  );
+  return <Badge variant={verdict.variant}>{verdict.label}</Badge>;
 }
+
+
 
 /**
- * Largest-remainder (Hamilton) apportionment: distribute exactly `slots`
- * across the input buckets in proportion to their counts. Every bucket
- * with a non-zero count gets at least 1 slot (a tiny minority bucket
- * shouldn't disappear from the bar). Returns a same-length array of
- * integer slot counts that always sums to exactly `slots`.
+ * The rating split as one filled bar, thinner than the tick bar, in three
+ * solid parts sized to the counts (red, gray, green, a small gap between; a
+ * count of zero still shows as a sliver), then
+ * the counts: bearish left, neutral centre, bullish right. Filled, not
+ * ticks, so it reads as a share of the firms and not as a price line like
+ * the targets card under it.
  */
-function allocateSlots(counts: number[], slots: number): number[] {
-  const total = counts.reduce((s, c) => s + c, 0);
-  if (total === 0) return counts.map(() => 0);
-  const exact = counts.map((c) => (c / total) * slots);
-  const out = exact.map(Math.floor);
-  // Hand out remainders to whichever buckets have the largest fractional
-  // shortfall, until the slots add up exactly.
-  let remaining = slots - out.reduce((s, n) => s + n, 0);
-  const byRemainder = exact
-    .map((e, i) => ({ i, r: e - Math.floor(e) }))
-    .sort((a, b) => b.r - a.r);
-  for (const { i } of byRemainder) {
-    if (remaining <= 0) break;
-    out[i]++;
-    remaining--;
-  }
-  // Minimum-1 nudge for non-zero buckets that rounded to 0. Steal from
-  // the largest bucket so the sum stays exactly `slots`.
-  for (let i = 0; i < counts.length; i++) {
-    if (counts[i] > 0 && out[i] === 0) {
-      let maxIdx = 0;
-      for (let j = 1; j < out.length; j++) if (out[j] > out[maxIdx]) maxIdx = j;
-      if (out[maxIdx] > 1) {
-        out[maxIdx]--;
-        out[i]++;
-      }
-    }
-  }
-  return out;
-}
-
-
-/** The rating split as one 60-tick bar, the first bear tick and the last bull tick tall, then the counts. */
 function ConsensusDistributionRow({ consensus }: { consensus: { buy: number; hold: number; sell: number; total: number } }) {
-  const { buy, hold, sell } = consensus;
-  const [sellSlots, holdSlots, buySlots] = allocateSlots([sell, hold, buy], 60);
-  const lastBullIdx = sellSlots + holdSlots + buySlots - 1;
-  const ticks: Tick[] = Array.from({ length: 60 }, (_, i) => {
-    const isLeftmostBear = sell > 0 && i === 0;
-    const isRightmostBull = buy > 0 && i === lastBullIdx;
-    if (isLeftmostBear) return { color: "bg-negative", tall: true };
-    if (isRightmostBull) return { color: "bg-positive", tall: true };
-    const color = i < sellSlots ? "bg-negative/40" : i < sellSlots + holdSlots ? "bg-muted-foreground/25" : "bg-positive/40";
-    return { color };
-  });
+  const { buy, hold, sell, total } = consensus;
+  const parts = [
+    { n: sell, color: "bg-negative", label: "Bearish" },
+    { n: hold, color: "bg-muted-foreground", label: "Neutral" },
+    { n: buy, color: "bg-positive", label: "Bullish" },
+  ];
   return (
-    <div className="space-y-1.5">
-      <TickBar ticks={ticks} />
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+    <div className="space-y-3">
+      {/* A part with no firms still shows as a sliver, so every colour on the key has its place on the bar. */}
+      <div className="flex h-2.5 w-full gap-1 overflow-hidden rounded-full" role="img" aria-label={`${sell} bearish, ${hold} neutral, ${buy} bullish of ${total}`}>
+        {parts.map((p) => (
+          <span key={p.label} className={cn("h-full min-w-1.5 rounded-sm", p.color)} style={{ flexGrow: p.n, flexBasis: 0 }} />
+        ))}
+      </div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-negative" />
           {sell} Bearish
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-muted-foreground/40" />
+          <span className="size-1.5 rounded-full bg-muted-foreground" />
           {hold} Neutral
         </span>
         <span className="inline-flex items-center gap-1.5">

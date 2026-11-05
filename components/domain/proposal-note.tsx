@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * A proposal's note: the analyst's reason, three lines, a click for the
- * rest. A run's note lands on its proposal at the end of the run
+ * A proposal's note: the analyst's reason. Where the card owns the click
+ * (the trade banner) the note is hidden until the card says it is open —
+ * the title row reads "Read reasoning" on hover; on its own it shows two
+ * lines and a click for the rest. A run's note lands on its proposal at the end of the run
  * (lib/proposals/auto-writeup.ts); until then the card shows one shimmering
  * line in its place and reads the reason again every few seconds, for up to
  * a quarter of an hour (a morning run's length).
@@ -48,12 +50,14 @@ export function ProposalNote({ orderId, reason, writing, expanded }: { orderId: 
   }, [orderId, busy, polls]);
 
   if (busy && polls < MAX_POLLS) return <p className="text-sm shimmer-text">{WRITING_LABEL}</p>;
+  // The card says it is closed: nothing, not a clamp.
+  if (expanded === false) return null;
 
   const paragraphs = (text ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   if (paragraphs.length === 0) return null;
   return (
     <div
-      className={cn("space-y-2 text-xs font-light text-foreground leading-relaxed", expanded === undefined && "cursor-pointer")}
+      className={cn("space-y-2 text-sm font-light text-foreground leading-relaxed", expanded === undefined && "cursor-pointer")}
       onClick={expanded === undefined ? () => setOpen((v) => !v) : undefined}
       title={expanded === undefined ? (open ? "Collapse" : "Expand") : undefined}
     >

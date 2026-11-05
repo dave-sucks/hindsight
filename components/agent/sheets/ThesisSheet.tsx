@@ -875,7 +875,7 @@ export function ThesisBody({
   const stockCards = (
     <>
       {wallStreet}
-      {earnings ? <EarningsCard data={earnings} /> : null}
+      {earnings ? <EarningsCard data={earnings} streetEps={coverage?.eps?.nextQuarter ?? null} /> : null}
     </>
   );
 
@@ -885,6 +885,7 @@ export function ThesisBody({
   // open tab is mounted, so the cards render once.
   // The stock's newest 8 Activity lines: what the agents are handed, as Activity rows.
   const recent = state.recent ?? [];
+  const noted = state.noted ?? [];
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
   // The standing opinion, first thing under the chips on Overview.
@@ -955,7 +956,7 @@ export function ThesisBody({
       {/* The sections, as chips: the chart is always worth the screen; the chips pick what sits under it. */}
       <ChipTabs options={tabOptions} value={String(tab)} onChange={(v) => { if (v != null) setTab(Number(v)); }} clearable={false} />
 
-      {/* ── Overview: the belief → the plan → the newest 8 ── */}
+      {/* ── Overview: the belief → the insights → the plan ── */}
       <TabsContent value={0} className="space-y-6">
       {/* ── Whether it needs work today (DAV-304) ── */}
       <WorkFlagLine
@@ -970,6 +971,9 @@ export function ThesisBody({
       {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
 
 
+      {/* Agent insights: the newest 5 Activity lines with a written paragraph, in the Activity tab's own design. */}
+      <RecentActivity items={noted} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
+
       {/* ── The plan: the triggers ── */}
       {thesis_id ? (
         <ThesisTriggersSection
@@ -983,9 +987,6 @@ export function ThesisBody({
           streetMissing={!coverageLoading && coverage?.priceTargets == null}
         />
       ) : null}
-
-      {/* The newest 8 Activity lines, the ones the agents are handed, in the Activity tab's own design. */}
-      <RecentActivity items={recent} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
 
       {surface === "sheet" ? stockCards : null}
       </TabsContent>

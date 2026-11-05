@@ -19,8 +19,10 @@
  * lib/agent/work-inputs.ts (the agents' read).
  */
 
-/** How many of a stock's newest Activity lines the Overview shows and the next run reads. */
+/** How many of a stock's newest Activity lines the next run reads (the Activity tab marks where they end). */
 export const RECENT_ITEMS = 8;
+/** How many of a stock's newest written-up lines the Overview shows as Agent insights. */
+export const NOTED_ITEMS = 5;
 
 /** One Activity line, as every surface reads it. */
 export interface FeedItem {
@@ -210,9 +212,31 @@ export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrde
   return args.limit != null ? merged.slice(0, args.limit) : merged;
 }
 
-/** The newest 8 of a feed: what the Overview shows and the next run reads. */
+/** The newest 8 of a feed: what the next run reads. */
 export function recentItems(feed: FeedItem[]): FeedItem[] {
   return feed.slice(0, RECENT_ITEMS);
+}
+
+/**
+ * Whether a line carries a paragraph someone wrote: an analyst's note, the
+ * owner's note, or the owner's words on a proposal. A trigger fire's
+ * rationale is the check's figures ("200-day $941.20; price $884.83"), not a
+ * write-up, so a fire never counts.
+ */
+export function hasWrittenParagraph(item: Pick<FeedItem, "type" | "rationale" | "fieldChanges">): boolean {
+  if (item.type === "TRIGGER_FIRED") return false;
+  if (item.rationale?.trim()) return true;
+  const msg = (item.fieldChanges as { proposal?: { to?: { userMessage?: unknown } } } | null | undefined)?.proposal?.to?.userMessage;
+  return typeof msg === "string" && msg.trim().length > 0;
+}
+
+/**
+ * The Overview's Agent insights: the newest 5 lines with a written paragraph
+ * (the owner's choice, 2026-11-04: the view shows the helpful notes, not every
+ * line). The agents' read is `recentItems`, untouched by this.
+ */
+export function notedItems(feed: FeedItem[]): FeedItem[] {
+  return feed.filter(hasWrittenParagraph).slice(0, NOTED_ITEMS);
 }
 
 /** The feed item as the sheet's JSON carries it (timestamps as ISO strings). */

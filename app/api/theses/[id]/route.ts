@@ -32,7 +32,10 @@ import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
-import { RECENT_ITEMS, serializeFeedItem } from "@/lib/thesis/activity-feed";
+import { notedItems, recentItems, serializeFeedItem } from "@/lib/thesis/activity-feed";
+
+/** How far back the sheet reads the feed: enough lines to find the newest 5 with a paragraph. */
+const FEED_WINDOW = 60;
 import { loadActivityFeed } from "@/lib/thesis/activity-feed.server";
 import { writeupComing } from "@/lib/proposals/auto-writeup";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
@@ -157,13 +160,16 @@ export async function GET(
     pendingProposal: ThesisPendingProposal | null;
   };
 
-  // The stock's newest 8 Activity lines: the same 8 every run is handed
-  // (lib/thesis/activity-feed.ts), so what the Overview shows is what the
-  // agents read. Newest first.
-  const recent = await loadActivityFeed(
+  // The stock's Activity, newest first: `recent` is the newest 8, the same 8
+  // every run is handed (the Activity tab marks where they end); `noted` is
+  // the newest 5 with a written paragraph, what the Overview shows as Agent
+  // insights (lib/thesis/activity-feed.ts).
+  const feed = await loadActivityFeed(
     { id: thesis.id, ticker: thesis.ticker, createdAt: thesis.createdAt, closedAt: thesis.closedAt, invalidatedAt: thesis.invalidatedAt, analystId: thesis.researchRun?.agentConfigId ?? null },
-    RECENT_ITEMS,
+    FEED_WINDOW,
   ).catch(() => []);
+  const recent = recentItems(feed);
+  const noted = notedItems(feed);
 
 
   // The write-up's own date: the newest row a research-writer run saved, never
@@ -313,6 +319,7 @@ export async function GET(
     // only answerable by querying the database.
     lastReviewedAt: thesis.lastReviewedAt,
     recent: recent.map(serializeFeedItem),
+    noted: noted.map(serializeFeedItem),
     // Derived at read time from the last actual look + the cadence on the
     // resolved ladder (DAV-221). Null = no scheduled review.
     reviewDueAt: derivedNextReviewAt({

@@ -91,10 +91,12 @@ A stock's Activity is one list (`lib/thesis/activity-feed.ts`): its saved
 lines (`ThesisUpdate`) plus each proposal's steps built from its `Order`
 (Proposed / Approved / Declined / Expired; the Order is the truth, the
 PROPOSAL_* rows are never trusted). The Activity tab shows the whole list,
-the Overview shows the newest 8 (`RECENT_ITEMS`), and the next run on the
-stock reads the same 8 exactly as they read in the feed
-(`saidBlock` in `lib/agent/stock-context.ts`). If it is on the Overview the
-agent read it; if not, the agent didn't either. A waiting proposal is pinned
+and the next run on the stock reads the newest 8 (`RECENT_ITEMS`) exactly as
+they read in the feed (`saidBlock` in `lib/agent/stock-context.ts`); the
+Activity tab marks where those 8 end. The Overview's "Agent insights" is a
+different cut (the owner's call, 2026-11-04): the newest 5 lines with a
+written paragraph (`notedItems`, `NOTED_ITEMS`), a trigger fire's figures
+not counting as one. A waiting proposal is pinned
 to the top of the Overview as the card. The app gives every line it makes a
 title and never a paragraph (guarded by the scan in `lib/agent/voice.test.ts`);
 every paragraph is an analyst's words or the owner's. One paragraph per

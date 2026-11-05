@@ -175,10 +175,12 @@ export interface ThesisDossier {
   lastReviewedAt: string | null;
   /**
    * The stock's newest 8 Activity lines, newest first: the same 8 every run
-   * is handed (lib/thesis/activity-feed.ts). The Overview shows them as
-   * Activity rows, and the Activity tab marks where they end.
+   * is handed (lib/thesis/activity-feed.ts). The Activity tab marks where
+   * they end.
    */
   recent: ActivityItem[];
+  /** The newest 5 lines with a written paragraph, newest first: the Overview's Agent insights. */
+  noted: ActivityItem[];
   triggers: Trigger[];
   /**
    * The analyst that owns this thesis. Lets the trigger section deep-link
