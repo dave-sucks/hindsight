@@ -172,7 +172,8 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
         className="relative"
         action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
       >
-        <span className="inline-flex items-center gap-1.5">
+        {/* gap-2, not the headings' 1.5: the hover circle overhangs the dot by 6px and must not touch the word. */}
+        <span className="inline-flex items-center gap-2">
           <span className="relative inline-flex size-2 shrink-0">
             <span className={cn("size-2 rounded-full", dotClass)} />
             {/* The accordion's handle, over the dot on hover: a secondary-button circle with the chevron. */}
@@ -195,11 +196,8 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
         </span>
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
       </div>
-      {pp && !pp.executing ? (
-        <div className="relative">
-          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
-        </div>
-      ) : null}
+      {/* No wrapper: closed, the note renders nothing, so the card's gap has nothing to count. */}
+      {pp && !pp.executing ? <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} /> : null}
     </Card>
   );
 }
