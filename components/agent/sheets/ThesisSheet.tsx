@@ -955,7 +955,7 @@ export function ThesisBody({
       {/* The sections, as chips: the chart is always worth the screen; the chips pick what sits under it. */}
       <ChipTabs options={tabOptions} value={String(tab)} onChange={(v) => { if (v != null) setTab(Number(v)); }} clearable={false} />
 
-      {/* ── Overview: the belief → the plan → the newest 8 ── */}
+      {/* ── Overview: the belief → the newest 8 → the plan ── */}
       <TabsContent value={0} className="space-y-6">
       {/* ── Whether it needs work today (DAV-304) ── */}
       <WorkFlagLine
@@ -970,6 +970,9 @@ export function ThesisBody({
       {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
 
 
+      {/* The newest 8 Activity lines, the ones the agents are handed, in the Activity tab's own design. */}
+      <RecentActivity items={recent} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
+
       {/* ── The plan: the triggers ── */}
       {thesis_id ? (
         <ThesisTriggersSection
@@ -983,9 +986,6 @@ export function ThesisBody({
           streetMissing={!coverageLoading && coverage?.priceTargets == null}
         />
       ) : null}
-
-      {/* The newest 8 Activity lines, the ones the agents are handed, in the Activity tab's own design. */}
-      <RecentActivity items={recent} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
 
       {surface === "sheet" ? stockCards : null}
       </TabsContent>

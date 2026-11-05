@@ -31,6 +31,10 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AiEditingIcon } from "@hugeicons/core-free-icons";
+import { RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { PriceChange } from "@/components/ui/price-change";
 import {
   buildTimeline,
@@ -275,22 +279,37 @@ function TimelineList({
 }
 
 /**
- * The Overview's Recent activity: the stock's newest 8 Activity lines, the
+ * The Overview's Agent insights: the stock's newest 8 Activity lines, the
  * same 8 every run is handed (lib/thesis/activity-feed.ts), assembled and
- * drawn exactly as the Activity tab draws them.
+ * drawn exactly as the Activity tab draws them. The heading carries the
+ * first period ("Agent insights · Today") in place of the list's first rail
+ * label, and says on hover that the agents read these lines as shown.
  */
 export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; onViewAll: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
   const { rows, spans, labels } = useMemo(() => assembleRows(items, "all", open, null, triggers), [items, open, triggers]);
   if (items.length === 0) return null;
+  const [first, ...rest] = labels;
   return (
     <div className="space-y-3">
-      <SectionLabel action={<Button size="xs" variant="outline" onClick={onViewAll}>View all</Button>}>Recent activity</SectionLabel>
+      <SectionLabel action={<Button size="xs" variant="outline" onClick={onViewAll}>View all</Button>}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex cursor-help items-center gap-1.5">
+                <HugeiconsIcon icon={AiEditingIcon} className="size-3.5" />
+                Agent insights{first ? ` · ${first}` : ""}
+              </span>
+            }
+          />
+          <TooltipContent>The agents read these {RECENT_ITEMS} lines, exactly as shown here.</TooltipContent>
+        </Tooltip>
+      </SectionLabel>
       <TimelineList
         rows={rows}
         spans={spans}
-        labels={labels}
+        labels={[null, ...rest]}
         currentRunId={currentRunId}
         open={open}
         onToggle={(key) =>
