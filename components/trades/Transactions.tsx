@@ -22,8 +22,10 @@ import { formatCurrency } from "@/lib/format";
 import { fmtQty } from "@/lib/trade-statement";
 import { fillSummary, fillVerb, type FillFacts } from "@/lib/stocks/stock-history";
 
+// Fixed-width cells so the columns line up row to row; the price and the amount
+// step out at narrow widths (the card's own width, not the window's).
 const ROW =
-  "grid w-full grid-cols-[6.5rem_minmax(0,1fr)_auto_auto_auto_4rem] items-center gap-3 rounded-lg bg-muted/40 px-3 py-2 text-left text-sm tabular-nums transition-colors hover:bg-muted/70";
+  "flex w-full items-center gap-3 rounded-lg bg-muted/40 px-3 py-2 text-left text-sm tabular-nums whitespace-nowrap transition-colors hover:bg-muted/70";
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -72,7 +74,7 @@ export function Transactions({
   const unrealized = held && currentPrice != null ? (currentPrice - held.avgCost) * held.shares : null;
 
   return (
-    <div className="space-y-4">
+    <div className="@container space-y-4">
       {/* The stock's total: the sells realized, and what is still held is worth. */}
       {!limit ? (
         <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground tabular-nums">
@@ -100,19 +102,19 @@ export function Transactions({
               const amount = f.price != null ? f.price * f.quantity : null;
               return (
                 <button key={f.id} type="button" className={ROW} onClick={() => setOpenId(f.id)}>
-                  <span className="min-w-0 overflow-hidden">
-                    <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
+                  <span className="w-24 shrink-0">
+                    <Badge variant="secondary" className="gap-1.5 font-normal">
                       <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
                       {label}
                     </Badge>
                   </span>
-                  <span className="text-foreground">{fmtQty(f.quantity)} {f.quantity === 1 ? "share" : "shares"}</span>
-                  <span className="text-muted-foreground">{f.price != null ? `@ ${formatCurrency(f.price)}` : ""}</span>
-                  <span className="text-foreground">{amount != null ? formatCurrency(amount) : ""}</span>
-                  <span className="justify-self-end">
+                  <span className="w-20 shrink-0 text-foreground">{fmtQty(f.quantity)} {f.quantity === 1 ? "share" : "shares"}</span>
+                  <span className="hidden w-24 shrink-0 text-muted-foreground @sm:inline">{f.price != null ? `@ ${formatCurrency(f.price)}` : ""}</span>
+                  <span className="hidden w-24 shrink-0 text-foreground @md:inline">{amount != null ? formatCurrency(amount) : ""}</span>
+                  <span className="ml-auto shrink-0">
                     {f.result ? <PriceChange dollarChange={f.result.dollar} percentChange={f.result.pct} size="sm" /> : null}
                   </span>
-                  <span className="justify-self-end text-xs text-muted-foreground">{fmtDate(f.at)}</span>
+                  <span className="w-12 shrink-0 text-right text-xs text-muted-foreground">{fmtDate(f.at)}</span>
                 </button>
               );
             })}
