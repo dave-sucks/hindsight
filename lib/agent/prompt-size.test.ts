@@ -25,7 +25,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-04: +1,311 each, the voice rules' podcaster length, the view a note takes, the neighbor test and the desk words they ban (lib/agent/voice.ts).
   daily: 9_250,
   tactical: 14_703,
-  writer: 15_981,
+  // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
+  writer: 16_468,
   chat: 35_115,
 };
 
@@ -38,9 +39,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
 const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-03, on main + #909 + #911 + #912: +100 each from #911's get_theses text, +513 from update_thesis's verdict fields.
   // 2026-11-04: −107 / −96 / −480, the first-sentence rule restated in five note fields now lives in the voice rules alone.
-  "research-run": 30_614,
-  tactical: 26_545,
-  principal: 62_832,
+  // 2026-11-05: +136 / +136 / +450, stop_basis says what a close below the floor means for the belief, and a PASS is not a view you'd look at again (thesis-fields.ts; the chat also has dispatch's setup line).
+  "research-run": 30_750,
+  tactical: 26_681,
+  principal: 63_282,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

@@ -58,7 +58,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
   return {
     direction: z
       .enum(["LONG", "SHORT", "PASS"])
-      .describe("LONG, SHORT, or PASS: a stock you researched and won't trade."),
+      .describe("LONG, SHORT, or PASS: a stock you researched and won't trade. A view you would look again at is LONG or SHORT with no levels and a review, not a PASS."),
     horizon: z
       .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
       .describe(
@@ -84,7 +84,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
     stop_loss: z.number().describe("Where the thesis breaks: the floor trigger's level."),
     stop_basis: z
       .string()
-      .describe("Why the stop is there, in plain words with the number it sits under (\"under the August low of $207.25\"). It becomes the floor trigger's note."),
+      .describe("Why the stop is there: first what a close below it would say about the belief, then the number it sits under (\"a close under the August low of $207.25 would mean the margin recovery has stalled\"). It becomes the floor trigger's note, which the run that answers the floor reads."),
     catalyst_date: z.string().datetime().describe("When the dated event lands, as the company announced it (ISO timestamp). Required when horizon is CATALYST."),
     catalyst_day: z.string().describe("When the dated event lands, as the company announced it (YYYY-MM-DD). Required when horizon is CATALYST."),
     core_belief: z

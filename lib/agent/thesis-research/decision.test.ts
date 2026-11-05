@@ -12,6 +12,7 @@ import {
   type ThesisDecisionInput,
 } from "./decision";
 import { editTriggerOpSchema, editNumber } from "@/lib/agent/triggers/schema";
+import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 
 const validLong: ThesisDecisionInput = {
   direction: "LONG",
@@ -371,7 +372,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
       mintOpts,
     );
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("PASS decision cannot carry triggers");
+    expect(v.errors.join(" ")).toContain("a PASS stores no triggers");
   });
 
   it("a refresh on a thesis with no triggers may omit triggers — zero is legal (DAV-209)", () => {
@@ -447,5 +448,56 @@ describe("submit_thesis carries the trigger once", () => {
     expect(json.split('"Condition":{').length - 1).toBe(1);
     expect(json.split('"const":"price"').length - 1).toBe(1);
     expect(json.split('"sma150"').length - 1).toBe(2); // once as a price's line, once as what a move is measured from
+  });
+});
+
+// SNDK 2026-11-04, the writer's second submit for the PEAD Specialist (run cmw1f80da000007i6ct1fll02),
+// cut to the fields the check reads. Its rationale: "I am passing rather than forcing a setup that does
+// not exist. I would look again if the stock re-establishes a base above the 200-day average…". The
+// save refused its two reviews on a PASS, so it saved a pass with nothing to bring it back.
+describe("validateThesisDecision — a view with no setup yet is a watch, not a pass (SNDK 2026-11-04)", () => {
+  const sndk: ThesisDecisionInput = {
+    direction: "PASS",
+    horizon: "TARGET",
+    rationale:
+      "A clean beat-and-raise the market sold 13.5%; the chart is broken. I am passing rather than forcing a setup that does not exist. I would look again above the 200-day or after the January report.",
+    core_belief:
+      "SanDisk is the leading independent NAND flash producer, embedded in AI data centres through multi-year supply agreements covering half its fiscal 2027 bits. If NAND pricing holds through fiscal 2027, the earnings make it cheap; what has to stay true is that data-centre pricing does not roll over.",
+    key_assumptions: [
+      "Data centre NAND pricing holds through fiscal Q2 2027, confirmed by the gross margin result (84.5–85.5% guided) at the January earnings release.",
+      "Supply agreements covering 50% of fiscal 2027 bits hold revenue in the $12.2–$12.6B guide, checked at the January earnings release.",
+    ],
+    invalidation_conditions: [
+      "Q2 FY2027 EPS below the raised guidance midpoint of $56 (pre-split), checked at the January 2027 earnings release.",
+      "A second major peer confirms NAND price declines in its next quarterly commentary.",
+    ],
+    conviction: "LOW",
+    conviction_rationale: "Cheap on current numbers, but the market just said it does not trust them to hold.",
+    triggers: [
+      { action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 1266.06 }, rationale: "A reclaim of the 200-day is the first sign the chart is trying to repair." },
+      { action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "report", is: "before", value: 14 }, rationale: "Fourteen days before the January print, decide whether to price an entry." },
+    ],
+  } as ThesisDecisionInput;
+  const pead = { ...mintOpts, currentPrice: 1126.52, setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]) };
+
+  it("the PASS it sent with its reviews is sent back as the watch it described", () => {
+    const v = validateThesisDecision(sndk, pead);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toMatch(/send your direction \(LONG or SHORT\) with no entry, stop or target, and keep these triggers/);
+  });
+
+  it("the same view as a LONG with no levels and no setup is accepted: the setup prices a view, it never decides one", () => {
+    const v = validateThesisDecision({ ...sndk, direction: "LONG" } as ThesisDecisionInput, pead);
+    expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
+  });
+
+  it("a priced plan still names its setup", () => {
+    const v = validateThesisDecision(
+      { ...sndk, direction: "LONG", entry_price: 1270, stop_loss: 1170, stop_basis: "A close under $1,170 would mean the repair failed; 1 ATR under the 200-day." } as ThesisDecisionInput,
+      pead,
+    );
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toMatch(/setup_id: required on a priced plan/);
   });
 });
