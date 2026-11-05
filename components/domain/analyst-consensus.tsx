@@ -18,8 +18,8 @@
  *     dot, each where it really is; the ticks between Entry and Current are
  *     tinted faint green when up and faint red when down. Every line and the
  *     dot name their price on hover; under the bar Low, Avg and High are a
- *     dot and muted words like the ratings key; Entry and Now sit in the
- *     header. Then the date of
+ *     dot and muted words like the ratings key; Entry sits in the header
+ *     when we hold the stock, the current price is the dot and its hover. Then the date of
  *     the targets and the EPS consensus with its revisions. The old "Price
  *     targets" card drew our own plan here; the plan is the triggers and
  *     the chart's lines, and the word "target" means what the Street expects.
@@ -94,7 +94,7 @@ export function AnalystRatingsCard({ coverage, className }: { coverage: Coverage
   const consensus = consensusOf(coverage);
   if (!consensus || consensus.total === 0) return null;
   return (
-    <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
+    <Card className={className ?? "bg-muted/40 p-3 gap-4"}>
       <SectionLabel action={<AnalystVerdictBadge consensus={consensus} />}>Analyst ratings</SectionLabel>
       <ConsensusDistributionRow consensus={consensus} />
     </Card>
@@ -156,28 +156,20 @@ export function AnalystTargetsCard({
   const asOf = new Date(`${t.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const eps = coverage?.eps ? epsWords(coverage.eps.nextQuarter, coverage.eps.up, coverage.eps.down) : null;
   return (
-    <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
+    <Card className={className ?? "bg-muted/40 p-3 gap-4"}>
       <SectionLabel
         action={
-          <span className="inline-flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
-            {entry != null ? (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-blue-500" />
-                Entry {money(entry)}
-              </span>
-            ) : null}
-            {currentPrice != null ? (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-foreground" />
-                Now {money(currentPrice)}
-              </span>
-            ) : null}
-          </span>
+          entry != null ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+              <span className="size-1.5 rounded-full bg-blue-500" />
+              Entry {money(entry)}
+            </span>
+          ) : null
         }
       >
         Analyst targets
       </SectionLabel>
-      <div className="space-y-2">
+      <div className="space-y-3">
         <div className="relative py-1">
           <TickBar ticks={ticks} />
           {t.low != null ? <PriceLine pct={pctOf(idxFor(t.low))} color="bg-negative" label={`Low ${money(t.low)}`} /> : null}
@@ -258,7 +250,7 @@ function ConsensusDistributionRow({ consensus }: { consensus: { buy: number; hol
     { n: buy, color: "bg-positive", label: "Bullish" },
   ];
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-3">
       {/* A part with no firms still shows as a sliver, so every colour on the key has its place on the bar. */}
       <div className="flex h-2.5 w-full gap-1 overflow-hidden rounded-full" role="img" aria-label={`${sell} bearish, ${hold} neutral, ${buy} bullish of ${total}`}>
         {parts.map((p) => (
