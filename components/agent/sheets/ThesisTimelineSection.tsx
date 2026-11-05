@@ -514,7 +514,8 @@ function Row({
         {showDescription ? (
           <p
             className={cn(
-              "text-sm font-light text-muted-foreground leading-relaxed cursor-pointer pt-0.5",
+              // The paragraph is the point of the row, so it reads in the foreground; the date groups and the price stay muted.
+              "text-sm font-light text-foreground leading-relaxed cursor-pointer pt-0.5",
               row.quoted && "border-l-2 border-border pl-2",
               !open && "line-clamp-2",
             )}

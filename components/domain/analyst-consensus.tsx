@@ -21,9 +21,10 @@
  *     the bar Low, Avg and High are a dot and muted words like the ratings
  *     key; Entry sits in the header (with its hollow dot) when we hold the
  *     stock, the current price is the filled dot and its hover. Under a
- *     divider that runs the card's full width, one sentence: when the row
- *     was pulled, then how many analysts raised (green chevron) and lowered
- *     (red chevron) their next-quarter EPS estimate in the last four weeks.
+ *     divider that runs the card's full width, one line that never wraps:
+ *     when the row was pulled, then how many analysts raised (green chevron)
+ *     and lowered (red chevron) their next-quarter EPS estimate in the last
+ *     four weeks.
  *     The EPS consensus itself is on the Earnings card. The old "Price
  *     targets" card drew our own plan here; the plan is the triggers and
  *     the chart's lines, and the word "target" means what the Street expects.
@@ -232,29 +233,25 @@ export function AnalystTargetsCard({
       <div className="-mx-3">
         <Separator />
       </div>
-      <p className="text-xs text-muted-foreground tabular-nums">
-        Updated {asOf}.
-        {/* The movement clause never breaks inside itself: one line when the card is wide, a second line whole when it is narrow. */}
+      {/* One line, never two: the date, then how many analysts raised and lowered their next-quarter estimate; measured to fit the narrowest card. */}
+      <p className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+        Updated {asOf}
         {up != null || down != null ? (
           <>
-            {" "}
-            <span className="whitespace-nowrap">
-              Recent movement:{" "}
-              {up != null ? (
-                <span className="inline-flex items-center gap-0.5">
-                  <HugeiconsIcon icon={ChevronUpIcon} className="size-3.5 text-positive" strokeWidth={2.5} />
-                  {up} up
-                </span>
-              ) : null}
-              {up != null && down != null ? ", " : ""}
-              {down != null ? (
-                <span className="inline-flex items-center gap-0.5">
-                  <HugeiconsIcon icon={ChevronDownIcon} className="size-3.5 text-negative" strokeWidth={2.5} />
-                  {down} down
-                </span>
-              ) : null}
-              .
-            </span>
+            {" · Analysts "}
+            {up != null ? (
+              <span className="inline-flex items-center gap-0.5">
+                <HugeiconsIcon icon={ChevronUpIcon} className="size-3.5 text-positive" strokeWidth={2.5} />
+                {up} up
+              </span>
+            ) : null}
+            {up != null && down != null ? ", " : ""}
+            {down != null ? (
+              <span className="inline-flex items-center gap-0.5">
+                <HugeiconsIcon icon={ChevronDownIcon} className="size-3.5 text-negative" strokeWidth={2.5} />
+                {down} down
+              </span>
+            ) : null}
           </>
         ) : null}
       </p>
