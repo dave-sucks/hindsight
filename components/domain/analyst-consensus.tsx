@@ -14,13 +14,14 @@
  *     one spare tick past each end, running from the lowest of the Street's
  *     low, the price and our entry to the highest of them: Low (red) and
  *     High (green) as tall lines, the Average as a tall line, our Entry as a
- *     blue line when we hold the stock, and the Current price as a pulsing
- *     dot, each where it really is; the ticks between Entry and Current are
- *     tinted faint green when up and faint red when down. Every line and the
- *     dot name their price on hover; under the bar Low, Avg and High are a
- *     dot and muted words like the ratings key; Entry sits in the header
- *     when we hold the stock, the current price is the dot and its hover. Then the date of
- *     the targets and the EPS consensus with its revisions. The old "Price
+ *     hollow white dot when we hold the stock, and the Current price as a
+ *     filled white dot that pulses, each where it really is; the ticks
+ *     between Entry and Current are tinted faint green when up and faint red
+ *     when down. Every line and both dots name their price on hover; under
+ *     the bar Low, Avg and High are a dot and muted words like the ratings
+ *     key; Entry sits in the header (with its hollow dot) when we hold the
+ *     stock, the current price is the filled dot and its hover. Then the date
+ *     of the targets and the EPS consensus with its revisions. The old "Price
  *     targets" card drew our own plan here; the plan is the triggers and
  *     the chart's lines, and the word "target" means what the Street expects.
  *
@@ -161,7 +162,7 @@ export function AnalystTargetsCard({
         action={
           entry != null ? (
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
-              <span className="size-1.5 rounded-full bg-blue-500" />
+              <span className="size-1.5 rounded-full border border-foreground" />
               Entry {money(entry)}
             </span>
           ) : null
@@ -175,7 +176,20 @@ export function AnalystTargetsCard({
           {t.low != null ? <PriceLine pct={pctOf(idxFor(t.low))} color="bg-negative" label={`Low ${money(t.low)}`} /> : null}
           <PriceLine pct={pctOf(idxFor(t.average))} color="bg-foreground" label={`Average ${money(t.average)}`} />
           {t.high != null ? <PriceLine pct={pctOf(idxFor(t.high))} color="bg-positive" label={`High ${money(t.high)}`} /> : null}
-          {entry != null ? <PriceLine pct={pctOf(idxFor(entry))} color="bg-blue-500" label={`Entry ${money(entry)}`} /> : null}
+          {entry != null ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    aria-label={`Entry ${money(entry)}`}
+                    className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 cursor-help rounded-full border-2 border-foreground bg-background"
+                    style={{ left: `${pctOf(idxFor(entry))}%` }}
+                  />
+                }
+              />
+              <TooltipContent>Entry {money(entry)}</TooltipContent>
+            </Tooltip>
+          ) : null}
           {currentPrice != null ? (
             <Tooltip>
               <TooltipTrigger
@@ -209,8 +223,7 @@ export function AnalystTargetsCard({
         </div>
       </div>
       <p className="text-xs text-muted-foreground tabular-nums">
-        Targets as of {asOf}
-        {t.numAnalysts != null ? ` · ${t.numAnalysts} analysts` : ""}
+        As of {asOf}
         {eps ? ` · ${eps}` : ""}
       </p>
     </Card>
