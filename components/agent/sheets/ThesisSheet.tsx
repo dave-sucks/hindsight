@@ -854,19 +854,22 @@ export function ThesisBody({
       <AnalystCards coverage={coverage} currentPrice={quote?.currentPrice ?? null} entry={position && !position.closed ? position.avgCost : null} />
     );
 
-  // The trade: the one position card, under the price in every state on
-  // every surface (the owner's design, 2026-11-04). On a page its click opens
-  // the Transactions tab; on the sheet it opens the trade's page.
-  const tradeBanner = position ? (
-    <TradeSummary
-      position={position}
-      pnl={quote?.positionPnl ?? null}
-      pendingProposal={pendingProposal}
-      direction={direction}
-      onOpen={surface === "page" ? () => setTab("transactions") : undefined}
-      trades={state.trades ?? null}
-    />
-  ) : null;
+  // The active position, one element in two looks (the owner's design,
+  // 2026-11-05): the banner under the price on the sheet, the card at the top
+  // of a page's sidebar, each in every state. On a page its click opens the
+  // Transactions tab; on the sheet it opens the trade's page.
+  const tradeProps = position
+    ? {
+        position,
+        pnl: quote?.positionPnl ?? null,
+        pendingProposal,
+        direction,
+        onOpen: surface === "page" ? () => setTab("transactions") : undefined,
+        trades: state.trades ?? null,
+      }
+    : null;
+  const tradeBanner = tradeProps && surface === "sheet" ? <TradeSummary look="banner" {...tradeProps} /> : null;
+  const tradeCard = tradeProps && surface === "page" ? <TradeSummary look="card" {...tradeProps} /> : null;
   // The Transactions tab's fills: the stock page hands in the stock's; the sheet and the trade page have the thesis's.
   const fills: FillFacts[] = transactions ?? state.fills ?? [];
 
@@ -894,6 +897,7 @@ export function ThesisBody({
   const sideColumn =
     surface === "page" ? (
       <div className="hidden lg:block space-y-4">
+        {tradeCard}
         {aside}
         {stockCards}
       </div>

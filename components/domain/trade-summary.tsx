@@ -1,16 +1,23 @@
 "use client";
 
 /**
- * TradeSummary — the ONE position card, the same on the sheet, the trade
- * page and the stock page (the owner's design, 2026-11-04; until then the
- * pages had a second "card" look in the sidebar, deleted with the trade
- * page's Trade Details, whose facts now open from a Transactions row).
+ * TradeSummary — the ONE position element, in two looks (the owner's design,
+ * 2026-11-05): the active position is the Position row, a rollup of every
+ * fill into what is held now (its average cost after every add, its result
+ * once sold), and it reads one way on the sheet and one way on a page, in
+ * every state — proposal waiting, holding, closed.
  *
- * The muted card under the price: a title row with a coloured dot (Proposal
- * / Position / Closed position, the answer buttons at its right while a
- * proposal waits), the sentence with the date and the gain, and a waiting
- * proposal's reason under it. Every surface reads the same position (the
- * dossier's) and the same live P&L (the quote's), so the numbers can't drift.
+ *   • "banner" — the sheet's: the muted card under the price, a title row with
+ *     a coloured dot (Proposal / Position / Closed position, the answer
+ *     buttons at its right while a proposal waits), the sentence with the
+ *     date and the gain, a waiting proposal's reason under it.
+ *   • "card"   — a page's sidebar card: the same title row, the gain large,
+ *     a proposal's sentence, then Bought @ / Now @ (or Sold @) rows.
+ *
+ * The individual fills are the Transactions tab. Every surface reads the
+ * same position (the dossier's) and the same live P&L (the quote's), so the
+ * numbers can't drift. (The old Trade Details card is gone; its facts open
+ * from a Transactions row.)
  */
 
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
@@ -38,6 +45,7 @@ export type TradeSummaryPnl = {
 } | null;
 
 export type TradeSummaryProps = {
+  look: "banner" | "card";
   position: ThesisStatePosition;
   pnl: TradeSummaryPnl;
   pendingProposal: ThesisPendingProposal | null;
@@ -77,23 +85,17 @@ export function humanizeCloseReason(raw: string | null | undefined): string | nu
 }
 
 export function TradeSummary(props: TradeSummaryProps) {
-  return <TradeBanner {...props} />;
+  return props.look === "card" ? <TradeCard {...props} /> : <TradeBanner {...props} />;
 }
 
-// ── The banner ──
-// One card for every state, two rows at least (the owner's rule, 2026-11-04,
-// finalised the same night): the stock cards' surface (muted, bordered), a
-// title row like the Triggers and Agent insights headings with a coloured
-// dot where their icon sits, then the sentence, left-aligned, with the gain
-// on its right. A waiting proposal's reason is hidden until asked for, an
-// accordion: on hover a small secondary-style circle with a chevron (down
-// closed, up open) sits over the dot, and a click anywhere on the card
-// opens or closes the reason.
-//   • proposal waiting → amber dot · "Proposal" · Review at the right
+// ── What the position says, in every state ──
+// One description shared by the two looks, so the sheet and the page can
+// never disagree about the same trade:
+//   • proposal waiting → amber dot · "Proposal" · the answer buttons at the right
 //                        "Add 4 shares: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
 //   • holding          → blue dot · "Position" · "Bought N shares at $entry on Oct 5"
 //   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close on Nov 19"
-function TradeBanner({ position, pnl, pendingProposal, direction, onOpen, trades }: TradeSummaryProps) {
+function describeTrade({ position, pnl, pendingProposal, direction }: TradeSummaryProps) {
   const pp = pendingProposal;
   const usd = (n: number) => formatCurrency(n);
   const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
@@ -106,7 +108,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction, onOpen, trades
   let title: string;
   let dotClass: string;
 
-  // Review while the decision is yours; "Executing" once the order is at Alpaca.
+  // The answer buttons while the decision is yours; "Executing" once the order is at Alpaca.
   let reviewSlot: ReactNode = null;
   if (pp?.executing) {
     reviewSlot = (
@@ -148,42 +150,66 @@ function TradeBanner({ position, pnl, pendingProposal, direction, onOpen, trades
     gain = unrealized;
   }
 
-  // The click: a waiting proposal expands its reason; otherwise a page opens its
-  // Transactions tab and the sheet opens the trade's page.
-  const proposal = Boolean(pp && !pp.executing);
+  return { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing) };
+}
+
+/** The title row the two looks share: the dot (the accordion's chevron over it on hover, on a proposal), the word, the buttons at the right. */
+function TradeTitle({ title, dotClass, proposal, expanded, action }: { title: string; dotClass: string; proposal: boolean; expanded: boolean; action: ReactNode }) {
+  return (
+    <SectionLabel className="relative" action={action}>
+      {/* gap-2, not the headings' 1.5: the hover circle overhangs the dot by 6px and must not touch the word. */}
+      <span className="inline-flex items-center gap-2">
+        <span className="relative inline-flex size-2 shrink-0">
+          <span className={cn("size-2 rounded-full", dotClass)} />
+          {proposal ? (
+            <span
+              aria-hidden
+              className="absolute left-1/2 top-1/2 hidden size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-secondary text-secondary-foreground group-hover/banner:inline-flex"
+            >
+              {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+            </span>
+          ) : null}
+        </span>
+        {title}
+      </span>
+    </SectionLabel>
+  );
+}
+
+/** The thesis's other trades, when it has had more than this one: how many, and what the closed ones made. */
+function TradesLine({ trades }: { trades: TradeSummaryProps["trades"] }) {
+  if (!trades || trades.count <= 1) return null;
+  return (
+    <p className="relative flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums pointer-events-none">
+      {trades.count} trades on this thesis · the closed ones made
+      <PriceChange dollarChange={trades.realized} size="sm" />
+    </p>
+  );
+}
+
+// ── The banner (the sheet) ──
+// The stock cards' surface, a title row, then the sentence with the gain on
+// its right. A waiting proposal's reason is hidden until asked for, an
+// accordion: a click anywhere on the card opens or closes it. Otherwise the
+// click opens the trade's page.
+function TradeBanner(props: TradeSummaryProps) {
+  const { position, onOpen, trades } = props;
+  const { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal } = describeTrade(props);
   const [expanded, setExpanded] = useState(false);
   const click = proposal ? () => setExpanded((v) => !v) : onOpen;
   return (
-    <Card
-      className={cn("group/banner relative bg-muted/40 p-3 gap-2", click && "cursor-pointer")}
-      onClick={click}
-    >
+    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-2", click && "cursor-pointer")} onClick={click}>
       {/* On the sheet the whole card opens the trade: a stretched link under the content, never a link around the controls. */}
       {position.id && !proposal && !onOpen ? (
         <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-xl" />
       ) : null}
-      {/* The title row: the dot where the other headings keep their icon; Review (or Executing) at the right edge. */}
-      <SectionLabel
-        className="relative"
+      <TradeTitle
+        title={title}
+        dotClass={dotClass}
+        proposal={proposal}
+        expanded={expanded}
         action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
-      >
-        {/* gap-2, not the headings' 1.5: the hover circle overhangs the dot by 6px and must not touch the word. */}
-        <span className="inline-flex items-center gap-2">
-          <span className="relative inline-flex size-2 shrink-0">
-            <span className={cn("size-2 rounded-full", dotClass)} />
-            {/* The accordion's handle, over the dot on hover: a secondary-button circle with the chevron. */}
-            {proposal ? (
-              <span
-                aria-hidden
-                className="absolute left-1/2 top-1/2 hidden size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-secondary text-secondary-foreground group-hover/banner:inline-flex"
-              >
-                {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-              </span>
-            ) : null}
-          </span>
-          {title}
-        </span>
-      </SectionLabel>
+      />
       <div className="relative flex items-center justify-between gap-3 pointer-events-none text-sm">
         <span className="font-normal tabular-nums truncate">
           {lead ? <span className="font-medium">{lead}</span> : null}
@@ -191,16 +217,71 @@ function TradeBanner({ position, pnl, pendingProposal, direction, onOpen, trades
         </span>
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
       </div>
-      {/* The thesis's other trades, when it has had more than this one: how many, and what the closed ones made. */}
-      {trades && trades.count > 1 ? (
-        <p className="relative flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums pointer-events-none">
-          {trades.count} trades on this thesis · the closed ones made
-          <PriceChange dollarChange={trades.realized} size="sm" />
-        </p>
-      ) : null}
+      <TradesLine trades={trades} />
       {/* No wrapper: closed, the note renders nothing, so the card's gap has nothing to count. */}
       {pp && !pp.executing ? <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} /> : null}
     </Card>
   );
 }
 
+// ── The card (a page's sidebar) ──
+// The same position in the sidebar's shape, in every state: the title row,
+// the gain large, a proposal's sentence, then Bought @ / Now @ (or Sold @)
+// rows with the dollars. The click opens the Transactions tab; a proposal's
+// click opens its reason.
+function TradeCard(props: TradeSummaryProps) {
+  const { position, pnl, onOpen, trades } = props;
+  const { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal } = describeTrade(props);
+  const [expanded, setExpanded] = useState(false);
+  const click = proposal ? () => setExpanded((v) => !v) : onOpen;
+  const proposedBuy = pp?.intent === "OPEN";
+  const cost = position.avgCost * position.quantity;
+  const closed = position.closed === true;
+  const rows: Array<{ label: string; value: string }> = proposedBuy
+    ? [{ label: `Buy @ ${formatCurrency(position.avgCost)}`, value: formatCurrency(cost) }]
+    : [
+        { label: `Bought @ ${formatCurrency(position.avgCost)}`, value: formatCurrency(cost) },
+        ...(closed && position.closePrice != null
+          ? [{ label: `Sold @ ${formatCurrency(position.closePrice)}`, value: formatCurrency(position.closePrice * position.quantity) }]
+          : !closed && pnl
+            ? [{ label: `Now @ ${formatCurrency(pnl.currentPrice)}`, value: formatCurrency(pnl.marketValue) }]
+            : []),
+        ...(closed && humanizeCloseReason(position.closeReason) ? [{ label: "Exit", value: humanizeCloseReason(position.closeReason)! }] : []),
+      ];
+  return (
+    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", click && "cursor-pointer")} onClick={click}>
+      <TradeTitle
+        title={title}
+        dotClass={dotClass}
+        proposal={proposal}
+        expanded={expanded}
+        action={
+          reviewSlot ? (
+            <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {position.daysHeld} day{position.daysHeld !== 1 ? "s" : ""} held
+            </span>
+          )
+        }
+      />
+      {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
+      {lead ? (
+        <p className="text-sm tabular-nums pointer-events-none">
+          <span className="font-medium">{lead}</span>
+          {rest}
+        </p>
+      ) : null}
+      <div className="pointer-events-none">
+        {rows.map(({ label, value }) => (
+          <div key={label} className="flex items-center justify-between border-b border-border py-1 text-sm">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="font-medium tabular-nums">{value}</span>
+          </div>
+        ))}
+      </div>
+      <TradesLine trades={trades} />
+      {pp && !pp.executing ? <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} /> : null}
+    </Card>
+  );
+}
