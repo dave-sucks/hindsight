@@ -234,23 +234,27 @@ export function AnalystTargetsCard({
       </div>
       <p className="text-xs text-muted-foreground tabular-nums">
         Updated {asOf}.
+        {/* The movement clause never breaks inside itself: one line when the card is wide, a second line whole when it is narrow. */}
         {up != null || down != null ? (
           <>
-            {" "}Recent analyst movement:{" "}
-            {up != null ? (
-              <span className="inline-flex items-center gap-0.5">
-                <HugeiconsIcon icon={ChevronUpIcon} className="size-3.5 text-positive" strokeWidth={2.5} />
-                {up} up
-              </span>
-            ) : null}
-            {up != null && down != null ? ", " : ""}
-            {down != null ? (
-              <span className="inline-flex items-center gap-0.5">
-                <HugeiconsIcon icon={ChevronDownIcon} className="size-3.5 text-negative" strokeWidth={2.5} />
-                {down} down
-              </span>
-            ) : null}
-            .
+            {" "}
+            <span className="whitespace-nowrap">
+              Recent movement:{" "}
+              {up != null ? (
+                <span className="inline-flex items-center gap-0.5">
+                  <HugeiconsIcon icon={ChevronUpIcon} className="size-3.5 text-positive" strokeWidth={2.5} />
+                  {up} up
+                </span>
+              ) : null}
+              {up != null && down != null ? ", " : ""}
+              {down != null ? (
+                <span className="inline-flex items-center gap-0.5">
+                  <HugeiconsIcon icon={ChevronDownIcon} className="size-3.5 text-negative" strokeWidth={2.5} />
+                  {down} down
+                </span>
+              ) : null}
+              .
+            </span>
           </>
         ) : null}
       </p>

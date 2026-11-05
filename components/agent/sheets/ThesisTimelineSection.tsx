@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AiEditingIcon } from "@hugeicons/core-free-icons";
-import { RECENT_ITEMS } from "@/lib/thesis/activity-feed";
+import { NOTED_ITEMS, RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { PriceChange } from "@/components/ui/price-change";
 import {
   buildTimeline,
@@ -279,11 +279,12 @@ function TimelineList({
 }
 
 /**
- * The Overview's Agent insights: the stock's newest 8 Activity lines, the
- * same 8 every run is handed (lib/thesis/activity-feed.ts), assembled and
- * drawn exactly as the Activity tab draws them. The heading carries the
+ * The Overview's Agent insights: the stock's newest 5 Activity lines with a
+ * written paragraph (`notedItems`, lib/thesis/activity-feed.ts), assembled
+ * and drawn exactly as the Activity tab draws them. The heading carries the
  * first period ("Agent insights · Today") in place of the list's first rail
- * label, and says on hover that the agents read these lines as shown.
+ * label, and says on hover what the agents read instead: the newest 8
+ * lines, note or not, the ones the Activity tab marks.
  */
 export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; onViewAll: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -303,7 +304,7 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
               </span>
             }
           />
-          <TooltipContent>The agents read these {RECENT_ITEMS} lines, exactly as shown here.</TooltipContent>
+          <TooltipContent>The newest {NOTED_ITEMS} lines with a note. The agents read the newest {RECENT_ITEMS} lines, note or not, as the Activity tab marks them.</TooltipContent>
         </Tooltip>
       </SectionLabel>
       <TimelineList
@@ -325,8 +326,8 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
   );
 }
 
-/** The line the tab draws under the newest 8, where the Overview's list and the agent's read end. */
-export const RECENT_END_LABEL = "The newest 8 end here: they are on the Overview and in the agent's read.";
+/** The line the tab draws under the newest 8, where the agent's read ends. */
+export const RECENT_END_LABEL = "The newest 8 end here: the agent's read.";
 
 export function ThesisTimelineSection({ thesisId, provenance, recentIds, triggers }: Props) {
   const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
