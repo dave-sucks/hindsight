@@ -950,7 +950,19 @@ export function ThesisBody({
     { value: "overview", label: "Overview", content: overviewContent },
     { value: "research", label: "Research", content: <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} /> },
     ...(showActivity ? [{ value: "activity", label: "Activity", content: activityContent }] : []),
-    { value: "transactions", label: "Transactions", content: <Transactions ticker={ticker} fills={fills} openThesis={surface === "page"} /> },
+    {
+      value: "transactions",
+      label: "Transactions",
+      content: (
+        <Transactions
+          ticker={ticker}
+          fills={fills}
+          openThesis={surface === "page"}
+          held={position && !position.closed && pendingProposal?.intent !== "OPEN" ? { shares: position.quantity, avgCost: position.avgCost } : null}
+          currentPrice={quote?.currentPrice ?? null}
+        />
+      ),
+    },
     ...extraTabs.map((t) => ({ value: t.label.toLowerCase(), label: t.label, content: t.content })),
   ];
   const tabOptions = tabs.map((t) => ({ value: t.value, label: t.label }));

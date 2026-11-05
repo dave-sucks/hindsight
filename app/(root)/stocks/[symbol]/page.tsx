@@ -347,6 +347,7 @@ export default async function StockDetailPage({ params }: Props) {
             }}
             stats={stats}
             transactions={transactions}
+            held={open ? { shares: Number(open.quantity), avgCost: Number(open.avgCost) } : null}
             financials={financials}
             news={news}
             sidebar={sidebar}

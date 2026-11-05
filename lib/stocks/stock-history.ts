@@ -1,34 +1,13 @@
 /**
- * A stock's transactions — every fill on it, one dated row each in the
- * homepage activity feed's shape (the owner's design, 2026-11-05): the buy
- * at the open, each add, each trim, and the sale with the position's result.
- * Pure: the page or the sheet route hands in the fills it loaded.
+ * A stock's transactions — every fill on it (the owner's design, 2026-11-05):
+ * the buy at the open, each add, each trim, each sale. A sell's gain is its
+ * price against the average cost of the shares at that moment (buys and adds
+ * move the average, sells don't), and the stock's total is the sum of its
+ * sells plus what the open shares are worth today. Pure: the page or the
+ * sheet route hands in the positions and their orders.
  */
 
 import { fmtQty } from "@/lib/trade-statement";
-
-export type StockHistoryItem =
-  | {
-      kind: "thesis";
-      id: string;
-      /** ISO timestamp the row sorts and groups by. */
-      at: string;
-      thesisId: string;
-      status: string;
-      sentence: string;
-    }
-  | {
-      kind: "trade";
-      id: string;
-      at: string;
-      href: string;
-      /** The fill the row is: the Transactions tab opens its dialog on it. */
-      fillId: string;
-      label: string;
-      dotClass: string;
-      sentence: string;
-      gain: { dollar: number; pct: number | null } | null;
-    };
 
 /**
  * One fill's facts, as every surface hands them in (ISO dates): a row of the
@@ -55,7 +34,7 @@ export type FillFacts = {
   rationale: string | null;
   /** LONG | SHORT, the position's. */
   direction: string;
-  /** The position's result, carried on its closing fill only. */
+  /** A sell's gain against the average cost at that moment (the position's result on an old sale with no fills of its own). */
   result: { dollar: number; pct: number | null } | null;
   /** The close reason, on the closing fill. */
   closeReason: string | null;
@@ -103,39 +82,72 @@ export function fillFacts(positions: FillPosition[]): FillFacts[] {
   const out: FillFacts[] = [];
   for (const p of positions) {
     const cost = p.avgCost * p.quantity;
-    const result = p.status === "CLOSED" && p.realizedPnl != null ? { dollar: p.realizedPnl, pct: cost > 0 ? (p.realizedPnl / cost) * 100 : null } : null;
+    const wholeResult = p.status === "CLOSED" && p.realizedPnl != null ? { dollar: p.realizedPnl, pct: cost > 0 ? (p.realizedPnl / cost) * 100 : null } : null;
     const base = { positionId: p.id, thesisId: p.thesisId, analyst: p.analyst, direction: p.direction };
-    const orders = p.orders.filter((o) => o.status === "FILLED" || o.status === "AWAITING_APPROVAL");
-    let sawOpen = false;
-    let sawClose = false;
-    for (const o of orders) {
+    const orders = p.orders
+      .filter((o) => o.status === "FILLED" || o.status === "AWAITING_APPROVAL")
+      .sort((x, y) => (x.filledAt ?? x.createdAt).getTime() - (y.filledAt ?? y.createdAt).getTime());
+    const hasOpen = orders.some((o) => o.status === "FILLED" && o.side === "BUY" && (o.intent === "OPEN" || o.intent == null));
+    const hasClose = orders.some((o) => o.status === "FILLED" && o.side === "SELL" && (o.intent === "CLOSE" || o.intent == null));
+    // The position's own open and close stand in where the order rows are missing (positions from before they were kept).
+    const synthOpen: FillOrder | null = !hasOpen && p.status !== "PENDING_APPROVAL"
+      ? { id: `open-${p.id}`, side: "BUY", intent: "OPEN", status: "FILLED", quantity: p.quantity, filledQty: p.quantity, filledPrice: p.avgCost, filledAt: p.openedAt, createdAt: p.openedAt, rationale: null, closeReason: null }
+      : null;
+    const synthClose: FillOrder | null = !hasClose && p.status === "CLOSED" && p.closedAt
+      ? { id: `close-${p.id}`, side: "SELL", intent: "CLOSE", status: "FILLED", quantity: p.quantity, filledQty: p.quantity, filledPrice: p.closePrice, filledAt: p.closedAt, createdAt: p.closedAt, rationale: null, closeReason: p.closeReason }
+      : null;
+    const all = [...(synthOpen ? [synthOpen] : []), ...orders, ...(synthClose ? [synthClose] : [])].sort(
+      (x, y) => (x.filledAt ?? x.createdAt).getTime() - (y.filledAt ?? y.createdAt).getTime(),
+    );
+    // Replay: the running average cost of the shares held, moved by buys and adds only.
+    let held = 0;
+    let avg = 0;
+    for (const o of all) {
       const filled = o.status === "FILLED";
-      const closing = filled && p.status === "CLOSED" && o.side === "SELL" && (o.intent === "CLOSE" || o.intent == null);
-      const opening = filled && o.side === "BUY" && (o.intent === "OPEN" || o.intent == null);
-      if (opening) sawOpen = true;
-      if (closing) sawClose = true;
+      const qty = o.filledQty ?? o.quantity;
+      const price = o.filledPrice;
+      const sell = o.side === "SELL";
+      const closing = filled && sell && p.status === "CLOSED" && (o.intent === "CLOSE" || o.intent == null);
+      let result: FillFacts["result"] = null;
+      if (filled && sell && price != null) {
+        if (o.id === `close-${p.id}` || (held <= 0 && wholeResult)) {
+          // No fills of its own to replay against: the position's result is the sale's.
+          result = wholeResult;
+        } else if (avg > 0) {
+          const dollar = (price - avg) * qty * (p.direction === "SHORT" ? -1 : 1);
+          result = { dollar, pct: (dollar / (avg * qty)) * 100 };
+        }
+      }
       out.push({
         ...base,
         id: o.id,
-        side: o.side === "SELL" ? "SELL" : "BUY",
-        intent: o.intent ?? (o.side === "SELL" ? (closing ? "CLOSE" : "PARTIAL_CLOSE") : "OPEN"),
+        side: sell ? "SELL" : "BUY",
+        intent: o.intent ?? (sell ? (closing ? "CLOSE" : "PARTIAL_CLOSE") : "OPEN"),
         status: o.status,
-        quantity: o.filledQty ?? o.quantity,
-        price: o.filledPrice,
+        quantity: qty,
+        price,
         at: (o.filledAt ?? o.createdAt).toISOString(),
         rationale: o.rationale,
-        result: closing ? result : null,
+        result,
         closeReason: closing ? (o.closeReason ?? p.closeReason) : null,
       });
-    }
-    if (!sawOpen && p.status !== "PENDING_APPROVAL") {
-      out.push({ ...base, id: `open-${p.id}`, side: "BUY", intent: "OPEN", status: "FILLED", quantity: p.quantity, price: p.avgCost, at: p.openedAt.toISOString(), rationale: null, result: null, closeReason: null });
-    }
-    if (!sawClose && p.status === "CLOSED" && p.closedAt) {
-      out.push({ ...base, id: `close-${p.id}`, side: "SELL", intent: "CLOSE", status: "FILLED", quantity: p.quantity, price: p.closePrice, at: p.closedAt.toISOString(), rationale: null, result, closeReason: p.closeReason });
+      if (filled && price != null) {
+        if (!sell) {
+          avg = held + qty > 0 ? (avg * held + price * qty) / (held + qty) : price;
+          held += qty;
+        } else {
+          held = Math.max(0, held - qty);
+        }
+      }
     }
   }
   return out.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** The stock's total: how many sells, what they realized, and what is still held. */
+export function fillSummary(fills: FillFacts[]): { sells: number; realized: number } {
+  const sold = fills.filter((f) => f.status === "FILLED" && f.side === "SELL");
+  return { sells: sold.length, realized: sold.reduce((sum, f) => sum + (f.result?.dollar ?? 0), 0) };
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -167,24 +179,4 @@ export function fillSentence(f: FillFacts): string {
     return `${verb} ${shares(f.quantity)}${f.price != null ? ` at ${money(f.price)}` : ""}`;
   }
   return `${label} ${shares(f.quantity)}${f.price != null ? ` at ${money(f.price)}` : ""}`;
-}
-
-/** A stock's fills as rows, newest first. */
-export function fillRows(fills: FillFacts[]): Extract<StockHistoryItem, { kind: "trade" }>[] {
-  return fills
-    .map((f) => {
-      const { label, dotClass } = fillVerb(f);
-      return {
-        kind: "trade" as const,
-        id: `fill-${f.id}`,
-        at: f.at,
-        href: `/trades/${f.positionId}`,
-        fillId: f.id,
-        label,
-        dotClass,
-        sentence: fillSentence(f),
-        gain: f.result,
-      };
-    })
-    .sort((a, b) => b.at.localeCompare(a.at));
 }

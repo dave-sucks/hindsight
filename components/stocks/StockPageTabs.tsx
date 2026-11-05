@@ -24,6 +24,7 @@ export function StockPageTabs({
   overview,
   stats,
   transactions,
+  held,
   financials,
   news,
   sidebar,
@@ -33,6 +34,8 @@ export function StockPageTabs({
   stats: ReactNode;
   /** Every fill on the stock. */
   transactions: FillFacts[];
+  /** The open position, for the total line's "still holding". */
+  held: { shares: number; avgCost: number } | null;
   financials: ReactNode;
   news: ReactNode;
   sidebar: ReactNode;
@@ -53,7 +56,7 @@ export function StockPageTabs({
       <TabsContent value={OVERVIEW} className="space-y-5">
         <StockOverview {...overview} sidebar={sidebar}>
           {stats}
-          <Transactions ticker={overview.ticker} fills={transactions} limit={5} onViewAll={() => setTab(TRANSACTIONS)} openThesis />
+          <Transactions ticker={overview.ticker} fills={transactions} limit={5} onViewAll={() => setTab(TRANSACTIONS)} openThesis held={held} currentPrice={overview.price} />
         </StockOverview>
       </TabsContent>
 
@@ -67,7 +70,7 @@ export function StockPageTabs({
       <TabsContent value={TRANSACTIONS} className="space-y-5">
         <div className={columns}>
           <div className="min-w-0 space-y-5">
-            <Transactions ticker={overview.ticker} fills={transactions} openThesis />
+            <Transactions ticker={overview.ticker} fills={transactions} openThesis held={held} currentPrice={overview.price} />
           </div>
           {side}
         </div>
