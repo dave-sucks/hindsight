@@ -167,14 +167,23 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   ];
 
   it("the voice rules state the standard and name the shorthand they ban", () => {
-    // A note, in three parts: what is going on and why, what it means, then one closing sentence of what we did.
-    expect(VOICE_RULES).toContain(`answers "what's going on with this stock, and what should I do?", in three parts, in this order:`);
-    expect(VOICE_RULES).toContain("- What is going on with the company and the stock, and why: what happened, today or since the last look, with dates (its own news, its sector, the market).");
-    expect(VOICE_RULES).toContain("- What it means: whether that touches the reason we own it (or watch it), and for this position the shares, the dollars, the profit or loss.");
+    // A note, in three parts (2026-11-04: two to four sentences, about 60 to 90 words, said the way a podcaster would):
+    // what happened and what we're doing, then why, then what would change it.
+    expect(VOICE_RULES).toContain("Write the way you would say it out loud to a friend who listens to a markets podcast: short sentences, everyday words, the two or three numbers that matter and no others.");
+    expect(VOICE_RULES).toContain(`is one paragraph of two to four sentences, about 60 to 90 words, that answers "what's going on with this stock, and what should I do?", in three parts, in this order:`);
+    expect(VOICE_RULES).toContain("- The first sentence says what happened and what we are doing about it, in plain words:");
+    expect(VOICE_RULES).toContain("- Then why, in one or two sentences, and what you make of it: is this the company, or just its group or the market; does it touch the reason we own it (or watch it); what do you own and are you up or down.");
+    // Opinionated: a note takes a view, never only reports.
+    expect(VOICE_RULES).toContain("Take a view a listener could disagree with");
+    // Not too technical: the neighbor test.
+    expect(VOICE_RULES).toContain("if a neighbor who doesn't follow stocks wouldn't know it, use the one they would");
     // GEV and ABBV replays, 10-28: the note listed every break that had not happened.
     expect(VOICE_RULES).toContain("when nothing that would break the case has happened, say so in a few words, never as a list of each thing that hasn't");
-    expect(VOICE_RULES).toContain("- What you did, in one closing sentence of plain words, and what would change it");
-    expect(VOICE_RULES).toContain("A stop or target goes in this last sentence, and only when the call turns on it.");
+    expect(VOICE_RULES).toContain("- The last sentence says what would change the call. A stop or target goes in this last sentence, and only when the call turns on it");
+    // MSFT and GEV, 11-04: ten numbers in a note, three sentences of 50 to 70 words.
+    expect(VOICE_RULES).toContain("Numbers: keep the two or three that matter (the move, what you're up or down, the level the call turns on) and drop the rest; a date or a share count isn't one of them.");
+    for (const term of ["catalyst", '"thesis intact"', "constructive", "re-rate", "multiple", "risk/reward", "exposure", "positioning"]) expect(VOICE_RULES).toContain(term);
+    expect(VOICE_RULES).not.toMatch(/three to six sentences/);
     // The standing description: a company page.
     expect(VOICE_RULES).toContain("reads like a research site's company page: what the company does; what it has done lately, with dates; the numbers that matter (growth, profits, valuation); what Wall Street thinks; what has to stay true. Sourced, never a trade formula.");
     expect(VOICE_RULES).toMatch(/never the reason by itself: "the stop at \$41\.42", not "the floor fired"/);
@@ -190,12 +199,14 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     expect(fields.flatMap(([name, words]) => shorthand(words).map((s) => `${name}: ${s}`))).toEqual([]);
   });
 
-  it("each note and trade reason leads with the company and points at the rules", () => {
+  it("each note and trade reason leads with the company and points at the rules, and restates no length or tone", () => {
     const notes = shown().filter(([name]) => /\.(rationale|entry_rationale|notes|reason|reasoning_summary|decision_rationale)$/.test(name));
     expect(notes).toHaveLength(7);
     for (const [name, words] of notes) {
       const company = name.endsWith("decision_rationale") ? /what moved the stocks/ : /company/;
       expect([name, company.test(words), /How you write/.test(words)]).toEqual([name, true, true]);
+      // 2026-11-04: the length and the first-sentence rule are written once, in the rules.
+      expect([name, /first sentence|sentences|words long/.test(words)]).toEqual([name, false]);
     }
   });
 

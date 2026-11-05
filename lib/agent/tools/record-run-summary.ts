@@ -42,7 +42,7 @@ export const recordRunSummary = defineTool({
       .string()
       .min(120)
       .describe(
-        "What the run did and why, in a few plain sentences the owner reads on the run page: what moved the stocks you worked on, then the buys, sales and plan changes and the reason for each, or why nothing changed. Name the stocks and the numbers; write it by How you write.",
+        "What the run did and why, the paragraph the owner reads on the run page: what moved the stocks you worked on, then the buys, sales and plan changes and the reason for each, or why nothing changed. Name the stocks and the numbers; write it by How you write.",
       ),
     ranked_picks: z
       .array(
