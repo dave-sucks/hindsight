@@ -93,7 +93,7 @@ export function TradeSummary(props: TradeSummaryProps) {
 // dot where their icon sits, then the sentence, left-aligned, with the gain
 // on its right, then a waiting proposal's reason.
 //   • proposal waiting → amber dot · "Proposal" · Review at the right
-//                        "Sell: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
+//                        "Add 4 shares: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
 //   • holding          → blue dot · "Position" · "Bought N shares at $entry on Oct 5"
 //   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close on Nov 19"
 function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummaryProps) {
@@ -130,7 +130,8 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
     title = "Proposal";
     dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
   } else if (pp) {
-    lead = `${pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim"}:`;
+    // The verb carries the proposal's own size: "Add 4 shares:" before the position it adds to.
+    lead = `${pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim"} ${shares(pp.quantity)}:`;
     rest = ` ${bought}`;
     title = "Proposal";
     dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
