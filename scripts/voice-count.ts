@@ -7,11 +7,14 @@
  * notes written, their average length in words, and every place a saved
  * note or the narration uses words the rules forbid (tool and field names,
  * codes, describing the checking, "the principal", "this seat", the
- * bracket). The research writer's own note is left out: it keeps its
- * sections and source tags by design; its saved decision is counted.
+ * bracket), and how many notes fit the length and tone the rules ask for
+ * (noteCheck: two to four sentences, about 60 to 90 words, three numbers,
+ * none of the desk's words). The research writer's own note is left out: it
+ * keeps its sections and source tags by design; its saved decision is counted.
  * A count, not a score: the PR prints both columns and the worst lines.
  */
 import { readFileSync } from "fs";
+import { noteCheck } from "@/lib/agent/voice";
 
 const FORBIDDEN: Array<[string, RegExp]> = [
   ["tool name", /\b(place_trade|update_thesis|close_position|manage_position|record_thesis|record_run_summary|complete_run|get_[a-z_]+|dispatch_thesis_research)\b/g],
@@ -57,6 +60,7 @@ function count(path: string) {
     runs: runs.length,
     notes: notes.length,
     avgNoteWords: notes.length ? Math.round(notes.reduce((s, n) => s + words(n.text), 0) / notes.length) : 0,
+    notesThatFit: notes.filter((n) => noteCheck(n.text).length === 0).length,
     savedPer1000: saved.per1000,
     spokenPer1000: spoken.per1000,
     hits,
@@ -73,6 +77,7 @@ console.log(`| | Before | After |\n|---|---|---|`);
 console.log(`| Runs | ${a.runs} | ${b.runs} |`);
 console.log(`| Notes and reasons written | ${a.notes} | ${b.notes} |`);
 console.log(`| Average note, words | ${a.avgNoteWords} | ${b.avgNoteWords} |`);
+console.log(`| Notes that fit the rules' length and tone | ${a.notesThatFit} | ${b.notesThatFit} |`);
 console.log(`| Forbidden words per 1,000, saved text | ${a.savedPer1000} | ${b.savedPer1000} |`);
 console.log(`| Forbidden words per 1,000, narration | ${a.spokenPer1000} | ${b.spokenPer1000} |`);
 for (const [k] of FORBIDDEN) console.log(`| — ${k} | ${a.hits[k]} | ${b.hits[k]} |`);
