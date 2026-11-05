@@ -243,7 +243,6 @@ export default async function StockDetailPage({ params }: Props) {
               ticker={upperSymbol}
               status={live.status}
               agentWatchDays={agentWatchDays(live.triggers)}
-              conviction={(live.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
               analystId={live.researchRun?.agentConfigId ?? null}
               thesisId={live.id}
               extraActions={<WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />}

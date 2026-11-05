@@ -3,8 +3,7 @@
 /**
  * ThesisHeader — the top of a thesis, the same on the sheet and the trade
  * page (the owner's layout, 2026-11-04). Row one is the nav: on the sheet
- * an expand button to the full page, the status pill and the conviction
- * chip, then at the right edge the pin, a ··· menu (Send to agent, Trade,
+ * an expand button to the full page and the status pill, then at the right edge the pin, a ··· menu (Send to agent, Trade,
  * Close trade with its warning) and, on the sheet, the X. The stock row
  * under it (`StockRow`: logo, ticker, name) is drawn by the body, which
  * makes it stick to the top as you scroll and swaps the name for the price
@@ -81,18 +80,19 @@ export function StatusPill({
 }
 
 // ── ConvictionChip ──
-// The writer's conviction as one chip by the title — "🔥 High conviction"
-// (the owner, 2026-11-03: the tier with the flame, nothing else). The flame
-// marks the top two tiers; the reason is on the Research tab. Nothing on
-// legacy rows and passes.
+// The writer's conviction as one chip — "🔥 High conviction" (the owner,
+// 2026-11-03: the tier with the flame, nothing else). The flame marks the top
+// two tiers; the reason is on the Research tab. Nothing on legacy rows and
+// passes. Since 2026-11-05 it is a fact chip in the row under the company
+// line, drawn by the body, not a pill in the header.
 export function ConvictionChip({ conviction }: { conviction: Conviction | null }) {
   if (!conviction) return null;
   const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} conviction`;
   const hot = conviction === "STRONG" || conviction === "HIGH";
   return (
-    <Badge variant="secondary">
+    <Badge variant="fact" shape="square">
       {hot ? <FlameIcon className="size-3" /> : null}
-      <span className="font-normal">{label}</span>
+      {label}
     </Badge>
   );
 }
@@ -101,7 +101,6 @@ export interface ThesisHeaderProps {
   ticker: string;
   status: ThesisStatus | string;
   agentWatchDays: number | null;
-  conviction: Conviction | null;
   /** The owning analyst; with `thesisId`, the menu offers Send to agent. */
   analystId: string | null;
   thesisId?: string;
@@ -163,7 +162,6 @@ export function ThesisHeader({
   ticker,
   status,
   agentWatchDays,
-  conviction,
   analystId,
   thesisId,
   onSent,
@@ -187,7 +185,6 @@ export function ThesisHeader({
           </Button>
         ) : null}
         <StatusPill status={status} agentWatchDays={agentWatchDays} />
-        <ConvictionChip conviction={conviction} />
         <div className="ml-auto flex items-center gap-0.5">
           <PinButton ticker={ticker} />
           <ThesisActionsMenu ticker={ticker} analystId={analystId} thesisId={thesisId} onSent={onSent} closeTrade={closeTrade} />

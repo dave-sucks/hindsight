@@ -63,7 +63,7 @@ import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import type { ThesisStatus } from "@/lib/thesis-status";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { StockRow } from "@/components/domain/thesis-header";
+import { ConvictionChip, StockRow } from "@/components/domain/thesis-header";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -905,9 +905,11 @@ export function ThesisBody({
   const website = quote?.website ?? null;
   const host = website ? website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null;
   const facts = [quote?.exchange, quote?.industry].filter((v): v is string => Boolean(v?.trim()));
+  const conviction = (state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
   const factChips =
-    facts.length > 0 || host ? (
+    conviction || facts.length > 0 || host ? (
       <div className="flex flex-wrap items-center gap-1.5">
+        <ConvictionChip conviction={conviction} />
         {facts.map((f) => (
           <Badge key={f} variant="fact" shape="square">{f}</Badge>
         ))}
@@ -932,9 +934,13 @@ export function ThesisBody({
   // ── The tabs, in order: Overview · Research · Activity (not on the stock page) · Transactions · the page's own ──
   const overviewContent = (
     <>
-      {/* Who the company is: the Writer's two sentences, moved here from Research, at the belief's size; its facts as chips under it (the owner, 2026-11-05). */}
-      {company ? <p className="text-lg font-normal text-foreground leading-relaxed">{company}</p> : null}
-      {factChips}
+      {/* Who the company is: the Writer's two sentences, moved here from Research, at the belief's size; the conviction and the stock's facts as chips close under it (the owner, 2026-11-05). */}
+      {company || factChips ? (
+        <div className="space-y-2">
+          {company ? <p className="text-lg font-normal text-foreground leading-relaxed">{company}</p> : null}
+          {factChips}
+        </div>
+      ) : null}
 
       {/* ── Whether it needs work today (DAV-304) ── */}
       <WorkFlagLine
@@ -1125,7 +1131,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           ticker={ticker}
           status={state.status}
           agentWatchDays={agentWatchDays(state.triggers)}
-          conviction={(state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
           analystId={state.analystId}
           thesisId={thesis_id}
           onSent={data.refresh}

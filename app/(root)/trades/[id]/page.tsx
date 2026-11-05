@@ -66,7 +66,6 @@ export default async function TradeDetailPage({
           ticker={position.symbol}
           status={thesis?.status ?? (isClosed ? 'RETIRED' : 'HOLDING')}
           agentWatchDays={agentWatchDays(thesis?.triggers)}
-          conviction={(thesis?.conviction ?? null) as 'STRONG' | 'HIGH' | 'MEDIUM' | 'LOW' | null}
           analystId={position.analyst?.id ?? null}
           thesisId={thesis?.id}
           closeTrade={isOpen ? { tradeId: position.id } : null}

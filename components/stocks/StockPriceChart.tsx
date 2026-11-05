@@ -136,6 +136,79 @@ const RANGE_DAYS: Record<DailyRange, number> = {
 // Axis / mark colors — hardcoded hex (SVG stroke/fill can't consume our oklch()
 // theme vars).
 const AXIS_TICK = 'var(--muted-foreground)';
+
+// The tooltip's volume: "1.3M", "24K".
+const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+
+/**
+ * The hover cursor (the owner, 2026-11-05, after Apple's and Google's
+ * charts): the vertical line, and the point's time as a small badge sitting
+ * on the x-axis under it, over the tick labels. The tooltip box then needs
+ * no label line. Recharts clones this element with `points` (the line's top
+ * and bottom), the plot's `left` and `width`, and the active `payload`.
+ */
+function TimeCursor({
+  points,
+  payload,
+  labelOf,
+  left = 0,
+  width = 0,
+}: {
+  points?: Array<{ x: number; y: number }>;
+  payload?: Array<{ payload?: Record<string, unknown> }>;
+  labelOf: (d: Record<string, unknown>) => string;
+  left?: number;
+  width?: number;
+}) {
+  if (!points || points.length < 2) return null;
+  const [top, bottom] = points;
+  const d = payload?.[0]?.payload;
+  const label = d ? labelOf(d) : '';
+  // Mono at 9px runs about 5.6px a character; clamp the badge inside the plot.
+  const w = Math.max(28, label.length * 5.6 + 12);
+  const h = 16;
+  const x = Math.min(Math.max(top.x - w / 2, left), Math.max(left, left + width - w));
+  const y = bottom.y + (X_AXIS_HEIGHT - h) / 2;
+  return (
+    <g pointerEvents="none">
+      <line x1={top.x} y1={top.y} x2={bottom.x} y2={bottom.y} stroke="var(--muted-foreground)" strokeWidth={1} />
+      {label ? (
+        <g>
+          <rect x={x} y={y} width={w} height={h} rx={4} fill="var(--popover)" stroke="var(--border)" />
+          <text
+            x={x + w / 2}
+            y={y + h / 2}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={9}
+            fontFamily="var(--font-mono)"
+            fill="var(--foreground)"
+          >
+            {label}
+          </text>
+        </g>
+      ) : null}
+    </g>
+  );
+}
+
+/** The tooltip: one line, the price and the volume, nothing else. */
+function OneLineTip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: { close?: number; volume?: number } }> }) {
+  const d = payload?.[0]?.payload;
+  if (!active || !d || d.close == null) return null;
+  return (
+    <div className="rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground tabular-nums whitespace-nowrap shadow-sm">
+      <span className="text-muted-foreground">Price </span>
+      {`$${d.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+      {d.volume != null && d.volume > 0 ? (
+        <>
+          <span className="text-muted-foreground"> · Volume </span>
+          {compact.format(d.volume)}
+        </>
+      ) : null}
+    </div>
+  );
+}
 // The line is colored green ABOVE and red BELOW the graph's starting price
 // (the first visible point), switching mid-line. These are the sRGB hex of the
 // app's --positive / --negative tokens (oklch(69.92% .166 144.58) /
@@ -305,8 +378,8 @@ export function StockPriceChart({
     return priceDomain(closes);
   }, [data, isIntraday, priorClose]);
 
-  // Volume bars sit along the bottom fifth: their own hidden axis runs to five
-  // times the cap. The cap is the 95th-percentile bar, and taller bars are
+  // Volume bars sit along the bottom eighth: their own hidden axis runs to
+  // eight times the cap. The cap is the 95th-percentile bar, and taller bars are
   // drawn at it, so one opening or closing print (on NVDA 2026-11-05 a
   // hundred times the median minute) can't flatten the rest of the day to
   // half a pixel. The tooltip still says the true volume. Each bar takes the
@@ -315,7 +388,7 @@ export function StockPriceChart({
     const sorted = data.map((d) => d.volume ?? 0).filter((v) => v > 0).sort((a, b) => a - b);
     return sorted.length ? Math.max(1, sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]) : 1;
   }, [data]);
-  const volumeTop = volumeCap * 5;
+  const volumeTop = volumeCap * 8;
 
   // Snap each marker to the nearest visible candle, then stagger labels that
   // land on (or near) the same candle so they don't overprint — Watching and
@@ -540,27 +613,22 @@ export function StockPriceChart({
           <YAxis hide domain={yDomain ?? ['dataMin', 'dataMax']} />
           <YAxis yAxisId="volume" hide orientation="right" domain={[0, volumeTop]} />
 
+          {/* One line (price, volume) beside the cursor; the time is a badge on the axis under the cursor line. */}
           <Tooltip
-            contentStyle={{
-              background: 'var(--popover)',
-              border: '1px solid var(--border)',
-              borderRadius: '6px',
-              fontSize: '12px',
-              color: 'var(--popover-foreground)',
-            }}
-            formatter={(v: number, name: string, item: { payload?: { volume?: number } }) =>
-              name === 'volume'
-                ? [(item?.payload?.volume ?? v).toLocaleString(), 'Volume']
-                : [`$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Close']
+            isAnimationActive={false}
+            content={<OneLineTip />}
+            wrapperStyle={{ outline: 'none' }}
+            cursor={
+              <TimeCursor
+                labelOf={(d) =>
+                  isIntraday
+                    ? formatTimeLabel(d.x as number)
+                    : isHourly
+                      ? formatDateTimeLabel(d.date as string)
+                      : formatDateLabel(d.date as string)
+                }
+              />
             }
-            labelFormatter={(l: string | number) =>
-              isIntraday
-                ? formatTimeLabel(l)
-                : isHourly
-                  ? formatDateTimeLabel(l)
-                  : formatDateLabel(l)
-            }
-            labelStyle={{ color: 'var(--muted-foreground)' }}
           />
 
           {/* Off-hours bands (1D only): pre-market + after-hours, filled with a
