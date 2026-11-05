@@ -20,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { getStockInfo } from "@/lib/actions/stock-info";
+import { getStockProfile } from "@/lib/actions/finnhub.actions";
 import { getAccountId } from "@/lib/auth/account";
 import { loadStockFacts } from "@/lib/agent/stock-facts";
 import { situationLabels } from "@/lib/agent/situations";
@@ -73,9 +74,10 @@ export async function GET(
 
   // The live quote and the StockInfo cache identity. Quote failure is
   // non-fatal — the sheet just omits the price line + PnL.
-  const [liveQuote, identity] = await Promise.all([
+  const [liveQuote, identity, profile] = await Promise.all([
     getStockQuote(thesis.ticker).catch(() => null),
     getStockInfo(thesis.ticker),
+    getStockProfile(thesis.ticker).catch(() => null),
   ]);
 
   const currentPrice =
@@ -129,6 +131,8 @@ export async function GET(
     positionPnl,
     companyName: identity.companyName,
     exchange: identity.exchange,
+    industry: profile?.finnhubIndustry || null,
+    website: profile?.weburl || null,
     resolved: facts.resolved.get(thesis.id) ?? null,
     needsAction: facts.needs.get(thesis.id)?.[0] ?? null,
     situations: sources ? situationLabels(sources) : [],

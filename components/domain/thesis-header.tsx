@@ -6,13 +6,16 @@
  * an expand button to the full page, the status pill and the conviction
  * chip, then at the right edge the pin, a ··· menu (Send to agent, Trade,
  * Close trade with its warning) and, on the sheet, the X. Row two is the
- * stock in one line: its logo, ticker and name. One component, so the surfaces cannot
- * drift; the full page has no expand and no X.
+ * stock: its logo, then the name with the ticker beside it in the same type,
+ * light and muted, and under them a small mono line with the exchange, the
+ * industry and the website (the owner, 2026-11-05: the About card is gone).
+ * One component, so the surfaces cannot drift; the full page has no expand
+ * and no X.
  */
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { XIcon, MoreHorizontal } from "lucide-react";
+import { XIcon, MoreHorizontal, ExternalLink } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowExpand01Icon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
@@ -97,8 +100,10 @@ export function ConvictionChip({ conviction }: { conviction: Conviction | null }
 export interface ThesisHeaderProps {
   ticker: string;
   displayName: string;
-  /** Kept for callers; the exchange no longer shows — the conviction does. */
+  /** The mono line under the name: the exchange, the industry and the website. */
   exchange?: string | null;
+  industry?: string | null;
+  website?: string | null;
   status: ThesisStatus | string;
   agentWatchDays: number | null;
   conviction: Conviction | null;
@@ -164,6 +169,9 @@ function ThesisActionsMenu({
 export function ThesisHeader({
   ticker,
   displayName,
+  exchange,
+  industry,
+  website,
   status,
   agentWatchDays,
   conviction,
@@ -178,6 +186,8 @@ export function ThesisHeader({
 }: ThesisHeaderProps) {
   const sheet = surface === "sheet";
   const link = href === undefined ? `/stocks/${ticker}` : href;
+  const facts = [exchange, industry].filter((v): v is string => Boolean(v?.trim()));
+  const host = website ? website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null;
   return (
     <div className="flex flex-col gap-3">
       <div className="-mx-1 flex items-center gap-1.5">
@@ -205,28 +215,50 @@ export function ThesisHeader({
           ) : null}
         </div>
       </div>
-      {/* Row two: the stock, in one line (the owner, 2026-11-04): the logo one
-          size down, the ticker in mono and muted, the name in the foreground,
-          both one size under the old heading. */}
-      <div className="flex items-center gap-2.5 min-w-0">
+      {/* Row two: the stock. The name in the foreground with the ticker beside
+          it, the same type a weight lighter and muted; under them the facts
+          in small mono. */}
+      <div className="flex items-center gap-3 min-w-0">
         {link ? (
           <Link href={link} className="shrink-0">
-            <StockLogo ticker={ticker} size="md" />
+            <StockLogo ticker={ticker} size="lg" />
           </Link>
         ) : (
-          <StockLogo ticker={ticker} size="md" />
+          <StockLogo ticker={ticker} size="lg" />
         )}
-        <span className="font-mono text-lg font-normal uppercase tracking-wide text-foreground shrink-0">{ticker}</span>
-        <span className="text-muted-foreground shrink-0" aria-hidden>·</span>
-        <p className="text-lg font-normal text-foreground truncate min-w-0">
-          {link ? (
-            <Link href={link} className="hover:underline underline-offset-4">
-              {displayName}
-            </Link>
-          ) : (
-            displayName
-          )}
-        </p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <p className="text-lg font-normal text-foreground truncate min-w-0">
+              {link ? (
+                <Link href={link} className="hover:underline underline-offset-4">
+                  {displayName}
+                </Link>
+              ) : (
+                displayName
+              )}
+            </p>
+            <span className="text-lg font-light text-muted-foreground shrink-0">{ticker}</span>
+          </div>
+          {facts.length > 0 || host ? (
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-xs uppercase tracking-wide text-muted-foreground">
+              <span className="truncate">{facts.join(" · ")}</span>
+              {host && website ? (
+                <>
+                  {facts.length > 0 ? <span aria-hidden>·</span> : null}
+                  <a
+                    href={website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex shrink-0 items-center gap-1 normal-case tracking-normal hover:text-foreground hover:underline underline-offset-4"
+                  >
+                    {host}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

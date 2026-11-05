@@ -44,20 +44,6 @@ function BlockLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
 }
 
-/** One label · value row, the Trade Details pattern. */
-function DetailRows({ rows }: { rows: Array<{ label: string; value: React.ReactNode }> }) {
-  return (
-    <>
-      {rows.map(({ label, value }) => (
-        <div key={label} className="flex items-center justify-between gap-3 text-sm border-b border-border pb-1 last:border-0">
-          <span className="text-muted-foreground shrink-0">{label}</span>
-          <span className="font-medium tabular-nums text-right min-w-0 truncate">{value}</span>
-        </div>
-      ))}
-    </>
-  );
-}
-
 type MarketNewsArticle = { headline: string; source: string; datetime: number; url: string };
 
 async function NewsRows({ symbol }: { symbol: string }) {
@@ -199,42 +185,6 @@ export default async function StockDetailPage({ params }: Props) {
     </Suspense>
   );
 
-  const website = profile?.weburl
-    ? profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
-    : null;
-
-  // Who the company is: the sidebar's About card.
-  const aboutCard = (
-    <Card className="bg-muted/40 p-2 gap-1">
-      <BlockLabel>About</BlockLabel>
-      <DetailRows
-        rows={[
-          { label: "Exchange", value: identity.exchange ?? "—" },
-          { label: "Industry", value: profile?.finnhubIndustry || "—" },
-          { label: "IPO", value: profile?.ipo || "—" },
-          ...(website && profile?.weburl
-            ? [
-                {
-                  label: "Website",
-                  value: (
-                    <a
-                      href={profile.weburl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 hover:underline"
-                    >
-                      {website}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ),
-                },
-              ]
-            : []),
-        ]}
-      />
-    </Card>
-  );
-
   // The Financials tab: the key stats first (the owner, 2026-11-05), then
   // the statistics table and the filings. With or without a live thesis.
   const statSections = financialStatSections(metrics, marketCap);
@@ -253,8 +203,8 @@ export default async function StockDetailPage({ params }: Props) {
     </>
   );
 
-  // No live thesis: the trades we made in it, who the company is, Wall
-  // Street and the earnings record.
+  // No live thesis: the trades we made in it, Wall Street and the earnings
+  // record.
   const sidebar = (
     <>
       {positions.length > 0 ? (
@@ -275,7 +225,6 @@ export default async function StockDetailPage({ params }: Props) {
           }))}
         />
       ) : null}
-      {aboutCard}
       <AnalystCards coverage={coverage} currentPrice={price} />
       {earnings ? <EarningsCard data={earnings as unknown as EarningsResponse} streetEps={coverage?.eps?.nextQuarter ?? null} /> : null}
     </>
@@ -294,6 +243,9 @@ export default async function StockDetailPage({ params }: Props) {
               ticker={upperSymbol}
               displayName={identity.companyName}
               href={null}
+              exchange={identity.exchange}
+              industry={profile?.finnhubIndustry || null}
+              website={profile?.weburl || null}
               status={live.status}
               agentWatchDays={agentWatchDays(live.triggers)}
               conviction={(live.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
@@ -325,7 +277,6 @@ export default async function StockDetailPage({ params }: Props) {
           <ThesisPageBody
             thesisId={live.id}
             ticker={upperSymbol}
-            aside={aboutCard}
             transactions={transactions}
             showTriggers={false}
             showActivity={false}

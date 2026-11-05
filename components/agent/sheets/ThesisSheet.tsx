@@ -359,8 +359,8 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
 /**
  * The Research tab, in the shape it has always had — a heading, labelled
  * sections exposed on the tab, one accordion at the foot — with the fields
- * placed by the owner's order (2026-11-02, labels 2026-11-03): the company
- * (two sentences) as the heading, under "About <company>"; the belief under
+ * placed by the owner's order (2026-11-02, labels 2026-11-03; the company's
+ * two sentences moved to the Overview 2026-11-05): the belief under
  * it as "Core thesis" in every state, with the write-up's date and price;
  * the bull case, the bear case and what would prove us wrong exposed as
  * bullets; the filings in their old place under the top block; then the
@@ -370,7 +370,7 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
  * citation tags removed. A row written before the company line shows
  * nothing there, never a placeholder.
  */
-function ResearchView({ state, filings, companyName }: { state: ThesisDossier; filings: FilingsResponse | null; companyName: string | null }) {
+function ResearchView({ state, filings }: { state: ThesisDossier; filings: FilingsResponse | null }) {
   const clean = (v: string | null | undefined) => (v?.trim() ? stripCitationTags(v) : null);
   const company = clean(state.company);
   const belief = clean(state.coreBelief);
@@ -389,12 +389,6 @@ function ResearchView({ state, filings, companyName }: { state: ThesisDossier; f
   }
   return (
     <>
-      {company ? (
-        <Section label={`About ${companyName?.trim() || state.ticker}`}>
-          <p className="text-lg font-normal leading-relaxed">{company}</p>
-        </Section>
-      ) : null}
-
       {belief ? (
         <Section label="Core thesis">
           <p className="text-sm text-foreground leading-relaxed">{belief}</p>
@@ -888,7 +882,8 @@ export function ThesisBody({
   const noted = state.noted ?? [];
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
-  // The standing opinion, first thing under the chips on Overview.
+  // The company first (the owner, 2026-11-05), then the standing opinion, under the chips on Overview.
+  const company = state.company?.trim() ? stripCitationTags(state.company) : null;
   const belief = state.coreBelief?.trim() ? stripCitationTags(state.coreBelief) : null;
   const sideColumn =
     surface === "page" ? (
@@ -902,6 +897,9 @@ export function ThesisBody({
   // ── The tabs, in order: Overview · Research · Activity (not on the stock page) · Transactions · the page's own ──
   const overviewContent = (
     <>
+      {/* Who the company is: the Writer's two sentences, moved here from Research. */}
+      {company ? <p className="text-base font-normal text-muted-foreground leading-relaxed">{company}</p> : null}
+
       {/* ── Whether it needs work today (DAV-304) ── */}
       <WorkFlagLine
         status={state.status}
@@ -948,7 +946,7 @@ export function ThesisBody({
   );
   const tabs: Array<{ value: string; label: string; content: ReactNode }> = [
     { value: "overview", label: "Overview", content: overviewContent },
-    { value: "research", label: "Research", content: <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} /> },
+    { value: "research", label: "Research", content: <ResearchView state={state} filings={filings} /> },
     ...(showActivity ? [{ value: "activity", label: "Activity", content: activityContent }] : []),
     {
       value: "transactions",
@@ -1073,6 +1071,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           // source; the bare ticker is the degenerate case when that failed.
           displayName={data.quote?.companyName ?? ticker}
           exchange={data.quote?.exchange ?? null}
+          industry={data.quote?.industry ?? null}
+          website={data.quote?.website ?? null}
           status={state.status}
           agentWatchDays={agentWatchDays(state.triggers)}
           conviction={(state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}

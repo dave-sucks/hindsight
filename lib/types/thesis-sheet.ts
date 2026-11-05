@@ -298,6 +298,9 @@ export interface QuoteResponse {
   // name + "TICKER · EXCHANGE" instead of the ticker twice.
   companyName?: string | null;
   exchange?: string | null;
+  /** From the Finnhub profile, for the header's mono line. */
+  industry?: string | null;
+  website?: string | null;
   // Price-dependent actionability envelope (see ResolvedEnvelope). Null when
   // the resolver couldn't run.
   resolved?: ResolvedEnvelope | null;
