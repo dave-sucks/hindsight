@@ -31,6 +31,8 @@ import { Card } from "@/components/ui/card";
 import { PriceChange } from "@/components/ui/price-change";
 import { ProposalNote } from "@/components/domain/proposal-note";
 import { SectionLabel } from "@/components/domain/section-label";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ExpandIcon } from "@hugeicons/core-free-icons";
 import type { TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -91,7 +93,9 @@ export function TradeSummary(props: TradeSummaryProps) {
 // finalised the same night): the stock cards' surface (muted, bordered), a
 // title row like the Triggers and Agent insights headings with a coloured
 // dot where their icon sits, then the sentence, left-aligned, with the gain
-// on its right, then a waiting proposal's reason.
+// on its right. A waiting proposal's reason is hidden until asked for: on
+// hover the title row turns into "Read reasoning" with an expand icon (the
+// dot's place), and the click opens it; "Hide reasoning" closes it.
 //   • proposal waiting → amber dot · "Proposal" · Review at the right
 //                        "Add 4 shares: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
 //   • holding          → blue dot · "Position" · "Bought N shares at $entry on Oct 5"
@@ -156,7 +160,7 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
   const [expanded, setExpanded] = useState(false);
   return (
     <Card
-      className={cn("relative bg-muted/40 p-3 gap-2", proposal && "cursor-pointer")}
+      className={cn("group/banner relative bg-muted/40 p-3 gap-2", proposal && "cursor-pointer")}
       onClick={proposal ? () => setExpanded((v) => !v) : undefined}
     >
       {/* The whole card opens the trade: a stretched link under the content, never a link around the controls. */}
@@ -168,10 +172,16 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
         className="relative"
         action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
       >
-        <span className="inline-flex items-center gap-1.5">
+        <span className={cn("inline-flex items-center gap-1.5", proposal && "group-hover/banner:hidden")}>
           <span className={cn("size-2 rounded-full shrink-0", dotClass)} />
           {title}
         </span>
+        {proposal ? (
+          <span className="hidden items-center gap-1.5 group-hover/banner:inline-flex">
+            <HugeiconsIcon icon={ExpandIcon} className="size-3.5" />
+            {expanded ? "Hide reasoning" : "Read reasoning"}
+          </span>
+        ) : null}
       </SectionLabel>
       <div className="relative flex items-center justify-between gap-3 pointer-events-none text-sm">
         <span className="font-normal tabular-nums truncate">
