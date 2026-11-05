@@ -35,15 +35,15 @@ async function buySchema(): Promise<z.ZodTypeAny> {
   return schema!;
 }
 
-/** ANET's row, with its floor trigger at `floor` (or none), as the seed. */
-const seed = (floor: number | null) => ({
+/** ANET's row, with its floor trigger at `floor` (or none) and, unless `target` is false, its $215 review, as the seed. */
+const seed = (floor: number | null, target = true) => ({
   thesis: [
     thesisRow({
       ...entry.thesis,
       analystId: REPLAY_ANALYST_ID,
       triggers: entry.thesis.triggers
         .map((t) => (t.action === "EXIT" ? (floor == null ? null : { ...t, predicate: { watch: "price", is: "below", value: floor } }) : t))
-        .filter(Boolean),
+        .filter((t) => t != null && (target || t.action !== "REVIEW")),
     }),
   ],
   agentConfig: [agentConfigRow({ minPositionSize: 3000, maxPositionSize: 10000, maxPositionTotal: 20000, maxOpenPositions: 6, riskPct: 1 })],
@@ -52,7 +52,7 @@ const seed = (floor: number | null) => ({
 });
 
 /** The call as the model sent it, through the SDK's loop to the real buy. */
-async function sentVerbatim(floor: number | null): Promise<{ received: Record<string, unknown>; buy: Replay }> {
+async function sentVerbatim(floor: number | null, target = true): Promise<{ received: Record<string, unknown>; buy: Replay }> {
   const usage = { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } };
   let turn = 0;
   const model = new MockLanguageModelV3({
@@ -70,7 +70,7 @@ async function sentVerbatim(floor: number | null): Promise<{ received: Record<st
         inputSchema: (await buySchema()) as never,
         execute: async (input: Record<string, unknown>) => {
           out.received = input;
-          out.buy = await replayTool("place-trade", "placeTrade", { seed: seed(floor), args: input, ctx: CTX, quotes: { ANET: entry.price } });
+          out.buy = await replayTool("place-trade", "placeTrade", { seed: seed(floor, target), args: input, ctx: CTX, quotes: { ANET: entry.price } });
           return out.buy.result;
         },
       }),
@@ -106,6 +106,15 @@ describe("ANET 08-20: the trigger run's buy", () => {
     expect(buy.refusal?.message).toContain("update_thesis (stop_loss)");
     expect(buy.db.store.position ?? []).toHaveLength(0);
     expect(buy.db.store.order ?? []).toHaveLength(0);
+  });
+
+  it("a variant: the row has a floor and no target; the buy is placed on the floor alone (a buy needs a floor, not a target, 2026-11-04)", async () => {
+    const { buy } = await sentVerbatim(175.99, false);
+    expect(buy.crashed).toBe(false);
+    expect(buy.refused).toBe(false);
+    expect(buy.result.data?.status).toBe("PROPOSED");
+    expect(positionOf(buy)).toMatchObject({ targetPrice: null, stopLoss: 175.99, initialStop: 175.99 });
+    expect(JSON.stringify(buy.result)).not.toContain("plan has no target");
   });
 
   it("a trigger run's buy has no reason of its own: the run's note lands on the proposal at the end of the run; the sizing lines go to the agent and the run's event", async () => {

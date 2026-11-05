@@ -100,7 +100,7 @@ export function setupLines(setup: Setup, horizon?: string | null, cut: "all" | "
     ...(cut === "all" ? [`${setup.id} — ${setup.name}: ${setup.summary}`, `Needs: ${setup.preconditions.join("; ")}`] : []),
     `Entry: ${setup.entry.text} Confirm a buy by: ${confirm}${chase}`,
     `Stop: ${setup.stop.text}`,
-    `Target: ${setup.target.text}`,
+    ...(setup.target ? [`Target: ${setup.target.text}`] : []),
     ...manage,
     `Time: ${setup.time.text}`,
     `Failure looks like: ${setup.failureSigns.join("; ")}`,

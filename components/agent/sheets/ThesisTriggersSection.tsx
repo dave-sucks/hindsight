@@ -49,6 +49,7 @@ export function TriggerGroups({
   endpointBase,
   onChanged,
   level = "THESIS",
+  streetMissing,
 }: {
   triggers: Trigger[];
   /** Kept for callers that pass it; the pills read the stored condition. */
@@ -59,6 +60,8 @@ export function TriggerGroups({
   endpointBase: string;
   onChanged?: () => void;
   level?: Level;
+  /** The page has no Street row for the stock: a rule on a Street variable says so in its popover. */
+  streetMissing?: boolean;
 }) {
   const grouped = new Map<string, Trigger[]>();
   for (const t of triggers) grouped.set(t.action, [...(grouped.get(t.action) ?? []), t]);
@@ -82,6 +85,7 @@ export function TriggerGroups({
                 endpointBase={endpointBase}
                 analystId={analystId}
                 onChanged={onChanged}
+                streetMissing={streetMissing}
               />
             ))}
           </div>
@@ -115,6 +119,8 @@ interface Props {
   refreshKey?: number;
   /** Called after a successful trigger change so the parent can refresh. */
   onChanged?: () => void;
+  /** The sheet has no Street row for the stock (Wall Street's targets). */
+  streetMissing?: boolean;
 }
 
 export function ThesisTriggersSection({
@@ -125,6 +131,7 @@ export function ThesisTriggersSection({
   editableOnly = false,
   refreshKey,
   onChanged,
+  streetMissing,
 }: Props) {
   const [internalData, setInternalData] = useState<ThesisDossier | null>(null);
   const data = dataProp !== undefined ? dataProp : internalData;
@@ -192,6 +199,7 @@ export function ThesisTriggersSection({
           analystId={data.analystId}
           endpointBase={endpointBase}
           onChanged={onChanged}
+          streetMissing={streetMissing}
         />
       )}
     </div>

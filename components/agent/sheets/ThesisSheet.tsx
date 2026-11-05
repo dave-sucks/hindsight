@@ -980,6 +980,7 @@ export function ThesisBody({
             !isPass && (liveStatus === "HOLDING" || liveStatus === "WATCHING")
           }
           onChanged={refresh}
+          streetMissing={!coverageLoading && coverage?.priceTargets == null}
         />
       ) : null}
 

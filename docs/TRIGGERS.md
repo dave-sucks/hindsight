@@ -66,7 +66,7 @@ evaluation, so the gate rejects it up front, with the list of measures.
 
 | Measure (`watch`) | Means | Number · variable · settings |
 |---|---|---|
-| `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought. `settings.close` = the day must **close** past it — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
+| `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought, or (from below only, since 2026-11-04) Wall Street's average, high or low 12-month target off the newest `StreetConsensus` row within 14 days — never a floor against the Street, and no row reads false. `settings.close` = the day must **close** past it — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
 | `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the five-minute check from the live price and, for a position held since before the open, the session's high) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required |
 | `volume` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio. | `value` (×) |
 | `rsi` | RSI over the snapshot's closes with the live price as today's. | `value`; `settings.period` 14 or 2 |
@@ -500,10 +500,12 @@ the reason and the rest of the call lands (`data.trigger_ops` on the tool):
   holds a different kind of number, as before.
 - On a held stock an agent may only tighten a protective sell level (§ the
   ratchet, DAV-185); the principal is exempt.
-- After all ops, ONE check on the derived plan: ordering everywhere, a buy
-  trigger where a floor or target is armed, and — for an agent only — 2:1 on
-  a plan we don't own. The principal is exempt from the ratio as from the
-  ratchet; a stop above the buy price is refused for anyone.
+- After all ops, ONE check on the derived plan: ordering everywhere, and a
+  buy trigger where a floor or target is armed. A stop above the buy price is
+  refused for anyone. There is no reward/risk floor (gone 2026-11-04): the
+  house sets no target of its own, so under twice the floor's distance the
+  agent says why in its note, and the row's Street line says how much room
+  there is to the Street's average against that distance.
 
 The plan columns (`entryPrice` / `targetPrice` / `stopLoss`) are recomputed from
 the resulting triggers and mirrored onto the open `Position`, so the chart,

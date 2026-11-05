@@ -332,19 +332,20 @@ export const placeTrade = defineTool({
 
       // ── Guardrail 3: the row's plan, in order against entry_price ──
       // The target and the floor are the thesis row's own triggers (step 12,
-      // part 3); the call no longer carries them. A buy has always needed
-      // both: a row without one is told how to set it. For LONG the target
-      // sits ABOVE entry and the floor BELOW it; for SHORT the reverse.
-      // Without the ordering check a stale plan (a target set when the price
-      // was lower) fires the target on the first trigger check after the
-      // fill, because `currentPrice >= targetPrice` holds at avgCost.
+      // part 3); the call no longer carries them. A buy needs the floor: it
+      // sizes the trade and is the sale that caps the loss. A target is an
+      // upside rule the stock may or may not carry (the house sets none of
+      // its own; "target" is Wall Street's number): the ordering and
+      // live-price checks apply to it when there is one. For LONG the
+      // target sits ABOVE entry and the floor BELOW it; for SHORT the
+      // reverse. Without the ordering check a stale plan (a target set when
+      // the price was lower) fires the target on the first trigger check
+      // after the fill, because `currentPrice >= targetPrice` holds at avgCost.
       const plan = planOfRow(planRow);
-      if (plan.target == null || plan.stop == null) {
-        const missing = [plan.stop == null ? "floor" : null, plan.target == null ? "target" : null].filter(Boolean).join(" and ");
-        const fields = [plan.stop == null ? "stop_loss" : null, plan.target == null ? "target_price" : null].filter(Boolean).join(" and ");
-        const blockedMsg = `Trade blocked: $${ticker}'s plan has no ${missing}. Set it with update_thesis (${fields}) on thesis ${args.thesis_id}, then call place_trade again.`;
+      if (plan.stop == null) {
+        const blockedMsg = `Trade blocked: $${ticker}'s plan has no floor. Set it with update_thesis (stop_loss) on thesis ${args.thesis_id}, then call place_trade again.`;
         return {
-          summary: `Trade blocked: $${ticker} — the plan has no ${missing}`,
+          summary: `Trade blocked: $${ticker} — the plan has no floor`,
           data: {
             success: false,
             ticker,
@@ -364,13 +365,13 @@ export const placeTrade = defineTool({
         const stp = stop;
         let bad: string | null = null;
         if (args.direction === "LONG") {
-          if (tgt <= entry) {
+          if (tgt != null && tgt <= entry) {
             bad = `target $${tgt.toFixed(2)} is at or below entry $${entry.toFixed(2)} — for a LONG, target must be ABOVE entry`;
           } else if (stp >= entry) {
             bad = `stop $${stp.toFixed(2)} is at or above entry $${entry.toFixed(2)} — for a LONG, stop must be BELOW entry`;
           }
         } else {
-          if (tgt >= entry) {
+          if (tgt != null && tgt >= entry) {
             bad = `target $${tgt.toFixed(2)} is at or above entry $${entry.toFixed(2)} — for a SHORT, target must be BELOW entry`;
           } else if (stp <= entry) {
             bad = `stop $${stp.toFixed(2)} is at or below entry $${entry.toFixed(2)} — for a SHORT, stop must be ABOVE entry`;
@@ -406,13 +407,13 @@ export const placeTrade = defineTool({
         if (Number.isFinite(livePrice) && livePrice > 0) {
           let bad: string | null = null;
           if (args.direction === "LONG") {
-            if (livePrice >= target) {
+            if (target != null && livePrice >= target) {
               bad = `current price $${livePrice.toFixed(2)} is at or above target $${target.toFixed(2)} — a LONG would close on the next price tick`;
             } else if (livePrice <= stop) {
               bad = `current price $${livePrice.toFixed(2)} is at or below stop $${stop.toFixed(2)} — a LONG would close on the next price tick`;
             }
           } else {
-            if (livePrice <= target) {
+            if (target != null && livePrice <= target) {
               bad = `current price $${livePrice.toFixed(2)} is at or below target $${target.toFixed(2)} — a SHORT would close on the next price tick`;
             } else if (livePrice >= stop) {
               bad = `current price $${livePrice.toFixed(2)} is at or above stop $${stop.toFixed(2)} — a SHORT would close on the next price tick`;
@@ -636,7 +637,7 @@ export const placeTrade = defineTool({
             accountId: ctx.accountId,
             symbol: ticker,
             decision: "INITIATE",
-            reasoning: `${args.direction} ${finalShares} shares — submitting market order (target $${target.toFixed(2)}, stop $${stop.toFixed(2)})`,
+            reasoning: `${args.direction} ${finalShares} shares — submitting market order (${target != null ? `target $${target.toFixed(2)}, ` : ""}stop $${stop.toFixed(2)})`,
             thesisId: args.thesis_id,
             positionId: pos.id,
             orderId: ord.id,
@@ -1072,7 +1073,7 @@ export const placeTrade = defineTool({
 
       const tickerTag = args.direction === "LONG" ? "Long" : "Short";
       const tickerSummary = didFill
-        ? `Placed ${args.direction} ${finalShares} shares @ $${fillPrice.toFixed(2)} — target $${target.toFixed(2)}, stop $${stop.toFixed(2)}`
+        ? `Placed ${args.direction} ${finalShares} shares @ $${fillPrice.toFixed(2)} — ${target != null ? `target $${target.toFixed(2)}, ` : ""}stop $${stop.toFixed(2)}`
         : `Order submitted (pending): ${args.direction} ${finalShares} shares @ $${fillPrice.toFixed(2)}`;
 
       return {

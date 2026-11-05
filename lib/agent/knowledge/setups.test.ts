@@ -47,8 +47,8 @@ describe("the setup catalog", () => {
     expect(s.entry.text.length).toBeGreaterThan(0);
     expect(s.stop.text.length).toBeGreaterThan(0);
     expect(s.stop.minAtr).toBeGreaterThan(0);
-    expect(s.target.text.length).toBeGreaterThan(0);
-    expect(s.target.minR).toBeGreaterThan(0);
+    // A target only where the setup has an upside rule that is an action; no minimum ratio anywhere (2026-11-04).
+    if (s.target) expect(s.target.text.length).toBeGreaterThan(0);
     expect(s.riskMultiplier).toBeGreaterThan(0);
     expect(s.sizing.length).toBeGreaterThan(0);
     expect(s.time.text.length).toBeGreaterThan(0);

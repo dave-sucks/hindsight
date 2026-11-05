@@ -182,7 +182,7 @@ Mistakes:
 An add level fired, or a holding is three quarters of the way to its target.
 
 ```text
-When: an add trigger fired or is true now on a stock we hold, or the holding has come three quarters of the way to its target or more (the `plan` line: 75% of the way or above). It is a decision point, not a hold by default.
+When: an add trigger fired or is true now on a stock we hold, or the holding has come three quarters of the way to its target or more (what we paid is in the `position` line, the upside level in the `triggers` lines). It is a decision point, not a hold by default.
 
 Answer, in order:
 1. Why did it move: its news, its sector, the market (get_stock_data, one web_search; get_market_context for a drop)? A rise counts only if it confirms the thesis: the catalyst playing out, estimates rising, healthy structure, not an exhaustion chase. A drop counts only if it is market- or sector-wide, the thesis intact and support holding.
@@ -191,7 +191,7 @@ Answer, in order:
 
 What you can do (one of these):
 - Press: manage_position add_to_position (it sizes the add), then update_thesis raising the target, and the floor (stop_loss) under the bigger position.
-- Hold: raise the floor to lock a real share of the gain, under structure, with update_thesis stop_loss; a review line above the floor moves up too, never down. The `protection` line shows what the floor locks in now. Breakeven only guards against a loss.
+- Hold: raise the floor to lock a real share of the gain, under structure, with update_thesis stop_loss; a review line above the floor moves up too, never down. What the floor locks in is its level in the `triggers` lines against what we paid in the `position` line. Breakeven only guards against a loss.
 - Take: manage_position partial_close, or close_position.
 Then one update_thesis. A trade may wait for the principal's approval.
 
@@ -319,7 +319,7 @@ Mistakes:
 A gain with too little floor under it, or a floor that would lose too much of the account.
 
 ```text
-When: a holding's floor locks in far less than its gain, so the gain can round-trip with no signal on the way down (the `protection` line); or its floor would lose more than 1.5% of the account from what we paid (the `floor_risk` line). A normal buy is sized to risk 1% of the account unless the analyst sets otherwise.
+When: a holding's floor locks in far less than its gain, so the gain can round-trip with no signal on the way down (the floor in the `triggers` lines against the gain in the `position` line); or its floor would lose more than 1.5% of the account from what we paid (the `floor_risk` line). A normal buy is sized to risk 1% of the account unless the analyst sets otherwise.
 
 Answer, in order:
 1. What has carried the stock here, and is it still going: its news, its results, its sector (get_stock_data)?
@@ -378,7 +378,7 @@ Answer, in order:
 2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search), and the Street (`street`)?
 3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has. A falling price is not on the list unless you wrote it there.
 4. Is the setup still working? The `setup` line: its failure signs, the manage rule, the time limit.
-5. Did the world move past the levels? An add level blown through, a floor lagging the gain (the `protection` line), a fired checkpoint never replaced, a target the street re-rated past.
+5. Did the world move past the levels? An add level blown through, a floor lagging the gain (its level against what we paid), a fired checkpoint never replaced, a target the street re-rated past.
 
 What you can do:
 - Patch the plan: edit_triggers on the levels that moved, by id.
@@ -406,7 +406,7 @@ Answer, in order:
 2. What has happened with the company and the stock since your last note: its news, its sector, the market (get_stock_data, web_search), and the Street (`street`)?
 3. Has the belief broken? On a stock you hold, go down `would_prove_it_wrong`: has any of it happened? In the note, name only what has. A falling price is not on the list unless you wrote it there.
 4. Is the setup still working? The `setup` line: its failure signs, the manage rule, the time limit.
-5. Did the world move past the levels? An add level blown through, a floor lagging the gain (the `protection` line), a fired checkpoint never replaced, a target the street re-rated past.
+5. Did the world move past the levels? An add level blown through, a floor lagging the gain (its level against what we paid), a fired checkpoint never replaced, a target the street re-rated past.
 
 What you can do:
 - Patch the plan: edit_triggers on the levels that moved, by id.
@@ -456,7 +456,7 @@ Mistakes:
 The plan contradicts the price or the calendar: a buy level left behind, a target passed, a floor too tight.
 
 ```text
-When: a watched stock's plan contradicts the tape or the calendar. The `plan_checks` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, a plan under 2:1, a score under the analyst's minimum, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the `catalyst` line's date is behind us).
+When: a watched stock's plan contradicts the tape or the calendar. The `plan_checks` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, a score under the analyst's minimum, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the `catalyst` line's date is behind us).
 
 Answer, in order:
 1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?

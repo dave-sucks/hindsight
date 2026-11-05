@@ -48,6 +48,8 @@ function live(price: number): EvaluationContext {
   };
   return {
     latestQuote: { price, changePct: 2, prevClose: price / 1.02, stale: false },
+    // Wall Street's targets, the newest row within 14 days.
+    street: { targetAvg: price * 1.1, targetHigh: price * 1.3, targetLow: price * 0.8, asOf: ymd(ago(1)) },
     earnings: null,
     upcomingEarnings: null,
     filings: [],
@@ -86,6 +88,10 @@ function cases(): Case[] {
       add("near an average", { watch: "move", is: "near", value: (Math.abs(near.latestQuote!.price - line) / line) * 100, variable }, near, true);
     }
     add("the 20-day high", { watch: "price", is: "above", variable: "high20" }, withPrice(ctx, snap.high20!), false);
+    // The Street's targets: a price above one is strict, so exactly on the line it doesn't hold.
+    for (const [variable, line] of [["street_avg", ctx.street!.targetAvg], ["street_high", ctx.street!.targetHigh], ["street_low", ctx.street!.targetLow]] as const) {
+      add("a Street target", { watch: "price", is: "above", variable }, withPrice(ctx, line), false);
+    }
     add("the 52-week high", { watch: "price", is: "above", variable: "high52" }, withPrice(ctx, snap.high52w!), false);
     const under = withPrice(ctx, snap.high52w! * 0.95);
     add("near the 52-week high", { watch: "move", is: "near", value: ((snap.high52w! - under.latestQuote!.price) / snap.high52w!) * 100, variable: "high52" }, under, true);

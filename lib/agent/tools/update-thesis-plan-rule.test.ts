@@ -130,11 +130,12 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
     expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
   });
 
-  it("refuses an entry edit that leaves the plan under 2:1", async () => {
+  it("accepts an entry edit that leaves the plan under 2:1 (the ratio is not a rule, 2026-11-04)", async () => {
     // 183 → 150 against target 190 / stop 110: reward 40, risk 40 → 1:1.
     const result = await run({ entry_price: 150 });
-    expect(result.data?.ok).toBe(true);
-    expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("R/R floor") })]);
+    expect(result.data?.error).toBeUndefined();
+    expect(((result.data?.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
+    expect(mockThesisUpdate.mock.calls.some(([a]) => a.data.entryPrice === 150)).toBe(true);
   });
 
   it("accepts a re-level that clears the floor in the same call", async () => {

@@ -266,7 +266,7 @@ function SetupSheet({
           <div className="space-y-4">
             <PlaybookBlock label="Entry">{setup.entryText}</PlaybookBlock>
             <PlaybookBlock label="Stop">{setup.stopText}</PlaybookBlock>
-            <PlaybookBlock label="Target">{setup.targetText}</PlaybookBlock>
+            {setup.targetText ? <PlaybookBlock label="Target">{setup.targetText}</PlaybookBlock> : null}
             <PlaybookBlock label="Time">{setup.timeText}</PlaybookBlock>
             {setup.preconditions.length > 0 ? (
               <PlaybookBlock label="Only when">

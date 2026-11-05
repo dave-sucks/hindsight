@@ -79,9 +79,9 @@ describe("the size a row gets", () => {
 });
 
 describe("the one line", () => {
-  it("is the stock and its stance, the price, the plan levels, the next review and the id", () => {
+  it("is the stock and its stance, the price, the buy it waits on, the next review and the id; no target, no floor", () => {
     expect(rowForModel(quiet(), { named: false, size: "line" })).toBe(
-      "DOCU · watch · LONG · PEAD · $70.03 · buy $74.10 · target $83.00 · floor $68.90 · review 10-20 · id t_docu",
+      "DOCU · watch · LONG · PEAD · $70.03 · buy $74.10 · review 10-20 · id t_docu",
     );
   });
   it("leaves out what a stock lacks, says no view and no write-up yet on a seed, and names the horizon when no setup is named", () => {
@@ -117,7 +117,7 @@ describe("the short row", () => {
 
   it("has the keys in reading order and nothing that is empty", () => {
     expect(Object.keys(row)).toEqual([
-      "stock", "id", "situations", "said", "position", "proposal_waiting", "price", "plan", "protection", "triggers",
+      "stock", "id", "situations", "said", "position", "proposal_waiting", "price", "triggers",
       "belief", "assumptions", "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view",
       "setup", "snapshot", "chart", "research", "catalyst", "repeat",
     ]);
@@ -130,9 +130,9 @@ describe("the short row", () => {
     expect(row.position).toBe("300 sh at $39.06 → $40.51 (+3.7%), $12,153; opened 10-01; high since we bought $42.85");
     expect(row.proposal_waiting).toBe("sell 300 sh, placed 10-07 10:40 ET, expires 10-08 10:40 ET");
     expect(row.price).toBe("$40.51, -0.7% today (10-07 16:00 ET)");
-    expect(row.plan).toBe("entry $39.06 (filled) · target $47.00 · floor $40.80 · 18% of the way to the target");
-    // The price is under the floor: the protection line says breached, in the summary's terms.
-    expect(row.protection).toBe("floor $40.80 is breached (price $40.51, -0.7%); it would lock +4.5%; no trail; next rung REVIEW at $47.00 (+16.0% away); ladder last edited 1d ago");
+    // The levels are the triggers: no plan line, no protection line.
+    expect(row).not.toHaveProperty("plan");
+    expect(row).not.toHaveProperty("protection");
     expect(row.triggers).toEqual([
       'Sell if below $40.80 · fired 10-07 10:40 ET · set by the agent · "Under the breakout shelf." [id t_floor]',
       'Review if above $47 · set by hand · "The objective." [id t_target]',
@@ -189,7 +189,7 @@ describe("the short row", () => {
     ) as Row;
     expect(checked.plan_checks).toEqual(["The buy level $39.55 was set 30 days ago and hasn't filled."]);
     expect(checked.floor_risk).toBe("At the $40.80 floor, 300 shares lose $1,200 — 1.8% of the account.");
-    expect(checked.plan).toBe("buy $39.55 · target $47.00 · floor $40.80");
+    expect(checked).not.toHaveProperty("plan");
     expect(checked).not.toHaveProperty("protection");
   });
 });

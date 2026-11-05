@@ -12,7 +12,7 @@
 import { liveRsi, movePctOverSessions, volumeRatio, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { describeCluster, insiderCluster } from "@/lib/market-data/insider-cluster";
 import type { Condition, Watch, When } from "./types";
-import { isGroup } from "./types";
+import { conditionsOf, isGroup } from "./types";
 import { shapeOf } from "./valid";
 import { num } from "./words";
 
@@ -91,6 +91,31 @@ const FACTS: Partial<Record<Watch, Facts>> = {
 function whenFacts(w: When, snap: IndicatorSnapshot, px: number | null, today: Today | null | undefined): string | null {
   if (!isGroup(w)) return FACTS[w.watch]?.(w, snap, px, today) ?? null;
   const parts = w.conditions.map((c) => whenFacts(c, snap, px, today)).filter((x): x is string => !!x);
+  return parts.length ? parts.join("; ") : null;
+}
+
+const STREET_WORDS: Readonly<Record<string, string>> = { street_avg: "average", street_high: "high", street_low: "low" };
+
+/**
+ * The figures behind a fire on a Street variable: the target it read and the
+ * price against it. Null when the condition reads no Street variable or the
+ * check had no row.
+ */
+export function describeStreetFire(
+  p: unknown,
+  street: { targetAvg: number; targetHigh: number; targetLow: number; asOf: string } | null | undefined,
+  price: number | null | undefined,
+): string | null {
+  const w = shapeOf(p);
+  if (!w || !street) return null;
+  const parts = conditionsOf(w)
+    .filter((c) => c.variable != null && STREET_WORDS[c.variable] != null)
+    .map((c) => {
+      const which = STREET_WORDS[c.variable!];
+      const line = which === "average" ? street.targetAvg : which === "high" ? street.targetHigh : street.targetLow;
+      const px = price != null && price > 0 ? price : null;
+      return `Street ${which} target ${$(line)} (as of ${street.asOf.slice(5)})${px != null ? `; price ${$(px)} (${pct(((px - line) / line) * 100)} from it)` : ""}`;
+    });
   return parts.length ? parts.join("; ") : null;
 }
 

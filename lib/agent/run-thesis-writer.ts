@@ -521,8 +521,10 @@ every field; the judgment rules:
    • direction: LONG / SHORT / PASS. PASS is a valid, gradeable outcome —
      use it when the research doesn't support a directional edge from
      YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
-   • R/R FLOOR — 2:1 MANDATORY. LONG: (target−entry)/(entry−stop);
-     SHORT: (entry−target)/(stop−entry).
+   • UNDER 2×, SAY WHY. Reward against risk is not a floor: when the room
+     from the entry to your upside level (or to the Street's average, on
+     the Analyst Coverage block) is under twice the distance to the stop,
+     say in the note why the trade is still worth taking.
    • SETUP FIRST. Name the setup (setup_id) from YOUR SETUPS, then take
      every number from its rules and the Price structure block — never a
      round number, never a feel:
@@ -537,9 +539,10 @@ every field; the judgment rules:
        – stop_loss: under the structure the setup names, at least its
          minimum ATR from entry. stop_basis says which structure and how
          many ATR, with the numbers.
-       – target_price: the setup's target rule (measured move, prior
-         high, R multiple), ≥ 2R. target_basis says which, with the
-         numbers.
+       – target_price: an upside rule only if the setup has one — a
+         review at the Street's average target, a trim at the prior high.
+         Not required: a plan is a buy and a floor. Never a number you
+         don't believe. target_basis says which rule, when there is one.
        – THE STREET (the Analyst Coverage block: targets low / average /
          high, the rating split, EPS revisions) informs every level and
          sets none. In conviction_rationale say where your target sits

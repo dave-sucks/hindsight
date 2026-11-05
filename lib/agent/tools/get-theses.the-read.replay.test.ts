@@ -121,7 +121,7 @@ describe("get_theses — the read", () => {
     const quiet = (model.quiet_theses as string[]).map((line) => line.split(" · ")[0]);
     expect(full).toEqual(["SYK"]);
     expect(quiet).toEqual(["CEG"]);
-    expect(model.quiet_theses).toEqual([expect.stringMatching(/^CEG · held · LONG · COMPOUNDER_ACCUMULATION · \$280\.00 · entry \$250\.00 · target \$340\.00 · floor \$262\.00 · review \d\d-\d\d · id t_ceg$/)]);
+    expect(model.quiet_theses).toEqual([expect.stringMatching(/^CEG · held · LONG · COMPOUNDER_ACCUMULATION · \$280\.00 · entry \$250\.00 · review \d\d-\d\d · id t_ceg$/)]);
   });
 
   it("a read of a named stock is the full row: the history and the cases", async () => {

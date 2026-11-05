@@ -14,7 +14,7 @@ This folder is the guide, and this page is where to start. The /docs pages in th
 The folders match the sidebar:
 
 - `agents/`: the five trading agents and the analyst builder, one doc each.
-- `concepts/`: theses, triggers, analysts, situations and approvals.
+- `concepts/`: theses, triggers, analysts, situations, approvals and price targets.
 - `deep-dives/`: one mechanism or workflow end to end, like [saving a thesis](deep-dives/saving-a-thesis.md).
 - `reference/`: exact lists built from the code, like the [Situations library](reference/situations-library.md).
 - `architecture.md` and `glossary.md` sit here, next to this page.
@@ -54,6 +54,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[Analysts](concepts/analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
 - **[Situations](concepts/situations.md):** the seventeen reasons a stock needs an answer today, each with its own instructions.
 - **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day.
+- **[Price targets](concepts/price-targets.md):** the house sets none. A plan is the buy, the floor and an upside rule where the setup has one; Wall Street's targets are a card, and a line a rule can watch.
 
 ## Deep dives
 

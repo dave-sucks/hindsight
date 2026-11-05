@@ -46,7 +46,10 @@ export type PriceVariable =
   | "high20"
   | "low20"
   | "high52"
-  | "low52";
+  | "low52"
+  | "street_avg"
+  | "street_high"
+  | "street_low";
 
 /** A date a day count is measured from. */
 export type DateVariable = "buy" | "event";

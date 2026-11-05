@@ -13,6 +13,8 @@ import { trailFireLevel } from "../../trail";
 
 const SMA_PERIOD: Readonly<Record<string, 20 | 50 | 150 | 200>> = { sma20: 20, sma50: 50, sma150: 150, sma200: 200 };
 const MOVE_WINDOW: Readonly<Record<string, "1D" | "5D" | "20D">> = { prev_close: "1D", close_5d: "5D", close_20d: "20D" };
+/** Wall Street's targets: reached from below only, like a high. Never a floor against the Street. */
+const STREET = new Set(["street_avg", "street_high", "street_low"]);
 
 export const price: MeasureDef = {
   id: "price",
@@ -42,9 +44,9 @@ export const price: MeasureDef = {
       : null,
   closeReason: (c, isLong) => (c.variable ? null : (c.is === "below") === isLong ? "STOP" : "TARGET"),
   rises: (c) => (c.is === "above" ? true : c.is === "below" ? false : null),
-  // A price line: one nudge a day. Under an average is a state a review asks about weekly (a buy fires on its crossing, a sale is a standing order).
-  cooldownDays: (c, action) => (c.variable && SMA_PERIOD[c.variable] && action === "REVIEW" ? 7 : 1),
-  state: (c) => c.variable != null && SMA_PERIOD[c.variable] != null,
+  // A price line: one nudge a day. Under an average, or past a Street target, is a state a review asks about weekly (a buy fires on its crossing, a sale is a standing order).
+  cooldownDays: (c, action) => (c.variable && (SMA_PERIOD[c.variable] || STREET.has(c.variable)) && action === "REVIEW" ? 7 : 1),
+  state: (c) => c.variable != null && (SMA_PERIOD[c.variable] != null || STREET.has(c.variable)),
   fresh: () => ({ watch: "price", is: "below" }),
   check: (c, ctx) => {
     if (!c.variable && ctx.level !== "THESIS") {
@@ -52,14 +54,14 @@ export const price: MeasureDef = {
     }
     return null;
   },
-  // A typed price either way; an average either way; a high only from below (a new high). On the close only for a typed price.
+  // A typed price either way; an average either way; a high, or a Street target, only from below (a new high; the Street is never a floor). On the close only for a typed price.
   fits: (c) => {
     if (c.is !== "above" && c.is !== "below") return false;
     if (!c.variable) return c.value != null;
     if (c.settings?.close === true) return false;
-    return SMA_PERIOD[c.variable] != null || ((c.variable === "high20" || c.variable === "high52") && c.is === "above");
+    return SMA_PERIOD[c.variable] != null || ((c.variable === "high20" || c.variable === "high52" || STREET.has(c.variable)) && c.is === "above");
   },
-  shape: "A price is above or below a typed price, an average, or (from below) a high; only a typed price can wait for the close.",
+  shape: "A price is above or below a typed price or an average, or above a high or one of the Street's targets (never below the Street: it is evidence, not a floor); only a typed price can wait for the close.",
 };
 
 export const move: MeasureDef = {

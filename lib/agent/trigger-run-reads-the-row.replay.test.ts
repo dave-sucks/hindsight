@@ -27,7 +27,7 @@ const fx = raw as unknown as { analyst: { name: string; setupIds: string[]; maxO
 /** What only the full row carries: the trigger run's row has none of it. */
 const FULL_ONLY = ["history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
 /** The short row's keys the decision reads, every one present on both fires. */
-const SHORT_KEYS = ["stock", "id", "situations", "said", "plan", "triggers", "bull_case", "bear_case", "conviction_rationale", "setup_lines", "snapshot", "research"];
+const SHORT_KEYS = ["stock", "id", "situations", "said", "triggers", "bull_case", "bear_case", "conviction_rationale", "setup_lines", "snapshot", "research"];
 const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>) => {
   for (const k of SHORT_KEYS) expect([k, k in row]).toEqual([k, true]);
   for (const k of FULL_ONLY) expect([k, k in row]).toEqual([k, false]);

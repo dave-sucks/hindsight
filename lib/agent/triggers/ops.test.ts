@@ -337,17 +337,17 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
 });
 
 describe("checkLadder — the one check after all ops", () => {
-  it("refuses a plan the ops left under 2:1 (ETN 432 / 490 / 355, DAV-241)", () => {
+  it("accepts a plan the ops leave under 2:1 (ETN 432 / 490 / 355): the ratio is not a rule", () => {
     const out = watch([{ op: "edit", id: "buy", value: 432, rationale: "Confirmation above the repair range." }], [
       buy,
       { ...target, predicate: { watch: "price", is: "above", value: 490 } },
       { ...floor, predicate: { watch: "price", is: "below", value: 355 } },
     ]);
     const check = checkLadder({ triggers: out.triggers, direction: "LONG", status: "WATCHING", actor: "AGENT" });
-    expect(check).toMatchObject({ ok: false, error: "invalid_thesis_shape", message: expect.stringMatching(/R\/R floor/) });
+    expect(check).toEqual({ ok: true, columns: { entryPrice: 432, targetPrice: 490, stopLoss: 355 } });
   });
 
-  it("the 2:1 floor is for the agents — the principal's edit passes on ratio, and ordering still applies", () => {
+  it("ordering applies to anyone", () => {
     const under: Trigger[] = [buy, { ...target, predicate: { watch: "price", is: "above", value: 490 } }, { ...floor, predicate: { watch: "price", is: "below", value: 355 } }];
     const moved = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "buy", value: 432 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
     expect(checkLadder({ triggers: moved.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" }).ok).toBe(true);

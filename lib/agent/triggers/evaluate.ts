@@ -92,6 +92,15 @@ export interface EvaluationContext {
   indicators?: IndicatorSnapshot | null;
 
   /**
+   * Wall Street's targets for this ticker: the newest StreetConsensus row
+   * within 14 days (lib/market-data/street-consensus-store). Read by a price
+   * condition on a Street variable. Absent → that condition is false: no row,
+   * a row too old, or the feed down all read the same way, a missed fire,
+   * never a crash.
+   */
+  street?: { targetAvg: number; targetHigh: number; targetLow: number; asOf: string } | null;
+
+  /**
    * Today's session so far. `volume` is consolidated volume through ~15
    * minutes ago (SIP); `open` is today's open. Read by volume and
    * gap. Absent → those kinds are false.

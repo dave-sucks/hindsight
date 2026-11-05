@@ -393,7 +393,8 @@ export interface DocsSetup {
   preconditions: readonly string[];
   entry: string;
   stop: string;
-  target: string;
+  /** Null when the setup has no upside rule: the plan is the buy and the floor. */
+  target: string | null;
   time: string;
   failureSigns: readonly string[];
 }

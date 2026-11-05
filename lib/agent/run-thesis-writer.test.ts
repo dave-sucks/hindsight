@@ -183,9 +183,10 @@ describe("buildWriterResearchPrompt — status branching", () => {
       }
     });
 
-    it("instructs one submit_thesis call and the R/R floor", () => {
+    it("instructs one submit_thesis call and, under 2×, a reason in the note (no R/R floor since 2026-11-04)", () => {
       expect(prompt).toContain("submit_thesis");
-      expect(prompt).toContain("R/R FLOOR — 2:1 MANDATORY");
+      expect(prompt).toContain("UNDER 2×, SAY WHY");
+      expect(prompt).not.toContain("2:1 MANDATORY");
     });
 
     it("tells the model repairs are field-fixes, not note rewrites", () => {

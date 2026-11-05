@@ -19,7 +19,7 @@
 import { z } from "zod";
 import { editNumber, editTriggerOpSchema, triggerInputSchema, triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { shapeOf } from "@/lib/agent/triggers/condition";
-import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
+import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
@@ -160,7 +160,8 @@ export function validateThesisDecision(
   let riskReward: number | undefined;
 
   const { entry_price: entry, target_price: target, stop_loss: stop } = d;
-  // A view is either priced (all three levels) or not priced at all. The
+  // A view is either priced (a buy and a floor; a target only when the
+  // setup has an upside rule, 2026-11-04) or not priced at all. The
   // unpriced shape is the set-down state the persist gates already admit
   // (no plan level, ≥1 REVIEW wake — DAV-224): "bullish, entry window
   // opens in January" used to be unwritable, so BMRN came back with
@@ -168,21 +169,20 @@ export function validateThesisDecision(
   const priced = entry != null || target != null || stop != null;
 
   if (directional && priced) {
-    // ── Prices + R/R floor ────────────────────────────────────────────
-    const unpricedHint = " — or omit ALL of entry/target/stop to hold the view unpriced.";
+    // ── Prices, in order ──────────────────────────────────────────────
+    const unpricedHint = " — or omit entry, stop and target to hold the view unpriced.";
     if (entry == null || entry <= 0) errors.push(`entry_price: required and positive on a priced plan${unpricedHint}`);
-    if (target == null || target <= 0) errors.push(`target_price: required and positive on a priced plan${unpricedHint}`);
+    if (target != null && target <= 0) errors.push("target_price: positive when given; a plan needs no target (a buy and a floor price it).");
     if (stop == null || stop <= 0) errors.push(`stop_loss: required and positive on a priced plan${unpricedHint}`);
 
-    if (entry != null && target != null && stop != null && entry > 0 && target > 0 && stop > 0) {
-      // The one plan rule (ordering + 2:1 floor) — the same helper the
-      // persist gates run, so a repair here is a pass there.
+    if (entry != null && stop != null && entry > 0 && stop > 0 && (target == null || target > 0)) {
+      // The one plan rule (ordering) — the same helper the persist gates
+      // run, so a repair here is a pass there. The ratio is reported, not enforced.
       const shape = validateThesisShape({
         direction: d.direction,
         entryPrice: entry,
-        targetPrice: target,
+        targetPrice: target ?? null,
         stopLoss: stop,
-        minRiskReward: held ? undefined : MIN_RISK_REWARD,
         held,
       });
       if (!shape.ok) {
@@ -198,7 +198,7 @@ export function validateThesisDecision(
   }
 
   // ── The setup and how its numbers were derived (DAV-249) ─────────────
-  // In-loop, like the 2:1 floor: the writer repairs in one step. Nothing
+  // In-loop: the writer repairs in one step. Nothing
   // downstream refuses on these.
   const setup = d.setup_id && opts.setups ? opts.setups.find((s) => s.id === d.setup_id) : undefined;
   if (directional && opts.setups) {
@@ -227,7 +227,7 @@ export function validateThesisDecision(
     const atr = opts.chart?.atr14;
     const next = pullback
       ? averages.length
-        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints, target the prior high at ≥ 2R — or PASS with the reason.`
+        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints — or PASS with the reason.`
         : " Write it on MA_PULLBACK (buy at a rising 20- or 50-day, stop 1 ATR under it) if the trend allows — or PASS with the reason."
       : " Pick a setup that applies, or PASS with the reason.";
     errors.push(
@@ -238,8 +238,9 @@ export function validateThesisDecision(
     if (opts.setups && (!d.stop_basis || d.stop_basis.trim().length < 10)) {
       errors.push("stop_basis: required on a priced plan — the structure the stop sits under and its distance in ATR, with the numbers.");
     }
-    if (opts.setups && (!d.target_basis || d.target_basis.trim().length < 10)) {
-      errors.push("target_basis: required on a priced plan — which rule produced the target (measured move, prior high, R multiple), with the numbers.");
+    // A target is an upside rule only where the setup has one; its basis is owed only when a target is given.
+    if (opts.setups && target != null && (!d.target_basis || d.target_basis.trim().length < 10)) {
+      errors.push("target_basis: required when a target_price is given — the upside rule that set it (a review at the Street's average target, a trim at the prior high), with the numbers.");
     }
     const atr = opts.chart?.atr14;
     const dist = Math.abs(entry - stop);
@@ -269,7 +270,7 @@ export function validateThesisDecision(
     !(d.remove_trigger_ids && d.remove_trigger_ids.length > 0)
   ) {
     errors.push(
-      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, send `remove_trigger_ids` naming the buy, floor and target trigger ids from EXISTING THESIS (keep ≥1 REVIEW wake; the level columns follow the triggers). To keep the plan, send all three levels.",
+      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, send `remove_trigger_ids` naming the buy, floor and target trigger ids from EXISTING THESIS (keep ≥1 REVIEW wake; the level columns follow the triggers). To keep the plan, send its levels: the buy and the floor, and the target if it has one.",
     );
   }
 
@@ -336,8 +337,8 @@ export function validateThesisDecision(
     const canPullback = opts.setups?.some((s) => s.id === "MA_PULLBACK") ?? false;
     const plan =
       canPullback && averages.length
-        ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints, target the prior high at ≥ 2R. `
-        : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop and a target at ≥ 2R. ";
+        ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints. `
+        : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop. ";
     errors.push(
       `levels: a ${d.direction} with no entry, no trigger and no review can never come back — nothing on the stock can fire. ${plan}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );

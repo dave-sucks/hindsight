@@ -32,8 +32,6 @@ export const MIN_STOP_ATR = 1;
 export const BREAKOUT_VOLUME_RATIO = 1.5;
 /** Do not buy more than this far past the pivot / entry condition. */
 export const CHASE_LIMIT_PCT = 5;
-/** The reward-to-risk floor every plan clears (Hindsight enforces 2:1). */
-export const MIN_REWARD_RISK = 2;
 /** Sum of open risk if every stop hits, as % of equity (Elder). */
 export const PORTFOLIO_HEAT_PCT = 6;
 /** Most names held in one industry group. */
@@ -139,7 +137,8 @@ export interface Setup {
     minAtr: number;
     text: string;
   };
-  target: { minR: number; text: string };
+  /** The upside rule, only where the setup has one that is an action (a partial, the trail, a time or valuation exit). None: the plan is the buy and the floor. */
+  target?: { text: string };
   /** Multiplies the risk-per-trade (1.0 normal; binary events 0.5). */
   riskMultiplier: number;
   sizing: string;
@@ -331,10 +330,6 @@ export const SETUPS: Setup[] = [
       minAtr: MIN_STOP_ATR,
       text: `Under the last contraction's low, or the base low if that is within ${TRADE_STOP_MAX_PCT}%. At least ${MIN_STOP_ATR} ATR from entry. If structure needs a wider stop, the position is smaller — the stop is not wider.`,
     },
-    target: {
-      minR: MIN_REWARD_RISK,
-      text: "Measured move (base depth added to the pivot) or the next prior high, whichever two methods agree on. ≥ 2R; 3R is the design (7–8% stop, 20–25% target).",
-    },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
     trail: {
@@ -379,7 +374,6 @@ export const SETUPS: Setup[] = [
       text: "The entry day's low, never wider than one ADR. If the structure forces a wider stop, the position is smaller.",
     },
     target: {
-      minR: MIN_REWARD_RISK,
       text: "No fixed target: sell a third to a half after 3–5 days of progress, stop to breakeven, trail the rest.",
     },
     riskMultiplier: 1,
@@ -415,7 +409,7 @@ export const SETUPS: Setup[] = [
       minAtr: MIN_STOP_ATR,
       text: "The gap-day low. A close below the gap's midpoint is an early warning; a filled gap is invalidation.",
     },
-    target: { minR: MIN_REWARD_RISK, text: "Partial at 3–5 days of progress; the trail decides the rest." },
+    target: { text: "Partial at 3–5 days of progress; the trail decides the rest." },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4); a wide gap-day low means fewer shares.",
     trail: {
@@ -455,8 +449,7 @@ export const SETUPS: Setup[] = [
       text: `The gap-day low or −${TRADE_STOP_MAX_PCT}% from entry, whichever is tighter — but not inside 1 ATR.`,
     },
     target: {
-      minR: MIN_REWARD_RISK,
-      text: "The prior high or a measured move; partial at 2R.",
+      text: "A partial at the prior high; the trail decides the rest.",
     },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
@@ -511,7 +504,7 @@ export const SETUPS: Setup[] = [
       minAtr: MIN_STOP_ATR,
       text: "Under the pullback's swing low once it has printed; until then, 1 ATR under the average being bought (the 20-day for a 20-day pullback). At least 1 ATR from entry. A close below the 50-day on volume invalidates.",
     },
-    target: { minR: MIN_REWARD_RISK, text: "The prior high first (a partial), then the measured move." },
+    target: { text: "A partial at the prior high; the trail decides the rest." },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
     trail: {
@@ -543,8 +536,7 @@ export const SETUPS: Setup[] = [
       text: "No fixed stop in the original; time and the 200-day are the stops.",
     },
     target: {
-      minR: 1,
-      text: `Exit on a close above the 5-day average or RSI(2) > ${RSI2_EXIT_ABOVE}. Small average gains, 65–75% win rate — the 2R floor does not describe this pattern.`,
+      text: `Exit on a close above the 5-day average or RSI(2) > ${RSI2_EXIT_ABOVE}.`,
     },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4). Best used as a scale-in rule on a held compounder.",
@@ -573,7 +565,6 @@ export const SETUPS: Setup[] = [
       text: "A screen: it says which names; D1/D2/D5 say when. As a condition: within 5% of the 52-week high and ahead of the S&P over 3 months.",
     },
     stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
-    target: { minR: MIN_REWARD_RISK, text: "From the entry setup used." },
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
     trail: {},
@@ -618,7 +609,7 @@ export const SETUPS: Setup[] = [
         "1) A D1 base breakout or a D5 pullback, when the stock actually qualifies. " +
         "2) Otherwise a RECLAIM: a close above the highest high of the last 20 sessions. No Trend Template — that is the point; a stock drifting into its decision will not pass one. " +
         `The stop goes under the most recent swing low. Size is already half (the binary multiplier) with the gap-loss cap, which is the risk control — D8's "size is the stop". ` +
-        "Target the prior high or the measured move, and the 2:1 floor applies as everywhere; if no level clears 2:1, park the row with the date it will be priced again rather than writing a level you do not believe. " +
+        "An upside rule only if you believe it (a trim at the prior high, a review at the Street's average target); the plan is the buy and the stop. " +
         `More than ${CATALYST_WINDOW_DAYS[1]} days out, do not guess a level: park it with the date the window opens and the review that wakes it then.`,
     },
     stop: {
@@ -628,8 +619,7 @@ export const SETUPS: Setup[] = [
       text: "Structural but advisory: gaps skip stops. Size is the stop.",
     },
     target: {
-      minR: MIN_REWARD_RISK,
-      text: "Run-up version: sell 1–2 weeks before the event (typically +20–40%). Hold-through version: exit at the event or T+30.",
+      text: "Run-up version: sell 1–2 weeks before the event. Hold-through version: exit at the event or T+30.",
     },
     riskMultiplier: BINARY_RISK_MULTIPLIER,
     sizing: `Half the normal risk (DAV-245 ruling 2). If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
@@ -667,7 +657,7 @@ export const SETUPS: Setup[] = [
       minAtr: MIN_STOP_ATR,
       text: `Below the lowest insider purchase price or −${INSIDER_STOP_MAX_PCT}%, whichever is tighter.`,
     },
-    target: { minR: MIN_REWARD_RISK, text: "From the entry setup used; the effect runs 6–12 months." },
+    target: { text: "The effect runs 6–12 months; the entry setup's exits apply." },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
     trail: {},
@@ -692,7 +682,6 @@ export const SETUPS: Setup[] = [
       text: "A screen and D4's third confirmation — but no plan we hold serves estimate history (Finnhub /stock/eps-estimate refuses; probed 2026-09-11), so there is no revision number to read and no trigger kind for it. Cite a revision only from a source you actually read.",
     },
     stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
-    target: { minR: MIN_REWARD_RISK, text: "From the entry setup used." },
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
     trail: {},
@@ -724,7 +713,7 @@ export const SETUPS: Setup[] = [
       minAtr: MIN_STOP_ATR,
       text: `Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% give-back are reviews.`,
     },
-    target: { minR: MIN_REWARD_RISK, text: "A 3–5 year valuation case; trims only at valuation extremes." },
+    target: { text: "A 3–5 year valuation case; trims only at valuation extremes." },
     riskMultiplier: 1,
     sizing: "First tranche 50% of target size; second on strength (+7% from the first fill, or a new high after a pause) or on a held 50-day pullback in a market-wide dip. Never add into company-specific bad news.",
     trail: {},
@@ -752,7 +741,6 @@ export const SETUPS: Setup[] = [
       text: "A screen and a regime input. (A group-rank trigger kind is not in the plan yet.)",
     },
     stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
-    target: { minR: MIN_REWARD_RISK, text: "From the entry setup used." },
     riskMultiplier: 1,
     sizing: `From the entry setup used; at most ${MAX_NAMES_PER_INDUSTRY} names per industry group.`,
     trail: {},

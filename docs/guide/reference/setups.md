@@ -24,8 +24,6 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 
 **Floor:** Under the last contraction's low, or the base low if that is within 8%. At least 1 ATR from entry. If structure needs a wider stop, the position is smaller — the stop is not wider.
 
-**Target:** Measured move (base depth added to the pivot) or the next prior high, whichever two methods agree on. ≥ 2R; 3R is the design (7–8% stop, 20–25% target).
-
 **Trail:**
 
 - trade: Stop to breakeven at +1R; close under the 21-day EMA.
@@ -118,7 +116,7 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 
 **Floor:** The gap-day low or −8% from entry, whichever is tighter — but not inside 1 ATR.
 
-**Target:** The prior high or a measured move; partial at 2R.
+**Target:** A partial at the prior high; the trail decides the rest.
 
 **Trail:**
 
@@ -148,7 +146,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 **Floor:** Under the pullback's swing low once it has printed; until then, 1 ATR under the average being bought (the 20-day for a 20-day pullback). At least 1 ATR from entry. A close below the 50-day on volume invalidates.
 
-**Target:** The prior high first (a partial), then the measured move.
+**Target:** A partial at the prior high; the trail decides the rest.
 
 **Trail:**
 
@@ -176,7 +174,7 @@ A stock above its 200-day that flushes hard for a few days tends to snap back wi
 
 **Floor:** No fixed stop in the original; time and the 200-day are the stops.
 
-**Target:** Exit on a close above the 5-day average or RSI(2) > 65. Small average gains, 65–75% win rate — the 2R floor does not describe this pattern.
+**Target:** Exit on a close above the 5-day average or RSI(2) > 65.
 
 **Trail:**
 
@@ -204,8 +202,6 @@ Stocks near their 52-week high and ahead of the market keep outperforming for up
 
 **Floor:** From the entry setup used.
 
-**Target:** From the entry setup used.
-
 **Time limit:** From the entry setup used.
 
 **When it's failing:**
@@ -225,12 +221,12 @@ A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, n
 - Cash runway past the decision
 - Sub-$1B single-asset names: supplemental approvals and label expansions only
 
-**Buy:** Inside the window (21–70 days out) this setup always carries a buy level — the first of these the chart offers. 1) A D1 base breakout or a D5 pullback, when the stock actually qualifies. 2) Otherwise a RECLAIM: a close above the highest high of the last 20 sessions. No Trend Template — that is the point; a stock drifting into its decision will not pass one. The stop goes under the most recent swing low. Size is already half (the binary multiplier) with the gap-loss cap, which is the risk control — D8's "size is the stop". Target the prior high or the measured move, and the 2:1 floor applies as everywhere; if no level clears 2:1, park the row with the date it will be priced again rather than writing a level you do not believe. More than 70 days out, do not guess a level: park it with the date the window opens and the review that wakes it then.
+**Buy:** Inside the window (21–70 days out) this setup always carries a buy level — the first of these the chart offers. 1) A D1 base breakout or a D5 pullback, when the stock actually qualifies. 2) Otherwise a RECLAIM: a close above the highest high of the last 20 sessions. No Trend Template — that is the point; a stock drifting into its decision will not pass one. The stop goes under the most recent swing low. Size is already half (the binary multiplier) with the gap-loss cap, which is the risk control — D8's "size is the stop". An upside rule only if you believe it (a trim at the prior high, a review at the Street's average target); the plan is the buy and the stop. More than 70 days out, do not guess a level: park it with the date the window opens and the review that wakes it then.
  Entry through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Floor:** Structural but advisory: gaps skip stops. Size is the stop.
 
-**Target:** Run-up version: sell 1–2 weeks before the event (typically +20–40%). Hold-through version: exit at the event or T+30.
+**Target:** Run-up version: sell 1–2 weeks before the event. Hold-through version: exit at the event or T+30.
 
 **Trail:**
 
@@ -259,7 +255,7 @@ Three or more insiders buying within a month predicts positive returns over 6–
 
 **Floor:** Below the lowest insider purchase price or −12%, whichever is tighter.
 
-**Target:** From the entry setup used; the effect runs 6–12 months.
+**Target:** The effect runs 6–12 months; the entry setup's exits apply.
 
 **Time limit:** 6–12 months for the effect; the entry setup's clock for the trade.
 
@@ -281,8 +277,6 @@ Rising estimates extend post-earnings drift; the Zacks Rank in one line.
  Entry through `PEAD`, `MA_PULLBACK`.
 
 **Floor:** From the entry setup used.
-
-**Target:** From the entry setup used.
 
 **Time limit:** From the entry setup used.
 
@@ -331,8 +325,6 @@ Stocks move in groups and leadership rotates; three longs in one group are one b
  Entry through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Floor:** From the entry setup used.
-
-**Target:** From the entry setup used.
 
 **Time limit:** From the entry setup used.
 
