@@ -112,7 +112,12 @@ export function Transactions({
                   <span className="hidden w-24 shrink-0 text-muted-foreground @sm:inline">{f.price != null ? `@ ${formatCurrency(f.price)}` : ""}</span>
                   <span className="hidden w-24 shrink-0 text-foreground @md:inline">{amount != null ? formatCurrency(amount) : ""}</span>
                   <span className="ml-auto shrink-0">
-                    {f.result ? <PriceChange dollarChange={f.result.dollar} percentChange={f.result.pct} size="sm" /> : null}
+                    {f.result ? (
+                      <>
+                        <span className="@md:hidden"><PriceChange dollarChange={f.result.dollar} size="sm" /></span>
+                        <span className="hidden @md:inline"><PriceChange dollarChange={f.result.dollar} percentChange={f.result.pct} size="sm" /></span>
+                      </>
+                    ) : null}
                   </span>
                   <span className="w-12 shrink-0 text-right text-xs text-muted-foreground">{fmtDate(f.at)}</span>
                 </button>
