@@ -31,8 +31,7 @@ import { Card } from "@/components/ui/card";
 import { PriceChange } from "@/components/ui/price-change";
 import { ProposalNote } from "@/components/domain/proposal-note";
 import { SectionLabel } from "@/components/domain/section-label";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { ExpandIcon } from "@hugeicons/core-free-icons";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -93,9 +92,10 @@ export function TradeSummary(props: TradeSummaryProps) {
 // finalised the same night): the stock cards' surface (muted, bordered), a
 // title row like the Triggers and Agent insights headings with a coloured
 // dot where their icon sits, then the sentence, left-aligned, with the gain
-// on its right. A waiting proposal's reason is hidden until asked for: on
-// hover the title row turns into "Read reasoning" with an expand icon (the
-// dot's place), and the click opens it; "Hide reasoning" closes it.
+// on its right. A waiting proposal's reason is hidden until asked for, an
+// accordion: on hover a small secondary-style circle with a chevron (down
+// closed, up open) sits over the dot, and a click anywhere on the card
+// opens or closes the reason.
 //   • proposal waiting → amber dot · "Proposal" · Review at the right
 //                        "Add 4 shares: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
 //   • holding          → blue dot · "Position" · "Bought N shares at $entry on Oct 5"
@@ -172,16 +172,21 @@ function TradeBanner({ position, pnl, pendingProposal, direction }: TradeSummary
         className="relative"
         action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
       >
-        <span className={cn("inline-flex items-center gap-1.5", proposal && "group-hover/banner:hidden")}>
-          <span className={cn("size-2 rounded-full shrink-0", dotClass)} />
+        <span className="inline-flex items-center gap-1.5">
+          <span className="relative inline-flex size-2 shrink-0">
+            <span className={cn("size-2 rounded-full", dotClass)} />
+            {/* The accordion's handle, over the dot on hover: a secondary-button circle with the chevron. */}
+            {proposal ? (
+              <span
+                aria-hidden
+                className="absolute left-1/2 top-1/2 hidden size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-secondary text-secondary-foreground group-hover/banner:inline-flex"
+              >
+                {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+              </span>
+            ) : null}
+          </span>
           {title}
         </span>
-        {proposal ? (
-          <span className="hidden items-center gap-1.5 group-hover/banner:inline-flex">
-            <HugeiconsIcon icon={ExpandIcon} className="size-3.5" />
-            {expanded ? "Hide reasoning" : "Read reasoning"}
-          </span>
-        ) : null}
       </SectionLabel>
       <div className="relative flex items-center justify-between gap-3 pointer-events-none text-sm">
         <span className="font-normal tabular-nums truncate">
