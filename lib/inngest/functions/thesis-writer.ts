@@ -28,6 +28,7 @@ import {
   type RunThesisWriterResult,
   type WriterPullPhaseOutput,
   type WriterResearchPhaseOutput,
+  type IdeaSource,
 } from "@/lib/agent/run-thesis-writer";
 
 interface ThesisWriteRequestedPayload {
@@ -37,6 +38,10 @@ interface ThesisWriteRequestedPayload {
   mode: "mint" | "refresh";
   existingThesisId?: string | null;
   reason: string;
+  /** What the dispatcher found before sending the stock. */
+  researchNotes?: string | null;
+  /** Whose thesis the stock came from, when it came from one. */
+  ideaSource?: IdeaSource | null;
   parentRunId?: string | null;
   /**
    * Layer-1 clamp: when true, record_thesis downgrades any
@@ -96,6 +101,8 @@ export const thesisWriter = inngest.createFunction(
       mode: payload.mode,
       existingThesisId: payload.existingThesisId ?? null,
       reason: payload.reason,
+      researchNotes: payload.researchNotes ?? null,
+      ideaSource: payload.ideaSource ?? null,
       parentRunId: payload.parentRunId ?? null,
       forceWatchingMint: payload.forceWatchingMint === true,
       promotionContext: payload.promotionContext ?? null,

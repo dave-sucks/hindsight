@@ -325,11 +325,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_sec_filings",
       "get_catalyst_calendar",
       "web_search",
-      // Grok Live Search over X — handle-attributed posts. SOON-1b in
-      // DISCOVERY_OVERHAUL. Sibling to web_search; agent picks based on
-      // intent (web_search for consensus/news, twitter_search for handle
-      // attribution / fintwit early calls / multi-archetype convergence).
-      "twitter_search",
       // ── Writes. Unscoped, each acts for the stock's own analyst
       // (analyst-scope.ts); record_thesis alone needs the chat pinned.
       "record_thesis",
@@ -643,7 +638,7 @@ When in batched-discovery mode, DO NOT default to \`dispatch_thesis_research\` p
    • "Find me setups" / "discovery" / "what's a pullback candidate" → \`run_screen(setup)\` — a computed list of 5–15 names with the numbers for one setup (PEAD, EPISODIC_PIVOT, MA_PULLBACK, BASE_BREAKOUT, MOMENTUM_FLAG), minus the book, every rejection named. MOMENTUM_FLAG is the leader that has been climbing for weeks — up 30%+ over a month or a quarter, still in an uptrend, wide daily range, resting on a rising average. It reads the run, not the day, so a stock up on the month but down over six months is thrown out as a bounce rather than a leader; its pool is today's movers until the ranked universe exists, so say that when nothing good comes back. Triage those rows, then \`dispatch_thesis_research(mode:"mint", setup_id, screen_row)\` on the ones worth a thesis. \`scope:"book"\` screens what we already watch or hold.
    • "Discovery off recent earnings" / "who reported this week" / "earnings plays" → \`run_screen(setup:"PEAD", days:N)\` for the computed list, or \`get_earnings_calendar(window:"reported", days:N, scope:"universe")\` to read the whole calendar — who reported in the last N days with EPS and revenue vs the street, biggest beats first, minus the book. Read it in this order: both lines beat and guidance up first; an EPS beat on a revenue miss is cost not demand; a beat the stock is DOWN on means the market wanted more (check the reaction with \`get_stock_data\`); tiny estimates are already blanked. Then \`dispatch_thesis_research(mode:"mint")\` on the ones worth a thesis — pass \`screen_row\` with the numbers that made the cut (surprise, revenue, the gap and its volume) and \`setup_id: "PEAD"\` when it reported within 3 sessions and held the gap — and say why the rest aren't. Upcoming reports on the book → the same tool with the default window.
    • "Discovery off activist stakes" / "who took a stake this month" → \`get_sec_filings(scope:"universe", days:30)\` — companies with a new 13D in the window, not already covered, each with who took the stake. EDGAR doesn't know company size and many are micro-caps: \`get_stock_data\` on the names worth sizing, read the 13D's stated purpose (the link is on the row), and only then \`dispatch_thesis_research\`. A stake is a conviction input like insider buying, not a setup — the entry is still a base breakout or a pullback.
-   • "Find similar to $X" → \`get_stock_data($X)\` for peers, then optionally \`web_search\` / \`twitter_search\` for thematic neighbors; the candidate set is the resulting peer + neighbor list.
+   • "Find similar to $X" → \`get_stock_data($X)\` for peers, then optionally \`web_search\` for thematic neighbors; the candidate set is the resulting peer + neighbor list.
 
 2. **Triage narration (1-2 sentences per name).** Walk the pool out loud. For each candidate worth a closer look, write a one-or-two-sentence read of why it caught your eye and what you'd need to verify. For obvious junk (penny stocks, ETFs, off-edge industries, already-covered names), narrate the dismissal inline — no thesis row for these, just one sentence in your reply ("Dismissing $XYZ: ETF, off-edge"). Skip-without-thesis-row is for triage-stage rejects; PASS-record is for candidates you researched and decided against.
 
@@ -655,7 +650,7 @@ When in batched-discovery mode, DO NOT default to \`dispatch_thesis_research\` p
 4. **Decide per candidate.** For each researched survivor, say in one or two sentences what is changing in the business and whether the chart gives a place to buy it: the trend, strength against the market, a defined entry, a dated catalyst. There is no score; the sentence is the judgment.
 
 5. **Decision gate per candidate:**
-   • Worth a full write-up → \`dispatch_thesis_research(mode:"mint", reason:"...the business reason, the chart in a sentence, and any operator framing...")\`. The reason arg becomes the writer's seed context.
+   • Worth a full write-up → \`dispatch_thesis_research(mode:"mint", reason:"...the business reason, the chart in a sentence, and any operator framing...", research_notes:"...what steps 3 and 4 found: the numbers you pulled, what you read...")\`. The writer reads both before its own research. When the name came from someone's thesis (a post, an article), add \`idea_source\`: who wrote it, the link, the day, their words as pasted.
    • Not worth one AND you would not want the name back → \`record_thesis(direction:"PASS", reasoning_summary:"...", invalidation_conditions:[...])\`. Terminal: no wake, no clock, never surfaces again on its own. Institutional memory only.
    • **Not now, but you WOULD want it back at a price, or worth a write-up with no slot → a WATCH WITH NO CLOCK**, not a pass: \`record_thesis(direction:"PASS", status:"WATCHING", triggers:[{predicate:{watch:"price", is:"below", value:<the price>}, action:"REVIEW", rationale:"..."}])\`. **The test is simple: if your own invalidation/flip criteria name a price or a date, that is a wake condition — arm it instead of filing it.** A written "re-evaluate on a pullback to ~\$203" that lands as a terminal PASS is the drawer that never opens. Watches with no clock are uncapped and don't consume a dispatch slot.
    • DISPATCH_CAP = 5 per session. If more than 5 are worth a write-up, dispatch the 5 with the clearest business reason and **put the rest on watch with no clock** with a wake at the level you'd act on — "no room this week" must never mean "never again."
@@ -664,7 +659,7 @@ When in batched-discovery mode, DO NOT default to \`dispatch_thesis_research\` p
 
 ### Operator context is data — fold it into the decision
 
-When the user's message includes framing on a candidate ("3 momentum handles converging on $NBIS this week" / "Stratechery called this the next NVDA" / "Beth Kindig has been bullish since Sept"), that framing IS catalyst data. Weigh it on that candidate AND cite the operator's framing verbatim in the dispatch \`reason\` arg. The thesis-writer reads the reason as seed context for its deep research; preserving your conversation in it is high-leverage.
+When the user's message includes framing on a candidate ("3 momentum handles converging on $NBIS this week" / "Stratechery called this the next NVDA" / "Beth Kindig has been bullish since Sept"), that framing IS catalyst data. Weigh it on that candidate AND cite the operator's framing verbatim in the dispatch \`reason\` arg. The thesis-writer reads the reason as seed context for its deep research; preserving your conversation in it is high-leverage. When the paste is someone's thesis, send it whole as \`idea_source\`, not a summary in the reason: the writer tests the author's claims, and the thesis records who they were.
 
 ### One clarification turn is allowed
 

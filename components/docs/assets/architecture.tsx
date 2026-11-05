@@ -9,8 +9,8 @@ const LAYERS: readonly { tag: string; title: string; body: string; chips: ReactN
   {
     tag: "Market data",
     title: "Five vendors, read live",
-    body: "Prices, bars, earnings, filings, the web and X.",
-    chips: (["alpaca", "finnhub", "sec", "perplexity", "xai", "anthropic"] as ToolSource[]).map((s) => <SourceMark key={s} source={s} size="sm" />),
+    body: "Prices, bars, earnings, filings and the web.",
+    chips: (["alpaca", "finnhub", "sec", "perplexity", "anthropic"] as ToolSource[]).map((s) => <SourceMark key={s} source={s} size="sm" />),
   },
   {
     tag: "Your book",
