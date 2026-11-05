@@ -33,17 +33,38 @@ function groupByPeriod(items: StockHistoryItem[]) {
 const ROW =
   "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md p-2 text-left hover:bg-muted/70 transition-colors";
 
+/** A trade row's three cells: the pill, the sentence, the result. */
+function TradeRowBody({ item }: { item: Extract<StockHistoryItem, { kind: "trade" }> }) {
+  return (
+    <>
+      <span className="min-w-0 overflow-hidden">
+        <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
+          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", item.dotClass)} />
+          {item.label}
+        </Badge>
+      </span>
+      <span className="min-w-0 text-xs text-muted-foreground tabular-nums truncate">{item.sentence}</span>
+      <span className="justify-self-end">
+        {item.gain ? <PriceChange dollarChange={item.gain.dollar} percentChange={item.gain.pct} size="sm" /> : null}
+      </span>
+    </>
+  );
+}
+
 export function StockHistory({
   ticker,
   items,
   limit,
   onViewAll,
+  onOpenTrade,
 }: {
   ticker: string;
   items: StockHistoryItem[];
   /** Show only the newest few, with "View all" when there are more. */
   limit?: number;
   onViewAll?: () => void;
+  /** Given, a trade row opens this (the Transactions tab's dialog) instead of linking to the trade page. */
+  onOpenTrade?: (positionId: string) => void;
 }) {
   const [openThesisId, setOpenThesisId] = useState<string | null>(null);
   const shown = useMemo(() => (limit ? items.slice(0, limit) : items), [items, limit]);
@@ -70,20 +91,13 @@ export function StockHistory({
                   <span className="min-w-0 text-xs text-muted-foreground truncate">{item.sentence}</span>
                   <span />
                 </button>
+              ) : onOpenTrade ? (
+                <button key={item.id} type="button" className={ROW} onClick={() => onOpenTrade(item.positionId)}>
+                  <TradeRowBody item={item} />
+                </button>
               ) : (
                 <Link key={item.id} prefetch={false} href={item.href} className={ROW}>
-                  <span className="min-w-0 overflow-hidden">
-                    <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
-                      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", item.dotClass)} />
-                      {item.label}
-                    </Badge>
-                  </span>
-                  <span className="min-w-0 text-xs text-muted-foreground tabular-nums truncate">{item.sentence}</span>
-                  <span className="justify-self-end">
-                    {item.gain ? (
-                      <PriceChange dollarChange={item.gain.dollar} percentChange={item.gain.pct} size="sm" />
-                    ) : null}
-                  </span>
+                  <TradeRowBody item={item} />
                 </Link>
               ),
             )}

@@ -31,6 +31,8 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { ThesisHeader } from "@/components/domain/thesis-header";
 import { TradeSummary } from "@/components/domain/trade-summary";
+import { Transactions } from "@/components/trades/Transactions";
+import type { TransactionFacts } from "@/lib/stocks/stock-history";
 import type { RangeMove } from "@/components/stocks/StockPriceChart";
 import { formatCurrency } from "@/lib/format";
 import type { SourceChipData } from "@/components/chat/SourceChip";
@@ -783,7 +785,10 @@ export function ThesisBody({
   surface,
   aside,
   moreTabs,
-  afterActivity,
+  underChart,
+  transactions,
+  showTriggers = true,
+  showActivity = true,
 }: {
   data: ThesisSheetData & { state: ThesisDossier };
   thesis_id?: string;
@@ -794,18 +799,23 @@ export function ThesisBody({
    * tab row, so they start level with the chart instead of with the price.
    */
   aside?: ReactNode;
-  /** More tabs after Activity (the stock page's News). */
+  /** More tabs after Transactions (the stock page's Financials and News). */
   moreTabs?: Array<{ label: string; content: ReactNode }>;
-  /** Under the Activity tab's list (the stock page's history of the stock). */
-  afterActivity?: ReactNode;
+  /** Between the chart and the tabs (the stock page's key stats). */
+  underChart?: ReactNode;
+  /** The Transactions tab's trades. Omitted, the thesis's own position is the one trade. */
+  transactions?: TransactionFacts[];
+  /** The stock page hides the plan: it is the stock, not the trade. */
+  showTriggers?: boolean;
+  /** The stock page has no Activity tab: the thesis's list is the thesis's. */
+  showActivity?: boolean;
 }) {
   const { state, quote, quoteLoading, earnings, filings, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
   const extraTabs = moreTabs ?? [];
   // What the chart's selected range shows; the price row prints it.
   const [move, setMove] = useState<RangeMove | null>(null);
-  // The open tab: Overview's "View all" opens Activity.
-  const [tab, setTab] = useState(0);
-  const ACTIVITY_TAB = 2;
+  // The open tab: Overview's "View all" opens Activity; the position card opens Transactions.
+  const [tab, setTab] = useState("overview");
 
   // ── Derived — durable from `state`, live from the hydration states ────────
   const liveStatus = state.status as ThesisStatus;
@@ -844,30 +854,39 @@ export function ThesisBody({
       <AnalystCards coverage={coverage} currentPrice={quote?.currentPrice ?? null} entry={position && !position.closed ? position.avgCost : null} />
     );
 
-  // The trade, in its two looks. The banner sits under the price: on the
-  // sheet in every state, on the page only while a proposal waits (the card
-  // in the sidebar carries the held numbers there). Both read the same
-  // position and the same live P&L, so they can't disagree.
-  const tradeBanner =
-    position && (surface === "sheet" || pendingProposal != null) ? (
-      <TradeSummary
-        look="banner"
-        position={position}
-        pnl={quote?.positionPnl ?? null}
-        pendingProposal={pendingProposal}
-        direction={direction}
-      />
-    ) : null;
-  const tradeCard =
-    position && surface === "page" ? (
-      <TradeSummary
-        look="card"
-        position={position}
-        pnl={quote?.positionPnl ?? null}
-        pendingProposal={pendingProposal}
-        direction={direction}
-      />
-    ) : null;
+  // The trade: the one position card, under the price in every state on
+  // every surface (the owner's design, 2026-11-04). On a page its click opens
+  // the Transactions tab; on the sheet it opens the trade's page.
+  const tradeBanner = position ? (
+    <TradeSummary
+      position={position}
+      pnl={quote?.positionPnl ?? null}
+      pendingProposal={pendingProposal}
+      direction={direction}
+      onOpen={surface === "page" ? () => setTab("transactions") : undefined}
+    />
+  ) : null;
+  // The Transactions tab's trades: a page hands in the stock's; the sheet has the thesis's one.
+  const txFacts: TransactionFacts[] =
+    transactions ??
+    (position && position.id
+      ? [
+          {
+            id: position.id,
+            direction: direction ?? "LONG",
+            status: position.closed ? "CLOSED" : pendingProposal?.intent === "OPEN" ? "PENDING_APPROVAL" : "OPEN",
+            outcome: position.outcome ?? null,
+            avgCost: position.avgCost,
+            closePrice: position.closePrice ?? null,
+            realizedPnl: position.realizedPnl ?? null,
+            quantity: position.quantity,
+            openedAt: position.openedAt,
+            closedAt: position.closedAt ?? null,
+            closeReason: position.closeReason ?? null,
+            analyst: state.analystId && state.analystName ? { id: state.analystId, name: state.analystName } : null,
+          },
+        ]
+      : []);
 
   // The stock cards — the plan's levels, Wall Street, the earnings record —
   // built once. With a sidebar (the page) they go there; without one (the
@@ -890,25 +909,74 @@ export function ThesisBody({
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
   // The standing opinion, first thing under the chips on Overview.
   const belief = state.coreBelief?.trim() ? stripCitationTags(state.coreBelief) : null;
-  const tabOptions = [
-    { value: "0", label: "Overview" },
-    { value: "1", label: "Research" },
-    { value: String(ACTIVITY_TAB), label: "Activity" },
-    ...extraTabs.map((t, i) => ({ value: String(ACTIVITY_TAB + 1 + i), label: t.label })),
-  ];
   const sideColumn =
     surface === "page" ? (
       <div className="hidden lg:block space-y-4">
-        {tradeCard}
         {aside}
         {stockCards}
       </div>
     ) : null;
 
+  // ── The tabs, in order: Overview · Research · Activity (not on the stock page) · Transactions · the page's own ──
+  const overviewContent = (
+    <>
+      {/* ── Whether it needs work today (DAV-304) ── */}
+      <WorkFlagLine
+        status={state.status}
+        needsAction={quote?.needsAction ?? null}
+        situations={quote?.situations ?? []}
+        quoteLoading={quoteLoading}
+        quoteFailed={!quoteLoading && quote == null}
+      />
+
+      {/* The standing opinion, the same size as the company line on Research. */}
+      {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
+
+      {/* Agent insights: the newest 5 Activity lines with a written paragraph, in the Activity tab's own design. */}
+      <RecentActivity items={noted} triggers={state.triggers} onViewAll={showActivity ? () => setTab("activity") : undefined} />
+
+      {/* ── The plan: the triggers (the trade's, not the stock's) ── */}
+      {showTriggers && thesis_id ? (
+        <ThesisTriggersSection
+          thesisId={thesis_id}
+          data={state}
+          direction={direction}
+          editable={!isPass && (liveStatus === "HOLDING" || liveStatus === "WATCHING")}
+          onChanged={refresh}
+          streetMissing={!coverageLoading && coverage?.priceTargets == null}
+        />
+      ) : null}
+
+      {surface === "sheet" ? stockCards : null}
+    </>
+  );
+  const activityContent = (
+    <>
+      {thesis_id ? (
+        <ThesisTimelineSection
+          thesisId={thesis_id}
+          recentIds={recent.map((r) => r.id)}
+          triggers={state.triggers}
+          provenance={state.sourceKind ? { sourceKind: state.sourceKind, rationale: state.sourceRationale ?? null } : null}
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">No activity yet — this thesis hasn&apos;t been persisted.</p>
+      )}
+    </>
+  );
+  const tabs: Array<{ value: string; label: string; content: ReactNode }> = [
+    { value: "overview", label: "Overview", content: overviewContent },
+    { value: "research", label: "Research", content: <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} /> },
+    ...(showActivity ? [{ value: "activity", label: "Activity", content: activityContent }] : []),
+    { value: "transactions", label: "Transactions", content: <Transactions ticker={ticker} facts={txFacts} /> },
+    ...extraTabs.map((t) => ({ value: t.label.toLowerCase(), label: t.label, content: t.content })),
+  ];
+  const tabOptions = tabs.map((t) => ({ value: t.value, label: t.label }));
+
   return (
     <div className={columns}>
     <div className="min-w-0">
-    <Tabs value={tab} onValueChange={(v) => setTab(Number(v))} className="gap-4">
+    <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-4">
       {/* ── Above the tabs on every tab (the owner's order, 2026-11-04): the price, the trade, the chart ── */}
       {/* ── Live price + the selected range's move ───────────── */}
       {/* Hydrates from /quote after the dossier paints: skeleton while in
@@ -953,75 +1021,13 @@ export function ThesisBody({
         />
       ) : null}
 
+      {underChart}
+
       {/* The sections, as chips: the chart is always worth the screen; the chips pick what sits under it. */}
-      <ChipTabs options={tabOptions} value={String(tab)} onChange={(v) => { if (v != null) setTab(Number(v)); }} clearable={false} />
+      <ChipTabs options={tabOptions} value={tab} onChange={(v) => { if (v != null) setTab(String(v)); }} clearable={false} />
 
-      {/* ── Overview: the belief → the insights → the plan ── */}
-      <TabsContent value={0} className="space-y-6">
-      {/* ── Whether it needs work today (DAV-304) ── */}
-      <WorkFlagLine
-        status={state.status}
-        needsAction={quote?.needsAction ?? null}
-        situations={quote?.situations ?? []}
-        quoteLoading={quoteLoading}
-        quoteFailed={!quoteLoading && quote == null}
-      />
-
-      {/* The standing opinion, the same size as the company line on Research. */}
-      {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
-
-
-      {/* Agent insights: the newest 5 Activity lines with a written paragraph, in the Activity tab's own design. */}
-      <RecentActivity items={noted} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
-
-      {/* ── The plan: the triggers ── */}
-      {thesis_id ? (
-        <ThesisTriggersSection
-          thesisId={thesis_id}
-          data={state}
-          direction={direction}
-          editable={
-            !isPass && (liveStatus === "HOLDING" || liveStatus === "WATCHING")
-          }
-          onChanged={refresh}
-          streetMissing={!coverageLoading && coverage?.priceTargets == null}
-        />
-      ) : null}
-
-      {surface === "sheet" ? stockCards : null}
-      </TabsContent>
-
-      {/* ── Research: the claim and the write-up behind it ─────── */}
-      <TabsContent value={1} className="space-y-6">
-        <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} />
-      </TabsContent>
-
-      {/* ── Activity tab: the whole list ───────────────────────── */}
-      <TabsContent value={ACTIVITY_TAB} className="space-y-6">
-          {thesis_id ? (
-            <ThesisTimelineSection
-              thesisId={thesis_id}
-              recentIds={recent.map((r) => r.id)}
-              triggers={state.triggers}
-              provenance={
-                state.sourceKind
-                  ? {
-                      sourceKind: state.sourceKind,
-                      rationale: state.sourceRationale ?? null,
-                    }
-                  : null
-              }
-            />
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              No activity yet — this thesis hasn&apos;t been persisted.
-            </p>
-          )}
-          {afterActivity}
-      </TabsContent>
-
-      {extraTabs.map((t, i) => (
-        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-6">
+      {tabs.map((t) => (
+        <TabsContent key={t.value} value={t.value} className="space-y-6">
           {t.content}
         </TabsContent>
       ))}

@@ -27,11 +27,34 @@ export type StockHistoryItem =
       id: string;
       at: string;
       href: string;
+      /** The position the row belongs to: the Transactions tab opens its dialog on it. */
+      positionId: string;
       label: string;
       dotClass: string;
       sentence: string;
       gain: { dollar: number; pct: number | null } | null;
     };
+
+/**
+ * One transaction's facts, as every surface can hand them in (ISO dates, so
+ * the sheet's position and a page's loaded rows look the same): the rows of
+ * the Transactions tab and the dialog a row opens.
+ */
+export type TransactionFacts = {
+  id: string;
+  direction: string;
+  /** OPEN | CLOSED | PENDING_APPROVAL, the Position's status. */
+  status: string;
+  outcome?: string | null;
+  avgCost: number;
+  closePrice: number | null;
+  realizedPnl: number | null;
+  quantity: number;
+  openedAt: string;
+  closedAt: string | null;
+  closeReason?: string | null;
+  analyst?: { id: string; name: string } | null;
+};
 
 export type StockHistoryPosition = {
   id: string;
@@ -77,15 +100,41 @@ export function buildStockHistory(
     });
   }
 
-  for (const p of positions) {
+  items.push(
+    ...transactionRows(
+      positions.map((p) => ({
+        id: p.id,
+        direction: p.direction,
+        status: p.status,
+        avgCost: p.avgCost,
+        closePrice: p.closePrice,
+        realizedPnl: p.realizedPnl,
+        quantity: p.quantity,
+        openedAt: p.openedAt.toISOString(),
+        closedAt: p.closedAt ? p.closedAt.toISOString() : null,
+      })),
+    ),
+  );
+
+  return items.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/**
+ * A stock's transactions as rows: the buy at the open (a proposal while it
+ * waits), and once closed the sale with its result. Newest first.
+ */
+export function transactionRows(facts: TransactionFacts[]): Extract<StockHistoryItem, { kind: "trade" }>[] {
+  const items: Extract<StockHistoryItem, { kind: "trade" }>[] = [];
+  for (const p of facts) {
     const href = `/trades/${p.id}`;
     const short = p.direction === "SHORT";
     if (p.status === "PENDING_APPROVAL") {
       items.push({
         kind: "trade",
         id: `open-${p.id}`,
-        at: p.openedAt.toISOString(),
+        at: p.openedAt,
         href,
+        positionId: p.id,
         label: "Proposal",
         dotClass: "bg-amber-500",
         sentence:
@@ -102,8 +151,9 @@ export function buildStockHistory(
     items.push({
       kind: "trade",
       id: `open-${p.id}`,
-      at: p.openedAt.toISOString(),
+      at: p.openedAt,
       href,
+      positionId: p.id,
       label: short ? "Shorted" : "Bought",
       dotClass: short ? "bg-negative" : "bg-positive",
       sentence: buildTradeSentence({ kind: "holding", qty: p.quantity, entry: p.avgCost }) ?? "Bought",
@@ -114,8 +164,9 @@ export function buildStockHistory(
       items.push({
         kind: "trade",
         id: `close-${p.id}`,
-        at: p.closedAt.toISOString(),
+        at: p.closedAt,
         href,
+        positionId: p.id,
         label: "Sold",
         dotClass: "bg-muted-foreground/60",
         sentence:
@@ -132,6 +183,5 @@ export function buildStockHistory(
       });
     }
   }
-
   return items.sort((a, b) => b.at.localeCompare(a.at));
 }

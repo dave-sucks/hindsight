@@ -2,16 +2,17 @@
 
 import type { ReactNode } from "react";
 import { ThesisBody, ThesisBodySkeleton, useThesisSheetData } from "@/components/agent/sheets/ThesisSheet";
+import type { TransactionFacts } from "@/lib/stocks/stock-history";
 
 /**
  * A thesis as a page body: the sheet's body with a sidebar — the same tabs,
  * chart, triggers and notes, loaded the same way the sheet loads them. The
- * trade page pins its own position row; the stock page takes the thesis's
- * current trade and adds its Financials and News tabs and its history under
- * Activity. The body puts the position card and the stock cards in the
- * sidebar itself; `aside` is a page's extra card (the trade page's Trade
- * Details, the stock page's About), rendered between them. While the thesis
- * loads it sits beside the skeleton.
+ * trade page pins its own position row; the stock page hands in every trade
+ * on the stock for the Transactions tab, its key stats under the chart, its
+ * Financials and News tabs, and hides the plan and the Activity tab (it is
+ * the stock, not the trade). The body puts the stock cards in the sidebar
+ * itself; `aside` is a page's extra card (the stock page's About). While the
+ * thesis loads it sits beside the skeleton.
  */
 export function ThesisPageBody({
   thesisId,
@@ -19,14 +20,20 @@ export function ThesisPageBody({
   ticker,
   aside,
   moreTabs,
-  afterActivity,
+  underChart,
+  transactions,
+  showTriggers,
+  showActivity,
 }: {
   thesisId: string | null;
   positionId?: string | null;
   ticker: string;
   aside?: ReactNode;
   moreTabs?: Array<{ label: string; content: ReactNode }>;
-  afterActivity?: ReactNode;
+  underChart?: ReactNode;
+  transactions?: TransactionFacts[];
+  showTriggers?: boolean;
+  showActivity?: boolean;
 }) {
   const data = useThesisSheetData(thesisId ?? undefined, ticker, positionId);
   const state = data.state;
@@ -54,7 +61,10 @@ export function ThesisPageBody({
       surface="page"
       aside={aside}
       moreTabs={moreTabs}
-      afterActivity={afterActivity}
+      underChart={underChart}
+      transactions={transactions}
+      showTriggers={showTriggers}
+      showActivity={showActivity}
     />
   );
 }

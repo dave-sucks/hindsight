@@ -3,7 +3,6 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StockPageTabs } from "@/components/stocks/StockPageTabs";
-import { StockHistory } from "@/components/stocks/StockHistory";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
@@ -29,7 +28,7 @@ import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
-import { buildStockHistory } from "@/lib/stocks/stock-history";
+import type { TransactionFacts } from "@/lib/stocks/stock-history";
 import { keyStatColumns, financialStatSections } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
@@ -159,16 +158,20 @@ export default async function StockDetailPage({ params }: Props) {
       ? metrics["marketCapitalization"] * 1_000_000
       : null;
 
-  const history = buildStockHistory(
-    positions.map((p) => ({
-      ...p,
-      avgCost: Number(p.avgCost),
-      closePrice: p.closePrice != null ? Number(p.closePrice) : null,
-      realizedPnl: p.realizedPnl != null ? Number(p.realizedPnl) : null,
-      quantity: Number(p.quantity),
-    })),
-    theses,
-  );
+  // Every trade on the stock, for the Transactions tab and the dialog a row opens.
+  const transactions: TransactionFacts[] = positions.map((p) => ({
+    id: p.id,
+    direction: p.direction,
+    status: p.status,
+    outcome: p.outcome,
+    avgCost: Number(p.avgCost),
+    closePrice: p.closePrice != null ? Number(p.closePrice) : null,
+    realizedPnl: p.realizedPnl != null ? Number(p.realizedPnl) : null,
+    quantity: Number(p.quantity),
+    openedAt: p.openedAt.toISOString(),
+    closedAt: p.closedAt ? p.closedAt.toISOString() : null,
+    closeReason: p.closeReason,
+  }));
 
   // The open position, for the chart's entry line.
   const open = positions.find((p) => p.status === "OPEN") ?? null;
@@ -182,15 +185,6 @@ export default async function StockDetailPage({ params }: Props) {
       <NewsRows symbol={upperSymbol} />
     </Suspense>
   );
-
-  // Hindsight on this stock: every thesis and trade on it, as dated rows.
-  const historyBlock =
-    history.length > 0 ? (
-      <section className="space-y-2">
-        <BlockLabel>Hindsight on this stock</BlockLabel>
-        <StockHistory ticker={upperSymbol} items={history} />
-      </section>
-    ) : null;
 
   const website = profile?.weburl
     ? profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
@@ -243,6 +237,9 @@ export default async function StockDetailPage({ params }: Props) {
       </div>
     </>
   );
+
+  // The key stats under the chart, with or without a live thesis.
+  const stats = <StatBlock columns={keyStatColumns(quote, metrics, marketCap)} />;
 
   // No live thesis: the trades we made in it, who the company is, Wall
   // Street and the earnings record.
@@ -310,15 +307,21 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
 
         {live ? (
+          // The stock, not the trade: the thesis's view with the stats under
+          // the chart, no plan on the Overview, no Activity tab, and every
+          // trade on the stock under Transactions.
           <ThesisPageBody
             thesisId={live.id}
             ticker={upperSymbol}
             aside={aboutCard}
+            underChart={stats}
+            transactions={transactions}
+            showTriggers={false}
+            showActivity={false}
             moreTabs={[
               { label: "Financials", content: financials },
               { label: "News", content: news },
             ]}
-            afterActivity={historyBlock}
           />
         ) : (
           <StockPageTabs
@@ -332,8 +335,8 @@ export default async function StockDetailPage({ params }: Props) {
                 ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
                 : null,
             }}
-            stats={<StatBlock columns={keyStatColumns(quote, metrics, marketCap)} />}
-            history={history}
+            stats={stats}
+            transactions={transactions}
             financials={financials}
             news={news}
             sidebar={sidebar}
