@@ -22,11 +22,11 @@ import { MODES } from "@/lib/agent/modes";
 import { createResearchTools } from "@/lib/agent/tools";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
-  // 2026-11-04: +777 each, the voice rules' podcaster length and the desk words they ban (lib/agent/voice.ts).
-  daily: 8_716,
-  tactical: 14_169,
-  writer: 15_447,
-  chat: 34_581,
+  // 2026-11-04: +1,311 each, the voice rules' podcaster length, the view a note takes, the neighbor test and the desk words they ban (lib/agent/voice.ts).
+  daily: 9_250,
+  tactical: 14_703,
+  writer: 15_981,
+  chat: 35_115,
 };
 
 /**

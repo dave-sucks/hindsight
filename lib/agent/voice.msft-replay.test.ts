@@ -14,7 +14,7 @@ const SAVED =
 
 /** The same note, the facts kept, in the voice the rules ask for. */
 const REWRITTEN =
-  "Microsoft keeps climbing after last week's earnings, when Azure's growth sped up to 48%, so I'm proposing we add 4 shares. You own 17 shares, up about 5% from where we bought, and the stock is past our old target, so I'm moving the target and the floor up with it. The add waits for your approval; I'd back off only if Azure's growth slows or spending jumps without the demand to match, and the new floor at $524.57 is where I'd sell.";
+  "Microsoft keeps climbing after last week's earnings, when Azure's growth sped up to 48%, so I'm proposing we add 4 shares. This looks like real demand, not a one-day pop: you own 17 shares, up about 5%, and the stock is past our old target, so I'm moving the target and the floor up with it. The add waits for your approval. I'd back off if Azure's growth slows or spending jumps without the demand to match; the new floor at $524.57 is where I'd sell.";
 
 describe("Microsoft, 2026-11-04: the add proposal's reason", () => {
   it("as saved: three sentences of 50 to 70 words, 163 words, ten numbers", () => {
@@ -24,10 +24,10 @@ describe("Microsoft, 2026-11-04: the add proposal's reason", () => {
     expect(noteCheck(SAVED)).toEqual(["163 words, over 90", "the first sentence runs 48 words", "10 numbers (48%, $677, $615, $722, $531.01, $458, 5.1%, $634, $634.08, $524.57), over 3"]);
   });
 
-  it("rewritten: the first sentence says what happened and what we're doing; three numbers; 83 words", () => {
+  it("rewritten: the first sentence says what happened and what we're doing, the second takes a view; three numbers; 86 words", () => {
     expect(noteCheck(REWRITTEN)).toEqual([]);
-    expect(wordsOf(REWRITTEN)).toHaveLength(83);
-    expect(sentencesOf(REWRITTEN)).toHaveLength(3);
+    expect(wordsOf(REWRITTEN)).toHaveLength(86);
+    expect(sentencesOf(REWRITTEN)).toHaveLength(4);
     expect(sentencesOf(REWRITTEN)[0]).toBe("Microsoft keeps climbing after last week's earnings, when Azure's growth sped up to 48%, so I'm proposing we add 4 shares.");
     expect(numbersOf(REWRITTEN)).toEqual(["48%", "5%", "$524.57"]);
   });

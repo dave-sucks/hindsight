@@ -172,7 +172,11 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     expect(VOICE_RULES).toContain("Write the way you would say it out loud to a friend who listens to a markets podcast: short sentences, everyday words, the two or three numbers that matter and no others.");
     expect(VOICE_RULES).toContain(`is one paragraph of two to four sentences, about 60 to 90 words, that answers "what's going on with this stock, and what should I do?", in three parts, in this order:`);
     expect(VOICE_RULES).toContain("- The first sentence says what happened and what we are doing about it, in plain words:");
-    expect(VOICE_RULES).toContain("- Then why, in one or two sentences: whether that touches the reason we own it (or watch it), and what you own and are up or down.");
+    expect(VOICE_RULES).toContain("- Then why, in one or two sentences, and what you make of it: is this the company, or just its group or the market; does it touch the reason we own it (or watch it); what do you own and are you up or down.");
+    // Opinionated: a note takes a view, never only reports.
+    expect(VOICE_RULES).toContain("Take a view a listener could disagree with");
+    // Not too technical: the neighbor test.
+    expect(VOICE_RULES).toContain("if a neighbor who doesn't follow stocks wouldn't know it, use the one they would");
     // GEV and ABBV replays, 10-28: the note listed every break that had not happened.
     expect(VOICE_RULES).toContain("when nothing that would break the case has happened, say so in a few words, never as a list of each thing that hasn't");
     expect(VOICE_RULES).toContain("- The last sentence says what would change the call. A stop or target goes in this last sentence, and only when the call turns on it");
