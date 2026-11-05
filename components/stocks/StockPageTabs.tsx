@@ -2,9 +2,9 @@
 
 /**
  * The stock page's tabs when no thesis is live on the stock — Overview ·
- * Financials · Transactions · News — with the sidebar beside every tab's
+ * Fundamentals · Transactions · News — with the sidebar beside every tab's
  * content, as on the trade page. With a live thesis the page renders the
- * thesis's own body instead (ThesisPageBody), with Financials and News after
+ * thesis's own body instead (ThesisPageBody), with Fundamentals and News after
  * its own. Owns the open tab so Overview's "View all" can switch to
  * Transactions.
  */
@@ -22,6 +22,7 @@ const NEWS = 3;
 
 export function StockPageTabs({
   overview,
+  overviewStats,
   transactions,
   held,
   financials,
@@ -29,6 +30,8 @@ export function StockPageTabs({
   sidebar,
 }: {
   overview: StockOverviewProps;
+  /** The range bars and key stats, first on Overview. */
+  overviewStats: ReactNode;
   /** Every fill on the stock. */
   transactions: FillFacts[];
   /** The open position, for the total line's "still holding". */
@@ -45,13 +48,14 @@ export function StockPageTabs({
     <Tabs value={tab} onValueChange={(v) => setTab(v as number)}>
       <TabsList>
         <TabsTrigger value={OVERVIEW}>Overview</TabsTrigger>
-        <TabsTrigger value={FINANCIALS}>Financials</TabsTrigger>
+        <TabsTrigger value={FINANCIALS}>Fundamentals</TabsTrigger>
         <TabsTrigger value={TRANSACTIONS}>Transactions</TabsTrigger>
         <TabsTrigger value={NEWS}>News</TabsTrigger>
       </TabsList>
 
       <TabsContent value={OVERVIEW} className="space-y-5">
         <StockOverview {...overview} sidebar={sidebar}>
+          {overviewStats}
           <Transactions ticker={overview.ticker} fills={transactions} limit={5} onViewAll={() => setTab(TRANSACTIONS)} openThesis held={held} currentPrice={overview.price} />
         </StockOverview>
       </TabsContent>

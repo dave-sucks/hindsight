@@ -783,6 +783,7 @@ export function ThesisBody({
   stockHref,
   aside,
   moreTabs,
+  overviewStats,
   transactions,
   showTriggers = true,
   showActivity = true,
@@ -800,8 +801,10 @@ export function ThesisBody({
    * tab row, so they start level with the chart instead of with the price.
    */
   aside?: ReactNode;
-  /** More tabs after Transactions (the stock page's Financials and News). */
+  /** More tabs after Transactions (the stock page's Fundamentals and News). */
   moreTabs?: Array<{ label: string; content: ReactNode }>;
+  /** The stock page's range bars and key stats, under the company line on Overview. */
+  overviewStats?: ReactNode;
   /** The Transactions tab's fills. Omitted, the thesis's own trades' fills (the route's). */
   transactions?: FillFacts[];
   /** The stock page hides the plan: it is the stock, not the trade. */
@@ -941,6 +944,7 @@ export function ThesisBody({
           {factChips}
         </div>
       ) : null}
+      {overviewStats}
 
       {/* ── Whether it needs work today (DAV-304) ── */}
       <WorkFlagLine

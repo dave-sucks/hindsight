@@ -1,11 +1,13 @@
 /**
- * The stock page's numbers, in the order and words they are shown. The
- * Overview's key stats are nine cells read down three columns, like a
- * broker's quote page; the Financials tab's full set is one table in
- * sections. Everything here is a pure read of the quote and Finnhub's
+ * The stock page's numbers, in the order and words they are shown (the
+ * owner's layouts, 2026-11-05, after Robinhood's). The Overview shows two
+ * range bars (today, 52 weeks) and six stats in two columns; the
+ * Fundamentals tab opens with the key figures in two columns beside the
+ * company's facts, then the full set as one table in sections. Everything
+ * here is a pure read of the quote, the profile and Finnhub's
  * `/stock/metric` map, so the page cannot print a number this file doesn't
  * name, and a metric Finnhub lacks for a stock reads "—" (or drops out of
- * the Financials table) instead of a guessed value.
+ * the table) instead of a guessed value.
  */
 
 export type Stat = { label: string; value: string };
@@ -42,31 +44,78 @@ export const fmtBig = (n: number | null, prefix = "$") => {
 /** Finnhub's volumes and values come in millions. */
 const millions = (n: number | null) => (n != null ? n * 1_000_000 : null);
 
-/**
- * The Overview's nine: the session's prices, what the company is worth and
- * earns, and where the price has been. `marketCap` is in dollars (the
- * page already picks the profile's over the metric's).
- */
-export function keyStatColumns(quote: Quote, metrics: Metrics, marketCap: number | null): StatColumns {
+/** Where the price sits today and over the year: the two bars on the Overview. */
+export function rangeBars(
+  quote: { h: number; l: number; c: number } | null | undefined,
+  metrics: Metrics,
+): Array<{ label: string; low: number | null; high: number | null; current: number | null }> {
+  const current = quote?.c ?? null;
+  return [
+    { label: "Today", low: quote?.l ?? null, high: quote?.h ?? null, current },
+    { label: "52 week", low: num(metrics, "52WeekLow"), high: num(metrics, "52WeekHigh"), current },
+  ];
+}
+
+/** The Overview's six, in two columns: what the company is worth and earns; how it trades. */
+export function overviewStatColumns(metrics: Metrics, marketCap: number | null): StatColumns {
   const m = metrics;
   return [
-    [
-      { label: "Open", value: fmtMoney(quote?.o ?? null) },
-      { label: "High", value: fmtMoney(quote?.h ?? null) },
-      { label: "Low", value: fmtMoney(quote?.l ?? null) },
-    ],
     [
       { label: "Market cap", value: fmtBig(marketCap) },
       { label: "P/E", value: fmtNum(num(m, "peTTM")) },
       { label: "EPS", value: fmtMoney(num(m, "epsTTM")) },
     ],
     [
-      { label: "52-wk high", value: fmtMoney(num(m, "52WeekHigh")) },
-      { label: "52-wk low", value: fmtMoney(num(m, "52WeekLow")) },
-      { label: "Avg volume", value: fmtBig(millions(num(m, "3MonthAverageTradingVolume")), "") },
+      { label: "Volume, 10-day avg", value: fmtBig(millions(num(m, "10DayAverageTradingVolume")), "") },
+      { label: "Volume, 3-month avg", value: fmtBig(millions(num(m, "3MonthAverageTradingVolume")), "") },
+      { label: "Beta", value: fmtNum(num(m, "beta")) },
     ],
   ];
 }
+
+/** The Fundamentals tab's key figures, in two columns: the valuation, then the business. */
+export function keyFigureColumns(metrics: Metrics, marketCap: number | null): StatColumns {
+  const m = metrics;
+  return [
+    [
+      { label: "Market cap", value: fmtBig(marketCap) },
+      { label: "Enterprise value", value: fmtBig(millions(num(m, "enterpriseValue"))) },
+      { label: "P/E (TTM)", value: fmtNum(num(m, "peTTM")) },
+      { label: "Forward P/E", value: fmtNum(num(m, "forwardPE")) },
+      { label: "EPS (TTM)", value: fmtMoney(num(m, "epsTTM")) },
+    ],
+    [
+      { label: "Revenue growth, TTM", value: fmtSignedPct(num(m, "revenueGrowthTTMYoy")) },
+      { label: "Gross margin", value: fmtPct(num(m, "grossMarginTTM")) },
+      { label: "Net margin", value: fmtPct(num(m, "netProfitMarginTTM")) },
+      { label: "Dividend yield", value: fmtPct(num(m, "dividendYieldIndicatedAnnual"), 2) },
+      { label: "Beta", value: fmtNum(num(m, "beta")) },
+    ],
+  ];
+}
+
+/** The company's facts, for the Fundamentals tab's right column. The website is a link; the page draws it. */
+export function companyFactRows(
+  profile: { finnhubIndustry?: string; country?: string; ipo?: string; shareOutstanding?: number; weburl?: string } | null | undefined,
+  exchange: string | null,
+  nextReportDate: string | null,
+): Array<{ label: string; value: string; href?: string }> {
+  const rows: Array<{ label: string; value: string; href?: string }> = [
+    { label: "Industry", value: profile?.finnhubIndustry || NONE },
+    { label: "Exchange", value: exchange || NONE },
+    { label: "Country", value: profile?.country || NONE },
+    { label: "IPO", value: profile?.ipo || NONE },
+    { label: "Shares outstanding", value: fmtBig(millions(profile?.shareOutstanding ?? null), "") },
+    { label: "Next earnings", value: nextReportDate ? fmtDay(nextReportDate) : NONE },
+  ];
+  if (profile?.weburl) {
+    rows.push({ label: "Website", value: profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""), href: profile.weburl });
+  }
+  return rows;
+}
+
+/** "Feb 11" from "2026-02-11", read as a calendar day, not a UTC instant. */
+const fmtDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
 /** Lays stats down `n` columns, top to bottom then left to right. */
 function inColumns(stats: Stat[], n = 3): StatColumns {
@@ -77,7 +126,7 @@ function inColumns(stats: Stat[], n = 3): StatColumns {
 }
 
 /**
- * The Financials tab's full set, by section. A stat Finnhub has no number for
+ * The Fundamentals tab's full set, by section. A stat Finnhub has no number for
  * is left out, and a section with nothing left is left out too.
  */
 export function financialStatSections(metrics: Metrics, marketCap: number | null): StatSection[] {

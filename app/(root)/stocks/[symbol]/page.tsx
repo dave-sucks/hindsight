@@ -7,8 +7,9 @@ import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
 import { PositionCard } from "@/components/stocks/PositionCard";
-import { StatBlock } from "@/components/stocks/StatGrid";
-import { StatTable } from "@/components/stocks/StatTable";
+import { StatGrid } from "@/components/stocks/StatGrid";
+import { RangeBar } from "@/components/stocks/RangeBar";
+import { Fundamentals } from "@/components/stocks/Fundamentals";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { AnalystCards } from "@/components/domain/analyst-consensus";
 import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
@@ -29,7 +30,7 @@ import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 import { fillFacts } from "@/lib/stocks/stock-history";
-import { keyStatColumns, financialStatSections } from "@/lib/stocks/stock-stats";
+import { rangeBars, overviewStatColumns, keyFigureColumns, companyFactRows, financialStatSections } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -40,10 +41,6 @@ import { ExternalLink } from "lucide-react";
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /** The details-card label every sidebar and research block uses. */
-function BlockLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
-}
-
 type MarketNewsArticle = { headline: string; source: string; datetime: number; url: string };
 
 async function NewsRows({ symbol }: { symbol: string }) {
@@ -185,22 +182,42 @@ export default async function StockDetailPage({ params }: Props) {
     </Suspense>
   );
 
-  // The Financials tab: the key stats first (the owner, 2026-11-05), then
-  // the statistics table and the filings. With or without a live thesis.
-  const statSections = financialStatSections(metrics, marketCap);
-  const financials = (
-    <>
-      <StatBlock columns={keyStatColumns(quote, metrics, marketCap)} />
-      {statSections.length > 0 ? (
-        <StatTable sections={statSections} />
-      ) : (
-        <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
-      )}
-      <div className="space-y-2">
-        <BlockLabel>Filings</BlockLabel>
-        <StockFilingsSection symbol={upperSymbol} />
+  // The Overview's block under the company line (the owner, 2026-11-05):
+  // where the price sits today and over the year, then six stats in two
+  // columns. With or without a live thesis.
+  const overviewStats = (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+        {rangeBars(quote, metrics).map((r) => (
+          <RangeBar key={r.label} {...r} />
+        ))}
       </div>
-    </>
+      <StatGrid columns={overviewStatColumns(metrics, marketCap)} />
+    </div>
+  );
+
+  // The Fundamentals tab: the key figures beside the company's facts, then
+  // the full statistics table and the filings.
+  const nextReport = (earnings as EarningsResponse | null)?.next?.reportDate ?? null;
+  const facts = companyFactRows(profile, identity.exchange, nextReport).map((r) => ({
+    label: r.label,
+    value: r.href ? (
+      <a href={r.href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline underline-offset-4">
+        {r.value}
+        <ExternalLink className="h-3 w-3" />
+      </a>
+    ) : (
+      r.value
+    ),
+  }));
+  const financials = (
+    <Fundamentals
+      ticker={upperSymbol}
+      figures={keyFigureColumns(metrics, marketCap)}
+      facts={facts}
+      sections={financialStatSections(metrics, marketCap)}
+      filings={<StockFilingsSection symbol={upperSymbol} />}
+    />
   );
 
   // No live thesis: the trades we made in it, Wall Street and the earnings
@@ -273,11 +290,12 @@ export default async function StockDetailPage({ params }: Props) {
             ticker={upperSymbol}
             displayName={identity.companyName}
             stockHref={null}
+            overviewStats={overviewStats}
             transactions={transactions}
             showTriggers={false}
             showActivity={false}
             moreTabs={[
-              { label: "Financials", content: financials },
+              { label: "Fundamentals", content: financials },
               { label: "News", content: news },
             ]}
           />
@@ -293,6 +311,7 @@ export default async function StockDetailPage({ params }: Props) {
                 ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
                 : null,
             }}
+            overviewStats={overviewStats}
             transactions={transactions}
             held={open ? { shares: Number(open.quantity), avgCost: Number(open.avgCost) } : null}
             financials={financials}

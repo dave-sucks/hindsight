@@ -23,6 +23,7 @@ export function ThesisPageBody({
   stockHref,
   aside,
   moreTabs,
+  overviewStats,
   transactions,
   showTriggers,
   showActivity,
@@ -36,6 +37,7 @@ export function ThesisPageBody({
   stockHref?: string | null;
   aside?: ReactNode;
   moreTabs?: Array<{ label: string; content: ReactNode }>;
+  overviewStats?: ReactNode;
   transactions?: FillFacts[];
   showTriggers?: boolean;
   showActivity?: boolean;
@@ -69,6 +71,7 @@ export function ThesisPageBody({
       stockHref={stockHref}
       aside={aside}
       moreTabs={moreTabs}
+      overviewStats={overviewStats}
       transactions={transactions}
       showTriggers={showTriggers}
       showActivity={showActivity}
