@@ -1010,8 +1010,8 @@ export function ThesisBody({
   const condensedPrice =
     quote?.currentPrice != null ? (
       <div className="flex items-center gap-2 whitespace-nowrap">
-        <span className="text-lg font-semibold tabular-nums">{formatCurrency(quote.currentPrice)}</span>
-        {shownMove ? <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="base" /> : null}
+        <span className="text-lg font-normal tabular-nums">{formatCurrency(quote.currentPrice)}</span>
+        {shownMove ? <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="lg" /> : null}
       </div>
     ) : null;
 
