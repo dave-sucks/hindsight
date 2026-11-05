@@ -19,6 +19,9 @@
  * report's date/bell/estimates, and EPS actual vs estimate for the last FOUR
  * quarters. No past report dates, no revenue history, no post-report price
  * move — so none of those are designed for here. See docs/plans/MARKET_DATA.md.
+ * `streetEps` is the Street's own next-quarter EPS consensus (the Nasdaq row
+ * behind the targets card); it rides on the upcoming column's hover, under
+ * the vendor's estimate, and nowhere on the card's face.
  */
 
 import { SectionLabel } from "@/components/domain/section-label";
@@ -76,7 +79,7 @@ interface Column {
   actual: number | null;
   surprisePct: number | null;
   /** The upcoming report — estimate only, no verdict yet. */
-  upcoming?: { when: string; revenueEstimate: number | null };
+  upcoming?: { when: string; revenueEstimate: number | null; streetEps: number | null };
 }
 
 // ── The dot plot ─────────────────────────────────────────────────────────────
@@ -166,6 +169,7 @@ function QuarterDetail({ column: c }: { column: Column }) {
           {c.label} · Reports {c.upcoming.when}
         </p>
         {expected.length > 0 ? <p>Expected {expected.join(", ")}</p> : null}
+        {c.upcoming.streetEps != null ? <p>Street consensus {eps(c.upcoming.streetEps)} EPS</p> : null}
       </div>
     );
   }
@@ -186,9 +190,12 @@ function QuarterDetail({ column: c }: { column: Column }) {
 
 export function EarningsCard({
   data,
+  streetEps = null,
   className,
 }: {
   data: EarningsResponse;
+  /** The Street's next-quarter EPS consensus, shown on the upcoming quarter's hover. */
+  streetEps?: number | null;
   className?: string;
 }) {
   const scored = data.recent.filter((q) => q.actual != null || q.estimate != null).slice(0, 4);
@@ -215,6 +222,7 @@ export function EarningsCard({
       upcoming: {
         when: reportWhen(data.next.reportDate, data.next.hour),
         revenueEstimate: data.next.revenueEstimate,
+        streetEps,
       },
     });
   }

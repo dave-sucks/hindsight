@@ -20,8 +20,11 @@
  *     when down. Every line and both dots name their price on hover; under
  *     the bar Low, Avg and High are a dot and muted words like the ratings
  *     key; Entry sits in the header (with its hollow dot) when we hold the
- *     stock, the current price is the filled dot and its hover. Then the date
- *     of the targets and the EPS consensus with its revisions. The old "Price
+ *     stock, the current price is the filled dot and its hover. Under a
+ *     divider that runs the card's full width: how many analysts raised
+ *     (green chevron) and lowered (red chevron) their next-quarter EPS
+ *     estimate in the last four weeks, and the date of the row on the right.
+ *     The EPS consensus itself is on the Earnings card. The old "Price
  *     targets" card drew our own plan here; the plan is the triggers and
  *     the chart's lines, and the word "target" means what the Street expects.
  *
@@ -40,8 +43,10 @@ import {
 } from "@/components/ui/tooltip";
 import type { CitationSource } from "@/components/ai-elements/inline-citation";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
-import { epsWords } from "@/lib/market-data/street-consensus";
 import { cn } from "@/lib/utils";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ChevronDownIcon, ChevronUpIcon } from "@hugeicons/core-free-icons";
+import { Separator } from "@/components/ui/separator";
 import type { ResearchCitation } from "@/lib/types/thesis-sheet";
 
 /**
@@ -155,7 +160,8 @@ export function AnalystTargetsCard({
   const run = entryIdx != null && currentIdx != null && entryIdx !== currentIdx ? { lo: Math.min(entryIdx, currentIdx), hi: Math.max(entryIdx, currentIdx), color: currentPrice! >= entry! ? "bg-positive/40" : "bg-negative/40" } : null;
   const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => ({ color: run && i > run.lo && i < run.hi ? run.color : "bg-muted-foreground/25" }));
   const asOf = new Date(`${t.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  const eps = coverage?.eps ? epsWords(coverage.eps.nextQuarter, coverage.eps.up, coverage.eps.down) : null;
+  const up = coverage?.eps?.up ?? null;
+  const down = coverage?.eps?.down ?? null;
   return (
     <Card className={className ?? "bg-muted/40 p-3 gap-4"}>
       <SectionLabel
@@ -222,10 +228,29 @@ export function AnalystTargetsCard({
           </span>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground tabular-nums">
-        As of {asOf}
-        {eps ? ` · ${eps}` : ""}
-      </p>
+      {/* A divider the full width of the card, then the revisions on the left and the row's date on the right. */}
+      <div className="-mx-3">
+        <Separator />
+      </div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+        <span className="inline-flex items-center gap-1">
+          {up != null ? (
+            <span className="inline-flex items-center gap-0.5">
+              <HugeiconsIcon icon={ChevronUpIcon} className="size-3.5 text-positive" strokeWidth={2.5} />
+              {up}
+            </span>
+          ) : null}
+          {up != null && down != null ? <span>&</span> : null}
+          {down != null ? (
+            <span className="inline-flex items-center gap-0.5">
+              <HugeiconsIcon icon={ChevronDownIcon} className="size-3.5 text-negative" strokeWidth={2.5} />
+              {down}
+            </span>
+          ) : null}
+          {up != null || down != null ? <span className="ml-0.5">last 4 weeks</span> : null}
+        </span>
+        <span>As of {asOf}</span>
+      </div>
     </Card>
   );
 }

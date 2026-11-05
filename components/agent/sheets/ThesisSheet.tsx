@@ -875,7 +875,7 @@ export function ThesisBody({
   const stockCards = (
     <>
       {wallStreet}
-      {earnings ? <EarningsCard data={earnings} /> : null}
+      {earnings ? <EarningsCard data={earnings} streetEps={coverage?.eps?.nextQuarter ?? null} /> : null}
     </>
   );
 
