@@ -34,6 +34,7 @@ import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 import { notedItems, recentItems, serializeFeedItem } from "@/lib/thesis/activity-feed";
 import { fillFacts } from "@/lib/stocks/stock-history";
+import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 
 /** How far back the sheet reads the feed: enough lines to find the newest 5 with a paragraph. */
 const FEED_WINDOW = 60;
@@ -290,12 +291,14 @@ export async function GET(
   // The thesis's trades: the pinned one on the trade page, else every
   // position this analyst has had in the stock. Their fills are the
   // Transactions tab; their closed results, summed, are the all-trades number.
+  // Paper and live inventories never mix: the thesis's trades are the ones in the environment the switcher is on.
+  const environment = await getCurrentEnvironment();
   const txPositions =
     pinnedPositionId || lookupAnalystId
       ? await prisma.position.findMany({
           where: pinnedPositionId
             ? { id: pinnedPositionId, accountId }
-            : { accountId, analystId: lookupAnalystId!, symbol: thesis.ticker, status: { not: "CANCELLED" } },
+            : { accountId, analystId: lookupAnalystId!, symbol: thesis.ticker, environment, status: { not: "CANCELLED" } },
           select: {
             id: true,
             direction: true,

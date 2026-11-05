@@ -33,6 +33,7 @@ import { keyStatColumns, financialStatSections } from "@/lib/stocks/stock-stats"
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
+import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import type { EarningsResponse } from "@/lib/types/thesis-sheet";
 import { ExternalLink } from "lucide-react";
 
@@ -106,6 +107,8 @@ export default async function StockDetailPage({ params }: Props) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const accountId = user ? await getAccountId(user.id) : null;
+  // Paper and live inventories never mix: the page shows the environment the switcher is on.
+  const environment = await getCurrentEnvironment();
 
   const [identity, profile, quote, metrics, candles, coverage, earnings, positions, theses, watchlistStatus] =
     await Promise.all([
@@ -118,7 +121,7 @@ export default async function StockDetailPage({ params }: Props) {
       getEarningsForSymbol(upperSymbol).catch(() => null),
       accountId
         ? prisma.position.findMany({
-            where: { accountId, symbol: upperSymbol },
+            where: { accountId, symbol: upperSymbol, environment },
             orderBy: { openedAt: "desc" },
             take: 50,
             select: {
