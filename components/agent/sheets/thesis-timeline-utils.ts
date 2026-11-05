@@ -408,7 +408,17 @@ const DOTS: Record<EventKind, DotKind> = {
 };
 
 export function dotFor(u: TimelineUpdate): DotKind {
-  return DOTS[eventKind(u)];
+  const kind = eventKind(u);
+  // Only a proposal still waiting on the owner pulses; once it is answered or lapses, its Proposed row is a plain mark.
+  if (kind === "proposed" && !isAwaiting(u)) return "default";
+  return DOTS[kind];
+}
+
+/** The word for a proposal's end, from the Order's status on its Proposed row; null while it still waits. */
+export function proposalOutcomeWord(u: TimelineUpdate): string | null {
+  if (eventKind(u) !== "proposed" || isAwaiting(u)) return null;
+  const status = (u.fieldChanges as { proposal?: { to?: { status?: unknown } } } | null)?.proposal?.to?.status;
+  return status === "EXPIRED" ? "— expired" : status === "REJECTED" ? "— declined" : typeof status === "string" ? "— approved" : null;
 }
 
 // ── Timeline assembly (grouping · clustering · spans) ────────────────────────

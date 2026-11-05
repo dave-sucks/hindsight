@@ -53,6 +53,7 @@ import {
   type TimelineRow,
   type TimelineUpdate,
   type TitleTrigger,
+  proposalOutcomeWord,
 } from "@/components/agent/sheets/thesis-timeline-utils";
 
 // When the sheet opens from a run-detail page (/runs/[id]), entries whose
@@ -109,7 +110,7 @@ function Dot({ kind, pulse }: { kind: DotKind; pulse: boolean }) {
               : kind === "declined"
                 ? "bg-amber-500"
                 : kind === "open-ask"
-                  ? "bg-foreground animate-pulse [animation-duration:3s]"
+                  ? "bg-amber-500 animate-pulse [animation-duration:3s]"
                   : kind === "quiet"
                     ? "bg-transparent border border-foreground/15"
                     : "bg-foreground/15",
@@ -289,7 +290,19 @@ function TimelineList({
 export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; onViewAll: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
-  const { rows, spans, labels } = useMemo(() => assembleRows(items, "all", open, null, triggers), [items, open, triggers]);
+  const { rows, spans, labels } = useMemo(() => {
+    const built = assembleRows(items, "all", open, null, triggers);
+    // This cut hides a proposal's Expired / Declined / Approved step (no paragraph), so its Proposed
+    // row says how it ended. The Overview's words only: the Activity tab shows the step itself, and
+    // the agents' read is untouched.
+    const byId = new Map(items.map((u) => [u.id, u]));
+    const rows = built.rows.map((r) => {
+      const u = byId.get(r.key);
+      const word = u ? proposalOutcomeWord(u) : null;
+      return word && !r.title.outcome ? { ...r, title: { ...r.title, outcome: word } } : r;
+    });
+    return { ...built, rows };
+  }, [items, open, triggers]);
   if (items.length === 0) return null;
   const [first, ...rest] = labels;
   return (

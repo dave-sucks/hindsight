@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * ProposalActions — the single "Review" control for a pending trade proposal.
+ * ProposalActions — the one answer control for a pending trade proposal.
  *
- * Renders a badge-sized black button (sized to match PnlBadge) that opens a
- * dropdown with Approve / Reject. Same control everywhere a proposal shows:
- * the homepage activity feed (wider screens), the trade page, the agent
- * chat, and the thesis sheet. The homepage holdings table and the /trades
- * table have none: their rows open a page that does.
+ * Two small outline buttons: Reject (an X) and a split Accept (a check, then
+ * a ··· that opens Accept as is / Edit details). The same control everywhere
+ * a proposal shows: the trade banner on the sheet and the trade page, and
+ * the agent chat's proposal rows. The homepage holdings table and the
+ * /trades table have none: their rows open a page that does. (Until
+ * 2026-11-04 this was one black "Review" button opening a dropdown.)
  *
- * Approve fires immediately. Reject opens a dialog so the principal can
+ * Accept fires immediately. Reject opens a dialog so the principal can
  * (optionally) type a reason the agent will read on its next run. Both
  * actions hit the existing routes:
  *   POST /api/proposals/[orderId]/approve
@@ -42,7 +43,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Check, X, Loader2, ChevronDown, Pencil } from "lucide-react";
+import { Check, X, Loader2, MoreHorizontal, Pencil } from "lucide-react";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { ThesisTriggersSection } from "@/components/agent/sheets/ThesisTriggersSection";
 import {
   Tooltip,
@@ -63,7 +65,7 @@ export interface ProposalActionsProps {
    * the button and let the server rule.
    */
   expiresAt?: string | null;
-  /** Dropdown alignment — "end" (default) for right-aligned rows, "start" for left. */
+  /** The ··· menu's alignment — "end" (default) for right-aligned rows, "start" for left. */
   align?: "start" | "end";
   /** Optional positioning class on the trigger (margins only — not styling). */
   className?: string;
@@ -103,7 +105,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className }
   const [rejectThesisId, setRejectThesisId] = useState<string | null>(null);
   const [rejectDirection, setRejectDirection] = useState<"LONG" | "SHORT" | null>(null);
   const [trigRefresh, setTrigRefresh] = useState(0);
-  // "Edit & Approve" — fetch the proposal's current values on open, let the
+  // "Edit details" — fetch the proposal's current values on open, let the
   // principal change shares (OPEN/ADD) + target/stop (OPEN), then approve with
   // the edits applied before the Alpaca submit.
   const [editOpen, setEditOpen] = useState(false);
@@ -317,63 +319,69 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className }
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <button
-              type="button"
-              disabled={pending !== null}
-              aria-label="Review proposal"
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-foreground text-background transition-opacity hover:opacity-90 disabled:opacity-50",
-                className,
-              )}
-              onClick={(e) => {
-                // Trade rows are wrapped in a Link — don't navigate when opening the menu.
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-            />
-          }
+      {/* Two small outline controls (the owner's design, 2026-11-04): Reject with its X, then a split
+          Accept — the check accepts as proposed, the ··· opens Accept as is / Edit details. The
+          group joins them with one full-height border, the app's ButtonGroup, never a hand-made seam. */}
+      <div
+        className={cn("flex items-center gap-1.5", className)}
+        onClick={(e) => {
+          // Trade rows are wrapped in a Link — don't navigate when answering a proposal.
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
+        <Button
+          variant="outline"
+          size="xs"
+          disabled={pending !== null}
+          aria-label="Reject proposal"
+          onClick={() => void openReject()}
         >
-          {pending ? <Loader2 className="size-3 animate-spin" /> : null}
-          Review
-          <ChevronDown className="size-3" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align={align} sideOffset={4}>
-          <DropdownMenuItem
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void approve();
-            }}
+          {pending === "reject" ? <Loader2 className="animate-spin" /> : <X />}
+          Reject
+        </Button>
+        <ButtonGroup>
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={pending !== null}
+            aria-label="Accept proposal"
+            onClick={() => void approve()}
           >
-            <Check className="size-4" />
-            Approve
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void openEdit();
-            }}
-          >
-            <Pencil className="size-4" />
-            Edit…
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void openReject();
-            }}
-          >
-            <X className="size-4" />
-            Reject…
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            {pending === "approve" ? <Loader2 className="animate-spin" /> : <Check />}
+            Accept
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="outline" size="icon-xs" disabled={pending !== null} aria-label="More ways to accept" />}
+            >
+              <MoreHorizontal />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align={align} sideOffset={4}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void approve();
+                }}
+              >
+                <Check className="size-4" />
+                Accept as is
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void openEdit();
+                }}
+              >
+                <Pencil className="size-4" />
+                Edit details…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </ButtonGroup>
+      </div>
 
       {/*
         The Dialog renders into a portal at document.body, but React events
