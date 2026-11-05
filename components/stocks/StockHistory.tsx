@@ -63,8 +63,8 @@ export function StockHistory({
   /** Show only the newest few, with "View all" when there are more. */
   limit?: number;
   onViewAll?: () => void;
-  /** Given, a trade row opens this (the Transactions tab's dialog) instead of linking to the trade page. */
-  onOpenTrade?: (positionId: string) => void;
+  /** Given, a trade row opens this (the Transactions tab's dialog on its fill) instead of linking to the trade page. */
+  onOpenTrade?: (fillId: string) => void;
 }) {
   const [openThesisId, setOpenThesisId] = useState<string | null>(null);
   const shown = useMemo(() => (limit ? items.slice(0, limit) : items), [items, limit]);
@@ -92,7 +92,7 @@ export function StockHistory({
                   <span />
                 </button>
               ) : onOpenTrade ? (
-                <button key={item.id} type="button" className={ROW} onClick={() => onOpenTrade(item.positionId)}>
+                <button key={item.id} type="button" className={ROW} onClick={() => onOpenTrade(item.fillId)}>
                   <TradeRowBody item={item} />
                 </button>
               ) : (

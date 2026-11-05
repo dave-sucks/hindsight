@@ -13,7 +13,7 @@ import { useState, type ReactNode } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StockOverview, type StockOverviewProps } from "@/components/stocks/StockOverview";
 import { Transactions } from "@/components/trades/Transactions";
-import type { TransactionFacts } from "@/lib/stocks/stock-history";
+import type { FillFacts } from "@/lib/stocks/stock-history";
 
 const OVERVIEW = 0;
 const FINANCIALS = 1;
@@ -31,8 +31,8 @@ export function StockPageTabs({
   overview: StockOverviewProps;
   /** The key stats under the chart. */
   stats: ReactNode;
-  /** Every trade on the stock. */
-  transactions: TransactionFacts[];
+  /** Every fill on the stock. */
+  transactions: FillFacts[];
   financials: ReactNode;
   news: ReactNode;
   sidebar: ReactNode;
@@ -53,7 +53,7 @@ export function StockPageTabs({
       <TabsContent value={OVERVIEW} className="space-y-5">
         <StockOverview {...overview} sidebar={sidebar}>
           {stats}
-          <Transactions ticker={overview.ticker} facts={transactions} limit={5} onViewAll={() => setTab(TRANSACTIONS)} />
+          <Transactions ticker={overview.ticker} fills={transactions} limit={5} onViewAll={() => setTab(TRANSACTIONS)} openThesis />
         </StockOverview>
       </TabsContent>
 
@@ -67,7 +67,7 @@ export function StockPageTabs({
       <TabsContent value={TRANSACTIONS} className="space-y-5">
         <div className={columns}>
           <div className="min-w-0 space-y-5">
-            <Transactions ticker={overview.ticker} facts={transactions} />
+            <Transactions ticker={overview.ticker} fills={transactions} openThesis />
           </div>
           {side}
         </div>

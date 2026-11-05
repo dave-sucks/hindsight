@@ -1,16 +1,11 @@
 /**
- * Hindsight on one stock — every thesis and every trade on it, as one list
- * of dated rows in the homepage activity feed's shape. Pure: the page hands
- * in the rows it already loaded.
- *
- * A thesis is one row at the date it was written, carrying its status, so a
- * pass or a watch reads quietly and a holding reads as held. A trade is two
- * rows: the buy at the open, and once closed the sale with its result — the
- * rows that should stand out on a stock's page.
+ * A stock's transactions — every fill on it, one dated row each in the
+ * homepage activity feed's shape (the owner's design, 2026-11-05): the buy
+ * at the open, each add, each trim, and the sale with the position's result.
+ * Pure: the page or the sheet route hands in the fills it loaded.
  */
 
-import { buildTradeSentence } from "@/lib/trade-statement";
-import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
+import { fmtQty } from "@/lib/trade-statement";
 
 export type StockHistoryItem =
   | {
@@ -27,8 +22,8 @@ export type StockHistoryItem =
       id: string;
       at: string;
       href: string;
-      /** The position the row belongs to: the Transactions tab opens its dialog on it. */
-      positionId: string;
+      /** The fill the row is: the Transactions tab opens its dialog on it. */
+      fillId: string;
       label: string;
       dotClass: string;
       sentence: string;
@@ -36,152 +31,160 @@ export type StockHistoryItem =
     };
 
 /**
- * One transaction's facts, as every surface can hand them in (ISO dates, so
- * the sheet's position and a page's loaded rows look the same): the rows of
- * the Transactions tab and the dialog a row opens.
+ * One fill's facts, as every surface hands them in (ISO dates): a row of the
+ * Transactions tab and the dialog it opens. An order still waiting for the
+ * owner is a fill-to-be, shown as a Proposal row.
  */
-export type TransactionFacts = {
+export type FillFacts = {
   id: string;
-  direction: string;
-  /** OPEN | CLOSED | PENDING_APPROVAL, the Position's status. */
+  positionId: string;
+  /** The thesis behind the position, when known: the dialog opens its sheet. */
+  thesisId: string | null;
+  analyst: { id: string; name: string } | null;
+  side: "BUY" | "SELL";
+  /** OPEN | ADD | PARTIAL_CLOSE | CLOSE; null on old rows. */
+  intent: string | null;
+  /** FILLED, or AWAITING_APPROVAL while the owner still has to answer. */
   status: string;
-  outcome?: string | null;
-  avgCost: number;
-  closePrice: number | null;
-  realizedPnl: number | null;
   quantity: number;
-  openedAt: string;
-  closedAt: string | null;
-  closeReason?: string | null;
-  analyst?: { id: string; name: string } | null;
+  /** The fill price; null while still proposed. */
+  price: number | null;
+  /** When it filled, or when it was proposed. */
+  at: string;
+  /** The reason the fill was proposed, the analyst's words. */
+  rationale: string | null;
+  /** LONG | SHORT, the position's. */
+  direction: string;
+  /** The position's result, carried on its closing fill only. */
+  result: { dollar: number; pct: number | null } | null;
+  /** The close reason, on the closing fill. */
+  closeReason: string | null;
 };
 
-export type StockHistoryPosition = {
+/** An order row as Prisma hands it back (Decimals already numbers). */
+export type FillOrder = {
+  id: string;
+  side: string;
+  intent: string | null;
+  status: string;
+  quantity: number;
+  filledQty: number | null;
+  filledPrice: number | null;
+  filledAt: Date | null;
+  createdAt: Date;
+  rationale: string | null;
+  closeReason: string | null;
+};
+
+/** A position with its filled and waiting orders, as the route and the stock page load it. */
+export type FillPosition = {
   id: string;
   direction: string;
   status: string;
   avgCost: number;
-  closePrice: number | null;
-  realizedPnl: number | null;
   quantity: number;
+  realizedPnl: number | null;
+  closePrice: number | null;
+  closeReason: string | null;
   openedAt: Date;
   closedAt: Date | null;
+  analyst: { id: string; name: string } | null;
+  thesisId: string | null;
+  orders: FillOrder[];
 };
-
-export type StockHistoryThesis = Parameters<typeof getThesisSnapshotText>[0] & {
-  id: string;
-  status: string;
-  createdAt: Date;
-  coreBelief?: string | null;
-  researchRun?: { agentConfig?: { name: string | null } | null } | null;
-};
-
-function clip(text: string, max = 160): string {
-  const t = text.replace(/\s+/g, " ").trim();
-  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
-}
-
-export function buildStockHistory(
-  positions: StockHistoryPosition[],
-  theses: StockHistoryThesis[],
-): StockHistoryItem[] {
-  const items: StockHistoryItem[] = [];
-
-  for (const t of theses) {
-    const who = t.researchRun?.agentConfig?.name ?? null;
-    const text = getThesisSnapshotText(t) || t.coreBelief || "";
-    items.push({
-      kind: "thesis",
-      id: `thesis-${t.id}`,
-      at: t.createdAt.toISOString(),
-      thesisId: t.id,
-      status: t.status,
-      sentence: clip(who && text ? `${who}: ${text}` : who || text || "Thesis"),
-    });
-  }
-
-  items.push(
-    ...transactionRows(
-      positions.map((p) => ({
-        id: p.id,
-        direction: p.direction,
-        status: p.status,
-        avgCost: p.avgCost,
-        closePrice: p.closePrice,
-        realizedPnl: p.realizedPnl,
-        quantity: p.quantity,
-        openedAt: p.openedAt.toISOString(),
-        closedAt: p.closedAt ? p.closedAt.toISOString() : null,
-      })),
-    ),
-  );
-
-  return items.sort((a, b) => b.at.localeCompare(a.at));
-}
 
 /**
- * A stock's transactions as rows: the buy at the open (a proposal while it
- * waits), and once closed the sale with its result. Newest first.
+ * The fills of these positions, newest first. A position from before the
+ * order rows were kept (or whose fill never landed as one) still shows: its
+ * buy is made from the position's own open, and its sale from its close.
+ * An old sell with no intent on a closed position is taken as its close.
  */
-export function transactionRows(facts: TransactionFacts[]): Extract<StockHistoryItem, { kind: "trade" }>[] {
-  const items: Extract<StockHistoryItem, { kind: "trade" }>[] = [];
-  for (const p of facts) {
-    const href = `/trades/${p.id}`;
-    const short = p.direction === "SHORT";
-    if (p.status === "PENDING_APPROVAL") {
-      items.push({
-        kind: "trade",
-        id: `open-${p.id}`,
-        at: p.openedAt,
-        href,
-        positionId: p.id,
-        label: "Proposal",
-        dotClass: "bg-amber-500",
-        sentence:
-          buildTradeSentence({
-            kind: "proposed-buy",
-            qty: p.quantity,
-            entry: p.avgCost,
-            buyVerb: short ? "Short" : "Buy",
-          }) ?? "Proposed",
-        gain: null,
+export function fillFacts(positions: FillPosition[]): FillFacts[] {
+  const out: FillFacts[] = [];
+  for (const p of positions) {
+    const cost = p.avgCost * p.quantity;
+    const result = p.status === "CLOSED" && p.realizedPnl != null ? { dollar: p.realizedPnl, pct: cost > 0 ? (p.realizedPnl / cost) * 100 : null } : null;
+    const base = { positionId: p.id, thesisId: p.thesisId, analyst: p.analyst, direction: p.direction };
+    const orders = p.orders.filter((o) => o.status === "FILLED" || o.status === "AWAITING_APPROVAL");
+    let sawOpen = false;
+    let sawClose = false;
+    for (const o of orders) {
+      const filled = o.status === "FILLED";
+      const closing = filled && p.status === "CLOSED" && o.side === "SELL" && (o.intent === "CLOSE" || o.intent == null);
+      const opening = filled && o.side === "BUY" && (o.intent === "OPEN" || o.intent == null);
+      if (opening) sawOpen = true;
+      if (closing) sawClose = true;
+      out.push({
+        ...base,
+        id: o.id,
+        side: o.side === "SELL" ? "SELL" : "BUY",
+        intent: o.intent ?? (o.side === "SELL" ? (closing ? "CLOSE" : "PARTIAL_CLOSE") : "OPEN"),
+        status: o.status,
+        quantity: o.filledQty ?? o.quantity,
+        price: o.filledPrice,
+        at: (o.filledAt ?? o.createdAt).toISOString(),
+        rationale: o.rationale,
+        result: closing ? result : null,
+        closeReason: closing ? (o.closeReason ?? p.closeReason) : null,
       });
-      continue;
     }
-    items.push({
-      kind: "trade",
-      id: `open-${p.id}`,
-      at: p.openedAt,
-      href,
-      positionId: p.id,
-      label: short ? "Shorted" : "Bought",
-      dotClass: short ? "bg-negative" : "bg-positive",
-      sentence: buildTradeSentence({ kind: "holding", qty: p.quantity, entry: p.avgCost }) ?? "Bought",
-      gain: null,
-    });
-    if (p.status === "CLOSED" && p.closedAt) {
-      const cost = p.avgCost * p.quantity;
-      items.push({
-        kind: "trade",
-        id: `close-${p.id}`,
-        at: p.closedAt,
-        href,
-        positionId: p.id,
-        label: "Sold",
-        dotClass: "bg-muted-foreground/60",
-        sentence:
-          buildTradeSentence({
-            kind: "closed",
-            qty: p.quantity,
-            entry: p.avgCost,
-            closePrice: p.closePrice,
-          }) ?? "Sold",
-        gain:
-          p.realizedPnl != null
-            ? { dollar: p.realizedPnl, pct: cost > 0 ? (p.realizedPnl / cost) * 100 : null }
-            : null,
-      });
+    if (!sawOpen && p.status !== "PENDING_APPROVAL") {
+      out.push({ ...base, id: `open-${p.id}`, side: "BUY", intent: "OPEN", status: "FILLED", quantity: p.quantity, price: p.avgCost, at: p.openedAt.toISOString(), rationale: null, result: null, closeReason: null });
+    }
+    if (!sawClose && p.status === "CLOSED" && p.closedAt) {
+      out.push({ ...base, id: `close-${p.id}`, side: "SELL", intent: "CLOSE", status: "FILLED", quantity: p.quantity, price: p.closePrice, at: p.closedAt.toISOString(), rationale: null, result, closeReason: p.closeReason });
     }
   }
-  return items.sort((a, b) => b.at.localeCompare(a.at));
+  return out.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+const money = (n: number) => `$${n.toFixed(2)}`;
+const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
+
+/** The row's word for a fill: what was done. */
+export function fillVerb(f: FillFacts): { label: string; dotClass: string } {
+  if (f.status === "AWAITING_APPROVAL") return { label: "Proposal", dotClass: "bg-amber-500" };
+  const short = f.direction === "SHORT";
+  switch (f.intent) {
+    case "ADD":
+      return { label: "Added", dotClass: "bg-positive" };
+    case "PARTIAL_CLOSE":
+      return { label: "Trimmed", dotClass: "bg-muted-foreground/60" };
+    case "CLOSE":
+      return { label: short ? "Covered" : "Sold", dotClass: "bg-muted-foreground/60" };
+    default:
+      return f.side === "SELL"
+        ? { label: short ? "Shorted" : "Sold", dotClass: short ? "bg-negative" : "bg-muted-foreground/60" }
+        : { label: short ? "Shorted" : "Bought", dotClass: short ? "bg-negative" : "bg-positive" };
+  }
+}
+
+/** One sentence for a fill: "Bought 17 shares at $531.01", "Buy 4 shares" while proposed. */
+export function fillSentence(f: FillFacts): string {
+  const { label } = fillVerb(f);
+  if (f.status === "AWAITING_APPROVAL") {
+    const verb = f.intent === "ADD" ? "Add" : f.intent === "PARTIAL_CLOSE" ? "Trim" : f.intent === "CLOSE" ? "Sell" : f.direction === "SHORT" ? "Short" : "Buy";
+    return `${verb} ${shares(f.quantity)}${f.price != null ? ` at ${money(f.price)}` : ""}`;
+  }
+  return `${label} ${shares(f.quantity)}${f.price != null ? ` at ${money(f.price)}` : ""}`;
+}
+
+/** A stock's fills as rows, newest first. */
+export function fillRows(fills: FillFacts[]): Extract<StockHistoryItem, { kind: "trade" }>[] {
+  return fills
+    .map((f) => {
+      const { label, dotClass } = fillVerb(f);
+      return {
+        kind: "trade" as const,
+        id: `fill-${f.id}`,
+        at: f.at,
+        href: `/trades/${f.positionId}`,
+        fillId: f.id,
+        label,
+        dotClass,
+        sentence: fillSentence(f),
+        gain: f.result,
+      };
+    })
+    .sort((a, b) => b.at.localeCompare(a.at));
 }

@@ -32,7 +32,7 @@ import { ChipTabs } from "@/components/ui/chip-tabs";
 import { ThesisHeader } from "@/components/domain/thesis-header";
 import { TradeSummary } from "@/components/domain/trade-summary";
 import { Transactions } from "@/components/trades/Transactions";
-import type { TransactionFacts } from "@/lib/stocks/stock-history";
+import type { FillFacts } from "@/lib/stocks/stock-history";
 import type { RangeMove } from "@/components/stocks/StockPriceChart";
 import { formatCurrency } from "@/lib/format";
 import type { SourceChipData } from "@/components/chat/SourceChip";
@@ -803,8 +803,8 @@ export function ThesisBody({
   moreTabs?: Array<{ label: string; content: ReactNode }>;
   /** Between the chart and the tabs (the stock page's key stats). */
   underChart?: ReactNode;
-  /** The Transactions tab's trades. Omitted, the thesis's own position is the one trade. */
-  transactions?: TransactionFacts[];
+  /** The Transactions tab's fills. Omitted, the thesis's own trades' fills (the route's). */
+  transactions?: FillFacts[];
   /** The stock page hides the plan: it is the stock, not the trade. */
   showTriggers?: boolean;
   /** The stock page has no Activity tab: the thesis's list is the thesis's. */
@@ -864,29 +864,11 @@ export function ThesisBody({
       pendingProposal={pendingProposal}
       direction={direction}
       onOpen={surface === "page" ? () => setTab("transactions") : undefined}
+      trades={state.trades ?? null}
     />
   ) : null;
-  // The Transactions tab's trades: a page hands in the stock's; the sheet has the thesis's one.
-  const txFacts: TransactionFacts[] =
-    transactions ??
-    (position && position.id
-      ? [
-          {
-            id: position.id,
-            direction: direction ?? "LONG",
-            status: position.closed ? "CLOSED" : pendingProposal?.intent === "OPEN" ? "PENDING_APPROVAL" : "OPEN",
-            outcome: position.outcome ?? null,
-            avgCost: position.avgCost,
-            closePrice: position.closePrice ?? null,
-            realizedPnl: position.realizedPnl ?? null,
-            quantity: position.quantity,
-            openedAt: position.openedAt,
-            closedAt: position.closedAt ?? null,
-            closeReason: position.closeReason ?? null,
-            analyst: state.analystId && state.analystName ? { id: state.analystId, name: state.analystName } : null,
-          },
-        ]
-      : []);
+  // The Transactions tab's fills: the stock page hands in the stock's; the sheet and the trade page have the thesis's.
+  const fills: FillFacts[] = transactions ?? state.fills ?? [];
 
   // The stock cards — the plan's levels, Wall Street, the earnings record —
   // built once. With a sidebar (the page) they go there; without one (the
@@ -968,7 +950,7 @@ export function ThesisBody({
     { value: "overview", label: "Overview", content: overviewContent },
     { value: "research", label: "Research", content: <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} /> },
     ...(showActivity ? [{ value: "activity", label: "Activity", content: activityContent }] : []),
-    { value: "transactions", label: "Transactions", content: <Transactions ticker={ticker} facts={txFacts} /> },
+    { value: "transactions", label: "Transactions", content: <Transactions ticker={ticker} fills={fills} openThesis={surface === "page"} /> },
     ...extraTabs.map((t) => ({ value: t.label.toLowerCase(), label: t.label, content: t.content })),
   ];
   const tabOptions = tabs.map((t) => ({ value: t.value, label: t.label }));

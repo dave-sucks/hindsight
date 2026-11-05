@@ -7,7 +7,6 @@ import { getAccountId } from '@/lib/auth/account';
 import { thesisSheetStateSelect } from '@/lib/agent/thesis-sheet-state';
 import { agentWatchDays } from '@/lib/agent/triggers/agent-watch';
 import { getStockInfo } from '@/lib/actions/stock-info';
-import type { TransactionFacts } from '@/lib/stocks/stock-history';
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 // The trade's page: the thesis's header and body, pinned to this position.
@@ -58,21 +57,6 @@ export default async function TradeDetailPage({
   const isProposal = position.status === 'PENDING_APPROVAL';
   const isClosed = !isOpen && !isProposal;
 
-  const facts: TransactionFacts = {
-    id: position.id,
-    direction: position.direction,
-    status: position.status,
-    outcome: position.outcome,
-    avgCost: Number(position.avgCost),
-    closePrice: position.closePrice != null ? Number(position.closePrice) : null,
-    realizedPnl: position.realizedPnl != null ? Number(position.realizedPnl) : null,
-    quantity: Number(position.quantity),
-    openedAt: position.openedAt.toISOString(),
-    closedAt: position.closedAt ? position.closedAt.toISOString() : null,
-    closeReason: position.closeReason,
-    analyst: position.analyst ? { id: position.analyst.id, name: position.analyst.name } : null,
-  };
-
   return (
     <div data-surface="paper">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -91,8 +75,8 @@ export default async function TradeDetailPage({
         />
       </div>
 
-      {/* The body carries the stock cards beside its tab panels, so they start level with the chart. */}
-      <ThesisPageBody thesisId={thesis?.id ?? null} positionId={position.id} ticker={position.symbol} transactions={[facts]} />
+      {/* The body carries the stock cards beside its tab panels, so they start level with the chart; pinned to this position, its fills come with the thesis. */}
+      <ThesisPageBody thesisId={thesis?.id ?? null} positionId={position.id} ticker={position.symbol} />
     </div>
     </div>
   );

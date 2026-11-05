@@ -1,3 +1,4 @@
+import type { FillFacts } from "@/lib/stocks/stock-history";
 /**
  * thesis-sheet contract types. The sheet renders from a durable/live split:
  *
@@ -189,6 +190,14 @@ export interface ThesisDossier {
    */
   analystId: string | null;
   position: ThesisStatePosition | null;
+  /** Every fill on the thesis's trades (the pinned trade's alone on the trade page), newest first: the Transactions tab. */
+  fills: FillFacts[];
+  /**
+   * The thesis's trades, all in: how many positions it has owned over its
+   * life and what the closed ones realized. Computed when the sheet loads,
+   * stored nowhere; the open trade's own gain is on the position card.
+   */
+  trades: { count: number; realized: number } | null;
   /** Analyst that authored the thesis. Null for manual/legacy runs. */
   analystName: string | null;
   // Structural belief — load-bearing fields the trade-evaluator + tactical

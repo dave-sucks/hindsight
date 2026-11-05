@@ -44,6 +44,8 @@ export type TradeSummaryProps = {
   direction: "LONG" | "SHORT" | null;
   /** Given (a page), the card's click opens the Transactions tab; absent (the sheet), it links to the trade's page. */
   onOpen?: () => void;
+  /** The thesis's trades all in; a line on the card once there is more than this one. */
+  trades?: { count: number; realized: number } | null;
 };
 
 /** Compact "Jun 2" date for the meta line. */
@@ -91,7 +93,7 @@ export function TradeSummary(props: TradeSummaryProps) {
 //                        "Add 4 shares: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
 //   • holding          → blue dot · "Position" · "Bought N shares at $entry on Oct 5"
 //   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close on Nov 19"
-function TradeBanner({ position, pnl, pendingProposal, direction, onOpen }: TradeSummaryProps) {
+function TradeBanner({ position, pnl, pendingProposal, direction, onOpen, trades }: TradeSummaryProps) {
   const pp = pendingProposal;
   const usd = (n: number) => formatCurrency(n);
   const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
@@ -189,6 +191,13 @@ function TradeBanner({ position, pnl, pendingProposal, direction, onOpen }: Trad
         </span>
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
       </div>
+      {/* The thesis's other trades, when it has had more than this one: how many, and what the closed ones made. */}
+      {trades && trades.count > 1 ? (
+        <p className="relative flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums pointer-events-none">
+          {trades.count} trades on this thesis · the closed ones made
+          <PriceChange dollarChange={trades.realized} size="sm" />
+        </p>
+      ) : null}
       {/* No wrapper: closed, the note renders nothing, so the card's gap has nothing to count. */}
       {pp && !pp.executing ? <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} /> : null}
     </Card>

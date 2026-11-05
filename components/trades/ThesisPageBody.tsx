@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { ThesisBody, ThesisBodySkeleton, useThesisSheetData } from "@/components/agent/sheets/ThesisSheet";
-import type { TransactionFacts } from "@/lib/stocks/stock-history";
+import type { FillFacts } from "@/lib/stocks/stock-history";
 
 /**
  * A thesis as a page body: the sheet's body with a sidebar — the same tabs,
@@ -31,7 +31,7 @@ export function ThesisPageBody({
   aside?: ReactNode;
   moreTabs?: Array<{ label: string; content: ReactNode }>;
   underChart?: ReactNode;
-  transactions?: TransactionFacts[];
+  transactions?: FillFacts[];
   showTriggers?: boolean;
   showActivity?: boolean;
 }) {
