@@ -7,7 +7,6 @@ import { getAccountId } from '@/lib/auth/account';
 import { thesisSheetStateSelect } from '@/lib/agent/thesis-sheet-state';
 import { agentWatchDays } from '@/lib/agent/triggers/agent-watch';
 import { getStockInfo } from '@/lib/actions/stock-info';
-import { getStockProfile } from '@/lib/actions/finnhub.actions';
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 // The trade's page: the thesis's header and body, pinned to this position.
@@ -51,7 +50,7 @@ export default async function TradeDetailPage({
   // thesis sheet exactly (same cache, same normalizer). The price, the
   // position's P&L and the levels are the body's: it loads them the way the
   // sheet does, pinned to this position.
-  const [identity, profile] = await Promise.all([getStockInfo(position.symbol), getStockProfile(position.symbol).catch(() => null)]);
+  const identity = await getStockInfo(position.symbol);
   const thesis = position.decisions[0]?.thesis ?? null;
   const isOpen = position.status === 'OPEN';
   // Three states, not two: PENDING_APPROVAL is a proposal, not a closed trade.
@@ -65,10 +64,6 @@ export default async function TradeDetailPage({
       <div className="mb-3">
         <ThesisHeader
           ticker={position.symbol}
-          displayName={identity.companyName ?? position.symbol}
-          exchange={identity.exchange}
-          industry={profile?.finnhubIndustry || null}
-          website={profile?.weburl || null}
           status={thesis?.status ?? (isClosed ? 'RETIRED' : 'HOLDING')}
           agentWatchDays={agentWatchDays(thesis?.triggers)}
           conviction={(thesis?.conviction ?? null) as 'STRONG' | 'HIGH' | 'MEDIUM' | 'LOW' | null}
@@ -79,7 +74,7 @@ export default async function TradeDetailPage({
       </div>
 
       {/* The body carries the stock cards beside its tab panels, so they start level with the chart; pinned to this position, its fills come with the thesis. */}
-      <ThesisPageBody thesisId={thesis?.id ?? null} positionId={position.id} ticker={position.symbol} />
+      <ThesisPageBody thesisId={thesis?.id ?? null} positionId={position.id} ticker={position.symbol} displayName={identity.companyName ?? position.symbol} />
     </div>
     </div>
   );

@@ -5,17 +5,17 @@
  * page (the owner's layout, 2026-11-04). Row one is the nav: on the sheet
  * an expand button to the full page, the status pill and the conviction
  * chip, then at the right edge the pin, a ··· menu (Send to agent, Trade,
- * Close trade with its warning) and, on the sheet, the X. Row two is the
- * stock: its logo, then the name with the ticker beside it in the same type,
- * light and muted, and under them a small mono line with the exchange, the
- * industry and the website (the owner, 2026-11-05: the About card is gone).
- * One component, so the surfaces cannot drift; the full page has no expand
+ * Close trade with its warning) and, on the sheet, the X. The stock row
+ * under it (`StockRow`: logo, ticker, name) is drawn by the body, which
+ * makes it stick to the top as you scroll and swaps the name for the price
+ * once the price row has gone under it (the owner, 2026-11-05). One
+ * component each, so the surfaces cannot drift; the full page has no expand
  * and no X.
  */
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { XIcon, MoreHorizontal, ExternalLink } from "lucide-react";
+import { XIcon, MoreHorizontal } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowExpand01Icon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
@@ -99,11 +99,6 @@ export function ConvictionChip({ conviction }: { conviction: Conviction | null }
 
 export interface ThesisHeaderProps {
   ticker: string;
-  displayName: string;
-  /** The mono line under the name: the exchange, the industry and the website. */
-  exchange?: string | null;
-  industry?: string | null;
-  website?: string | null;
   status: ThesisStatus | string;
   agentWatchDays: number | null;
   conviction: Conviction | null;
@@ -113,8 +108,6 @@ export interface ThesisHeaderProps {
   onSent?: () => void;
   /** More buttons at the right edge, after the menu (the stock page's watchlist menu). */
   extraActions?: ReactNode;
-  /** Where the logo and name link; the stock page passes null, being there already. */
-  href?: string | null;
   /** The sheet gets the expand button and the X; a page gets neither. */
   surface?: "sheet" | "page";
   /** Where the sheet's expand button goes: the trade page when there is a trade, else the stock's page. */
@@ -168,10 +161,6 @@ function ThesisActionsMenu({
 
 export function ThesisHeader({
   ticker,
-  displayName,
-  exchange,
-  industry,
-  website,
   status,
   agentWatchDays,
   conviction,
@@ -179,17 +168,12 @@ export function ThesisHeader({
   thesisId,
   onSent,
   extraActions,
-  href,
   surface = "page",
   expandHref,
   closeTrade,
 }: ThesisHeaderProps) {
   const sheet = surface === "sheet";
-  const link = href === undefined ? `/stocks/${ticker}` : href;
-  const facts = [exchange, industry].filter((v): v is string => Boolean(v?.trim()));
-  const host = website ? website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null;
   return (
-    <div className="flex flex-col gap-3">
       <div className="-mx-1 flex items-center gap-1.5">
         {sheet && expandHref ? (
           <Button
@@ -215,51 +199,55 @@ export function ThesisHeader({
           ) : null}
         </div>
       </div>
-      {/* Row two: the stock. The name in the foreground with the ticker beside
-          it, the same type a weight lighter and muted; under them the facts
-          in small mono. */}
-      <div className="flex items-center gap-3 min-w-0">
-        {link ? (
-          <Link href={link} className="shrink-0">
-            <StockLogo ticker={ticker} size="lg" />
-          </Link>
-        ) : (
-          <StockLogo ticker={ticker} size="lg" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2 min-w-0">
-            <p className="text-lg font-normal text-foreground truncate min-w-0">
-              {link ? (
-                <Link href={link} className="hover:underline underline-offset-4">
-                  {displayName}
-                </Link>
-              ) : (
-                displayName
-              )}
-            </p>
-            <span className="text-lg font-light text-muted-foreground shrink-0">{ticker}</span>
-          </div>
-          {facts.length > 0 || host ? (
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-xs uppercase tracking-wide text-muted-foreground">
-              <span className="truncate">{facts.join(" · ")}</span>
-              {host && website ? (
-                <>
-                  {facts.length > 0 ? <span aria-hidden>·</span> : null}
-                  <a
-                    href={website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex shrink-0 items-center gap-1 normal-case tracking-normal hover:text-foreground hover:underline underline-offset-4"
-                  >
-                    {host}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </div>
+  );
+}
+
+// ── StockRow ──
+// The stock in one line: its logo, the ticker a weight lighter and muted,
+// then the name. Condensed (stuck to the top of a scrolled page), the name
+// gives way to the price.
+export function StockRow({
+  ticker,
+  displayName,
+  href,
+  condensed = false,
+  price,
+  className,
+}: {
+  ticker: string;
+  displayName: string;
+  /** Where the logo and name link; null on the stock's own page. */
+  href?: string | null;
+  condensed?: boolean;
+  /** What stands in for the name when condensed. */
+  price?: ReactNode;
+  className?: string;
+}) {
+  const link = href === undefined ? `/stocks/${ticker}` : href;
+  const logo = <StockLogo ticker={ticker} size="md" />;
+  return (
+    <div className={cn("flex items-center gap-2.5 min-w-0", className)}>
+      {link ? (
+        <Link href={link} className="shrink-0">
+          {logo}
+        </Link>
+      ) : (
+        logo
+      )}
+      <span className="text-lg font-light text-muted-foreground shrink-0">{ticker}</span>
+      {condensed && price ? (
+        <div className="min-w-0">{price}</div>
+      ) : (
+        <p className="text-lg font-normal text-foreground truncate min-w-0">
+          {link ? (
+            <Link href={link} className="hover:underline underline-offset-4">
+              {displayName}
+            </Link>
+          ) : (
+            displayName
+          )}
+        </p>
+      )}
     </div>
   );
 }

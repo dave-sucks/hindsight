@@ -10,7 +10,7 @@
  *    programmatically without the card trigger.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLivePoll } from "@/hooks/useLivePoll";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { EarningsCard } from "@/components/domain/earnings-card";
@@ -63,6 +63,7 @@ import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import type { ThesisStatus } from "@/lib/thesis-status";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { StockRow } from "@/components/domain/thesis-header";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -778,6 +779,8 @@ export function ThesisBody({
   thesis_id,
   ticker,
   surface,
+  displayName,
+  stockHref,
   aside,
   moreTabs,
   transactions,
@@ -788,6 +791,10 @@ export function ThesisBody({
   thesis_id?: string;
   ticker: string;
   surface: "sheet" | "page";
+  /** The company's name for the stock row; the quote's when omitted. */
+  displayName?: string;
+  /** Where the stock row links; null on the stock's own page. */
+  stockHref?: string | null;
   /**
    * The page's right-hand cards. Rendered beside the tab panels, under the
    * tab row, so they start level with the chart instead of with the price.
@@ -808,6 +815,16 @@ export function ThesisBody({
   const [move, setMove] = useState<RangeMove | null>(null);
   // The open tab: Overview's "View all" opens Activity; the position card opens Transactions.
   const [tab, setTab] = useState("overview");
+  // The stock row sticks to the top; once the price row has scrolled under it, the row shows the price instead of the name.
+  const priceRowRef = useRef<HTMLDivElement>(null);
+  const [priceScrolledOff, setPriceScrolledOff] = useState(false);
+  useEffect(() => {
+    const el = priceRowRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setPriceScrolledOff(!e.isIntersecting), { rootMargin: "-48px 0px 0px 0px", threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   // ── Derived — durable from `state`, live from the hydration states ────────
   const liveStatus = state.status as ThesisStatus;
@@ -984,23 +1001,43 @@ export function ThesisBody({
   ];
   const tabOptions = tabs.map((t) => ({ value: t.value, label: t.label }));
 
+  const condensedPrice =
+    quote?.currentPrice != null ? (
+      <div className="flex items-center gap-2 whitespace-nowrap">
+        <span className="text-lg font-semibold tabular-nums">{formatCurrency(quote.currentPrice)}</span>
+        {shownMove ? <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="base" /> : null}
+      </div>
+    ) : null;
+
   return (
     <div className="flex flex-col gap-4">
+      {/* ── The stock row, stuck to the top as you scroll (the owner, 2026-11-05); the price takes the name's place once the price row is under it ── */}
+      <StockRow
+        ticker={ticker}
+        displayName={displayName ?? quote?.companyName ?? ticker}
+        href={stockHref}
+        condensed={priceScrolledOff}
+        price={condensedPrice}
+        className="sticky top-0 z-20 -my-2 bg-background py-2"
+      />
+
       {/* ── The price closes the header (the owner's order, 2026-11-05): the live price and the selected range's move, one size up on desktop, above both columns; on the sheet the trade under it ── */}
       {/* Hydrates from /quote after the dossier paints: skeleton while in
           flight, nothing if the vendor failed (currentPrice null). */}
-      {quoteLoading ? (
-        <Skeleton className="h-7 w-32 sm:h-8" />
-      ) : quote?.currentPrice != null ? (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-          <span className="text-xl font-semibold tabular-nums sm:text-2xl">
-            {formatCurrency(quote.currentPrice)}
-          </span>
-          {shownMove ? (
-            <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" className="sm:text-2xl sm:[&_svg]:size-6" />
-          ) : null}
-        </div>
-      ) : null}
+      <div ref={priceRowRef}>
+        {quoteLoading ? (
+          <Skeleton className="h-7 w-32 sm:h-8" />
+        ) : quote?.currentPrice != null ? (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+            <span className="text-xl font-semibold tabular-nums sm:text-2xl">
+              {formatCurrency(quote.currentPrice)}
+            </span>
+            {shownMove ? (
+              <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" className="sm:text-2xl sm:[&_svg]:size-6" />
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       {tradeBanner}
 
     <div className={columns}>
@@ -1086,12 +1123,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       <div className="space-y-3">
         <ThesisHeader
           ticker={ticker}
-          // Identity rides in the payload (StockInfo cache via quote) — one
-          // source; the bare ticker is the degenerate case when that failed.
-          displayName={data.quote?.companyName ?? ticker}
-          exchange={data.quote?.exchange ?? null}
-          industry={data.quote?.industry ?? null}
-          website={data.quote?.website ?? null}
           status={state.status}
           agentWatchDays={agentWatchDays(state.triggers)}
           conviction={(state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}

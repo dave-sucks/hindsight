@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { ThesisBody, ThesisBodySkeleton, useThesisSheetData } from "@/components/agent/sheets/ThesisSheet";
+import { StockRow } from "@/components/domain/thesis-header";
 import type { FillFacts } from "@/lib/stocks/stock-history";
 
 /**
@@ -18,6 +19,8 @@ export function ThesisPageBody({
   thesisId,
   positionId = null,
   ticker,
+  displayName,
+  stockHref,
   aside,
   moreTabs,
   transactions,
@@ -27,6 +30,10 @@ export function ThesisPageBody({
   thesisId: string | null;
   positionId?: string | null;
   ticker: string;
+  /** The company's name for the stock row. */
+  displayName: string;
+  /** Where the stock row links; null on the stock's own page. */
+  stockHref?: string | null;
   aside?: ReactNode;
   moreTabs?: Array<{ label: string; content: ReactNode }>;
   transactions?: FillFacts[];
@@ -38,7 +45,8 @@ export function ThesisPageBody({
   if (!thesisId || !data.loaded || !state) {
     return (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-4">
+          <StockRow ticker={ticker} displayName={displayName} href={stockHref} />
           {!thesisId ? (
             <p className="py-8 text-sm text-muted-foreground">No thesis on record for this trade.</p>
           ) : !data.loaded ? (
@@ -57,6 +65,8 @@ export function ThesisPageBody({
       thesis_id={thesisId}
       ticker={ticker}
       surface="page"
+      displayName={displayName}
+      stockHref={stockHref}
       aside={aside}
       moreTabs={moreTabs}
       transactions={transactions}

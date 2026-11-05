@@ -241,11 +241,6 @@ export default async function StockDetailPage({ params }: Props) {
           {live ? (
             <ThesisHeader
               ticker={upperSymbol}
-              displayName={identity.companyName}
-              href={null}
-              exchange={identity.exchange}
-              industry={profile?.finnhubIndustry || null}
-              website={profile?.weburl || null}
               status={live.status}
               agentWatchDays={agentWatchDays(live.triggers)}
               conviction={(live.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
@@ -277,6 +272,8 @@ export default async function StockDetailPage({ params }: Props) {
           <ThesisPageBody
             thesisId={live.id}
             ticker={upperSymbol}
+            displayName={identity.companyName}
+            stockHref={null}
             transactions={transactions}
             showTriggers={false}
             showActivity={false}

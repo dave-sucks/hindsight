@@ -32,7 +32,7 @@ const badgeVariants = cva(
         // A fact about the stock (its exchange, industry, website) under the
         // company line: the secondary fill at 80%, muted text (the owner,
         // 2026-11-05). Drawn `shape="square"`.
-        fact: "bg-secondary/80 text-muted-foreground border-transparent [a]:hover:text-foreground",
+        fact: "bg-secondary/80 font-normal text-muted-foreground border-transparent [a]:hover:text-foreground",
         // A variable in a trigger's value ("52-week high" in place of a
         // price) — the blue chip, as Notion draws "Time triggered".
         variable: "bg-brand-blue/10 text-brand-blue border-transparent",
