@@ -124,11 +124,12 @@ function DotPlot({ columns }: { columns: Column[] }) {
                     style={{ top: `${y(c.estimate)}%` }}
                   />
                 )}
+                {/* The actual, a filled dot: above or below the hollow expected one says beat or miss; its green or red shows only while the card is hovered (the owner, 2026-11-05: fewer colors at rest). */}
                 {c.actual != null && (
                   <span
                     className={cn(
-                      "absolute left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                      beat ? "bg-positive" : "bg-negative",
+                      "absolute left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground transition-colors",
+                      beat ? "group-hover/earnings:bg-positive" : "group-hover/earnings:bg-negative",
                     )}
                     style={{ top: `${y(c.actual)}%` }}
                   />
@@ -234,7 +235,7 @@ export function EarningsCard({
   const imminent = next != null && earningsSoon(next.reportDate);
 
   return (
-    <Card className={className ?? "bg-muted/40 p-2 gap-3"}>
+    <Card className={cn("group/earnings", className ?? "bg-muted/40 p-2 gap-3")}>
       <SectionLabel>Earnings</SectionLabel>
 
       {imminent && next ? (
@@ -247,20 +248,16 @@ export function EarningsCard({
       {columns.length > 0 ? <DotPlot columns={columns} /> : null}
 
       {/* The key under the plot, the same row the consensus card's key sits
-          in: it is what you need to read the plot, and "Beat 4 of 4" was a
-          number the plot already shows four times over. */}
+          in: the hollow dot is what was expected, the filled one what came
+          in; above or below says beat or miss, so the key needs no colors. */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span className="size-1.5 rounded-full border border-muted-foreground/70 bg-card" />
           Expected
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-positive" />
-          Beat
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-negative" />
-          Miss
+          <span className="size-1.5 rounded-full bg-foreground" />
+          Actual
         </span>
       </div>
     </Card>

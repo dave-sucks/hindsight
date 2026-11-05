@@ -45,8 +45,6 @@ import {
 import type { CitationSource } from "@/components/ai-elements/inline-citation";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { cn } from "@/lib/utils";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { ChevronDownIcon, ChevronUpIcon } from "@hugeicons/core-free-icons";
 import { Separator } from "@/components/ui/separator";
 import type { ResearchCitation } from "@/lib/types/thesis-sheet";
 
@@ -233,27 +231,16 @@ export function AnalystTargetsCard({
       <div className="-mx-3">
         <Separator />
       </div>
-      {/* One line, never two: the date, then how many analysts raised and lowered their next-quarter estimate; measured to fit the narrowest card. */}
+      {/* One line, never two: the date, then how many analysts raised and lowered their next-quarter estimate, as one plain sentence (the owner, 2026-11-05: no icons, no colors). */}
       <p className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
         Updated {asOf}
-        {up != null || down != null ? (
-          <>
-            {" · Analysts "}
-            {up != null ? (
-              <span className="inline-flex items-center gap-0.5">
-                <HugeiconsIcon icon={ChevronUpIcon} className="size-3.5 text-positive" strokeWidth={2.5} />
-                {up} up
-              </span>
-            ) : null}
-            {up != null && down != null ? ", " : ""}
-            {down != null ? (
-              <span className="inline-flex items-center gap-0.5">
-                <HugeiconsIcon icon={ChevronDownIcon} className="size-3.5 text-negative" strokeWidth={2.5} />
-                {down} down
-              </span>
-            ) : null}
-          </>
-        ) : null}
+        {up != null && down != null
+          ? ` · ${up} ${up === 1 ? "analyst" : "analysts"} moved up, ${down} down`
+          : up != null
+            ? ` · ${up} ${up === 1 ? "analyst" : "analysts"} moved up`
+            : down != null
+              ? ` · ${down} ${down === 1 ? "analyst" : "analysts"} moved down`
+              : ""}
       </p>
     </Card>
   );
@@ -300,18 +287,9 @@ function ConsensusDistributionRow({ consensus }: { consensus: { buy: number; hol
         ))}
       </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-negative" />
-          {sell} Bearish
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-muted-foreground" />
-          {hold} Neutral
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-positive" />
-          {buy} Bullish
-        </span>
+        <span>{sell} Bearish</span>
+        <span>{hold} Neutral</span>
+        <span>{buy} Bullish</span>
       </div>
     </div>
   );
