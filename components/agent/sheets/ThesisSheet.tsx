@@ -61,7 +61,8 @@ import {
 } from "@/components/domain/analyst-consensus";
 import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import type { ThesisStatus } from "@/lib/thesis-status";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -884,6 +885,23 @@ export function ThesisBody({
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
   // The company first (the owner, 2026-11-05), then the standing opinion, under the chips on Overview.
   const company = state.company?.trim() ? stripCitationTags(state.company) : null;
+  const website = quote?.website ?? null;
+  const host = website ? website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null;
+  const facts = [quote?.exchange, quote?.industry].filter((v): v is string => Boolean(v?.trim()));
+  const factChips =
+    facts.length > 0 || host ? (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {facts.map((f) => (
+          <Badge key={f} variant="fact" shape="square">{f}</Badge>
+        ))}
+        {host && website ? (
+          <Badge variant="fact" shape="square" render={<a href={website} target="_blank" rel="noopener noreferrer" />}>
+            {host}
+            <ExternalLink />
+          </Badge>
+        ) : null}
+      </div>
+    ) : null;
   const belief = state.coreBelief?.trim() ? stripCitationTags(state.coreBelief) : null;
   const sideColumn =
     surface === "page" ? (
@@ -897,8 +915,9 @@ export function ThesisBody({
   // ── The tabs, in order: Overview · Research · Activity (not on the stock page) · Transactions · the page's own ──
   const overviewContent = (
     <>
-      {/* Who the company is: the Writer's two sentences, moved here from Research. */}
-      {company ? <p className="text-base font-normal text-muted-foreground leading-relaxed">{company}</p> : null}
+      {/* Who the company is: the Writer's two sentences, moved here from Research, at the belief's size; its facts as chips under it (the owner, 2026-11-05). */}
+      {company ? <p className="text-lg font-normal text-foreground leading-relaxed">{company}</p> : null}
+      {factChips}
 
       {/* ── Whether it needs work today (DAV-304) ── */}
       <WorkFlagLine

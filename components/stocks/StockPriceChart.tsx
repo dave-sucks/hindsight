@@ -305,9 +305,17 @@ export function StockPriceChart({
     return priceDomain(closes);
   }, [data, isIntraday, priorClose]);
 
-  // Volume bars sit along the bottom sixth: their own hidden axis runs to six
-  // times the tallest bar. Each bar takes the color of its minute or day.
-  const volumeTop = useMemo(() => Math.max(1, ...data.map((d) => d.volume ?? 0)) * 6, [data]);
+  // Volume bars sit along the bottom fifth: their own hidden axis runs to five
+  // times the cap. The cap is the 95th-percentile bar, and taller bars are
+  // drawn at it, so one opening or closing print (on NVDA 2026-11-05 a
+  // hundred times the median minute) can't flatten the rest of the day to
+  // half a pixel. The tooltip still says the true volume. Each bar takes the
+  // color of its minute or day.
+  const volumeCap = useMemo(() => {
+    const sorted = data.map((d) => d.volume ?? 0).filter((v) => v > 0).sort((a, b) => a - b);
+    return sorted.length ? Math.max(1, sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]) : 1;
+  }, [data]);
+  const volumeTop = volumeCap * 5;
 
   // Snap each marker to the nearest visible candle, then stagger labels that
   // land on (or near) the same candle so they don't overprint — Watching and
@@ -540,9 +548,9 @@ export function StockPriceChart({
               fontSize: '12px',
               color: 'var(--popover-foreground)',
             }}
-            formatter={(v: number, name: string) =>
+            formatter={(v: number, name: string, item: { payload?: { volume?: number } }) =>
               name === 'volume'
-                ? [v.toLocaleString(), 'Volume']
+                ? [(item?.payload?.volume ?? v).toLocaleString(), 'Volume']
                 : [`$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Close']
             }
             labelFormatter={(l: string | number) =>
@@ -610,9 +618,9 @@ export function StockPriceChart({
             />
           ) : null}
 
-          {/* Volume — one faint bar per point along the bottom, green when the
-              close rose from the point before, red when it fell. */}
-          <Bar yAxisId="volume" dataKey="volume" isAnimationActive={false} fillOpacity={0.35} maxBarSize={3}>
+          {/* Volume — one bar per point along the bottom at half strength, green
+              when the close rose from the point before, red when it fell. */}
+          <Bar yAxisId="volume" dataKey={(d: { volume?: number }) => Math.min(d.volume ?? 0, volumeCap)} name="volume" isAnimationActive={false} fillOpacity={0.5} maxBarSize={4}>
             {data.map((d, i) => (
               <Cell key={`v-${d.date}`} fill={i > 0 && d.close < data[i - 1].close ? LINE_RED : LINE_GREEN} />
             ))}
