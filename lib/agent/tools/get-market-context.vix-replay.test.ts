@@ -71,6 +71,18 @@ function finnhubThatMorning(asked: string[]) {
   };
 }
 
+/** Cboe's files and Polymarket aren't part of this morning's replay; they answer as down. */
+const notInThisReplay = {
+  "@/lib/market-data/market-gauges": () => ({
+    ...jest.requireActual("@/lib/market-data/market-gauges"),
+    loadGauges: jest.fn(async () => ({ vix: null, tenYear: null, errors: ["not part of this replay"] })),
+  }),
+  "@/lib/market-data/fed-odds": () => ({
+    ...jest.requireActual("@/lib/market-data/fed-odds"),
+    loadNextFedOdds: jest.fn(async () => ({ odds: null, error: "not part of this replay" })),
+  }),
+};
+
 async function marketCheckAt0800() {
   const asked: string[] = [];
   jest.useFakeTimers({
@@ -86,6 +98,7 @@ async function marketCheckAt0800() {
           finnhub: finnhubThatMorning(asked),
         }),
         "@/lib/market-data/live-quote": liveQuotesThatMorning(),
+        ...notInThisReplay,
       },
       args: {},
     });
@@ -129,6 +142,7 @@ describe("2026-09-28 08:00 ET — the market check the PEAD Specialist's run rea
           finnhub: finnhubThatMorning(asked),
         }),
         "@/lib/market-data/live-quote": liveQuotesThatMorning(),
+        ...notInThisReplay,
       },
       args: {},
     });

@@ -136,13 +136,19 @@ export interface MarketContextData {
     pctFromSma: number;
   } | null;
   sectors: { symbol: string; changePct: number }[];
-  macroEvents: {
-    event: string;
-    actual: number | null;
-    estimate: number | null;
-    impact: "HIGH" | "MEDIUM" | "LOW";
-  }[];
-  earningsDensity: { count: number; period: string };
+  /** The VIX at Cboe's last close (lib/market-data/market-gauges.ts). */
+  vixClose: { close: number; prevClose: number | null; asOf: string } | null;
+  /** The 10-year Treasury yield in percent, at Cboe's last close. */
+  tenYear: { yieldPct: number; prevYieldPct: number | null; changeBp: number | null; asOf: string } | null;
+  /** The market's dates for the next three weeks (lib/market-data/market-calendar.ts). */
+  calendar: { date: string; kind: "FED" | "CPI" | "JOBS" | "ELECTION" | "EARNINGS"; what: string }[];
+  nextFedDecision: {
+    date: string;
+    odds: { title: string; settles: string; odds: { outcome: string; chance: number }[]; url: string } | null;
+  } | null;
+  /** Finnhub's earnings calendar for five days; `capped` when it hit the vendor's 1,500-row stop. */
+  earningsDensity: { count: number; period: string; capped: boolean };
+  headlines: { at: string; source: string; headline: string; url: string }[];
   apiErrors?: string[];
 }
 
