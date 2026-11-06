@@ -58,39 +58,39 @@ export function StockPageTabs({
         <TabsTrigger value={NEWS}>News</TabsTrigger>
       </TabsList>
 
-      <TabsContent value={OVERVIEW} className="space-y-10">
+      <TabsContent value={OVERVIEW} className="space-y-8">
         <StockOverview {...overview} sidebar={sidebar}>
           {overviewStats}
           <Transactions ticker={overview.ticker} fills={transactions} limit={5} onViewAll={() => setTab(TRANSACTIONS)} openThesis held={held} currentPrice={overview.price} />
         </StockOverview>
       </TabsContent>
 
-      <TabsContent value={THESIS} className="space-y-10">
+      <TabsContent value={THESIS} className="space-y-8">
         <div className={columns}>
-          <div className="min-w-0 space-y-10">{thesis}</div>
+          <div className="min-w-0 space-y-8">{thesis}</div>
           {side}
         </div>
       </TabsContent>
 
-      <TabsContent value={FINANCIALS} className="space-y-10">
+      <TabsContent value={FINANCIALS} className="space-y-8">
         <div className={columns}>
-          <div className="min-w-0 space-y-10">{financials}</div>
+          <div className="min-w-0 space-y-8">{financials}</div>
           {side}
         </div>
       </TabsContent>
 
-      <TabsContent value={TRANSACTIONS} className="space-y-10">
+      <TabsContent value={TRANSACTIONS} className="space-y-8">
         <div className={columns}>
-          <div className="min-w-0 space-y-10">
+          <div className="min-w-0 space-y-8">
             <Transactions ticker={overview.ticker} fills={transactions} openThesis held={held} currentPrice={overview.price} />
           </div>
           {side}
         </div>
       </TabsContent>
 
-      <TabsContent value={NEWS} className="space-y-10">
+      <TabsContent value={NEWS} className="space-y-8">
         <div className={columns}>
-          <div className="min-w-0 space-y-10">{news}</div>
+          <div className="min-w-0 space-y-8">{news}</div>
           {side}
         </div>
       </TabsContent>
