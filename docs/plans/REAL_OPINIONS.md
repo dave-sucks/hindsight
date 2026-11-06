@@ -26,8 +26,10 @@ the triggers. The street's numbers (targets, EPS consensus) land in
 stock on demand. Every review line carries a verdict on the belief and
 the rule it answered, and its title says what kind of review it was.
 Seventeen situations each say what the note is for that situation
-(`lib/agent/situations.ts`). One Activity list: the Overview shows the
-newest eight lines and the next run reads the same eight.
+(`lib/agent/situations.ts`). One Activity list: the next run reads its
+newest eight lines (`RECENT_ITEMS`). Since 2026-11-04 the Overview's
+"Agent insights" is a different cut, the newest five lines that carry a
+written paragraph (`NOTED_ITEMS`).
 
 **The first write-up in the new shape: SNDK, 2026-11-03 evening.** The
 owner's chat named the PEAD Specialist, the Writer ran, and it passed.
@@ -54,7 +56,9 @@ opinion was thrown away with it. The same thing the 11-02 Sandisk study
 found at the bottom of the cycle: the business view existed in public, the
 chart screen never saw it. Fix: a failing case from this run's recorded
 input, then whatever makes the Writer write the re-look as a watch with
-its wake. No gate.
+its wake. No gate. **Done in #939:** a setup is required only on a priced
+plan, and a PASS sent with triggers is sent back to be saved as an
+unpriced watch that keeps them.
 
 **The 31 live theses, from production.** All were written under the old
 Writer (research dated 2026-09-02 to 10-30). Thirty of 31 have a belief,
@@ -80,8 +84,8 @@ The rules, one sentence each:
    is a trigger.
 5. The note a run writes on a stock is the trade's reason; one paragraph
    per trade.
-6. The next run reads the newest eight Activity lines, the same eight the
-   Overview shows.
+6. The next run reads the newest eight Activity lines; the Overview shows
+   the newest five that carry a written paragraph.
 
 | Stage | What wakes it | Who writes | What is written |
 |---|---|---|---|
@@ -94,7 +98,7 @@ The rules, one sentence each:
 
 **What the formula still lacks.**
 
-- A pass with a re-look has no wake (SNDK above).
+- ~~A pass with a re-look has no wake (SNDK above).~~ Done in #939.
 - The refresh after each report is not built. It needs the last report
   date; Finnhub's earnings calendar asked by symbol alone returns the last
   report, so a source exists.
@@ -115,8 +119,8 @@ In order:
    refresh: three first, priced from the Writer's usage, then the rest.
    This fills the company line and brings every assumption to "the number,
    when and where it is checked".
-4. The Writer writes a re-look as a watch (the SNDK case), with a failing
-   case first.
+4. ~~The Writer writes a re-look as a watch (the SNDK case), with a
+   failing case first.~~ Done in #939.
 5. Drop the seven old research columns, two PRs (code first, DROP second).
 6. The refresh-after-each-report rule, from the Finnhub last-report date.
 7. The two hygiene items (duplicate watch rows; a watch with no plan and
@@ -167,6 +171,13 @@ of those schedules, the Writer's reading list, and the reviews grading
 each assumption on its date. The "any prompt on any clock" spec stays
 unapproved until the studies say what the question is.
 
+The portfolio manager's 7:30 run (the Portfolio Manager Plan,
+https://claude.ai/artifact/GopnVpftXr9i1onzqsbNAu, written 2026-11-06 after
+the midterms) is a prompt on a clock. Build it as the first use of this
+framework, not as another one-off scheduled job. That plan is about the
+whole account and the market; this one is about each stock's opinion. They
+don't overlap.
+
 **Step E. Measure.** A month of the book under it, scored the way the
 studies were: did the system name the situation before the move.
 
@@ -177,7 +188,7 @@ day, and the owner as the click. Build the long one first.
 
 ## 5. For the owner to decide
 
-1. A pass that names a re-look: stored as a watch with that wake, or left
-   as a pass. The plan says a watch.
+1. ~~A pass that names a re-look: stored as a watch with that wake, or
+   left as a pass.~~ Answered: a watch (#939).
 2. The rewrite of the 31: now, or after Wednesday's morning run is read.
 3. The seven names for the studies, and the go.
