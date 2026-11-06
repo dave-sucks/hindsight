@@ -142,7 +142,7 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     const v = validateThesisDecision(hpe, opts);
     expect(v.ok).toBe(false);
     expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), stop 1 ATR ($3.75) under it until the pullback low prints — or PASS with the reason.",
+      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), stop 1 ATR ($3.75) under it until the pullback low prints — or keep the view unpriced (no setup_id, no levels) with the review that brings it back.",
     ]);
   });
 
@@ -219,7 +219,7 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
   it("is sent back with the pullback plan it had already written into a review", () => {
     const v = validateThesisDecision(docu, opts);
     expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), stop 1 ATR ($2.98) under it until the pullback low prints — or PASS with the reason.",
+      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), stop 1 ATR ($2.98) under it until the pullback low prints — or keep the view unpriced (no setup_id, no levels) with the review that brings it back.",
     ]);
   });
 

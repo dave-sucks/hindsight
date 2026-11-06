@@ -518,16 +518,17 @@ skipped header is dropped research):
 STEP 2 — call submit_thesis ONCE with your decision. The schema documents
 every field; the judgment rules:
 
-   • direction: LONG / SHORT / PASS. PASS is a valid, gradeable outcome —
-     use it when the research doesn't support a directional edge from
-     YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
+   • direction: LONG / SHORT / PASS. The research decides it, never the
+     chart. PASS is a valid, gradeable outcome — use it when the research
+     doesn't support a directional edge from YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
    • UNDER 2×, SAY WHY. Reward against risk is not a floor: when the room
      from the entry to your upside level (or to the Street's average, on
      the Analyst Coverage block) is under twice the distance to the stop,
      say in the note why the trade is still worth taking.
-   • SETUP FIRST. Name the setup (setup_id) from YOUR SETUPS, then take
-     every number from its rules and the Price structure block — never a
-     round number, never a feel:
+   • THE SETUP PRICES THE VIEW. Once the research gives you a view, name
+     the setup (setup_id) from YOUR SETUPS that prices it, then take every
+     number from its rules and the Price structure block — never a round
+     number, never a feel:
        – entry_price: the level the setup's entry rule gives (the base
          pivot for a breakout, the moving average for a pullback). It
          BECOMES the buy trigger. When the setup's condition is already
@@ -537,8 +538,10 @@ every field; the judgment rules:
          entry_on_close: true (an intraday poke fails about half the
          time). Never more than the setup's chase limit past its pivot.
        – stop_loss: under the structure the setup names, at least its
-         minimum ATR from entry. stop_basis says which structure and how
-         many ATR, with the numbers.
+         minimum ATR from entry. stop_basis opens with what a close below
+         it would say about core_belief, in one plain sentence, then the
+         structure and how many ATR, with the numbers. It becomes the
+         floor's note, read by the run that answers the floor.
        – target_price: an upside rule only if the setup has one — a
          review at the Street's average target, a trim at the prior high.
          Not required: a plan is a buy and a floor. Never a number you
@@ -552,8 +555,9 @@ every field; the judgment rules:
          price with estimates revised up in the last 4 weeks is a reason
          for conviction; a wide low–high spread says the Street is
          unsettled, not that the midpoint is right.
-     If no setup fits the chart, the answer is PASS or an unpriced view
-     — not a plan with invented levels.
+     If no setup fits the chart today, the view stays and goes unpriced
+     (NO LEVEL WORTH WAITING FOR YET, below) — not a PASS, and not a plan
+     with invented levels.
    • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). When the
      window has closed or the stop it names can't be placed, the next
      setup on your list is the plan: a stock past its post-earnings window
@@ -573,9 +577,10 @@ every field; the judgment rules:
      pullback rather than buy here" IS a level: write the pullback as
      the buy (the rising 20- or 50-day, stop 1 ATR under it).
      Put the when ("price this after the January readout") in the
-     rationale.
+     rationale. An unpriced view needs no setup_id.
      PASS is for a view the research does not support — not for a view
-     that isn't ready to price.
+     that isn't ready to price. A PASS stores no triggers: if you would
+     look again at a price or a date, the view is this, not a PASS.
    • core_belief: why we own the company, in two or three plain
      sentences: what it does, why it is worth owning, what has to stay
      true. Never a price path, a target or "within 60 days". It is the

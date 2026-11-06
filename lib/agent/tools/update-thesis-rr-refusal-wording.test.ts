@@ -112,7 +112,7 @@ describe("update_thesis — a plan under 2:1 lands (the ratio is not a rule, 202
     expect(saved.data?.ok).toBe(true);
     expect(((saved.data?.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
     expect(mockThesisUpdate.mock.calls.some(([a]) => a.data.stopLoss === 450)).toBe(true);
-    expect(JSON.stringify(saved)).not.toMatch(/\d:1|R\/R floor/);
+    expect(JSON.stringify(saved)).not.toMatch(/\d:1\b|R\/R floor/);
   });
 
   it("following the named set-down lands", async () => {

@@ -277,7 +277,7 @@ export const dispatchThesisResearch = defineTool({
     })();
     const reason = [
       args.reason,
-      args.setup_id ? `Suggested setup: ${args.setup_id} — check it against the chart; pick another or PASS if it doesn't fit.` : null,
+      args.setup_id ? `Suggested setup: ${args.setup_id} — check it against the chart; pick another, or keep the view unpriced with a review if none fits.` : null,
       args.screen_row ? `Numbers: ${args.screen_row}` : null,
       redFlag,
     ]
