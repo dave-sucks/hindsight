@@ -12,6 +12,8 @@
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { activityFeed, type FeedItem, type ProposalOrder } from "@/lib/thesis/activity-feed";
+import { coversStock, noteLine } from "@/lib/agent/shared-notes";
+import { loadSharedNotes } from "@/lib/agent/shared-notes.server";
 
 export const FEED_ORDER_SELECT = {
   id: true, status: true, intent: true, side: true, quantity: true, symbol: true, rationale: true, rejectionMessage: true,
@@ -62,5 +64,20 @@ export async function loadActivityFeed(thesis: FeedThesis, limit: number): Promi
     select: FEED_ORDER_SELECT,
   });
 
-  return activityFeed({ updates, orders: orders as unknown as ProposalOrder[], limit });
+  // The shared notes that cover the stock (lib/agent/shared-notes.ts): the
+  // same lines its runs read. A pinned one is a line here; a run reads it
+  // above its newest 8.
+  let notes: ReturnType<typeof noteLine>[] = [];
+  try {
+    const owner = await prisma.thesis.findUnique({ where: { id: thesis.id }, select: { userId: true, sector: true } });
+    if (owner) {
+      notes = (await loadSharedNotes(owner.userId, new Date()))
+        .filter((n) => coversStock(n, { ticker: thesis.ticker, sector: owner.sector }))
+        .map(noteLine);
+    }
+  } catch {
+    // A note is never worth failing the tab over.
+  }
+
+  return activityFeed({ updates: [...updates, ...notes], orders: orders as unknown as ProposalOrder[], limit });
 }

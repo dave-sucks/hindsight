@@ -7,6 +7,16 @@
  */
 import { activityFeed, type ProposalOrder, type StoredLine } from "@/lib/thesis/activity-feed";
 import { buildStockContext, type StockContext } from "@/lib/agent/stock-context";
+import {
+  coversStock,
+  isPinned,
+  noteLine,
+  pinnedBlock,
+  unansweredPinned,
+  PINNED_PER_STOCK,
+  type NoteShare,
+  type SharedNoteRow,
+} from "@/lib/agent/shared-notes";
 import type { TitleTrigger } from "@/components/agent/sheets/thesis-timeline-utils";
 
 /**
@@ -24,6 +34,33 @@ export const ACTIVITY_SELECT = {
   triggerAction: true, triggerCondition: true,
 } as const;
 
-export function stockContextFor(args: { ticker: string; rows: StoredLine[]; orders?: ProposalOrder[]; triggers?: ReadonlyArray<TitleTrigger> }): StockContext {
-  return buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: args.rows, orders: args.orders ?? [] }), triggers: args.triggers });
+/**
+ * `notes` are the account's shared notes, newest first (lib/agent/shared-notes.ts).
+ * The ones that cover this stock join its Activity, except the newest two
+ * pinned ones, which read in their own block above the newest 8 and put the
+ * stock in PINNED_NOTE until a run writes on it after them.
+ */
+export function stockContextFor(args: {
+  ticker: string;
+  rows: StoredLine[];
+  orders?: ProposalOrder[];
+  triggers?: ReadonlyArray<TitleTrigger>;
+  sector?: string | null;
+  notes?: readonly SharedNoteRow[];
+  shares?: ReadonlyMap<string, NoteShare>;
+  now?: Date;
+}): StockContext {
+  const now = args.now ?? new Date();
+  const covering = (args.notes ?? []).filter((n) => coversStock(n, { ticker: args.ticker, sector: args.sector }));
+  const pinned = covering.filter((n) => isPinned(n, now)).slice(0, PINNED_PER_STOCK);
+  const shown = new Set(pinned.map((n) => n.id));
+  const inFeed = covering.filter((n) => !shown.has(n.id)).map(noteLine);
+  const base = buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: [...args.rows, ...inFeed], orders: args.orders ?? [] }), triggers: args.triggers });
+  if (pinned.length === 0) return base;
+  const open = unansweredPinned(pinned, args.rows);
+  return {
+    ...base,
+    text: [pinnedBlock(args.ticker, pinned, args.shares ?? new Map()), base.text].filter(Boolean).join("\n"),
+    pinnedNote: open ? { id: open.id, at: open.createdAt } : null,
+  };
 }

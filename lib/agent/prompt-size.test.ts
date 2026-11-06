@@ -40,7 +40,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-04: −107 / −96 / −480, the first-sentence rule restated in five note fields now lives in the voice rules alone.
   "research-run": 30_614,
   tactical: 26_545,
-  principal: 62_832,
+  // 2026-11-07: +943 on principal, write_note can address one note to several stocks, a sector, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
+  principal: 63_775,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

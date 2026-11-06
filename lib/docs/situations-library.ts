@@ -25,6 +25,7 @@ const PLAIN: Record<SituationCode, string> = {
   STALE_RESEARCH: "The research is older than the analyst's limit.",
   PLAN_PROBLEM: "The plan contradicts the price or the calendar: a buy level left behind, a target passed, a floor too tight.",
   YOUR_WORD_UNANSWERED: "You left a note or made a decision since the analyst's last answer.",
+  PINNED_NOTE: "A note pinned on this stock and others with it (a market date, a story moving a group) that no run has answered on this stock.",
   SOLD_ONE_REVIEW: "A stock sold in the last two weeks is owed one look back.",
   NO_SETUP_NAMED: "A researched stock has no setup named, so nothing says how to trade it.",
 };
@@ -36,7 +37,7 @@ export function situationsLibraryMarkdown(): string {
   const out: string[] = [
     "# Situations library",
     "",
-    "**Every situation, and exactly what the agent is sent.** The seventeen codes in rank order, each with what it means and the text an agent reads.",
+    "**Every situation, and exactly what the agent is sent.** The eighteen codes in rank order, each with what it means and the text an agent reads.",
     "",
     "This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it by hand. What situations are and where they come from is [Situations](../concepts/situations.md).",
     "",

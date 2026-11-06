@@ -23,8 +23,19 @@ file it and let Dave assign it.
 ## 2. How a signal reaches the agents — three doors, nothing else
 
 A fact from the Signals lane is only useful when it lands through one of
-these. There is no fourth path (no inbox, no routed "signal" rows — that
-was the machinery deleted in September).
+these. There is no other path (no inbox, no routed "signal" rows — that
+was the machinery deleted in September), with one exception added on
+purpose on 2026-11-07, below.
+
+**The exception: a note with an audience.** The owner or the portfolio
+manager writes a note once and addresses it to the account, one analyst, a
+sector or a list of stocks (`SharedNote`, `lib/agent/shared-notes.ts`).
+Every stock it covers reads it in its Activity; a pinned one reads above
+the newest 8 until a run answers it. This is not the router, and four rules
+keep it from becoming one: one author picks every audience by hand; nothing
+matches by tag; every note shows in Activity, where you read it; a pinned
+note ends within two weeks. A Signals-lane fact still comes in through the
+three doors. A note is someone's read of what those facts mean.
 
 No stored write-up sits beside the analysts. What the owner reads about a
 trade is the analyst's own note, written with the thesis in hand; an Auto

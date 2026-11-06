@@ -71,7 +71,7 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 ## Situations (shipped 2026-10-08 — the one flag system, and the one home for situation text)
 `computeNeedsAction` (`lib/agent/needs-action.ts`) returns EVERY flag true on a
 stock, today's lead first. `situationsFor` (`lib/agent/situations.ts`) maps that
-list plus the row's facts to its situation codes (seventeen in all; `AUTO_TRADE`
+list plus the row's facts to its situation codes (eighteen in all; `AUTO_TRADE`
 is set by the Auto write-up itself), and `SITUATIONS` in the
 same file is the ONE table of the text an agent gets for each (under 2,200
 characters each). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed
