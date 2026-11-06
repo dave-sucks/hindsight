@@ -60,7 +60,7 @@ export function StockOverview({
       ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="min-w-0 space-y-10">
+        <div className="min-w-0 space-y-8">
           {!mounted ? (
             <Skeleton className="h-[300px] w-full rounded-lg" />
           ) : candles.length >= 2 ? (
