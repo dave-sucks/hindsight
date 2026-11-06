@@ -1006,9 +1006,11 @@ always), the analyst brief (when it acts for one analyst), the job prompt
 doors into it: the principal's chat; a scheduled prompt (the morning run is
 the first; any cron row carrying a prompt is the same door); a fire (the
 trigger run). One read for every agent, sized by situation by code: a quiet
-stock is one line; a stock with a situation gets a short row with each
-situation's text attached once; the full row comes by ticker or by a
-situation's rule. Decisions are made side by side in one conversation with
+stock is one line; a stock with a situation gets a row carrying the fields
+that situation's decision reads (the owner's grid, 2026-11-06: nine standing
+fields on every row, a situation's own fields with it, the whole case on the
+review clock), with each situation's text attached once; the full row comes
+by ticker. Decisions are made side by side in one conversation with
 the book and the account in view. No parent agent, no per-stock fan-out, no
 gate before the owner's queue; no new refusals and no scope change.
 
@@ -1096,8 +1098,8 @@ receives today, one page per door. The entries:
 | Entry | When | What it carries | Size |
 |---|---|---|---|
 | One line | a stock with no situation today | ticker, held or watched, live price against its plan prices, next review date, one word if something fired | ~120 chars |
-| Short row | a stock with one or more situations | the position if held and any proposal already waiting; the plan and every trigger as a sentence, with the rules it inherits from the analyst and the account; belief, assumptions, what would prove it wrong; what's been said since the last answer; the chart numbers and the live price; the situations by name with each one's text once per read. No research essays | ~3–4k chars, estimate |
-| Full row | by ticker on request, or by a situation's rule | the short row plus the research: snapshot, bull case, bear case, scoring notes, conviction | ~27k chars, measured |
+| The row | a stock with one or more situations | the standing fields (the stock, its situations, the price, the position if held and any proposal waiting, every trigger with its id, the belief, the newest 8 Activity lines, when the research was written) plus the fields its situations' decisions read: the chart numbers and the Street on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report. The review clock reads the whole case: the cases, the conviction reason, the variant view, the setup, the company line, the snapshot's first paragraph. The map is `ROW_FIELDS` in `lib/agent/row-for-model.ts`; each situation's guidance names the keys it reads, and a test holds the two together | a few hundred to a few thousand chars, by the situation |
+| Full row | by ticker on request | the review clock's row plus the old research sections where a row still has them and, with include_history, the history | ~20k chars |
 | The account | every read | risk used against the cap, cash and buying power, concentration, approvals already waiting, what fired across the book today | ~1k chars |
 
 Source tags are stripped from what the model reads. The chat's default read

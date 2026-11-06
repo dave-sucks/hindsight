@@ -23,8 +23,9 @@ import { createResearchTools } from "@/lib/agent/tools";
 
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-04: +1,311 each, the voice rules' podcaster length, the view a note takes, the neighbor test and the desk words they ban (lib/agent/voice.ts).
+  // 2026-11-06: tactical −32, the sample row carries its situation's fields, not every field (ROW_FIELDS in lib/agent/row-for-model.ts).
   daily: 9_250,
-  tactical: 14_703,
+  tactical: 14_671,
   writer: 15_981,
   chat: 35_115,
 };
@@ -38,9 +39,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
 const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-03, on main + #909 + #911 + #912: +100 each from #911's get_theses text, +513 from update_thesis's verdict fields.
   // 2026-11-04: −107 / −96 / −480, the first-sentence rule restated in five note fields now lives in the voice rules alone.
-  "research-run": 30_614,
-  tactical: 26_545,
-  principal: 62_832,
+  // 2026-11-06: +214 each, get_theses says the row's fields follow the situation.
+  "research-run": 30_828,
+  tactical: 26_759,
+  principal: 63_046,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

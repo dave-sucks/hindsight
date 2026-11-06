@@ -17,7 +17,6 @@ import { SituationsGrid } from "./situations-grid";
 
 export function FrameworkPage({ data }: { data: FrameworkData }) {
   const fmt = (n: number) => n.toLocaleString("en-US");
-  const situation = data.situations.find((s) => s.code === "BUY_ARRIVES");
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-24 px-4 pb-32 pt-6 sm:px-6 lg:pt-10">
@@ -40,9 +39,9 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
         id="read"
         eyebrow="The read"
         lead="Each stock at the size today needs."
-        rest="Every agent asks one tool for its stocks. Code decides how much of each thesis to send: one line when nothing changed, more when something did, everything when asked by name."
+        rest="Every agent asks one tool for its stocks. Code decides which of each thesis's fields to send: one line when nothing changed, the fields the situation's decision reads when something did, the whole case on the review clock, everything when asked by name."
       >
-        <ReadDemo situation={situation} samples={data.readSamples} />
+        <ReadDemo data={data} />
       </Block>
 
       <Block
