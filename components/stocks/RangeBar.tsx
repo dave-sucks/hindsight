@@ -5,10 +5,11 @@
  * that color up to a slightly brighter step of it (a quarter to two fifths, the owner, 2026-11-05), the price as a white line like
  * the Average on the targets ruler, and the two ends named under it.
  * "Today" is the session's range, "52 week" the year's. Square ends, like
- * the ticks and the ratings bar.
+ * the ticks and the ratings bar. Its words are a stat row's (the owner,
+ * 2026-11-05): the title in the label's muted gray, the prices as values,
+ * L and H as labels, all one size.
  */
 
-import { SectionLabel } from "@/components/domain/section-label";
 import { fmtMoney } from "@/lib/stocks/stock-stats";
 
 export function RangeBar({ label, low, high, current }: { label: string; low: number | null; high: number | null; current: number | null }) {
@@ -18,7 +19,7 @@ export function RangeBar({ label, low, high, current }: { label: string; low: nu
       : null;
   return (
     <div className="space-y-2">
-      <SectionLabel>{label}</SectionLabel>
+      <p className="text-sm text-muted-foreground">{label}</p>
       <div className="relative h-1.5 rounded-xs bg-muted-foreground/25">
         {pct != null ? (
           <>
@@ -29,12 +30,12 @@ export function RangeBar({ label, low, high, current }: { label: string; low: nu
       </div>
       <div className="flex items-baseline justify-between text-sm tabular-nums">
         <span>
-          <span className="mr-1.5 text-xs text-muted-foreground">L</span>
+          <span className="mr-1.5 text-muted-foreground">L</span>
           {fmtMoney(low)}
         </span>
         <span>
           {fmtMoney(high)}
-          <span className="ml-1.5 text-xs text-muted-foreground">H</span>
+          <span className="ml-1.5 text-muted-foreground">H</span>
         </span>
       </div>
     </div>
