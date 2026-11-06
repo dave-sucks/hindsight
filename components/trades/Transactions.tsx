@@ -11,12 +11,10 @@
  * 2026-11-05).
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { PriceChange } from "@/components/ui/price-change";
-import { Card } from "@/components/ui/card";
-import { SectionLabel } from "@/components/domain/section-label";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { TransactionDialog } from "@/components/trades/TransactionDialog";
 import { periodLabel } from "@/components/agent/sheets/thesis-timeline-utils";
@@ -28,6 +26,24 @@ import { fillSummary, fillVerb, type FillFacts } from "@/lib/stocks/stock-histor
 // step out at narrow widths (the card's own width, not the window's).
 const ROW =
   "flex w-full items-center gap-3 rounded-lg bg-muted/40 px-3 py-2 text-left text-sm tabular-nums whitespace-nowrap transition-colors hover:bg-muted/70";
+
+/** One of the two tiles over the list: the small line, then the count at the left and the gain at the right, at the body size, on the rows' surface. Dimmed when there is nothing to say. */
+function SummaryTile({ label, left, right, empty }: { label: string; left: string; right: ReactNode; empty: boolean }) {
+  return (
+    <div className={cn("space-y-1 rounded-lg bg-muted/40 px-3 py-2 tabular-nums", empty && "text-muted-foreground/50")}>
+      <p className="text-xs">{label}</p>
+      <div className="flex items-center justify-between gap-3 text-base">
+        <span>{left}</span>
+        {right}
+      </div>
+    </div>
+  );
+}
+
+/** Dollars with their sign in the gain's color and no arrow: the lifetime figure has no percent to point at. */
+function SignedDollars({ n }: { n: number }) {
+  return <span className={n >= 0 ? "text-positive" : "text-negative"}>{`${n < 0 ? "−" : "+"}${formatCurrency(Math.abs(n))}`}</span>;
+}
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -74,30 +90,25 @@ export function Transactions({
   if (fills.length === 0) return <p className="text-sm text-muted-foreground">No trades on {ticker} yet.</p>;
 
   const unrealized = held && currentPrice != null ? (currentPrice - held.avgCost) * held.shares : null;
+  const heldValue = held && currentPrice != null ? currentPrice * held.shares : null;
 
   return (
     <div className="@container space-y-4">
-      {/* The stock's total as two cards (the owner, 2026-11-06): what the sells made, and what is still held and its gain. */}
+      {/* The stock's total as two tiles on the rows' own surface (the owner, 2026-11-06): what is held now, then what the sells have made over the stock's life. A tile with nothing to say is dimmed. */}
       {!limit ? (
         <div className="grid grid-cols-1 gap-3 @md:grid-cols-2">
-          <Card className="bg-muted/40 p-3 gap-1">
-            <SectionLabel action={<span className="text-xs text-muted-foreground tabular-nums">{summary.sells} {summary.sells === 1 ? "sell" : "sells"}</span>}>
-              Realized
-            </SectionLabel>
-            <PriceChange dollarChange={summary.realized} size="lg" />
-          </Card>
-          {held ? (
-            <Card className="bg-muted/40 p-3 gap-1">
-              <SectionLabel action={<span className="text-xs text-muted-foreground tabular-nums">{fmtQty(held.shares)} {held.shares === 1 ? "share" : "shares"}</span>}>
-                Still held
-              </SectionLabel>
-              {unrealized != null ? (
-                <PriceChange dollarChange={unrealized} percentChange={held.avgCost > 0 ? (unrealized / (held.avgCost * held.shares)) * 100 : null} size="lg" />
-              ) : (
-                <p className="text-lg tabular-nums">{formatCurrency(held.avgCost * held.shares)}</p>
-              )}
-            </Card>
-          ) : null}
+          <SummaryTile
+            label={held ? `Active position · ${formatCurrency(heldValue ?? held.avgCost * held.shares)} value` : "Active position"}
+            left={held ? `${fmtQty(held.shares)} ${held.shares === 1 ? "share" : "shares"}` : "0 shares"}
+            right={held && unrealized != null ? <PriceChange dollarChange={unrealized} percentChange={held.avgCost > 0 ? (unrealized / (held.avgCost * held.shares)) * 100 : null} size="base" /> : null}
+            empty={!held}
+          />
+          <SummaryTile
+            label="Realized P&L"
+            left={`${summary.sells} ${summary.sells === 1 ? "sell" : "sells"}`}
+            right={summary.sells > 0 ? <SignedDollars n={summary.realized} /> : null}
+            empty={summary.sells === 0}
+          />
         </div>
       ) : null}
 
