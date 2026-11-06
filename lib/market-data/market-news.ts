@@ -49,7 +49,9 @@ export async function loadMarketHeadlines(now: Date, limit = 8): Promise<{ headl
   return headlines.length > 0 ? { headlines } : { headlines, error: "Finnhub's market news had nothing from the last 36 hours" };
 }
 
-/** "9:41 PM ET". */
+/** "Thu Nov 5, 9:41 PM ET": with the day, because the 5-minute cache can hand a morning run last night's list. */
 export function etTime(iso: string): string {
-  return `${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })} ET`;
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" }).replace(",", "");
+  return `${day}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })} ET`;
 }

@@ -6,7 +6,7 @@
 import { calendarGaps, dayLabel, etToday, moverReports, nextFedDecision, scheduledMarketDates } from "./market-calendar";
 import { lastCloses, loadGauges } from "./market-gauges";
 import { oddsLine, pickNextFedOdds } from "./fed-odds";
-import { newestHeadlines } from "./market-news";
+import { etTime, newestHeadlines } from "./market-news";
 
 describe("the market's calendar", () => {
   it("lists the dates in the next three weeks in order, and the next Fed decision past them", () => {
@@ -135,5 +135,9 @@ describe("the market's headlines", () => {
       { at: "2026-11-06T15:55:48.000Z", source: "CNBC", headline: "Data center double-down: Hassett says Blue Wave won't stop AI build-out", url: "u1" },
     ]);
     expect(newestHeadlines({ error: "limit" }, now)).toEqual([]);
+  });
+
+  it("shows the day with the time, so last night's list never reads as this morning's", () => {
+    expect(etTime("2026-11-06T02:41:00.000Z")).toBe("Thu Nov 5, 9:41 PM ET");
   });
 });
