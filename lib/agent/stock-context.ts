@@ -67,6 +67,8 @@ export interface StockContext {
   text: string | null;
   openFires: OpenFire[];
   unansweredDecision: UnansweredWord | null;
+  /** A note pinned on the stock that no run has written after (lib/agent/shared-notes.ts); absent when none is pinned. */
+  pinnedNote?: { id: string; at: Date } | null;
 }
 
 type Changes = {
@@ -191,7 +193,8 @@ export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>)
   const kind = eventKind(tu);
   // A plain review reads as the page titles it: the kind of review, from the trigger it answered ("Pre-earnings review · weaker"); everything that happened keeps its title.
   const t = isPlainReview(tu) ? reviewTitle(tu, triggers) : titleSegments(tu);
-  const title = kind === "note" ? "Your note" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
+  // A shared note says who wrote it and to whom (lib/agent/shared-notes.ts).
+  const title = item.type === "SHARED_NOTE" ? item.summary : kind === "note" ? "Your note" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
   const chips = [...ladderChangeLines(tu), ...notAppliedLines(tu)].map((c) => c.text);
   const comment = proposalUserMessage(tu);
   const paragraph = comment ?? (item.rationale?.trim() ? item.rationale.replace(/^\[USER\]\s*/, "").trim() : null);
@@ -202,7 +205,8 @@ export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>)
   if (item.verdictLine) line += ` — verdict: "${oneLine(item.verdictLine)}"`;
   if (item.answersUpdateId) line += ` — answers the ${item.answersAt ? etStamp(item.answersAt) : item.answersUpdateId} line`;
   // An order's own step has no saved line to answer; a Proposed step answers as the run's note it carries.
-  const id = item.noteId ?? (item.id.startsWith("order:") ? null : item.id);
+  // A shared note is no line of this stock's to answer by id.
+  const id = item.noteId ?? (item.id.startsWith("order:") || item.id.startsWith("note:") ? null : item.id);
   if (id) line += ` [id ${id}]`;
   return line;
 }

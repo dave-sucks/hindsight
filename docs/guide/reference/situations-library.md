@@ -1,6 +1,6 @@
 # Situations library
 
-**Every situation, and exactly what the agent is sent.** The seventeen codes in rank order, each with what it means and the text an agent reads.
+**Every situation, and exactly what the agent is sent.** The eighteen codes in rank order, each with what it means and the text an agent reads.
 
 This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it by hand. What situations are and where they come from is [Situations](../concepts/situations.md).
 
@@ -13,7 +13,7 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it
 
 ## Auto trade made
 
-`AUTO_TRADE` · rank 1 of 17 · short row · sent to every run
+`AUTO_TRADE` · rank 1 of 18 · short row · sent to every run
 
 A trigger set to Auto just made a trade, and the analyst writes it up: what's going on with the company, and whether it agrees.
 
@@ -41,7 +41,7 @@ Mistakes:
 
 ## Promoted to live
 
-`PROMOTED_AWAITING` · rank 2 of 17 · short row · sent to every run
+`PROMOTED_AWAITING` · rank 2 of 18 · short row · sent to every run
 
 A stock just moved from paper to live money and needs a decision this run.
 
@@ -87,7 +87,7 @@ Mistakes:
 
 ## Sale signal
 
-`PROTECTIVE_SALE` · rank 3 of 17 · short row · sent to every run
+`PROTECTIVE_SALE` · rank 3 of 18 · short row · sent to every run
 
 A floor, a trail or a trim fired on a holding, or a sale you declined or let expire is still past its line.
 
@@ -118,7 +118,7 @@ Mistakes:
 
 ## Buy level reached
 
-`BUY_ARRIVES` · rank 4 of 17 · short row · sent to every run
+`BUY_ARRIVES` · rank 4 of 18 · short row · sent to every run
 
 A watched stock reached its buy level.
 
@@ -150,7 +150,7 @@ Mistakes:
 
 ## Buy blocked, full
 
-`BUY_BLOCKED_FULL` · rank 5 of 17 · short row · sent to every run
+`BUY_BLOCKED_FULL` · rank 5 of 18 · short row · sent to every run
 
 A buy fired while the analyst already holds all it may.
 
@@ -177,7 +177,7 @@ Mistakes:
 
 ## Add or near target
 
-`ADD_OR_WINNER` · rank 6 of 17 · short row · sent to every run
+`ADD_OR_WINNER` · rank 6 of 18 · short row · sent to every run
 
 An add level fired, or a holding is three quarters of the way to its target.
 
@@ -207,7 +207,7 @@ Mistakes:
 
 ## Earnings
 
-`EARNINGS` · rank 7 of 17 · short row · sent to every run
+`EARNINGS` · rank 7 of 18 · short row · sent to every run
 
 A report is close, or just landed with a beat or a miss.
 
@@ -238,7 +238,7 @@ Mistakes:
 
 ## New filing
 
-`FILING` · rank 8 of 17 · short row · sent to every run
+`FILING` · rank 8 of 18 · short row · sent to every run
 
 The company filed something that matters with the SEC.
 
@@ -268,7 +268,7 @@ Mistakes:
 
 ## Watch woke up
 
-`QUIET_WATCH_WOKE` · rank 9 of 17 · full row · sent to every run
+`QUIET_WATCH_WOKE` · rank 9 of 18 · full row · sent to every run
 
 A watch with no plan hit one of its wakes and needs a fresh look.
 
@@ -314,7 +314,7 @@ Mistakes:
 
 ## Floor to fix
 
-`PROTECTION` · rank 10 of 17 · short row · sent to every run
+`PROTECTION` · rank 10 of 18 · short row · sent to every run
 
 A gain with too little floor under it, or a floor that would lose too much of the account.
 
@@ -341,7 +341,7 @@ Mistakes:
 
 ## First research due
 
-`FIRST_RESEARCH` · rank 11 of 17 · short row · not sent to a trigger run
+`FIRST_RESEARCH` · rank 11 of 18 · short row · not sent to a trigger run
 
 A stock on the watchlist with no view yet is due its first research.
 
@@ -366,7 +366,7 @@ Mistakes:
 
 ## Review due
 
-`REVIEW_DUE` · rank 12 of 17 · short row · sent to every run
+`REVIEW_DUE` · rank 12 of 18 · short row · sent to every run
 
 The review clock came round, or a review fired, and nothing else covers it.
 
@@ -426,7 +426,7 @@ Mistakes:
 
 ## Research stale
 
-`STALE_RESEARCH` · rank 13 of 17 · short row · sent to every run
+`STALE_RESEARCH` · rank 13 of 18 · short row · sent to every run
 
 The research is older than the analyst's limit.
 
@@ -451,7 +451,7 @@ Mistakes:
 
 ## Plan check
 
-`PLAN_PROBLEM` · rank 14 of 17 · short row · sent to every run
+`PLAN_PROBLEM` · rank 14 of 18 · short row · sent to every run
 
 The plan contradicts the price or the calendar: a buy level left behind, a target passed, a floor too tight.
 
@@ -477,7 +477,7 @@ Mistakes:
 
 ## Your word unanswered
 
-`YOUR_WORD_UNANSWERED` · rank 15 of 17 · short row · sent to every run
+`YOUR_WORD_UNANSWERED` · rank 15 of 18 · short row · sent to every run
 
 You left a note or made a decision since the analyst's last answer.
 
@@ -502,9 +502,36 @@ Mistakes:
 - Taking an expired proposal for a decision: it may be proposed again if the setup still holds.
 ```
 
+## Pinned note to answer
+
+`PINNED_NOTE` · rank 16 of 18 · short row · sent to every run
+
+A note pinned on this stock and others with it (a market date, a story moving a group) that no run has answered on this stock.
+
+```text
+When: the portfolio manager or the principal pinned a note on this stock and others with it, and no run has written on the stock since. It is in `said` under PINNED, above the Activity lines, with the stocks it covers and their share of the account. It names something bigger than this stock: a market date, a story moving a group, how much of the account rides on it.
+
+Answer, in order:
+1. What does the note say is coming, and when?
+2. Does it reach why we own or watch this stock? Check the note's claim and the stock's own news against the data (get_stock_data, get_market_context, web_search).
+3. Does the stock's plan still fit what is coming: its floor and its size on a holding, its buy level and its research on a watch?
+
+What you can do (one of these):
+- Act on it. On a holding: a trim or a sale proposal, or a floor moved up with update_thesis. On a watch: a buy level moved, the research refreshed through the writer (dispatch_thesis_research, mode "refresh"), or let it go.
+- Keep the plan: say in one sentence why the note doesn't change it for this stock.
+
+Answered: your one update_thesis on the stock, naming the pinned note and saying what it means here. The stock leaves this situation once you have written; the note stays pinned for the others it covers.
+
+The note: what the pinned note says is coming; what it means for this stock and why; then what you did, in one sentence.
+
+Mistakes:
+- Treating the note as an order. It is a read on the market, and the stock's own case still decides.
+- A floor moved down or loosened because of it: only the principal lowers a floor.
+```
+
 ## Sold, one look
 
-`SOLD_ONE_REVIEW` · rank 16 of 17 · short row · not sent to a trigger run
+`SOLD_ONE_REVIEW` · rank 17 of 18 · short row · not sent to a trigger run
 
 A stock sold in the last two weeks is owed one look back.
 
@@ -532,7 +559,7 @@ Mistakes:
 
 ## No setup named
 
-`NO_SETUP_NAMED` · rank 17 of 17 · full row · not sent to a trigger run
+`NO_SETUP_NAMED` · rank 18 of 18 · full row · not sent to a trigger run
 
 A researched stock has no setup named, so nothing says how to trade it.
 

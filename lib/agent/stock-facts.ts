@@ -22,6 +22,8 @@ import { getSetup } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { SituationSources } from "@/lib/agent/situations";
+import { runNotes, type SharedNoteRow } from "@/lib/agent/shared-notes";
+import { loadSharedNotes, noteShares } from "@/lib/agent/shared-notes.server";
 
 
 /** The thesis columns the facts read. */
@@ -36,6 +38,8 @@ export interface FactsRow {
   triggers: unknown;
   catalystDate: Date | null;
   setupId: string | null;
+  /** The stock's sector, for a note to a sector; absent on a read that didn't select it. */
+  sector?: string | null;
   horizon: string | null;
   createdAt: Date;
   /** The stock's analyst: its own setups, which a row with none may choose from. */
@@ -79,6 +83,8 @@ export interface StockFacts {
   /** What situationsFor and listsTheStock read, per stock. */
   sources: Map<string, SituationSources>;
   heldThroughFloor: Map<string, HeldThroughFloor>;
+  /** The notes every run reads once at the top: the account's and this analyst's, while they last (lib/agent/shared-notes.ts). */
+  runNotes: SharedNoteRow[];
 }
 
 /**
@@ -119,6 +125,12 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
   );
   const live = theses.filter((t) => t.status === "HOLDING" || t.status === "WATCHING" || t.status === "PROMOTED");
 
+  // The account's shared notes: each stock reads the ones that cover it, with
+  // a pinned note's share of the account worked out now.
+  const notesAt = new Date();
+  const notes = await loadSharedNotes(ctx.userId, notesAt);
+  const shares = await noteShares(notes, { userId: ctx.userId, environment: ctx.runEnvironment, equity: load.equity, creds: ctx.alpacaCreds, now: notesAt });
+
   // The work-flag list per live stock (lead first) and what's been said on
   // it: the block a full row carries, its open fires, and any decision of the
   // principal's no run has answered yet.
@@ -135,6 +147,10 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
         orders: load.proposalHistory.get(t.id) ?? [],
         // The resolved list, inherited rules included: a review's title names the trigger it answered.
         triggers: input.thesis.triggers,
+        sector: t.sector ?? null,
+        notes,
+        shares,
+        now: notesAt,
       }),
     );
     needs.set(t.id, computeNeedsAction(input));
@@ -295,6 +311,7 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
       buyBlockedByFull: blocked.has(t.id),
       nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null) !== null,
       unansweredDecision: context.get(t.id)?.unansweredDecision != null,
+      pinnedNote: context.get(t.id)?.pinnedNote != null,
       saleWaiting: load.inputs.get(t.id)?.hasPendingSaleProposal ?? false,
     });
   }
@@ -315,5 +332,5 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
     heldThroughFloor.set(t.id, { floorPrice, declined: ht.declineCount, lapsed: ht.lapseCount, rejectMessage: ht.rejectMessage, recentLow: load.recentLow.get(t.id) ?? null });
   }
 
-  return { load, now, setupOverrides, needs, context, resolved, blocked, sources, heldThroughFloor };
+  return { load, now, setupOverrides, needs, context, resolved, blocked, sources, heldThroughFloor, runNotes: runNotes(notes, ctx.analystId, notesAt) };
 }
