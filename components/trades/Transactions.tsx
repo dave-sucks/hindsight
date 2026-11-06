@@ -31,7 +31,7 @@ const ROW =
 function SummaryTile({ label, left, right, empty }: { label: string; left: string; right: ReactNode; empty: boolean }) {
   return (
     <div className={cn("space-y-1 rounded-lg bg-muted/40 px-3 py-2 tabular-nums", empty && "text-muted-foreground/50")}>
-      <p className="text-xs">{label}</p>
+      <p className="text-xs font-light">{label}</p>
       <div className="flex items-center justify-between gap-3 text-base">
         <span>{left}</span>
         {right}

@@ -318,8 +318,8 @@ function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; anal
 // order, 2026-11-05): the title row, the state and on a proposal its action
 // ("Position", "Proposal · Sell", "Proposal · Add 4 shares"), nothing at its
 // right; the gain large; the sentence large ("Bought 27 shares at $369.25",
-// "Buy 14 shares at $53.55") in the gain's color at seven tenths, so the
-// whole block reads green or red with the gain the stronger of the two
+// "Buy 14 shares at $53.55") in the gain's own color at a light weight, so
+// the whole block reads green or red with the gain the heavier of the two
 // (the owner, 2026-11-06); a muted footnote with the value and the days
 // held, a little apart; a rule the card's full width; then the words — a
 // proposal's reason, else the newest analyst note — five lines, a click on
@@ -338,7 +338,7 @@ function TradeCard(props: TradeSummaryProps) {
       <TradeTitle title={action ? `${title} · ${action}` : title} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} size="sm" />
       <div className="pointer-events-none">
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
-        <p className={cn("text-xl font-normal tabular-nums", gain ? (gain.dollar >= 0 ? "text-positive/70" : "text-negative/70") : "text-foreground")}>{sentence}</p>
+        <p className={cn("text-xl font-light tabular-nums", gain ? (gain.dollar >= 0 ? "text-positive" : "text-negative") : "text-foreground")}>{sentence}</p>
         {/* The footnote: what the shares are worth (would cost, on a proposed buy), and how long we have held them. */}
         <p className="mt-2 text-xs text-muted-foreground tabular-nums">
           {formatCurrency(value)} value
