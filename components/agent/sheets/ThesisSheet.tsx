@@ -966,9 +966,8 @@ export function ThesisBody({
       quoteFailed={!quoteLoading && quote == null}
     />
   );
-  // Where the Thesis tab's View thesis goes: the trade's page when there is a trade, else the stock's; nothing when this is that page.
-  const tradeHref = position?.id ? `/trades/${position.id}` : null;
-  const thesisHref = surface === "sheet" ? (tradeHref ?? `/stocks/${ticker}`) : stockHref === null ? tradeHref : null;
+  // Where the Thesis tab's View thesis goes: the stock's page (the owner, 2026-11-06: the trade's own page opens only from the sheet's expand); nothing when this is the stock's page.
+  const thesisHref = stockHref === null ? null : `/stocks/${ticker}`;
   const sideColumn =
     surface === "page" ? (
       <div className="hidden lg:block space-y-4">

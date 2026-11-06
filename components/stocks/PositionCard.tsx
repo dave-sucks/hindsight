@@ -8,7 +8,6 @@
  */
 
 import { useState } from "react";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ChipTabs } from "@/components/ui/chip-tabs";
@@ -121,7 +120,8 @@ function Held({ trade, price }: { trade: PositionCardTrade; price: number | null
  * the gain on the right, the shares and cost under it with the date on the
  * right (the count sits on the lower line only: with it on both, the top
  * line was cut off at the card's width).
- * The date's hover line gives the exact times. Links to the trade's page.
+ * The date's hover line gives the exact times. No link: the rows are on the
+ * stock's own page, which is where a trade opens since 2026-11-06.
  */
 function HistoryRow({ trade, price }: { trade: PositionCardTrade; price: number | null }) {
   const s = statusOf(trade);
@@ -139,11 +139,7 @@ function HistoryRow({ trade, price }: { trade: PositionCardTrade; price: number 
   const exit = closed ? humanizeCloseReason(trade.closeReason) : null;
 
   return (
-    <Link
-      href={`/trades/${trade.id}`}
-      prefetch={false}
-      className="block px-3 py-2.5 border-b border-border/40 last:border-0 hover:bg-accent/40 transition-colors"
-    >
+    <div className="block px-3 py-2.5 border-b border-border/40 last:border-0">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 min-w-0 text-sm">
           <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", s.dotClass)} />
@@ -178,7 +174,7 @@ function HistoryRow({ trade, price }: { trade: PositionCardTrade; price: number 
           </TooltipContent>
         </Tooltip>
       </div>
-    </Link>
+    </div>
   );
 }
 

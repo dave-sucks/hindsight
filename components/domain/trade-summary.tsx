@@ -112,22 +112,26 @@ export function TradeSummary(props: TradeSummaryProps) {
 
 // ── What the position says, in every state ──
 // One description shared by the two looks, so the sheet and the page can
-// never disagree about the same trade:
-//   • proposal waiting → white breathing dot · "Proposal" (shimmering) · the answer buttons at the right
-//                        "Add 4 shares: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
-//   • holding          → blue dot · "Position" · "Bought N shares at $entry on Oct 5"
-//   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close on Nov 19"
+// never disagree about the same trade (the owner's words, 2026-11-05): the
+// title names the state and, on a proposal, the action; the sentence is the
+// fact about the shares, with no date (the date is the footnote's "held").
+//   • proposal waiting → white breathing dot · "Proposal · Buy" / "Proposal · Sell" / "Proposal · Add 4 shares" / "Proposal · Trim 4 shares"
+//                        "Buy N shares at $entry" / "Bought N shares at $entry"
+//   • holding          → blue dot · "Position" · "Bought N shares at $entry"
+//   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close"
 function describeTrade({ position, pnl, pendingProposal, direction }: TradeSummaryProps) {
   const pp = pendingProposal;
   const usd = (n: number) => formatCurrency(n);
   const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
   const unrealized: TradeStatementGain | null = pnl ? { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct } : null;
-  const bought = `Bought ${shares(position.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
+  const bought = `Bought ${shares(position.quantity)} at ${usd(position.avgCost)}`;
 
   let lead: string | null = null;
   let rest: string;
   let gain: TradeStatementGain | null = null;
   let title: string;
+  /** On the page card the title carries the action: "Proposal · Sell". The banner keeps the verb in its sentence. */
+  let action: string | null = null;
   let dotClass: string;
 
   // The answer buttons while the decision is yours; "Executing" once the order is at Alpaca.
@@ -147,21 +151,22 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
 
   if (pp && pp.intent === "OPEN") {
     lead = direction === "SHORT" ? "Short" : "Buy";
-    rest = ` ${shares(pp.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
+    rest = ` ${shares(pp.quantity)} at ${usd(position.avgCost)}`;
     title = "Proposal";
+    action = lead;
     dotClass = pp.executing ? getTradeStatusDisplay("OPEN").dotClass : PROPOSAL_DOT;
   } else if (pp) {
     // The verb carries the proposal's own size: "Add 4 shares:" before the position it adds to.
-    lead = `${pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim"} ${shares(pp.quantity)}:`;
+    // A sale of the whole position is just "Sell"; an add or a trim names its size.
+    const verb = pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim";
+    lead = `${verb} ${shares(pp.quantity)}:`;
     rest = ` ${bought}`;
     title = "Proposal";
+    action = pp.intent === "CLOSE" ? "Sell" : `${verb} ${shares(pp.quantity)}`;
     dotClass = pp.executing ? getTradeStatusDisplay("OPEN").dotClass : PROPOSAL_DOT;
     gain = unrealized;
   } else if (position.closed) {
-    rest =
-      `Sold ${shares(position.quantity)}` +
-      (position.closePrice != null ? ` at ${usd(position.closePrice)}` : "") +
-      (position.closedAt ? ` on ${fmtTradeDate(position.closedAt)}` : "");
+    rest = `Sold ${shares(position.quantity)}` + (position.closePrice != null ? ` at ${usd(position.closePrice)}` : "");
     if (position.realizedPnl != null) gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
     title = "Closed position";
     dotClass = getTradeStatusDisplay((position.realizedPnl ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
@@ -174,7 +179,7 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
 
   // The dollars the title carries: what the shares are worth now, what the sale brought once closed, what a proposed buy would cost.
   const value = pnl?.marketValue ?? (position.closed && position.closePrice != null ? position.closePrice * position.quantity : position.avgCost * position.quantity);
-  return { pp, lead, rest, gain, title, value, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing) };
+  return { pp, lead, rest, gain, title, action, value, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing) };
 }
 
 /** The waiting proposal's dot: white, breathing fast (`proposal-dot`, globals.css). */
@@ -259,15 +264,15 @@ function TradesLine({ trades }: { trades: TradeSummaryProps["trades"] }) {
 // accordion: a click anywhere on the card opens or closes it. Otherwise the
 // click opens the trade's page.
 function TradeBanner(props: TradeSummaryProps) {
-  const { position, onOpen, trades } = props;
+  const { position, onOpen, trades, ticker } = props;
   const { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal } = describeTrade(props);
   const [expanded, setExpanded] = useState(false);
   const click = proposal ? () => setExpanded((v) => !v) : onOpen;
   return (
     <Card className={cn("group/banner relative bg-muted/40 p-3 gap-2", proposal && PROPOSAL_CARD, click && "cursor-pointer")} onClick={click}>
-      {/* On the sheet the whole card opens the trade: a stretched link under the content, never a link around the controls. */}
-      {position.id && !proposal && !onOpen ? (
-        <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-xl" />
+      {/* On the sheet the whole card opens the stock's page (the owner, 2026-11-06: the trade's own page opens only from the sheet's expand): a stretched link under the content, never a link around the controls. */}
+      {ticker && !proposal && !onOpen ? (
+        <Link href={`/stocks/${ticker}`} aria-label={`Open ${ticker}`} className="absolute inset-0 rounded-xl" />
       ) : null}
       <TradeTitle
         title={title}
@@ -312,27 +317,33 @@ function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; anal
 }
 
 // ── The card (a page's sidebar) ──
-// The same position in the sidebar's shape, in every state: the title row
-// with the dollars ("Position · $11,409.93 value", nothing at its right),
-// the sentence large, the gain large, a rule, then the words — a proposal's
-// reason, else the newest analyst note — four lines, a click on them for
-// the rest, then the buttons at the foot's right. The click elsewhere opens
-// the Transactions tab.
+// The same position in the sidebar's shape, in every state (the owner's
+// order, 2026-11-05): the title row, the state and on a proposal its action
+// ("Position", "Proposal · Sell", "Proposal · Add 4 shares"), nothing at its
+// right; the sentence large ("Bought 27 shares at $369.25", "Buy 14 shares
+// at $53.55"); the gain large; a footnote with the value and the days held;
+// a rule; then the words — a proposal's reason, else the newest analyst
+// note — four lines, a click on them for the rest; then the buttons at the
+// foot's right. The click elsewhere opens the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
   const { position, onOpen, trades, note, ticker, analystId } = props;
-  const { pp, lead, rest, gain, title, value, dotClass, reviewSlot, proposal } = describeTrade(props);
+  const { pp, lead, rest, gain, title, action, value, dotClass, reviewSlot, proposal } = describeTrade(props);
   const click = onOpen;
   const closed = position.closed === true;
+  const proposedBuy = pp?.intent === "OPEN";
+  // A proposed buy's sentence is the proposal itself ("Buy 14 shares at $53.55"); every other sentence is the position's fact.
+  const sentence = proposedBuy ? `${lead}${rest}` : rest;
   return (
     <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", proposal && PROPOSAL_CARD, click && "cursor-pointer")} onClick={click}>
-      <TradeTitle title={`${title} · ${formatCurrency(value)} value`} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} size="sm" />
+      <TradeTitle title={action ? `${title} · ${action}` : title} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} size="sm" />
       <div className="pointer-events-none">
-        {/* The one sentence every surface says about the trade, at the gain's size and regular; the proposal's verb a shade heavier. */}
-        <p className="text-xl font-normal tabular-nums">
-          {lead ? <span className="font-medium">{lead}</span> : null}
-          {rest}
-        </p>
+        <p className="text-xl font-normal tabular-nums">{sentence}</p>
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
+        {/* The footnote: what the shares are worth (would cost, on a proposed buy), and how long we have held them. */}
+        <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+          {formatCurrency(value)} value
+          {!proposedBuy ? ` · Held ${position.daysHeld} day${position.daysHeld === 1 ? "" : "s"}` : ""}
+        </p>
       </div>
       <Separator />
       <TradesLine trades={trades} />
