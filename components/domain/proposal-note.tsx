@@ -18,7 +18,21 @@ const MAX_POLLS = 120;
 
 export const WRITING_LABEL = "Writing a summary for this proposal";
 
-export function ProposalNote({ orderId, reason, writing, expanded }: { orderId: string; reason: string | null; writing: boolean; /** When the card owns the click, it says whether the note is open; the note then takes no clicks of its own. */ expanded?: boolean }) {
+export function ProposalNote({
+  orderId,
+  reason,
+  writing,
+  expanded,
+  clamp = 2,
+}: {
+  orderId: string;
+  reason: string | null;
+  writing: boolean;
+  /** When the card owns the click, it says whether the note is open; the note then takes no clicks of its own. */
+  expanded?: boolean;
+  /** On its own: how many lines show before the click (the page card asks for four). */
+  clamp?: 2 | 4;
+}) {
   const [text, setText] = useState(reason);
   const [busy, setBusy] = useState(writing);
   const [polls, setPolls] = useState(0);
@@ -58,10 +72,17 @@ export function ProposalNote({ orderId, reason, writing, expanded }: { orderId: 
   return (
     <div
       className={cn("space-y-2 text-sm font-light text-foreground leading-relaxed", expanded === undefined && "cursor-pointer")}
-      onClick={expanded === undefined ? () => setOpen((v) => !v) : undefined}
+      onClick={
+        expanded === undefined
+          ? (e) => {
+              e.stopPropagation();
+              setOpen((v) => !v);
+            }
+          : undefined
+      }
       title={expanded === undefined ? (open ? "Collapse" : "Expand") : undefined}
     >
-      {(expanded ?? open) ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-2">{paragraphs.join(" ")}</p>}
+      {(expanded ?? open) ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className={clamp === 4 ? "line-clamp-4" : "line-clamp-2"}>{paragraphs.join(" ")}</p>}
     </div>
   );
 }

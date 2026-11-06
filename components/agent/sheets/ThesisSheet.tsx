@@ -906,6 +906,8 @@ export function ThesisBody({
         direction,
         onOpen: surface === "page" ? () => setTab("transactions") : undefined,
         trades: state.trades ?? null,
+        // The newest analyst paragraph on the stock, for the page card's foot.
+        note: (state.noted ?? [])[0]?.rationale ?? null,
       }
     : null;
   const tradeBanner = tradeProps && surface === "sheet" ? <TradeSummary look="banner" {...tradeProps} /> : null;

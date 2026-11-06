@@ -12,7 +12,13 @@
  *     buttons at its right while a proposal waits), the sentence with the
  *     date and the gain, a waiting proposal's reason under it.
  *   • "card"   — a page's sidebar card: the same title row, the gain large,
- *     a proposal's sentence, then Bought @ / Now @ (or Sold @) rows.
+ *     a proposal's sentence, then Bought @ / Now @ (or Sold @) rows, then
+ *     the words: a proposal's reason, or the newest analyst note on the
+ *     stock, four lines and a click for the rest (the owner, 2026-11-05).
+ *
+ * A waiting proposal is the agent asking (the owner, 2026-11-05): the same
+ * layout, only its colors change — a white dot that breathes fast, the word
+ * "Proposal" shimmering, and a faint gradient over the card. No amber.
  *
  * The individual fills are the Transactions tab. Every surface reads the
  * same position (the dossier's) and the same live P&L (the quote's), so the
@@ -54,6 +60,8 @@ export type TradeSummaryProps = {
   onOpen?: () => void;
   /** The thesis's trades all in; a line on the card once there is more than this one. */
   trades?: { count: number; realized: number } | null;
+  /** The newest analyst note on the stock, for the page card's foot when no proposal waits. */
+  note?: string | null;
 };
 
 /** Compact "Jun 2" date for the meta line. */
@@ -91,7 +99,7 @@ export function TradeSummary(props: TradeSummaryProps) {
 // ── What the position says, in every state ──
 // One description shared by the two looks, so the sheet and the page can
 // never disagree about the same trade:
-//   • proposal waiting → amber dot · "Proposal" · the answer buttons at the right
+//   • proposal waiting → white breathing dot · "Proposal" (shimmering) · the answer buttons at the right
 //                        "Add 4 shares: Bought N shares at $entry on Oct 5" / "Buy N shares at $entry on Nov 19"
 //   • holding          → blue dot · "Position" · "Bought N shares at $entry on Oct 5"
 //   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close on Nov 19"
@@ -127,13 +135,13 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
     lead = direction === "SHORT" ? "Short" : "Buy";
     rest = ` ${shares(pp.quantity)} at ${usd(position.avgCost)} on ${fmtTradeDate(position.openedAt)}`;
     title = "Proposal";
-    dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
+    dotClass = pp.executing ? getTradeStatusDisplay("OPEN").dotClass : PROPOSAL_DOT;
   } else if (pp) {
     // The verb carries the proposal's own size: "Add 4 shares:" before the position it adds to.
     lead = `${pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim"} ${shares(pp.quantity)}:`;
     rest = ` ${bought}`;
     title = "Proposal";
-    dotClass = getTradeStatusDisplay(pp.executing ? "OPEN" : "PENDING").dotClass;
+    dotClass = pp.executing ? getTradeStatusDisplay("OPEN").dotClass : PROPOSAL_DOT;
     gain = unrealized;
   } else if (position.closed) {
     rest =
@@ -153,15 +161,35 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
   return { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing) };
 }
 
-/** The title row the two looks share: the dot (the accordion's chevron over it on hover, on a proposal), the word, the buttons at the right. */
-function TradeTitle({ title, dotClass, proposal, expanded, action }: { title: string; dotClass: string; proposal: boolean; expanded: boolean; action: ReactNode }) {
+/** The waiting proposal's dot: white, breathing fast (`proposal-dot`, globals.css). */
+const PROPOSAL_DOT = "bg-foreground proposal-dot";
+/** The waiting proposal's card: a faint gradient over the stock cards' surface, nothing else moved. */
+const PROPOSAL_CARD = "border-foreground/15 bg-gradient-to-br from-foreground/10 to-muted/40";
+
+/** The title row the two looks share: the dot (the accordion's chevron over it on hover, where the card is one), the word (shimmering on a proposal), the buttons at the right. */
+function TradeTitle({
+  title,
+  dotClass,
+  proposal,
+  accordion,
+  expanded,
+  action,
+}: {
+  title: string;
+  dotClass: string;
+  proposal: boolean;
+  /** The card opens its note on click: the chevron over the dot on hover. */
+  accordion: boolean;
+  expanded: boolean;
+  action: ReactNode;
+}) {
   return (
     <SectionLabel className="relative" action={action}>
       {/* gap-2, not the headings' 1.5: the hover circle overhangs the dot by 6px and must not touch the word. */}
       <span className="inline-flex items-center gap-2">
         <span className="relative inline-flex size-2 shrink-0">
           <span className={cn("size-2 rounded-full", dotClass)} />
-          {proposal ? (
+          {accordion ? (
             <span
               aria-hidden
               className="absolute left-1/2 top-1/2 hidden size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-secondary text-secondary-foreground group-hover/banner:inline-flex"
@@ -170,9 +198,28 @@ function TradeTitle({ title, dotClass, proposal, expanded, action }: { title: st
             </span>
           ) : null}
         </span>
-        {title}
+        <span className={proposal ? "shimmer-text" : undefined}>{title}</span>
       </span>
     </SectionLabel>
+  );
+}
+
+/** The newest analyst note at the foot of the page card: four lines, a click for the rest. */
+function NoteClamp({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length === 0) return null;
+  return (
+    <div
+      className="space-y-2 text-sm font-light text-foreground leading-relaxed cursor-pointer"
+      onClick={(e) => {
+        e.stopPropagation();
+        setOpen((v) => !v);
+      }}
+      title={open ? "Collapse" : "Expand"}
+    >
+      {open ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-4">{paragraphs.join(" ")}</p>}
+    </div>
   );
 }
 
@@ -198,7 +245,7 @@ function TradeBanner(props: TradeSummaryProps) {
   const [expanded, setExpanded] = useState(false);
   const click = proposal ? () => setExpanded((v) => !v) : onOpen;
   return (
-    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-2", click && "cursor-pointer")} onClick={click}>
+    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-2", proposal && PROPOSAL_CARD, click && "cursor-pointer")} onClick={click}>
       {/* On the sheet the whole card opens the trade: a stretched link under the content, never a link around the controls. */}
       {position.id && !proposal && !onOpen ? (
         <Link href={`/trades/${position.id}`} aria-label="Open the trade" className="absolute inset-0 rounded-xl" />
@@ -207,6 +254,7 @@ function TradeBanner(props: TradeSummaryProps) {
         title={title}
         dotClass={dotClass}
         proposal={proposal}
+        accordion={proposal}
         expanded={expanded}
         action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
       />
@@ -227,13 +275,13 @@ function TradeBanner(props: TradeSummaryProps) {
 // ── The card (a page's sidebar) ──
 // The same position in the sidebar's shape, in every state: the title row,
 // the gain large, a proposal's sentence, then Bought @ / Now @ (or Sold @)
-// rows with the dollars. The click opens the Transactions tab; a proposal's
-// click opens its reason.
+// rows with the dollars, then the words — a proposal's reason, else the
+// newest analyst note — four lines, a click on them for the rest. The click
+// elsewhere opens the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
-  const { position, pnl, onOpen, trades } = props;
+  const { position, pnl, onOpen, trades, note } = props;
   const { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal } = describeTrade(props);
-  const [expanded, setExpanded] = useState(false);
-  const click = proposal ? () => setExpanded((v) => !v) : onOpen;
+  const click = onOpen;
   const proposedBuy = pp?.intent === "OPEN";
   const cost = position.avgCost * position.quantity;
   const closed = position.closed === true;
@@ -249,12 +297,13 @@ function TradeCard(props: TradeSummaryProps) {
         ...(closed && humanizeCloseReason(position.closeReason) ? [{ label: "Exit", value: humanizeCloseReason(position.closeReason)! }] : []),
       ];
   return (
-    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", click && "cursor-pointer")} onClick={click}>
+    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", proposal && PROPOSAL_CARD, click && "cursor-pointer")} onClick={click}>
       <TradeTitle
         title={title}
         dotClass={dotClass}
         proposal={proposal}
-        expanded={expanded}
+        accordion={false}
+        expanded={false}
         action={
           reviewSlot ? (
             <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>
@@ -281,7 +330,11 @@ function TradeCard(props: TradeSummaryProps) {
         ))}
       </div>
       <TradesLine trades={trades} />
-      {pp && !pp.executing ? <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} /> : null}
+      {pp && !pp.executing ? (
+        <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} clamp={4} />
+      ) : note ? (
+        <NoteClamp text={note} />
+      ) : null}
     </Card>
   );
 }

@@ -39,7 +39,6 @@
  */
 
 import { SectionLabel } from "@/components/domain/section-label";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { TickBar, type Tick } from "@/components/ui/gauge";
 import {
@@ -252,19 +251,24 @@ export function AnalystTargetsCard({
   );
 }
 
-/** The verdict, as a plain badge: the word only. */
+/** The verdict: a dot in its color (green, muted, red) and the word, like the keys under the bars (the owner, 2026-11-05: no filled badge). */
 function AnalystVerdictBadge({ consensus }: { consensus: { buy: number; hold: number; sell: number; total: number } }) {
   const { buy, total } = consensus;
   const buyPct = total > 0 ? buy / total : 0;
   const verdict =
     buyPct >= 0.7
-      ? { label: "Strong Buy", variant: "positive" as const }
+      ? { label: "Strong Buy", dot: "bg-positive" }
       : buyPct >= 0.5
-        ? { label: "Buy", variant: "positive" as const }
+        ? { label: "Buy", dot: "bg-positive" }
         : buyPct >= 0.3
-          ? { label: "Hold", variant: "secondary" as const }
-          : { label: "Sell", variant: "negative" as const };
-  return <Badge variant={verdict.variant}>{verdict.label}</Badge>;
+          ? { label: "Hold", dot: "bg-muted-foreground" }
+          : { label: "Sell", dot: "bg-negative" };
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className={cn("size-1.5 rounded-full", verdict.dot)} />
+      {verdict.label}
+    </span>
+  );
 }
 
 
