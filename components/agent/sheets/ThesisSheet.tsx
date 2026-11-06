@@ -949,8 +949,7 @@ export function ThesisBody({
         ) : null}
       </div>
     ) : null;
-  const belief = state.coreBelief?.trim() ? stripCitationTags(state.coreBelief) : null;
-  // Whether it needs work today (DAV-304): the one line, on the Overview and at the top of the Thesis tab.
+  // Whether it needs work today (DAV-304): the one line, at the top of the Thesis tab (moved off the Overview with the belief, the owner, 2026-11-05).
   const workFlag = (
     <WorkFlagLine
       status={state.status}
@@ -983,11 +982,6 @@ export function ThesisBody({
         </div>
       ) : null}
       {overviewStats}
-
-      {workFlag}
-
-      {/* The standing opinion, the same size as the company line on Research. */}
-      {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
 
       {/* Agent insights: the newest 5 Activity lines with a written paragraph, in the Activity tab's own design. */}
       <RecentActivity items={noted} triggers={state.triggers} onViewAll={showActivity ? () => setTab("activity") : undefined} />
