@@ -8,6 +8,7 @@
  */
 
 import { rowForModel } from "@/lib/agent/row-for-model";
+import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 
 type Row = Record<string, unknown>;
 
@@ -88,13 +89,14 @@ function asText(read: string | Row): string {
     .join("\n");
 }
 
-/** The sample read for each case on the page, by the case's id, built through rowForModel. The Writer's case is its own prompt block and is not built here. */
-export function buildReadSamples(): Record<string, string> {
+/** Each read as the model gets it, built through rowForModel from the one CRWD row: the line, the review clock's row, the row by name, and one row per situation. The Writer's case is its own prompt block and is not built here. */
+export function buildReadSamples(): { line: string; review: string; named: string; bySituation: Record<string, string> } {
+  const bySituation: Record<string, string> = {};
+  for (const code of Object.keys(SITUATIONS) as SituationCode[]) bySituation[code] = asText(rowForModel({ ...CRWD_ROW, situations: [code] }, { named: false, size: "short" }));
   return {
     line: asText(rowForModel(CRWD_ROW, { named: false, size: "line" })),
-    short: asText(rowForModel(CRWD_ROW, { named: false, size: "short" })),
-    trigger: asText(rowForModel(CRWD_ROW, { named: false, size: "short", setupLines: true })),
-    "full-rule": asText(rowForModel({ ...CRWD_ROW, situations: ["QUIET_WATCH_WOKE"] }, { named: false, size: "full" })),
-    "full-name": asText(rowForModel(CRWD_ROW, { named: true, size: "full" })),
+    review: asText(rowForModel({ ...CRWD_ROW, situations: ["REVIEW_DUE"] }, { named: false, size: "short" })),
+    named: asText(rowForModel(CRWD_ROW, { named: true, size: "full" })),
+    bySituation,
   };
 }

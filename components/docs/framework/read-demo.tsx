@@ -2,13 +2,12 @@
 
 /**
  * The read, zoomed in: a thesis on the left, the explanation on the right.
- * Chips pick one of the six scenarios an agent reads a thesis in; the fields
- * that read carries light up on the sheet and the rest fade. The sheet is one
- * stack of every field the thesis has, drawn the way the real sheet draws
- * them (status pills, the price, the plan levels, the position line, trigger
- * pills), so it skims like the sheet. Which field rides in which read is
- * lib/docs/framework-content.ts, copied from lib/agent/row-for-model.ts and
- * the writer's prompt; lib/docs/read-cases.test.ts keeps the keys honest.
+ * Chips pick one of the five ways an agent reads a thesis; in a situation,
+ * a second pick names the situation. The fields that read carries light up
+ * on the sheet and the rest fade. Under it, the grid: every field, when it
+ * is sent. Which field rides in which read is the one builder's field map
+ * (lib/agent/row-for-model.ts ROW_FIELDS), read on the server
+ * (lib/docs/read-grid.ts) and handed down; nothing here is hand-written.
  */
 
 import { useState } from "react";
@@ -19,16 +18,23 @@ import { Badge } from "@/components/ui/badge";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { PriceChange } from "@/components/ui/price-change";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   EXAMPLE_LINE,
+  LINE_KEYS,
   READ_CASES,
   READ_SIZES,
   SHEET_FIELDS,
+  WRITER_KEYS,
   fieldsLit,
-  type FrameworkSituation,
+  type FrameworkData,
+  type ReadCase,
+  type ReadWhen,
   type SheetField,
 } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
+import { useFrameworkData } from "../tool-catalog";
 import { Mono } from "../primitives";
 
 /** The Street on CRWD, in the shape the stock page's two cards take. */
@@ -123,26 +129,73 @@ function FieldBody({ f }: { f: SheetField }) {
   }
 }
 
-export function ReadDemo({ situation, samples }: { situation?: FrameworkSituation; samples?: Record<string, string> }) {
-  const [caseId, setCaseId] = useState<string>(READ_CASES[0].id);
+const WHEN_WORDS: Record<ReadWhen, string> = {
+  always: "Always",
+  situations: "Depends",
+  review: "Review clock",
+  named: "By name",
+};
+
+/** The situation the picker starts on: the one most mornings have. */
+const FIRST_SITUATION = "PROTECTIVE_SALE";
+
+export function ReadDemo({ data }: { data?: FrameworkData }) {
+  const fromContext = useFrameworkData();
+  const d = data ?? fromContext;
+  const [caseId, setCaseId] = useState<ReadCase["id"]>(READ_CASES[0].id);
+  const [code, setCode] = useState<string>(FIRST_SITUATION);
   const c = READ_CASES.find((x) => x.id === caseId) ?? READ_CASES[0];
-  const lit = fieldsLit(c);
+  const read = d?.read;
+  const situations = d?.situations ?? [];
+  const situation = situations.find((s) => s.code === code) ?? situations[0];
+
+  // The keys this read sends, from the server's map; without it (a guide page with no data) the two fixed reads only.
+  const keys: readonly string[] =
+    c.id === "line" ? LINE_KEYS
+    : c.id === "writer" ? WRITER_KEYS
+    : c.id === "situation" ? (read?.keys.bySituation[situation?.code ?? ""] ?? [])
+    : c.id === "review" ? (read?.keys.review ?? [])
+    : (read?.keys.named ?? []);
+  const lit = fieldsLit(keys);
   const carried = SHEET_FIELDS.filter((f) => lit.has(f.id));
-  const inSituation = c.size === "short" || c.size === "full";
+  const sample =
+    c.id === "line" ? (read?.samples.line ?? EXAMPLE_LINE)
+    : c.id === "situation" ? read?.samples.bySituation[situation?.code ?? ""]
+    : c.id === "review" ? read?.samples.review
+    : c.id === "named" ? read?.samples.named
+    : undefined;
+  // In a situation: the fields beyond the standing nine, named for the picked situation.
+  const standing = new Set((read?.grid ?? []).filter((g) => g.when === "always").map((g) => g.fieldId));
+  const extra = c.id === "situation" ? carried.filter((f) => !standing.has(f.id)) : [];
   const sizeWords =
     c.size === "line" ? `One line, ${READ_SIZES.line}.`
-    : c.size === "short" ? `The short row, ${READ_SIZES.short}.`
+    : c.size === "short" ? `The row, ${READ_SIZES.short}.`
     : c.size === "full" ? `The full row, ${READ_SIZES.full}.`
     : "The existing thesis, in the Writer's own prompt.";
+  const instructions = c.id === "situation" ? situation : c.id === "review" ? situations.find((s) => s.code === "REVIEW_DUE") : undefined;
 
   return (
     <div className="flex flex-col gap-4">
-      <ChipTabs
-        options={READ_CASES.map((x) => ({ value: x.id, label: x.chip, title: x.title }))}
-        value={c.id}
-        onChange={(v) => { if (v != null) setCaseId(v); }}
-        clearable={false}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <ChipTabs
+          options={READ_CASES.map((x) => ({ value: x.id, label: x.chip, title: x.title }))}
+          value={c.id}
+          onChange={(v) => { if (v != null) setCaseId(v); }}
+          clearable={false}
+        />
+        {c.id === "situation" && situations.length > 0 ? (
+          <Select value={situation?.code ?? ""} onValueChange={(v) => { if (v) setCode(v); }}>
+            <SelectTrigger size="sm" aria-label="The situation">
+              <SelectValue>{situation?.name ?? "the situation"}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {situations.map((s) => (
+                <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+      </div>
 
       <div
         className="grid gap-4 rounded-2xl border bg-muted/40 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
@@ -201,6 +254,12 @@ export function ReadDemo({ situation, samples }: { situation?: FrameworkSituatio
             <div className="flex flex-col gap-0.5">
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What the agent is sent</span>
               <p className="text-foreground">{sizeWords} {c.how}</p>
+              {c.id === "situation" && situation ? (
+                <p className="text-foreground">
+                  With <span className="font-medium">{situation.name}</span>:{" "}
+                  {extra.length ? extra.map((f) => f.label.toLowerCase()).join(" · ") : "the standing fields only"}.
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why that much</span>
@@ -211,27 +270,63 @@ export function ReadDemo({ situation, samples }: { situation?: FrameworkSituatio
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">As the model reads it</span>
             {/* Built from the row the sheet shows, through the one builder (lib/docs/read-sample.ts); the Writer's case is its own prompt block. */}
-            {c.size === "line" ? (
+            {c.id === "line" ? (
               <Mono as="pre" className="whitespace-pre-wrap break-words rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-foreground">
-                {samples?.line ?? EXAMPLE_LINE}
+                {sample}
               </Mono>
             ) : (
               <Mono as="pre" className="max-h-40 overflow-hidden whitespace-pre-wrap break-words rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-foreground [mask-image:linear-gradient(to_bottom,black_60%,transparent)]">
-                {samples?.[c.id] ?? carried.map((f) => `${f.label.toLowerCase()}: ${f.value}`).join("\n")}
+                {sample ?? carried.map((f) => `${f.label.toLowerCase()}: ${f.value}`).join("\n")}
               </Mono>
             )}
-            {inSituation && situation ? (
+            {instructions ? (
               <div className="flex flex-col gap-1 rounded-lg border border-dashed border-sky-400 bg-sky-400/10 p-3">
                 <span className="text-xs font-medium text-foreground">
-                  + the situation&apos;s instructions, once: {situation.name}{" "}
-                  <span className="text-muted-foreground">· {situation.chars.toLocaleString("en-US")} characters, from the situations table</span>
+                  + the situation&apos;s instructions, once: {instructions.name}{" "}
+                  <span className="text-muted-foreground">· {instructions.chars.toLocaleString("en-US")} characters, from the situations table</span>
                 </span>
-                <span className="text-sm text-muted-foreground">&ldquo;{situation.opening}&rdquo;</span>
+                <span className="text-sm text-muted-foreground">&ldquo;{instructions.opening}&rdquo;</span>
               </div>
             ) : null}
           </div>
         </div>
       </div>
+
+      {/* The grid: every field, when it is sent on a stock in a situation. Read off the builder's field map on the server. */}
+      {read ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">
+            Every field on the sheet and when a stock in a situation sends it. The review clock and a read by name carry every field above them too; a quiet stock sends only its line.
+          </p>
+          <div className="overflow-x-auto rounded-xl border bg-background">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Field</TableHead>
+                  <TableHead>When</TableHead>
+                  <TableHead>With which situations</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {read.grid.map((g) => {
+                  const f = SHEET_FIELDS.find((x) => x.id === g.fieldId);
+                  return (
+                    <TableRow key={g.fieldId}>
+                      <TableCell className="text-foreground">{f?.label ?? g.fieldId}</TableCell>
+                      <TableCell>
+                        <Badge variant={g.when === "always" ? "default" : "secondary"} className="font-normal">{WHEN_WORDS[g.when]}</Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {g.when === "situations" ? g.situations.map((s) => s.name).join(" · ") : g.when === "review" ? "the review clock, and by name" : g.when === "named" ? "only when asked for by name" : "every stock in a situation"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
