@@ -59,7 +59,7 @@ export function TickBar({
       {ticks.map((t, i) => (
         <span
           key={i}
-          className={cn("w-0.5 rounded-full", t.color)}
+          className={cn("w-0.5 rounded-xs", t.color)}
           style={{ height: t.heightPx ?? (t.tall ? height : baseHeight) }}
         />
       ))}

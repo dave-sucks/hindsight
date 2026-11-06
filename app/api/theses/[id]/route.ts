@@ -33,6 +33,8 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 import { notedItems, recentItems, serializeFeedItem } from "@/lib/thesis/activity-feed";
+import { fillFacts } from "@/lib/stocks/stock-history";
+import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 
 /** How far back the sheet reads the feed: enough lines to find the newest 5 with a paragraph. */
 const FEED_WINDOW = 60;
@@ -286,6 +288,58 @@ export async function GET(
     }
   }
 
+  // The thesis's trades: the pinned one on the trade page, else every
+  // position this analyst has had in the stock. Their fills are the
+  // Transactions tab; their closed results, summed, are the all-trades number.
+  // Paper and live inventories never mix: the thesis's trades are the ones in the environment the switcher is on.
+  const environment = await getCurrentEnvironment();
+  const txPositions =
+    pinnedPositionId || lookupAnalystId
+      ? await prisma.position.findMany({
+          where: pinnedPositionId
+            ? { id: pinnedPositionId, accountId }
+            : { accountId, analystId: lookupAnalystId!, symbol: thesis.ticker, environment, status: { not: "CANCELLED" } },
+          select: {
+            id: true,
+            direction: true,
+            status: true,
+            avgCost: true,
+            quantity: true,
+            realizedPnl: true,
+            closePrice: true,
+            closeReason: true,
+            openedAt: true,
+            closedAt: true,
+            analyst: { select: { id: true, name: true } },
+            orders: {
+              where: { status: { in: ["FILLED", "AWAITING_APPROVAL"] } },
+              select: { id: true, side: true, intent: true, status: true, quantity: true, filledQty: true, filledPrice: true, filledAt: true, createdAt: true, rationale: true, closeReason: true },
+            },
+          },
+        })
+      : [];
+  const fills = fillFacts(
+    txPositions.map((p) => ({
+      id: p.id,
+      direction: p.direction,
+      status: p.status,
+      avgCost: Number(p.avgCost),
+      quantity: Number(p.quantity),
+      realizedPnl: p.realizedPnl != null ? Number(p.realizedPnl) : null,
+      closePrice: p.closePrice != null ? Number(p.closePrice) : null,
+      closeReason: p.closeReason,
+      openedAt: p.openedAt,
+      closedAt: p.closedAt,
+      analyst: p.analyst,
+      thesisId: thesis.id,
+      orders: p.orders.map((o) => ({ ...o, quantity: Number(o.quantity), filledQty: o.filledQty != null ? Number(o.filledQty) : null, filledPrice: o.filledPrice != null ? Number(o.filledPrice) : null })),
+    })),
+  );
+  const trades =
+    txPositions.length > 0
+      ? { count: txPositions.length, realized: txPositions.reduce((sum, p) => sum + (p.status === "CLOSED" && p.realizedPnl != null ? Number(p.realizedPnl) : 0), 0) }
+      : null;
+
   return NextResponse.json({
     thesisId: thesis.id,
     ticker: thesis.ticker,
@@ -334,6 +388,8 @@ export async function GET(
     // back to the analyst that owns it ("edit it where it lives").
     analystId: thesis.researchRun?.agentConfigId ?? null,
     position,
+    fills,
+    trades,
     analystName: thesis.researchRun?.agentConfig?.name ?? null,
     company: thesis.company,
     coreBelief: thesis.coreBelief,

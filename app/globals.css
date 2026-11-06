@@ -342,8 +342,13 @@
   animation: agent-watch-pulse 4s ease-in-out infinite;
 }
 
+/* A waiting proposal's dot: the same breath, fast — the agent is asking. */
+.proposal-dot {
+  animation: agent-watch-pulse 1.2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .agent-watch-dot { animation: none; }
+  .agent-watch-dot, .proposal-dot { animation: none; }
 }
 
 /* ── Single breathing dot — the one and only in-flight indicator ──────── */

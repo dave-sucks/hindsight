@@ -10,7 +10,8 @@
  *    programmatically without the card trigger.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLivePoll } from "@/hooks/useLivePoll";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { EarningsCard } from "@/components/domain/earnings-card";
@@ -31,6 +32,8 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { ThesisHeader } from "@/components/domain/thesis-header";
 import { TradeSummary } from "@/components/domain/trade-summary";
+import { Transactions } from "@/components/trades/Transactions";
+import type { FillFacts } from "@/lib/stocks/stock-history";
 import type { RangeMove } from "@/components/stocks/StockPriceChart";
 import { formatCurrency } from "@/lib/format";
 import type { SourceChipData } from "@/components/chat/SourceChip";
@@ -59,7 +62,9 @@ import {
 } from "@/components/domain/analyst-consensus";
 import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import type { ThesisStatus } from "@/lib/thesis-status";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ConvictionChip, StockRow } from "@/components/domain/thesis-header";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -226,15 +231,31 @@ function WorkFlagLine({
   );
 }
 
-/** "Written Sep 13 at $38.38": the date the research writer wrote the belief, and the price its own pull read. */
-function WrittenUpLine({ writtenUp }: { writtenUp: ThesisDossier["writtenUp"] }) {
-  if (!writtenUp) return null;
-  const at = new Date(writtenUp.at);
-  if (!Number.isFinite(at.getTime())) return null;
+/**
+ * "Written Sep 13 at $38.38 · View thesis": the date the research writer
+ * wrote the belief and the price its own pull read, then a link to the
+ * thesis's fullest page when there is one further to go (the owner,
+ * 2026-11-05): the trade's page from the sheet or the stock page, the stock
+ * page from the sheet with no trade; nothing on the trade page itself.
+ */
+function WrittenUpLine({ writtenUp, href }: { writtenUp: ThesisDossier["writtenUp"]; href?: string | null }) {
+  const at = writtenUp ? new Date(writtenUp.at) : null;
+  const written = at && Number.isFinite(at.getTime()) ? at : null;
+  if (!written && !href) return null;
   return (
     <p className="text-xs text-muted-foreground tabular-nums">
-      Written {at.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-      {writtenUp.price != null ? ` at $${writtenUp.price.toFixed(2)}` : ""}
+      {written ? (
+        <>
+          Written {written.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          {writtenUp?.price != null ? ` at $${writtenUp.price.toFixed(2)}` : ""}
+        </>
+      ) : null}
+      {written && href ? " · " : null}
+      {href ? (
+        <Link href={href} className="underline underline-offset-4 hover:text-foreground">
+          View thesis
+        </Link>
+      ) : null}
     </p>
   );
 }
@@ -355,12 +376,13 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * The Research tab, in the shape it has always had — a heading, labelled
- * sections exposed on the tab, one accordion at the foot — with the fields
- * placed by the owner's order (2026-11-02, labels 2026-11-03): the company
- * (two sentences) as the heading, under "About <company>"; the belief under
- * it as "Core thesis" in every state, with the write-up's date and price;
- * the bull case, the bear case and what would prove us wrong exposed as
+ * The Thesis tab (Research until 2026-11-05): labelled sections exposed on
+ * the tab, one accordion at the foot, with the fields placed by the owner's
+ * order (2026-11-02, labels 2026-11-03; the company's two sentences moved
+ * to the Overview 2026-11-05). It opens as the Overview's foot does: the
+ * work flag, then the belief at the Overview's size with no label, then
+ * the write-up's date and price with the View thesis link; the bull case,
+ * the bear case and what would prove us wrong exposed as
  * bullets; the filings in their old place under the top block; then the
  * accordion, with its "Updated 50d ago" header row as before, holding the
  * key assumptions, where we differ from the street, and the conviction's
@@ -368,7 +390,19 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
  * citation tags removed. A row written before the company line shows
  * nothing there, never a placeholder.
  */
-function ResearchView({ state, filings, companyName }: { state: ThesisDossier; filings: FilingsResponse | null; companyName: string | null }) {
+function ResearchView({
+  state,
+  filings,
+  flag,
+  href,
+}: {
+  state: ThesisDossier;
+  filings: FilingsResponse | null;
+  /** The work flag line, the same element the Overview draws. */
+  flag: ReactNode;
+  /** Where View thesis goes; null when this is the thesis's fullest page. */
+  href: string | null;
+}) {
   const clean = (v: string | null | undefined) => (v?.trim() ? stripCitationTags(v) : null);
   const company = clean(state.company);
   const belief = clean(state.coreBelief);
@@ -387,20 +421,12 @@ function ResearchView({ state, filings, companyName }: { state: ThesisDossier; f
   }
   return (
     <>
-      {company ? (
-        <Section label={`About ${companyName?.trim() || state.ticker}`}>
-          <p className="text-lg font-normal leading-relaxed">{company}</p>
-        </Section>
-      ) : null}
-
-      {belief ? (
-        <Section label="Core thesis">
-          <p className="text-sm text-foreground leading-relaxed">{belief}</p>
-          <WrittenUpLine writtenUp={state.writtenUp} />
-        </Section>
-      ) : company ? (
-        <WrittenUpLine writtenUp={state.writtenUp} />
-      ) : null}
+      {/* The flag, the belief and its footnote close together, one block (the owner, 2026-11-05). */}
+      <div className="space-y-2">
+        {flag}
+        {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
+        <WrittenUpLine writtenUp={state.writtenUp} href={href} />
+      </div>
 
       {filings ? <FilingsBlock data={filings} /> : null}
 
@@ -781,31 +807,55 @@ export function ThesisBody({
   thesis_id,
   ticker,
   surface,
+  displayName,
+  stockHref,
   aside,
   moreTabs,
-  afterActivity,
+  overviewStats,
+  transactions,
+  showTriggers = true,
+  showActivity = true,
 }: {
   data: ThesisSheetData & { state: ThesisDossier };
   thesis_id?: string;
   ticker: string;
   surface: "sheet" | "page";
+  /** The company's name for the stock row; the quote's when omitted. */
+  displayName?: string;
+  /** Where the stock row links; null on the stock's own page. */
+  stockHref?: string | null;
   /**
    * The page's right-hand cards. Rendered beside the tab panels, under the
    * tab row, so they start level with the chart instead of with the price.
    */
   aside?: ReactNode;
-  /** More tabs after Activity (the stock page's News). */
+  /** More tabs after Transactions (the stock page's Fundamentals and News). */
   moreTabs?: Array<{ label: string; content: ReactNode }>;
-  /** Under the Activity tab's list (the stock page's history of the stock). */
-  afterActivity?: ReactNode;
+  /** The stock page's range bars and key stats, under the company line on Overview. */
+  overviewStats?: ReactNode;
+  /** The Transactions tab's fills. Omitted, the thesis's own trades' fills (the route's). */
+  transactions?: FillFacts[];
+  /** The stock page hides the plan: it is the stock, not the trade. */
+  showTriggers?: boolean;
+  /** The stock page has no Activity tab: the thesis's list is the thesis's. */
+  showActivity?: boolean;
 }) {
   const { state, quote, quoteLoading, earnings, filings, candles, candlesLoading, coverage, coverageLoading, refresh } = data;
   const extraTabs = moreTabs ?? [];
   // What the chart's selected range shows; the price row prints it.
   const [move, setMove] = useState<RangeMove | null>(null);
-  // The open tab: Overview's "View all" opens Activity.
-  const [tab, setTab] = useState(0);
-  const ACTIVITY_TAB = 2;
+  // The open tab: Overview's "View all" opens Activity; the position card opens Transactions.
+  const [tab, setTab] = useState("overview");
+  // The stock row sticks to the top; once the price row has scrolled under it, the row shows the price instead of the name.
+  const priceRowRef = useRef<HTMLDivElement>(null);
+  const [priceScrolledOff, setPriceScrolledOff] = useState(false);
+  useEffect(() => {
+    const el = priceRowRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setPriceScrolledOff(!e.isIntersecting), { rootMargin: "-48px 0px 0px 0px", threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   // ── Derived — durable from `state`, live from the hydration states ────────
   const liveStatus = state.status as ThesisStatus;
@@ -844,30 +894,28 @@ export function ThesisBody({
       <AnalystCards coverage={coverage} currentPrice={quote?.currentPrice ?? null} entry={position && !position.closed ? position.avgCost : null} />
     );
 
-  // The trade, in its two looks. The banner sits under the price: on the
-  // sheet in every state, on the page only while a proposal waits (the card
-  // in the sidebar carries the held numbers there). Both read the same
-  // position and the same live P&L, so they can't disagree.
-  const tradeBanner =
-    position && (surface === "sheet" || pendingProposal != null) ? (
-      <TradeSummary
-        look="banner"
-        position={position}
-        pnl={quote?.positionPnl ?? null}
-        pendingProposal={pendingProposal}
-        direction={direction}
-      />
-    ) : null;
-  const tradeCard =
-    position && surface === "page" ? (
-      <TradeSummary
-        look="card"
-        position={position}
-        pnl={quote?.positionPnl ?? null}
-        pendingProposal={pendingProposal}
-        direction={direction}
-      />
-    ) : null;
+  // The active position, one element in two looks (the owner's design,
+  // 2026-11-05): the banner under the price on the sheet, the card at the top
+  // of a page's sidebar, each in every state. On a page its click opens the
+  // Transactions tab; on the sheet it opens the trade's page.
+  const tradeProps = position
+    ? {
+        position,
+        pnl: quote?.positionPnl ?? null,
+        pendingProposal,
+        direction,
+        onOpen: surface === "page" ? () => setTab("transactions") : undefined,
+        trades: state.trades ?? null,
+        // The newest analyst paragraph on the stock, for the page card's foot.
+        note: (state.noted ?? [])[0]?.rationale ?? null,
+        ticker,
+        analystId: state.analystId,
+      }
+    : null;
+  const tradeBanner = tradeProps && surface === "sheet" ? <TradeSummary look="banner" {...tradeProps} /> : null;
+  const tradeCard = tradeProps && surface === "page" ? <TradeSummary look="card" {...tradeProps} /> : null;
+  // The Transactions tab's fills: the stock page hands in the stock's; the sheet and the trade page have the thesis's.
+  const fills: FillFacts[] = transactions ?? state.fills ?? [];
 
   // The stock cards — the plan's levels, Wall Street, the earnings record —
   // built once. With a sidebar (the page) they go there; without one (the
@@ -879,23 +927,47 @@ export function ThesisBody({
     </>
   );
 
-  // The page's two columns: the tab's content on the left, the cards on the
-  // right. Each tab opens its own pair under the tab bar — on Overview under
-  // the price row too — so the cards start level with the chart. Only the
-  // open tab is mounted, so the cards render once.
+  // The page's two columns: the chart and the tabs on the left, the cards on
+  // the right. The price row sits above both, with the header, so the chart
+  // and the first card start level (the owner, 2026-11-05).
   // The stock's newest 8 Activity lines: what the agents are handed, as Activity rows.
   const recent = state.recent ?? [];
   const noted = state.noted ?? [];
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
-  // The standing opinion, first thing under the chips on Overview.
-  const belief = state.coreBelief?.trim() ? stripCitationTags(state.coreBelief) : null;
-  const tabOptions = [
-    { value: "0", label: "Overview" },
-    { value: "1", label: "Research" },
-    { value: String(ACTIVITY_TAB), label: "Activity" },
-    ...extraTabs.map((t, i) => ({ value: String(ACTIVITY_TAB + 1 + i), label: t.label })),
-  ];
+  // The company first (the owner, 2026-11-05), then the standing opinion, under the chips on Overview.
+  const company = state.company?.trim() ? stripCitationTags(state.company) : null;
+  const website = quote?.website ?? null;
+  const host = website ? website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null;
+  const facts = [quote?.exchange, quote?.industry].filter((v): v is string => Boolean(v?.trim()));
+  const conviction = (state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
+  const factChips =
+    conviction || facts.length > 0 || host ? (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <ConvictionChip conviction={conviction} />
+        {facts.map((f) => (
+          <Badge key={f} variant="fact" shape="square">{f}</Badge>
+        ))}
+        {host && website ? (
+          <Badge variant="fact" shape="square" render={<a href={website} target="_blank" rel="noopener noreferrer" />}>
+            {host}
+            <ExternalLink />
+          </Badge>
+        ) : null}
+      </div>
+    ) : null;
+  // Whether it needs work today (DAV-304): the one line, at the top of the Thesis tab (moved off the Overview with the belief, the owner, 2026-11-05).
+  const workFlag = (
+    <WorkFlagLine
+      status={state.status}
+      needsAction={quote?.needsAction ?? null}
+      situations={quote?.situations ?? []}
+      quoteLoading={quoteLoading}
+      quoteFailed={!quoteLoading && quote == null}
+    />
+  );
+  // Where the Thesis tab's View thesis goes: the stock's page (the owner, 2026-11-06: the trade's own page opens only from the sheet's expand); nothing when this is the stock's page.
+  const thesisHref = stockHref === null ? null : `/stocks/${ticker}`;
   const sideColumn =
     surface === "page" ? (
       <div className="hidden lg:block space-y-4">
@@ -905,29 +977,114 @@ export function ThesisBody({
       </div>
     ) : null;
 
-  return (
-    <div className={columns}>
-    <div className="min-w-0">
-    <Tabs value={tab} onValueChange={(v) => setTab(Number(v))} className="gap-4">
-      {/* ── Above the tabs on every tab (the owner's order, 2026-11-04): the price, the trade, the chart ── */}
-      {/* ── Live price + the selected range's move ───────────── */}
-      {/* Hydrates from /quote after the dossier paints: skeleton while in
-          flight, nothing if the vendor failed (currentPrice null). */}
-      {quoteLoading ? (
-        <Skeleton className="h-7 w-32" />
-      ) : quote?.currentPrice != null ? (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-          <span className="text-xl font-semibold tabular-nums">
-            {formatCurrency(quote.currentPrice)}
-          </span>
-          {shownMove ? (
-            <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" />
-          ) : null}
+  // ── The tabs, in order: Overview · Thesis · Activity (not on the stock page) · Transactions · the page's own ──
+  const overviewContent = (
+    <>
+      {/* Who the company is: the Writer's two sentences, moved here from Research, at the belief's size; the conviction and the stock's facts as chips close under it (the owner, 2026-11-05). */}
+      {company || factChips ? (
+        <div className="space-y-2">
+          {company ? <p className="text-lg font-normal text-foreground leading-relaxed">{company}</p> : null}
+          {factChips}
         </div>
       ) : null}
+      {overviewStats}
+
+      {/* Agent insights: the newest 5 Activity lines with a written paragraph, in the Activity tab's own design. */}
+      <RecentActivity items={noted} triggers={state.triggers} onViewAll={showActivity ? () => setTab("activity") : undefined} />
+
+      {/* ── The plan: the triggers (the trade's, not the stock's) ── */}
+      {showTriggers && thesis_id ? (
+        <ThesisTriggersSection
+          thesisId={thesis_id}
+          data={state}
+          direction={direction}
+          editable={!isPass && (liveStatus === "HOLDING" || liveStatus === "WATCHING")}
+          onChanged={refresh}
+          streetMissing={!coverageLoading && coverage?.priceTargets == null}
+        />
+      ) : null}
+
+      {surface === "sheet" ? stockCards : null}
+    </>
+  );
+  const activityContent = (
+    <>
+      {thesis_id ? (
+        <ThesisTimelineSection
+          thesisId={thesis_id}
+          recentIds={recent.map((r) => r.id)}
+          triggers={state.triggers}
+          provenance={state.sourceKind ? { sourceKind: state.sourceKind, rationale: state.sourceRationale ?? null } : null}
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">No activity yet — this thesis hasn&apos;t been persisted.</p>
+      )}
+    </>
+  );
+  const tabs: Array<{ value: string; label: string; content: ReactNode }> = [
+    { value: "overview", label: "Overview", content: overviewContent },
+    { value: "thesis", label: "Thesis", content: <ResearchView state={state} filings={filings} flag={workFlag} href={thesisHref} /> },
+    ...(showActivity ? [{ value: "activity", label: "Activity", content: activityContent }] : []),
+    {
+      value: "transactions",
+      label: "Transactions",
+      content: (
+        <Transactions
+          ticker={ticker}
+          fills={fills}
+          openThesis={surface === "page"}
+          held={position && !position.closed && pendingProposal?.intent !== "OPEN" ? { shares: position.quantity, avgCost: position.avgCost } : null}
+          currentPrice={quote?.currentPrice ?? null}
+        />
+      ),
+    },
+    ...extraTabs.map((t) => ({ value: t.label.toLowerCase(), label: t.label, content: t.content })),
+  ];
+  const tabOptions = tabs.map((t) => ({ value: t.value, label: t.label }));
+
+  const condensedPrice =
+    quote?.currentPrice != null ? (
+      <div className="flex items-center gap-2 whitespace-nowrap">
+        <span className="text-lg font-normal tabular-nums">{formatCurrency(quote.currentPrice)}</span>
+        {shownMove ? <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="lg" /> : null}
+      </div>
+    ) : null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* ── The stock row, stuck to the top as you scroll (the owner, 2026-11-05); the price takes the name's place once the price row is under it ── */}
+      <StockRow
+        ticker={ticker}
+        displayName={displayName ?? quote?.companyName ?? ticker}
+        href={stockHref}
+        condensed={priceScrolledOff}
+        price={condensedPrice}
+        className="sticky top-0 z-20 -my-2 bg-background py-2"
+      />
+
+      {/* ── The price closes the header (the owner's order, 2026-11-05): the live price and the selected range's move, one size up on desktop, above both columns; on the sheet the trade under it ── */}
+      {/* Hydrates from /quote after the dossier paints: skeleton while in
+          flight, nothing if the vendor failed (currentPrice null). */}
+      <div ref={priceRowRef}>
+        {quoteLoading ? (
+          <Skeleton className="h-7 w-32 sm:h-8" />
+        ) : quote?.currentPrice != null ? (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+            <span className="text-xl font-semibold tabular-nums sm:text-2xl">
+              {formatCurrency(quote.currentPrice)}
+            </span>
+            {shownMove ? (
+              <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" className="sm:text-2xl sm:[&_svg]:size-6" />
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       {tradeBanner}
 
-      {/* ── Price chart (annotated) ───────────────────────────── */}
+    <div className={columns}>
+    <div className="min-w-0">
+    <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-4">
+      {/* ── Price chart (annotated), the first thing in the column ─── */}
       {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
           markers. Its selected range's move prints in the price row above,
           not inside the chart. */}
@@ -954,80 +1111,17 @@ export function ThesisBody({
       ) : null}
 
       {/* The sections, as chips: the chart is always worth the screen; the chips pick what sits under it. */}
-      <ChipTabs options={tabOptions} value={String(tab)} onChange={(v) => { if (v != null) setTab(Number(v)); }} clearable={false} />
+      <ChipTabs options={tabOptions} value={tab} onChange={(v) => { if (v != null) setTab(String(v)); }} clearable={false} />
 
-      {/* ── Overview: the belief → the insights → the plan ── */}
-      <TabsContent value={0} className="space-y-6">
-      {/* ── Whether it needs work today (DAV-304) ── */}
-      <WorkFlagLine
-        status={state.status}
-        needsAction={quote?.needsAction ?? null}
-        situations={quote?.situations ?? []}
-        quoteLoading={quoteLoading}
-        quoteFailed={!quoteLoading && quote == null}
-      />
-
-      {/* The standing opinion, the same size as the company line on Research. */}
-      {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
-
-
-      {/* Agent insights: the newest 5 Activity lines with a written paragraph, in the Activity tab's own design. */}
-      <RecentActivity items={noted} triggers={state.triggers} onViewAll={() => setTab(ACTIVITY_TAB)} />
-
-      {/* ── The plan: the triggers ── */}
-      {thesis_id ? (
-        <ThesisTriggersSection
-          thesisId={thesis_id}
-          data={state}
-          direction={direction}
-          editable={
-            !isPass && (liveStatus === "HOLDING" || liveStatus === "WATCHING")
-          }
-          onChanged={refresh}
-          streetMissing={!coverageLoading && coverage?.priceTargets == null}
-        />
-      ) : null}
-
-      {surface === "sheet" ? stockCards : null}
-      </TabsContent>
-
-      {/* ── Research: the claim and the write-up behind it ─────── */}
-      <TabsContent value={1} className="space-y-6">
-        <ResearchView state={state} filings={filings} companyName={quote?.companyName ?? null} />
-      </TabsContent>
-
-      {/* ── Activity tab: the whole list ───────────────────────── */}
-      <TabsContent value={ACTIVITY_TAB} className="space-y-6">
-          {thesis_id ? (
-            <ThesisTimelineSection
-              thesisId={thesis_id}
-              recentIds={recent.map((r) => r.id)}
-              triggers={state.triggers}
-              provenance={
-                state.sourceKind
-                  ? {
-                      sourceKind: state.sourceKind,
-                      rationale: state.sourceRationale ?? null,
-                    }
-                  : null
-              }
-            />
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              No activity yet — this thesis hasn&apos;t been persisted.
-            </p>
-          )}
-          {afterActivity}
-      </TabsContent>
-
-      {extraTabs.map((t, i) => (
-        <TabsContent key={t.label} value={ACTIVITY_TAB + 1 + i} className="space-y-6">
+      {tabs.map((t) => (
+        <TabsContent key={t.value} value={t.value} className="space-y-12">
           {t.content}
         </TabsContent>
       ))}
     </Tabs>
     </div>
     {sideColumn}
+    </div>
     </div>
   );
 }
@@ -1067,16 +1161,11 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         invalidatedAt={state.invalidatedAt ?? null}
         invalidReason={state.invalidReason ?? null}
       />
-      <div className="space-y-4">
+      <div className="space-y-3">
         <ThesisHeader
           ticker={ticker}
-          // Identity rides in the payload (StockInfo cache via quote) — one
-          // source; the bare ticker is the degenerate case when that failed.
-          displayName={data.quote?.companyName ?? ticker}
-          exchange={data.quote?.exchange ?? null}
           status={state.status}
           agentWatchDays={agentWatchDays(state.triggers)}
-          conviction={(state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
           analystId={state.analystId}
           thesisId={thesis_id}
           onSent={data.refresh}

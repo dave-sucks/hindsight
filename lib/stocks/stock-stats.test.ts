@@ -1,4 +1,4 @@
-import { keyStatColumns, financialStatSections } from "./stock-stats";
+import { rangeBars, keyStats, companyFactRows, fundamentals } from "./stock-stats";
 
 // A slice of Finnhub's /stock/metric for NVDA, 2026-11-02.
 const nvda = {
@@ -20,49 +20,73 @@ const nvda = {
   yearToDatePriceReturnDaily: 9.7265,
   "priceRelativeToS&P50052Week": -10.3006,
 };
-const quote = { o: 204.5, h: 206.1, l: 201.2 };
+const quote = { o: 204.5, h: 206.1, l: 201.2, c: 203.8 };
 
-describe("keyStatColumns", () => {
-  it("is nine cells down three columns, in dollars, from the session's quote and the metric map", () => {
-    const cols = keyStatColumns(quote, nvda, 4_931_824_000_000);
-    expect(cols.map((c) => c.length)).toEqual([3, 3, 3]);
-    expect(cols[0][0]).toEqual({ label: "Open", value: "$204.50" });
-    expect(cols[1][0]).toEqual({ label: "Market cap", value: "$4.93T" });
-    expect(cols[1][2]).toEqual({ label: "EPS", value: "$7.91" });
-    expect(cols[2][2]).toEqual({ label: "Avg volume", value: "120.03M" });
+describe("the Overview's block", () => {
+  it("is two range bars, today's and the year's, around the current price", () => {
+    expect(rangeBars(quote, nvda)).toEqual([
+      { label: "Today", low: 201.2, high: 206.1, current: 203.8 },
+      { label: "52 week", low: 164.27, high: 243.37, current: 203.8 },
+    ]);
+  });
+
+  it("has six key stats one row each, in dollars, from the metric map", () => {
+    const rows = keyStats(nvda, 4_931_824_000_000);
+    expect(rows.map((s) => s.label)).toEqual(["Market cap", "P/E", "EPS", "Volume, 10-day avg", "Volume, 3-month avg", "Beta"]);
+    expect(rows[0]).toEqual({ label: "Market cap", value: "$4.93T" });
+    expect(rows[2]).toEqual({ label: "EPS", value: "$7.91" });
+    expect(rows[4]).toEqual({ label: "Volume, 3-month avg", value: "120.03M" });
+    expect(rows[5]).toEqual({ label: "Beta", value: "2.28" });
   });
 
   it("prints — for what it has not got, never a guess", () => {
-    const cols = keyStatColumns(null, null, null);
-    expect(cols.flat().every((s) => s.value === "—")).toBe(true);
+    expect(rangeBars(null, null)).toEqual([
+      { label: "Today", low: null, high: null, current: null },
+      { label: "52 week", low: null, high: null, current: null },
+    ]);
+    expect(keyStats(null, null).every((s) => s.value === "—")).toBe(true);
   });
 });
 
-describe("financialStatSections", () => {
-  it("keeps the stats Finnhub has and drops the rest, section by section", () => {
-    const sections = financialStatSections(nvda, 4_931_824_000_000);
-    const valuation = sections.find((s) => s.label === "Valuation")!;
-    expect(valuation.columns.flat().map((s) => s.label)).toEqual([
-      "Market cap",
-      "Enterprise value",
-      "P/E (TTM)",
-      "Forward P/E",
-      "PEG",
+describe("the Fundamentals tab", () => {
+  it("is the company's facts, the next report as a day", () => {
+    const rows = companyFactRows(
+      { finnhubIndustry: "Semiconductors", country: "US", ipo: "1999-01-22", shareOutstanding: 24300 },
+      "NASDAQ",
+      "2026-02-25",
+    );
+    expect(rows).toEqual([
+      { label: "Industry", value: "Semiconductors" },
+      { label: "Exchange", value: "NASDAQ" },
+      { label: "Country", value: "US" },
+      { label: "IPO", value: "1999-01-22" },
+      { label: "Shares outstanding", value: "24.30B" },
+      { label: "Next earnings", value: "Feb 25" },
     ]);
-    expect(valuation.columns.flat().find((s) => s.label === "Forward P/E")!.value).toBe("14.47");
-    // Growth has one number; Balance sheet and Per share partly; Profitability one.
-    expect(sections.find((s) => s.label === "Growth")!.columns.flat()).toEqual([
-      { label: "Revenue, TTM vs year ago", value: "+83.4%" },
+    expect(companyFactRows(null, null, null).map((r) => r.value)).toEqual(["—", "—", "—", "—", "—", "—"]);
+  });
+});
+
+describe("fundamentals", () => {
+  it("keeps the stats Finnhub has and drops the rest, group by group", () => {
+    const f = fundamentals(nvda, 4_931_824_000_000);
+    expect(f.valuation.map((s) => s.label)).toEqual(["Market cap", "Enterprise value", "P/E (TTM)", "Forward P/E", "PEG"]);
+    expect(f.valuation[3]).toEqual({ label: "Forward P/E", value: "14.47" });
+    expect(f.growth).toEqual([{ label: "Revenue, TTM", value: "+83.4%" }]);
+    expect(f.priceReturns.map((s) => s.value)).toEqual(["+0.9%", "+9.7%", "−10.3%"]);
+    // A margin carries its number for the bar's length.
+    expect(f.margins).toEqual([{ label: "Gross margin", value: "74.7%", n: 74.67 }]);
+    expect(f.returns).toEqual([]);
+    expect(f.balanceSheet).toEqual([]);
+    expect(f.perShare).toEqual([
+      { label: "EPS (TTM)", value: "$7.91" },
+      { label: "Dividend yield", value: "0.03%" },
     ]);
-    expect(sections.find((s) => s.label === "Price")!.columns.flat().map((s) => s.value)).toEqual([
-      "+0.9%",
-      "+9.7%",
-      "−10.3%",
-    ]);
-    expect(sections.find((s) => s.label === "Balance sheet")).toBeUndefined();
   });
 
   it("is empty with no metrics", () => {
-    expect(financialStatSections(null, null)).toEqual([]);
+    const f = fundamentals(null, null);
+    expect(f.valuation).toEqual([]);
+    expect([f.growth, f.priceReturns, f.margins, f.returns, f.balanceSheet, f.perShare].every((g) => g.length === 0)).toBe(true);
   });
 });

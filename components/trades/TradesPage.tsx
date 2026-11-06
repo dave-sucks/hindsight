@@ -331,7 +331,7 @@ export default function TradesPage({
                 <TableRow
                   key={trade.id}
                   className="group relative cursor-pointer"
-                  onClick={() => router.push(`/trades/${trade.id}`)}
+                  onClick={() => router.push(`/stocks/${trade.ticker}`)}
                 >
                   {/* Name: logo + ticker with inline status dot + the same
                       "11 shares · $10,025.56" line the dashboard table uses
@@ -563,15 +563,15 @@ export default function TradesPage({
                         <TooltipTrigger
                           render={
                             <Link
-                              href={`/trades/${trade.id}`}
+                              href={`/stocks/${trade.ticker}`}
                               className="h-7 w-7 flex items-center justify-center rounded-md border bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                              aria-label="Open trade details"
+                              aria-label="Open the stock"
                             >
                               <ExternalLink className="h-4 w-4" />
                             </Link>
                           }
                         />
-                        <TooltipContent side="top">Open trade</TooltipContent>
+                        <TooltipContent side="top">Open the stock</TooltipContent>
                       </Tooltip>
                       <DropdownMenu>
                         <DropdownMenuTrigger
@@ -582,8 +582,8 @@ export default function TradesPage({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-40">
                           <DropdownMenuItem>
-                            <Link href={`/trades/${trade.id}`} className="w-full">
-                              View details
+                            <Link href={`/stocks/${trade.ticker}`} className="w-full">
+                              Open the stock
                             </Link>
                           </DropdownMenuItem>
                           {isOpen && !awaitingApproval && (

@@ -287,7 +287,7 @@ function TimelineList({
  * label, and says on hover what the agents read instead: the newest 8
  * lines, note or not, the ones the Activity tab marks.
  */
-export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; onViewAll: () => void }) {
+export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; /** Opens the Activity tab; absent where the surface has none (the stock page). */ onViewAll?: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
   const { rows, spans, labels } = useMemo(() => {
@@ -307,7 +307,7 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
   const [first, ...rest] = labels;
   return (
     <div className="space-y-3">
-      <SectionLabel action={<Button size="xs" variant="outline" onClick={onViewAll}>View all</Button>}>
+      <SectionLabel action={onViewAll ? <Button size="xs" variant="outline" onClick={onViewAll}>View all</Button> : null}>
         <Tooltip>
           <TooltipTrigger
             render={

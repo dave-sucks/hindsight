@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { StockPriceChart, type RangeMove } from '@/components/stocks/StockPriceChart';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import type { ThesisStateLevels } from '@/lib/types/thesis-sheet';
@@ -263,6 +264,10 @@ export function ThesisChart({
       ? { start: watchStart, end: soldAt ? soldAt.slice(0, 10) : null }
       : undefined;
 
+  // The full chart stands a fifth taller on desktop (the owner, 2026-11-05).
+  const isMobile = useIsMobile();
+  const fullHeight = isMobile ? 300 : 360;
+
   return (
     <StockPriceChart
       candles={candles}
@@ -270,7 +275,7 @@ export function ThesisChart({
       verticalMarkers={verticalMarkers}
       showControls={variant === 'full'}
       defaultRange={initialRange === 'Trade' && !tradeSpan ? '3M' : initialRange}
-      height={variant === 'card' ? 160 : 300}
+      height={variant === 'card' ? 160 : fullHeight}
       frameless={frameless ?? variant === 'card'}
       showIntraday={enableIntraday}
       intradayCandles={intraday}

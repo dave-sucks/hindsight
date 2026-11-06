@@ -3,13 +3,13 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StockPageTabs } from "@/components/stocks/StockPageTabs";
-import { StockHistory } from "@/components/stocks/StockHistory";
+import { NoThesis } from "@/components/stocks/NoThesis";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
 import { PositionCard } from "@/components/stocks/PositionCard";
-import { StatBlock } from "@/components/stocks/StatGrid";
-import { StatTable } from "@/components/stocks/StatTable";
+import { RangeBar } from "@/components/stocks/RangeBar";
+import { Fundamentals } from "@/components/stocks/Fundamentals";
 import { EarningsCard } from "@/components/domain/earnings-card";
 import { AnalystCards } from "@/components/domain/analyst-consensus";
 import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
@@ -29,35 +29,18 @@ import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
-import { buildStockHistory } from "@/lib/stocks/stock-history";
-import { keyStatColumns, financialStatSections } from "@/lib/stocks/stock-stats";
+import { fillFacts } from "@/lib/stocks/stock-history";
+import { rangeBars, keyStats, companyFactRows, fundamentals } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
+import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import type { EarningsResponse } from "@/lib/types/thesis-sheet";
 import { ExternalLink } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /** The details-card label every sidebar and research block uses. */
-function BlockLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
-}
-
-/** One label · value row, the Trade Details pattern. */
-function DetailRows({ rows }: { rows: Array<{ label: string; value: React.ReactNode }> }) {
-  return (
-    <>
-      {rows.map(({ label, value }) => (
-        <div key={label} className="flex items-center justify-between gap-3 text-sm border-b border-border pb-1 last:border-0">
-          <span className="text-muted-foreground shrink-0">{label}</span>
-          <span className="font-medium tabular-nums text-right min-w-0 truncate">{value}</span>
-        </div>
-      ))}
-    </>
-  );
-}
-
 type MarketNewsArticle = { headline: string; source: string; datetime: number; url: string };
 
 async function NewsRows({ symbol }: { symbol: string }) {
@@ -107,6 +90,8 @@ export default async function StockDetailPage({ params }: Props) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const accountId = user ? await getAccountId(user.id) : null;
+  // Paper and live inventories never mix: the page shows the environment the switcher is on.
+  const environment = await getCurrentEnvironment();
 
   const [identity, profile, quote, metrics, candles, coverage, earnings, positions, theses, watchlistStatus] =
     await Promise.all([
@@ -119,7 +104,7 @@ export default async function StockDetailPage({ params }: Props) {
       getEarningsForSymbol(upperSymbol).catch(() => null),
       accountId
         ? prisma.position.findMany({
-            where: { accountId, symbol: upperSymbol },
+            where: { accountId, symbol: upperSymbol, environment },
             orderBy: { openedAt: "desc" },
             take: 50,
             select: {
@@ -134,6 +119,12 @@ export default async function StockDetailPage({ params }: Props) {
               openedAt: true,
               closedAt: true,
               closeReason: true,
+              analyst: { select: { id: true, name: true } },
+              decisions: { take: 1, select: { thesisId: true } },
+              orders: {
+                where: { status: { in: ["FILLED", "AWAITING_APPROVAL"] } },
+                select: { id: true, side: true, intent: true, status: true, quantity: true, filledQty: true, filledPrice: true, filledAt: true, createdAt: true, rationale: true, closeReason: true },
+              },
             },
           })
         : Promise.resolve([]),
@@ -159,15 +150,23 @@ export default async function StockDetailPage({ params }: Props) {
       ? metrics["marketCapitalization"] * 1_000_000
       : null;
 
-  const history = buildStockHistory(
+  // Every fill on the stock, across every position and analyst: the Transactions tab and the dialog a row opens.
+  const transactions = fillFacts(
     positions.map((p) => ({
-      ...p,
+      id: p.id,
+      direction: p.direction,
+      status: p.status,
       avgCost: Number(p.avgCost),
-      closePrice: p.closePrice != null ? Number(p.closePrice) : null,
-      realizedPnl: p.realizedPnl != null ? Number(p.realizedPnl) : null,
       quantity: Number(p.quantity),
+      realizedPnl: p.realizedPnl != null ? Number(p.realizedPnl) : null,
+      closePrice: p.closePrice != null ? Number(p.closePrice) : null,
+      closeReason: p.closeReason,
+      openedAt: p.openedAt,
+      closedAt: p.closedAt,
+      analyst: p.analyst,
+      thesisId: p.decisions[0]?.thesisId ?? null,
+      orders: p.orders.map((o) => ({ ...o, quantity: Number(o.quantity), filledQty: o.filledQty != null ? Number(o.filledQty) : null, filledPrice: o.filledPrice != null ? Number(o.filledPrice) : null })),
     })),
-    theses,
   );
 
   // The open position, for the chart's entry line.
@@ -183,69 +182,32 @@ export default async function StockDetailPage({ params }: Props) {
     </Suspense>
   );
 
-  // Hindsight on this stock: every thesis and trade on it, as dated rows.
-  const historyBlock =
-    history.length > 0 ? (
-      <section className="space-y-2">
-        <BlockLabel>Hindsight on this stock</BlockLabel>
-        <StockHistory ticker={upperSymbol} items={history} />
-      </section>
-    ) : null;
-
-  const website = profile?.weburl
-    ? profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
-    : null;
-
-  // Who the company is: the sidebar's About card.
-  const aboutCard = (
-    <Card className="bg-muted/40 p-2 gap-1">
-      <BlockLabel>About</BlockLabel>
-      <DetailRows
-        rows={[
-          { label: "Exchange", value: identity.exchange ?? "—" },
-          { label: "Industry", value: profile?.finnhubIndustry || "—" },
-          { label: "IPO", value: profile?.ipo || "—" },
-          ...(website && profile?.weburl
-            ? [
-                {
-                  label: "Website",
-                  value: (
-                    <a
-                      href={profile.weburl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 hover:underline"
-                    >
-                      {website}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ),
-                },
-              ]
-            : []),
-        ]}
-      />
-    </Card>
+  // The Overview's block under the company line (the owner, 2026-11-05):
+  // where the price sits today and over the year. With or without a live
+  // thesis. The six key stats moved to the top of Fundamentals.
+  const overviewStats = (
+    <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+      {rangeBars(quote, metrics).map((r) => (
+        <RangeBar key={r.label} {...r} />
+      ))}
+    </div>
   );
 
-  // The Financials tab: the statistics table and the filings.
-  const statSections = financialStatSections(metrics, marketCap);
+  // The Fundamentals tab: six key stats beside the company's facts, then
+  // the rest in tabs, the filings under them.
+  const nextReport = (earnings as EarningsResponse | null)?.next?.reportDate ?? null;
   const financials = (
-    <>
-      {statSections.length > 0 ? (
-        <StatTable sections={statSections} />
-      ) : (
-        <p className="text-sm text-muted-foreground">No financial data for {upperSymbol}.</p>
-      )}
-      <div className="space-y-2">
-        <BlockLabel>Filings</BlockLabel>
-        <StockFilingsSection symbol={upperSymbol} />
-      </div>
-    </>
+    <Fundamentals
+      ticker={upperSymbol}
+      keyStats={keyStats(metrics, marketCap)}
+      data={fundamentals(metrics, marketCap)}
+      facts={companyFactRows(profile, identity.exchange, nextReport)}
+      filings={<StockFilingsSection symbol={upperSymbol} />}
+    />
   );
 
-  // No live thesis: the trades we made in it, who the company is, Wall
-  // Street and the earnings record.
+  // No live thesis: the trades we made in it, Wall Street and the earnings
+  // record.
   const sidebar = (
     <>
       {positions.length > 0 ? (
@@ -266,7 +228,6 @@ export default async function StockDetailPage({ params }: Props) {
           }))}
         />
       ) : null}
-      {aboutCard}
       <AnalystCards coverage={coverage} currentPrice={price} />
       {earnings ? <EarningsCard data={earnings as unknown as EarningsResponse} streetEps={coverage?.eps?.nextQuarter ?? null} /> : null}
     </>
@@ -279,15 +240,12 @@ export default async function StockDetailPage({ params }: Props) {
         {/* The same header the trade page and the sheet render: with a live
             thesis, its status and conviction beside the name. href={null}:
             we're already on the stock page. */}
-        <div className="mb-6">
+        <div className="mb-3">
           {live ? (
             <ThesisHeader
               ticker={upperSymbol}
-              displayName={identity.companyName}
-              href={null}
               status={live.status}
               agentWatchDays={agentWatchDays(live.triggers)}
-              conviction={(live.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null}
               analystId={live.researchRun?.agentConfigId ?? null}
               thesisId={live.id}
               extraActions={<WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />}
@@ -310,15 +268,22 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
 
         {live ? (
+          // The stock, not the trade: the thesis's view with no plan on the
+          // Overview, no Activity tab, every trade on the stock under
+          // Transactions, and the stock's Financials and News after.
           <ThesisPageBody
             thesisId={live.id}
             ticker={upperSymbol}
-            aside={aboutCard}
+            displayName={identity.companyName}
+            stockHref={null}
+            overviewStats={overviewStats}
+            transactions={transactions}
+            showTriggers={false}
+            showActivity={false}
             moreTabs={[
-              { label: "Financials", content: financials },
+              { label: "Fundamentals", content: financials },
               { label: "News", content: news },
             ]}
-            afterActivity={historyBlock}
           />
         ) : (
           <StockPageTabs
@@ -332,8 +297,10 @@ export default async function StockDetailPage({ params }: Props) {
                 ? { avgCost: Number(open.avgCost), openedAt: open.openedAt.toISOString(), direction: open.direction === "SHORT" ? "SHORT" : "LONG" }
                 : null,
             }}
-            stats={<StatBlock columns={keyStatColumns(quote, metrics, marketCap)} />}
-            history={history}
+            overviewStats={overviewStats}
+            transactions={transactions}
+            held={open ? { shares: Number(open.quantity), avgCost: Number(open.avgCost) } : null}
+            thesis={<NoThesis ticker={upperSymbol} analysts={watchlistStatus} />}
             financials={financials}
             news={news}
             sidebar={sidebar}
