@@ -28,7 +28,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   writer: 16_468,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
-  chat: 35_492,
+  // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
+  chat: 35_568,
 };
 
 /**
@@ -44,7 +45,7 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-05: +1,078 each for dispatch's research_notes and idea_source; the chat's net −493 also drops twitter_search (−1,571), which never returned anything.
   "research-run": 31_828,
   tactical: 27_759,
-  principal: 62_789,
+  principal: 62_866, // 2026-11-06: +77, the same clause on record_thesis's status field.
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 
