@@ -18,11 +18,15 @@ export interface FrameworkDoor {
   toolChars: number | null;
 }
 
+/** What usually puts a stock in a situation: a trigger firing (the bolt), or a flag read off the stock's facts (the flag). */
+export type SituationOrigin = "trigger" | "flag";
+
 export interface FrameworkSituation {
   code: string;
   name: string;
   chars: number;
   opening: string;
+  origin: SituationOrigin;
 }
 
 /** When a sheet field is sent on a row in a situation (lib/agent/row-for-model.ts ROW_FIELDS, read on the server by lib/docs/read-grid.ts). */
@@ -31,8 +35,8 @@ export type ReadWhen = "always" | "situations" | "review" | "named";
 export interface ReadGridRow {
   fieldId: string;
   when: ReadWhen;
-  /** For "situations": the situations that send it, in rank order. */
-  situations: Array<{ code: string; name: string }>;
+  /** For "situations": the situations that send it, in rank order, each with what puts a stock in it. */
+  situations: Array<{ code: string; name: string; origin: SituationOrigin }>;
 }
 
 /** The read section, built on the server from the one builder: which keys each read sends, each read as the model gets it, and the grid. */

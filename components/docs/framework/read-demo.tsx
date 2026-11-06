@@ -18,7 +18,10 @@ import { Badge } from "@/components/ui/badge";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { PriceChange } from "@/components/ui/price-change";
+import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Clock01Icon, FlashIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   EXAMPLE_LINE,
@@ -30,8 +33,10 @@ import {
   fieldsLit,
   type FrameworkData,
   type ReadCase,
+  type ReadGridRow,
   type ReadWhen,
   type SheetField,
+  type SituationOrigin,
 } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
 import { useFrameworkData } from "../tool-catalog";
@@ -129,6 +134,47 @@ function FieldBody({ f }: { f: SheetField }) {
   }
 }
 
+/** The icon on a situation's badge: the sheet's bolt for a trigger firing, its flag for a flag read off the facts. */
+function OriginIcon({ origin }: { origin: SituationOrigin }) {
+  return origin === "trigger" ? <HugeiconsIcon icon={FlashIcon} className="size-3" /> : <FlagNotificationIcon className="size-3" />;
+}
+
+/**
+ * When a field is sent, as the stock page's chips under the company line:
+ * one badge per situation that sends it (filled while that situation is the
+ * one picked), "Review clock" on the review-only fields, "By name" on the
+ * rest; nothing on a field every flagged stock gets.
+ */
+function WhenBadges({ row, activeCode }: { row: ReadGridRow | undefined; activeCode: string | null }) {
+  if (!row || row.when === "always") return null;
+  if (row.when === "review") {
+    return (
+      <Badge variant={activeCode === "REVIEW_DUE" ? "default" : "secondary"}>
+        <HugeiconsIcon icon={Clock01Icon} className="size-3" />
+        <span className="font-normal">Review clock</span>
+      </Badge>
+    );
+  }
+  if (row.when === "named") {
+    return (
+      <Badge variant={activeCode === "NAMED" ? "default" : "secondary"}>
+        <HugeiconsIcon icon={Search01Icon} className="size-3" />
+        <span className="font-normal">By name</span>
+      </Badge>
+    );
+  }
+  return (
+    <>
+      {row.situations.map((sit) => (
+        <Badge key={sit.code} variant={activeCode === sit.code ? "default" : "secondary"}>
+          <OriginIcon origin={sit.origin} />
+          <span className="font-normal">{sit.name}</span>
+        </Badge>
+      ))}
+    </>
+  );
+}
+
 const WHEN_WORDS: Record<ReadWhen, string> = {
   always: "Always",
   situations: "Depends",
@@ -173,6 +219,9 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
     : c.size === "full" ? `The full row, ${READ_SIZES.full}.`
     : "The existing thesis, in the Writer's own prompt.";
   const instructions = c.id === "situation" ? situation : c.id === "review" ? situations.find((s) => s.code === "REVIEW_DUE") : undefined;
+  // The badge that is "met" in this read: the picked situation, the review clock, or a read by name.
+  const activeCode = c.id === "situation" ? (situation?.code ?? null) : c.id === "review" ? "REVIEW_DUE" : c.id === "named" ? "NAMED" : null;
+  const gridRow = (fieldId: string) => read?.grid.find((g) => g.fieldId === fieldId);
 
   return (
     <div className="flex flex-col gap-4">
@@ -229,7 +278,10 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
                         on ? "bg-blue-500/10 ring-1 ring-blue-500/30" : "opacity-40",
                       )}
                     >
-                      <span className="text-xs text-muted-foreground">{f.label}</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">{f.label}</span>
+                        <WhenBadges row={gridRow(f.id)} activeCode={activeCode} />
+                      </div>
                       <FieldBody f={f} />
                     </div>
                   );
@@ -296,7 +348,7 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
       {read ? (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
-            Every field on the sheet and when a stock in a situation sends it. The review clock and a read by name carry every field above them too; a quiet stock sends only its line.
+            Every field on the sheet and when a stock in a situation sends it. A bolt is a situation a trigger firing puts the stock in, a flag one read off the stock&apos;s facts. The review clock and a read by name carry every field above them too; a quiet stock sends only its line.
           </p>
           <div className="overflow-x-auto rounded-xl border bg-background">
             <Table>
@@ -317,7 +369,11 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
                         <Badge variant={g.when === "always" ? "default" : "secondary"} className="font-normal">{WHEN_WORDS[g.when]}</Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {g.when === "situations" ? g.situations.map((s) => s.name).join(" · ") : g.when === "review" ? "the review clock, and by name" : g.when === "named" ? "only when asked for by name" : "every stock in a situation"}
+                        {g.when === "situations" ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            <WhenBadges row={g} activeCode={activeCode} />
+                          </div>
+                        ) : g.when === "review" ? "the review clock, and by name" : g.when === "named" ? "only when asked for by name" : "every stock in a situation"}
                       </TableCell>
                     </TableRow>
                   );
