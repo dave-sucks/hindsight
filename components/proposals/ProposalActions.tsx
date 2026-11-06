@@ -69,6 +69,8 @@ export interface ProposalActionsProps {
   align?: "start" | "end";
   /** Optional positioning class on the trigger (margins only — not styling). */
   className?: string;
+  /** Accept (and its ···) as the primary button: the page card's foot (the owner, 2026-11-05). Reject stays outline. */
+  accent?: boolean;
 }
 
 /** The proposal routes return `{ error, code }` JSON for known refusals, plain text otherwise. */
@@ -90,7 +92,7 @@ async function readApiError(
 const EXPIRED_TOAST =
   "This proposal expired before a decision landed. The analyst reads the expiry and can re-propose.";
 
-export function ProposalActions({ orderId, expiresAt, align = "end", className }: ProposalActionsProps) {
+export function ProposalActions({ orderId, expiresAt, align = "end", className, accent = false }: ProposalActionsProps) {
   const router = useRouter();
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
   const [resolved, setResolved] = useState<
@@ -342,7 +344,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className }
         </Button>
         <ButtonGroup>
           <Button
-            variant="outline"
+            variant={accent ? "default" : "outline"}
             size="xs"
             disabled={pending !== null}
             aria-label="Accept proposal"
@@ -353,7 +355,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className }
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger
-              render={<Button variant="outline" size="icon-xs" disabled={pending !== null} aria-label="More ways to accept" />}
+              render={<Button variant={accent ? "default" : "outline"} size="icon-xs" disabled={pending !== null} aria-label="More ways to accept" />}
             >
               <MoreHorizontal />
             </DropdownMenuTrigger>

@@ -11,10 +11,13 @@
  *     a coloured dot (Proposal / Position / Closed position, the answer
  *     buttons at its right while a proposal waits), the sentence with the
  *     date and the gain, a waiting proposal's reason under it.
- *   • "card"   — a page's sidebar card: the same title row, the gain large,
+ *   • "card"   — a page's sidebar card (the owner's order, 2026-11-05): the
+ *     title row with nothing at its right, the share count, the gain large,
  *     a proposal's sentence, then Bought @ / Now @ (or Sold @) rows, then
- *     the words: a proposal's reason, or the newest analyst note on the
- *     stock, four lines and a click for the rest (the owner, 2026-11-05).
+ *     the words (a proposal's reason, or the newest analyst note on the
+ *     stock, four lines and a click for the rest), then the buttons at the
+ *     foot's right: Reject / Accept (Accept primary) while a proposal waits,
+ *     else Buy and, while the position is open, Sell, both outline.
  *
  * A waiting proposal is the agent asking (the owner, 2026-11-05): the same
  * layout, only its colors change — a white dot that breathes fast, the word
@@ -37,6 +40,9 @@ import { SectionLabel } from "@/components/domain/section-label";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
+import { Button } from "@/components/ui/button";
+import { TradeButton } from "@/components/trade/TradeButton";
+import { CloseTradeDialog } from "@/components/trades/TradeActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtQty } from "@/lib/trade-statement";
 import { EXECUTING_LABEL, EXECUTING_TOOLTIP, getTradeStatusDisplay } from "@/lib/trade-status";
@@ -62,6 +68,10 @@ export type TradeSummaryProps = {
   trades?: { count: number; realized: number } | null;
   /** The newest analyst note on the stock, for the page card's foot when no proposal waits. */
   note?: string | null;
+  /** The stock, for the page card's Buy and Sell. */
+  ticker?: string;
+  /** The analyst the Buy starts on the side of. */
+  analystId?: string | null;
 };
 
 /** Compact "Jun 2" date for the meta line. */
@@ -198,7 +208,7 @@ function TradeTitle({
             </span>
           ) : null}
         </span>
-        <span className={proposal ? "shimmer-text" : undefined}>{title}</span>
+        <span className={proposal ? "shimmer-text" : "text-foreground"}>{title}</span>
       </span>
     </SectionLabel>
   );
@@ -272,14 +282,35 @@ function TradeBanner(props: TradeSummaryProps) {
   );
 }
 
+/** The page card's foot: Buy, and Sell while the position is open; two small outline buttons that open the trade dialogs. */
+function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; analystId: string | null; tradeId: string | null; canSell: boolean }) {
+  const [buySignal, setBuySignal] = useState(0);
+  const [selling, setSelling] = useState(false);
+  return (
+    <span className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <Button variant="outline" size="xs" onClick={() => setBuySignal((n) => n + 1)}>
+        Buy
+      </Button>
+      {canSell && tradeId ? (
+        <Button variant="outline" size="xs" onClick={() => setSelling(true)}>
+          Sell
+        </Button>
+      ) : null}
+      <TradeButton ticker={ticker} analystId={analystId} openSignal={buySignal} hideTrigger />
+      {canSell && tradeId ? <CloseTradeDialog tradeId={tradeId} ticker={ticker} open={selling} onOpenChange={setSelling} /> : null}
+    </span>
+  );
+}
+
 // ── The card (a page's sidebar) ──
-// The same position in the sidebar's shape, in every state: the title row,
-// the gain large, a proposal's sentence, then Bought @ / Now @ (or Sold @)
-// rows with the dollars, then the words — a proposal's reason, else the
-// newest analyst note — four lines, a click on them for the rest. The click
-// elsewhere opens the Transactions tab.
+// The same position in the sidebar's shape, in every state: the title row
+// (nothing at its right), the share count, the gain large, a proposal's
+// sentence, then Bought @ / Now @ (or Sold @) rows with the dollars, then
+// the words — a proposal's reason, else the newest analyst note — four
+// lines, a click on them for the rest, then the buttons at the foot's right.
+// The click elsewhere opens the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
-  const { position, pnl, onOpen, trades, note } = props;
+  const { position, pnl, onOpen, trades, note, ticker, analystId } = props;
   const { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal } = describeTrade(props);
   const click = onOpen;
   const proposedBuy = pp?.intent === "OPEN";
@@ -298,23 +329,12 @@ function TradeCard(props: TradeSummaryProps) {
       ];
   return (
     <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", proposal && PROPOSAL_CARD, click && "cursor-pointer")} onClick={click}>
-      <TradeTitle
-        title={title}
-        dotClass={dotClass}
-        proposal={proposal}
-        accordion={false}
-        expanded={false}
-        action={
-          reviewSlot ? (
-            <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>
-          ) : (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {position.daysHeld} day{position.daysHeld !== 1 ? "s" : ""} held
-            </span>
-          )
-        }
-      />
-      {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
+      <TradeTitle title={title} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} />
+      <div>
+        {/* The share count at the gain's size, in the foreground, over the gain. */}
+        <p className="text-xl font-semibold tabular-nums">{fmtQty(position.quantity)} shares</p>
+        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
+      </div>
       {lead ? (
         <p className="text-sm tabular-nums pointer-events-none">
           <span className="font-medium">{lead}</span>
@@ -335,6 +355,18 @@ function TradeCard(props: TradeSummaryProps) {
       ) : note ? (
         <NoteClamp text={note} />
       ) : null}
+      {/* The foot: the proposal's answer (Accept primary) while one waits, "Executing" once answered, else Buy and Sell. */}
+      <div className="flex justify-end">
+        {pp && !pp.executing ? (
+          <span className="flex items-center" onClick={(e) => e.stopPropagation()}>
+            <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" accent />
+          </span>
+        ) : pp?.executing ? (
+          <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>
+        ) : ticker ? (
+          <BuySell ticker={ticker} analystId={analystId ?? null} tradeId={position.id ?? null} canSell={!closed} />
+        ) : null}
+      </div>
     </Card>
   );
 }

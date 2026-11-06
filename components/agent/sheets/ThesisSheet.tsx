@@ -908,6 +908,8 @@ export function ThesisBody({
         trades: state.trades ?? null,
         // The newest analyst paragraph on the stock, for the page card's foot.
         note: (state.noted ?? [])[0]?.rationale ?? null,
+        ticker,
+        analystId: state.analystId,
       }
     : null;
   const tradeBanner = tradeProps && surface === "sheet" ? <TradeSummary look="banner" {...tradeProps} /> : null;
