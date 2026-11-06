@@ -421,9 +421,12 @@ function ResearchView({
   }
   return (
     <>
-      {flag}
-      {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
-      <WrittenUpLine writtenUp={state.writtenUp} href={href} />
+      {/* The flag, the belief and its footnote close together, one block (the owner, 2026-11-05). */}
+      <div className="space-y-2">
+        {flag}
+        {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
+        <WrittenUpLine writtenUp={state.writtenUp} href={href} />
+      </div>
 
       {filings ? <FilingsBlock data={filings} /> : null}
 
