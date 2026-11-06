@@ -8,10 +8,37 @@
  */
 import { ROW_FIELDS, REVIEW_SITUATION, rowKeysFor, type RowKeyRule } from "@/lib/agent/row-for-model";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
-import { LINE_KEYS, SHEET_FIELDS, WRITER_KEYS, type FrameworkRead, type ReadGridRow } from "./framework-content";
+import { LINE_KEYS, SHEET_FIELDS, WRITER_KEYS, type FrameworkRead, type ReadGridRow, type SituationOrigin } from "./framework-content";
 import { buildReadSamples } from "./read-sample";
 
 export const SITUATION_CODES = Object.keys(SITUATIONS) as SituationCode[];
+
+/**
+ * What usually puts a stock in each situation (situations.ts `fireCodes` and
+ * `flagCodes`): a trigger firing, or a flag read off the stock's facts. A buy
+ * level reached and an add or near target can come either way (the price at
+ * the level, three quarters of the way to the target); the bolt names the
+ * usual one.
+ */
+export const SITUATION_ORIGIN: Record<SituationCode, SituationOrigin> = {
+  AUTO_TRADE: "trigger",
+  PROMOTED_AWAITING: "flag",
+  PROTECTIVE_SALE: "trigger",
+  BUY_ARRIVES: "trigger",
+  BUY_BLOCKED_FULL: "trigger",
+  ADD_OR_WINNER: "trigger",
+  EARNINGS: "trigger",
+  FILING: "trigger",
+  QUIET_WATCH_WOKE: "trigger",
+  PROTECTION: "flag",
+  FIRST_RESEARCH: "trigger",
+  REVIEW_DUE: "trigger",
+  STALE_RESEARCH: "flag",
+  PLAN_PROBLEM: "flag",
+  YOUR_WORD_UNANSWERED: "flag",
+  SOLD_ONE_REVIEW: "flag",
+  NO_SETUP_NAMED: "flag",
+};
 
 /** The keys each read sends. */
 export function readKeys(): FrameworkRead["keys"] {
@@ -33,7 +60,7 @@ export function readGrid(): ReadGridRow[] {
     if (rules.some((r) => r === "always")) return { fieldId: f.id, when: "always", situations: [] };
     const codes = new Set(rules.flatMap((r) => (typeof r === "string" ? [] : [...r])));
     if (codes.size > 0) {
-      return { fieldId: f.id, when: "situations", situations: SITUATION_CODES.filter((c) => codes.has(c)).map((code) => ({ code, name: SITUATIONS[code].name })) };
+      return { fieldId: f.id, when: "situations", situations: SITUATION_CODES.filter((c) => codes.has(c)).map((code) => ({ code, name: SITUATIONS[code].name, origin: SITUATION_ORIGIN[code] })) };
     }
     return { fieldId: f.id, when: rules.some((r) => r === "review") ? "review" : "named", situations: [] };
   });

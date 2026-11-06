@@ -20,7 +20,7 @@ import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 import { createResearchTools } from "@/lib/agent/tools";
 import type { PromptName } from "@/lib/agent/tools/field-contract";
 import type { FrameworkData, FrameworkDoor, FrameworkDoorId } from "./framework-content";
-import { buildFrameworkRead } from "./read-grid";
+import { SITUATION_ORIGIN, buildFrameworkRead } from "./read-grid";
 import { WRITER_TOOLS } from "./tools";
 
 const DOORS: ReadonlyArray<{ id: FrameworkDoorId; mode: AgentMode; prompt: PromptName; runMode?: string }> = [
@@ -72,6 +72,7 @@ function measure(): FrameworkData {
     chars: SITUATIONS[code].guidance.length,
     // The opening of the text, for the page to quote.
     opening: SITUATIONS[code].guidance.replace(/`/g, "").split(/(?<=[.!?])\s+/)[0]?.slice(0, 220) ?? "",
+    origin: SITUATION_ORIGIN[code],
   }));
   return { houseRulesChars: HOUSE_RULES.length, doors, situations, read: buildFrameworkRead() };
 }
