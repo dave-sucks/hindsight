@@ -57,7 +57,9 @@ Live prices and every bar come from Alpaca, off the consolidated tape, with Finn
 
 Wall Street's price targets, its rating split and the EPS consensus with its revisions come from Nasdaq's own website feed: free, but a website's feed and not a licensed one, so it can change without notice and the 6:25 probe checks it every morning. A stock whose pull fails keeps the day before's numbers.
 
-Some data isn't on any plan we hold: forward revenue estimates, an economic calendar and options chains. The tools say so when asked, and never guess.
+The market as a whole comes from free public sources. Cboe's own daily files give the VIX and the 10-year Treasury yield, each as of its last close. Finnhub gives the day's market headlines. Polymarket gives the betting odds on the next Fed decision. The market's calendar of Fed decisions, inflation and jobs reports and elections is written into the code from the Fed's and the BLS's published schedules, and it says when its dates run out.
+
+Some data isn't on any plan we hold: forward revenue estimates and options chains. The tools say so when asked, and never guess.
 
 ## The right model for each job
 
@@ -101,6 +103,9 @@ Inngest functions in `lib/inngest/functions/`, served from `app/api/inngest/rout
 
 #### Street targets
 `lib/market-data/street-consensus.ts` (Nasdaq's feed and its parser) → `StreetConsensus`, written by `indicator-snapshot.ts` and on demand by `get_analyst_coverage`.
+
+#### The market
+`get_market_context` reads `lib/market-data/market-gauges.ts` (the VIX and the 10-year yield from Cboe), `market-news.ts` (Finnhub's market headlines), `fed-odds.ts` (Polymarket) and `market-calendar.ts` (the Fed, BLS and election dates, with where each list came from).
 
 #### Prompts
 `lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `buildPrincipalSystemPrompt` in `lib/agent/modes.ts` (chat), `lib/agent/house-rules.ts`, `lib/agent/voice.ts`.

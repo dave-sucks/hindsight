@@ -1,17 +1,20 @@
 /**
- * get_market_context — migrated to defineTool().
+ * get_market_context: the market, for any run. SPY now; the VIX and the
+ * 10-year yield at the last close; VIXY's day move; the sector funds; the
+ * regime; the market's own calendar for the next three weeks with the
+ * betting odds on the next Fed decision; and the day's market headlines.
  *
- * Gets current market conditions: SPY, VIXY's day move, sector ETFs,
- * earnings density, and the market regime.
- *
- * No plan we pay for serves the VIX index (DAV-339, probe 2026-09-29:
+ * The VIX: no plan we pay for serves the index (DAV-339, probe 2026-09-29:
  * Finnhub "Market data subscription required for CFD indices", Alpaca has
- * no index bars). For months this tool fell back to VIXY — an ETF of VIX
- * futures — and reported its share price as "VIX", and its RISK_ON line
- * was "VIX" under 16. The two sit in a similar range, which is why nobody
- * noticed. VIXY is now reported as what it is, by its day's move only, and
- * the regime is the playbook's (SPY against its 50- and 200-day averages,
- * lib/agent/regime.ts): the one sizing uses and every proposal shows.
+ * no index bars). For months this tool reported VIXY, an ETF of VIX
+ * futures, as "VIX". Since 2026-11-06 the level comes from Cboe's own daily
+ * file, as of its last close (lib/market-data/market-gauges.ts). VIXY stays,
+ * by its day's move only, as the one fear read during the session.
+ *
+ * The calendar replaces `macroEvents`, empty since 2026-08-19 when the paid
+ * economic calendars went (FMP 402, Finnhub 403). On Nov 2, 2026 this tool
+ * told every morning run the regime and the sectors, and nothing about the
+ * vote the next day (get-market-context.nov2-replay.test.ts).
  */
 
 import { z } from "zod";
@@ -23,66 +26,91 @@ import { readPrice, type PriceReading } from "@/lib/market-data/quote-age";
 import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { computeRegime } from "@/lib/agent/regime";
-import type { MacroEvent } from "@/lib/discovery/types";
+import { loadGauges, type IndexClose } from "@/lib/market-data/market-gauges";
+import { loadMarketHeadlines, etTime } from "@/lib/market-data/market-news";
+import { loadNextFedOdds, oddsLine } from "@/lib/market-data/fed-odds";
+import {
+  addDays,
+  calendarGaps,
+  dayLabel,
+  etToday,
+  moverReports,
+  nextFedDecision,
+  scheduledMarketDates,
+} from "@/lib/market-data/market-calendar";
+import type { ToolUIItem } from "@/lib/agent/tool-result";
 
+/** "11/2" from "2026-11-02", read as written (no time zone to shift it). */
 function formatShortDate(iso: string) {
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  const [, m, d] = iso.split("-");
+  return `${Number(m)}/${Number(d)}`;
 }
 
 const SECTOR_ETFS = ["XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLB", "XLRE", "XLU", "XLC"];
+/** How far ahead the market's calendar looks. */
+const CALENDAR_DAYS = 21;
+/** Finnhub's earnings calendar stops at this many rows, so a count of it is a floor. */
+const EARNINGS_ROW_CAP = 1500;
+/** A close older than this many days is said to be stale. */
+const STALE_CLOSE_DAYS = 5;
 
 export const getMarketContext = defineTool({
   description:
-    "Get current market conditions: S&P 500, VIXY's move today (an ETF of VIX futures — its price is not the VIX level, and no plan we have serves the VIX index), sector ETF performance, and the market regime (SPY against its 50- and 200-day averages, as of the last close — the same regime that sizes every buy). A quick snapshot for market orientation.",
+    "Get the market: the S&P 500 (SPY) now; the VIX and the 10-year Treasury yield at the last close (Cboe); VIXY's move today (an ETF of VIX futures, not the VIX level); sector ETF performance; the market regime (SPY against its 50- and 200-day averages, as of the last close: the same regime that sizes every buy); the market's calendar for the next three weeks (Fed decisions with Polymarket's odds on the next one, inflation and jobs reports, US elections, and reports from the biggest companies in the next five days); and the day's market headlines.",
   schema: z.object({}),
   ui: "tool-ui" as const,
   groupId: "Researching",
 
-  progressLabel: () => "Checking today's market regime",
+  // The rows on screen are built from the same fields the model reads; it
+  // doesn't need them twice.
+  forModel: (result) => {
+    if (!result.ok) return result;
+    const data = { ...(result.data as Record<string, unknown>) };
+    delete data.items;
+    return { ...result, data };
+  },
+
+  progressLabel: () => "Checking today's market",
 
   execute: async (_args, ctx) => {
+    const now = new Date();
     const errors: string[] = [];
-    const today = new Date().toISOString().slice(0, 10);
-    const fiveDaysForward = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
+    const today = etToday(now);
+    const fiveDaysForward = addDays(today, 5);
 
     const allSymbols = ["SPY", ...SECTOR_ETFS];
     // How old SPY's price is, in words when it isn't live (quote-age).
     const spyQuote: { reading: PriceReading | null } = { reading: null };
     // SPY candle via Alpaca (Finnhub /stock/candle is paid-only since
     // 2024).
-    const spyBarsStart = new Date(Date.now() - 30 * 86400_000)
-      .toISOString()
-      .slice(0, 10);
-    const [live, spyBarsResult, earningsDensityResult] =
-      await Promise.all([
-        // SPY, the sector ETFs and VIXY in one call.
-        getLiveQuotes([...allSymbols, "VIXY"], { caller: "other", creds: ctx.alpacaCreds }),
-        // Alpaca returns daily bars; convert to the {c, s} shape the
-        // downstream code expects.
-        (async () => {
-          try {
-            const bars = await getBars(
-              "SPY",
-              { start: spyBarsStart, end: today },
-              ctx.alpacaCreds,
-            );
-            return bars.length > 0
-              ? { data: { s: "ok" as const, c: bars.map((b) => b.close) } }
-              : { data: null as null, error: "Alpaca SPY bars empty" };
-          } catch (err) {
-            return {
-              data: null as null,
-              error: err instanceof Error ? err.message : "Alpaca bars error",
-            };
-          }
-        })(),
-        finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2),
-      ]);
+    const spyBarsStart = addDays(today, -30);
+    const [live, spyBarsResult, earningsDensityResult, gauges, news, fed] = await Promise.all([
+      // SPY, the sector ETFs and VIXY in one call.
+      getLiveQuotes([...allSymbols, "VIXY"], { caller: "other", creds: ctx.alpacaCreds }),
+      // Alpaca returns daily bars; convert to the {c, s} shape the
+      // downstream code expects.
+      (async () => {
+        try {
+          const bars = await getBars("SPY", { start: spyBarsStart, end: today }, ctx.alpacaCreds);
+          return bars.length > 0
+            ? { data: { s: "ok" as const, c: bars.map((b) => b.close) } }
+            : { data: null as null, error: "Alpaca SPY bars empty" };
+        } catch (err) {
+          return {
+            data: null as null,
+            error: err instanceof Error ? err.message : "Alpaca bars error",
+          };
+        }
+      })(),
+      finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2),
+      loadGauges().catch(() => ({ vix: null, tenYear: null, errors: ["Cboe did not answer"] })),
+      loadMarketHeadlines(now).catch(() => ({ headlines: [], error: "Finnhub's market news failed" })),
+      loadNextFedOdds(now),
+    ]);
 
     const quoteResults = allSymbols.map((sym) => {
       const { quote: d, error } = live[sym] ?? { quote: null };
-      if (sym === "SPY") spyQuote.reading = readPrice({ ticker: "SPY", quote: d, quoteError: error, now: new Date() });
+      if (sym === "SPY") spyQuote.reading = readPrice({ ticker: "SPY", quote: d, quoteError: error, now });
       if (d) {
         return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
       }
@@ -125,24 +153,25 @@ export const getMarketContext = defineTool({
       errors.push(spyBarsResult.error);
     }
 
+    // Earnings: the count for the next five days, and the market movers'
+    // reports in them. Finnhub stops the list at 1,500 rows, so a full list
+    // is a floor, and a big report past the cut can be missing.
+    const earningsRows =
+      (earningsDensityResult.data as { earningsCalendar?: { symbol?: string; date?: string; hour?: string | null }[] } | null)
+        ?.earningsCalendar ?? [];
+    const earningsDensity = {
+      count: earningsRows.length,
+      period: `${formatShortDate(today)}–${formatShortDate(fiveDaysForward)}`,
+      capped: earningsRows.length >= EARNINGS_ROW_CAP,
+    };
 
-    // Macro events: DROPPED 2026-08-19 (DAV-191). FMP /stable/economic-calendar
-    // is 402 on our plan and Finnhub /calendar/economic is 403 — no vendor we
-    // pay for serves an economic calendar, so this stays empty rather than
-    // pretending. Re-add here (and restore the source line) if a plan changes.
-    const macroEventsToday: MacroEvent[] = [];
-
-    // Earnings density
-    let earningsDensity: { count: number; period: string } = { count: 0, period: `${today}–${fiveDaysForward}` };
-    try {
-      const earningsRaw = earningsDensityResult.data as { earningsCalendar?: { symbol: string }[] } | null;
-      if (earningsRaw?.earningsCalendar) {
-        earningsDensity = {
-          count: earningsRaw.earningsCalendar.length,
-          period: `${formatShortDate(today)}–${formatShortDate(fiveDaysForward)}`,
-        };
-      }
-    } catch { /* non-fatal */ }
+    // The market's calendar: the scheduled dates for three weeks, the
+    // movers' reports for five days.
+    const calendar = [...scheduledMarketDates(today, CALENDAR_DAYS), ...moverReports(earningsRows, today, 5)].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+    const nextFed = nextFedDecision(today);
+    const fedOdds = fed.odds;
 
     const sectors = sectorsRaw
       .filter((s): s is NonNullable<typeof s> => s != null)
@@ -151,22 +180,72 @@ export const getMarketContext = defineTool({
 
     const fPct = (n: number | null | undefined) => n != null ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}%` : "";
     const spyReading = spyQuote.reading;
+    const staleBefore = addDays(today, -STALE_CLOSE_DAYS);
+    const closeWarning = (name: string, g: IndexClose | null) =>
+      g == null
+        ? `The ${name} is unavailable${gauges.errors.length ? ` (${gauges.errors.join("; ")})` : ""}.`
+        : g.asOf < staleBefore
+          ? `Cboe's ${name} file ends at the ${g.asOf} close; there is no newer one.`
+          : null;
+
     const warnings: string[] = [];
     if (spyReading?.warning) warnings.push(spyReading.warning);
     if (!regimeReading) warnings.push("The market regime is unavailable: no SPY reading in today's indicator snapshot.");
     if (!vixy) warnings.push("VIXY's quote failed — no read on today's fear gauge.");
+    for (const w of [closeWarning("VIX close", gauges.vix), closeWarning("10-year yield", gauges.tenYear)]) if (w) warnings.push(w);
     if (sectors.length < SECTOR_ETFS.length) {
       warnings.push(`Only ${sectors.length} of ${SECTOR_ETFS.length} sector ETF quotes came back — the sector ranking is partial.`);
     }
-    const trendAsOf = " (daily closes)";
+    warnings.push(...calendarGaps(today, CALENDAR_DAYS));
+    if (fed.error) warnings.push(`No betting odds on the next Fed decision: ${fed.error}.`);
+    if (news.error) warnings.push(`No market headlines: ${news.error}.`);
+
+    const vixLine = gauges.vix
+      ? `VIX ${gauges.vix.close.toFixed(2)} at the ${dayLabel(gauges.vix.asOf)} close${gauges.vix.prevClose != null ? ` (${gauges.vix.prevClose.toFixed(2)} the close before)` : ""}`
+      : null;
+    const tenYearBp =
+      gauges.tenYear?.prevClose != null ? Math.round((gauges.tenYear.close - gauges.tenYear.prevClose) * 100) : null;
+    const tenYearLine = gauges.tenYear
+      ? `10-year Treasury yield ${gauges.tenYear.close.toFixed(2)}% at the ${dayLabel(gauges.tenYear.asOf)} close${tenYearBp != null ? ` (${tenYearBp >= 0 ? "+" : ""}${tenYearBp} bp)` : ""}`
+      : null;
+    const regimeLine = regimeReading
+      ? `${regimeReading.line.replace(/\.$/, "")}${regimeAsOf ? ` (as of the ${regimeAsOf} close)` : ""}`
+      : null;
+    const calendarLine = `Market dates, next 3 weeks: ${calendar.length > 0 ? calendar.map((d) => `${dayLabel(d.date)} ${d.what}`).join("; ") : "none on file"}`;
+    const fedLine = nextFed
+      ? `Next Fed decision ${dayLabel(nextFed)}${fedOdds ? ` (Polymarket, "${fedOdds.title}": ${oddsLine(fedOdds)})` : ""}`
+      : null;
+    const earningsLine =
+      earningsDensity.count === 0
+        ? null
+        : earningsDensity.capped
+          ? `${EARNINGS_ROW_CAP.toLocaleString("en-US")}+ earnings ${earningsDensity.period} (the vendor's list stops at ${EARNINGS_ROW_CAP.toLocaleString("en-US")})`
+          : `${earningsDensity.count} earnings ${earningsDensity.period}`;
+
     const summaryParts: string[] = warnings.map((w) => `⚠ ${w}`);
     if (spyData) summaryParts.push(`SPY $${spyData.price} (${fPct(spyData.changesPercentage)})`);
+    if (vixLine) summaryParts.push(vixLine);
     if (vixy?.changePct != null) summaryParts.push(`VIXY ${fPct(vixy.changePct)} today (VIX futures ETF; not the VIX level)`);
-    if (regimeReading) {
-      summaryParts.push(`${regimeReading.line.replace(/\.$/, "")}${regimeAsOf ? ` (as of the ${regimeAsOf} close)` : ""}`);
-    }
-    if (macroEventsToday.length > 0) summaryParts.push(`${macroEventsToday.length} macro event${macroEventsToday.length !== 1 ? "s" : ""} today`);
-    if (earningsDensity.count > 0) summaryParts.push(`${earningsDensity.count} earnings ${earningsDensity.period}`);
+    if (tenYearLine) summaryParts.push(tenYearLine);
+    if (regimeLine) summaryParts.push(regimeLine);
+    summaryParts.push(calendarLine);
+    if (fedLine) summaryParts.push(fedLine);
+    if (earningsLine) summaryParts.push(earningsLine);
+
+    const generic = (text: string): ToolUIItem => ({ kind: "generic", text });
+    const spyRowText = spyData
+      ? `${spyReading?.warningShort ? `⚠ ${spyReading.warningShort} · ` : ""}$${spyData.price} (${fPct(spyData.changesPercentage)})${spyTrend ? `, ${spyTrend.position} SMA-20 by ${fPct(spyTrend.pct_from_sma)} (daily closes)` : ""}`
+      : spyReading?.warningShort
+        ? `⚠ ${spyReading.warningShort}`
+        : null;
+    const items: ToolUIItem[] = [
+      ...warnings.filter((w) => w !== spyReading?.warning).map((w) => generic(`⚠ ${w}`)),
+      ...(spyRowText ? [{ kind: "ticker" as const, ticker: "SPY", text: spyRowText }] : []),
+      ...[vixLine, tenYearLine, regimeLine].filter((l): l is string => l != null).map(generic),
+      ...calendar.map((d) => generic(`${dayLabel(d.date)} · ${d.what}`)),
+      ...(fedLine ? [generic(fedLine)] : []),
+      ...news.headlines.map((h) => generic(`${h.source}, ${etTime(h.at)} · ${h.headline}`)),
+    ];
 
     return {
       summary: summaryParts.join(". ") + ".",
@@ -176,6 +255,8 @@ export const getMarketContext = defineTool({
           : null,
         ...(warnings.length > 0 ? { warnings } : {}),
         vixy,
+        vixClose: gauges.vix,
+        tenYear: gauges.tenYear ? { yieldPct: gauges.tenYear.close, prevYieldPct: gauges.tenYear.prevClose, changeBp: tenYearBp, asOf: gauges.tenYear.asOf } : null,
         regime: regimeReading?.regime ?? null,
         regimeLine: regimeReading?.line ?? null,
         regimeAsOf,
@@ -183,25 +264,26 @@ export const getMarketContext = defineTool({
           ? { sma20: spyTrend.sma_20, position: spyTrend.position, pctFromSma: spyTrend.pct_from_sma, measuredFrom: "daily closes" }
           : null,
         sectors,
-        macroEvents: macroEventsToday,
+        calendar,
+        nextFedDecision: nextFed ? { date: nextFed, odds: fedOdds } : null,
         earningsDensity,
+        headlines: news.headlines,
         ...(errors.length > 0 ? { apiErrors: errors } : {}),
-        // Tool UI renders the summary; raw market data lives on data for downstream consumers
-        tickers: [
-          ...(spyData
-            ? [{ ticker: "SPY", summary: `${spyReading?.warningShort ? `⚠ ${spyReading.warningShort} · ` : ""}$${spyData.price} (${fPct(spyData.changesPercentage)})${spyTrend ? `, ${spyTrend.position} SMA-20 by ${fPct(spyTrend.pct_from_sma)}${trendAsOf}` : ""}` }]
-            : spyReading?.warningShort
-              ? [{ ticker: "SPY", summary: `⚠ ${spyReading.warningShort}` }]
-              : []),
-        ],
+        items,
       },
       sources: [
         { provider: "Alpaca", title: "SPY Real-Time Quote", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
         { provider: "Alpaca", title: "VIXY (ProShares VIX Short-Term Futures ETF)", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
+        { provider: "Cboe", title: "VIX daily closes", url: "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv" },
+        { provider: "Cboe", title: "10-year Treasury yield (TNX) daily closes", url: "https://cdn.cboe.com/api/global/us_indices/daily_prices/TNX_History.csv" },
         { provider: "Alpaca", title: "SPY 50- and 200-day averages (daily indicator snapshot, regime)", url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" },
         { provider: "Alpaca", title: "S&P 500 Sector ETF Performance", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
         { provider: "Alpaca", title: "SPY 30-Day Bars (SMA-20)", url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" },
+        { provider: "Federal Reserve", title: "FOMC meeting calendar", url: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm" },
+        { provider: "BLS", title: "CPI and jobs report release schedules", url: "https://www.bls.gov/schedule/news_release/cpi.htm" },
+        ...(fedOdds ? [{ provider: "Polymarket", title: fedOdds.title, url: fedOdds.url }] : []),
         { provider: "Finnhub", title: "Earnings Calendar (5-Day Density)", url: "https://finnhub.io/docs/api/earnings-calendar" },
+        { provider: "Finnhub", title: "Market news", url: "https://finnhub.io/docs/api/market-news" },
       ],
     };
   },

@@ -38,9 +38,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
 const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-03, on main + #909 + #911 + #912: +100 each from #911's get_theses text, +513 from update_thesis's verdict fields.
   // 2026-11-04: −107 / −96 / −480, the first-sentence rule restated in five note fields now lives in the voice rules alone.
-  "research-run": 30_614,
-  tactical: 26_545,
-  principal: 62_832,
+  // 2026-11-06: +201 each, get_market_context's description names what it now returns: the VIX and 10-year at the close, the market's calendar with the Fed odds, the headlines.
+  "research-run": 30_815,
+  tactical: 26_746,
+  principal: 63_033,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 
