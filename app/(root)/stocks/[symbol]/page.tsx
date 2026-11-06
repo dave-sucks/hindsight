@@ -199,22 +199,11 @@ export default async function StockDetailPage({ params }: Props) {
   // The Fundamentals tab: three bands of groups, the company's facts beside
   // the first, the filings under them.
   const nextReport = (earnings as EarningsResponse | null)?.next?.reportDate ?? null;
-  const facts = companyFactRows(profile, identity.exchange, nextReport).map((r) => ({
-    label: r.label,
-    value: r.href ? (
-      <a href={r.href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline underline-offset-4">
-        {r.value}
-        <ExternalLink className="h-3 w-3" />
-      </a>
-    ) : (
-      r.value
-    ),
-  }));
   const financials = (
     <Fundamentals
       ticker={upperSymbol}
       data={fundamentals(metrics, marketCap)}
-      facts={facts}
+      facts={companyFactRows(profile, identity.exchange, nextReport)}
       filings={<StockFilingsSection symbol={upperSymbol} />}
     />
   );

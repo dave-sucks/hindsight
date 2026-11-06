@@ -1,66 +1,67 @@
 /**
  * The Fundamentals tab (the owner, 2026-11-05, after Robinhood's): one grid
- * from top to bottom. Each band is a main part two columns wide beside a
- * rail one column wide, the rail split off by a hairline and a wider gap.
- * The main part holds one group laid down both columns (Valuation) or two
- * groups side by side; every group is a label over the same stat rows.
+ * of groups, three columns wide, a gap between columns and rows and nothing
+ * else. Every group is a label with a rule under it, then the same stat
+ * rows; Valuation spans two columns and lays its rows down both.
  *
- *   Valuation                      ‖ Company
- *   Growth        | Price returns  ‖ Profitability   (the rates, as bars)
- *   Balance sheet | Per share      ‖ Dividends
+ *   Valuation                      | Company
+ *   Growth        | Price returns  | Profitability
+ *   Balance sheet | Per share      | Dividends
  *   Filings
  *
- * Narrower than three columns (a laptop beside the sidebar) the rail's
- * group joins the two columns as a third group; narrower still they stack.
+ * Narrower than three columns the groups flow in two; narrower still they
+ * stack. Only the three margins carry a bar.
  */
 
 import type { ReactNode } from "react";
 import { SectionLabel } from "@/components/domain/section-label";
-import { BarList, FactList, StatGrid, StatList } from "@/components/stocks/StatGrid";
-import type { Fundamentals as Data } from "@/lib/stocks/stock-stats";
+import { BarList, StatGrid, StatList } from "@/components/stocks/StatGrid";
+import type { Fundamentals as Data, Stat } from "@/lib/stocks/stock-stats";
 import { cn } from "@/lib/utils";
 
 function Group({ label, wide = false, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
-    <section className={cn("space-y-1", wide && "@min-[448px]:col-span-2")}>
-      <SectionLabel>{label}</SectionLabel>
+    <section className={cn("self-start", wide && "@min-[448px]:col-span-2")}>
+      <SectionLabel className="border-b border-border pb-2">{label}</SectionLabel>
       {children}
     </section>
   );
 }
 
-/** A main part (two columns) beside a rail (one), or nothing when both are empty. */
-function Band({ main, rail }: { main: ReactNode[]; rail: ReactNode }) {
-  const groups = main.filter(Boolean);
-  if (groups.length === 0 && !rail) return null;
+/** One row of the grid: up to three groups, or nothing when all are empty. */
+function Row({ groups }: { groups: ReactNode[] }) {
+  const drawn = groups.filter(Boolean);
+  if (drawn.length === 0) return null;
   // Both widths in one form, so the wider rule wins: a named @md sorts after
   // an arbitrary width in the cascade and left the third column an auto track.
-  return (
-    <div className="grid grid-cols-1 gap-8 @min-[448px]:grid-cols-2 @min-[840px]:grid-cols-3">
-      {groups}
-      {rail ? <div className="@min-[840px]:col-start-3 @min-[840px]:border-l @min-[840px]:border-border/40 @min-[840px]:pl-8">{rail}</div> : null}
-    </div>
-  );
+  return <div className="grid grid-cols-1 gap-x-8 gap-y-10 @min-[448px]:grid-cols-2 @min-[840px]:grid-cols-3">{drawn}</div>;
 }
+
+const list = (key: string, label: string, stats: Stat[]) =>
+  stats.length > 0 ? (
+    <Group key={key} label={label}>
+      <StatList stats={stats} />
+    </Group>
+  ) : null;
 
 export function Fundamentals({
   ticker,
-  data,
+  data: d,
   facts,
   filings,
 }: {
   ticker: string;
   data: Data;
-  facts: Array<{ label: string; value: ReactNode }>;
+  facts: Stat[];
   filings: ReactNode;
 }) {
-  const d = data;
-  const nothing = [d.growth, d.priceReturns, d.profitability, d.balanceSheet, d.perShare, d.dividends].every((g) => g.length === 0) && d.valuation.length === 0;
+  const nothing =
+    d.valuation.length === 0 && [d.growth, d.priceReturns, d.margins, d.returns, d.balanceSheet, d.perShare, d.dividends].every((g) => g.length === 0);
   return (
     <div className="@container">
       <div className="space-y-10">
-        <Band
-          main={[
+        <Row
+          groups={[
             d.valuation.length > 0 ? (
               <Group key="valuation" label="Valuation" wide>
                 <StatGrid columns={d.valuation} />
@@ -70,56 +71,27 @@ export function Fundamentals({
                 No financial data for {ticker}.
               </p>
             ) : null,
+            list("company", "Company", facts),
           ]}
-          rail={
-            facts.length > 0 ? (
-              <Group label="Company">
-                <FactList rows={facts} />
-              </Group>
-            ) : null
-          }
         />
-        <Band
-          main={[
-            d.growth.length > 0 ? (
-              <Group key="growth" label="Growth">
-                <BarList stats={d.growth} />
-              </Group>
-            ) : null,
-            d.priceReturns.length > 0 ? (
-              <Group key="returns" label="Price returns">
-                <BarList stats={d.priceReturns} />
+        <Row
+          groups={[
+            list("growth", "Growth", d.growth),
+            list("returns", "Price returns", d.priceReturns),
+            d.margins.length > 0 || d.returns.length > 0 ? (
+              <Group key="profit" label="Profitability">
+                <BarList stats={d.margins} floor={100} />
+                <StatList stats={d.returns} />
               </Group>
             ) : null,
           ]}
-          rail={
-            d.profitability.length > 0 ? (
-              <Group label="Profitability">
-                <BarList stats={d.profitability} floor={100} />
-              </Group>
-            ) : null
-          }
         />
-        <Band
-          main={[
-            d.balanceSheet.length > 0 ? (
-              <Group key="balance" label="Balance sheet">
-                <StatList stats={d.balanceSheet} />
-              </Group>
-            ) : null,
-            d.perShare.length > 0 ? (
-              <Group key="share" label="Per share">
-                <StatList stats={d.perShare} />
-              </Group>
-            ) : null,
+        <Row
+          groups={[
+            list("balance", "Balance sheet", d.balanceSheet),
+            list("share", "Per share", d.perShare),
+            list("dividends", "Dividends", d.dividends),
           ]}
-          rail={
-            d.dividends.length > 0 ? (
-              <Group label="Dividends">
-                <StatList stats={d.dividends} />
-              </Group>
-            ) : null
-          }
         />
         <section className="space-y-2">
           <SectionLabel>Filings</SectionLabel>

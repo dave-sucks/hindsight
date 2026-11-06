@@ -73,13 +73,13 @@ export function overviewStatColumns(metrics: Metrics, marketCap: number | null):
   ];
 }
 
-/** The company's facts, for the Fundamentals tab's right column. The website is a link; the page draws it. */
+/** The company's facts, beside the valuation on the Fundamentals tab. The website is a chip on the Overview, not a row here. */
 export function companyFactRows(
-  profile: { finnhubIndustry?: string; country?: string; ipo?: string; shareOutstanding?: number; weburl?: string } | null | undefined,
+  profile: { finnhubIndustry?: string; country?: string; ipo?: string; shareOutstanding?: number } | null | undefined,
   exchange: string | null,
   nextReportDate: string | null,
-): Array<{ label: string; value: string; href?: string }> {
-  const rows: Array<{ label: string; value: string; href?: string }> = [
+): Stat[] {
+  return [
     { label: "Industry", value: profile?.finnhubIndustry || NONE },
     { label: "Exchange", value: exchange || NONE },
     { label: "Country", value: profile?.country || NONE },
@@ -87,10 +87,6 @@ export function companyFactRows(
     { label: "Shares outstanding", value: fmtBig(millions(profile?.shareOutstanding ?? null), "") },
     { label: "Next earnings", value: nextReportDate ? fmtDay(nextReportDate) : NONE },
   ];
-  if (profile?.weburl) {
-    rows.push({ label: "Website", value: profile.weburl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""), href: profile.weburl });
-  }
-  return rows;
 }
 
 /** "Feb 11" from "2026-02-11", read as a calendar day, not a UTC instant. */
@@ -113,17 +109,19 @@ function barRows(stats: Array<[string, number | null, (n: number | null) => stri
 
 /**
  * The Fundamentals tab, in the order it is read (the owner, 2026-11-05):
- * three bands, each a main part beside a rail. Valuation (down two columns)
- * beside the company's facts; the rates as bars — growth and price returns
- * beside profitability; then the balance sheet and the per-share figures
- * beside the dividend. A stat Finnhub has no number for is left out, and
- * an empty group is not drawn.
+ * three rows of three columns. Valuation (down two columns) and the
+ * company's facts; growth, price returns and profitability; the balance
+ * sheet, the per-share figures and the dividend. The groups are ours:
+ * Finnhub's metric map is one flat list of keys. Only the three margins
+ * carry a bar (a share of revenue on a 0–100 scale). A stat Finnhub has no
+ * number for is left out, and an empty group is not drawn.
  */
 export type Fundamentals = {
   valuation: StatColumns;
-  growth: BarStat[];
-  priceReturns: BarStat[];
-  profitability: BarStat[];
+  growth: Stat[];
+  priceReturns: Stat[];
+  margins: BarStat[];
+  returns: Stat[];
   balanceSheet: Stat[];
   perShare: Stat[];
   dividends: Stat[];
@@ -149,7 +147,7 @@ export function fundamentals(metrics: Metrics, marketCap: number | null): Fundam
         ["EV / revenue", num(m, "evRevenueTTM"), ratio],
       ]),
     ),
-    growth: barRows([
+    growth: rows([
       ["Revenue, TTM", num(m, "revenueGrowthTTMYoy"), signed],
       ["Revenue, 3-year", num(m, "revenueGrowth3Y"), signed],
       ["Revenue, 5-year", num(m, "revenueGrowth5Y"), signed],
@@ -157,7 +155,7 @@ export function fundamentals(metrics: Metrics, marketCap: number | null): Fundam
       ["EPS, 3-year", num(m, "epsGrowth3Y"), signed],
       ["EPS, 5-year", num(m, "epsGrowth5Y"), signed],
     ]),
-    priceReturns: barRows([
+    priceReturns: rows([
       ["5 days", num(m, "5DayPriceReturnDaily"), signed],
       ["13 weeks", num(m, "13WeekPriceReturnDaily"), signed],
       ["26 weeks", num(m, "26WeekPriceReturnDaily"), signed],
@@ -165,10 +163,12 @@ export function fundamentals(metrics: Metrics, marketCap: number | null): Fundam
       ["Year to date", num(m, "yearToDatePriceReturnDaily"), signed],
       ["vs S&P 500, 52 weeks", num(m, "priceRelativeToS&P50052Week"), signed],
     ]),
-    profitability: barRows([
+    margins: barRows([
       ["Gross margin", num(m, "grossMarginTTM"), pct],
       ["Operating margin", num(m, "operatingMarginTTM"), pct],
       ["Net margin", num(m, "netProfitMarginTTM"), pct],
+    ]),
+    returns: rows([
       ["ROE", num(m, "roeTTM"), pct],
       ["ROA", num(m, "roaTTM"), pct],
       ["ROI", num(m, "roiTTM"), pct],

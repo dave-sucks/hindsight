@@ -49,22 +49,20 @@ describe("the Overview's block", () => {
 });
 
 describe("the Fundamentals tab", () => {
-  it("is the company's facts, the website a link, the next report a day", () => {
+  it("is the company's facts, the next report as a day", () => {
     const rows = companyFactRows(
-      { finnhubIndustry: "Semiconductors", country: "US", ipo: "1999-01-22", shareOutstanding: 24300, weburl: "https://www.nvidia.com/" },
+      { finnhubIndustry: "Semiconductors", country: "US", ipo: "1999-01-22", shareOutstanding: 24300 },
       "NASDAQ",
       "2026-02-25",
     );
-    expect(rows.map((r) => [r.label, r.value])).toEqual([
-      ["Industry", "Semiconductors"],
-      ["Exchange", "NASDAQ"],
-      ["Country", "US"],
-      ["IPO", "1999-01-22"],
-      ["Shares outstanding", "24.30B"],
-      ["Next earnings", "Feb 25"],
-      ["Website", "nvidia.com"],
+    expect(rows).toEqual([
+      { label: "Industry", value: "Semiconductors" },
+      { label: "Exchange", value: "NASDAQ" },
+      { label: "Country", value: "US" },
+      { label: "IPO", value: "1999-01-22" },
+      { label: "Shares outstanding", value: "24.30B" },
+      { label: "Next earnings", value: "Feb 25" },
     ]);
-    expect(rows[6].href).toBe("https://www.nvidia.com/");
     expect(companyFactRows(null, null, null).map((r) => r.value)).toEqual(["—", "—", "—", "—", "—", "—"]);
   });
 });
@@ -78,10 +76,11 @@ describe("fundamentals", () => {
       ["Forward P/E", "PEG"],
     ]);
     expect(f.valuation[1][0]).toEqual({ label: "Forward P/E", value: "14.47" });
-    // A bar row carries its number for the bar's length.
-    expect(f.growth).toEqual([{ label: "Revenue, TTM", value: "+83.4%", n: 83.38 }]);
+    expect(f.growth).toEqual([{ label: "Revenue, TTM", value: "+83.4%" }]);
     expect(f.priceReturns.map((s) => s.value)).toEqual(["+0.9%", "+9.7%", "−10.3%"]);
-    expect(f.profitability).toEqual([{ label: "Gross margin", value: "74.7%", n: 74.67 }]);
+    // A margin carries its number for the bar's length.
+    expect(f.margins).toEqual([{ label: "Gross margin", value: "74.7%", n: 74.67 }]);
+    expect(f.returns).toEqual([]);
     expect(f.balanceSheet).toEqual([]);
     expect(f.perShare).toEqual([{ label: "EPS (TTM)", value: "$7.91" }]);
     expect(f.dividends).toEqual([{ label: "Dividend yield", value: "0.03%" }]);
@@ -90,6 +89,6 @@ describe("fundamentals", () => {
   it("is empty with no metrics", () => {
     const f = fundamentals(null, null);
     expect(f.valuation).toEqual([]);
-    expect([f.growth, f.priceReturns, f.profitability, f.balanceSheet, f.perShare, f.dividends].every((g) => g.length === 0)).toBe(true);
+    expect([f.growth, f.priceReturns, f.margins, f.returns, f.balanceSheet, f.perShare, f.dividends].every((g) => g.length === 0)).toBe(true);
   });
 });

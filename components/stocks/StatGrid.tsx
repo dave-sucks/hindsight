@@ -1,13 +1,11 @@
 /**
  * The stock page's stat rows: label left, number right, a hairline under
  * each, read down columns. One row shape (`StatList`), the same row with a
- * bar in the middle (`BarList`), the rows down two or three columns
- * (`StatGrid`) and the company's facts (`FactList`). The Overview's six and
- * every group on the Fundamentals tab draw from here, so a number looks the
- * same wherever it is.
+ * bar in the middle (`BarList`, the margins) and the rows down two or three
+ * columns (`StatGrid`). The Overview's six and every group on the
+ * Fundamentals tab draw from here, so a number looks the same wherever it is.
  */
 
-import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { BarStat, Stat, StatColumns } from "@/lib/stocks/stock-stats";
 
@@ -75,20 +73,6 @@ export function BarList({ stats, floor = 0 }: { stats: BarStat[]; floor?: number
           </div>
         );
       })}
-    </dl>
-  );
-}
-
-/** Label / value rows in one column: the company's facts. */
-export function FactList({ rows }: { rows: Array<{ label: string; value: ReactNode }> }) {
-  return (
-    <dl>
-      {rows.map((r) => (
-        <div key={r.label} className={cn(ROW, "flex items-baseline justify-between gap-3")}>
-          <dt className="text-muted-foreground shrink-0">{r.label}</dt>
-          <dd className="min-w-0 truncate text-right tabular-nums">{r.value}</dd>
-        </div>
-      ))}
     </dl>
   );
 }
