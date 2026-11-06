@@ -5,7 +5,7 @@
  * `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
  */
 
-import { FULL_ROW_SITUATIONS } from "@/lib/agent/row-for-model";
+import { ROW_FIELDS, rowKeysFor } from "@/lib/agent/row-for-model";
 import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/lib/agent/situations";
 
 /** Each situation in a sentence for a person. The text an agent reads is SITUATIONS' own. */
@@ -45,14 +45,16 @@ export function situationsLibraryMarkdown(): string {
     "- **On the row.** Every stock in the read lists its situations by code, the most urgent first.",
     "- **In `guidance`, once.** The read carries one `guidance` entry per code on the day's list, keyed by code, however many stocks share it. A quiet stock brings none.",
     "- **In a trigger run,** the stock's own codes and their texts come with the fire. Three situations are never sent to a trigger run, and where a text tells a run to change a stock's status, the trigger run reads a line that takes the plan down instead (its save has no status change).",
-    "- **The full row.** Two situations send the stock's full row, research and all, because the decision needs it: watch woke up, and no setup named.",
+    "- **The row's fields.** Every stock in a situation sends the row's standing fields (the stock, its situations, the price, the position, a proposal waiting, every trigger with its id, the belief, the newest Activity lines, when the research was written). A situation adds the fields its decision reads, listed under each one below; the review clock reads the whole case; the old research sections and the history come only when the stock is asked for by name (`ROW_FIELDS` in `lib/agent/row-for-model.ts`).",
     "",
   ];
   codes.forEach((code, i) => {
     const s = SITUATIONS[code];
     const notTrigger = guidanceCodes("WATCHING", [code], "INTRADAY_TACTICAL").length === 0;
     const triggerText = guidanceFor([code], "INTRADAY_TACTICAL")[code];
-    const facts = [`\`${code}\``, `rank ${i + 1} of ${codes.length}`, FULL_ROW_SITUATIONS.has(code) ? "full row" : "short row", notTrigger ? "not sent to a trigger run" : "sent to every run"];
+    const standing = new Set(Object.keys(ROW_FIELDS).filter((k) => ROW_FIELDS[k] === "always"));
+    const adds = [...rowKeysFor([code], { size: "short", named: false })].filter((k) => !standing.has(k));
+    const facts = [`\`${code}\``, `rank ${i + 1} of ${codes.length}`, adds.length ? `the row adds ${adds.map((k) => `\`${k}\``).join(", ")}` : "the standing fields only", notTrigger ? "not sent to a trigger run" : "sent to every run"];
     out.push(`## ${cap(s.name)}`, "", facts.join(" · "), "", PLAIN[code], "", "```text", s.guidance, "```", "");
     if (!notTrigger && triggerText && triggerText !== s.guidance) {
       out.push("In a trigger run it reads:", "", "```text", triggerText, "```", "");

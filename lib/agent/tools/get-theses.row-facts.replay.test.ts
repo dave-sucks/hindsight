@@ -57,8 +57,7 @@ const seed = () => ({
 
 type Tool = typeof import("@/lib/agent/tools/get-theses");
 
-async function read() {
-  const args = { limit: 50 };
+async function read(args: { limit?: number; tickers?: string[] } = { limit: 50 }) {
   const { result, crashed } = await replayTool("get-theses", "getTheses", { seed: seed(), args, quotes: { AAA: 91, BBB: 33 } });
   if (crashed) throw new Error(`get_theses crashed: ${JSON.stringify(result).slice(0, 2000)}`);
   const mod: Tool = await import("@/lib/agent/tools/get-theses");
@@ -99,12 +98,16 @@ describe("get_theses — the facts on the saved row", () => {
     const { mod, modelRow } = await read();
     // The raw facts never reach the model; three of their names are now lines of words.
     for (const k of ["proposals", "inheritedTriggers"]) expect(modelRow).not.toHaveProperty(k);
-    for (const k of ["position", "price", "chart"]) expect(typeof modelRow[k]).toBe("string");
+    for (const k of ["position", "price"]) expect(typeof modelRow[k]).toBe("string");
+    // The chart numbers ride only with the situations that read them (a buy, an add, a floor to fix, a plan check) and on a read by name; AAA's sale signal sends none.
+    expect(modelRow).not.toHaveProperty("chart");
+    const named = (await read({ tickers: ["AAA"] })).modelRow;
+    expect(typeof named.chart).toBe("string");
     expect(mod.ROW_FACTS).toContain("inheritedTriggers");
     expect(modelRow.position).toMatch(/^10 sh at \$100\.00 → \$91\.00 \(-9\.0%\), \$910; opened \d\d-\d\d; high since we bought \$112\.00$/);
     expect(modelRow.proposal_waiting).toMatch(/^add 10 sh, placed \d\d-\d\d \d\d:\d\d ET, expires \d\d-\d\d \d\d:\d\d ET$/);
     expect(modelRow.price).toMatch(/^\$91\.00, \+0\.0% today \(\d\d-\d\d \d\d:\d\d ET\)$/);
-    expect(modelRow.chart).toMatch(/^as of the \d{4}-\d\d-\d\d close: 20d \$85\.25 · 50d \$78\.10 · 200d \$70\.40 · RSI \d+ \(14-day, from the closes and the live price\) · 20d range \$80\.00–\$90\.00 · 52w high \$95\.00 · ATR \$2\.15 · vs the S&P 1M \+3\.2% \/ 3M -1\.1% · 20d avg volume 1\.2M · 5d \+4\.0% · 20d \+13\.8%$/);
+    expect(named.chart).toMatch(/^as of the \d{4}-\d\d-\d\d close: 20d \$85\.25 · 50d \$78\.10 · 200d \$70\.40 · RSI \d+ \(14-day, from the closes and the live price\) · 20d range \$80\.00–\$90\.00 · 52w high \$95\.00 · ATR \$2\.15 · vs the S&P 1M \+3\.2% \/ 3M -1\.1% · 20d avg volume 1\.2M · 5d \+4\.0% · 20d \+13\.8%$/);
     const triggers = modelRow.triggers as string[];
     expect(triggers).toHaveLength(2);
     expect(triggers[0]).toMatch(/^Sell if below \$95.* \[id floor-aaa\]$/);

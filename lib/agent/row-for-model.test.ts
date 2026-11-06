@@ -5,7 +5,7 @@
  * a line with nothing to say is left out. Built from one saved-row fixture
  * shaped like a real held row, written inline (no fixture file).
  */
-import { rowForModel, sizeFor, stripSourceTags, FULL_ROW_SITUATIONS } from "@/lib/agent/row-for-model";
+import { rowForModel, sizeFor, stripSourceTags } from "@/lib/agent/row-for-model";
 
 type Row = Record<string, unknown>;
 
@@ -71,10 +71,10 @@ const quiet = (): Row => ({
 });
 
 describe("the size a row gets", () => {
-  it("is the full row for a named read, by rule for a woken watch or an unnamed setup, the short row otherwise", () => {
+  it("is the full row for a named read, the row otherwise; no situation sends the full row by rule any more (2026-11-06)", () => {
     expect(sizeFor(held(), true)).toBe("full");
     expect(sizeFor(held(), false)).toBe("short");
-    for (const code of FULL_ROW_SITUATIONS) expect(sizeFor({ ...held(), situations: ["REVIEW_DUE", code] }, false)).toBe("full");
+    for (const code of ["QUIET_WATCH_WOKE", "NO_SETUP_NAMED"]) expect(sizeFor({ ...held(), situations: ["REVIEW_DUE", code] }, false)).toBe("short");
   });
 });
 
@@ -206,7 +206,7 @@ describe("the full row", () => {
     expect(row.history).toEqual([{ id: "u1", type: "REVIEWED" }]);
     expect(Object.keys(row).indexOf("bull_case")).toBeLessThan(Object.keys(row).indexOf("chart"));
   });
-  it("by rule, without a named read, carries no history", () => {
+  it("without a named read, carries no history", () => {
     const row = rowForModel({ ...held(), situations: ["NO_SETUP_NAMED"], nameTheSetup: { choose: [{ id: "PEAD", name: "Post-earnings drift", when: "after a beat" }] } }, { named: false, size: "full" }) as Row;
     expect(row).not.toHaveProperty("history");
     expect(row.nameTheSetup).toEqual({ choose: [{ id: "PEAD", name: "Post-earnings drift", when: "after a beat" }] });
