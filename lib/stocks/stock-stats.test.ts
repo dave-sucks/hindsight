@@ -1,4 +1,4 @@
-import { rangeBars, overviewStatColumns, companyFactRows, fundamentals, inColumns } from "./stock-stats";
+import { rangeBars, keyStats, companyFactRows, fundamentals } from "./stock-stats";
 
 // A slice of Finnhub's /stock/metric for NVDA, 2026-11-02.
 const nvda = {
@@ -30,13 +30,13 @@ describe("the Overview's block", () => {
     ]);
   });
 
-  it("is six stats down two columns, in dollars, from the metric map", () => {
-    const cols = overviewStatColumns(nvda, 4_931_824_000_000);
-    expect(cols.map((c) => c.length)).toEqual([3, 3]);
-    expect(cols[0][0]).toEqual({ label: "Market cap", value: "$4.93T" });
-    expect(cols[0][2]).toEqual({ label: "EPS", value: "$7.91" });
-    expect(cols[1][1]).toEqual({ label: "Volume, 3-month avg", value: "120.03M" });
-    expect(cols[1][2]).toEqual({ label: "Beta", value: "2.28" });
+  it("has six key stats one row each, in dollars, from the metric map", () => {
+    const rows = keyStats(nvda, 4_931_824_000_000);
+    expect(rows.map((s) => s.label)).toEqual(["Market cap", "P/E", "EPS", "Volume, 10-day avg", "Volume, 3-month avg", "Beta"]);
+    expect(rows[0]).toEqual({ label: "Market cap", value: "$4.93T" });
+    expect(rows[2]).toEqual({ label: "EPS", value: "$7.91" });
+    expect(rows[4]).toEqual({ label: "Volume, 3-month avg", value: "120.03M" });
+    expect(rows[5]).toEqual({ label: "Beta", value: "2.28" });
   });
 
   it("prints — for what it has not got, never a guess", () => {
@@ -44,7 +44,7 @@ describe("the Overview's block", () => {
       { label: "Today", low: null, high: null, current: null },
       { label: "52 week", low: null, high: null, current: null },
     ]);
-    expect(overviewStatColumns(null, null).flat().every((s) => s.value === "—")).toBe(true);
+    expect(keyStats(null, null).every((s) => s.value === "—")).toBe(true);
   });
 });
 
@@ -72,8 +72,6 @@ describe("fundamentals", () => {
     const f = fundamentals(nvda, 4_931_824_000_000);
     expect(f.valuation.map((s) => s.label)).toEqual(["Market cap", "Enterprise value", "P/E (TTM)", "Forward P/E", "PEG"]);
     expect(f.valuation[3]).toEqual({ label: "Forward P/E", value: "14.47" });
-    // Laid down two columns, the first taking the odd one.
-    expect(inColumns(f.valuation).map((c) => c.length)).toEqual([3, 2]);
     expect(f.growth).toEqual([{ label: "Revenue, TTM", value: "+83.4%" }]);
     expect(f.priceReturns.map((s) => s.value)).toEqual(["+0.9%", "+9.7%", "−10.3%"]);
     // A margin carries its number for the bar's length.

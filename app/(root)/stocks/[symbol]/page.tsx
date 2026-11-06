@@ -8,7 +8,6 @@ import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
 import { PositionCard } from "@/components/stocks/PositionCard";
-import { StatGrid } from "@/components/stocks/StatGrid";
 import { RangeBar } from "@/components/stocks/RangeBar";
 import { Fundamentals } from "@/components/stocks/Fundamentals";
 import { EarningsCard } from "@/components/domain/earnings-card";
@@ -31,7 +30,7 @@ import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 import { fillFacts } from "@/lib/stocks/stock-history";
-import { rangeBars, overviewStatColumns, companyFactRows, fundamentals } from "@/lib/stocks/stock-stats";
+import { rangeBars, keyStats, companyFactRows, fundamentals } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -184,25 +183,23 @@ export default async function StockDetailPage({ params }: Props) {
   );
 
   // The Overview's block under the company line (the owner, 2026-11-05):
-  // where the price sits today and over the year, then six stats in two
-  // columns. With or without a live thesis.
+  // where the price sits today and over the year. With or without a live
+  // thesis. The six key stats moved to the top of Fundamentals.
   const overviewStats = (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
-        {rangeBars(quote, metrics).map((r) => (
-          <RangeBar key={r.label} {...r} />
-        ))}
-      </div>
-      <StatGrid columns={overviewStatColumns(metrics, marketCap)} />
+    <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+      {rangeBars(quote, metrics).map((r) => (
+        <RangeBar key={r.label} {...r} />
+      ))}
     </div>
   );
 
-  // The Fundamentals tab: three bands of groups, the company's facts beside
-  // the first, the filings under them.
+  // The Fundamentals tab: six key stats beside the company's facts, then
+  // the rest in tabs, the filings under them.
   const nextReport = (earnings as EarningsResponse | null)?.next?.reportDate ?? null;
   const financials = (
     <Fundamentals
       ticker={upperSymbol}
+      keyStats={keyStats(metrics, marketCap)}
       data={fundamentals(metrics, marketCap)}
       facts={companyFactRows(profile, identity.exchange, nextReport)}
       filings={<StockFilingsSection symbol={upperSymbol} />}

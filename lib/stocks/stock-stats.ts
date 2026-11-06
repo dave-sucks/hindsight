@@ -1,9 +1,9 @@
 /**
  * The stock page's numbers, in the order and words they are shown (the
  * owner's layouts, 2026-11-05, after Robinhood's). The Overview shows two
- * range bars (today, 52 weeks) and six stats in two columns; the
- * Fundamentals tab is three bands of groups (see `fundamentals`), the
- * company's facts beside the first. Everything here is a pure read of the
+ * range bars (today, 52 weeks); the Fundamentals tab opens with six key
+ * stats down one column beside the company's facts, then the rest in tabs
+ * (see `fundamentals`). Everything here is a pure read of the
  * quote, the profile and Finnhub's `/stock/metric` map, so the page cannot
  * print a number this file doesn't name, and a metric Finnhub lacks for a
  * stock reads "—" on the Overview and drops out of the Fundamentals.
@@ -56,20 +56,16 @@ export function rangeBars(
   ];
 }
 
-/** The Overview's six, in two columns: what the company is worth and earns; how it trades. */
-export function overviewStatColumns(metrics: Metrics, marketCap: number | null): StatColumns {
+/** The six key stats at the top of Fundamentals, one row each: what the company is worth and earns; how it trades. */
+export function keyStats(metrics: Metrics, marketCap: number | null): Stat[] {
   const m = metrics;
   return [
-    [
-      { label: "Market cap", value: fmtBig(marketCap) },
-      { label: "P/E", value: fmtNum(num(m, "peTTM")) },
-      { label: "EPS", value: fmtMoney(num(m, "epsTTM")) },
-    ],
-    [
-      { label: "Volume, 10-day avg", value: fmtBig(millions(num(m, "10DayAverageTradingVolume")), "") },
-      { label: "Volume, 3-month avg", value: fmtBig(millions(num(m, "3MonthAverageTradingVolume")), "") },
-      { label: "Beta", value: fmtNum(num(m, "beta")) },
-    ],
+    { label: "Market cap", value: fmtBig(marketCap) },
+    { label: "P/E", value: fmtNum(num(m, "peTTM")) },
+    { label: "EPS", value: fmtMoney(num(m, "epsTTM")) },
+    { label: "Volume, 10-day avg", value: fmtBig(millions(num(m, "10DayAverageTradingVolume")), "") },
+    { label: "Volume, 3-month avg", value: fmtBig(millions(num(m, "3MonthAverageTradingVolume")), "") },
+    { label: "Beta", value: fmtNum(num(m, "beta")) },
   ];
 }
 
@@ -92,13 +88,6 @@ export function companyFactRows(
 /** "Feb 11" from "2026-02-11", read as a calendar day, not a UTC instant. */
 const fmtDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-/** Lays stats down two columns, top to bottom then left to right (the first column takes the odd one). */
-export function inColumns(stats: Stat[]): StatColumns {
-  if (stats.length === 0) return [];
-  const per = Math.ceil(stats.length / 2);
-  return [stats.slice(0, per), stats.slice(per)].filter((c) => c.length > 0);
-}
-
 /** The stats that have a number, with their words; a missing one is left out, never guessed. */
 function rows(stats: Array<[string, number | null, (n: number | null) => string]>): Stat[] {
   return stats.filter(([, n]) => n != null).map(([label, n, fmt]) => ({ label, value: fmt(n) }));
@@ -108,14 +97,13 @@ function barRows(stats: Array<[string, number | null, (n: number | null) => stri
 }
 
 /**
- * The Fundamentals tab, in the order it is read (the owner, 2026-11-05):
- * two rows of three columns. Valuation (down two columns) beside the
- * company's facts; then the business, one block two columns wide with a
- * tab per group (growth, profitability, balance sheet, per share), beside
- * the stock's own price returns. The groups are ours: Finnhub's metric map
- * is one flat list of keys. Only the three margins carry a bar (a share of
- * revenue on a 0–100 scale). A stat Finnhub has no number for is left out,
- * and an empty group is not drawn.
+ * The rest of the Fundamentals tab, under the key stats: four tabs of plain
+ * rows the full width of the page (the owner, 2026-11-05) — Valuation;
+ * Growth & returns (the business's growth, then the stock's price returns);
+ * Profitability; Balance sheet & per share. The groups are ours: Finnhub's
+ * metric map is one flat list of keys. Only the three margins carry a bar
+ * (a share of revenue on a 0–100 scale). A stat Finnhub has no number for
+ * is left out, and an empty tab is not drawn.
  */
 export type Fundamentals = {
   valuation: Stat[];
