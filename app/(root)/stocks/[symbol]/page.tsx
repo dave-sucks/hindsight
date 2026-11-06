@@ -30,7 +30,7 @@ import { getStockInfo } from "@/lib/actions/stock-info";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { getEarningsForSymbol } from "@/lib/market-data/earnings-calendar";
 import { fillFacts } from "@/lib/stocks/stock-history";
-import { rangeBars, overviewStatColumns, keyFigureColumns, companyFactRows, financialStatSections } from "@/lib/stocks/stock-stats";
+import { rangeBars, overviewStatColumns, companyFactRows, fundamentals } from "@/lib/stocks/stock-stats";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -196,8 +196,8 @@ export default async function StockDetailPage({ params }: Props) {
     </div>
   );
 
-  // The Fundamentals tab: the key figures beside the company's facts, then
-  // the full statistics table and the filings.
+  // The Fundamentals tab: three bands of groups, the company's facts beside
+  // the first, the filings under them.
   const nextReport = (earnings as EarningsResponse | null)?.next?.reportDate ?? null;
   const facts = companyFactRows(profile, identity.exchange, nextReport).map((r) => ({
     label: r.label,
@@ -213,9 +213,8 @@ export default async function StockDetailPage({ params }: Props) {
   const financials = (
     <Fundamentals
       ticker={upperSymbol}
-      figures={keyFigureColumns(metrics, marketCap)}
+      data={fundamentals(metrics, marketCap)}
       facts={facts}
-      sections={financialStatSections(metrics, marketCap)}
       filings={<StockFilingsSection symbol={upperSymbol} />}
     />
   );

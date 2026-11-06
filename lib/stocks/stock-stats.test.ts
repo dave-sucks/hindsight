@@ -1,4 +1,4 @@
-import { rangeBars, overviewStatColumns, keyFigureColumns, companyFactRows, financialStatSections } from "./stock-stats";
+import { rangeBars, overviewStatColumns, companyFactRows, fundamentals } from "./stock-stats";
 
 // A slice of Finnhub's /stock/metric for NVDA, 2026-11-02.
 const nvda = {
@@ -45,19 +45,10 @@ describe("the Overview's block", () => {
       { label: "52 week", low: null, high: null, current: null },
     ]);
     expect(overviewStatColumns(null, null).flat().every((s) => s.value === "—")).toBe(true);
-    expect(keyFigureColumns(null, null).flat().every((s) => s.value === "—")).toBe(true);
   });
 });
 
-describe("the Fundamentals tab's top", () => {
-  it("is the key figures in two columns of five", () => {
-    const cols = keyFigureColumns(nvda, 4_931_824_000_000);
-    expect(cols.map((c) => c.length)).toEqual([5, 5]);
-    expect(cols[0][3]).toEqual({ label: "Forward P/E", value: "14.47" });
-    expect(cols[1][0]).toEqual({ label: "Revenue growth, TTM", value: "+83.4%" });
-    expect(cols[1][3]).toEqual({ label: "Dividend yield", value: "0.03%" });
-  });
-
+describe("the Fundamentals tab", () => {
   it("is the company's facts, the website a link, the next report a day", () => {
     const rows = companyFactRows(
       { finnhubIndustry: "Semiconductors", country: "US", ipo: "1999-01-22", shareOutstanding: 24300, weburl: "https://www.nvidia.com/" },
@@ -78,31 +69,27 @@ describe("the Fundamentals tab's top", () => {
   });
 });
 
-describe("financialStatSections", () => {
-  it("keeps the stats Finnhub has and drops the rest, section by section", () => {
-    const sections = financialStatSections(nvda, 4_931_824_000_000);
-    const valuation = sections.find((s) => s.label === "Valuation")!;
-    expect(valuation.columns.flat().map((s) => s.label)).toEqual([
-      "Market cap",
-      "Enterprise value",
-      "P/E (TTM)",
-      "Forward P/E",
-      "PEG",
+describe("fundamentals", () => {
+  it("keeps the stats Finnhub has and drops the rest, group by group", () => {
+    const f = fundamentals(nvda, 4_931_824_000_000);
+    // Valuation runs down two columns, the first taking the odd one.
+    expect(f.valuation.map((c) => c.map((s) => s.label))).toEqual([
+      ["Market cap", "Enterprise value", "P/E (TTM)"],
+      ["Forward P/E", "PEG"],
     ]);
-    expect(valuation.columns.flat().find((s) => s.label === "Forward P/E")!.value).toBe("14.47");
-    // Growth has one number; Balance sheet and Per share partly; Profitability one.
-    expect(sections.find((s) => s.label === "Growth")!.columns.flat()).toEqual([
-      { label: "Revenue, TTM vs year ago", value: "+83.4%" },
-    ]);
-    expect(sections.find((s) => s.label === "Price")!.columns.flat().map((s) => s.value)).toEqual([
-      "+0.9%",
-      "+9.7%",
-      "−10.3%",
-    ]);
-    expect(sections.find((s) => s.label === "Balance sheet")).toBeUndefined();
+    expect(f.valuation[1][0]).toEqual({ label: "Forward P/E", value: "14.47" });
+    // A bar row carries its number for the bar's length.
+    expect(f.growth).toEqual([{ label: "Revenue, TTM", value: "+83.4%", n: 83.38 }]);
+    expect(f.priceReturns.map((s) => s.value)).toEqual(["+0.9%", "+9.7%", "−10.3%"]);
+    expect(f.profitability).toEqual([{ label: "Gross margin", value: "74.7%", n: 74.67 }]);
+    expect(f.balanceSheet).toEqual([]);
+    expect(f.perShare).toEqual([{ label: "EPS (TTM)", value: "$7.91" }]);
+    expect(f.dividends).toEqual([{ label: "Dividend yield", value: "0.03%" }]);
   });
 
   it("is empty with no metrics", () => {
-    expect(financialStatSections(null, null)).toEqual([]);
+    const f = fundamentals(null, null);
+    expect(f.valuation).toEqual([]);
+    expect([f.growth, f.priceReturns, f.profitability, f.balanceSheet, f.perShare, f.dividends].every((g) => g.length === 0)).toBe(true);
   });
 });

@@ -2,17 +2,17 @@
  * The stock page's numbers, in the order and words they are shown (the
  * owner's layouts, 2026-11-05, after Robinhood's). The Overview shows two
  * range bars (today, 52 weeks) and six stats in two columns; the
- * Fundamentals tab opens with the key figures in two columns beside the
- * company's facts, then the full set as one table in sections. Everything
- * here is a pure read of the quote, the profile and Finnhub's
- * `/stock/metric` map, so the page cannot print a number this file doesn't
- * name, and a metric Finnhub lacks for a stock reads "—" (or drops out of
- * the table) instead of a guessed value.
+ * Fundamentals tab is three bands of groups (see `fundamentals`), the
+ * company's facts beside the first. Everything here is a pure read of the
+ * quote, the profile and Finnhub's `/stock/metric` map, so the page cannot
+ * print a number this file doesn't name, and a metric Finnhub lacks for a
+ * stock reads "—" on the Overview and drops out of the Fundamentals.
  */
 
 export type Stat = { label: string; value: string };
 export type StatColumns = Stat[][];
-export type StatSection = { label: string; columns: StatColumns };
+/** A stat drawn as a bar too: `n` is the number the bar's length comes from. */
+export type BarStat = Stat & { n: number };
 
 type Metrics = Record<string, number | string> | null | undefined;
 type Quote = { o: number; h: number; l: number } | null | undefined;
@@ -73,27 +73,6 @@ export function overviewStatColumns(metrics: Metrics, marketCap: number | null):
   ];
 }
 
-/** The Fundamentals tab's key figures, in two columns: the valuation, then the business. */
-export function keyFigureColumns(metrics: Metrics, marketCap: number | null): StatColumns {
-  const m = metrics;
-  return [
-    [
-      { label: "Market cap", value: fmtBig(marketCap) },
-      { label: "Enterprise value", value: fmtBig(millions(num(m, "enterpriseValue"))) },
-      { label: "P/E (TTM)", value: fmtNum(num(m, "peTTM")) },
-      { label: "Forward P/E", value: fmtNum(num(m, "forwardPE")) },
-      { label: "EPS (TTM)", value: fmtMoney(num(m, "epsTTM")) },
-    ],
-    [
-      { label: "Revenue growth, TTM", value: fmtSignedPct(num(m, "revenueGrowthTTMYoy")) },
-      { label: "Gross margin", value: fmtPct(num(m, "grossMarginTTM")) },
-      { label: "Net margin", value: fmtPct(num(m, "netProfitMarginTTM")) },
-      { label: "Dividend yield", value: fmtPct(num(m, "dividendYieldIndicatedAnnual"), 2) },
-      { label: "Beta", value: fmtNum(num(m, "beta")) },
-    ],
-  ];
-}
-
 /** The company's facts, for the Fundamentals tab's right column. The website is a link; the page draws it. */
 export function companyFactRows(
   profile: { finnhubIndustry?: string; country?: string; ipo?: string; shareOutstanding?: number; weburl?: string } | null | undefined,
@@ -117,96 +96,100 @@ export function companyFactRows(
 /** "Feb 11" from "2026-02-11", read as a calendar day, not a UTC instant. */
 const fmtDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-/** Lays stats down `n` columns, top to bottom then left to right. */
-function inColumns(stats: Stat[], n = 3): StatColumns {
-  const per = Math.ceil(stats.length / n);
-  const cols: StatColumns = [];
-  for (let i = 0; i < stats.length; i += per) cols.push(stats.slice(i, i + per));
-  return cols;
+/** Lays stats down two columns, top to bottom then left to right (the first column takes the odd one). */
+function inColumns(stats: Stat[]): StatColumns {
+  if (stats.length === 0) return [];
+  const per = Math.ceil(stats.length / 2);
+  return [stats.slice(0, per), stats.slice(per)].filter((c) => c.length > 0);
+}
+
+/** The stats that have a number, with their words; a missing one is left out, never guessed. */
+function rows(stats: Array<[string, number | null, (n: number | null) => string]>): Stat[] {
+  return stats.filter(([, n]) => n != null).map(([label, n, fmt]) => ({ label, value: fmt(n) }));
+}
+function barRows(stats: Array<[string, number | null, (n: number | null) => string]>): BarStat[] {
+  return stats.filter((s): s is [string, number, (n: number | null) => string] => s[1] != null).map(([label, n, fmt]) => ({ label, value: fmt(n), n }));
 }
 
 /**
- * The Fundamentals tab's full set, by section. A stat Finnhub has no number for
- * is left out, and a section with nothing left is left out too.
+ * The Fundamentals tab, in the order it is read (the owner, 2026-11-05):
+ * three bands, each a main part beside a rail. Valuation (down two columns)
+ * beside the company's facts; the rates as bars — growth and price returns
+ * beside profitability; then the balance sheet and the per-share figures
+ * beside the dividend. A stat Finnhub has no number for is left out, and
+ * an empty group is not drawn.
  */
-export function financialStatSections(metrics: Metrics, marketCap: number | null): StatSection[] {
+export type Fundamentals = {
+  valuation: StatColumns;
+  growth: BarStat[];
+  priceReturns: BarStat[];
+  profitability: BarStat[];
+  balanceSheet: Stat[];
+  perShare: Stat[];
+  dividends: Stat[];
+};
+
+export function fundamentals(metrics: Metrics, marketCap: number | null): Fundamentals {
   const m = metrics;
-  const sections: Array<{ label: string; stats: Array<[string, string]> }> = [
-    {
-      label: "Valuation",
-      stats: [
-        ["Market cap", fmtBig(marketCap)],
-        ["Enterprise value", fmtBig(millions(num(m, "enterpriseValue")))],
-        ["P/E (TTM)", fmtNum(num(m, "peTTM"))],
-        ["Forward P/E", fmtNum(num(m, "forwardPE"))],
-        ["PEG", fmtNum(num(m, "pegTTM"))],
-        ["P/S", fmtNum(num(m, "psTTM"))],
-        ["P/B", fmtNum(num(m, "pb"))],
-        ["EV / EBITDA", fmtNum(num(m, "evEbitdaTTM"))],
-        ["EV / revenue", fmtNum(num(m, "evRevenueTTM"))],
-      ],
-    },
-    {
-      label: "Growth",
-      stats: [
-        // Read down the columns, each column is one horizon: revenue over EPS.
-        ["Revenue, TTM vs year ago", fmtSignedPct(num(m, "revenueGrowthTTMYoy"))],
-        ["EPS, TTM vs year ago", fmtSignedPct(num(m, "epsGrowthTTMYoy"))],
-        ["Revenue, 3-year", fmtSignedPct(num(m, "revenueGrowth3Y"))],
-        ["EPS, 3-year", fmtSignedPct(num(m, "epsGrowth3Y"))],
-        ["Revenue, 5-year", fmtSignedPct(num(m, "revenueGrowth5Y"))],
-        ["EPS, 5-year", fmtSignedPct(num(m, "epsGrowth5Y"))],
-      ],
-    },
-    {
-      label: "Profitability",
-      stats: [
-        ["Gross margin", fmtPct(num(m, "grossMarginTTM"))],
-        ["Operating margin", fmtPct(num(m, "operatingMarginTTM"))],
-        ["Net margin", fmtPct(num(m, "netProfitMarginTTM"))],
-        ["Return on equity", fmtPct(num(m, "roeTTM"))],
-        ["Return on assets", fmtPct(num(m, "roaTTM"))],
-        ["Return on investment", fmtPct(num(m, "roiTTM"))],
-      ],
-    },
-    {
-      label: "Balance sheet",
-      stats: [
-        ["Current ratio", fmtNum(num(m, "currentRatioQuarterly"))],
-        ["Quick ratio", fmtNum(num(m, "quickRatioQuarterly"))],
-        ["Debt / equity", fmtNum(num(m, "totalDebt/totalEquityQuarterly"))],
-        ["Long-term debt / equity", fmtNum(num(m, "longTermDebt/equityQuarterly"))],
-        ["Interest coverage", fmtNum(num(m, "netInterestCoverageTTM"), 1)],
-        ["Book value / share", fmtMoney(num(m, "bookValuePerShareQuarterly"))],
-      ],
-    },
-    {
-      label: "Per share",
-      stats: [
-        ["EPS (TTM)", fmtMoney(num(m, "epsTTM"))],
-        ["Revenue / share", fmtMoney(num(m, "revenuePerShareTTM"))],
-        ["Cash / share", fmtMoney(num(m, "cashPerSharePerShareQuarterly"))],
-        ["Dividend / share", fmtMoney(num(m, "dividendPerShareTTM"))],
-        ["Dividend yield", fmtPct(num(m, "dividendYieldIndicatedAnnual"), 2)],
-        ["Payout ratio", fmtPct(num(m, "payoutRatioTTM"))],
-      ],
-    },
-    {
-      label: "Price",
-      stats: [
-        ["5 days", fmtSignedPct(num(m, "5DayPriceReturnDaily"))],
-        ["13 weeks", fmtSignedPct(num(m, "13WeekPriceReturnDaily"))],
-        ["26 weeks", fmtSignedPct(num(m, "26WeekPriceReturnDaily"))],
-        ["52 weeks", fmtSignedPct(num(m, "52WeekPriceReturnDaily"))],
-        ["Year to date", fmtSignedPct(num(m, "yearToDatePriceReturnDaily"))],
-        ["vs S&P 500, 52 weeks", fmtSignedPct(num(m, "priceRelativeToS&P50052Week"))],
-      ],
-    },
-  ];
-  return sections
-    .map((s) => ({
-      label: s.label,
-      columns: inColumns(s.stats.filter(([, v]) => v !== NONE).map(([label, value]) => ({ label, value }))),
-    }))
-    .filter((s) => s.columns.length > 0);
+  const money = (n: number | null) => fmtMoney(n);
+  const ratio = (n: number | null) => fmtNum(n);
+  const pct = (n: number | null) => fmtPct(n);
+  const signed = (n: number | null) => fmtSignedPct(n);
+  return {
+    valuation: inColumns(
+      rows([
+        ["Market cap", marketCap, (n) => fmtBig(n)],
+        ["Enterprise value", millions(num(m, "enterpriseValue")), (n) => fmtBig(n)],
+        ["P/E (TTM)", num(m, "peTTM"), ratio],
+        ["Forward P/E", num(m, "forwardPE"), ratio],
+        ["PEG", num(m, "pegTTM"), ratio],
+        ["P/S", num(m, "psTTM"), ratio],
+        ["P/B", num(m, "pb"), ratio],
+        ["EV / EBITDA", num(m, "evEbitdaTTM"), ratio],
+        ["EV / revenue", num(m, "evRevenueTTM"), ratio],
+      ]),
+    ),
+    growth: barRows([
+      ["Revenue, TTM", num(m, "revenueGrowthTTMYoy"), signed],
+      ["Revenue, 3-year", num(m, "revenueGrowth3Y"), signed],
+      ["Revenue, 5-year", num(m, "revenueGrowth5Y"), signed],
+      ["EPS, TTM", num(m, "epsGrowthTTMYoy"), signed],
+      ["EPS, 3-year", num(m, "epsGrowth3Y"), signed],
+      ["EPS, 5-year", num(m, "epsGrowth5Y"), signed],
+    ]),
+    priceReturns: barRows([
+      ["5 days", num(m, "5DayPriceReturnDaily"), signed],
+      ["13 weeks", num(m, "13WeekPriceReturnDaily"), signed],
+      ["26 weeks", num(m, "26WeekPriceReturnDaily"), signed],
+      ["52 weeks", num(m, "52WeekPriceReturnDaily"), signed],
+      ["Year to date", num(m, "yearToDatePriceReturnDaily"), signed],
+      ["vs S&P 500, 52 weeks", num(m, "priceRelativeToS&P50052Week"), signed],
+    ]),
+    profitability: barRows([
+      ["Gross margin", num(m, "grossMarginTTM"), pct],
+      ["Operating margin", num(m, "operatingMarginTTM"), pct],
+      ["Net margin", num(m, "netProfitMarginTTM"), pct],
+      ["ROE", num(m, "roeTTM"), pct],
+      ["ROA", num(m, "roaTTM"), pct],
+      ["ROI", num(m, "roiTTM"), pct],
+    ]),
+    balanceSheet: rows([
+      ["Current ratio", num(m, "currentRatioQuarterly"), ratio],
+      ["Quick ratio", num(m, "quickRatioQuarterly"), ratio],
+      ["Debt / equity", num(m, "totalDebt/totalEquityQuarterly"), ratio],
+      ["Long-term debt / equity", num(m, "longTermDebt/equityQuarterly"), ratio],
+      ["Interest coverage", num(m, "netInterestCoverageTTM"), (n) => fmtNum(n, 1)],
+    ]),
+    perShare: rows([
+      ["EPS (TTM)", num(m, "epsTTM"), money],
+      ["Revenue / share", num(m, "revenuePerShareTTM"), money],
+      ["Cash / share", num(m, "cashPerSharePerShareQuarterly"), money],
+      ["Book value / share", num(m, "bookValuePerShareQuarterly"), money],
+    ]),
+    dividends: rows([
+      ["Dividend / share", num(m, "dividendPerShareTTM"), money],
+      ["Dividend yield", num(m, "dividendYieldIndicatedAnnual"), (n) => fmtPct(n, 2)],
+      ["Payout ratio", num(m, "payoutRatioTTM"), pct],
+    ]),
+  };
 }
