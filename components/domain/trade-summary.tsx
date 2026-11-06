@@ -7,10 +7,11 @@
  * once sold), and it reads one way on the sheet and one way on a page, in
  * every state — proposal waiting, holding, closed.
  *
- *   • "banner" — the sheet's: the muted card under the price, a step less
- *     rounded than a card, the title row (the answer buttons at its right
- *     while a proposal waits), the sentence with the gain, a waiting
- *     proposal's reason under it.
+ *   • "banner" — the sheet's: a plain muted card under the price, a step
+ *     less rounded, a link to the stock's page; the title row (the answer
+ *     buttons at its right while a proposal waits), then the sentence with
+ *     the gain, a hair below; a waiting proposal's reason under them on a
+ *     click, in which case the card is not a link.
  *   • "card"   — a page's sidebar card (the owner's order, 2026-11-05, redone
  *     the same night): the same title row, nothing at its right; the gain
  *     large; the sentence large and light ("Bought 27 shares at $369.25");
@@ -70,7 +71,7 @@ export type TradeSummaryProps = {
   pnl: TradeSummaryPnl;
   pendingProposal: ThesisPendingProposal | null;
   direction: "LONG" | "SHORT" | null;
-  /** Given (a page), the card's click opens the Transactions tab; absent (the sheet), it links to the trade's page. */
+  /** Given (a page), the card's click opens the Transactions tab. The sheet's banner is a link to the stock's page instead. */
   onOpen?: () => void;
   /** The thesis's trades all in; the page card's footnote counts the past ones. */
   trades?: { count: number; realized: number } | null;
@@ -246,23 +247,21 @@ function NoteClamp({ text }: { text: string }) {
 }
 
 // ── The banner (the sheet) ──
-// The stock cards' surface, a title row, then the sentence with the gain on
-// its right. A waiting proposal's reason is hidden until asked for, an
-// accordion: a click anywhere on the card opens or closes it. Otherwise the
-// click opens the trade's page.
+// A plain card, a link to the stock's page (the owner, 2026-11-06: no
+// overlaid link, no click handler; the trade's own page opens only from the
+// sheet's expand). Two rows a hair apart: the title row, then the sentence
+// with the gain at its right, the row setting the size once and the gain
+// inheriting it. While a proposal waits the card is not a link: its answer
+// buttons sit in the title row, and a click anywhere else opens or closes
+// the reason under the rows.
 function TradeBanner(props: TradeSummaryProps) {
-  const { onOpen, ticker } = props;
+  const { ticker } = props;
   const { pp, lead, rest, gain, title, action, dotClass, reviewSlot, proposal } = describeTrade(props);
   const [expanded, setExpanded] = useState(false);
-  const click = proposal ? () => setExpanded((v) => !v) : onOpen;
   // The same words as the page card: the action in the title, the sentence the fact (a proposed buy's sentence is the proposal itself).
   const sentence = pp?.intent === "OPEN" ? `${lead}${rest}` : rest;
-  return (
-    <Card className={cn("group/banner relative rounded-lg bg-muted/40 p-3 gap-2", click && "cursor-pointer")} onClick={click}>
-      {/* On the sheet the whole card opens the stock's page (the owner, 2026-11-06: the trade's own page opens only from the sheet's expand): a stretched link under the content, never a link around the controls. */}
-      {ticker && !proposal && !onOpen ? (
-        <Link href={`/stocks/${ticker}`} aria-label={`Open ${ticker}`} className="absolute inset-0 rounded-lg" />
-      ) : null}
+  const body = (
+    <>
       <TradeTitle
         title={action ? `${title} · ${action}` : title}
         dotClass={dotClass}
@@ -271,13 +270,31 @@ function TradeBanner(props: TradeSummaryProps) {
         expanded={expanded}
         action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
       />
-      <div className="relative flex items-center justify-between gap-3 pointer-events-none text-sm">
-        <span className="font-normal tabular-nums truncate">{sentence}</span>
-        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
+      <div className="flex items-center justify-between gap-3 text-base tabular-nums">
+        <span className="truncate">{sentence}</span>
+        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" className="shrink-0" /> : null}
       </div>
-      {/* No wrapper: closed, the note renders nothing, so the card's gap has nothing to count. */}
-      {pp && !pp.executing ? <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} /> : null}
-    </Card>
+      {/* The reason, once asked for (and the "Writing" line while the note is on its way), a little below the rows. */}
+      {pp && !pp.executing && (expanded || pp.writing) ? (
+        <div className="pt-2">
+          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
+        </div>
+      ) : null}
+    </>
+  );
+  const card = "group/banner rounded-lg bg-muted/40 p-3 gap-0.5";
+  if (proposal) {
+    return (
+      <Card className={cn(card, "cursor-pointer")} onClick={() => setExpanded((v) => !v)}>
+        {body}
+      </Card>
+    );
+  }
+  if (!ticker) return <Card className={card}>{body}</Card>;
+  return (
+    <Link href={`/stocks/${ticker}`} className="block">
+      <Card className={cn(card, "transition-colors hover:bg-muted/60")}>{body}</Card>
+    </Link>
   );
 }
 

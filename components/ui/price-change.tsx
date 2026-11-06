@@ -31,8 +31,10 @@ interface PriceChangeProps {
    *   "base" → one size down; used for the mobile-collapsed row
    *   "sm"  → inline cell / subheader
    *   "xs"  → a timeline row's right rail, beside a text-xs price
+   *   "inherit" → no size of its own: the row it sits in sets the text size
+   *     once and the arrow follows at 1em (the position banner's row)
    */
-  size?: "xl" | "lg" | "base" | "sm" | "xs";
+  size?: "xl" | "lg" | "base" | "sm" | "xs" | "inherit";
   /** Hide the dollar prefix and show only the percentage. Rare. */
   percentOnly?: boolean;
   /**
@@ -57,9 +59,9 @@ export function PriceChange({
 
   // Size mapping — text size for the whole element; arrow size tracks it.
   const sizeCls =
-    size === "xl" ? "text-xl" : size === "lg" ? "text-lg" : size === "base" ? "text-base" : size === "sm" ? "text-sm" : "text-xs";
+    size === "inherit" ? null : size === "xl" ? "text-xl" : size === "lg" ? "text-lg" : size === "base" ? "text-base" : size === "sm" ? "text-sm" : "text-xs";
   const iconCls =
-    size === "xl" ? "h-5 w-5" : size === "lg" ? "size-4.5" : size === "base" ? "h-4 w-4" : size === "sm" ? "h-3.5 w-3.5" : "h-3 w-3";
+    size === "inherit" ? "size-[1em]" : size === "xl" ? "h-5 w-5" : size === "lg" ? "size-4.5" : size === "base" ? "h-4 w-4" : size === "sm" ? "h-3.5 w-3.5" : "h-3 w-3";
 
   const Arrow = isUp ? ArrowUpRight : ArrowDownRight;
 
