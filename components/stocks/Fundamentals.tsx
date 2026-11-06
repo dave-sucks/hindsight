@@ -1,98 +1,128 @@
 /**
- * The Fundamentals tab (the owner, 2026-11-05, after Robinhood's): one grid
- * of groups, three columns wide, a gap between columns and rows and nothing
- * else. Every group is a label with a rule under it, then the same stat
- * rows; Valuation spans two columns and lays its rows down both.
+ * The Fundamentals tab (the owner, 2026-11-05, after Robinhood's): a grid
+ * three columns wide with a gap and nothing else, two rows deep. Every
+ * group is a label with a rule under it, then the same stat rows.
  *
- *   Valuation                      | Company
- *   Growth        | Price returns  | Profitability
- *   Balance sheet | Per share      | Dividends
+ *   Valuation (down two columns)             | Company
+ *   Business: Growth · Profitability ·       | Price returns
+ *             Balance sheet · Per share
+ *             (one block, a small tab each)
  *   Filings
  *
- * Narrower than three columns the groups flow in two; narrower still they
- * stack. Only the three margins carry a bar.
+ * The business block is the owner's call (2026-11-05): the groups about the
+ * company share one block and one set of small tabs instead of each taking
+ * a third of the page, since most of them are rarely read; the stock's own
+ * returns stay beside it. Narrower than three columns the groups flow in
+ * two; narrower still they stack. Only the three margins carry a bar.
  */
 
 import type { ReactNode } from "react";
 import { SectionLabel } from "@/components/domain/section-label";
 import { BarList, StatGrid, StatList } from "@/components/stocks/StatGrid";
-import type { Fundamentals as Data, Stat } from "@/lib/stocks/stock-stats";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { inColumns, type Fundamentals as Data, type Stat } from "@/lib/stocks/stock-stats";
 
-function Group({ label, wide = false, children }: { label: string; wide?: boolean; children: ReactNode }) {
+function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section className={cn("self-start", wide && "@min-[448px]:col-span-2")}>
+    <section className="self-start">
       <SectionLabel className="border-b border-border pb-2">{label}</SectionLabel>
       {children}
     </section>
   );
 }
 
-/** One row of the grid: up to three groups, or nothing when all are empty. */
-function Row({ groups }: { groups: ReactNode[] }) {
-  const drawn = groups.filter(Boolean);
-  if (drawn.length === 0) return null;
+/** One row of the grid: up to three columns of groups, or nothing when all are empty. */
+function Row({ children }: { children: ReactNode }) {
   // Both widths in one form, so the wider rule wins: a named @md sorts after
   // an arbitrary width in the cascade and left the third column an auto track.
-  return <div className="grid grid-cols-1 gap-x-8 gap-y-10 @min-[448px]:grid-cols-2 @min-[840px]:grid-cols-3">{drawn}</div>;
+  return <div className="grid grid-cols-1 gap-x-8 gap-y-10 @min-[448px]:grid-cols-2 @min-[840px]:grid-cols-3">{children}</div>;
 }
 
-const list = (key: string, label: string, stats: Stat[]) =>
-  stats.length > 0 ? (
-    <Group key={key} label={label}>
-      <StatList stats={stats} />
-    </Group>
-  ) : null;
+/** The two-column cell: Valuation, and the business block with its tabs. */
+function Wide({ children }: { children: ReactNode }) {
+  return <div className="self-start @min-[448px]:col-span-2">{children}</div>;
+}
 
-export function Fundamentals({
-  ticker,
-  data: d,
-  facts,
-  filings,
-}: {
-  ticker: string;
-  data: Data;
-  facts: Stat[];
-  filings: ReactNode;
-}) {
-  const nothing =
-    d.valuation.length === 0 && [d.growth, d.priceReturns, d.margins, d.returns, d.balanceSheet, d.perShare, d.dividends].every((g) => g.length === 0);
+/** The business block: one label, a small tab per group, the chosen group's rows down two columns. */
+function Business({ d }: { d: Data }) {
+  const tabs: Array<{ value: string; label: string; body: ReactNode }> = [];
+  if (d.growth.length > 0) tabs.push({ value: "growth", label: "Growth", body: <StatGrid columns={inColumns(d.growth)} /> });
+  if (d.margins.length > 0 || d.returns.length > 0) {
+    tabs.push({
+      value: "profitability",
+      label: "Profitability",
+      body: (
+        <div className="grid grid-cols-1 gap-x-8 @min-[448px]:grid-cols-2">
+          <BarList stats={d.margins} floor={100} />
+          <StatList stats={d.returns} />
+        </div>
+      ),
+    });
+  }
+  if (d.balanceSheet.length > 0) tabs.push({ value: "balance", label: "Balance sheet", body: <StatGrid columns={inColumns(d.balanceSheet)} /> });
+  if (d.perShare.length > 0) tabs.push({ value: "share", label: "Per share", body: <StatGrid columns={inColumns(d.perShare)} /> });
+  if (tabs.length === 0) return null;
+  return (
+    <Tabs defaultValue={tabs[0].value}>
+      <SectionLabel
+        className="border-b border-border pb-2"
+        action={
+          <TabsList size="sm">
+            {tabs.map((t) => (
+              <TabsTrigger key={t.value} value={t.value}>
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        }
+      >
+        Business
+      </SectionLabel>
+      {tabs.map((t) => (
+        <TabsContent key={t.value} value={t.value}>
+          {t.body}
+        </TabsContent>
+      ))}
+    </Tabs>
+  );
+}
+
+export function Fundamentals({ ticker, data: d, facts, filings }: { ticker: string; data: Data; facts: Stat[]; filings: ReactNode }) {
+  const hasBusiness = [d.growth, d.margins, d.returns, d.balanceSheet, d.perShare].some((g) => g.length > 0);
+  const nothing = d.valuation.length === 0 && d.priceReturns.length === 0 && !hasBusiness;
   return (
     <div className="@container">
       <div className="space-y-10">
-        <Row
-          groups={[
-            d.valuation.length > 0 ? (
-              <Group key="valuation" label="Valuation" wide>
-                <StatGrid columns={d.valuation} />
+        <Row>
+          {d.valuation.length > 0 ? (
+            <Wide>
+              <Group label="Valuation">
+                <StatGrid columns={inColumns(d.valuation)} />
               </Group>
-            ) : nothing ? (
-              <p key="none" className="text-sm text-muted-foreground @min-[448px]:col-span-2">
-                No financial data for {ticker}.
-              </p>
-            ) : null,
-            list("company", "Company", facts),
-          ]}
-        />
-        <Row
-          groups={[
-            list("growth", "Growth", d.growth),
-            list("returns", "Price returns", d.priceReturns),
-            d.margins.length > 0 || d.returns.length > 0 ? (
-              <Group key="profit" label="Profitability">
-                <BarList stats={d.margins} floor={100} />
-                <StatList stats={d.returns} />
-              </Group>
-            ) : null,
-          ]}
-        />
-        <Row
-          groups={[
-            list("balance", "Balance sheet", d.balanceSheet),
-            list("share", "Per share", d.perShare),
-            list("dividends", "Dividends", d.dividends),
-          ]}
-        />
+            </Wide>
+          ) : nothing ? (
+            <Wide>
+              <p className="text-sm text-muted-foreground">No financial data for {ticker}.</p>
+            </Wide>
+          ) : null}
+          {facts.length > 0 ? (
+            <Group label="Company">
+              <StatList stats={facts} />
+            </Group>
+          ) : null}
+        </Row>
+        <Row>
+          {hasBusiness ? (
+            <Wide>
+              <Business d={d} />
+            </Wide>
+          ) : null}
+          {d.priceReturns.length > 0 ? (
+            <Group label="Price returns">
+              <StatList stats={d.priceReturns} />
+            </Group>
+          ) : null}
+        </Row>
         <section className="space-y-2">
           <SectionLabel>Filings</SectionLabel>
           {filings}

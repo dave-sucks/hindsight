@@ -93,7 +93,7 @@ export function companyFactRows(
 const fmtDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
 /** Lays stats down two columns, top to bottom then left to right (the first column takes the odd one). */
-function inColumns(stats: Stat[]): StatColumns {
+export function inColumns(stats: Stat[]): StatColumns {
   if (stats.length === 0) return [];
   const per = Math.ceil(stats.length / 2);
   return [stats.slice(0, per), stats.slice(per)].filter((c) => c.length > 0);
@@ -109,22 +109,22 @@ function barRows(stats: Array<[string, number | null, (n: number | null) => stri
 
 /**
  * The Fundamentals tab, in the order it is read (the owner, 2026-11-05):
- * three rows of three columns. Valuation (down two columns) and the
- * company's facts; growth, price returns and profitability; the balance
- * sheet, the per-share figures and the dividend. The groups are ours:
- * Finnhub's metric map is one flat list of keys. Only the three margins
- * carry a bar (a share of revenue on a 0–100 scale). A stat Finnhub has no
- * number for is left out, and an empty group is not drawn.
+ * two rows of three columns. Valuation (down two columns) beside the
+ * company's facts; then the business, one block two columns wide with a
+ * tab per group (growth, profitability, balance sheet, per share), beside
+ * the stock's own price returns. The groups are ours: Finnhub's metric map
+ * is one flat list of keys. Only the three margins carry a bar (a share of
+ * revenue on a 0–100 scale). A stat Finnhub has no number for is left out,
+ * and an empty group is not drawn.
  */
 export type Fundamentals = {
-  valuation: StatColumns;
+  valuation: Stat[];
   growth: Stat[];
   priceReturns: Stat[];
   margins: BarStat[];
   returns: Stat[];
   balanceSheet: Stat[];
   perShare: Stat[];
-  dividends: Stat[];
 };
 
 export function fundamentals(metrics: Metrics, marketCap: number | null): Fundamentals {
@@ -134,8 +134,7 @@ export function fundamentals(metrics: Metrics, marketCap: number | null): Fundam
   const pct = (n: number | null) => fmtPct(n);
   const signed = (n: number | null) => fmtSignedPct(n);
   return {
-    valuation: inColumns(
-      rows([
+    valuation: rows([
         ["Market cap", marketCap, (n) => fmtBig(n)],
         ["Enterprise value", millions(num(m, "enterpriseValue")), (n) => fmtBig(n)],
         ["P/E (TTM)", num(m, "peTTM"), ratio],
@@ -145,8 +144,7 @@ export function fundamentals(metrics: Metrics, marketCap: number | null): Fundam
         ["P/B", num(m, "pb"), ratio],
         ["EV / EBITDA", num(m, "evEbitdaTTM"), ratio],
         ["EV / revenue", num(m, "evRevenueTTM"), ratio],
-      ]),
-    ),
+    ]),
     growth: rows([
       ["Revenue, TTM", num(m, "revenueGrowthTTMYoy"), signed],
       ["Revenue, 3-year", num(m, "revenueGrowth3Y"), signed],
@@ -185,8 +183,6 @@ export function fundamentals(metrics: Metrics, marketCap: number | null): Fundam
       ["Revenue / share", num(m, "revenuePerShareTTM"), money],
       ["Cash / share", num(m, "cashPerSharePerShareQuarterly"), money],
       ["Book value / share", num(m, "bookValuePerShareQuarterly"), money],
-    ]),
-    dividends: rows([
       ["Dividend / share", num(m, "dividendPerShareTTM"), money],
       ["Dividend yield", num(m, "dividendYieldIndicatedAnnual"), (n) => fmtPct(n, 2)],
       ["Payout ratio", num(m, "payoutRatioTTM"), pct],

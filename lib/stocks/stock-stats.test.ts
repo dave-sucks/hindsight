@@ -1,4 +1,4 @@
-import { rangeBars, overviewStatColumns, companyFactRows, fundamentals } from "./stock-stats";
+import { rangeBars, overviewStatColumns, companyFactRows, fundamentals, inColumns } from "./stock-stats";
 
 // A slice of Finnhub's /stock/metric for NVDA, 2026-11-02.
 const nvda = {
@@ -70,25 +70,25 @@ describe("the Fundamentals tab", () => {
 describe("fundamentals", () => {
   it("keeps the stats Finnhub has and drops the rest, group by group", () => {
     const f = fundamentals(nvda, 4_931_824_000_000);
-    // Valuation runs down two columns, the first taking the odd one.
-    expect(f.valuation.map((c) => c.map((s) => s.label))).toEqual([
-      ["Market cap", "Enterprise value", "P/E (TTM)"],
-      ["Forward P/E", "PEG"],
-    ]);
-    expect(f.valuation[1][0]).toEqual({ label: "Forward P/E", value: "14.47" });
+    expect(f.valuation.map((s) => s.label)).toEqual(["Market cap", "Enterprise value", "P/E (TTM)", "Forward P/E", "PEG"]);
+    expect(f.valuation[3]).toEqual({ label: "Forward P/E", value: "14.47" });
+    // Laid down two columns, the first taking the odd one.
+    expect(inColumns(f.valuation).map((c) => c.length)).toEqual([3, 2]);
     expect(f.growth).toEqual([{ label: "Revenue, TTM", value: "+83.4%" }]);
     expect(f.priceReturns.map((s) => s.value)).toEqual(["+0.9%", "+9.7%", "−10.3%"]);
     // A margin carries its number for the bar's length.
     expect(f.margins).toEqual([{ label: "Gross margin", value: "74.7%", n: 74.67 }]);
     expect(f.returns).toEqual([]);
     expect(f.balanceSheet).toEqual([]);
-    expect(f.perShare).toEqual([{ label: "EPS (TTM)", value: "$7.91" }]);
-    expect(f.dividends).toEqual([{ label: "Dividend yield", value: "0.03%" }]);
+    expect(f.perShare).toEqual([
+      { label: "EPS (TTM)", value: "$7.91" },
+      { label: "Dividend yield", value: "0.03%" },
+    ]);
   });
 
   it("is empty with no metrics", () => {
     const f = fundamentals(null, null);
     expect(f.valuation).toEqual([]);
-    expect([f.growth, f.priceReturns, f.margins, f.returns, f.balanceSheet, f.perShare, f.dividends].every((g) => g.length === 0)).toBe(true);
+    expect([f.growth, f.priceReturns, f.margins, f.returns, f.balanceSheet, f.perShare].every((g) => g.length === 0)).toBe(true);
   });
 });
