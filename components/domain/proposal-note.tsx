@@ -30,8 +30,8 @@ export function ProposalNote({
   writing: boolean;
   /** When the card owns the click, it says whether the note is open; the note then takes no clicks of its own. */
   expanded?: boolean;
-  /** On its own: how many lines show before the click (the page card asks for four). */
-  clamp?: 2 | 4;
+  /** On its own: how many lines show before the click (the page card asks for five). */
+  clamp?: 2 | 4 | 5;
 }) {
   const [text, setText] = useState(reason);
   const [busy, setBusy] = useState(writing);
@@ -82,7 +82,7 @@ export function ProposalNote({
       }
       title={expanded === undefined ? (open ? "Collapse" : "Expand") : undefined}
     >
-      {(expanded ?? open) ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className={clamp === 4 ? "line-clamp-4" : "line-clamp-2"}>{paragraphs.join(" ")}</p>}
+      {(expanded ?? open) ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className={clamp === 5 ? "line-clamp-5" : clamp === 4 ? "line-clamp-4" : "line-clamp-2"}>{paragraphs.join(" ")}</p>}
     </div>
   );
 }

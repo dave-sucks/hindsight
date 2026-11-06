@@ -15,6 +15,8 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { PriceChange } from "@/components/ui/price-change";
+import { Card } from "@/components/ui/card";
+import { SectionLabel } from "@/components/domain/section-label";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { TransactionDialog } from "@/components/trades/TransactionDialog";
 import { periodLabel } from "@/components/agent/sheets/thesis-timeline-utils";
@@ -75,28 +77,34 @@ export function Transactions({
 
   return (
     <div className="@container space-y-4">
-      {/* The stock's total: the sells realized, and what is still held is worth. */}
+      {/* The stock's total as two cards (the owner, 2026-11-06): what the sells made, and what is still held and its gain. */}
       {!limit ? (
-        <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground tabular-nums">
-          {summary.sells} {summary.sells === 1 ? "sell" : "sells"} · realized
-          <PriceChange dollarChange={summary.realized} size="sm" />
+        <div className="grid grid-cols-1 gap-3 @md:grid-cols-2">
+          <Card className="bg-muted/40 p-3 gap-1">
+            <SectionLabel action={<span className="text-xs text-muted-foreground tabular-nums">{summary.sells} {summary.sells === 1 ? "sell" : "sells"}</span>}>
+              Realized
+            </SectionLabel>
+            <PriceChange dollarChange={summary.realized} size="lg" />
+          </Card>
           {held ? (
-            <>
-              · still holding {fmtQty(held.shares)} {held.shares === 1 ? "share" : "shares"}
+            <Card className="bg-muted/40 p-3 gap-1">
+              <SectionLabel action={<span className="text-xs text-muted-foreground tabular-nums">{fmtQty(held.shares)} {held.shares === 1 ? "share" : "shares"}</span>}>
+                Still held
+              </SectionLabel>
               {unrealized != null ? (
-                <>
-                  , <PriceChange dollarChange={unrealized} percentChange={held.avgCost > 0 ? (unrealized / (held.avgCost * held.shares)) * 100 : null} size="sm" />
-                </>
-              ) : null}
-            </>
+                <PriceChange dollarChange={unrealized} percentChange={held.avgCost > 0 ? (unrealized / (held.avgCost * held.shares)) * 100 : null} size="lg" />
+              ) : (
+                <p className="text-lg tabular-nums">{formatCurrency(held.avgCost * held.shares)}</p>
+              )}
+            </Card>
           ) : null}
-        </p>
+        </div>
       ) : null}
 
       <div className="space-y-3">
         {groups.map((group) => (
           <div key={group.label} className="space-y-1.5">
-            <p className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/60">{group.label}</p>
+            <p className="px-1 text-xs font-medium text-muted-foreground/60">{group.label}</p>
             {group.fills.map((f) => {
               const { label, dotClass } = fillVerb(f);
               const amount = f.price != null ? f.price * f.quantity : null;

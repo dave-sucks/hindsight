@@ -23,8 +23,9 @@
  *     live price in the header above the card.
  *
  * A waiting proposal is the agent asking (the owner, 2026-11-05): the same
- * layout, only its colors change — a white dot that breathes fast, the word
- * "Proposal" shimmering, and a faint gradient over the card. No amber.
+ * layout and the same card surface, only two things move — a white dot that
+ * breathes fast and the word "Proposal" shimmering. No amber, no gradient
+ * (one was tried 11-05 and could not be seen).
  *
  * The individual fills are the Transactions tab. Every surface reads the
  * same position (the dossier's) and the same live P&L (the quote's), so the
@@ -184,9 +185,6 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
 
 /** The waiting proposal's dot: white, breathing fast (`proposal-dot`, globals.css). */
 const PROPOSAL_DOT = "bg-foreground proposal-dot";
-/** The waiting proposal's card: a faint gradient over the stock cards' surface, nothing else moved. */
-const PROPOSAL_CARD = "border-foreground/15 bg-gradient-to-br from-foreground/10 to-muted/40";
-
 /** The title row the two looks share: the dot (the accordion's chevron over it on hover, where the card is one), the word (shimmering on a proposal), the buttons at the right. */
 function TradeTitle({
   title,
@@ -228,7 +226,7 @@ function TradeTitle({
   );
 }
 
-/** The newest analyst note at the foot of the page card: four lines, a click for the rest. */
+/** The newest analyst note at the foot of the page card: five lines, a click for the rest. */
 function NoteClamp({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
@@ -242,7 +240,7 @@ function NoteClamp({ text }: { text: string }) {
       }}
       title={open ? "Collapse" : "Expand"}
     >
-      {open ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-4">{paragraphs.join(" ")}</p>}
+      {open ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className="line-clamp-5">{paragraphs.join(" ")}</p>}
     </div>
   );
 }
@@ -265,17 +263,19 @@ function TradesLine({ trades }: { trades: TradeSummaryProps["trades"] }) {
 // click opens the trade's page.
 function TradeBanner(props: TradeSummaryProps) {
   const { position, onOpen, trades, ticker } = props;
-  const { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal } = describeTrade(props);
+  const { pp, lead, rest, gain, title, action, dotClass, reviewSlot, proposal } = describeTrade(props);
   const [expanded, setExpanded] = useState(false);
   const click = proposal ? () => setExpanded((v) => !v) : onOpen;
+  // The same words as the page card: the action in the title, the sentence the fact (a proposed buy's sentence is the proposal itself).
+  const sentence = pp?.intent === "OPEN" ? `${lead}${rest}` : rest;
   return (
-    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-2", proposal && PROPOSAL_CARD, click && "cursor-pointer")} onClick={click}>
+    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-2", click && "cursor-pointer")} onClick={click}>
       {/* On the sheet the whole card opens the stock's page (the owner, 2026-11-06: the trade's own page opens only from the sheet's expand): a stretched link under the content, never a link around the controls. */}
       {ticker && !proposal && !onOpen ? (
         <Link href={`/stocks/${ticker}`} aria-label={`Open ${ticker}`} className="absolute inset-0 rounded-xl" />
       ) : null}
       <TradeTitle
-        title={title}
+        title={action ? `${title} · ${action}` : title}
         dotClass={dotClass}
         proposal={proposal}
         accordion={proposal}
@@ -283,10 +283,7 @@ function TradeBanner(props: TradeSummaryProps) {
         action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
       />
       <div className="relative flex items-center justify-between gap-3 pointer-events-none text-sm">
-        <span className="font-normal tabular-nums truncate">
-          {lead ? <span className="font-medium">{lead}</span> : null}
-          {rest}
-        </span>
+        <span className="font-normal tabular-nums truncate">{sentence}</span>
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" className="shrink-0" /> : null}
       </div>
       <TradesLine trades={trades} />
@@ -320,11 +317,13 @@ function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; anal
 // The same position in the sidebar's shape, in every state (the owner's
 // order, 2026-11-05): the title row, the state and on a proposal its action
 // ("Position", "Proposal · Sell", "Proposal · Add 4 shares"), nothing at its
-// right; the sentence large ("Bought 27 shares at $369.25", "Buy 14 shares
-// at $53.55"); the gain large; a footnote with the value and the days held;
-// a rule; then the words — a proposal's reason, else the newest analyst
-// note — four lines, a click on them for the rest; then the buttons at the
-// foot's right. The click elsewhere opens the Transactions tab.
+// right; the gain large; the sentence large ("Bought 27 shares at $369.25",
+// "Buy 14 shares at $53.55"); a footnote with the value and the days held,
+// in the foreground like the rest (white · color · white · white, the
+// owner, 2026-11-06); a rule the card's full width; then the words — a
+// proposal's reason, else the newest analyst note — five lines, a click on
+// them for the rest; then the buttons at the foot's right. The click
+// elsewhere opens the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
   const { position, onOpen, trades, note, ticker, analystId } = props;
   const { pp, lead, rest, gain, title, action, value, dotClass, reviewSlot, proposal } = describeTrade(props);
@@ -334,21 +333,24 @@ function TradeCard(props: TradeSummaryProps) {
   // A proposed buy's sentence is the proposal itself ("Buy 14 shares at $53.55"); every other sentence is the position's fact.
   const sentence = proposedBuy ? `${lead}${rest}` : rest;
   return (
-    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", proposal && PROPOSAL_CARD, click && "cursor-pointer")} onClick={click}>
+    <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", click && "cursor-pointer")} onClick={click}>
       <TradeTitle title={action ? `${title} · ${action}` : title} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} size="sm" />
       <div className="pointer-events-none">
-        <p className="text-xl font-normal tabular-nums">{sentence}</p>
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
+        <p className="text-xl font-normal tabular-nums">{sentence}</p>
         {/* The footnote: what the shares are worth (would cost, on a proposed buy), and how long we have held them. */}
-        <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+        <p className="mt-1 text-xs text-foreground tabular-nums">
           {formatCurrency(value)} value
           {!proposedBuy ? ` · Held ${position.daysHeld} day${position.daysHeld === 1 ? "" : "s"}` : ""}
         </p>
       </div>
-      <Separator />
+      {/* A rule the card's full width, splitting the numbers from the words. */}
+      <div className="-mx-3">
+        <Separator />
+      </div>
       <TradesLine trades={trades} />
       {pp && !pp.executing ? (
-        <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} clamp={4} />
+        <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} clamp={5} />
       ) : note ? (
         <NoteClamp text={note} />
       ) : null}
