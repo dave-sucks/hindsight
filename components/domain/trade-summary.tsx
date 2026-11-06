@@ -11,13 +11,16 @@
  *     a coloured dot (Proposal / Position / Closed position, the answer
  *     buttons at its right while a proposal waits), the sentence with the
  *     date and the gain, a waiting proposal's reason under it.
- *   • "card"   — a page's sidebar card (the owner's order, 2026-11-05): the
- *     title row with nothing at its right, the share count, the gain large,
- *     a proposal's sentence, then Bought @ / Now @ (or Sold @) rows, then
- *     the words (a proposal's reason, or the newest analyst note on the
- *     stock, four lines and a click for the rest), then the buttons at the
- *     foot's right: Reject / Accept (Accept primary) while a proposal waits,
- *     else Buy and, while the position is open, Sell, both outline.
+ *   • "card"   — a page's sidebar card (the owner's order, 2026-11-05, redone
+ *     the same night): the title row one size up, "Position · $11,409.93
+ *     value", nothing at its right; the sentence large and regular ("Bought
+ *     27 shares at $369.25 on Oct 6"); the gain large; a rule; then the
+ *     words (a proposal's reason, or the newest analyst note on the stock,
+ *     four lines and a click for the rest), then the buttons at the foot's
+ *     right: Reject / Accept (Accept primary) while a proposal waits, else
+ *     Buy and, while the position is open, Sell, both outline. No Bought @ /
+ *     Now @ rows: the value is in the title, the entry in the sentence, the
+ *     live price in the header above the card.
  *
  * A waiting proposal is the agent asking (the owner, 2026-11-05): the same
  * layout, only its colors change — a white dot that breathes fast, the word
@@ -34,6 +37,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { PriceChange } from "@/components/ui/price-change";
 import { ProposalNote } from "@/components/domain/proposal-note";
 import { SectionLabel } from "@/components/domain/section-label";
@@ -168,7 +172,9 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
     gain = unrealized;
   }
 
-  return { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing) };
+  // The dollars the title carries: what the shares are worth now, what the sale brought once closed, what a proposed buy would cost.
+  const value = pnl?.marketValue ?? (position.closed && position.closePrice != null ? position.closePrice * position.quantity : position.avgCost * position.quantity);
+  return { pp, lead, rest, gain, title, value, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing) };
 }
 
 /** The waiting proposal's dot: white, breathing fast (`proposal-dot`, globals.css). */
@@ -184,6 +190,7 @@ function TradeTitle({
   accordion,
   expanded,
   action,
+  size,
 }: {
   title: string;
   dotClass: string;
@@ -192,9 +199,11 @@ function TradeTitle({
   accordion: boolean;
   expanded: boolean;
   action: ReactNode;
+  /** The page card's title is one size up and regular. */
+  size?: "xs" | "sm";
 }) {
   return (
-    <SectionLabel className="relative" action={action}>
+    <SectionLabel className="relative" action={action} size={size}>
       {/* gap-2, not the headings' 1.5: the hover circle overhangs the dot by 6px and must not touch the word. */}
       <span className="inline-flex items-center gap-2">
         <span className="relative inline-flex size-2 shrink-0">
@@ -304,51 +313,28 @@ function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; anal
 
 // ── The card (a page's sidebar) ──
 // The same position in the sidebar's shape, in every state: the title row
-// (nothing at its right), the share count, the gain large, a proposal's
-// sentence, then Bought @ / Now @ (or Sold @) rows with the dollars, then
-// the words — a proposal's reason, else the newest analyst note — four
-// lines, a click on them for the rest, then the buttons at the foot's right.
-// The click elsewhere opens the Transactions tab.
+// with the dollars ("Position · $11,409.93 value", nothing at its right),
+// the sentence large, the gain large, a rule, then the words — a proposal's
+// reason, else the newest analyst note — four lines, a click on them for
+// the rest, then the buttons at the foot's right. The click elsewhere opens
+// the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
-  const { position, pnl, onOpen, trades, note, ticker, analystId } = props;
-  const { pp, lead, rest, gain, title, dotClass, reviewSlot, proposal } = describeTrade(props);
+  const { position, onOpen, trades, note, ticker, analystId } = props;
+  const { pp, lead, rest, gain, title, value, dotClass, reviewSlot, proposal } = describeTrade(props);
   const click = onOpen;
-  const proposedBuy = pp?.intent === "OPEN";
-  const cost = position.avgCost * position.quantity;
   const closed = position.closed === true;
-  const rows: Array<{ label: string; value: string }> = proposedBuy
-    ? [{ label: `Buy @ ${formatCurrency(position.avgCost)}`, value: formatCurrency(cost) }]
-    : [
-        { label: `Bought @ ${formatCurrency(position.avgCost)}`, value: formatCurrency(cost) },
-        ...(closed && position.closePrice != null
-          ? [{ label: `Sold @ ${formatCurrency(position.closePrice)}`, value: formatCurrency(position.closePrice * position.quantity) }]
-          : !closed && pnl
-            ? [{ label: `Now @ ${formatCurrency(pnl.currentPrice)}`, value: formatCurrency(pnl.marketValue) }]
-            : []),
-        ...(closed && humanizeCloseReason(position.closeReason) ? [{ label: "Exit", value: humanizeCloseReason(position.closeReason)! }] : []),
-      ];
   return (
     <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", proposal && PROPOSAL_CARD, click && "cursor-pointer")} onClick={click}>
-      <TradeTitle title={title} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} />
-      <div>
-        {/* The share count at the gain's size, in the foreground, over the gain. */}
-        <p className="text-xl font-semibold tabular-nums">{fmtQty(position.quantity)} shares</p>
-        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
-      </div>
-      {lead ? (
-        <p className="text-sm tabular-nums pointer-events-none">
-          <span className="font-medium">{lead}</span>
+      <TradeTitle title={`${title} · ${formatCurrency(value)} value`} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} size="sm" />
+      <div className="pointer-events-none">
+        {/* The one sentence every surface says about the trade, at the gain's size and regular; the proposal's verb a shade heavier. */}
+        <p className="text-xl font-normal tabular-nums">
+          {lead ? <span className="font-medium">{lead}</span> : null}
           {rest}
         </p>
-      ) : null}
-      <div className="pointer-events-none">
-        {rows.map(({ label, value }) => (
-          <div key={label} className="flex items-center justify-between border-b border-border py-1 text-sm">
-            <span className="text-muted-foreground">{label}</span>
-            <span className="font-medium tabular-nums">{value}</span>
-          </div>
-        ))}
+        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
       </div>
+      <Separator />
       <TradesLine trades={trades} />
       {pp && !pp.executing ? (
         <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} clamp={4} />
