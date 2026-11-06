@@ -10,6 +10,7 @@
  *    programmatically without the card trigger.
  */
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLivePoll } from "@/hooks/useLivePoll";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -230,15 +231,31 @@ function WorkFlagLine({
   );
 }
 
-/** "Written Sep 13 at $38.38": the date the research writer wrote the belief, and the price its own pull read. */
-function WrittenUpLine({ writtenUp }: { writtenUp: ThesisDossier["writtenUp"] }) {
-  if (!writtenUp) return null;
-  const at = new Date(writtenUp.at);
-  if (!Number.isFinite(at.getTime())) return null;
+/**
+ * "Written Sep 13 at $38.38 · View thesis": the date the research writer
+ * wrote the belief and the price its own pull read, then a link to the
+ * thesis's fullest page when there is one further to go (the owner,
+ * 2026-11-05): the trade's page from the sheet or the stock page, the stock
+ * page from the sheet with no trade; nothing on the trade page itself.
+ */
+function WrittenUpLine({ writtenUp, href }: { writtenUp: ThesisDossier["writtenUp"]; href?: string | null }) {
+  const at = writtenUp ? new Date(writtenUp.at) : null;
+  const written = at && Number.isFinite(at.getTime()) ? at : null;
+  if (!written && !href) return null;
   return (
     <p className="text-xs text-muted-foreground tabular-nums">
-      Written {at.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-      {writtenUp.price != null ? ` at $${writtenUp.price.toFixed(2)}` : ""}
+      {written ? (
+        <>
+          Written {written.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          {writtenUp?.price != null ? ` at $${writtenUp.price.toFixed(2)}` : ""}
+        </>
+      ) : null}
+      {written && href ? " · " : null}
+      {href ? (
+        <Link href={href} className="underline underline-offset-4 hover:text-foreground">
+          View thesis
+        </Link>
+      ) : null}
     </p>
   );
 }
@@ -359,12 +376,13 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * The Research tab, in the shape it has always had — a heading, labelled
- * sections exposed on the tab, one accordion at the foot — with the fields
- * placed by the owner's order (2026-11-02, labels 2026-11-03; the company's
- * two sentences moved to the Overview 2026-11-05): the belief under
- * it as "Core thesis" in every state, with the write-up's date and price;
- * the bull case, the bear case and what would prove us wrong exposed as
+ * The Thesis tab (Research until 2026-11-05): labelled sections exposed on
+ * the tab, one accordion at the foot, with the fields placed by the owner's
+ * order (2026-11-02, labels 2026-11-03; the company's two sentences moved
+ * to the Overview 2026-11-05). It opens as the Overview's foot does: the
+ * work flag, then the belief at the Overview's size with no label, then
+ * the write-up's date and price with the View thesis link; the bull case,
+ * the bear case and what would prove us wrong exposed as
  * bullets; the filings in their old place under the top block; then the
  * accordion, with its "Updated 50d ago" header row as before, holding the
  * key assumptions, where we differ from the street, and the conviction's
@@ -372,7 +390,19 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
  * citation tags removed. A row written before the company line shows
  * nothing there, never a placeholder.
  */
-function ResearchView({ state, filings }: { state: ThesisDossier; filings: FilingsResponse | null }) {
+function ResearchView({
+  state,
+  filings,
+  flag,
+  href,
+}: {
+  state: ThesisDossier;
+  filings: FilingsResponse | null;
+  /** The work flag line, the same element the Overview draws. */
+  flag: ReactNode;
+  /** Where View thesis goes; null when this is the thesis's fullest page. */
+  href: string | null;
+}) {
   const clean = (v: string | null | undefined) => (v?.trim() ? stripCitationTags(v) : null);
   const company = clean(state.company);
   const belief = clean(state.coreBelief);
@@ -391,14 +421,9 @@ function ResearchView({ state, filings }: { state: ThesisDossier; filings: Filin
   }
   return (
     <>
-      {belief ? (
-        <Section label="Core thesis">
-          <p className="text-sm text-foreground leading-relaxed">{belief}</p>
-          <WrittenUpLine writtenUp={state.writtenUp} />
-        </Section>
-      ) : company ? (
-        <WrittenUpLine writtenUp={state.writtenUp} />
-      ) : null}
+      {flag}
+      {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
+      <WrittenUpLine writtenUp={state.writtenUp} href={href} />
 
       {filings ? <FilingsBlock data={filings} /> : null}
 
@@ -925,6 +950,19 @@ export function ThesisBody({
       </div>
     ) : null;
   const belief = state.coreBelief?.trim() ? stripCitationTags(state.coreBelief) : null;
+  // Whether it needs work today (DAV-304): the one line, on the Overview and at the top of the Thesis tab.
+  const workFlag = (
+    <WorkFlagLine
+      status={state.status}
+      needsAction={quote?.needsAction ?? null}
+      situations={quote?.situations ?? []}
+      quoteLoading={quoteLoading}
+      quoteFailed={!quoteLoading && quote == null}
+    />
+  );
+  // Where the Thesis tab's View thesis goes: the trade's page when there is a trade, else the stock's; nothing when this is that page.
+  const tradeHref = position?.id ? `/trades/${position.id}` : null;
+  const thesisHref = surface === "sheet" ? (tradeHref ?? `/stocks/${ticker}`) : stockHref === null ? tradeHref : null;
   const sideColumn =
     surface === "page" ? (
       <div className="hidden lg:block space-y-4">
@@ -934,7 +972,7 @@ export function ThesisBody({
       </div>
     ) : null;
 
-  // ── The tabs, in order: Overview · Research · Activity (not on the stock page) · Transactions · the page's own ──
+  // ── The tabs, in order: Overview · Thesis · Activity (not on the stock page) · Transactions · the page's own ──
   const overviewContent = (
     <>
       {/* Who the company is: the Writer's two sentences, moved here from Research, at the belief's size; the conviction and the stock's facts as chips close under it (the owner, 2026-11-05). */}
@@ -946,14 +984,7 @@ export function ThesisBody({
       ) : null}
       {overviewStats}
 
-      {/* ── Whether it needs work today (DAV-304) ── */}
-      <WorkFlagLine
-        status={state.status}
-        needsAction={quote?.needsAction ?? null}
-        situations={quote?.situations ?? []}
-        quoteLoading={quoteLoading}
-        quoteFailed={!quoteLoading && quote == null}
-      />
+      {workFlag}
 
       {/* The standing opinion, the same size as the company line on Research. */}
       {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
@@ -992,7 +1023,7 @@ export function ThesisBody({
   );
   const tabs: Array<{ value: string; label: string; content: ReactNode }> = [
     { value: "overview", label: "Overview", content: overviewContent },
-    { value: "research", label: "Research", content: <ResearchView state={state} filings={filings} /> },
+    { value: "thesis", label: "Thesis", content: <ResearchView state={state} filings={filings} flag={workFlag} href={thesisHref} /> },
     ...(showActivity ? [{ value: "activity", label: "Activity", content: activityContent }] : []),
     {
       value: "transactions",

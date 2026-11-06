@@ -3,6 +3,7 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StockPageTabs } from "@/components/stocks/StockPageTabs";
+import { NoThesis } from "@/components/stocks/NoThesis";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
 import { TradeButton } from "@/components/trade/TradeButton";
@@ -302,6 +303,7 @@ export default async function StockDetailPage({ params }: Props) {
             overviewStats={overviewStats}
             transactions={transactions}
             held={open ? { shares: Number(open.quantity), avgCost: Number(open.avgCost) } : null}
+            thesis={<NoThesis ticker={upperSymbol} analysts={watchlistStatus} />}
             financials={financials}
             news={news}
             sidebar={sidebar}
