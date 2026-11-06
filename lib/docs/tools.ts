@@ -9,7 +9,7 @@ import type { AgentMode } from "@/lib/agent/modes";
 
 export type DocsAgentId = "morning" | "trigger" | "chat" | "writer" | "builder";
 export type ToolKind = "market" | "book" | "thesis" | "trade" | "run";
-export type ToolSource = "alpaca" | "finnhub" | "sec" | "perplexity" | "anthropic" | "xai" | "hindsight" | "inngest";
+export type ToolSource = "alpaca" | "finnhub" | "sec" | "perplexity" | "anthropic" | "hindsight" | "inngest";
 
 export interface DocsAgent {
   id: DocsAgentId;
@@ -58,7 +58,6 @@ export const TOOL_SOURCES: Record<ToolSource, string> = {
   sec: "SEC EDGAR",
   perplexity: "Perplexity",
   anthropic: "Anthropic",
-  xai: "X via Grok",
   hindsight: "Hindsight",
   inngest: "Inngest",
 };
@@ -178,12 +177,6 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
       { source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering.", endpoint: "searchSignals(query, { recency })", example: "5 results · sentiment: bullish" },
       { source: "anthropic", title: "Claude web search", description: "The Writer's searches, run by Claude inside its research call.", endpoint: "anthropic.tools.webSearch({ maxUses: 4 })" },
     ],
-  },
-  twitter_search: {
-    name: "X search",
-    kind: "market",
-    sources: ["xai"],
-    summary: "Posts on X about a stock, a theme or a handle, found with Grok, each tagged with who said it and what kind of call it is.",
   },
   get_earnings_history: {
     name: "Earnings track record",

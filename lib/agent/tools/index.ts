@@ -32,7 +32,6 @@ import { dispatchThesisResearch } from "./dispatch-thesis-research";
 // to land before the parent agent proceeds.
 import { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 import { webSearch } from "./web-search";
-import { twitterSearch } from "./twitter-search";
 import { recordThesis } from "./record-thesis";
 import { updateThesis } from "./update-thesis";
 import { writeNoteTool } from "./write-note";
@@ -165,7 +164,6 @@ export function createResearchTools(
     dispatch_thesis_research: dispatchThesisResearch(newCtx),
     wait_for_thesis_refresh: waitForThesisRefresh(newCtx),
     web_search: webSearch(newCtx),
-    twitter_search: twitterSearch(newCtx),
     record_thesis: recordThesis(newCtx),
     update_thesis: updateThesis(newCtx),
     write_note: writeNoteTool(newCtx),
@@ -225,7 +223,6 @@ export { dispatchThesisResearch } from "./dispatch-thesis-research";
 // THESIS_LIFECYCLE_FIX Phase 2.
 export { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 export { webSearch } from "./web-search";
-export { twitterSearch } from "./twitter-search";
 export { recordThesis } from "./record-thesis";
 export { updateThesis } from "./update-thesis";
 export { writeNoteTool } from "./write-note";

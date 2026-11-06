@@ -35,6 +35,19 @@ export function trimScreenRow(row: string): string {
   return `${(lastSpace > SCREEN_ROW_MAX / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
+/** The longest notes and pasted idea the writer's prompt carries. */
+export const RESEARCH_NOTES_MAX = 2_000;
+export const IDEA_TEXT_MAX = 3_000;
+
+/** A long text is cut at the last whole word that fits, with "…". */
+export function trimTo(text: string, max: number): string {
+  const s = text.trim();
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max - 1);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > max / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
 const namesAnalyst = (ctx: ToolContext) => ctx.runMode === "PRINCIPAL_CHAT" && !ctx.analystId;
 
 export const dispatchThesisResearch = defineTool({
@@ -83,6 +96,30 @@ export const dispatchThesisResearch = defineTool({
       .transform(trimScreenRow)
       .optional()
       .describe("The numbers that put this name in front of you, one line (\"reported 09-10, EPS +22% vs est, revenue +6%, gapped 9% on 3.1× volume, holding above the gap-day low $41.20\")."),
+    research_notes: z
+      .string()
+      .transform((s) => trimTo(s, RESEARCH_NOTES_MAX))
+      .optional()
+      .describe(
+        "What you found on this stock before sending it, in your own words: the numbers you pulled, what you read, why it made the cut. " +
+          "The writer reads it before its own research, so it doesn't start from scratch. Up to 2,000 characters; longer is trimmed.",
+      ),
+    idea_source: z
+      .object({
+        author: z.string().describe("Who wrote it: an X handle, a site or newsletter, or \"the owner\" for the owner's own research."),
+        url: z.string().optional().describe("The link to the post or article, when there is one."),
+        posted_on: z.string().optional().describe("The day it was posted, YYYY-MM-DD, when known."),
+        text: z
+          .string()
+          .transform((s) => trimTo(s, IDEA_TEXT_MAX))
+          .optional()
+          .describe("The idea in the author's own words, as pasted. Up to 3,000 characters; longer is trimmed."),
+      })
+      .optional()
+      .describe(
+        "When the stock came from someone's thesis (a post, an article, a write-up), who wrote it and what they said. " +
+          "The writer checks their claims against the data, and the thesis records them as where it came from.",
+      ),
   }),
   // Only the chat with no analyst pinned names one; any other run writes for its own (ETN 10-15: a made-up slug).
   schemaFor: (ctx, schema) => (namesAnalyst(ctx) ? schema : schema.omit({ analyst_id: true })),
@@ -310,6 +347,8 @@ export const dispatchThesisResearch = defineTool({
           mode: args.mode,
           existingThesisId: args.existing_thesis_id ?? null,
           reason,
+          researchNotes: args.research_notes ?? null,
+          ideaSource: args.idea_source ?? null,
           parentRunId: resolvedParentRunId ?? null,
           dispatchedAt: new Date().toISOString(),
           promotionContext: effectivePromotionContext ?? null,
@@ -349,6 +388,8 @@ export const dispatchThesisResearch = defineTool({
         mode: args.mode,
         existingThesisId: args.existing_thesis_id ?? null,
         reason,
+        researchNotes: args.research_notes ?? null,
+        ideaSource: args.idea_source ?? null,
         parentRunId: resolvedParentRunId ?? null,
         forceWatchingMint: args.mode === "mint",
         promotionContext: effectivePromotionContext ?? null,

@@ -26,7 +26,9 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   daily: 9_250,
   tactical: 14_703,
   writer: 15_981,
-  chat: 35_115,
+  // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
+  // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
+  chat: 35_568,
 };
 
 /**
@@ -38,9 +40,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
 const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-03, on main + #909 + #911 + #912: +100 each from #911's get_theses text, +513 from update_thesis's verdict fields.
   // 2026-11-04: −107 / −96 / −480, the first-sentence rule restated in five note fields now lives in the voice rules alone.
-  "research-run": 30_614,
-  tactical: 26_545,
-  principal: 62_832,
+  // 2026-11-05: +1,078 each for dispatch's research_notes and idea_source; the chat's net −493 also drops twitter_search (−1,571), which never returned anything.
+  "research-run": 31_692,
+  tactical: 27_623,
+  principal: 62_416, // 2026-11-06: +77, the same clause on record_thesis's status field.
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

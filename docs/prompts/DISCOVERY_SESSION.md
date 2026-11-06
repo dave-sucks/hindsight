@@ -81,8 +81,8 @@ has no home. That's a lineup decision for Dave — see "Open decisions".
 | `get_stock_data` | Quote, profile, financials, chart structure, news | Chart numbers not split-adjusted (see Limits) |
 | `get_earnings_data` | Beat history, next report date | — |
 | `get_sec_filings` | Filing list with item codes and links | **No filing text.** The agent can't open a document |
-| `web_search` (Perplexity), `twitter_search` (Grok on X) | Outside facts, named sources | Budget-limited |
-| `dispatch_thesis_research` | Sends a stock to the thesis writer (`mint` new, `refresh` existing) | 5 per chat session |
+| `web_search` (Perplexity) | Outside facts, named sources | Budget-limited. There is no X search in the app: bring X posts in by pasting them |
+| `dispatch_thesis_research` | Sends a stock to the thesis writer (`mint` new, `refresh` existing), with what the chat found and, for someone's thesis, the post itself | 5 per chat session |
 | `wait_for_thesis_refresh` | Waits for a writer and returns what saved | **Works on `mint` runs too**, despite its description; on a failure it gives no reason |
 | `get_theses`, `update_thesis`, `record_thesis` | Read and edit the watchlist | — |
 | `read_trade_results`, `list_proposals`, `read_analyst_config`, `read_database` | Past trades, pending buys, settings, anything | — |

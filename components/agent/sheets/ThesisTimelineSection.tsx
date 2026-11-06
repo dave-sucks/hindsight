@@ -165,6 +165,7 @@ const SOURCE_LABELS: Record<string, string> = {
   WEB_SEARCH: "web search",
   WATCHLIST_REVIEW: "a watchlist review",
   POSITION_REVIEW: "a position review",
+  OUTSIDE_IDEA: "someone else's thesis",
   USER_ADDED: "a manual add",
   BUILDER_SEED: "analyst setup",
   EDITOR_SEED: "editor chat",

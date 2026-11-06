@@ -48,7 +48,7 @@ Then the places new names show up:
 - **Setup screens:** `run_screen` returns candidates for one setup, with every reject and its reason.
 - **Earnings:** `get_earnings_calendar`, who just reported (biggest beats first) or who reports soon.
 - **Movers:** `get_market_movers`, today's gainers, losers and most active.
-- **Catalysts and the web:** `get_catalyst_calendar` for dated FDA decisions; `web_search` and `twitter_search` to check a story.
+- **Catalysts and the web:** `get_catalyst_calendar` for dated FDA decisions; `web_search` to check a story.
 
 Asked for the analyst's universe, these tools hide every stock it already watches or holds, so a pass never brings back names it covers.
 
@@ -76,7 +76,7 @@ The Writer runs it started land on their own; `wait_for_thesis_refresh` brings t
 Discovery uses these of chat's tools. [Chat](chat.md) lists all of them.
 
 - **Find candidates:** `run_screen`, `get_earnings_calendar`, `get_market_movers`, `get_catalyst_calendar`, `get_sec_filings`.
-- **Check them:** `get_theses`, `get_stock_data`, `web_search`, `twitter_search`.
+- **Check them:** `get_theses`, `get_stock_data`, `web_search`.
 - **Hand off or record:** `dispatch_thesis_research` sends a stock to the Writer; `record_thesis` saves a pass or a watch; `wait_for_thesis_refresh` brings the Writer's results back into the conversation.
 
 <details>
