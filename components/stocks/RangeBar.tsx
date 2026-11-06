@@ -1,8 +1,11 @@
 /**
  * RangeBar — where the price sits between a low and a high (the owner,
- * 2026-11-05, after Robinhood's Summary): a thin track, the run from the
- * low to the current price, a dot at the price, and the two ends named
- * under it. "Today" is the session's range, "52 week" the year's.
+ * 2026-11-05, after Robinhood's Summary): a thin track in the gauges' one
+ * muted color, the run from the low to the current price as a gradient of
+ * that color up to a brighter step of it, the price as a white line like
+ * the Average on the targets ruler, and the two ends named under it.
+ * "Today" is the session's range, "52 week" the year's. Square ends, like
+ * the ticks and the ratings bar.
  */
 
 import { SectionLabel } from "@/components/domain/section-label";
@@ -16,14 +19,11 @@ export function RangeBar({ label, low, high, current }: { label: string; low: nu
   return (
     <div className="space-y-2">
       <SectionLabel>{label}</SectionLabel>
-      <div className="relative h-1.5 rounded-full bg-muted">
+      <div className="relative h-1.5 rounded-xs bg-muted-foreground/25">
         {pct != null ? (
           <>
-            <div className="absolute inset-y-0 left-0 rounded-full bg-foreground/30" style={{ width: `${pct}%` }} />
-            <span
-              className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground ring-2 ring-background"
-              style={{ left: `${pct}%` }}
-            />
+            <div className="absolute inset-y-0 left-0 rounded-xs bg-gradient-to-r from-muted-foreground/25 to-muted-foreground/60" style={{ width: `${pct}%` }} />
+            <span className="absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-xs bg-foreground" style={{ left: `${pct}%` }} />
           </>
         ) : null}
       </div>

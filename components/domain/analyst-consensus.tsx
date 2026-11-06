@@ -6,14 +6,14 @@
  *
  *   • Analyst ratings — the verdict as a plain badge (Strong Buy / Buy /
  *     Hold / Sell), one filled bar of how the covering firms split (red,
- *     gray, green, sized to the counts; filled so it never reads as a
- *     price line), and the three counts under it: bearish left, neutral
- *     centre, bullish right.
+ *     the ticks' muted gray, green, sized to the counts; filled so it never
+ *     reads as a price line), and the three counts under it: bearish left,
+ *     neutral centre, bullish right.
  *
  *   • Analyst targets — the 12-month targets on a line of plain ticks with
  *     one spare tick past each end, running from the lowest of the Street's
  *     low, the price and our entry to the highest of them: Low (red) and
- *     High (green) as tall lines, the Average as a tall line, our Entry as a
+ *     High (green) as lines, the Average as a white line, our Entry as a
  *     hollow white dot when we hold the stock, and the Current price as a
  *     filled white dot that pulses, each where it really is; the ticks
  *     between Entry and Current are tinted faint green when up and faint red
@@ -28,6 +28,11 @@
  *     The EPS consensus itself is on the Earnings card. The old "Price
  *     targets" card drew our own plan here; the plan is the triggers and
  *     the chart's lines, and the word "target" means what the Street expects.
+ *
+ * One look for every gauge (the owner, 2026-11-05): the ruler, the ratings
+ * bar and the Overview's range bars are all the range bar's height, with
+ * square ends, on one muted color (`muted-foreground/25`); a price on any
+ * of them is a white line.
  *
  * Data comes from getAnalystCoverageData (lib/actions/analyst-coverage) —
  * server-fetched and passed in; the cards never fetch.
@@ -121,7 +126,7 @@ function PriceLine({ pct, color, label }: { pct: number; color: string; label: s
         render={
           <span
             aria-label={label}
-            className={cn("absolute top-1/2 h-[22px] w-0.5 -translate-x-1/2 -translate-y-1/2 cursor-help rounded-full", color)}
+            className={cn("absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 cursor-help rounded-xs", color)}
             style={{ left: `${pct}%` }}
           />
         }
@@ -177,7 +182,8 @@ export function AnalystTargetsCard({
       </SectionLabel>
       <div className="space-y-3">
         <div className="relative py-1">
-          <TickBar ticks={ticks} />
+          {/* 8px tall: its ticks come out 6px, the range bar's height. */}
+          <TickBar ticks={ticks} height={8} />
           {t.low != null ? <PriceLine pct={pctOf(idxFor(t.low))} color="bg-negative" label={`Low ${money(t.low)}`} /> : null}
           <PriceLine pct={pctOf(idxFor(t.average))} color="bg-foreground" label={`Average ${money(t.average)}`} />
           {t.high != null ? <PriceLine pct={pctOf(idxFor(t.high))} color="bg-positive" label={`High ${money(t.high)}`} /> : null}
@@ -264,26 +270,26 @@ function AnalystVerdictBadge({ consensus }: { consensus: { buy: number; hold: nu
 
 
 /**
- * The rating split as one filled bar, thinner than the tick bar, in three
- * solid parts sized to the counts (red, gray, green, a small gap between; a
- * count of zero still shows as a sliver), then
- * the counts: bearish left, neutral centre, bullish right. Filled, not
- * ticks, so it reads as a share of the firms and not as a price line like
- * the targets card under it.
+ * The rating split as one filled bar at the range bar's height, in three
+ * solid parts sized to the counts (red, the ticks' muted gray, green, a
+ * small gap between; a count of zero still shows as a sliver), then the
+ * counts: bearish left, neutral centre, bullish right. Filled, not ticks,
+ * so it reads as a share of the firms and not as a price line like the
+ * targets card under it.
  */
 function ConsensusDistributionRow({ consensus }: { consensus: { buy: number; hold: number; sell: number; total: number } }) {
   const { buy, hold, sell, total } = consensus;
   const parts = [
     { n: sell, color: "bg-negative", label: "Bearish" },
-    { n: hold, color: "bg-muted-foreground", label: "Neutral" },
+    { n: hold, color: "bg-muted-foreground/25", label: "Neutral" },
     { n: buy, color: "bg-positive", label: "Bullish" },
   ];
   return (
     <div className="space-y-3">
       {/* A part with no firms still shows as a sliver, so every colour on the key has its place on the bar. */}
-      <div className="flex h-2.5 w-full gap-1 overflow-hidden rounded-full" role="img" aria-label={`${sell} bearish, ${hold} neutral, ${buy} bullish of ${total}`}>
+      <div className="flex h-1.5 w-full gap-1 overflow-hidden rounded-xs" role="img" aria-label={`${sell} bearish, ${hold} neutral, ${buy} bullish of ${total}`}>
         {parts.map((p) => (
-          <span key={p.label} className={cn("h-full min-w-1.5 rounded-sm", p.color)} style={{ flexGrow: p.n, flexBasis: 0 }} />
+          <span key={p.label} className={cn("h-full min-w-1.5 rounded-xs", p.color)} style={{ flexGrow: p.n, flexBasis: 0 }} />
         ))}
       </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
