@@ -156,7 +156,8 @@ const recordFields = z.object({
     .optional()
     .describe(
       "A LONG or SHORT thesis lands WATCHING. PASS alone is a terminal pass: no triggers, never woken. " +
-        "PASS with WATCHING keeps the stock in view with no view yet: no direction, no plan, only the triggers you give it, and it is reviewed on a schedule only if one of them is a review schedule ({ watch: 'repeat', value: days }).",
+        "PASS with WATCHING keeps the stock in view with no view yet: no direction, no plan, only the triggers you give it, and it is reviewed on a schedule only if one of them is a review schedule ({ watch: 'repeat', value: days }). " +
+        "(PASS with status WATCHING is for a stock you haven't formed a view on yet.)",
     ),
 
   // ── Recently-sold acknowledgment (P1-35 Half B — the XENE re-buy guard) ──
