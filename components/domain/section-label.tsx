@@ -4,11 +4,12 @@ import { cn } from "@/lib/utils";
 /**
  * The one section label — "Recent activity", "Core thesis", "Triggers",
  * "Price targets". Its look lives here and nowhere else, so changing it
- * changes every surface at once. `action` is the small control at the
+ * changes every surface at once. Regular case since 2026-11-05 (the owner:
+ * no uppercase anywhere on these pages). `action` is the small control at the
  * right edge of the same row (Add, View all).
  */
 export function SectionLabel({ children, action, className }: { children: ReactNode; action?: ReactNode; className?: string }) {
-  const label = <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
+  const label = <p className="text-xs font-medium text-muted-foreground">{children}</p>;
   if (!action) return className ? <div className={className}>{label}</div> : label;
   return (
     <div className={cn("flex items-center justify-between gap-2", className)}>

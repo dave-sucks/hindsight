@@ -1111,7 +1111,7 @@ export function ThesisBody({
       <ChipTabs options={tabOptions} value={tab} onChange={(v) => { if (v != null) setTab(String(v)); }} clearable={false} />
 
       {tabs.map((t) => (
-        <TabsContent key={t.value} value={t.value} className="space-y-6">
+        <TabsContent key={t.value} value={t.value} className="space-y-12">
           {t.content}
         </TabsContent>
       ))}
