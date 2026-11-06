@@ -14,10 +14,8 @@ import {
   ReferenceDot,
   ResponsiveContainer,
 } from 'recharts';
-import { cn } from '@/lib/utils';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PriceChange } from '@/components/ui/price-change';
-import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
 import {
   formatDateLabel,
   formatDateTimeLabel,
@@ -25,6 +23,24 @@ import {
   splitOffset,
   formatTimeLabel,
 } from '@/components/stocks/chart-format';
+import {
+  AXIS_TICK,
+  ChartFrame,
+  FloatingLabels,
+  LINE_GREEN,
+  LINE_RED,
+  OFF_HOURS_PATTERN,
+  OffHoursPattern,
+  PLOT_TOP,
+  REF_LINE,
+  TICK,
+  TimeCursor,
+  TipBox,
+  X_AXIS_HEIGHT,
+  floatingLabels,
+  intradaySessionGeometry,
+  paddedDomain,
+} from '@/components/stocks/chart-parts';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -120,12 +136,6 @@ export type Range = '1D' | 'Trade' | DailyRange;
 /** A range's move: what the chart shows, for a parent that prints it. */
 export type RangeMove = { range: Range; dollars: number; pct: number };
 
-// The plot band: the pills row sits in the top margin, the x-axis (recharts'
-// default 30px) at the bottom. The gradients and the floating price labels
-// are both placed from these, so the split and the labels sit on the scale.
-const PLOT_TOP = 40;
-const X_AXIS_HEIGHT = 30;
-
 const RANGE_DAYS: Record<DailyRange, number> = {
   '1W': 5,
   '1M': 22,
@@ -133,71 +143,15 @@ const RANGE_DAYS: Record<DailyRange, number> = {
   '1Y': 252,
 };
 
-// Axis / mark colors — hardcoded hex (SVG stroke/fill can't consume our oklch()
-// theme vars).
-const AXIS_TICK = 'var(--muted-foreground)';
-
 // The tooltip's volume: "1.3M", "24K".
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
-
-/**
- * The hover cursor (the owner, 2026-11-05, after Apple's and Google's
- * charts): the vertical line, and the point's time as a small badge sitting
- * on the x-axis under it, over the tick labels. The tooltip box then needs
- * no label line. Recharts clones this element with `points` (the line's top
- * and bottom), the plot's `left` and `width`, and the active `payload`.
- */
-function TimeCursor({
-  points,
-  payload,
-  labelOf,
-  left = 0,
-  width = 0,
-}: {
-  points?: Array<{ x: number; y: number }>;
-  payload?: Array<{ payload?: Record<string, unknown> }>;
-  labelOf: (d: Record<string, unknown>) => string;
-  left?: number;
-  width?: number;
-}) {
-  if (!points || points.length < 2) return null;
-  const [top, bottom] = points;
-  const d = payload?.[0]?.payload;
-  const label = d ? labelOf(d) : '';
-  // Mono at 9px runs about 5.6px a character; clamp the badge inside the plot.
-  const w = Math.max(28, label.length * 5.6 + 12);
-  const h = 16;
-  const x = Math.min(Math.max(top.x - w / 2, left), Math.max(left, left + width - w));
-  const y = bottom.y + (X_AXIS_HEIGHT - h) / 2;
-  return (
-    <g pointerEvents="none">
-      <line x1={top.x} y1={top.y} x2={bottom.x} y2={bottom.y} stroke="var(--muted-foreground)" strokeWidth={1} />
-      {label ? (
-        <g>
-          <rect x={x} y={y} width={w} height={h} rx={4} fill="var(--popover)" stroke="var(--border)" />
-          <text
-            x={x + w / 2}
-            y={y + h / 2}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fontSize={9}
-            fontFamily="var(--font-mono)"
-            fill="var(--foreground)"
-          >
-            {label}
-          </text>
-        </g>
-      ) : null}
-    </g>
-  );
-}
 
 /** The tooltip: one line, the price and the volume, nothing else. */
 function OneLineTip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: { close?: number; volume?: number } }> }) {
   const d = payload?.[0]?.payload;
   if (!active || !d || d.close == null) return null;
   return (
-    <div className="rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground tabular-nums whitespace-nowrap shadow-sm">
+    <TipBox>
       <span className="text-muted-foreground">Price </span>
       {`$${d.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
       {d.volume != null && d.volume > 0 ? (
@@ -206,20 +160,9 @@ function OneLineTip({ active, payload }: { active?: boolean; payload?: Array<{ p
           {compact.format(d.volume)}
         </>
       ) : null}
-    </div>
+    </TipBox>
   );
 }
-// The line is colored green ABOVE and red BELOW the graph's starting price
-// (the first visible point), switching mid-line. These are the sRGB hex of the
-// app's --positive / --negative tokens (oklch(69.92% .166 144.58) /
-// oklch(72.01% .178 11.8)) — SVG can't consume oklch, so we hardcode the exact
-// equivalents to match the P&L colors used everywhere else. Keep in sync.
-const LINE_GREEN = '#51b857';
-const LINE_RED = '#ff6d87';
-// Faint uniform color for the entry/target/stop reference lines — the small
-// colored dot at the left edge carries the meaning, the line stays quiet.
-const REF_LINE = 'var(--muted-foreground)';
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 // Label formatters live in ./chart-format (pure module, unit-tested there).
@@ -233,59 +176,6 @@ function shiftDay(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
-}
-
-// A buffered price domain so the line always clears the top and bottom edges —
-// applied to every range so they read consistently. ~12% of the visible range
-// each side, with a floor for near-flat sessions.
-function priceDomain(closes: number[]): [number, number] {
-  const lo = Math.min(...closes);
-  const hi = Math.max(...closes);
-  const pad = Math.max((hi - lo) * 0.12, hi * 0.0025);
-  return [lo - pad, hi + pad];
-}
-
-// The 1D chart pins its x-axis to a clock window CENTERED on the regular
-// session: 2.5h of off-hours on each side (7:00 AM → 6:30 PM ET, with RTH
-// 9:30–16:00 dead-center), so the session sits balanced with equal dead space
-// left and right rather than lopsided. The window is INTRADAY_WINDOW_ET — the
-// server trims the bars to the same minutes, so every bar the chart holds is
-// drawn and the price scale is sized from what is visible. The pre-market +
-// after-hours regions render as a faint dot texture, with the tape's
-// off-hours prints drawn over it. Clock times are anchored to the session
-// date's actual ET offset (DST-safe, no tz lib) from the first bar.
-function intradaySessionGeometry(firstISO: string): {
-  domain: [number, number];
-  ticks: number[];
-  rthStart: number;
-  rthEnd: number;
-} {
-  const first = new Date(firstISO);
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const o: Record<string, string> = {};
-  for (const p of dtf.formatToParts(first)) o[p.type] = p.value;
-  const etAsUtc = Date.UTC(+o.year, +o.month - 1, +o.day, +o.hour % 24, +o.minute, +o.second);
-  const offsetMs = first.getTime() - etAsUtc; // UTC = ET wall + offsetMs
-  const clock = (h: number, m = 0) =>
-    Date.UTC(+o.year, +o.month - 1, +o.day, h, m, 0) + offsetMs;
-  const ticks: number[] = [];
-  for (let h = 8; h <= 18; h += 2) ticks.push(clock(h));
-  const minutes = (m: number) => clock(Math.floor(m / 60), m % 60);
-  return {
-    domain: [minutes(INTRADAY_WINDOW_ET.start), minutes(INTRADAY_WINDOW_ET.end)],
-    ticks,
-    rthStart: clock(9, 30),
-    rthEnd: clock(16),
-  };
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -375,7 +265,7 @@ export function StockPriceChart({
     if (data.length < 1) return undefined;
     const closes = data.map((d) => d.close);
     if (isIntraday && priorClose != null && priorClose > 0) closes.push(priorClose);
-    return priceDomain(closes);
+    return paddedDomain(closes);
   }, [data, isIntraday, priorClose]);
 
   // Volume bars sit along the bottom eighth: their own hidden axis runs to
@@ -436,16 +326,7 @@ export function StockPriceChart({
   if (!hasBody && !showIntraday) {
     return (
       <div
-        className={cn(
-          'relative rounded-lg overflow-hidden h-[300px] flex items-center justify-center',
-          !frameless && 'border',
-        )}
-        style={{
-          backgroundImage:
-            'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
-          backgroundSize: '18px 18px',
-          backgroundColor: 'hsl(var(--muted)/0.3)',
-        }}
+        className={frameless ? 'relative rounded-lg overflow-hidden h-[300px] flex items-center justify-center' : 'relative rounded-lg overflow-hidden h-[300px] flex items-center justify-center border'}
       >
         <p className="text-xs text-muted-foreground">No price data available</p>
       </div>
@@ -480,13 +361,7 @@ export function StockPriceChart({
   // 129/107/85.01), keyed to the top value's magnitude.
   const priceDigits = yHi >= 100 ? 0 : yHi >= 1 ? 2 : 4;
   const priceLabels = yDomain
-    ? [0.16, 0.5, 0.84].map((f) => ({
-        value: (yHi - f * (yHi - yLo)).toLocaleString(undefined, {
-          minimumFractionDigits: priceDigits,
-          maximumFractionDigits: priceDigits,
-        }),
-        top: PLOT_TOP + f * (height - PLOT_TOP - X_AXIS_HEIGHT),
-      }))
+    ? floatingLabels(yDomain, height, (v) => v.toLocaleString(undefined, { minimumFractionDigits: priceDigits, maximumFractionDigits: priceDigits }))
     : [];
 
   const handleRange = (r: Range) => {
@@ -495,20 +370,11 @@ export function StockPriceChart({
   };
 
   return (
-    <div
-      className={cn('rounded-lg overflow-hidden', !frameless && 'border')}
-      style={{
-        backgroundImage:
-          'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
-        backgroundSize: '18px 18px',
-        backgroundColor: 'hsl(var(--muted)/0.3)',
-      }}
-    >
-      {children}
-      <div className="relative">
-      {/* Range pills — absolute top-left of chart area */}
-      {showControls && (
-        <div className="absolute top-3 left-3 z-10">
+    <ChartFrame
+      frameless={frameless}
+      before={children}
+      controls={
+        showControls ? (
           <Tabs value={range} onValueChange={(v) => handleRange(v as Range)}>
             <TabsList size="sm" variant="outline">
               {ranges.map((r) => (
@@ -516,50 +382,27 @@ export function StockPriceChart({
               ))}
             </TabsList>
           </Tabs>
-        </div>
-      )}
-
-      {/* The range's change, top-right, opposite the pills: the last price
-          against yesterday's close on 1D and the first visible point on
-          every other range — so switching Day / Week / Month says how the
-          stock did over that stretch, not only today. */}
-      {showControls && showChange && change ? (
-        <div className="pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-background/80 px-2 py-1 backdrop-blur-sm">
-          <PriceChange dollarChange={change.dollars} percentChange={change.pct} size="sm" />
-        </div>
-      ) : null}
-
-      {/* Floating price labels — overlaid on the left so the plot still
-          full-bleeds (a reserved y-axis gutter would push the line off the
-          edges). Non-interactive so they never block chart hover. */}
-      {hasBody && priceLabels.length > 0 && (
-        <div className="pointer-events-none absolute inset-0 z-10">
-          {priceLabels.map((p) => (
-            <span
-              key={p.value + p.top}
-              className="absolute left-1.5 text-[9px] font-mono text-muted-foreground/70"
-              style={{ top: p.top }}
-            >
-              {p.value}
-            </span>
-          ))}
-        </div>
-      )}
+        ) : null
+      }
+      aside={
+        // The range's change, opposite the pills: the last price against
+        // yesterday's close on 1D and the first visible point on every other
+        // range, so switching Day / Week / Month says how the stock did over
+        // that stretch, not only today.
+        showControls && showChange && change ? (
+          <div className="pointer-events-none rounded-md bg-background/80 px-2 py-1 backdrop-blur-sm">
+            <PriceChange dollarChange={change.dollars} percentChange={change.pct} size="sm" />
+          </div>
+        ) : null
+      }
+    >
+      {hasBody ? <FloatingLabels labels={priceLabels} /> : null}
 
       {hasBody ? (
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: PLOT_TOP, right: 0, bottom: 0, left: 0 }}>
           <defs>
-            {/* Off-hours dot texture — matches the dashboard chart's grid, so
-                pre/post-market read as a subtle pattern, not a gray slab. */}
-            <pattern
-              id="offHoursDots"
-              width={7}
-              height={7}
-              patternUnits="userSpaceOnUse"
-            >
-              <circle cx={1} cy={1} r={1} fill={AXIS_TICK} fillOpacity={0.35} />
-            </pattern>
+            <OffHoursPattern />
             {/* Line color split at the baseline. Drawn in the plot's own
                 pixels (top margin to the x-axis), not the shape's bounding
                 box: a gradient measured over the shape moved its split with
@@ -586,7 +429,7 @@ export function StockPriceChart({
               type="number"
               domain={intradayGeo?.domain ?? ['dataMin', 'dataMax']}
               ticks={intradayGeo?.ticks}
-              tick={{ fontSize: 9, fill: AXIS_TICK, fontFamily: 'var(--font-mono)' }}
+              tick={TICK}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => formatTimeLabel(v)}
@@ -595,7 +438,7 @@ export function StockPriceChart({
           ) : (
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 9, fill: AXIS_TICK, fontFamily: 'var(--font-mono)' }}
+              tick={TICK}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
@@ -641,7 +484,7 @@ export function StockPriceChart({
               x2={intradayGeo.rthStart}
               y1={yDomain[0]}
               y2={yDomain[1]}
-              fill="url(#offHoursDots)"
+              fill={`url(#${OFF_HOURS_PATTERN})`}
               stroke="none"
               ifOverflow="visible"
             />
@@ -652,7 +495,7 @@ export function StockPriceChart({
               x2={intradayGeo.domain[1]}
               y1={yDomain[0]}
               y2={yDomain[1]}
-              fill="url(#offHoursDots)"
+              fill={`url(#${OFF_HOURS_PATTERN})`}
               stroke="none"
               ifOverflow="visible"
             />
@@ -776,7 +619,6 @@ export function StockPriceChart({
           </p>
         </div>
       )}
-      </div>
-    </div>
+    </ChartFrame>
   );
 }
