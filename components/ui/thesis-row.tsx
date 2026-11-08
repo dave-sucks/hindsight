@@ -150,7 +150,7 @@ interface RowBanner {
  * plus the price target twice). Trade rows use the shared buildTradeSentence
  * (one grammar across sheet / row / trades-page / activity):
  *
- *   Holding  → "Bought N shares at $X, now trading at $Y"   [+$gain ↗ %]
+ *   Holding  → "Holding N shares, now trading at $Y"        [+$gain ↗ %]
  *   Pending  → "Proposed: Buy N shares at $X"
  *   Won/Loss → "Bought N shares at $X, closed at $Y"        [+$gain ↗ %]
  *   Watching → "buy above $target"   (not a trade — light inline line)

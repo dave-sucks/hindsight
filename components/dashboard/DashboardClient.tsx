@@ -437,8 +437,8 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   const hasSize = item.shares != null && item.price != null;
 
   if (item.type === 'OPENED' && hasSize) {
-    // Event-log buy — just "Bought N shares at $X" (no "now trading at").
-    middle = buildTradeSentence({ kind: 'holding', qty: item.shares!, entry: item.price! });
+    // Event-log buy — "Bought N shares at $X": the event, not the holding's state.
+    middle = buildTradeSentence({ kind: 'bought', qty: item.shares!, entry: item.price! });
   } else if (isProposed && hasSize) {
     // A proposal is either a buy (new entry / ADD) or an exit (CLOSE / trim).
     // Render the matching sentence so a proposed exit never mislabels as "Buy"

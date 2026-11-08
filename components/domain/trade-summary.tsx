@@ -121,15 +121,15 @@ export function TradeSummary(props: TradeSummaryProps) {
 // title names the state and, on a proposal, the action; the sentence is the
 // fact about the shares, with no date (the date is the footnote's "held").
 //   • proposal waiting → white breathing dot · "Proposal · Buy" / "Proposal · Sell" / "Proposal · Add 4 shares" / "Proposal · Trim 4 shares"
-//                        "Buy N shares at $entry" / "Bought N shares at $entry"
-//   • holding          → blue dot · "Position" · "Bought N shares at $entry"
+//                        "Buy N shares at $entry" / "Holding N shares"
+//   • holding          → the foreground dot, breathing · "Position" · "Holding N shares" (the owner's words, 2026-11-08)
 //   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close"
 function describeTrade({ position, pnl, pendingProposal, direction }: TradeSummaryProps) {
   const pp = pendingProposal;
   const usd = (n: number) => formatCurrency(n);
   const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
   const unrealized: TradeStatementGain | null = pnl ? { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct } : null;
-  const bought = `Bought ${shares(position.quantity)} at ${usd(position.avgCost)}`;
+  const holding = `Holding ${shares(position.quantity)}`;
 
   let lead: string | null = null;
   let rest: string;
@@ -165,7 +165,7 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
     // A sale of the whole position is just "Sell"; an add or a trim names its size.
     const verb = pp.intent === "ADD" ? "Add" : pp.intent === "CLOSE" ? "Sell" : "Trim";
     lead = `${verb} ${shares(pp.quantity)}:`;
-    rest = ` ${bought}`;
+    rest = ` ${holding}`;
     title = "Proposal";
     action = pp.intent === "CLOSE" ? "Sell" : `${verb} ${shares(pp.quantity)}`;
     dotClass = pp.executing ? getTradeStatusDisplay("OPEN").dotClass : PROPOSAL_DOT;
@@ -176,7 +176,7 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
     title = "Closed position";
     dotClass = getTradeStatusDisplay((position.realizedPnl ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
   } else {
-    rest = bought;
+    rest = holding;
     title = "Position";
     dotClass = getThesisStatusDisplay("HOLDING").dotClass;
     gain = unrealized;

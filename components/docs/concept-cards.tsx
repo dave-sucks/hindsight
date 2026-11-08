@@ -94,7 +94,7 @@ const MOMENTS = [
   {
     at: 52,
     marker: "Bought",
-    status: { label: "Holding", dot: "bg-blue-500", shimmer: false },
+    status: { label: "Holding", dot: "bg-foreground animate-pulse", shimmer: false },
     price: "$128.40",
     change: "−$1.12 ↘ 0.86%",
     up: false,
