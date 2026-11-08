@@ -44,7 +44,7 @@ describe("buildTradeSentence — the proposed → executing swap", () => {
   it("leaves the settled states alone", () => {
     expect(
       buildTradeSentence({ kind: "holding", qty: 39, entry: 276.9, current: 253.56 }),
-    ).toBe("Holding 39 shares, now trading at $253.56");
+    ).toBe("Holding 39 shares, avg cost $276.90, now trading at $253.56");
     // The feed's buy is the event, so it keeps the past tense and the price paid.
     expect(buildTradeSentence({ kind: "bought", qty: 39, entry: 276.9 })).toBe("Bought 39 shares at $276.90");
     expect(

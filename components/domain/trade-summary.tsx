@@ -121,15 +121,23 @@ export function TradeSummary(props: TradeSummaryProps) {
 // title names the state and, on a proposal, the action; the sentence is the
 // fact about the shares, with no date (the date is the footnote's "held").
 //   • proposal waiting → white breathing dot · "Proposal · Buy" / "Proposal · Sell" / "Proposal · Add 4 shares" / "Proposal · Trim 4 shares"
-//                        "Buy N shares at $entry" / "Holding N shares"
-//   • holding          → the foreground dot, breathing · "Position" · "Holding N shares" (the owner's words, 2026-11-08)
+//                        "Buy N shares at $entry" / "Holding N shares, avg cost $entry"
+//   • holding          → the foreground dot, breathing · "Position" · "Holding N shares, avg cost $entry" (the owner's words, 2026-11-08)
+//                        (the banner's sentence also says what the shares are worth; the card's footnote does)
 //   • closed           → green or red dot by the result · "Closed position" · "Sold N shares at $close"
-function describeTrade({ position, pnl, pendingProposal, direction }: TradeSummaryProps) {
+function describeTrade({ position, pnl, pendingProposal, direction, look }: TradeSummaryProps) {
   const pp = pendingProposal;
   const usd = (n: number) => formatCurrency(n);
   const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
   const unrealized: TradeStatementGain | null = pnl ? { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct } : null;
-  const holding = `Holding ${shares(position.quantity)}`;
+  // The dollars the title carries: what the shares are worth now, what the sale brought once closed, what a proposed buy would cost.
+  const value = pnl?.marketValue ?? (position.closed && position.closePrice != null ? position.closePrice * position.quantity : position.avgCost * position.quantity);
+  // The position as a state, not the buy as an event (the owner's words, 2026-11-08). The banner has no
+  // footnote, so its sentence carries what the shares are worth; the card's footnote already does.
+  const holding =
+    look === "banner"
+      ? `Holding ${shares(position.quantity)} worth ${usd(value)}, avg cost ${usd(position.avgCost)}`
+      : `Holding ${shares(position.quantity)}, avg cost ${usd(position.avgCost)}`;
 
   let lead: string | null = null;
   let rest: string;
@@ -182,8 +190,6 @@ function describeTrade({ position, pnl, pendingProposal, direction }: TradeSumma
     gain = unrealized;
   }
 
-  // The dollars the title carries: what the shares are worth now, what the sale brought once closed, what a proposed buy would cost.
-  const value = pnl?.marketValue ?? (position.closed && position.closePrice != null ? position.closePrice * position.quantity : position.avgCost * position.quantity);
   return { pp, lead, rest, gain, title, action, value, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing) };
 }
 
@@ -262,22 +268,26 @@ function TradeBanner(props: TradeSummaryProps) {
   const sentence = pp?.intent === "OPEN" ? `${lead}${rest}` : rest;
   const body = (
     <>
+      {/* The title row: the state at the left, the gain at the right at the title's own size (the owner, 2026-11-08). */}
       <TradeTitle
         title={action ? `${title} · ${action}` : title}
         dotClass={dotClass}
         proposal={proposal}
         accordion={proposal}
         expanded={expanded}
-        action={reviewSlot ? <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span> : null}
+        action={gain ? <span className="text-sm tabular-nums"><PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" /></span> : null}
       />
-      <div className="flex items-center justify-between gap-3 text-base tabular-nums">
-        <span className="truncate">{sentence}</span>
-        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" className="shrink-0" /> : null}
-      </div>
+      <p className="truncate text-base tabular-nums">{sentence}</p>
       {/* The reason, once asked for (and the "Writing" line while the note is on its way), a little below the rows. */}
       {pp && !pp.executing && (expanded || pp.writing) ? (
         <div className="pt-2">
           <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
+        </div>
+      ) : null}
+      {/* A proposal's answer, or "Executing" once answered, as a third row at the right. */}
+      {reviewSlot ? (
+        <div className="flex justify-end pt-2" onClick={(e) => e.stopPropagation()}>
+          {reviewSlot}
         </div>
       ) : null}
     </>

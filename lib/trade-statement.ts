@@ -84,7 +84,7 @@ export interface TradeStatementInput {
  *
  *   proposed-buy   → "Proposed: Buy 100 shares at $40.93"
  *     (executing)  → "Executing: Buy 100 shares at $40.93"
- *   holding        → "Holding 100 shares, now trading at $45.41"   (the state; the owner's words, 2026-11-08)
+ *   holding        → "Holding 100 shares, avg cost $40.93, now trading at $45.41"   (the state; the owner's words, 2026-11-08)
  *   bought         → "Bought 100 shares at $40.93"                 (the event, in the feed)
  *   closed         → "Sold at $416.63, bought 3.54 shares at $282.35"
  *   proposed-exit  → "Proposed: Sell at $45.41, bought 100 shares at $40.93"
@@ -105,7 +105,7 @@ export function buildTradeSentence(i: TradeStatementInput): string | null {
         i.entry > 0 ? ` at ${usd(i.entry)}` : ""
       }`;
     case "holding":
-      return `Holding ${q} ${unit}` + (i.current != null ? `, now trading at ${usd(i.current)}` : "");
+      return `Holding ${q} ${unit}, avg cost ${usd(i.entry)}` + (i.current != null ? `, now trading at ${usd(i.current)}` : "");
     case "bought":
       return `Bought ${q} ${unit} at ${usd(i.entry)}`;
     case "closed":
