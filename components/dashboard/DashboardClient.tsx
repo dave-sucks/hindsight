@@ -132,7 +132,7 @@ const ANALYST_COLORS = [
 
 // The chart's height, pills included: the digest card in the right rail is
 // pinned to the same number so the two columns line up.
-const CHART_HEIGHT = 310;
+const CHART_HEIGHT = 390;
 
 const TOOLTIP_STYLE = {
   background: 'var(--popover)',
@@ -814,9 +814,9 @@ function DigestPreviewCard({
         type="button"
         onClick={() => digest && setOpen(true)}
         className={cn(
-          // lg:h-[310px] matches the chart card so the two columns align;
+          // lg:h-[390px] matches the chart card so the two columns align;
           // flex-col + overflow-hidden let the narrative fill and fade out.
-          'w-full text-left rounded-lg border bg-card p-3 mb-3 flex flex-col overflow-hidden lg:h-[310px]',
+          'w-full text-left rounded-lg border bg-card p-3 mb-3 flex flex-col overflow-hidden lg:h-[390px]',
           digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
         )}
       >
@@ -1242,7 +1242,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                 top-right; the portfolio view drawn by EquityChart, the two
                 comparison views the same lines they were. */}
             <ChartFrame
-              className="lg:h-[310px]"
+              className="lg:h-[390px]"
               controls={
                 <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
                   <TabsList size="sm" variant="outline">
@@ -1329,7 +1329,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                 !hasAnalystData ? (
                   <ChartEmpty text="Not enough trade history to compare analysts yet." />
                 ) : (
-                  <ChartContainer config={analystChartConfig} className="h-[310px] w-full">
+                  <ChartContainer config={analystChartConfig} className="h-[390px] w-full">
                     <LineChart
                       data={analystCompareData}
                       margin={{ top: PLOT_TOP, right: 16, bottom: 0, left: 0 }}
@@ -1412,7 +1412,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                 !hasSpyData ? (
                   <ChartEmpty text="Not enough data to compare against S&P 500 for this range." />
                 ) : (
-                  <ChartContainer config={spyChartConfig} className="h-[310px] w-full">
+                  <ChartContainer config={spyChartConfig} className="h-[390px] w-full">
                     <LineChart
                       data={spyCompareData}
                       margin={{ top: PLOT_TOP, right: 16, bottom: 0, left: 0 }}

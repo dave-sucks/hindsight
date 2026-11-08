@@ -9,9 +9,10 @@
  *
  * On 1D the axis is the whole trading day (7:00 AM → 6:30 PM ET, the
  * session dead-center, the off-hours as a dot texture), the line runs as
- * far as the day has gone, and the day is measured from the previous
- * session's close, marked "Prev" at the right edge — so the chart agrees
- * with the header's 1 Day P&L and with every stock's own 1D.
+ * far as the day has gone — through pre-market and after-hours too, since
+ * the series carries those points (2026-11-08) — and the day is measured
+ * from the previous session's close, marked "Prev" at the right edge — so
+ * the chart agrees with the header's 1 Day P&L and with every stock's own 1D.
  */
 
 import { useId, useMemo } from 'react';
@@ -76,20 +77,25 @@ export function EquityChart({ points, range, unit, name, live, height }: Props) 
   // point before them (the previous session's close). The live figure ends
   // the line at the present minute when it is later than the last point.
   const intraday = range === '1D' && points.length > 0 && points[points.length - 1].date.includes('T');
-  const { data, baseline, prior } = useMemo(() => {
-    if (!intraday) return { data: points, baseline: points[0]?.value ?? 0, prior: null as number | null };
+  const { data, baseline, prior, geo } = useMemo(() => {
+    if (!intraday) return { data: points, baseline: points[0]?.value ?? 0, prior: null as number | null, geo: null };
     const day = etDateOf(points[points.length - 1].date);
     const first = points.findIndex((p) => etDateOf(p.date) === day);
     const prior = first > 0 ? points[first - 1].value : null;
-    const today = points.slice(first).map((p) => ({ ...p, x: new Date(p.date).getTime() }));
+    // The axis is the chart's own window; the series starts earlier (4 AM) and ends later (8 PM), so clip it.
+    const geo = intradaySessionGeometry(points[points.length - 1].date);
+    const [open, close] = geo.domain;
+    const today = points
+      .slice(first)
+      .map((p) => ({ ...p, x: new Date(p.date).getTime() }))
+      .filter((p) => p.x >= open && p.x <= close);
     const now = Date.now();
-    if (live != null && live > 0 && today.length > 0 && etDateOf(new Date(now)) === day && now > today[today.length - 1].x) {
+    if (live != null && live > 0 && today.length > 0 && now <= close && now > today[today.length - 1].x) {
       today.push({ date: new Date(now).toISOString(), value: live, x: now });
     }
-    return { data: today, baseline: prior ?? today[0]?.value ?? 0, prior };
+    return { data: today, baseline: prior ?? today[0]?.value ?? 0, prior, geo };
   }, [points, intraday, live]);
 
-  const geo = useMemo(() => (intraday && data.length > 0 ? intradaySessionGeometry(data[0].date) : null), [intraday, data]);
   const yDomain = useMemo<[number, number]>(() => {
     const values = data.map((d) => d.value);
     if (prior != null) values.push(prior);

@@ -62,6 +62,32 @@ describe("oneDayWindow", () => {
     expect(oneDayWindow(firstDay)[0].date).toBe("2026-10-06T13:30:00.000Z");
   });
 
+  // The series carries pre-market and after-hours points now (04:00–20:00
+  // ET). The day is still measured from the previous session's CLOSE — its
+  // 16:00 point — not from its last after-hours print, so the header agrees
+  // with every stock's 1D and with Alpaca's last_equity. And a day is a New
+  // York day: Friday's 20:00 ET print is Saturday in UTC and stays Friday's.
+  it("measures from the previous session's 16:00 close, not its after-hours end", () => {
+    const extended = [
+      p("2026-11-06T20:00:00.000Z", 5_300), // Fri 16:00 ET — the close
+      p("2026-11-06T22:00:00.000Z", 5_340), // Fri 18:00 ET
+      p("2026-11-07T01:00:00.000Z", 5_350), // Fri 20:00 ET (already 11-07 in UTC)
+      p("2026-11-09T09:00:00.000Z", 5_400), // Mon 04:00 ET pre-market
+      p("2026-11-09T14:30:00.000Z", 5_500), // Mon 09:30 ET
+      p("2026-11-09T21:00:00.000Z", 5_450), // Mon 16:00 ET
+      p("2026-11-10T01:00:00.000Z", 5_460), // Mon 20:00 ET (11-10 in UTC)
+    ];
+    const w = oneDayWindow(extended);
+    expect(w[0].date).toBe("2026-11-06T20:00:00.000Z");
+    expect(w.slice(1).map((x) => x.date)).toEqual([
+      "2026-11-09T09:00:00.000Z",
+      "2026-11-09T14:30:00.000Z",
+      "2026-11-09T21:00:00.000Z",
+      "2026-11-10T01:00:00.000Z",
+    ]);
+    expect(w[w.length - 1].value - w[0].value).toBe(160); // 5_460 − 5_300
+  });
+
   it("says nothing about an empty series", () => {
     expect(oneDayWindow([])).toEqual([]);
   });
