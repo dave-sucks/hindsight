@@ -201,11 +201,12 @@ export function validateThesisDecision(
   // In-loop: the writer repairs in one step. Nothing
   // downstream refuses on these.
   const setup = d.setup_id && opts.setups ? opts.setups.find((s) => s.id === d.setup_id) : undefined;
+  // The setup prices a view; it never decides one. An unpriced view needs none.
   if (directional && opts.setups) {
-    if (!d.setup_id) {
-      errors.push(`setup_id: required for LONG/SHORT — pick the setup this plan is written on: ${opts.setups.map((s) => s.id).join(", ")}. If none fits, PASS.`);
-    } else if (!setup) {
-      errors.push(`setup_id: ${d.setup_id} isn't one of this seat's setups (${opts.setups.map((s) => s.id).join(", ")}). Pick one of those or PASS.`);
+    if (!d.setup_id && priced) {
+      errors.push(`setup_id: required on a priced plan — pick the setup that gives its buy level and floor: ${opts.setups.map((s) => s.id).join(", ")}. If none fits today, omit entry, stop and target and keep the view unpriced with the review that brings it back.`);
+    } else if (d.setup_id && !setup) {
+      errors.push(`setup_id: ${d.setup_id} isn't one of this seat's setups (${opts.setups.map((s) => s.id).join(", ")}). Pick one of those, or omit it on an unpriced view.`);
     }
   }
   // A setup with a window, chosen after the window closed, does not apply.
@@ -227,16 +228,16 @@ export function validateThesisDecision(
     const atr = opts.chart?.atr14;
     const next = pullback
       ? averages.length
-        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints — or PASS with the reason.`
-        : " Write it on MA_PULLBACK (buy at a rising 20- or 50-day, stop 1 ATR under it) if the trend allows — or PASS with the reason."
-      : " Pick a setup that applies, or PASS with the reason.";
+        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints — or keep the view unpriced (no setup_id, no levels) with the review that brings it back.`
+        : " Write it on MA_PULLBACK (buy at a rising 20- or 50-day, stop 1 ATR under it) if the trend allows — or keep the view unpriced (no setup_id, no levels) with the review that brings it back."
+      : " Pick a setup that applies, or keep the view unpriced (no setup_id, no levels) with the review that brings it back.";
     errors.push(
       `setup_id: ${setup.name} applies days ${window[0]}–${window[1]} after the report; the last report was ${since} days ago, so it no longer does.${next}`,
     );
   }
   if (directional && priced && entry != null && stop != null && entry > 0 && stop > 0) {
     if (opts.setups && (!d.stop_basis || d.stop_basis.trim().length < 10)) {
-      errors.push("stop_basis: required on a priced plan — the structure the stop sits under and its distance in ATR, with the numbers.");
+      errors.push("stop_basis: required on a priced plan — what a close below it would say about the belief, then the structure the stop sits under and its distance in ATR, with the numbers.");
     }
     // A target is an upside rule only where the setup has one; its basis is owed only when a target is given.
     if (opts.setups && target != null && (!d.target_basis || d.target_basis.trim().length < 10)) {
@@ -304,7 +305,9 @@ export function validateThesisDecision(
   }
 
   if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
-    errors.push("triggers: a PASS decision cannot carry triggers — omit the field entirely.");
+    errors.push(
+      "triggers: a PASS stores no triggers. If you would look again at these, the view is not a PASS: send your direction (LONG or SHORT) with no entry, stop or target, and keep these triggers. If the research doesn't support a view at all, omit the triggers.",
+    );
   }
   if (opts.mode === "refresh" && d.triggers !== undefined) {
     errors.push(

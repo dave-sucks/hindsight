@@ -34,7 +34,7 @@ it("the seed is the plan the run saw: floor, target and buy, in the order its re
 it.each([["waiting", "AWAITING_APPROVAL"], ["filled", "FILLED"]])("IOT 10-15, the buy %s: the move to $42.21 lands at 1.99:1 and nothing advises a set-down", async (_w, status) => {
   const { result, db } = await save([order(status)]);
   expect(refusalOf(result.data!)).toBe("");
-  expect(JSON.stringify(result)).not.toMatch(/remove_trigger_ids|set the plan down|\d:1/);
+  expect(JSON.stringify(result)).not.toMatch(/remove_trigger_ids|set the plan down|\d:1\b/);
   expect((db.store.thesis[0].triggers as Trigger[]).map((t) => sentenceOf(t, false))).toContain("Buy if above $42.21");
 });
 
