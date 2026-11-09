@@ -181,12 +181,8 @@ export interface ReadCase {
   body: string;
   /** The row size this read sends, or the writer's own block. */
   size: RowSize | "writer";
-  /** What is going on with the stock that puts it in this read. */
-  when: string;
-  /** What the agent is sent, in words. */
-  how: string;
-  /** Why that much and not more or less. */
-  why: string;
+  /** What is sent and why, two or three short lines. */
+  points: readonly string[];
 }
 
 export const READ_CASES: ReadonlyArray<ReadCase> = [
@@ -194,41 +190,48 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     id: "line",
     chip: "Nothing new",
     title: "Nothing is happening on this stock",
-    body: "No trigger fired, no review is due, no report is near. Most of your book, most mornings.",
+    body: "No trigger fired, no review is due, no report is near. Most of the book, most mornings.",
     size: "line",
-    when: "The morning run and your chat read the whole book with one get_theses call. A stock with nothing going on today comes back as one line among the others.",
-    how: "One line: the stock, its status, the price, the buy it waits on (the entry, on a holding), a proposal if one is waiting, the next review, the catalyst date, its id. It names no target and no floor: the levels are the triggers, and a quiet stock's are not read.",
-    why: "The agent only needs to know the stock exists and where it stands. If it read the belief, the cases and every trigger on 30 quiet stocks every morning, the prompt would be 30 times longer and the quiet stocks would bury the ones that need a decision.",
+    points: [
+      "One line: the stock, its status, the price, the buy it waits on, a proposal if one is waiting, the next review, the catalyst date, its id.",
+      "No target and no floor: the levels are the triggers, and a quiet stock's are not read.",
+      "Thirty quiet stocks stay thirty lines, so the ones that need a decision stand out.",
+    ],
   },
   {
     id: "situation",
     chip: "In a situation",
     title: "Something is going on with this stock",
-    body: "The floor broke, the price reached the buy, a report is close, a winner should be pressed. Pick the situation to see what rides along.",
+    body: "A trigger fired or a flag is up: the floor broke, the price reached the buy, a report is close, a winner should be pressed.",
     size: "short",
-    when: "The same get_theses call, but this stock is in at least one situation today. The morning run, your chat and the trigger run all see it this way; the trigger run's row also carries the setup's own lines.",
-    how: "The row's nine standing fields on every stock in a situation (the stock, its situations, the price, the position, a proposal waiting, every trigger with its id, the core thesis, the newest 8 Activity lines, when the research was written), plus the fields that situation's decision reads. A stock in two situations gets both sets. The situation's own instructions are attached once per read.",
-    why: "A decision is owed, and each situation's instructions name the facts they read: what would prove us wrong on a sale signal, the chart numbers and the Street on a buy, the assumptions before a report. The rest of the case stays out so the bull case written months ago cannot argue the agent out of the plan.",
+    points: [
+      "The fields marked Always go on every stock in a situation.",
+      "A field with situation badges goes only when one of those situations is on the stock. Two situations, both sets.",
+      "A field's content never changes with the situation; only whether it goes. The situation's own instructions are attached once per read.",
+    ],
   },
   {
     id: "review",
     chip: "Review due",
     title: "The review clock came due",
-    body: "The stock's own review trigger fired. This is the one situation that reads the whole case.",
+    body: "The stock's own review trigger fired. The one situation that reads the whole case.",
     size: "short",
-    when: "Every stock with a view carries a review clock. When it comes due the agent re-underwrites the stock: has the belief broken, is the setup still working, did the world move past the levels?",
-    how: "Everything on the sheet except the old research sections and the history: the standing fields, the chart numbers and the Street, the setup, the assumptions and what would prove us wrong, the bull and bear cases, the conviction reason, where we differ from the Street, the company line and the snapshot.",
-    why: "A review is the one decision that is about the case itself, not about one level, so the case has to be in front of it. It is also where stale cases get rewritten, so reading them is the point.",
+    points: [
+      "Everything on the sheet except the old research sections and the history.",
+      "The bull and bear cases, the conviction reason and the variant view are read here and nowhere else in a run.",
+      "A review is about the case itself, not one level, so the case has to be in front of it.",
+    ],
   },
   {
     id: "named",
     chip: "Asked by name",
     title: "An agent asks for one stock by name",
-    body: "get_theses with a ticker. Your chat does this when you ask about a stock; a run does it right before a buy.",
+    body: "get_theses with a ticker: your chat when you ask about a stock, a run right before a buy.",
     size: "full",
-    when: "The agent already knows which stock it cares about and wants all of it, not the book.",
-    how: "The full row: everything the review clock reads, plus the seven old research sections where an old row still has them, and the history: every Activity line ever written on the stock, each with its id.",
-    why: "Asking by name means the agent wants everything the app knows about this one stock. One stock's history fits in a prompt where 30 stocks' would not.",
+    points: [
+      "The full row: everything the review clock reads, the old research sections where a row still has them, and every Activity line ever written, each with its id.",
+      "One stock's history fits in a prompt where thirty stocks' would not.",
+    ],
   },
   {
     id: "writer",
@@ -236,9 +239,10 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     title: "The Writer rewrites the thesis",
     body: "A rewrite was ordered: from your chat, because the write-up went stale, or the one-time rewrite of the old theses.",
     size: "writer",
-    when: "The Writer is a different agent. It does not trade on the thesis; it writes it, from fresh pulls of the quote, the profile, the financials, the news, the Street and a web search.",
-    how: "Only the old claim, every trigger by id and the company line, in its prompt. Not the old assumptions, cases, conviction reason or variant view.",
-    why: "Those are what it is writing. If it read its own last answer it would copy it. It gets the claim to argue with and the triggers to edit by id, and pulls everything else fresh.",
+    points: [
+      "The Writer gets the old claim, every trigger by id and the company line, in its own prompt. Nothing else from the sheet.",
+      "Not the old cases, assumptions or conviction reason: those are what it is writing. It pulls the quote, the financials, the news and the Street fresh.",
+    ],
   },
 ];
 
