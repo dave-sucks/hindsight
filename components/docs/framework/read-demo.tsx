@@ -3,10 +3,10 @@
 /**
  * The read, zoomed in: a thesis on the left, the explanation on the right.
  * Chips pick one of the five ways an agent reads a thesis; the fields that
- * read carries light up on the sheet and the rest fade. Under each field, a
- * row of badges says when it goes: Always, with a named situation (a bolt
- * for one a trigger firing starts, a bubble for one read off the facts), on
- * the review clock, or by name. Which field rides in which read is the one
+ * read carries light up on the sheet and the rest fade. On a stock in a
+ * situation, a lit field that goes only with certain situations wears one
+ * badge per situation (a bolt for one a trigger firing starts, a bubble for
+ * one read off the facts). Which field rides in which read is the one
  * builder's field map (lib/agent/row-for-model.ts ROW_FIELDS), read on the
  * server (lib/docs/read-grid.ts) and handed down; nothing here is
  * hand-written.
@@ -140,28 +140,20 @@ function OriginIcon({ origin }: { origin: SituationOrigin }) {
 }
 
 /**
- * When a field goes, as the fact chips under the stock page's company line:
- * "Always", one badge per situation that sends it, "Review clock" on the
- * review-only fields, "By name" on the rest.
+ * On a field that is sent in this read but only with certain situations: one
+ * badge per situation, as the fact chips under the stock page's company
+ * line. A field every stock in the read gets has no badge; a field the read
+ * does not send is faded and has none either.
  */
-function WhenRow({ row }: { row: ReadGridRow | undefined }) {
-  if (!row) return null;
+function WhenRow({ row }: { row: ReadGridRow }) {
   return (
     <div className="flex flex-wrap gap-1">
-      {row.when === "always" ? (
-        <Badge variant="fact" shape="square">Always</Badge>
-      ) : row.when === "review" ? (
-        <Badge variant="fact" shape="square">Review clock</Badge>
-      ) : row.when === "named" ? (
-        <Badge variant="fact" shape="square">By name</Badge>
-      ) : (
-        row.situations.map((sit) => (
-          <Badge key={sit.code} variant="fact" shape="square">
-            <OriginIcon origin={sit.origin} />
-            {sit.name}
-          </Badge>
-        ))
-      )}
+      {row.situations.map((sit) => (
+        <Badge key={sit.code} variant="fact" shape="square">
+          <OriginIcon origin={sit.origin} />
+          {sit.name}
+        </Badge>
+      ))}
     </div>
   );
 }
@@ -176,7 +168,7 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
   const gridRow = (fieldId: string) => grid.find((g) => g.fieldId === fieldId);
   const example = (d?.situations ?? []).find((s) => s.code === EXAMPLE_SITUATION);
 
-  // The fields this read lights. In a situation: every field marked Always
+  // The fields this read lights. In a situation: every field with no badge
   // and every field with a situation badge (each goes when its badge's
   // situation is on the stock). The rest from the server's key lists.
   const lit: Set<string> =
@@ -235,6 +227,9 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
               <div className="flex flex-col gap-1">
                 {SHEET_FIELDS.map((f) => {
                   const on = lit.has(f.id);
+                  const row = gridRow(f.id);
+                  // Conditional inside this read: only on a stock in a situation, only the fields a situation brings.
+                  const conditional = on && c.id === "situation" && row?.when === "situations" ? row : undefined;
                   return (
                     <div
                       key={f.id}
@@ -246,7 +241,7 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
                     >
                       <span className="text-xs text-muted-foreground">{f.label}</span>
                       <FieldBody f={f} />
-                      <WhenRow row={gridRow(f.id)} />
+                      {conditional ? <WhenRow row={conditional} /> : null}
                     </div>
                   );
                 })}
@@ -275,7 +270,7 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               As the model reads it
               {c.id === "situation" && example ? (
-                <span className="normal-case tracking-normal"> · for example, {example.name.toLowerCase()}: the Always fields plus {exampleExtra.join(", ")}</span>
+                <span className="normal-case tracking-normal"> · for example, {example.name.toLowerCase()}: the unbadged fields plus {exampleExtra.join(", ")}</span>
               ) : null}
             </span>
             {/* Built from the row the sheet shows, through the one builder (lib/docs/read-sample.ts); the Writer's case is its own prompt block. */}
@@ -301,11 +296,10 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
         </div>
       </div>
 
-      <p className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
-        The badges under a field say when it goes: Always, with the named situation (
+      <p className="text-sm text-muted-foreground">
+        Blue is what this read sends. On a stock in a situation, a field with badges goes only when one of those situations is on the stock:{" "}
         <Zap className="inline size-3" fill="currentColor" aria-label="a bolt" /> one a trigger firing starts,{" "}
-        <FlagNotificationIcon className="inline size-3" dot="current" /> one read off the stock&apos;s facts), on the review clock, or only by name.
-        The review clock also sends every field marked Always or with a situation; a read by name sends all of them.
+        <FlagNotificationIcon className="inline size-3" dot="current" /> one read off the stock&apos;s facts.
       </p>
     </div>
   );

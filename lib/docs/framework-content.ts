@@ -205,8 +205,8 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     body: "A trigger fired or a flag is up: the floor broke, the price reached the buy, a report is close, a winner should be pressed.",
     size: "short",
     points: [
-      "The fields marked Always go on every stock in a situation.",
-      "A field with situation badges goes only when one of those situations is on the stock. Two situations, both sets.",
+      "A blue field with no badge goes on every stock in a situation.",
+      "A blue field with badges goes only when one of those situations is on the stock. Two situations, both sets.",
       "A field's content never changes with the situation; only whether it goes. The situation's own instructions are attached once per read.",
     ],
   },
