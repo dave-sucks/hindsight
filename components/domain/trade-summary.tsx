@@ -164,7 +164,7 @@ function describeTrade({ position, pnl, pendingProposal, direction, look }: Trad
       </Tooltip>
     );
   } else if (pp) {
-    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />;
+    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align={banner ? "start" : "end"} />;
   }
 
   if (pp && pp.intent === "OPEN") {
@@ -286,9 +286,9 @@ function TradeBanner(props: TradeSummaryProps) {
           <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
         </div>
       ) : null}
-      {/* A proposal's answer, or "Executing" once answered, as a third row at the right. */}
+      {/* A proposal's answer, or "Executing" once answered, as a third row at the left. */}
       {reviewSlot ? (
-        <div className="flex justify-end pt-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex pt-2" onClick={(e) => e.stopPropagation()}>
           {reviewSlot}
         </div>
       ) : null}
