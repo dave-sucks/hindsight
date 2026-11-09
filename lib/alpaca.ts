@@ -522,7 +522,7 @@ export interface PortfolioHistoryPoint {
  * longer ranges.
  */
 export async function getPortfolioHistory(
-  options: { period?: string; timeframe?: string } = {},
+  options: { period?: string; timeframe?: string; extendedHours?: boolean } = {},
   creds?: AlpacaCredentials,
 ): Promise<PortfolioHistoryPoint[]> {
   const baseUrl = (creds?.baseUrl || process.env.ALPACA_BASE_URL || PAPER_BASE_URL).replace(/\/$/, "");
@@ -535,6 +535,10 @@ export async function getPortfolioHistory(
     period: options.period ?? "5A",
     timeframe,
   });
+  // Pre-market and after-hours points too (04:00–20:00 ET instead of
+  // 09:30–16:00), so the day's line can run through the off-hours the way
+  // a stock's does. Probed 2026-11-08: 65 points a day at 15 minutes.
+  if (intraday && options.extendedHours) params.set("intraday_reporting", "extended_hours");
 
   const url = `${baseUrl}/v2/account/portfolio/history?${params}`;
 

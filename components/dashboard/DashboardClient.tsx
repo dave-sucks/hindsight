@@ -6,16 +6,15 @@ import { useRouter } from 'next/navigation';
 import { SlidersHorizontal, ArrowRight } from 'lucide-react';
 
 import {
-  Area,
-  AreaChart,
   Line,
   LineChart,
-  ResponsiveContainer,
   XAxis,
   YAxis,
   Tooltip,
   ReferenceLine,
 } from 'recharts';
+import { ChartFrame, PLOT_TOP, TICK } from '@/components/stocks/chart-parts';
+import { EquityChart } from '@/components/dashboard/EquityChart';
 import {
   ChartContainer,
   ChartLegend,
@@ -131,7 +130,9 @@ const ANALYST_COLORS = [
   '#06b6d4',
 ];
 
-const TICK_STYLE = { fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' };
+// The chart's height, pills included: the digest card in the right rail is
+// pinned to the same number so the two columns line up.
+const CHART_HEIGHT = 390;
 
 const TOOLTIP_STYLE = {
   background: 'var(--popover)',
@@ -710,7 +711,7 @@ function Empty({ text, subtext }: { text: string; subtext?: string }) {
 
 function ChartEmpty({ text }: { text: string }) {
   return (
-    <div className="h-52 flex items-center justify-center">
+    <div className="flex items-center justify-center" style={{ height: CHART_HEIGHT }}>
       <p className="text-xs text-muted-foreground text-center max-w-xs px-4">{text}</p>
     </div>
   );
@@ -813,9 +814,9 @@ function DigestPreviewCard({
         type="button"
         onClick={() => digest && setOpen(true)}
         className={cn(
-          // lg:h-[310px] matches the chart card so the two columns align;
+          // lg:h-[390px] matches the chart card so the two columns align;
           // flex-col + overflow-hidden let the narrative fill and fade out.
-          'w-full text-left rounded-lg border bg-card p-3 mb-3 flex flex-col overflow-hidden lg:h-[310px]',
+          'w-full text-left rounded-lg border bg-card p-3 mb-3 flex flex-col overflow-hidden lg:h-[390px]',
           digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
         )}
       >
@@ -1236,21 +1237,13 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
               )}
             </div>
 
-            {/* Chart card — pinned to 310px on desktop so the digest card in
-                the right rail can match its height exactly (48px controls +
-                260px chart). */}
-            <div
-              className="rounded-lg overflow-hidden border lg:h-[310px]"
-              style={{
-                backgroundImage:
-                  'radial-gradient(circle, var(--border) 1px, transparent 1px)',
-                backgroundSize: '18px 18px',
-                backgroundColor: 'var(--card)',
-              }}
-            >
-              {/* Controls: range tabs (left) + settings dropdown (right) */}
-              <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
-                {/* Range — a view setting, so small Tabs */}
+            {/* The chart, in the stock chart's frame (the owner, 2026-11-06):
+                the range pills top-left over the plot, the settings menu
+                top-right; the portfolio view drawn by EquityChart, the two
+                comparison views the same lines they were. */}
+            <ChartFrame
+              className="lg:h-[390px]"
+              controls={
                 <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
                   <TabsList size="sm" variant="outline">
                     {RANGES.map((r) => (
@@ -1258,9 +1251,9 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                     ))}
                   </TabsList>
                 </Tabs>
-
-                {/* Settings dropdown */}
-                {!loading && (
+              }
+              aside={
+                !loading ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger render={<Button variant="outline" size="icon-sm" />}>
                       <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -1311,87 +1304,39 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                )}
-              </div>
-
-              {/* Chart render */}
+                ) : null
+              }
+            >
               {loading ? (
-                <div className="h-[260px] flex items-center justify-center">
+                <div className="flex items-center justify-center" style={{ height: CHART_HEIGHT }}>
                   <Skeleton className="h-1 w-3/4 rounded-full" />
                 </div>
               ) : effectiveView === 'portfolio' ? (
                 !hasPortfolioData ? (
                   <ChartEmpty text="The equity chart tracks portfolio value over time as trades open and close." />
                 ) : (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <AreaChart
-                      data={activePortfolioData}
-                      margin={{ top: 4, right: 0, bottom: 0, left: chartPercent ? 4 : 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={strokeColor} stopOpacity={0.2} />
-                          <stop offset="95%" stopColor={strokeColor} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis
-                        dataKey="date"
-                        tick={TICK_STYLE}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(v) => axisLabel(v, range).toUpperCase()}
-                        interval={Math.max(1, Math.floor(activePortfolioData.length / 6))}
-                        padding={{ left: 0, right: 0 }}
-                      />
-                      {chartPercent ? (
-                        <YAxis
-                          tick={TICK_STYLE}
-                          tickLine={false}
-                          axisLine={false}
-                          tickFormatter={(v) => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`}
-                          width={44}
-                          domain={['dataMin', 'dataMax']}
-                        />
-                      ) : (
-                        <YAxis hide domain={['dataMin * 0.999', 'dataMax * 1.001']} />
-                      )}
-                      <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
-                        formatter={(v) => [
-                          chartPercent
-                            ? `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
-                            : `$${Number(v).toLocaleString()}`,
-                          'Portfolio',
-                        ]}
-                        labelFormatter={(l: unknown) => pointLabel(String(l))}
-                        labelStyle={{ color: 'var(--muted-foreground)' }}
-                        itemStyle={{ color: 'var(--foreground)' }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        stroke={strokeColor}
-                        strokeWidth={1.5}
-                        fill="url(#eqGrad)"
-                        dot={false}
-                        activeDot={{ r: 3, fill: strokeColor }}
-                        baseValue="dataMin"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <EquityChart
+                    points={activePortfolioData}
+                    range={range}
+                    unit={chartPercent ? 'percent' : 'dollar'}
+                    name={chartPercent ? 'Return' : showMode === 'equity' ? 'Value' : 'Gain'}
+                    // The header's Balance is the same quantity as the Account Value line, so today's line can end at it.
+                    live={showMode === 'equity' && !chartPercent ? portfolio.totalValue : null}
+                    height={CHART_HEIGHT}
+                  />
                 )
               ) : effectiveView === 'by-analyst' ? (
                 !hasAnalystData ? (
                   <ChartEmpty text="Not enough trade history to compare analysts yet." />
                 ) : (
-                  <ChartContainer config={analystChartConfig} className="h-[260px] w-full">
+                  <ChartContainer config={analystChartConfig} className="h-[390px] w-full">
                     <LineChart
                       data={analystCompareData}
-                      margin={{ top: 4, right: 16, bottom: 0, left: 0 }}
+                      margin={{ top: PLOT_TOP, right: 16, bottom: 0, left: 0 }}
                     >
                       <XAxis
                         dataKey="date"
-                        tick={TICK_STYLE}
+                        tick={TICK}
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(v) => axisLabel(String(v), range).toUpperCase()}
@@ -1399,7 +1344,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                         padding={{ left: 8, right: 8 }}
                       />
                       <YAxis
-                        tick={TICK_STYLE}
+                        tick={TICK}
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(v) => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`}
@@ -1467,14 +1412,14 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                 !hasSpyData ? (
                   <ChartEmpty text="Not enough data to compare against S&P 500 for this range." />
                 ) : (
-                  <ChartContainer config={spyChartConfig} className="h-[260px] w-full">
+                  <ChartContainer config={spyChartConfig} className="h-[390px] w-full">
                     <LineChart
                       data={spyCompareData}
-                      margin={{ top: 4, right: 16, bottom: 0, left: 0 }}
+                      margin={{ top: PLOT_TOP, right: 16, bottom: 0, left: 0 }}
                     >
                       <XAxis
                         dataKey="date"
-                        tick={TICK_STYLE}
+                        tick={TICK}
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(v) => axisLabel(String(v), range).toUpperCase()}
@@ -1482,7 +1427,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                         padding={{ left: 8, right: 8 }}
                       />
                       <YAxis
-                        tick={TICK_STYLE}
+                        tick={TICK}
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(v) => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`}
@@ -1536,7 +1481,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                   </ChartContainer>
                 )
               )}
-            </div>
+            </ChartFrame>
 
 
           {/* Pending proposals — mobile only. The desktop right rail is hidden

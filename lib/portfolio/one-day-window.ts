@@ -1,3 +1,5 @@
+import { etDateOf, etMinutesOf } from "@/lib/market-data/intraday-window";
+
 /**
  * The 1D window: from the PREVIOUS SESSION'S CLOSE to now.
  *
@@ -17,19 +19,40 @@
  * header and the chart agree: the line starts where the day started, which is
  * also how a broker draws it, and the header delta is last − that point.
  *
+ * Since the series carries pre-market and after-hours points (2026-11-08),
+ * the previous session's close is its last point AT OR BEFORE 16:00 ET, not
+ * its last point of the evening — the same close every stock's 1D measures
+ * from, and the figure Alpaca calls last_equity.
+ *
  * Falls back to the whole newest session when there is no earlier day in the
  * series (a brand-new account, or the first session the vendor returns).
  */
+const CLOSE_MINUTES = 16 * 60;
+
+/** The New York date a point belongs to: an after-hours print at 20:00 ET is the next day in UTC, still today here. A daily key is its own day. */
+function dayOf(date: string): string {
+  return date.includes("T") ? etDateOf(date) : date.slice(0, 10);
+}
+
 export function oneDayWindow<T extends { date: string }>(
   points: ReadonlyArray<T>,
 ): T[] {
   if (points.length === 0) return [];
-  const newestDay = points[points.length - 1].date.slice(0, 10);
+  const newestDay = dayOf(points[points.length - 1].date);
   let firstOfToday = points.length - 1;
-  while (firstOfToday > 0 && points[firstOfToday - 1].date.slice(0, 10) === newestDay) {
+  while (firstOfToday > 0 && dayOf(points[firstOfToday - 1].date) === newestDay) {
     firstOfToday--;
   }
-  // The point before today's first IS the previous session's close.
-  const start = firstOfToday > 0 ? firstOfToday - 1 : 0;
-  return points.slice(start);
+  if (firstOfToday === 0) return points.slice();
+  // The previous session's close: its last point at or before 16:00 ET, or
+  // its last point at all when none is (a daily series, or a short one).
+  const priorDay = dayOf(points[firstOfToday - 1].date);
+  let close = firstOfToday - 1;
+  for (let i = firstOfToday - 1; i >= 0 && dayOf(points[i].date) === priorDay; i--) {
+    if (!points[i].date.includes("T") || etMinutesOf(points[i].date) <= CLOSE_MINUTES) {
+      close = i;
+      break;
+    }
+  }
+  return [points[close], ...points.slice(firstOfToday)];
 }

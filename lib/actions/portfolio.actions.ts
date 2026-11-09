@@ -665,9 +665,10 @@ export async function getDashboardData(
     // has ONE point per day, so 1D had nothing to draw and fell back to the
     // last two days — a straight line between yesterday and today. Alpaca
     // refuses intraday past about a week, so the longer ranges keep the daily
-    // series above.
+    // series above. Extended hours, so 1D runs through pre-market and
+    // after-hours instead of leaving them empty.
     alpacaCreds
-      ? getPortfolioHistory({ period: "1W", timeframe: "15Min" }, alpacaCreds).catch((err) => {
+      ? getPortfolioHistory({ period: "1W", timeframe: "15Min", extendedHours: true }, alpacaCreds).catch((err) => {
           console.warn(`[portfolio] getPortfolioHistory(intraday) failed: ${err instanceof Error ? err.message : err}`);
           return [] as import("@/lib/alpaca").PortfolioHistoryPoint[];
         })
