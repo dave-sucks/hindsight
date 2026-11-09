@@ -920,11 +920,12 @@ export function ThesisBody({
   // The stock cards — the plan's levels, Wall Street, the earnings record —
   // built once. With a sidebar (the page) they go there; without one (the
   // sheet) they close the Overview.
+  // One tight group (the owner, 2026-11-06): the three cards sit close, apart from the section gap around them.
   const stockCards = (
-    <>
+    <div className="space-y-3">
       {wallStreet}
       {earnings ? <EarningsCard data={earnings} streetEps={coverage?.eps?.nextQuarter ?? null} /> : null}
-    </>
+    </div>
   );
 
   // The page's two columns: the chart and the tabs on the left, the cards on
@@ -1114,7 +1115,7 @@ export function ThesisBody({
       <ChipTabs options={tabOptions} value={tab} onChange={(v) => { if (v != null) setTab(String(v)); }} clearable={false} />
 
       {tabs.map((t) => (
-        <TabsContent key={t.value} value={t.value} className="space-y-12">
+        <TabsContent key={t.value} value={t.value} className="space-y-8">
           {t.content}
         </TabsContent>
       ))}

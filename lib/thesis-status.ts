@@ -79,8 +79,8 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
   HOLDING: {
     label: "Holding",
     // Unlike the old ACTIVE, HOLDING never lies: it means an open position
-    // backs this thesis (execution-owned). Blue pulse = live holding.
-    dotClass: "bg-blue-500 animate-pulse",
+    // backs this thesis (execution-owned). The foreground pulsing = live holding.
+    dotClass: "bg-foreground animate-pulse",
     tooltip: "Holding an open position",
   },
   PASSED: {

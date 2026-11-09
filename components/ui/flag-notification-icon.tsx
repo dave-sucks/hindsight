@@ -6,9 +6,10 @@
 // Two paths, two colours, both responsive:
 //   • the bubble is `currentColor`, so it takes the colour of the sentence it
 //     sits in and follows light/dark with it;
-//   • the dot is `fill-blue-500` — the same blue the app already uses for a
-//     live, open thing (the OPEN status dot). Tailwind's blue-500 IS the
-//     #3B82F6 in the source file, so nothing is hardcoded to get there.
+//   • the dot is `fill-blue-500` — the notification blue. Tailwind's blue-500
+//     IS the #3B82F6 in the source file, so nothing is hardcoded to get there.
+//     (The holding dot was the same blue until 2026-11-08; it is the
+//     foreground now, so the two no longer share a color.)
 //
 // Sized by the host, same contract as the lucide icons it sits beside.
 export function FlagNotificationIcon({ className }: { className?: string }) {

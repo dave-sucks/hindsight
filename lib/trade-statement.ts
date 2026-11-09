@@ -35,7 +35,8 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 
 export type TradeStatementKind =
   | "proposed-buy" // pending entry, no position held yet
-  | "holding" // open position
+  | "holding" // open position — the state
+  | "bought" // the buy that opened it — the event
   | "closed" // closed position
   | "proposed-exit"; // open position + a pending close / add / trim
 
@@ -83,7 +84,8 @@ export interface TradeStatementInput {
  *
  *   proposed-buy   → "Proposed: Buy 100 shares at $40.93"
  *     (executing)  → "Executing: Buy 100 shares at $40.93"
- *   holding        → "Bought 100 shares at $40.93, now trading at $45.41"
+ *   holding        → "Holding 100 shares, avg cost $40.93, now trading at $45.41"   (the state; the owner's words, 2026-11-08)
+ *   bought         → "Bought 100 shares at $40.93"                 (the event, in the feed)
  *   closed         → "Sold at $416.63, bought 3.54 shares at $282.35"
  *   proposed-exit  → "Proposed: Sell at $45.41, bought 100 shares at $40.93"
  *     (trim)       → "Proposed: Trim 30 shares at $45.41, bought 100 shares at $40.93"
@@ -103,10 +105,9 @@ export function buildTradeSentence(i: TradeStatementInput): string | null {
         i.entry > 0 ? ` at ${usd(i.entry)}` : ""
       }`;
     case "holding":
-      return (
-        `Bought ${q} ${unit} at ${usd(i.entry)}` +
-        (i.current != null ? `, now trading at ${usd(i.current)}` : "")
-      );
+      return `Holding ${q} ${unit}, avg cost ${usd(i.entry)}` + (i.current != null ? `, now trading at ${usd(i.current)}` : "");
+    case "bought":
+      return `Bought ${q} ${unit} at ${usd(i.entry)}`;
     case "closed":
       return i.closePrice != null
         ? `Sold at ${usd(i.closePrice)}, ${entryClause}`
