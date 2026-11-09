@@ -218,6 +218,8 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("reason", "TEXT"),
     f("setup_id", "CHOSEN"),
     f("screen_row", "TEXT"),
+    f("research_notes", "TEXT"),
+    f("idea_source", "CARRIED", { note: "The pasted idea as the sender got it: who, the link, the day, their words. The writer tests it; the thesis keeps who as its source." }),
   ],
   /** The writer's own submit tool — the decision, before the save. */
   submit_thesis: [

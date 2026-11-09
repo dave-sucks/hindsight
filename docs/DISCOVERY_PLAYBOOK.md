@@ -58,7 +58,7 @@ STEP 4 — Paste all of it into Hindsight Discovery
 ```
 
 **Why this works better than agent-driven `web_search`:**
-- Grok sees the X firehose with handle attribution + historical track record (agent's `twitter_search` returns less context)
+- Grok sees the X firehose with handle attribution + historical track record (the app has no X search of its own)
 - Perplexity Finance has structured finance data baked in (options-implied moves, sell-side targets, insider activity)
 - You curate (decide which handles to trust, which leads to chase) — the agent doesn't have your taste yet
 - Discovery agent does what it's best at — triage + scoring + dispatch against a specific mandate

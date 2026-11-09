@@ -47,6 +47,8 @@ Before the model starts, code pulls seven data sets at once: five years of state
 
 Then up to four web searches fill in what data can't: the call, the guidance, what changed this week. Every paragraph names its source, and a catalyst dated after today is written as expected, never as reported.
 
+It also reads what the agent that sent the stock found first: its reason, its notes (the numbers it pulled, what it read) and, when the stock came from someone's thesis, the post or article itself, with who wrote it, the link and the day. It tests that author's claims against the data and says which held. The thesis keeps the author as where it came from, shown on its first Activity line.
+
 ## What it decides
 
 First, a research note in three parts: the company in two sentences (what it does and how it makes money), the bull case and the bear case, with a bear case even on a buy. The company's numbers, its earnings history, the street's view and the chart are live data on the stock's page, not prose in the note. On a new stock the Writer's own decision note is the first line you read. Then the decision:

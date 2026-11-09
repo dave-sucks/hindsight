@@ -73,7 +73,6 @@ const FAVICON: Partial<Record<ToolSource, string>> = {
   sec: "sec.gov",
   perplexity: "perplexity.ai",
   anthropic: "anthropic.com",
-  xai: "x.ai",
   inngest: "inngest.com",
 };
 
