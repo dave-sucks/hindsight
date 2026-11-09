@@ -119,20 +119,19 @@ export function TradeSummary(props: TradeSummaryProps) {
 // One description shared by the two looks, so the sheet and the page can
 // never disagree about the same trade (the owner's words, 2026-11-05): the
 // title names the state and, on a proposal, the action and its size; the
-// line under it is ONE shape in every state (the owner, 2026-11-08):
-//   verb + shares · the dollars (the cost in parentheses), no date (the date
-//   is the footnote's "held").
+// line under it is ONE shape in every state (the owner's final, 2026-11-08):
+//   verb + shares, the dollars (the avg cost in parentheses), no date (the
+//   date is the footnote's "held").
 //   • holding          → the foreground dot, breathing · "Position"
-//                        "Holding 11 shares · $7,590.00 value (avg cost $911.42)"
+//                        "Holding 11 shares, $7,590.00 value (avg cost $911.42)"
 //   • closed           → green or red dot by the result · "Closed position"
-//                        "Sold 11 shares · $7,040.00 value (avg cost $911.42)"
+//                        "Sold 20 shares, $8,078.78 value (avg cost $355.28)"
 //   • proposed buy     → white breathing dot · "Proposal · Buy"
-//                        "Buy 14 shares · $749.70 cost"  (no avg cost: the price is the stock's price now)
+//                        "Buy 14 shares, $749.70 cost"  (no avg cost: the price is the stock's price now)
 //   • proposed sell / trim / add → "Proposal · Sell 11 shares" / "Proposal · Trim 4 shares" / "Proposal · Add 4 shares"
 //                        and the holding's own line under it — the title already says the action.
-// The banner carries the dollars in the line; the card's footnote carries
-// them (the value, the avg cost, the days held), so its line is the verb and
-// the shares alone and stays one line in its narrow column.
+// The card's line is the same without the parentheses: its avg cost sits in
+// the footnote beside the days held.
 function describeTrade({ position, pnl, pendingProposal, direction, look }: TradeSummaryProps) {
   const pp = pendingProposal;
   const usd = (n: number) => formatCurrency(n);
@@ -141,9 +140,9 @@ function describeTrade({ position, pnl, pendingProposal, direction, look }: Trad
   // The dollars: what the shares are worth now, what the sale brought once closed, what a proposed buy would cost.
   const value = pnl?.marketValue ?? (position.closed && position.closePrice != null ? position.closePrice * position.quantity : position.avgCost * position.quantity);
   const banner = look === "banner";
-  /** "Holding 11 shares · $7,590.00 value (avg cost $911.42)"; on the card just "Holding 11 shares". */
+  /** "Holding 11 shares, $7,590.00 value (avg cost $911.42)"; the card leaves the parentheses to its footnote. */
   const line = (verb: string, qty: number, dollars: string, cost: string | null) =>
-    `${verb} ${shares(qty)}` + (banner ? ` · ${dollars}` + (cost ? ` (${cost})` : "") : "");
+    `${verb} ${shares(qty)}, ${dollars}` + (banner && cost ? ` (${cost})` : "");
   const avgCost = `avg cost ${usd(position.avgCost)}`;
 
   let sentence: string;
@@ -345,23 +344,23 @@ function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; anal
 // elsewhere opens the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
   const { position, onOpen, trades, note, ticker, analystId } = props;
-  const { pp, sentence, gain, title, action, value, avgCost, dotClass, reviewSlot, proposal } = describeTrade(props);
+  const { pp, sentence, gain, title, action, avgCost, dotClass, reviewSlot, proposal } = describeTrade(props);
   const click = onOpen;
   const closed = position.closed === true;
   const proposedBuy = pp?.intent === "OPEN";
   const pastTrades = trades ? Math.max(0, trades.count - 1) : 0;
+  const footnote = [
+    ...(!proposedBuy ? [avgCost, `Held ${position.daysHeld} day${position.daysHeld === 1 ? "" : "s"}`] : []),
+    ...(pastTrades > 0 ? [`${pastTrades} past trade${pastTrades === 1 ? "" : "s"}`] : []),
+  ].join(" · ");
   return (
     <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", click && "cursor-pointer")} onClick={click}>
       <TradeTitle title={action ? `${title} · ${action}` : title} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} />
       <div className="pointer-events-none">
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
         <p className={cn("text-xl font-light tabular-nums", gain ? (gain.dollar >= 0 ? "text-positive" : "text-negative") : "text-foreground")}>{sentence}</p>
-        {/* The footnote: what the shares are worth (would cost, on a proposed buy), what they cost us, how long we have held them, and how many trades the thesis had before this one. */}
-        <p className="mt-2 text-xs text-muted-foreground tabular-nums">
-          {formatCurrency(value)} {proposedBuy ? "cost" : "value"}
-          {!proposedBuy ? ` · ${avgCost} · Held ${position.daysHeld} day${position.daysHeld === 1 ? "" : "s"}` : ""}
-          {pastTrades > 0 ? ` · ${pastTrades} past trade${pastTrades === 1 ? "" : "s"}` : ""}
-        </p>
+        {/* The footnote: what the shares cost us, how long we have held them, and how many trades the thesis had before this one. */}
+        {footnote ? <p className="mt-2 text-xs text-muted-foreground tabular-nums">{footnote}</p> : null}
       </div>
       {/* A rule the card's full width, splitting the numbers from the words. */}
       <div className="-mx-3">
