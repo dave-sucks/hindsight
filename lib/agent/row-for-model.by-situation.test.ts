@@ -26,6 +26,33 @@ describe("the keys a situation's row sends", () => {
       for (const k of named) expect([code, k, sent.has(k)]).toEqual([code, k, true]);
     }
   });
+  // The buy text named the variant view in plain words and the backtick scan
+  // missed it (the review of 2026-11-10), so the plain names a text uses for
+  // a conditional key are held to the row too.
+  const PLAIN_NAMES: ReadonlyArray<[RegExp, string]> = [
+    [/variant view|where we differ from the street/i, "variant_view"],
+    [/\bassumptions?\b/i, "assumptions"],
+    [/prove (?:it|us|the view) wrong/i, "would_prove_it_wrong"],
+    [/the street|average target|price target/i, "street"],
+    [/chart numbers|the chart's/i, "chart"],
+    [/\bbull case\b/i, "bull_case"],
+    [/\bbear case\b/i, "bear_case"],
+    [/company line/i, "company"],
+    [/paper record/i, "paper_record"],
+    [/plan checks?\b/i, "plan_checks"],
+  ];
+  // First research describes what the Writer will write (the belief, the assumptions, what would prove it wrong); a seed has none of them to send.
+  const WRITES_NOT_READS = new Set<SituationCode>(["FIRST_RESEARCH"]);
+  it("every conditional key a situation's guidance names in plain words is sent with that situation", () => {
+    for (const code of CODES) {
+      if (WRITES_NOT_READS.has(code)) continue;
+      const sent = rowKeysFor([code], { size: "short", named: false });
+      for (const [re, k] of PLAIN_NAMES) {
+        if (!re.test(SITUATIONS[code].guidance)) continue;
+        expect([code, k, sent.has(k)]).toEqual([code, k, true]);
+      }
+    }
+  });
   it("the standing fields go on every row; the whole case only on the review clock; the sections and history only by name", () => {
     for (const code of CODES) {
       const sent = rowKeysFor([code], { size: "short", named: false });

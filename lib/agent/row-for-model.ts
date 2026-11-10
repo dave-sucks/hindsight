@@ -74,8 +74,8 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   street: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "ADD_OR_WINNER", "PLAN_PROBLEM"],
   setup: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "NO_SETUP_NAMED"],
   setup_lines: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "NO_SETUP_NAMED"],
-  assumptions: ["EARNINGS"],
-  would_prove_it_wrong: ["PROTECTIVE_SALE", "AUTO_TRADE", "EARNINGS", "FILING"],
+  assumptions: ["EARNINGS", "STALE_RESEARCH"],
+  would_prove_it_wrong: ["PROTECTIVE_SALE", "AUTO_TRADE", "EARNINGS", "FILING", "STALE_RESEARCH"],
   catalyst: ["EARNINGS", "PLAN_PROBLEM"],
   paper_record: ["PROMOTED_AWAITING"],
   // The whole case: the review clock, and a named read.
@@ -83,7 +83,7 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   bull_case: "review",
   bear_case: "review",
   conviction_rationale: "review",
-  variant_view: "review",
+  variant_view: ["BUY_ARRIVES", "BUY_BLOCKED_FULL"],
   snapshot: "review",
   // Only when asked for by name.
   recentCatalysts: "named",

@@ -118,7 +118,7 @@ Mistakes:
 
 ## Buy level reached
 
-`BUY_ARRIVES` · rank 4 of 17 · the row adds `plan_checks`, `chart`, `street`, `setup`, `setup_lines` · sent to every run
+`BUY_ARRIVES` · rank 4 of 17 · the row adds `plan_checks`, `chart`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
 
 A watched stock reached its buy level.
 
@@ -131,7 +131,7 @@ Answer, in order:
 3. Did the setup confirm? By the setup (the row's `setup` line, or its `setup_lines`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
 4. Is it chased? An unanswered buy shows in `plan_checks`, with the chase limit and how far past it the stock is.
 5. Did the principal decline this buy (`said`), with nothing they named changed since? Then say so and pass.
-6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view.
+6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (`variant_view`).
 
 What you can do:
 - Buy, only when every check above holds: place_trade (it sizes the buy), then one update_thesis.
@@ -150,7 +150,7 @@ Mistakes:
 
 ## Buy blocked, full
 
-`BUY_BLOCKED_FULL` · rank 5 of 17 · the row adds `plan_checks`, `buyBlockedByFull`, `chart`, `street`, `setup`, `setup_lines` · sent to every run
+`BUY_BLOCKED_FULL` · rank 5 of 17 · the row adds `plan_checks`, `buyBlockedByFull`, `chart`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
 
 A buy fired while the analyst already holds all it may.
 
@@ -159,7 +159,7 @@ When: a buy fired or is true now on a stock we watch, and this analyst is full: 
 
 Answer, in order:
 1. What is going on with the company and the stock that brings it to its buy price: its news, its sector, the market (get_stock_data, web_search)?
-2. Is it a better use of a slot than one we hold? Weigh it against the weakest holding: the thesis, the setup, the reward left to its target.
+2. Is it a better use of a slot than one we hold? Weigh it against the weakest holding: the thesis, the setup, the reward left to its target, and where we differ from the Street (`variant_view`).
 
 What you can do:
 - On this stock's update_thesis, name which held stock it would replace and why it is the better use of the slot.
@@ -426,7 +426,7 @@ Mistakes:
 
 ## Research stale
 
-`STALE_RESEARCH` · rank 13 of 17 · the standing fields only · sent to every run
+`STALE_RESEARCH` · rank 13 of 17 · the row adds `assumptions`, `would_prove_it_wrong` · sent to every run
 
 The research is older than the analyst's limit.
 
@@ -434,7 +434,7 @@ The research is older than the analyst's limit.
 When: the research behind a committed view is older than its horizon allows, or missing (the `research` line says when it was written). On a watched stock the next thing to happen could be a buy on it.
 
 Answer, in order:
-1. What has happened with the company since the research was written: results, guidance, news (get_stock_data, web_search)? Does the old work still stand against it?
+1. What has happened with the company since the research was written: results, guidance, news (get_stock_data, web_search)? Does the old work still stand against it: do its `assumptions` hold, and has anything in `would_prove_it_wrong` happened?
 
 What you can do:
 - Refresh it (the default): dispatch_thesis_research with mode "refresh", then wait_for_thesis_refresh, then re-read the stock and change its levels or tier if the new work changed your view.
