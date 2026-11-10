@@ -12,6 +12,8 @@
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { activityFeed, type FeedItem, type ProposalOrder } from "@/lib/thesis/activity-feed";
+import { inStockActivity, noteLine } from "@/lib/agent/shared-notes";
+import { loadNotesSince } from "@/lib/agent/shared-notes.server";
 
 export const FEED_ORDER_SELECT = {
   id: true, status: true, intent: true, side: true, quantity: true, symbol: true, rationale: true, rejectionMessage: true,
@@ -62,5 +64,20 @@ export async function loadActivityFeed(thesis: FeedThesis, limit: number): Promi
     select: FEED_ORDER_SELECT,
   });
 
-  return activityFeed({ updates, orders: orders as unknown as ProposalOrder[], limit });
+  // The shared notes that reach the stock (lib/agent/shared-notes.ts): a note
+  // naming it, and a note to the account or its analyst written
+  // while it was on the book. Each is one line; the "newest 8" mark skips
+  // the ones a run reads elsewhere (newestEightForRuns).
+  let notes: ReturnType<typeof noteLine>[] = [];
+  try {
+    const owner = await prisma.thesis.findUnique({ where: { id: thesis.id }, select: { userId: true } });
+    if (owner) {
+      const stock = { ticker: thesis.ticker, analystId: thesis.analystId, createdAt: thesis.createdAt, endedAt: terminalAt };
+      notes = (await loadNotesSince(owner.userId, thesis.createdAt)).filter((n) => inStockActivity(n, stock)).map(noteLine);
+    }
+  } catch {
+    // A note is never worth failing the tab over.
+  }
+
+  return activityFeed({ updates: [...updates, ...notes], orders: orders as unknown as ProposalOrder[], limit });
 }

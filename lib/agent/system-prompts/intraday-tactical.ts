@@ -81,8 +81,12 @@ export function stockFromRead(
   if (!row) return null;
   const status = String(row.status);
   const codes = Array.isArray(row.situations) ? (row.situations as SituationCode[]) : [];
+  // The notes every run reads once at the top (the account's and the
+  // analyst's, lib/agent/shared-notes.ts) ride on the one row this run prints.
+  const notes = (read?.data as { notes?: string[] } | undefined)?.notes;
+  const short = rowForModel(row, { named: true, size: "short", setupLines: true }) as Record<string, unknown>;
   return {
-    row: rowForModel(row, { named: true, size: "short", setupLines: true }) as Record<string, unknown>,
+    row: notes?.length ? { ...short, notes_to_the_account: notes } : short,
     // The list names every situation; the guidance leaves out the ones only the morning run can answer.
     situations: { codes: guidanceCodes(status, codes), guidance: guidanceFor(guidanceCodes(status, codes, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL") },
   };

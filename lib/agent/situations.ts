@@ -13,7 +13,7 @@ export type SituationCode =
   | "AUTO_TRADE" | "PROMOTED_AWAITING" | "PROTECTIVE_SALE" | "BUY_ARRIVES" | "BUY_BLOCKED_FULL"
   | "ADD_OR_WINNER" | "EARNINGS" | "FILING" | "QUIET_WATCH_WOKE"
   | "PROTECTION" | "FIRST_RESEARCH" | "REVIEW_DUE" | "STALE_RESEARCH"
-  | "PLAN_PROBLEM" | "YOUR_WORD_UNANSWERED" | "SOLD_ONE_REVIEW" | "NO_SETUP_NAMED";
+  | "PLAN_PROBLEM" | "YOUR_WORD_UNANSWERED" | "PINNED_NOTE" | "SOLD_ONE_REVIEW" | "NO_SETUP_NAMED";
 
 /** What a stock's situations are read from: the work-flag list and the row's other fields. */
 export interface SituationSources {
@@ -30,6 +30,8 @@ export interface SituationSources {
   buyBlockedByFull: boolean;
   nameTheSetup: boolean;
   unansweredDecision: boolean;
+  /** A note pinned on the stock and a group it belongs to, that no run has written after (lib/agent/shared-notes.ts). */
+  pinnedNote?: boolean;
   soldReview?: boolean;
   /** A sale waits for the principal's approval: the stock is theirs to decide, quiet with no situations. */
   saleWaiting?: boolean;
@@ -105,6 +107,7 @@ export function situationsFor(s: SituationSources): SituationCode[] {
   if (s.status === "HOLDING" && (s.progressToTarget ?? 0) >= 0.75) codes.push("ADD_OR_WINNER");
   if ((s.planSanity?.length ?? 0) > 0 || s.actionability === "STALE_PAST_CATALYST") codes.push("PLAN_PROBLEM");
   if (s.unansweredDecision) codes.push("YOUR_WORD_UNANSWERED");
+  if (s.pinnedNote) codes.push("PINNED_NOTE");
   if (s.soldReview) codes.push("SOLD_ONE_REVIEW");
   if (s.nameTheSetup) codes.push("NO_SETUP_NAMED");
   return [...new Set(codes)];
@@ -451,6 +454,27 @@ The note: their words, quoted, then your answer: what you found about the compan
 Mistakes:
 - Taking an expired proposal for a decision: it may be proposed again if the setup still holds.`,
   },
+  PINNED_NOTE: {
+    name: "pinned note to answer",
+    guidance: `When: the portfolio manager or the principal pinned a note on this stock and others with it, and no run has written on the stock since. It is in \`said\` under PINNED, above the Activity lines, with the stocks it covers and their share of the account. It names something bigger than this stock: a market date, a story moving a group, how much of the account rides on it.
+
+Answer, in order:
+1. What does the note say is coming, and when?
+2. Does it reach why we own or watch this stock? Check the note's claim and the stock's own news against the data (get_stock_data, get_market_context, web_search).
+3. Does the stock's plan still fit what is coming: its floor and its size on a holding, its buy level and its research on a watch?
+
+What you can do (one of these):
+- Act on it. On a holding: a trim or a sale proposal, or a floor moved up with update_thesis. On a watch: a buy level moved, the research refreshed through the writer (dispatch_thesis_research, mode "refresh"), or let it go.
+- Keep the plan: say in one sentence why the note doesn't change it for this stock.
+
+Answered: your one update_thesis on the stock, naming the pinned note and saying what it means here. The stock leaves this situation once you have written; the note stays pinned for the others it covers.
+
+The note: what the pinned note says is coming; what it means for this stock and why; then what you did, in one sentence.
+
+Mistakes:
+- Treating the note as an order. It is a read on the market, and the stock's own case still decides.
+- A floor moved down or loosened because of it: only the principal lowers a floor.`,
+  },
   SOLD_ONE_REVIEW: {
     name: "sold, one look",
     guidance: `When: this analyst sold the stock in the last two weeks and no run has answered for it yet. It is listed under \`sold_to_review\`, not as a row: \`ask\` carries the exit price, the date, why it sold, whether the belief survived, and any catalyst still ahead. This is the one look a sold stock gets.
@@ -580,6 +604,7 @@ export function listsTheStock(s: SituationSources): boolean {
     s.buyBlockedByFull ||
     s.nameTheSetup ||
     s.unansweredDecision ||
+    !!s.pinnedNote ||
     LABELS_THAT_LIST.has(s.actionability ?? "") ||
     s.status === "PROMOTED"
   );

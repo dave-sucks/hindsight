@@ -1496,3 +1496,27 @@ model StreetConsensus {
   @@unique([ticker, asOf])
 }
 
+/// A note written once and read on every stock in its audience: the whole
+/// account, one analyst, or a list of stocks (lib/agent/shared-notes.ts).
+/// A note on one stock is a NOTE line in its Activity instead.
+model SharedNote {
+  id          String    @id @default(cuid())
+  userId      String
+  /// OWNER or PORTFOLIO_MANAGER
+  author      String
+  /// The run that wrote it, when a run did.
+  runId       String?
+  body        String
+  /// ACCOUNT | ANALYST | STOCKS
+  audience    String
+  analystId   String?
+  tickers     String[]  @default([])
+  /// The market date it is about, when there is one (YYYY-MM-DD, New York).
+  eventDate   String?
+  /// Read above every covered stock's Activity lines until then; null when not pinned.
+  pinnedUntil DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
