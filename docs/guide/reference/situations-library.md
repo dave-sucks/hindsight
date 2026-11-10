@@ -451,7 +451,7 @@ Mistakes:
 
 ## Plan check
 
-`PLAN_PROBLEM` · rank 14 of 17 · the row adds `plan_checks`, `supersededBy`, `chart`, `street`, `catalyst` · sent to every run
+`PLAN_PROBLEM` · rank 14 of 17 · the row adds `plan_checks`, `supersededBy`, `chart`, `street`, `would_prove_it_wrong`, `catalyst`, `conviction_rationale`, `snapshot` · sent to every run
 
 The plan contradicts the price or the calendar: a buy level left behind, a target passed, a floor too tight.
 
@@ -461,6 +461,7 @@ When: a watched stock's plan contradicts the tape or the calendar. The `plan_che
 Answer, in order:
 1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?
 2. What does each check say? Read its numbers, and the `street` line: where the Street's targets sit against the plan's levels.
+3. Does the case still earn a plan? The writer's own read of where it stands (`snapshot`, `conviction_rationale`), and whether anything in `would_prove_it_wrong` has happened. A case the writer already calls failed is let go, not re-priced.
 
 What you can do, for each check:
 - Fix the number: update_thesis with the re-anchored level (edit_triggers on its id) and a rationale.

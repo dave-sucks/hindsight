@@ -416,6 +416,7 @@ Mistakes:
 Answer, in order:
 1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?
 2. What does each check say? Read its numbers, and the \`street\` line: where the Street's targets sit against the plan's levels.
+3. Does the case still earn a plan? The writer's own read of where it stands (\`snapshot\`, \`conviction_rationale\`), and whether anything in \`would_prove_it_wrong\` has happened. A case the writer already calls failed is let go, not re-priced.
 
 What you can do, for each check:
 - Fix the number: update_thesis with the re-anchored level (edit_triggers on its id) and a rationale.

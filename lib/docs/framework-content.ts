@@ -218,7 +218,7 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     size: "short",
     points: [
       "Everything on the sheet except the old research sections and the history.",
-      "The bull and bear cases, the conviction reason and the variant view are read here and nowhere else in a run.",
+      "The bull and bear cases are read here and nowhere else in a run.",
       "A review is about the case itself, not one level, so the case has to be in front of it.",
     ],
   },
