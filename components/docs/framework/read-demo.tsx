@@ -2,16 +2,18 @@
 
 /**
  * The read, zoomed in: a thesis on the left, the explanation on the right.
- * Chips pick one of the six scenarios an agent reads a thesis in; the fields
- * that read carries light up on the sheet and the rest fade. The sheet is one
- * stack of every field the thesis has, drawn the way the real sheet draws
- * them (status pills, the price, the plan levels, the position line, trigger
- * pills), so it skims like the sheet. Which field rides in which read is
- * lib/docs/framework-content.ts, copied from lib/agent/row-for-model.ts and
- * the writer's prompt; lib/docs/read-cases.test.ts keeps the keys honest.
+ * Chips pick one of the five ways an agent reads a thesis; the fields that
+ * read carries light up on the sheet and the rest fade. On a stock in a
+ * situation, a lit field that goes only with certain situations wears one
+ * badge per situation (a bolt for one a trigger firing starts, a bubble for
+ * one read off the facts). Which field rides in which read is the one
+ * builder's field map (lib/agent/row-for-model.ts ROW_FIELDS), read on the
+ * server (lib/docs/read-grid.ts) and handed down; nothing here is
+ * hand-written.
  */
 
 import { useState } from "react";
+import { Zap } from "lucide-react";
 import { AnalystCards } from "@/components/domain/analyst-consensus";
 import { ConvictionChip, StatusPill } from "@/components/domain/thesis-header";
 import { StatGrid } from "@/components/stocks/StatGrid";
@@ -19,16 +21,22 @@ import { Badge } from "@/components/ui/badge";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { PriceChange } from "@/components/ui/price-change";
+import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import {
   EXAMPLE_LINE,
+  LINE_KEYS,
   READ_CASES,
-  READ_SIZES,
   SHEET_FIELDS,
+  WRITER_KEYS,
   fieldsLit,
-  type FrameworkSituation,
+  type FrameworkData,
+  type ReadCase,
+  type ReadGridRow,
   type SheetField,
+  type SituationOrigin,
 } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
+import { useFrameworkData } from "../tool-catalog";
 import { Mono } from "../primitives";
 
 /** The Street on CRWD, in the shape the stock page's two cards take. */
@@ -51,6 +59,9 @@ const CHART_STATS = [
     { label: "vs the S&P, 3M", value: "+9%" },
   ],
 ];
+
+/** The situation whose row the "In a situation" sample shows: the one most mornings have. */
+const EXAMPLE_SITUATION = "PROTECTIVE_SALE";
 
 /** The sheet's own drawing of a field, where it has one; the label + text stack otherwise. */
 function FieldBody({ f }: { f: SheetField }) {
@@ -123,17 +134,67 @@ function FieldBody({ f }: { f: SheetField }) {
   }
 }
 
-export function ReadDemo({ situation, samples }: { situation?: FrameworkSituation; samples?: Record<string, string> }) {
-  const [caseId, setCaseId] = useState<string>(READ_CASES[0].id);
+/** The icon on a situation's badge: a filled bolt for one a trigger firing starts, the filled bubble for one read off the facts; both the badge's text color. */
+function OriginIcon({ origin }: { origin: SituationOrigin }) {
+  return origin === "trigger" ? <Zap className="size-3" fill="currentColor" /> : <FlagNotificationIcon className="size-3" dot="current" />;
+}
+
+/**
+ * On a field that is sent in this read but only with certain situations: one
+ * badge per situation, as the fact chips under the stock page's company
+ * line. A field every stock in the read gets has no badge; a field the read
+ * does not send is faded and has none either.
+ */
+function WhenRow({ row }: { row: ReadGridRow }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {row.situations.map((sit) => (
+        <Badge key={sit.code} variant="fact" shape="square">
+          <OriginIcon origin={sit.origin} />
+          {sit.name}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+export function ReadDemo({ data }: { data?: FrameworkData }) {
+  const fromContext = useFrameworkData();
+  const d = data ?? fromContext;
+  const [caseId, setCaseId] = useState<ReadCase["id"]>(READ_CASES[0].id);
   const c = READ_CASES.find((x) => x.id === caseId) ?? READ_CASES[0];
-  const lit = fieldsLit(c);
-  const carried = SHEET_FIELDS.filter((f) => lit.has(f.id));
-  const inSituation = c.size === "short" || c.size === "full";
-  const sizeWords =
-    c.size === "line" ? `One line, ${READ_SIZES.line}.`
-    : c.size === "short" ? `The short row, ${READ_SIZES.short}.`
-    : c.size === "full" ? `The full row, ${READ_SIZES.full}.`
-    : "The existing thesis, in the Writer's own prompt.";
+  const read = d?.read;
+  const grid = read?.grid ?? [];
+  const gridRow = (fieldId: string) => grid.find((g) => g.fieldId === fieldId);
+  const example = (d?.situations ?? []).find((s) => s.code === EXAMPLE_SITUATION);
+
+  // The fields this read lights. In a situation: every field with no badge
+  // and every field with a situation badge (each goes when its badge's
+  // situation is on the stock). The rest from the server's key lists.
+  const lit: Set<string> =
+    c.id === "line" ? fieldsLit(LINE_KEYS)
+    : c.id === "writer" ? fieldsLit(WRITER_KEYS)
+    : c.id === "situation" ? new Set(grid.filter((g) => g.when === "always" || g.when === "situations").map((g) => g.fieldId))
+    : c.id === "review" ? fieldsLit(read?.keys.review ?? [])
+    : fieldsLit(read?.keys.named ?? []);
+  const always = grid.filter((g) => g.when === "always").length;
+  const bySituation = grid.filter((g) => g.when === "situations").length;
+  const count =
+    c.id === "situation"
+      ? `${always} always · ${bySituation} by situation`
+      : `${SHEET_FIELDS.filter((f) => lit.has(f.id)).length} of ${SHEET_FIELDS.length} fields sent`;
+
+  const sample =
+    c.id === "line" ? (read?.samples.line ?? EXAMPLE_LINE)
+    : c.id === "situation" ? read?.samples.bySituation[EXAMPLE_SITUATION]
+    : c.id === "review" ? read?.samples.review
+    : c.id === "named" ? read?.samples.named
+    : undefined;
+  // The example's own fields, by label, so the sample's caption says what joined the standing ones.
+  const exampleExtra = grid
+    .filter((g) => g.when === "situations" && g.situations.some((s) => s.code === EXAMPLE_SITUATION))
+    .map((g) => SHEET_FIELDS.find((f) => f.id === g.fieldId)?.label.toLowerCase() ?? g.fieldId);
+  const instructions = c.id === "situation" ? example : c.id === "review" ? (d?.situations ?? []).find((s) => s.code === "REVIEW_DUE") : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -148,36 +209,39 @@ export function ReadDemo({ situation, samples }: { situation?: FrameworkSituatio
         className="grid gap-4 rounded-2xl border bg-muted/40 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
         style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
       >
-        {/* The thesis, as the sheet shows it: one stack, every field. At
-            desktop the card is taken out of the row's sizing (absolute in its
-            cell) so the right column alone sets the height and the sheet
-            scrolls inside it; stacked (under lg) it is a fixed height so the
-            page doesn't grow by the whole sheet. */}
+        {/* The thesis, as the sheet shows it: one stack, every field, each
+            with the badges that say when it goes. At desktop the card is
+            taken out of the row's sizing (absolute in its cell) so the right
+            column alone sets the height and the sheet scrolls inside it;
+            stacked (under lg) it is a fixed height so the page doesn't grow
+            by the whole sheet. */}
         <div className="relative min-h-0 min-w-0 lg:min-h-[28rem]">
           <div className="flex max-h-[32rem] min-h-0 flex-col overflow-hidden rounded-xl border bg-background shadow-sm lg:absolute lg:inset-0 lg:max-h-none">
             <div className="flex items-center gap-2 border-b px-4 py-3">
               <span className="grid size-6 place-items-center rounded-md bg-muted text-xs font-semibold text-foreground">C</span>
               <span className="text-sm font-medium text-foreground">CRWD</span>
               <span className="text-sm text-muted-foreground">CrowdStrike</span>
-              <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                {carried.length} of {SHEET_FIELDS.length} fields sent
-              </span>
+              <span className="ml-auto text-xs text-muted-foreground tabular-nums">{count}</span>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 [scrollbar-width:none]">
               <div className="flex flex-col gap-1">
                 {SHEET_FIELDS.map((f) => {
                   const on = lit.has(f.id);
+                  const row = gridRow(f.id);
+                  // Conditional inside this read: only on a stock in a situation, only the fields a situation brings.
+                  const conditional = on && c.id === "situation" && row?.when === "situations" ? row : undefined;
                   return (
                     <div
                       key={f.id}
                       data-lit={on ? "true" : undefined}
                       className={cn(
-                        "flex flex-col gap-1 rounded-lg px-2.5 py-2",
+                        "flex flex-col gap-1.5 rounded-lg px-2.5 py-2",
                         on ? "bg-blue-500/10 ring-1 ring-blue-500/30" : "opacity-40",
                       )}
                     >
                       <span className="text-xs text-muted-foreground">{f.label}</span>
                       <FieldBody f={f} />
+                      {conditional ? <WhenRow row={conditional} /> : null}
                     </div>
                   );
                 })}
@@ -186,52 +250,57 @@ export function ReadDemo({ situation, samples }: { situation?: FrameworkSituatio
           </div>
         </div>
 
-        {/* The scenario: what is going on, what is sent, why that much. */}
+        {/* The read: what it is, what goes, as the model reads it. */}
         <div className="flex min-w-0 flex-col gap-4 rounded-xl border bg-background p-5 shadow-sm">
           <div className="flex flex-col gap-1">
             <h3 className="text-lg font-medium text-foreground">{c.title}</h3>
             <p className="text-sm text-muted-foreground">{c.body}</p>
           </div>
 
-          <div className="flex flex-col gap-3 text-sm">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What is going on</span>
-              <p className="text-foreground">{c.when}</p>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What the agent is sent</span>
-              <p className="text-foreground">{sizeWords} {c.how}</p>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why that much</span>
-              <p className="text-foreground">{c.why}</p>
-            </div>
-          </div>
+          <ul className="flex flex-col gap-1.5 text-sm text-foreground">
+            {c.points.map((p) => (
+              <li key={p} className="flex gap-2">
+                <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground" />
+                <span>{p}</span>
+              </li>
+            ))}
+          </ul>
 
           <div className="flex min-w-0 flex-col gap-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">As the model reads it</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              As the model reads it
+              {c.id === "situation" && example ? (
+                <span className="normal-case tracking-normal"> · for example, {example.name.toLowerCase()}: the unbadged fields plus {exampleExtra.join(", ")}</span>
+              ) : null}
+            </span>
             {/* Built from the row the sheet shows, through the one builder (lib/docs/read-sample.ts); the Writer's case is its own prompt block. */}
-            {c.size === "line" ? (
+            {c.id === "line" ? (
               <Mono as="pre" className="whitespace-pre-wrap break-words rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-foreground">
-                {samples?.line ?? EXAMPLE_LINE}
+                {sample}
               </Mono>
             ) : (
               <Mono as="pre" className="max-h-40 overflow-hidden whitespace-pre-wrap break-words rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-foreground [mask-image:linear-gradient(to_bottom,black_60%,transparent)]">
-                {samples?.[c.id] ?? carried.map((f) => `${f.label.toLowerCase()}: ${f.value}`).join("\n")}
+                {sample ?? SHEET_FIELDS.filter((f) => lit.has(f.id)).map((f) => `${f.label.toLowerCase()}: ${f.value}`).join("\n")}
               </Mono>
             )}
-            {inSituation && situation ? (
+            {instructions ? (
               <div className="flex flex-col gap-1 rounded-lg border border-dashed border-sky-400 bg-sky-400/10 p-3">
                 <span className="text-xs font-medium text-foreground">
-                  + the situation&apos;s instructions, once: {situation.name}{" "}
-                  <span className="text-muted-foreground">· {situation.chars.toLocaleString("en-US")} characters, from the situations table</span>
+                  + the situation&apos;s instructions, once: {instructions.name}{" "}
+                  <span className="text-muted-foreground">· {instructions.chars.toLocaleString("en-US")} characters, from the situations table</span>
                 </span>
-                <span className="text-sm text-muted-foreground">&ldquo;{situation.opening}&rdquo;</span>
+                <span className="text-sm text-muted-foreground">&ldquo;{instructions.opening}&rdquo;</span>
               </div>
             ) : null}
           </div>
         </div>
       </div>
+
+      <p className="text-sm text-muted-foreground">
+        Blue is what this read sends. On a stock in a situation, a field with badges goes only when one of those situations is on the stock:{" "}
+        <Zap className="inline size-3" fill="currentColor" aria-label="a bolt" /> one a trigger firing starts,{" "}
+        <FlagNotificationIcon className="inline size-3" dot="current" /> one read off the stock&apos;s facts.
+      </p>
     </div>
   );
 }

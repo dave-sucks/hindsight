@@ -18,19 +18,39 @@ export interface FrameworkDoor {
   toolChars: number | null;
 }
 
+/** What usually puts a stock in a situation: a trigger firing (the bolt), or a flag read off the stock's facts (the flag). */
+export type SituationOrigin = "trigger" | "flag";
+
 export interface FrameworkSituation {
   code: string;
   name: string;
   chars: number;
   opening: string;
+  origin: SituationOrigin;
+}
+
+/** When a sheet field is sent on a row in a situation (lib/agent/row-for-model.ts ROW_FIELDS, read on the server by lib/docs/read-grid.ts). */
+export type ReadWhen = "always" | "situations" | "review" | "named";
+
+export interface ReadGridRow {
+  fieldId: string;
+  when: ReadWhen;
+  /** For "situations": the situations that send it, in rank order, each with what puts a stock in it. */
+  situations: Array<{ code: string; name: string; origin: SituationOrigin }>;
+}
+
+/** The read section, built on the server from the one builder: which keys each read sends, each read as the model gets it, and the grid. */
+export interface FrameworkRead {
+  keys: { line: string[]; review: string[]; named: string[]; writer: string[]; bySituation: Record<string, string[]> };
+  samples: { line: string; review: string; named: string; bySituation: Record<string, string> };
+  grid: ReadGridRow[];
 }
 
 export interface FrameworkData {
   houseRulesChars: number;
   doors: FrameworkDoor[];
   situations: FrameworkSituation[];
-  /** The read section's sample for each read, built through rowForModel (lib/docs/read-sample.ts). */
-  readSamples: Record<string, string>;
+  read: FrameworkRead;
 }
 
 /** The doors in words. `save` is how many fields its update_thesis may send (step 12, pinned by update-thesis-doors.test.ts). */
@@ -83,11 +103,16 @@ export const MEASURED_REQUEST = {
 
 export const READ_SIZES = {
   line: "95 to 170 characters",
-  short: "1,800 to 9,900 characters",
+  short: "a few hundred to a few thousand characters, by the situation",
   full: "about 20,000 characters",
 } as const;
 
 export type RowSize = "line" | "short" | "full";
+
+/** The one line's parts (row-for-model.ts `line()`), by the sheet field they come from. */
+export const LINE_KEYS = ["stock", "id", "analyst", "price", "proposal_waiting", "research", "catalyst"] as const;
+/** What the Writer's prompt carries of the existing thesis (lib/agent/run-thesis-writer.ts). */
+export const WRITER_KEYS = ["stock", "belief", "triggers", "company"] as const;
 
 /** The quiet line for the page's CRWD row, as rowForModel builds it (pinned to the builder by lib/docs/read-cases.test.ts). */
 export const EXAMPLE_LINE =
@@ -130,7 +155,7 @@ export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
   { id: "would_prove_it_wrong", label: "What would prove us wrong", value: "Net new ARR under $180M at the Q3 report · a second outage with customer churn named on the call", keys: ["would_prove_it_wrong"] },
   { id: "bull_case", label: "Bull case", value: "Five points: the beat and raise, Falcon Flex adoption, module attach, the margin step-up, the buyback.", keys: ["bull_case"] },
   { id: "bear_case", label: "Bear case", value: "Four points: valuation at 90× earnings, the July outage's legal tail, a slowing net new ARR cohort, insider selling.", keys: ["bear_case"] },
-  { id: "conviction_rationale", label: "Conviction and its reason", value: "MEDIUM: the business is compounding, but the stock is extended 18% above its 50-day and estimates have not moved in a month.", keys: ["conviction_rationale", "note"] },
+  { id: "conviction_rationale", label: "Conviction and its reason", value: "MEDIUM: the business is compounding, but the stock is extended 18% above its 50-day and estimates have not moved in a month.", keys: ["conviction_rationale"] },
   { id: "variant_view", label: "Where we differ from the Street", value: "The Street models 25% growth; I think Flex pulls it to 30% because attach is running ahead of plan.", keys: ["variant_view"] },
   { id: "snapshot", label: "Snapshot", value: "A clean beat and raise; four targets raised after the call. The first paragraph on a short row, the whole text on a full one.", keys: ["snapshot"] },
   { id: "research", label: "Research date", value: "Written 2026-10-05 at $39.55, 2 days ago", keys: ["research"] },
@@ -142,11 +167,12 @@ export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
 
 /**
  * One way an agent reads a thesis: the scenario in plain words, what is
- * sent, why that much, and the keys it sends. A new stock has nothing to
- * read, so the Writer's first pass is not one.
+ * sent, why that much, and where its keys come from (the server's
+ * FrameworkRead). A new stock has nothing to read, so the Writer's first pass
+ * is not one.
  */
 export interface ReadCase {
-  id: string;
+  id: "line" | "situation" | "review" | "named" | "writer";
   /** The chip: one or two words. */
   chip: string;
   /** The scenario, as a heading. */
@@ -155,97 +181,73 @@ export interface ReadCase {
   body: string;
   /** The row size this read sends, or the writer's own block. */
   size: RowSize | "writer";
-  /** What is going on with the stock that puts it in this read. */
-  when: string;
-  /** What the agent is sent, in words. */
-  how: string;
-  /** Why that much and not more or less. */
-  why: string;
-  /** The row keys this read sends (the ones above, plus a few the line builds from the same facts). */
-  keys: readonly string[];
+  /** What is sent and why, two or three short lines. */
+  points: readonly string[];
 }
-
-/** The one line's parts (row-for-model.ts `line()`), by the sheet field they come from. */
-const LINE_KEYS = ["stock", "id", "analyst", "price", "proposal_waiting", "research", "catalyst"] as const;
-/** Every key the short row puts (row-for-model.ts `shortOrFull`, size "short"). */
-const SHORT_KEYS = [
-  "stock", "company", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price", "plan_checks", "floor_risk", "triggers",
-  "belief", "assumptions", "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view", "setup", "nameTheSetup", "buyBlockedByFull",
-  "heldThroughFloor", "supersededBy", "snapshot", "chart", "street", "research", "catalyst", "repeat", "note", "paper_record",
-] as const;
-const FULL_EXTRA = ["recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"] as const;
 
 export const READ_CASES: ReadonlyArray<ReadCase> = [
   {
     id: "line",
     chip: "Nothing new",
     title: "Nothing is happening on this stock",
-    body: "No trigger fired, no review is due, no report is near. Most of your book, most mornings.",
+    body: "No trigger fired, no review is due, no report is near. Most of the book, most mornings.",
     size: "line",
-    when: "The morning run and your chat read the whole book with one get_theses call. A stock with nothing going on today comes back as one line among the others.",
-    how: "One line: the stock, its status, the price, the buy it waits on (the entry, on a holding), a proposal if one is waiting, the next review, the catalyst date, its id. It names no target and no floor: the levels are the triggers, and a quiet stock's are not read.",
-    why: "The agent only needs to know the stock exists and where it stands. If it read the belief, the cases and every trigger on 30 quiet stocks every morning, the prompt would be 30 times longer and the quiet stocks would bury the ones that need a decision.",
-    keys: LINE_KEYS,
+    points: [
+      "One line: the stock, its status, the price, the buy it waits on, a proposal if one is waiting, the next review, the catalyst date, its id.",
+      "No target and no floor: the levels are the triggers, and a quiet stock's are not read.",
+      "Thirty quiet stocks stay thirty lines, so the ones that need a decision stand out.",
+    ],
   },
   {
-    id: "short",
-    chip: "Flagged today",
-    title: "Something flagged it for today",
-    body: "The price reached the buy, a review came due, a report is close, a winner should be pressed, a floor should be raised.",
+    id: "situation",
+    chip: "In a situation",
+    title: "Something is going on with this stock",
+    body: "A trigger fired or a flag is up: the floor broke, the price reached the buy, a report is close, a winner should be pressed.",
     size: "short",
-    when: "The same get_theses call, but this stock is in at least one situation today, so it comes back bigger than its neighbours. The morning run and your chat both see it this way.",
-    how: "The short row, a few thousand characters: everything on the sheet except the old research essays and the history. The situation's own instructions are attached once per read.",
-    why: "A decision is owed on this stock today, so the agent gets the whole case: what we believe, what would prove us wrong, the plan with every trigger, the position, the Street and the last 8 things said about it. The research write-up stays out because the decision is about the plan, not about re-researching the company.",
-    keys: SHORT_KEYS,
+    points: [
+      "A blue field with no badge goes on every stock in a situation.",
+      "A blue field with badges goes only when one of those situations is on the stock. Two situations, both sets.",
+      "A field's content never changes with the situation; only whether it goes. The situation's own instructions are attached once per read.",
+    ],
   },
   {
-    id: "trigger",
-    chip: "Trigger fired",
-    title: "A trigger fired during the day",
-    body: "The price hit the floor, the 10% review, the earnings countdown. A small run wakes for this one stock.",
+    id: "review",
+    chip: "Review due",
+    title: "The review clock came due",
+    body: "The stock's own review trigger fired. The one situation that reads the whole case.",
     size: "short",
-    when: "The five-minute check saw a trigger cross its line. The trigger run is one agent, one stock, about 15 steps, and it is handed the stock instead of asking for it.",
-    how: "The same short row as a flagged stock, with one swap: in place of the setup's name, the setup's own rules, how it fails and how to manage it.",
-    why: "A fire is a question about one stock measured against its setup's rules, so the rules ride along. Everything else is exactly what the morning run would have seen, so the two can never disagree about the stock.",
-    keys: SHORT_KEYS.map((k) => (k === "setup" ? "setup_lines" : k)),
+    points: [
+      "Everything on the sheet except the old research sections and the history.",
+      "The bull and bear cases are read here and nowhere else in a run.",
+      "A review is about the case itself, not one level, so the case has to be in front of it.",
+    ],
   },
   {
-    id: "full-rule",
-    chip: "Research in doubt",
-    title: "The research itself is in question",
-    body: "A stock we only watched went quiet for weeks and just woke up, or a stock has no setup named at all.",
-    size: "full",
-    when: "Two situations do this. The question is not what the plan says but whether the research behind it still holds, and the agent has to re-plan the stock.",
-    how: "The full row, without being asked for: the short row with the setup's own rules in place of its name, plus the whole snapshot and the seven old research sections.",
-    why: "You cannot judge whether research still stands without the research. The history still stays out: it is long, and the question is about today's facts.",
-    keys: [...SHORT_KEYS.map((k) => (k === "setup" ? "setup_lines" : k)), ...FULL_EXTRA],
-  },
-  {
-    id: "full-name",
+    id: "named",
     chip: "Asked by name",
     title: "An agent asks for one stock by name",
-    body: "get_theses with a ticker. Your chat does this when you ask about a stock; a run does it right before a buy.",
+    body: "get_theses with a ticker: your chat when you ask about a stock, a run right before a buy.",
     size: "full",
-    when: "The agent already knows which stock it cares about and wants all of it, not the book.",
-    how: "The full row, the setup's own rules included, plus the history: every Activity line ever written on the stock, each with its id.",
-    why: "Asking by name means the agent wants everything the app knows about this one stock. One stock's history fits in a prompt where 30 stocks' would not.",
-    keys: [...SHORT_KEYS.map((k) => (k === "setup" ? "setup_lines" : k)), ...FULL_EXTRA, "history"],
+    points: [
+      "The full row: everything the review clock reads, the old research sections where a row still has them, and every Activity line ever written, each with its id.",
+      "One stock's history fits in a prompt where thirty stocks' would not.",
+    ],
   },
   {
-    id: "writer-refresh",
+    id: "writer",
     chip: "Being rewritten",
     title: "The Writer rewrites the thesis",
     body: "A rewrite was ordered: from your chat, because the write-up went stale, or the one-time rewrite of the old theses.",
     size: "writer",
-    when: "The Writer is a different agent. It does not trade on the thesis; it writes it, from fresh pulls of the quote, the profile, the financials, the news, the Street and a web search.",
-    how: "Only the old claim, every trigger by id and the company line, in its prompt. Not the old assumptions, cases, conviction reason or variant view.",
-    why: "Those are what it is writing. If it read its own last answer it would copy it. It gets the claim to argue with and the triggers to edit by id, and pulls everything else fresh.",
-    keys: ["stock", "belief", "triggers", "company"],
+    points: [
+      "The Writer gets the old claim, every trigger by id and the company line, in its own prompt. Nothing else from the sheet.",
+      "Not the old cases, assumptions or conviction reason: those are what it is writing. It pulls the quote, the financials, the news and the Street fresh.",
+    ],
   },
 ];
 
-/** The fields a read lights: every sheet field one of the read's keys carries. */
-export function fieldsLit(read: ReadCase): Set<string> {
-  const keys = new Set(read.keys);
-  return new Set(SHEET_FIELDS.filter((f) => f.keys.some((k) => keys.has(k))).map((f) => f.id));
+/** The fields a list of row keys lights: every sheet field one of the keys carries. */
+export function fieldsLit(keys: readonly string[]): Set<string> {
+  const set = new Set(keys);
+  return new Set(SHEET_FIELDS.filter((f) => f.keys.some((k) => set.has(k))).map((f) => f.id));
 }

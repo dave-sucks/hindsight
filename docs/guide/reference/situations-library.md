@@ -9,11 +9,11 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it
 - **On the row.** Every stock in the read lists its situations by code, the most urgent first.
 - **In `guidance`, once.** The read carries one `guidance` entry per code on the day's list, keyed by code, however many stocks share it. A quiet stock brings none.
 - **In a trigger run,** the stock's own codes and their texts come with the fire. Three situations are never sent to a trigger run, and where a text tells a run to change a stock's status, the trigger run reads a line that takes the plan down instead (its save has no status change).
-- **The full row.** Two situations send the stock's full row, research and all, because the decision needs it: watch woke up, and no setup named.
+- **The row's fields.** Every stock in a situation sends the row's standing fields (the stock, its situations, the price, the position, a proposal waiting, every trigger with its id, the belief, the newest Activity lines, when the research was written). A situation adds the fields its decision reads, listed under each one below; the review clock reads the whole case; the old research sections and the history come only when the stock is asked for by name (`ROW_FIELDS` in `lib/agent/row-for-model.ts`).
 
 ## Auto trade made
 
-`AUTO_TRADE` · rank 1 of 17 · short row · sent to every run
+`AUTO_TRADE` · rank 1 of 17 · the row adds `heldThroughFloor`, `would_prove_it_wrong` · sent to every run
 
 A trigger set to Auto just made a trade, and the analyst writes it up: what's going on with the company, and whether it agrees.
 
@@ -41,7 +41,7 @@ Mistakes:
 
 ## Promoted to live
 
-`PROMOTED_AWAITING` · rank 2 of 17 · short row · sent to every run
+`PROMOTED_AWAITING` · rank 2 of 17 · the row adds `paper_record` · sent to every run
 
 A stock just moved from paper to live money and needs a decision this run.
 
@@ -87,7 +87,7 @@ Mistakes:
 
 ## Sale signal
 
-`PROTECTIVE_SALE` · rank 3 of 17 · short row · sent to every run
+`PROTECTIVE_SALE` · rank 3 of 17 · the row adds `floor_risk`, `heldThroughFloor`, `would_prove_it_wrong` · sent to every run
 
 A floor, a trail or a trim fired on a holding, or a sale you declined or let expire is still past its line.
 
@@ -118,7 +118,7 @@ Mistakes:
 
 ## Buy level reached
 
-`BUY_ARRIVES` · rank 4 of 17 · short row · sent to every run
+`BUY_ARRIVES` · rank 4 of 17 · the row adds `plan_checks`, `chart`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
 
 A watched stock reached its buy level.
 
@@ -131,7 +131,7 @@ Answer, in order:
 3. Did the setup confirm? By the setup (the row's `setup` line, or its `setup_lines`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
 4. Is it chased? An unanswered buy shows in `plan_checks`, with the chase limit and how far past it the stock is.
 5. Did the principal decline this buy (`said`), with nothing they named changed since? Then say so and pass.
-6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view.
+6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (`variant_view`).
 
 What you can do:
 - Buy, only when every check above holds: place_trade (it sizes the buy), then one update_thesis.
@@ -150,7 +150,7 @@ Mistakes:
 
 ## Buy blocked, full
 
-`BUY_BLOCKED_FULL` · rank 5 of 17 · short row · sent to every run
+`BUY_BLOCKED_FULL` · rank 5 of 17 · the row adds `plan_checks`, `buyBlockedByFull`, `chart`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
 
 A buy fired while the analyst already holds all it may.
 
@@ -159,7 +159,7 @@ When: a buy fired or is true now on a stock we watch, and this analyst is full: 
 
 Answer, in order:
 1. What is going on with the company and the stock that brings it to its buy price: its news, its sector, the market (get_stock_data, web_search)?
-2. Is it a better use of a slot than one we hold? Weigh it against the weakest holding: the thesis, the setup, the reward left to its target.
+2. Is it a better use of a slot than one we hold? Weigh it against the weakest holding: the thesis, the setup, the reward left to its target, and where we differ from the Street (`variant_view`).
 
 What you can do:
 - On this stock's update_thesis, name which held stock it would replace and why it is the better use of the slot.
@@ -177,7 +177,7 @@ Mistakes:
 
 ## Add or near target
 
-`ADD_OR_WINNER` · rank 6 of 17 · short row · sent to every run
+`ADD_OR_WINNER` · rank 6 of 17 · the row adds `floor_risk`, `chart`, `street` · sent to every run
 
 An add level fired, or a holding is three quarters of the way to its target.
 
@@ -207,7 +207,7 @@ Mistakes:
 
 ## Earnings
 
-`EARNINGS` · rank 7 of 17 · short row · sent to every run
+`EARNINGS` · rank 7 of 17 · the row adds `assumptions`, `would_prove_it_wrong`, `catalyst` · sent to every run
 
 A report is close, or just landed with a beat or a miss.
 
@@ -238,7 +238,7 @@ Mistakes:
 
 ## New filing
 
-`FILING` · rank 8 of 17 · short row · sent to every run
+`FILING` · rank 8 of 17 · the row adds `would_prove_it_wrong` · sent to every run
 
 The company filed something that matters with the SEC.
 
@@ -268,7 +268,7 @@ Mistakes:
 
 ## Watch woke up
 
-`QUIET_WATCH_WOKE` · rank 9 of 17 · full row · sent to every run
+`QUIET_WATCH_WOKE` · rank 9 of 17 · the standing fields only · sent to every run
 
 A watch with no plan hit one of its wakes and needs a fresh look.
 
@@ -314,7 +314,7 @@ Mistakes:
 
 ## Floor to fix
 
-`PROTECTION` · rank 10 of 17 · short row · sent to every run
+`PROTECTION` · rank 10 of 17 · the row adds `floor_risk`, `chart` · sent to every run
 
 A gain with too little floor under it, or a floor that would lose too much of the account.
 
@@ -341,7 +341,7 @@ Mistakes:
 
 ## First research due
 
-`FIRST_RESEARCH` · rank 11 of 17 · short row · not sent to a trigger run
+`FIRST_RESEARCH` · rank 11 of 17 · the standing fields only · not sent to a trigger run
 
 A stock on the watchlist with no view yet is due its first research.
 
@@ -366,7 +366,7 @@ Mistakes:
 
 ## Review due
 
-`REVIEW_DUE` · rank 12 of 17 · short row · sent to every run
+`REVIEW_DUE` · rank 12 of 17 · the row adds `plan_checks`, `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `nameTheSetup`, `chart`, `street`, `setup`, `setup_lines`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to every run
 
 The review clock came round, or a review fired, and nothing else covers it.
 
@@ -426,7 +426,7 @@ Mistakes:
 
 ## Research stale
 
-`STALE_RESEARCH` · rank 13 of 17 · short row · sent to every run
+`STALE_RESEARCH` · rank 13 of 17 · the row adds `assumptions`, `would_prove_it_wrong` · sent to every run
 
 The research is older than the analyst's limit.
 
@@ -434,7 +434,7 @@ The research is older than the analyst's limit.
 When: the research behind a committed view is older than its horizon allows, or missing (the `research` line says when it was written). On a watched stock the next thing to happen could be a buy on it.
 
 Answer, in order:
-1. What has happened with the company since the research was written: results, guidance, news (get_stock_data, web_search)? Does the old work still stand against it?
+1. What has happened with the company since the research was written: results, guidance, news (get_stock_data, web_search)? Does the old work still stand against it: do its `assumptions` hold, and has anything in `would_prove_it_wrong` happened?
 
 What you can do:
 - Refresh it (the default): dispatch_thesis_research with mode "refresh", then wait_for_thesis_refresh, then re-read the stock and change its levels or tier if the new work changed your view.
@@ -451,7 +451,7 @@ Mistakes:
 
 ## Plan check
 
-`PLAN_PROBLEM` · rank 14 of 17 · short row · sent to every run
+`PLAN_PROBLEM` · rank 14 of 17 · the row adds `plan_checks`, `supersededBy`, `chart`, `street`, `would_prove_it_wrong`, `catalyst`, `conviction_rationale`, `snapshot` · sent to every run
 
 The plan contradicts the price or the calendar: a buy level left behind, a target passed, a floor too tight.
 
@@ -461,6 +461,7 @@ When: a watched stock's plan contradicts the tape or the calendar. The `plan_che
 Answer, in order:
 1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?
 2. What does each check say? Read its numbers, and the `street` line: where the Street's targets sit against the plan's levels.
+3. Does the case still earn a plan? The writer's own read of where it stands (`snapshot`, `conviction_rationale`), and whether anything in `would_prove_it_wrong` has happened. A case the writer already calls failed is let go, not re-priced.
 
 What you can do, for each check:
 - Fix the number: update_thesis with the re-anchored level (edit_triggers on its id) and a rationale.
@@ -477,7 +478,7 @@ Mistakes:
 
 ## Your word unanswered
 
-`YOUR_WORD_UNANSWERED` · rank 15 of 17 · short row · sent to every run
+`YOUR_WORD_UNANSWERED` · rank 15 of 17 · the row adds `plan_checks` · sent to every run
 
 You left a note or made a decision since the analyst's last answer.
 
@@ -504,7 +505,7 @@ Mistakes:
 
 ## Sold, one look
 
-`SOLD_ONE_REVIEW` · rank 16 of 17 · short row · not sent to a trigger run
+`SOLD_ONE_REVIEW` · rank 16 of 17 · the standing fields only · not sent to a trigger run
 
 A stock sold in the last two weeks is owed one look back.
 
@@ -532,7 +533,7 @@ Mistakes:
 
 ## No setup named
 
-`NO_SETUP_NAMED` · rank 17 of 17 · full row · not sent to a trigger run
+`NO_SETUP_NAMED` · rank 17 of 17 · the row adds `nameTheSetup`, `chart`, `setup`, `setup_lines` · not sent to a trigger run
 
 A researched stock has no setup named, so nothing says how to trade it.
 

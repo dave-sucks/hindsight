@@ -1,17 +1,17 @@
 /**
- * row-for-model.ts — one row of get_theses as the model reads it, in one of
- * three sizes (Roadmap step 8, docs/plans/AGENT_ARCHITECTURE.md §11.5).
+ * row-for-model.ts — one row of get_theses as the model reads it (Roadmap
+ * step 8, docs/plans/AGENT_ARCHITECTURE.md §11.5; the owner's grid,
+ * 2026-11-06).
  *
- * A quiet stock is one line. A stock in a situation is the short row: each
- * line a plain label with a value in units, and the whole view (the belief,
- * the assumptions, what would prove it wrong, the bull and bear cases, the
- * conviction rationale, the variant view), so every agent that decides on a
- * stock reads its case for and against. The full row comes by ticker or by
- * rule, for the two situations whose answer needs the research re-planned
- * (QUIET_WATCH_WOKE, NO_SETUP_NAMED): the short row plus the research sections,
- * the seven research sections, the whole snapshot and, on a named read, the
- * history. Code decides the size from the row's situations; nothing depends
- * on the model asking.
+ * A quiet stock is one line. A stock in a situation is the row, and the
+ * situation decides which of its fields are sent (ROW_FIELDS): nine standing
+ * fields on every row, the fields a situation's decision reads with that
+ * situation (the chart numbers and the Street on a buy, what would prove us
+ * wrong on a sale signal), the whole case only when the review clock came
+ * due, and the old research sections and the history only when the stock is
+ * asked for by name. A row asked for with no situation named carries every
+ * field (the "book" read). Code decides from the row's situations; nothing
+ * depends on the model asking.
  *
  * The tool saves the whole row for the screen and the run; this builder
  * writes what the model reads, and each line explains itself, so no prompt
@@ -29,16 +29,94 @@ export type RowSize = "line" | "short" | "full";
 /** The facts a full row has carried since step 8's first pull request; the builder reads them, the model never sees them raw. */
 export const ROW_FACTS = ["position", "proposals", "price", "chart", "inheritedTriggers"] as const;
 
-/** The situations whose definition says the decision needs the research: the full row by rule. */
-export const FULL_ROW_SITUATIONS: ReadonlySet<SituationCode> = new Set(["QUIET_WATCH_WOKE", "NO_SETUP_NAMED"]);
-
 type Row = Record<string, unknown>;
 
-/** Which size a listed row gets: the full row for a named read or by rule, the short row otherwise. */
-export function sizeFor(row: Row, named: boolean): RowSize {
-  if (named) return "full";
-  const codes = Array.isArray(row.situations) ? (row.situations as SituationCode[]) : [];
-  return codes.some((c) => FULL_ROW_SITUATIONS.has(c)) ? "full" : "short";
+/** Which size a listed row gets: the full row for a named read, the row otherwise; its situations pick the row's fields. */
+export function sizeFor(_row: Row, named: boolean): RowSize {
+  return named ? "full" : "short";
+}
+
+/**
+ * When a row key is sent (the owner's grid, 2026-11-06):
+ *   "always" — on every row in a situation;
+ *   a list of situations — only when the stock is in one of them (each one's
+ *   guidance in situations.ts names the key; row-for-model.by-situation.test.ts
+ *   holds the two together);
+ *   "review" — only when the review clock came due (REVIEW_DUE), which reads
+ *   the whole case;
+ *   "named" — only when the stock is asked for by name.
+ * The review clock and a named read carry everything above them too.
+ */
+export type RowKeyRule = "always" | "review" | "named" | readonly SituationCode[];
+
+export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
+  stock: "always",
+  id: "always",
+  analyst: "always",
+  situations: "always",
+  repeat: "always",
+  said: "always",
+  position: "always",
+  proposal_waiting: "always",
+  price: "always",
+  triggers: "always",
+  belief: "always",
+  research: "always",
+  note: "always",
+  // The facts a situation's text refers to, by name: each with its situation.
+  plan_checks: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "PLAN_PROBLEM", "YOUR_WORD_UNANSWERED"],
+  floor_risk: ["PROTECTIVE_SALE", "ADD_OR_WINNER", "PROTECTION"],
+  buyBlockedByFull: ["BUY_BLOCKED_FULL"],
+  heldThroughFloor: ["PROTECTIVE_SALE", "AUTO_TRADE"],
+  supersededBy: ["PLAN_PROBLEM"],
+  nameTheSetup: ["NO_SETUP_NAMED"],
+  chart: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "ADD_OR_WINNER", "PROTECTION", "PLAN_PROBLEM", "NO_SETUP_NAMED"],
+  street: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "ADD_OR_WINNER", "PLAN_PROBLEM"],
+  setup: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "NO_SETUP_NAMED"],
+  setup_lines: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "NO_SETUP_NAMED"],
+  assumptions: ["EARNINGS", "STALE_RESEARCH"],
+  would_prove_it_wrong: ["PROTECTIVE_SALE", "AUTO_TRADE", "EARNINGS", "FILING", "STALE_RESEARCH", "PLAN_PROBLEM"],
+  catalyst: ["EARNINGS", "PLAN_PROBLEM"],
+  paper_record: ["PROMOTED_AWAITING"],
+  // The whole case: the review clock, and a named read.
+  company: "review",
+  bull_case: "review",
+  bear_case: "review",
+  conviction_rationale: ["PLAN_PROBLEM"],
+  variant_view: ["BUY_ARRIVES", "BUY_BLOCKED_FULL"],
+  snapshot: ["PLAN_PROBLEM"],
+  // Only when asked for by name.
+  recentCatalysts: "named",
+  fundamentals: "named",
+  latestEarnings: "named",
+  catalystsAndEvents: "named",
+  analystConsensus: "named",
+  insiderTechnical: "named",
+  researchData: "named",
+  history: "named",
+};
+
+/** The situation that reads the whole case. */
+export const REVIEW_SITUATION: SituationCode = "REVIEW_DUE";
+
+/**
+ * The keys a row sends: every key on a full row (the history only when
+ * named); on the row, the keys the stock's situations call for, or every
+ * short key when no situation is named (the "book" read, and a row built
+ * with no situations).
+ */
+export function rowKeysFor(codes: readonly SituationCode[], opts: { size: "short" | "full"; named: boolean }): Set<string> {
+  const keys = Object.keys(ROW_FIELDS);
+  if (opts.size === "full") return new Set(keys.filter((k) => ROW_FIELDS[k] !== "named" || opts.named || k !== "history"));
+  const short = keys.filter((k) => ROW_FIELDS[k] !== "named");
+  if (codes.length === 0) return new Set(short);
+  const review = codes.includes(REVIEW_SITUATION);
+  return new Set(short.filter((k) => {
+    const rule = ROW_FIELDS[k];
+    if (rule === "always") return true;
+    if (rule === "review") return review;
+    return review || (rule as readonly SituationCode[]).some((c) => codes.includes(c));
+  }));
 }
 
 /** The screen's citations and markdown bold, off a text the model reads. */
@@ -308,7 +386,8 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   const codes = list<SituationCode>(row.situations);
   const snapshot = str(obj(row.snapshot)?.text) ?? str(row.snapshot);
   const out: Row = {};
-  const put = (k: string, v: unknown) => { if (v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
+  const sent = rowKeysFor(codes, { size, named });
+  const put = (k: string, v: unknown) => { if (sent.has(k) && v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
 
   put("stock", [String(row.ticker), stance(row.status), str(row.direction) ?? "no view", str(row.setupId) ?? str(row.horizon), str(row.conviction) ? `conviction ${row.conviction}` : null].filter(Boolean).join(" · "));
   // What the company does and how it makes money, in two sentences: the Writer's, on every stock written up from 2026-11-03.
@@ -333,9 +412,9 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("bear_case", strings(list<{ text?: unknown }>(obj(row.bearCase)?.bullets).map((b) => b?.text)));
   put("conviction_rationale", str(row.convictionRationale) ? stripSourceTags(row.convictionRationale as string) : null);
   put("variant_view", str(row.variantView) ? stripSourceTags(row.variantView as string) : null);
-  // The lines a fire checks for the stock's horizon (setupLines' decision cut), in place of the compact line: on the full row, and on the trigger run's short row.
+  // The lines a fire checks for the stock's horizon (setupLines' decision cut), in place of the compact line: on the full row, and on the trigger run's row (whatever its situation).
   const lines = size === "full" || setupLinesOn ? strings(obj(row.setup)?.lines) : [];
-  if (lines.length) put("setup_lines", lines);
+  if (lines.length) { if (setupLinesOn) sent.add("setup_lines"); put("setup_lines", lines); }
   else put("setup", setupLine(row));
   // The facts a situation's text refers to, by the names it uses.
   put("nameTheSetup", row.nameTheSetup);
@@ -361,8 +440,9 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
 
 /**
  * One row as the model reads it. A quiet row builds the one line; a listed
- * row builds the short row, or the full row for a named read or by rule
- * (`sizeFor`). The screen and a saved run keep the whole row.
+ * row builds the row with the fields its situations call for (ROW_FIELDS),
+ * or the full row for a named read (`sizeFor`). The screen and a saved run
+ * keep the whole row.
  *
  * `setupLines` is the trigger run's door (step 10): its stock is the short
  * row with the lines a fire checks for the stock's horizon (`setup_lines`,

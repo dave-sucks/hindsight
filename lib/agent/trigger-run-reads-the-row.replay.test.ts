@@ -26,11 +26,13 @@ const fx = raw as unknown as { analyst: { name: string; setupIds: string[]; maxO
 
 /** What only the full row carries: the trigger run's row has none of it. */
 const FULL_ONLY = ["history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
-/** The short row's keys the decision reads, every one present on both fires. */
-const SHORT_KEYS = ["stock", "id", "situations", "said", "triggers", "bull_case", "bear_case", "conviction_rationale", "setup_lines", "snapshot", "research"];
-const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>) => {
-  for (const k of SHORT_KEYS) expect([k, k in row]).toEqual([k, true]);
-  for (const k of FULL_ONLY) expect([k, k in row]).toEqual([k, false]);
+/** The row's standing keys, on every fire; the cases, the conviction reason and the snapshot ride only on the review clock (ROW_FIELDS, 2026-11-06). */
+const STANDING_KEYS = ["stock", "id", "situations", "said", "triggers", "setup_lines", "research"];
+// The keys only the review clock sends: the cases and the company line. The snapshot, the conviction reason and the variant view ride with a situation that reads them (a plan problem, a buy).
+const REVIEW_ONLY = ["bull_case", "bear_case", "company"];
+const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>, withIt: string[], without: string[]) => {
+  for (const k of [...STANDING_KEYS, ...withIt]) expect([k, k in row]).toEqual([k, true]);
+  for (const k of [...FULL_ONLY, ...REVIEW_ONLY, ...without]) expect([k, k in row]).toEqual([k, false]);
   expect(row).not.toHaveProperty("setup");
   expect(String(row.research)).toMatch(/Full row: get_theses\(tickers: \["[A-Z]+"\]\)\.$/);
   // Not vacuous: the same read, as a full row, carries the research.
@@ -96,14 +98,16 @@ async function triggerRun(c: Fire) {
 }
 
 describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
-  it("the short row leads with the fire, carries the lines a fire checks for its setup and horizon and the fired buy with its id, the whole view, and nothing else of the full row", async () => {
+  it("the short row leads with the fire, carries the lines a fire checks for its setup and horizon and the fired buy with its id, its situation's fields, and nothing of the review clock's or the full row", async () => {
     const { stock, prompt, saved } = await triggerRun(fx.docu);
     expect(stock).not.toBeNull();
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy level reached)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
     expect(row.setup_lines).toEqual(setupLines(getSetup("MA_PULLBACK")!, "TARGET", "decision"));
-    shortRow(row, saved);
+    // A buy reads the plan checks, the chart numbers and the Street (the replay seeds no snapshot and no Street row, so those two are absent here), not what would prove a holding wrong.
+    // A plan problem reads the writer's own read of the case: the snapshot, the conviction reason, what would prove it wrong.
+    shortRow(row, saved, ["plan_checks", "would_prove_it_wrong", "snapshot", "conviction_rationale"], ["position"]);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.docu.fire.triggerId}]`))).toMatch(/^Buy if below \$67 · fired 09-28 13:30 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.BUY_ARRIVES.guidance);
@@ -114,14 +118,15 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
 });
 
 describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_theses", () => {
-  it("the short row leads with the sale, carries the position, the PEAD lines and the fired floor with its id, the whole view, and nothing else of the full row", async () => {
+  it("the short row leads with the sale, carries the position, the PEAD lines and the fired floor with its id, its situation's fields, and nothing of the review clock's or the full row", async () => {
     const { stock, prompt, saved } = await triggerRun(fx.nvda);
     expect(stock).not.toBeNull();
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("PROTECTIVE_SALE (sale signal)");
     expect(row.position).toMatch(/^33 sh at \$218\.23 → \$234\.24 \(\+7\.3%\), \$7,730; opened 08-31; high since we bought \$242\.51$/);
     expect(row.setup_lines).toEqual(setupLines(getSetup("PEAD")!, "TARGET", "decision"));
-    shortRow(row, saved);
+    // A sale signal reads the position and what would prove us wrong, not the chart or the Street.
+    shortRow(row, saved, ["position", "would_prove_it_wrong"], ["chart", "street", "snapshot", "conviction_rationale", "variant_view"]);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.PROTECTIVE_SALE.guidance);
