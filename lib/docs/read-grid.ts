@@ -36,6 +36,7 @@ export const SITUATION_ORIGIN: Record<SituationCode, SituationOrigin> = {
   STALE_RESEARCH: "flag",
   PLAN_PROBLEM: "flag",
   YOUR_WORD_UNANSWERED: "flag",
+  PINNED_NOTE: "flag",
   SOLD_ONE_REVIEW: "flag",
   NO_SETUP_NAMED: "flag",
 };

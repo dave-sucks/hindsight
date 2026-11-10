@@ -30,13 +30,13 @@ The note is the write-up of what the situation sent the agent to find out. Every
 - One save on the stock answers every situation it's in. Many answers end in a [proposal](approvals.md), a trigger moved, or the stock sent back to [the Writer](../agents/writer.md).
 - Nothing is stored. Answer a situation and it's gone; leave it and it's back tomorrow.
 
-## The seventeen
+## The eighteen
 
 - **Write up a trade:** auto trade made. A trigger set to Auto made its trade, and the trigger run that made it writes it up. This one comes from the trade, not from the stock's facts.
 - **Act on the plan:** sale signal, buy level reached, buy blocked (full), add or near target, promoted to live.
 - **Keep the plan honest:** floor to fix, plan check, review due, no setup named.
 - **Back to the Writer:** first research due, research stale, watch woke up.
-- **Answer what happened:** earnings, new filing, your word unanswered, sold (one look).
+- **Answer what happened:** earnings, new filing, your word unanswered, pinned note to answer, sold (one look). A pinned note is one the portfolio manager or you wrote to several stocks at once, about something bigger than any one of them (lib/agent/shared-notes.ts).
 
 Each one's code, what it means and the exact text an agent is sent are in the [Situations library](../reference/situations-library.md).
 

@@ -32,7 +32,8 @@ import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
-import { notedItems, recentItems, serializeFeedItem } from "@/lib/thesis/activity-feed";
+import { notedItems, serializeFeedItem } from "@/lib/thesis/activity-feed";
+import { newestEightForRuns } from "@/lib/agent/shared-notes";
 import { fillFacts } from "@/lib/stocks/stock-history";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 
@@ -170,7 +171,7 @@ export async function GET(
     { id: thesis.id, ticker: thesis.ticker, createdAt: thesis.createdAt, closedAt: thesis.closedAt, invalidatedAt: thesis.invalidatedAt, analystId: thesis.researchRun?.agentConfigId ?? null },
     FEED_WINDOW,
   ).catch(() => []);
-  const recent = recentItems(feed);
+  const recent = newestEightForRuns(feed, new Date());
   const noted = notedItems(feed);
 
 

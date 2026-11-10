@@ -95,7 +95,7 @@ With an analyst selected, the chat is a `PRINCIPAL_CHAT` run on that analyst, so
 `update_thesis` saves chat's trigger edits as an agent's (`actor: "AGENT"`), so the floor ratchet applies. Your own edits on the thesis sheet are the principal's and skip it.
 
 #### Notes
-`write_note`, only after a yes on `ask_question` or when you asked for one.
+`write_note`, only after a yes on `ask_question` or when you asked for one. It writes on one stock, or once to several stocks, one analyst or the whole account.
 
 #### Old lookups
 `hideOldLookups` and `withTheTime` in `lib/agent/old-lookups.ts`. Every tool result carries `at`, the time it ran (`defineTool`).

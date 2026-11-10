@@ -67,6 +67,8 @@ export interface StockContext {
   text: string | null;
   openFires: OpenFire[];
   unansweredDecision: UnansweredWord | null;
+  /** A note pinned on the stock that no run has written after (lib/agent/shared-notes.ts); absent when none is pinned. */
+  pinnedNote?: { id: string; at: Date } | null;
 }
 
 type Changes = {
@@ -202,7 +204,8 @@ export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>)
   if (item.verdictLine) line += ` — verdict: "${oneLine(item.verdictLine)}"`;
   if (item.answersUpdateId) line += ` — answers the ${item.answersAt ? etStamp(item.answersAt) : item.answersUpdateId} line`;
   // An order's own step has no saved line to answer; a Proposed step answers as the run's note it carries.
-  const id = item.noteId ?? (item.id.startsWith("order:") ? null : item.id);
+  // A shared note is no line of this stock's to answer by id.
+  const id = item.noteId ?? (item.id.startsWith("order:") || item.id.startsWith("note:") ? null : item.id);
   if (id) line += ` [id ${id}]`;
   return line;
 }

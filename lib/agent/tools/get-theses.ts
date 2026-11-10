@@ -32,6 +32,7 @@ import { ROW_FACTS, rowForModel, sizeFor, type RowSize } from "@/lib/agent/row-f
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
+import { runNoteLine } from "@/lib/agent/shared-notes";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { monthAgoStreetRows, newestStreetRows } from "@/lib/market-data/street-consensus-store";
 import type { StreetFacts } from "@/lib/market-data/street-consensus";
@@ -460,6 +461,8 @@ export const getTheses = defineTool({
       slots: tickerFiltered ? "positions" : "rows",
     });
     const load = facts.load;
+    // The analysts' names, for a note to one of them.
+    const analystNames = new Map(theses.map((t) => [t.researchRun?.agentConfigId ?? "", t.researchRun?.agentConfig?.name ?? ""] as const));
     const streetByTicker = await newestStreetRows(theses.map((t) => t.ticker)).catch(() => new Map<string, StreetFacts>());
     const streetMonthAgoByTicker = await monthAgoStreetRows(theses.map((t) => t.ticker)).catch(() => new Map<string, StreetFacts>());
     Object.assign(priceAsOf, load.priceAsOf);
@@ -834,6 +837,9 @@ export const getTheses = defineTool({
         active: activeCount,
         watching: watchingCount,
         ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
+        // The notes every run reads once, at the top: the account's and the
+        // analyst's, while they last (lib/agent/shared-notes.ts).
+        ...(facts.runNotes.length > 0 ? { notes: facts.runNotes.map((n) => runNoteLine(n, analystNames.get(n.analystId ?? "") ?? null)) } : {}),
         // Full rows: the work list (needsAction non-null / PROMOTED), or
         // the whole book under detail="book".
         theses: enriched,

@@ -47,7 +47,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-06: +77 on the chat, the same clause on record_thesis's status field; +214 each, get_theses says the row's fields follow the situation.
   "research-run": 32_042,
   tactical: 27_973,
-  principal: 63_080,
+  // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
+  principal: 63_890,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

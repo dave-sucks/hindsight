@@ -151,6 +151,7 @@ export type EventKind =
   | "fired"
   | "reviewed"
   | "note"
+  | "shared-note"
   | "created"
   | "updated"
   | "edited-by-you"
@@ -180,6 +181,9 @@ export function eventKind(u: TimelineUpdate): EventKind {
     // The principal's note, from chat (lib/agent/notes.ts).
     case "NOTE":
       return "note";
+    // One note written to several stocks, an analyst or the account (lib/agent/shared-notes.ts).
+    case "SHARED_NOTE":
+      return "shared-note";
     case "CREATED":
       return "created";
     case "UPDATED":
@@ -221,6 +225,8 @@ const TITLES: Record<EventKind, { primary: string; secondary: (u: TimelineUpdate
   fired:              { primary: "Trigger:",         secondary: (u) => triggerPhrase(u.summary) },
   reviewed:           { primary: "Reviewed",         secondary: () => "no changes" },
   note:               { primary: "Note added",       secondary: (u) => stripTicker(u.summary) || null },
+  // Its summary names who wrote it and to whom; titleSegments splits it ("Your note" + "to the whole account").
+  "shared-note":      { primary: "Note",             secondary: (u) => u.summary || null },
   created:            { primary: "Created",          secondary: (u) => stripTicker(u.summary) || null },
   updated:            { primary: "Updated",          secondary: updatedSecondary },
   "edited-by-you":    { primary: "Edited by you",    secondary: updatedSecondary },
@@ -249,6 +255,8 @@ export function titleSegments(u: TimelineUpdate): TitleSegments {
       primary: u.type.charAt(0) + u.type.slice(1).toLowerCase().replace(/_/g, " "),
       secondary: null,
     });
+  const cut = kind === "shared-note" ? (u.summary ?? "").indexOf(" to ") : -1;
+  if (cut > 0) return withVerdict(u, { primary: u.summary!.slice(0, cut), secondary: u.summary!.slice(cut + 1) });
   const t = TITLES[kind];
   return withVerdict(u, { primary: t.primary, secondary: t.secondary(u) });
 }
@@ -396,6 +404,7 @@ const DOTS: Record<EventKind, DotKind> = {
   fired: "default",
   reviewed: "default",
   note: "default",
+  "shared-note": "default",
   created: "default",
   updated: "default",
   "edited-by-you": "default",
