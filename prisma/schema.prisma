@@ -212,7 +212,7 @@ model RunEvent {
 model RunMessage {
   id        String      @id @default(cuid())
   runId     String
-  role      String // "user" | "assistant"
+  role      String // "thread" (run-thread.ts) | "request" (one per model call, run-requests.ts)
   content   String
   createdAt DateTime    @default(now())
   run       ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)

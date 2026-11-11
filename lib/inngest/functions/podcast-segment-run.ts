@@ -13,6 +13,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
+import { recordRequests } from "@/lib/agent/run-requests";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -126,15 +127,18 @@ export const podcastSegmentRun = inngest.createFunction(
 
       let response: Awaited<ReturnType<typeof generateText>>["response"];
       let steps: RunStep[] = [];
+      // Every request the call sends, kept as sent (run-requests.ts), also when it throws.
+      const sent = recordRequests(runId, "Main", "podcast-segment-run");
       try {
-        const result = await generateText({
+        const result = await sent.around(generateText({
           model: openai("gpt-4o"),
           system: systemPrompt,
           prompt: "Begin researching and writing this segment now.",
           tools,
           stopWhen: stepCountIs(MODE.maxSteps),
           abortSignal: AbortSignal.timeout(210_000), // 3.5 min — leaves buffer before Inngest step limit
-        });
+          onStepFinish: sent.step,
+        }));
         response = result.response;
         steps = result.steps;
 

@@ -13,6 +13,7 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
+import { REQUEST_ROLE } from "@/lib/agent/run-requests";
 
 // Allowlist of models the principal agent may read.
 const READ_MODELS = [
@@ -70,6 +71,28 @@ const ACCOUNT_RELATION: Partial<Record<ReadModel, (accountId: string) => Record<
   analystSignalRoute: (accountId) => ({ analyst: { accountId } }),
   order: (accountId) => ({ position: { accountId } }),
 };
+
+const isPlain = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * A run's `messages`, wherever an include or select reaches them, without
+ * what each model call sent (role "request", up to a few MB a run; the run
+ * page shows those). The thread is still there. A where or orderBy is left
+ * as the caller wrote it.
+ */
+export function withoutRequestRecords(spec: unknown): unknown {
+  if (!isPlain(spec)) return spec;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(spec)) {
+    if (k === "where" || k === "orderBy") out[k] = v;
+    else if (k === "messages" && v) {
+      const inner = isPlain(v) ? (withoutRequestRecords(v) as Record<string, unknown>) : {};
+      const notRequests = { role: { not: REQUEST_ROLE } };
+      out[k] = { ...inner, where: inner.where ? { AND: [notRequests, inner.where] } : notRequests };
+    } else out[k] = withoutRequestRecords(v);
+  }
+  return out;
+}
 
 export const readDatabase = defineTool({
   description:
@@ -147,8 +170,8 @@ export const readDatabase = defineTool({
       take,
     };
     if (args.orderBy) queryArgs.orderBy = args.orderBy;
-    if (args.select) queryArgs.select = args.select;
-    if (args.include) queryArgs.include = args.include;
+    if (args.select) queryArgs.select = withoutRequestRecords(args.select);
+    if (args.include) queryArgs.include = withoutRequestRecords(args.include);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client = prisma as any as Record<string, { findMany: (args: unknown) => Promise<unknown[]> }>;

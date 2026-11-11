@@ -86,7 +86,8 @@ export async function getResearchedTickersForRun(
     // without booting a Prisma client.
     const { prisma } = await import("@/lib/prisma");
     const rows = await prisma.runMessage.findMany({
-      where: { runId },
+      // The saved thread; the run's request records (run-requests.ts) are another shape.
+      where: { runId, role: "thread" },
       select: { content: true },
       orderBy: { createdAt: "desc" },
       take: 4,

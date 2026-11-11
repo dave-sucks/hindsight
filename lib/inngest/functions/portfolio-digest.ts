@@ -155,7 +155,7 @@ export const portfolioDigest = inngest.createFunction(
         try {
           // Every proposal waiting, and each sale as the owner's decision: its history, the floor that fired and the note in full.
           const { pending, sales } = await loadWaitingForReview({ accountId, environment, facts: facts as unknown as DigestFacts });
-          review = await writePortfolioReview(facts as unknown as DigestFacts, pending, { sales });
+          review = await writePortfolioReview(facts as unknown as DigestFacts, pending, { sales, runId });
           if (runId) {
             await saveRunThread(runId, { opening: review.opening, messages: review.messages, steps: [] }, "portfolio-reviewer").catch(warn("the thread couldn't be saved"));
             const usage = emptyTokenUsage();

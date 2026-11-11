@@ -17,7 +17,8 @@
  *
  * Each review is a ResearchRun (mode PORTFOLIO_REVIEW) whose thread holds the
  * facts as its first message and the reply after it, so it opens like any
- * other run (lib/inngest/functions/portfolio-digest.ts).
+ * other run (lib/inngest/functions/portfolio-digest.ts). Each model call keeps
+ * what it sent on that run (lib/agent/run-requests.ts).
  */
 import { generateText, type LanguageModelUsage, type ModelMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
@@ -25,6 +26,7 @@ import type { DigestFacts } from "@/lib/portfolio/digest-facts";
 import { BRIEF_MAX_CHARS, capBrief } from "@/lib/agent/market-and-portfolio";
 import { saleHistory, type WaitingSale } from "@/lib/portfolio/sale-queue";
 import { dayLabel } from "@/lib/market-data/market-calendar";
+import { recordRequests } from "@/lib/agent/run-requests";
 
 export const PORTFOLIO_REVIEWER = {
   name: "Portfolio Reviewer",
@@ -310,10 +312,12 @@ export interface PortfolioReview {
   usage: LanguageModelUsage[];
 }
 
-type Generate = (args: { system: string; messages: ModelMessage[] }) => Promise<{ text: string; responseMessages: ModelMessage[]; usage: LanguageModelUsage }>;
+/** One model call. `call` names it on the run page ("Main", "Retry"); with a run id, what it sent is kept on that run. */
+type Generate = (args: { system: string; messages: ModelMessage[]; call: string; runId?: string | null }) => Promise<{ text: string; responseMessages: ModelMessage[]; usage: LanguageModelUsage }>;
 
-const generate: Generate = async ({ system, messages }) => {
-  const res = await generateText({ model: openai.chat(PORTFOLIO_REVIEWER.model), system, messages, abortSignal: AbortSignal.timeout(180_000) });
+const generate: Generate = async ({ system, messages, call, runId }) => {
+  const sent = recordRequests(runId, call, "portfolio-reviewer");
+  const res = await sent.around(generateText({ model: openai.chat(PORTFOLIO_REVIEWER.model), system, messages, abortSignal: AbortSignal.timeout(180_000), onStepFinish: (step) => sent.step(step) }));
   return { text: res.text, responseMessages: res.response.messages as ModelMessage[], usage: res.usage };
 };
 
@@ -327,7 +331,7 @@ const generate: Generate = async ({ system, messages }) => {
 export async function writePortfolioReview(
   facts: DigestFacts,
   pending: readonly PendingProposalFact[],
-  deps: { generate?: Generate; sales?: readonly WaitingSale[] } = {},
+  deps: { generate?: Generate; sales?: readonly WaitingSale[]; runId?: string | null } = {},
 ): Promise<PortfolioReview> {
   const run = deps.generate ?? generate;
   const sales = deps.sales ?? [];
@@ -337,14 +341,14 @@ export async function writePortfolioReview(
   const tonight = new Map(facts.book.held.map((h) => [h.ticker.toUpperCase(), h.currentPrice]));
   const check = (p: ReturnType<typeof parseReview>) => [...p.problems, ...(p.digest ? floorOfferProblems(p.digest, sales, (t) => tonight.get(t) ?? null) : [])];
   try {
-    let reply = await run({ system: REVIEWER_PROMPT, messages: opening });
+    let reply = await run({ system: REVIEWER_PROMPT, messages: opening, call: "Main", runId: deps.runId });
     messages.push(...reply.responseMessages);
     usage.push(reply.usage);
     let parsed = parseReview(reply.text);
     const problems = check(parsed);
     if (problems.length) {
       const ask: ModelMessage = { role: "user", content: `${problems.join(" ")} Reply again in the same form, with both parts.` };
-      reply = await run({ system: REVIEWER_PROMPT, messages: [...opening, ...messages, ask] });
+      reply = await run({ system: REVIEWER_PROMPT, messages: [...opening, ...messages, ask], call: "Retry", runId: deps.runId });
       messages.push(ask, ...reply.responseMessages);
       usage.push(reply.usage);
       const again = parseReview(reply.text);

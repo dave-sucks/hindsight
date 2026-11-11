@@ -65,6 +65,8 @@ export interface ThreadProps {
   hideWelcome?: boolean;
   /** Customize the welcome message (title, subtitle, icon) */
   welcomeConfig?: WelcomeConfig;
+  /** Shown at the top of the thread, on its first message (a run's "Sent to the model" chips). */
+  beforeMessages?: React.ReactNode;
 }
 
 export const Thread: FC<ThreadProps> = ({
@@ -73,6 +75,7 @@ export const Thread: FC<ThreadProps> = ({
   richComposer = false,
   hideWelcome = false,
   welcomeConfig,
+  beforeMessages,
 }) => {
   // Merge richComposer flag into features for backwards compat
   const mergedFeatures: HindsightComposerFeatures = richComposer
@@ -105,6 +108,8 @@ export const Thread: FC<ThreadProps> = ({
             <ThreadWelcome config={welcomeConfig} />
           </AuiIf>
         )}
+
+        {beforeMessages}
 
         <ThreadPrimitive.Messages
           components={{

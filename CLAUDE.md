@@ -308,7 +308,10 @@ plus `get_stock_data`.
 - ResearchRun — one execution; links to AgentConfig; status
   (RUNNING/COMPLETE/FAILED); parameters JSON snapshot
 - RunEvent — SSE event from a run (type, title, message, payload)
-- RunMessage — persisted AI SDK messages for run replay
+- RunMessage — a run's saved thread for replay (role "thread",
+  `lib/agent/run-thread.ts`) and one record per model call of exactly
+  what it sent the provider (role "request", `lib/agent/run-requests.ts`;
+  the run page's "Sent to the model" chips)
 - Thesis — stock analysis (direction, confidence, reasoning,
   bullets, risk flags, signal types, sourcesUsed, entry/target/stop).
   **Status taxonomy (P1-24 — see `docs/plans/STATUS_TAXONOMY.md`):**

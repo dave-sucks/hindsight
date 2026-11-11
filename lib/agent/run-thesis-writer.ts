@@ -52,6 +52,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { prisma } from "@/lib/prisma";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { recordRequests } from "@/lib/agent/run-requests";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
@@ -1009,8 +1010,10 @@ Write the research note now, then call submit_thesis.`;
     // Every request this phase makes, recorded on the child run at the end
     // (token-usage.ts); the save phase's retry records its own.
     const tokenUsage = emptyTokenUsage();
+    // Every request the loop sends, kept as sent (run-requests.ts), also when it throws.
+    const sentResearch = recordRequests(args.childRunId, "Research", "thesis-writer");
     try {
-      await generateText({
+      await sentResearch.around(generateText({
         model,
         system: cachedSystem(modeConfig.provider, systemPrompt),
         prompt: userPrompt,
@@ -1019,6 +1022,7 @@ Write the research note now, then call submit_thesis.`;
         stopWhen: [stepCountIs(modeConfig.maxSteps), () => accepted !== null],
         abortSignal: AbortSignal.timeout(RESEARCH_TIMEOUT_MS),
         onStepFinish(step) {
+          sentResearch.step(step);
           addTokenUsage(tokenUsage, step.usage);
           stepCount++;
           toolCallCount += step.toolCalls.length;
@@ -1036,7 +1040,7 @@ Write the research note now, then call submit_thesis.`;
             `[thesis-writer] STEP #${stepCount} child=${args.childRunId} ticker=${T} tools=[${step.toolCalls.map((c) => c.toolName).join(", ") || "none"}] text=${step.text?.length ?? 0}ch`,
           );
         },
-      });
+      }));
     } catch (err) {
       loopError = err instanceof Error ? err.message : String(err);
       console.error(
@@ -1063,7 +1067,8 @@ Write the research note now, then call submit_thesis.`;
         // (submit_thesis + server web_search) to a call with NO tools
         // param — the API rejects that with a 400, which made the repair
         // path dead on arrival. The note text is all the repair needs.
-        const repair = await generateText({
+        const sentRepair = recordRequests(args.childRunId, "Note repair", "thesis-writer");
+        const repair = await sentRepair.around(generateText({
           model,
           system: systemPrompt,
           messages: [
@@ -1075,7 +1080,8 @@ Write the research note now, then call submit_thesis.`;
             },
           ],
           abortSignal: AbortSignal.timeout(SECTION_REPAIR_TIMEOUT_MS),
-        });
+          onStepFinish: sentRepair.step,
+        }));
         addTokenUsage(tokenUsage, repair.totalUsage, repair.steps.length);
         if (repair.text) {
           noteText = `${noteText}\n\n${repair.text}`;
@@ -1671,8 +1677,9 @@ async function resubmitWithFeedback(input: {
     modeConfig.provider === "anthropic"
       ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
       : openai(modeConfig.model);
+  const sent = recordRequests(args.childRunId, "Decision repair", "thesis-writer");
   try {
-    const res = await generateText({
+    const res = await sent.around(generateText({
       model,
       system: cachedSystem(modeConfig.provider, input.systemPrompt),
       messages: [
@@ -1690,7 +1697,8 @@ async function resubmitWithFeedback(input: {
       tools: cachedTools(modeConfig.provider, { submit_thesis: submit }) as any,
       stopWhen: [stepCountIs(SAVE_RETRY_MAX_STEPS), () => accepted !== null],
       abortSignal: AbortSignal.timeout(SAVE_RETRY_TIMEOUT_MS),
-    });
+      onStepFinish: sent.step,
+    }));
     await recordTokenUsage(
       args.childRunId,
       addTokenUsage(emptyTokenUsage(), res.totalUsage, res.steps.length),

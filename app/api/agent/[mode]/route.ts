@@ -30,6 +30,7 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { recordRequests } from "@/lib/agent/run-requests";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
@@ -57,6 +58,8 @@ import {
 // in modes.ts still keeps each mode bounded; this is just the hard
 // ceiling for the longest one (research-run).
 export const maxDuration = 800;
+/** A turn stops itself 30 seconds before the platform would, so what it sent is kept and the run is marked (as the morning run does). */
+const TURN_LIMIT_MS = (maxDuration - 30) * 1000;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,17 +161,19 @@ export async function POST(
     // (snapshot at run-create time) when a run row exists; otherwise default
     // PAPER. Builder/editor/podcast modes don't trade and stay PAPER.
 
+    // A run id from the body must be the caller's account's: everything this
+    // turn writes (the thread, what it sent the model, the run's status) is
+    // written to it.
     let runEnvironment: "PAPER" | "LIVE" = "PAPER";
     if (runId) {
       const runRow = await prisma.researchRun.findFirst({
-        where: { id: runId },
+        where: { id: runId, accountId },
         select: { environment: true, agentConfigId: true, mode: true },
       });
+      if (!runRow) return new Response("Run not found", { status: 404 });
       // The account's own reviews take no messages (their page has no composer).
-      if (runRow && READ_ONLY_RUN_MODES.has(runRow.mode ?? "")) return new Response("This run takes no messages", { status: 403 });
-      if (runRow) {
-        runEnvironment = (runRow.environment as "PAPER" | "LIVE") ?? "PAPER";
-      }
+      if (READ_ONLY_RUN_MODES.has(runRow.mode ?? "")) return new Response("This run takes no messages", { status: 403 });
+      runEnvironment = (runRow.environment as "PAPER" | "LIVE") ?? "PAPER";
     }
 
     // `let`, not `const`: the principal-chat branch re-seeds runEnvironment
@@ -782,7 +787,17 @@ export async function POST(
     // added to the turns before it (token-usage.ts). Builder and editor
     // chats have no run row and are not recorded.
     const tokenUsage = emptyTokenUsage();
+    // Every request this turn sends, kept as sent (run-requests.ts). Saved
+    // when the stream ends, errors or is stopped; no run row, nothing kept.
+    const isFirstTurn = !(messages ?? []).some((m: { role?: string }) => m?.role === "assistant");
+    const sent = recordRequests(
+      runId,
+      agentMode === "principal" ? "Chat turn" : isFirstTurn ? "Run" : "Follow-up",
+      `agent/${agentMode}`,
+    );
+    const turnLimit = AbortSignal.timeout(TURN_LIMIT_MS);
     const result = streamText({
+      abortSignal: turnLimit,
       model: resolvedModel,
       // Provider-specific options. For OpenAI, strictJsonSchema forces OpenAI
       // to validate tool-call arguments against the Zod-derived JSON Schema at
@@ -843,7 +858,9 @@ export async function POST(
           : []),
       ],
 
-      onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {
+      onStepFinish(step) {
+        sent.step(step);
+        const { stepNumber, toolCalls, toolResults, finishReason, usage } = step;
         addTokenUsage(tokenUsage, usage);
         const now = Date.now();
         const elapsed = now - t0;
@@ -899,6 +916,17 @@ export async function POST(
         if (agentMode === "research-run") {
           waitUntil(markRunFailed(runId, `Stream error after ${(elapsed / 1000).toFixed(0)}s: ${msg}`));
         }
+        waitUntil(sent.save(error));
+        resolveOnFinish!();
+      },
+
+      onAbort() {
+        const why = turnLimit.aborted
+          ? `Stopped at the ${TURN_LIMIT_MS / 1000}s time limit before the call finished.`
+          : "The stream was stopped before the call finished.";
+        console.error(`[agent/${agentMode}] ⏹ ABORTED elapsed=${Date.now() - t0}ms: ${why}`);
+        if (agentMode === "research-run") waitUntil(markRunFailed(runId, why));
+        waitUntil(sent.save(why));
         resolveOnFinish!();
       },
 
@@ -907,6 +935,9 @@ export async function POST(
         console.log(
           `[agent/${agentMode}] ✅ onFinish elapsed=${elapsed}ms reason=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
         );
+
+        // What this turn sent (no-op without a run row).
+        await sent.save();
 
         // Builder/editor and unscoped principal-chat don't have a
         // ResearchRun. Scoped principal-chat does — persist messages

@@ -25,7 +25,7 @@ Cash is the broker's cash, never margin buying power, and it never suggests putt
 
 ## When it runs
 
-At 8:00 PM ET on weekdays, after the market closes and the last trigger run settles, once for each account and book (paper or live) that traded or had a run that day. Each review is a run of its own, named "Portfolio Reviewer" on the Runs page. Open it to see the facts it was given, as its first message, and what it wrote.
+At 8:00 PM ET on weekdays, after the market closes and the last trigger run settles, once for each account and book (paper or live) that traded or had a run that day. Each review is a run of its own, named "Portfolio Reviewer" on the Runs page. Open it to see the facts it was given, as its first message, and what it wrote. Above them are chips with exactly what each of its model calls sent: its instructions and the facts, and on a second try the ask that sent it back.
 
 ## What it reads
 
@@ -63,7 +63,7 @@ The brief is saved on the day's digest row. If anything fails on the way, the ru
 `lib/agent/portfolio-reviewer.ts`: `PORTFOLIO_REVIEWER` (name, mode `PORTFOLIO_REVIEW`, model, steps), `REVIEWER_PROMPT`, `buildReviewerInput`, `parseReview`, `floorOfferProblems` (the check on each floor price the digest offers) and `writePortfolioReview`.
 
 #### Saved
-A `ResearchRun` (mode `PORTFOLIO_REVIEW`) with its thread (`saveRunThread`), and one `PortfolioDigest` row per account, book and day: `brief` and `narrative`.
+A `ResearchRun` (mode `PORTFOLIO_REVIEW`) with its thread (`saveRunThread`) and what each model call sent (`recordRequests`, "Main" and "Retry"), and one `PortfolioDigest` row per account, book and day: `brief` and `narrative`.
 
 #### Trying it without saving
 `npx tsx --env-file=.env.local scripts/portfolio-review-dry-run.ts --date <YYYY-MM-DD>` builds that day's input the way the job does, calls the model once and prints the input, the brief, the digest and the Market and portfolio block each analyst's morning run and a trigger run would get. It saves nothing; `--no-model` skips the model call. Its output holds the analysts' notes in full, so it stays out of the repo.

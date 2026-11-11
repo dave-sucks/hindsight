@@ -18,6 +18,7 @@ import type { AgentMode } from "@/lib/agent/modes";
 import { MODES, RESEARCH_MODEL_OPTIONS } from "@/lib/agent/modes";
 import { ChatRuntime } from "@/components/chat/chat-runtime";
 import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
+import { RunRequests } from "@/components/agent/RunRequests";
 import type { HindsightComposerFeatures } from "@/components/assistant-ui/hindsight-composer";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import { ToolUICallbacksProvider } from "@/components/assistant-ui/tool-uis";
@@ -445,6 +446,7 @@ function AgentChatInner({
 
         <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
           <Thread
+            beforeMessages={runId ? <RunRequests runId={runId} /> : undefined}
             welcomeConfig={{
               title: analystName ?? "Research Agent",
               subtitle: readOnly
@@ -515,6 +517,7 @@ function AgentChatInner({
 
         <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
           <Thread
+            beforeMessages={runId ? <RunRequests runId={runId} /> : undefined}
             welcomeConfig={{
               title: analystName ?? "Segment Run",
               subtitle: isFollowupMode

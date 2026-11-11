@@ -24,6 +24,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { generateText, stepCountIs } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
+import { recordRequests } from "@/lib/agent/run-requests";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -772,7 +773,9 @@ export const tacticalRun = inngest.createFunction(
       // growing conversation is read from the cache rather than re-billed.
       const openaiOptions = { strictJsonSchema: true, promptCacheKey: run.id };
       try {
-        const { steps, response } = await generateText({
+        // Every request the call sends, kept as sent (run-requests.ts), also when it throws.
+        const sentMain = recordRequests(run.id, "Main", "tactical-run");
+        const { steps, response } = await sentMain.around(generateText({
           model: openai(MODES["tactical"].model),
           system: systemPrompt,
           prompt: userPrompt,
@@ -784,10 +787,11 @@ export const tacticalRun = inngest.createFunction(
           abortSignal: AbortSignal.timeout(
             (MODES["tactical"].maxDuration - 30) * 1000,
           ),
-          onStepFinish({ usage }) {
-            addTokenUsage(tokenUsage, usage);
+          onStepFinish(step) {
+            sentMain.step(step);
+            addTokenUsage(tokenUsage, step.usage);
           },
-        });
+        }));
 
         let toolCalls = steps.reduce(
           (sum, s) => sum + (s.toolCalls?.length ?? 0),
@@ -850,7 +854,8 @@ export const tacticalRun = inngest.createFunction(
             `[tactical-run] thesis=${thesis.id} trigger=${trigger.id} did not close out (${steps.length} steps, ${toolCalls} tool calls) — attempting retry`,
           );
           try {
-            const retryResp = await generateText({
+            const sentRetry = recordRequests(run.id, "Close-out retry", "tactical-run");
+            const retryResp = await sentRetry.around(generateText({
               model: openai(MODES["tactical"].model),
               system: systemPrompt,
               messages: [
@@ -872,7 +877,8 @@ export const tacticalRun = inngest.createFunction(
               providerOptions: { openai: openaiOptions },
               stopWhen: stepCountIs(5),
               abortSignal: AbortSignal.timeout(60_000),
-            });
+              onStepFinish: sentRetry.step,
+            }));
             addTokenUsage(tokenUsage, retryResp.totalUsage, retryResp.steps.length);
             const retrySteps = retryResp.steps.length;
             const retryToolCalls = retryResp.steps.reduce(
@@ -945,7 +951,8 @@ export const tacticalRun = inngest.createFunction(
             `[tactical-run] thesis=${thesis.id} ${openRefusals.length} refused call(s) never redone — attempting refusal retry`,
           );
           try {
-            const refusalResp = await generateText({
+            const sentRefusal = recordRequests(run.id, "Refusal retry", "tactical-run");
+            const refusalResp = await sentRefusal.around(generateText({
               model: openai(MODES["tactical"].model),
               system: systemPrompt,
               messages: [
@@ -958,7 +965,8 @@ export const tacticalRun = inngest.createFunction(
               providerOptions: { openai: openaiOptions },
               stopWhen: stepCountIs(5),
               abortSignal: AbortSignal.timeout(60_000),
-            });
+              onStepFinish: sentRefusal.step,
+            }));
             addTokenUsage(tokenUsage, refusalResp.totalUsage, refusalResp.steps.length);
             const refusalToolCalls = refusalResp.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
             toolCalls += refusalToolCalls;
