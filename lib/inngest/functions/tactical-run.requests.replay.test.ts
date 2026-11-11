@@ -94,11 +94,11 @@ async function fire() {
   return { sent, urls, runs: rows("researchRun"), messages: rows("runMessage") as Array<{ runId: string; role: string; content: string }> };
 }
 
-/** The route the run page reads, over the rows the run left, as `userId`. */
-async function getRoute(rows: Array<Record<string, unknown>>, query: string, userId = "user_v") {
+/** The route the run page reads, over the rows the run left (and `others`, other runs' rows), as `userId`. */
+async function getRoute(rows: Array<Record<string, unknown>>, query: string, userId = "user_v", others: Array<Record<string, unknown>> = []) {
   const db = prismaDouble({
     researchRun: [{ id: "run_v", userId: "user_v", status: "COMPLETE", startedAt: new Date(Date.UTC(2026, 10, 12, 14, 0, 0)) }],
-    runMessage: rows.map((m, i) => ({ id: `msg_${i}`, ...m, runId: "run_v", createdAt: new Date(Date.UTC(2026, 10, 12, 14, 0, i)) })),
+    runMessage: [...rows.map((m, i) => ({ id: `msg_${i}`, ...m, runId: "run_v", createdAt: new Date(Date.UTC(2026, 10, 12, 14, 0, i)) })), ...others],
   });
   let route: typeof import("@/app/api/runs/[id]/requests/route") | undefined;
   await jest.isolateModulesAsync(async () => {
@@ -174,6 +174,11 @@ describe("the trigger run keeps what its model call sent", () => {
 
     // Someone else's run is not found; a run with only its thread has nothing kept.
     expect((await getRoute(r.messages, "", "someone_else")).status).toBe(404);
-    expect((await getRoute(r.messages.filter((m) => m.role === "thread"), "")).body).toEqual({ status: "COMPLETE", before: false, calls: [] });
+    // A run with only its thread: kept nothing, if another run's call was kept before it started; from before the records, if none was.
+    const threadOnly = r.messages.filter((m) => m.role === "thread");
+    const earlier = { id: "req_earlier", runId: "run_earlier", role: "request", content: "{}", createdAt: new Date(Date.UTC(2026, 10, 12, 13, 0, 0)) };
+    const later = { ...earlier, id: "req_later", createdAt: new Date(Date.UTC(2026, 10, 12, 15, 0, 0)) };
+    expect((await getRoute(threadOnly, "", "user_v", [earlier])).body).toEqual({ status: "COMPLETE", before: false, calls: [] });
+    expect((await getRoute(threadOnly, "", "user_v", [later])).body).toEqual({ status: "COMPLETE", before: true, calls: [] });
   });
 });

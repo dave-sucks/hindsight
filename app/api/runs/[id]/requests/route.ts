@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { REQUEST_ROLE, REQUESTS_KEPT_SINCE } from "@/lib/agent/run-requests";
+import { REQUEST_ROLE } from "@/lib/agent/run-requests";
 import { decodeCalls, parseRecord, withRefsFilled, type RequestRecord, type SentRef } from "@/lib/agent/run-requests-format";
 import { viewOfCall, type CallView, type SentPiece } from "@/lib/agent/run-requests-view";
 
@@ -25,7 +25,7 @@ export type RequestCallSummary = Omit<CallView, "pieces"> & { id: string; pieces
 export interface RunRequestsResponse {
   /** PENDING | RUNNING | COMPLETE | FAILED */
   status: string;
-  /** Started before runs kept what they sent: nothing could have been kept. */
+  /** Kept no call, and no model call of any run was kept before it started: it is from before the records. */
   before: boolean;
   calls: RequestCallSummary[];
 }
@@ -78,18 +78,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!callId) {
     const rows = recordsOf(await prisma.runMessage.findMany({ where: { runId: id, role: REQUEST_ROLE }, orderBy: { createdAt: "asc" }, select: { id: true, content: true } }));
     const bodies = decodeCalls(rows);
-    const body: RunRequestsResponse = {
-      status: run.status,
-      before: run.startedAt < REQUESTS_KEPT_SINCE,
-      calls: rows.flatMap(({ id: rowId, record }) => {
-        const sent = bodies.get(rowId);
-        if (!sent) return [];
-        const view = viewOfCall(record, refsFor(rows, rowId), sent);
-        // The texts are fetched one at a time, when a piece is opened.
-        const pieces = view.pieces.map(({ id: pid, kind, label, hint, chars, request, lastRequest }): RequestPieceSummary => ({ id: pid, kind, label, ...(hint ? { hint } : {}), chars, request, lastRequest }));
-        return [{ ...view, id: rowId, pieces }];
-      }),
-    };
+    const calls = rows.flatMap(({ id: rowId, record }): RequestCallSummary[] => {
+      const sent = bodies.get(rowId);
+      if (!sent) return [];
+      const view = viewOfCall(record, refsFor(rows, rowId), sent);
+      // The texts are fetched one at a time, when a piece is opened.
+      const pieces = view.pieces.map(({ id: pid, kind, label, hint, chars, request, lastRequest }): RequestPieceSummary => ({ id: pid, kind, label, ...(hint ? { hint } : {}), chars, request, lastRequest }));
+      return [{ ...view, id: rowId, pieces }];
+    });
+    // A run that kept no call is from before the records only if no run had kept one when it started.
+    const before = calls.length === 0 && !(await prisma.runMessage.findFirst({ where: { role: REQUEST_ROLE, createdAt: { lt: run.startedAt } }, select: { id: true } }));
+    const body: RunRequestsResponse = { status: run.status, before, calls };
     return NextResponse.json(body);
   }
 

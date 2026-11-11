@@ -218,6 +218,8 @@ model RunMessage {
   run       ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId])
+  // Was any model call kept before a run started (its page says "from before" or "kept none").
+  @@index([role, createdAt])
 }
 
 enum ThesisStatus {

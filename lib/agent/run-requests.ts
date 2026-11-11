@@ -23,9 +23,6 @@ import { decodeCalls, firstAgainst, isObj, parseRecord, RequestEncoder, refsFrom
 /** The RunMessage role of a model call's record. The saved thread is "thread". */
 export const REQUEST_ROLE = "request";
 
-/** No run started before this (midnight ET, Nov 11 2026) kept what it sent: the records began after it. */
-export const REQUESTS_KEPT_SINCE = new Date("2026-11-11T05:00:00Z");
-
 /** Why a call stopped, in words: a provider's error mid-stream arrives as a plain object with a message. */
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message || error.name || "Error";
